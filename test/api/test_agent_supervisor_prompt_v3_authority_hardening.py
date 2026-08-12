@@ -23,9 +23,11 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints import (
 from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
     LocalProfileRevoked,
     LocalProfileTampered,
+    LocalProfileWrongRepository,
     ed25519_public_key_from_did,
     initialize_local_profile,
     load_local_profile,
+    resolve_reviewer_local_profile_state,
     revoke_local_profile,
     rotate_local_profile,
 )
@@ -578,6 +580,68 @@ def test_local_profile_key_must_remain_private_owned_regular_file(tmp_path: Path
             repository_cid="repository:one",
             profile_dir=profile_dir,
             lifecycle_dir=lifecycle_dir,
+        )
+
+
+def test_reviewer_profile_lookup_ignores_default_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    default_dir = tmp_path / "default-profile"
+    default_lifecycle = tmp_path / "default-lifecycle"
+    board_dir = tmp_path / "board-profile"
+    board_lifecycle = tmp_path / "board-lifecycle"
+    monkeypatch.setenv(
+        local_profile_module.DEFAULT_PROFILE_DIR_ENV,
+        str(default_dir),
+    )
+    monkeypatch.setenv(
+        local_profile_module.LIFECYCLE_DIR_ENV,
+        str(default_lifecycle),
+    )
+    default_profile = initialize_local_profile(
+        repository_cid="repository:default-board",
+        baseline_commit="a" * 40,
+        profile_dir=default_dir,
+        lifecycle_dir=default_lifecycle,
+    )
+    board_profile = initialize_local_profile(
+        repository_cid="repository:target-board",
+        baseline_commit="b" * 40,
+        profile_dir=board_dir,
+        lifecycle_dir=board_lifecycle,
+    )
+
+    with pytest.raises(LocalProfileWrongRepository):
+        load_local_profile(repository_cid=board_profile.repository_cid)
+
+    resolved, profile_dir, lifecycle_dir = resolve_reviewer_local_profile_state(
+        repository_cid=board_profile.repository_cid,
+        reviewer_identity=board_profile.identity_did,
+        expected_profile_id=board_profile.profile_id,
+        expected_profile_content_id=board_profile.content_id,
+        expected_lifecycle_anchor_id=board_profile.lifecycle_anchor_id,
+        expected_lifecycle_generation=board_profile.lifecycle_generation,
+    )
+
+    assert resolved.profile_id == board_profile.profile_id
+    assert resolved.identity_did == board_profile.identity_did
+    assert resolved.repository_cid == "repository:target-board"
+    assert resolved.profile_id != default_profile.profile_id
+    assert profile_dir == board_dir.resolve()
+    assert lifecycle_dir == board_lifecycle.resolve()
+
+
+def test_reviewer_profile_lookup_rejects_authorization_identity_drift(
+    tmp_path: Path,
+) -> None:
+    profile = _initialize(tmp_path)
+
+    with pytest.raises(LocalProfileTampered, match="DID registry"):
+        resolve_reviewer_local_profile_state(
+            repository_cid=profile.repository_cid,
+            reviewer_identity=profile.identity_did,
+            expected_profile_id="0" * 32,
         )
 
 

@@ -1717,6 +1717,93 @@ def load_local_profile(
     return profile
 
 
+def resolve_reviewer_local_profile_state(
+    *,
+    repository_cid: str,
+    reviewer_identity: str,
+    expected_profile_id: str = "",
+    expected_profile_content_id: str = "",
+    expected_lifecycle_anchor_id: str = "",
+    expected_lifecycle_generation: int = 0,
+) -> tuple["SignedSupervisorProfile", Path, Path]:
+    """Load the live profile bound to one reviewer DID.
+
+    Multi-board hosts keep a default local-profile directory plus one or more
+    board-scoped directories.  Route authorization names the reviewer DID;
+    the signed DID registry is the only locator that may select that
+    directory.  The default profile directory is never consulted.
+    """
+
+    identity = _bound(reviewer_identity, "reviewer_identity")
+    state = _load_did_state(identity)
+    if state.get("status") != "active":
+        raise LocalProfileRevoked("reviewer local profile is revoked")
+    profile_dir = Path(str(state["profile_path"]))
+    profile_location = str(_absolute_without_symlinks(profile_dir))
+    record_path = _registry_root() / (
+        hashlib.sha256(profile_location.encode("utf-8")).hexdigest() + ".json"
+    )
+    if not _entry_exists(record_path):
+        raise LocalProfileTampered(
+            "reviewer local profile lifecycle root is not registered"
+        )
+    record = _read_private_json(record_path, maximum_bytes=_MAX_ANCHOR_BYTES)
+    if not isinstance(record, dict) or not isinstance(
+        record.get("lifecycle_root"), str
+    ):
+        raise LocalProfileTampered(
+            "reviewer local profile lifecycle registry is invalid"
+        )
+    lifecycle_dir = _registered_anchor_root(
+        profile_dir,
+        Path(str(record["lifecycle_root"])),
+        register=False,
+    )
+    profile = load_local_profile(
+        repository_cid=repository_cid,
+        profile_dir=profile_dir,
+        lifecycle_dir=lifecycle_dir,
+    )
+    if (
+        profile.identity_did != identity
+        or profile.profile_id != state["profile_id"]
+        or profile.content_id != state["profile_content_id"]
+        or profile.lifecycle_anchor_id != state["anchor_id"]
+        or profile.lifecycle_generation != state["generation"]
+        or (
+            expected_profile_id
+            and profile.profile_id != expected_profile_id
+        )
+        or (
+            expected_profile_content_id
+            and profile.content_id != expected_profile_content_id
+        )
+        or (
+            expected_lifecycle_anchor_id
+            and profile.lifecycle_anchor_id != expected_lifecycle_anchor_id
+        )
+        or (
+            expected_lifecycle_generation > 0
+            and profile.lifecycle_generation != expected_lifecycle_generation
+        )
+    ):
+        raise LocalProfileTampered(
+            "reviewer local profile does not match its DID registry"
+        )
+    resolved_dir, resolved_lifecycle = resolve_local_profile_state_paths(
+        profile_dir=profile_dir,
+        lifecycle_dir=lifecycle_dir,
+    )
+    if (
+        resolved_dir != _absolute_without_symlinks(profile_dir)
+        or resolved_lifecycle != _absolute_without_symlinks(lifecycle_dir)
+    ):
+        raise LocalProfileTampered(
+            "reviewer local profile state paths drifted"
+        )
+    return profile, resolved_dir, resolved_lifecycle
+
+
 @dataclass(frozen=True)
 class _RotationResult:
     receipt: ProfileRotationReceipt

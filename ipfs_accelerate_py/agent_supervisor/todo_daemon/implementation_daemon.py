@@ -57367,13 +57367,28 @@ class PortalImplementationDaemon:
                 backoff_seconds=300,
             )
         from ..entrypoints.local_profile import (
-            load_local_profile,
             resolve_local_profile_state_paths,
+            resolve_reviewer_local_profile_state,
             sign_profile_binding,
         )
 
         try:
-            profile = load_local_profile(repository_cid=bounds.repository_cid)
+            profile, profile_directory, lifecycle_directory = (
+                resolve_reviewer_local_profile_state(
+                    repository_cid=bounds.repository_cid,
+                    reviewer_identity=authorization.reviewer_identity,
+                    expected_profile_id=authorization.reviewer_profile_id,
+                    expected_profile_content_id=(
+                        authorization.reviewer_profile_content_id
+                    ),
+                    expected_lifecycle_anchor_id=(
+                        authorization.reviewer_lifecycle_anchor_id
+                    ),
+                    expected_lifecycle_generation=(
+                        authorization.reviewer_lifecycle_generation
+                    ),
+                )
+            )
         except ValueError as exc:
             raise ImplementationRetryDeferred(
                 f"scoped fallback reviewer profile is unavailable: {exc}",
@@ -57405,14 +57420,25 @@ class PortalImplementationDaemon:
                 backoff_seconds=300,
             )
         try:
-            profile_directory, lifecycle_directory = (
-                resolve_local_profile_state_paths()
+            resolved_dir, resolved_lifecycle = (
+                resolve_local_profile_state_paths(
+                    profile_dir=profile_directory,
+                    lifecycle_dir=lifecycle_directory,
+                )
             )
         except ValueError as exc:
             raise ImplementationRetryDeferred(
                 "scoped fallback profile state paths are unavailable",
                 backoff_seconds=300,
             ) from exc
+        if (
+            resolved_dir != profile_directory
+            or resolved_lifecycle != lifecycle_directory
+        ):
+            raise ImplementationRetryDeferred(
+                "scoped fallback profile state paths drifted",
+                backoff_seconds=300,
+            )
         control_plane = self._scoped_control_plane
         if control_plane is None:
             raise ImplementationRetryDeferred(
