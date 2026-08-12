@@ -3,17 +3,18 @@
 **Status:** honest draft report for IVP-G100 / IVP-018  
 **Package:** `ipfs_accelerate_py.agent_supervisor.verification`  
 **Board namespace:** `incremental-verification-planner-v1`  
-**Evidence:** `ivp/documentation@1`, `ivp/release-report@1`  
-**Depends on:** IVP-017 benchmark evidence (`ivp/benchmark@1`)  
+**Evidence:** `ivp/documentation@1`, `ivp/release-report@2`
+**Depends on:** IVP-017 benchmark evidence (`ivp/benchmark@2`)
 **Authority:** this report is **not** production-authoritative; it documents
 landed contracts, operations, and measured evidence without upgrading any
 receipt status.
 
-This report binds the documentation and the current-tree benchmark artifact to
-the repository tree, controlled corpus, policy, effective environment, command
-identities, and measurement status. A machine-checkable binding block is
-included below; the focused report validator rejects stale tree bindings and
-missing required sections.
+This report binds the documentation and benchmark artifact to a canonical
+effective-source snapshot, controlled corpus, policy, effective environment,
+command identities, and measurement status. `observed_head` records Git HEAD
+for diagnostics only and grants no freshness authority. A machine-checkable
+binding block is included below; the focused report validator rejects stale
+source-snapshot bindings and missing required sections.
 
 ---
 
@@ -21,13 +22,13 @@ missing required sections.
 
 The following JSON binding is the authoritative report↔benchmark identity
 surface for IVP-018. Values must match a fresh benchmark run for the same
-`tree_id`.
+`source_snapshot_id`.
 
 ```json
 {
-  "benchmark_content_id": "baguqeeraiu7dzdw2daf4rsm3o4vwfxflgqmctu7wdelpatbngsw2jkepxnua",
-  "benchmark_evidence": "ivp/benchmark@1",
-  "benchmark_schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@1",
+  "benchmark_content_id": "baguqeeraeilibqsurqdx3gsoc2mth7cbwaxtkjy6fdeif5tvnizwk2jlo3na",
+  "benchmark_evidence": "ivp/benchmark@2",
+  "benchmark_schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@2",
   "command_identities": {
     "generate_artifact": "benchmarks/agent_supervisor/incremental_verification.py",
     "validate_benchmark": "test/benchmarks/test_incremental_verification_planner_benchmark.py",
@@ -55,10 +56,10 @@ surface for IVP-018. Values must match a fresh benchmark run for the same
   },
   "evidence": [
     "ivp/documentation@1",
-    "ivp/release-report@1"
+    "ivp/release-report@2"
   ],
   "goal_id": "IVP-G100",
-  "interface": "IncrementalVerificationReleaseReport@1",
+  "interface": "IncrementalVerificationReleaseReport@2",
   "measurement_schema_version": "ivp-benchmark-measurement/v1",
   "measurement_status": "red",
   "metrics_snapshot": {
@@ -78,7 +79,11 @@ surface for IVP-018. Values must match a fresh benchmark run for the same
     "policy_id": "policy:ivp-incremental-verification-benchmark@1",
     "zero_stale_simulated_acceptance_hard": true
   },
-  "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-release-report-binding@1",
+  "observed_head": "3039c773e2ba1a37c7abf239a2a2442e91e55b52",
+  "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-release-report-binding@2",
+  "source_snapshot_domain": "ivp-source-snapshot@1",
+  "source_snapshot_id": "sha256:bd04a558fb64029eafaa62961abf43d7cdaf4ca4856f9eb5c7c316976e1b5e32",
+  "source_snapshot_schema": "ipfs_accelerate_py/agent-supervisor/ivp-source-snapshot@1",
   "target_misses": [
     {
       "count": 1,
@@ -96,8 +101,7 @@ surface for IVP-018. Values must match a fresh benchmark run for the same
     "zero_controlled_false_negatives": "red",
     "zero_stale_simulated_accepted": "met"
   },
-  "task_id": "IVP-018",
-  "tree_id": "889773d2fcde2ed0242141b529f1abb9a21e1ff0"
+  "task_id": "IVP-018"
 }
 ```
 
@@ -108,6 +112,34 @@ surface for IVP-018. Values must match a fresh benchmark run for the same
 | generate_artifact | `PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 benchmarks/agent_supervisor/incremental_verification.py --output artifacts/agent_supervisor/incremental_verification/benchmark.json` |
 | validate_benchmark | `PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/benchmarks/test_incremental_verification_planner_benchmark.py` |
 | validate_report | `PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_incremental_verification_report.py` |
+
+### Fixed-point source identity
+
+The v2 evidence envelope uses schema
+`ipfs_accelerate_py/agent-supervisor/ivp-source-snapshot@1` and domain
+`ivp-source-snapshot@1`. Its `source_snapshot_id` hashes a sorted manifest of
+the effective present tracked and nonignored-untracked paths. Regular files
+bind canonical Git mode and exact bytes, symlinks bind mode `120000` and target
+bytes, and gitlinks bind mode `160000` and their exact indexed object ID. The
+manifest contains no tracked/untracked provenance, Git HEAD, branch, commit
+metadata, timestamp, observation time, or absolute repository root.
+
+Exactly two self-referential outputs are excluded:
+`artifacts/agent_supervisor/incremental_verification/benchmark.json` and
+`docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md`. There are no
+wildcard or caller-supplied exclusions. In the IVP taskboard, only exact
+`- Status: todo` and `- Status: completed` rows inside parsed IVP task blocks
+share a lifecycle sentinel; every title, dependency, other metadata row,
+status-like prose, malformed row, and other byte remains identity-bearing.
+Deleted tracked paths are absent, so committing an already-observed deletion
+does not alter the snapshot. The reviewed `ipfs_kit_py` and
+`ipfs_datasets_py` gitlinks must be initialized, exact, and clean or snapshot
+construction fails closed.
+
+`observed_head` is diagnostic only: it is outside source identity, benchmark
+content identity, and freshness validation. Production
+`VerificationReceiptKey`, executed-tree admission, cache reuse, and
+`VerificationCommitment` full-tree bindings remain unchanged.
 
 ---
 
@@ -133,6 +165,7 @@ The incremental-verification subsystem lives under
 | `bundle.py` | `build_verification_bundle`, `build_verification_summary`, `build_verification_commitment` |
 | `executor.py` | `execute_verification_plan` orchestration |
 | `evaluation.py` | Controlled-fixture differential selected-vs-full evaluation |
+| `source_snapshot.py` | Canonical fixed-point effective-source identity for benchmark/report evidence |
 | `__init__.py` | Side-effect-free package boundary (final public export freeze is IVP-019) |
 
 Supporting evidence harnesses (outside the package, consumed by this report):
@@ -183,10 +216,10 @@ Primary wire types (package contracts):
 - `VerificationReceiptKey@1`
 
 Benchmark artifact schema:
-`ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@1`.
+`ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@2`.
 
 Release-report binding schema:
-`ipfs_accelerate_py/agent-supervisor/incremental-verification-release-report-binding@1`.
+`ipfs_accelerate_py/agent-supervisor/incremental-verification-release-report-binding@2`.
 
 ### 3.3 Exact key (`VerificationReceiptKey@1`)
 
@@ -237,7 +270,7 @@ Historical immutability is preserved; authority is not.
 
 ## 5. Selected / full / proof results
 
-From the current-tree benchmark (`measurement_status` aggregate **red**):
+From the current-source benchmark (`measurement_status` aggregate **red**):
 
 | Metric | Value |
 | --- | --- |
@@ -439,11 +472,11 @@ historical pass, or structural validation creates verification authority.
 
 ## 14. Evidence and honesty statement
 
-- Benchmark evidence schema: `ivp/benchmark@1` (artifact
+- Benchmark evidence schema: `ivp/benchmark@2` (artifact
   `artifacts/agent_supervisor/incremental_verification/benchmark.json` when
-  regenerated for the current tree).
+  regenerated for the current source snapshot).
 - Documentation evidence: `ivp/documentation@1`.
-- Release report evidence: `ivp/release-report@1`.
+- Release report evidence: `ivp/release-report@2`.
 - Aggregate measurement status on this tree: **red** (one controlled false
   negative recorded; hard gate deferred to IVP-016/IVP-019).
 - This report does not assert target success from favourable performance

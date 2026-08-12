@@ -1,6 +1,6 @@
 """Incremental-verification benchmark harness (IVP-017 / IVP-G090).
 
-Produces a schema- and order-deterministic current-tree artifact that measures
+Produces a schema- and order-deterministic source-snapshot artifact that measures
 selected-versus-full differential evaluation, exact-key receipt-cache behaviour,
 provider-neutral model routes, wall-time samples, counterexample context size,
 and estimator-bound token savings.
@@ -97,14 +97,19 @@ from ipfs_accelerate_py.agent_supervisor.verification.receipt_cache import (
 from ipfs_accelerate_py.agent_supervisor.verification.receipt_store import (
     HermeticVerificationReceiptStore,
 )
+from ipfs_accelerate_py.agent_supervisor.verification.source_snapshot import (
+    SOURCE_SNAPSHOT_DOMAIN,
+    SOURCE_SNAPSHOT_SCHEMA,
+    build_source_snapshot,
+)
 
 # ---------------------------------------------------------------------------
 # Schemas / identities
 # ---------------------------------------------------------------------------
 
-BENCHMARK_INTERFACE: Final[str] = "IncrementalVerificationBenchmark@1"
+BENCHMARK_INTERFACE: Final[str] = "IncrementalVerificationBenchmark@2"
 BENCHMARK_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@1"
+    "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@2"
 )
 BENCHMARK_METRICS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-metrics@1"
@@ -112,7 +117,7 @@ BENCHMARK_METRICS_SCHEMA: Final[str] = (
 BENCHMARK_CASE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1"
 )
-BENCHMARK_EVIDENCE: Final[str] = "ivp/benchmark@1"
+BENCHMARK_EVIDENCE: Final[str] = "ivp/benchmark@2"
 TASK_ID: Final[str] = "IVP-017"
 GOAL_ID: Final[str] = "IVP-G090"
 POLICY_ID: Final[str] = "policy:ivp-incremental-verification-benchmark@1"
@@ -215,33 +220,6 @@ def repo_root() -> Path:
         ).is_dir():
             return candidate
     return Path.cwd().resolve()
-
-
-def current_tree_id(root: Path | None = None) -> str:
-    """Bind the current repository tree (git HEAD when available)."""
-
-    base = root if root is not None else repo_root()
-    try:
-        completed = subprocess.run(
-            ["git", "-C", str(base), "rev-parse", "HEAD"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if completed.returncode == 0:
-            value = completed.stdout.strip()
-            if value:
-                return value
-    except (OSError, subprocess.SubprocessError):
-        pass
-    # Fall back to a content identity of the working tree marker files.
-    marker = {
-        "cwd": str(base),
-        "benchmark": BENCHMARK_SCHEMA,
-        "mtime": int(base.stat().st_mtime) if base.exists() else 0,
-    }
-    return content_identity(marker)
 
 
 def effective_environment() -> dict[str, Any]:
@@ -357,6 +335,8 @@ _EPHEMERAL_ARTIFACT_KEYS: Final[frozenset[str]] = frozenset(
         "generated_at_unix_ms",
         "benchmark_duration_ms",
         "pid",
+        # Diagnostic only: commit creation must not invalidate the evidence.
+        "observed_head",
     }
 )
 _EPHEMERAL_WALL_KEYS: Final[frozenset[str]] = frozenset(
@@ -1439,7 +1419,9 @@ def run_incremental_verification_benchmark(
 
     root = Path(repo_root_path) if repo_root_path is not None else repo_root()
     root = root.resolve()
-    tree_id = current_tree_id(root)
+    source_snapshot = build_source_snapshot(root)
+    source_id = source_snapshot.source_snapshot_id
+    observed_head = source_snapshot.observed_head
     started = time.perf_counter()
 
     fx_root = (
@@ -1645,7 +1627,7 @@ def run_incremental_verification_benchmark(
 
     # Commitment over the ordered case identities (deterministic).
     commitment_body = {
-        "tree_id": tree_id,
+        "source_snapshot_id": source_id,
         "corpus_cid": corpus_info.get("corpus_cid"),
         "case_fixture_ids": [c.get("fixture_id") for c in cases],
         "policy_id": POLICY_ID,
@@ -1676,7 +1658,11 @@ def run_incremental_verification_benchmark(
         "authoritative": False,
         "target_success_asserted": False,
         "status": overall.value,
-        "tree_id": tree_id,
+        "source_snapshot_id": source_id,
+        "source_snapshot_schema": SOURCE_SNAPSHOT_SCHEMA,
+        "source_snapshot_domain": SOURCE_SNAPSHOT_DOMAIN,
+        # Diagnostic only. It is excluded from content/freshness authority.
+        "observed_head": observed_head,
         "repository_root": str(root),
         "corpus": {
             **corpus_info,
@@ -1760,7 +1746,7 @@ def run_incremental_verification_benchmark(
     artifact["content_id"] = _content_cid(
         {
             "schema": artifact["schema"],
-            "tree_id": artifact["tree_id"],
+            "source_snapshot_id": artifact["source_snapshot_id"],
             "corpus_cid": artifact["corpus"].get("corpus_cid"),
             "commitment_cid": commitment_cid,
             "status": artifact["status"],
@@ -1778,7 +1764,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Run the incremental-verification benchmark (IVP-017) and write "
-            "the current-tree artifact."
+            "the current-source artifact."
         ),
     )
     parser.add_argument(
@@ -1830,7 +1816,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "schema": BENCHMARK_SCHEMA,
             "interface": BENCHMARK_INTERFACE,
             "task_id": TASK_ID,
-            "tree_id": written.get("tree_id"),
+            "source_snapshot_id": written.get("source_snapshot_id"),
+            "observed_head": written.get("observed_head"),
             "status": written.get("status"),
             "content_id": written.get("content_id"),
             "commitment_cid": (written.get("commitments") or {}).get(

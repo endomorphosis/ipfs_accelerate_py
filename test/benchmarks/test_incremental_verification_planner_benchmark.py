@@ -2,8 +2,9 @@
 
 Validates that:
 
-* a freshly generated artifact binds current tree, corpus CID/evaluated count,
-  policy, effective environment, commands, measurement schema, and status;
+* a freshly generated artifact binds the canonical source snapshot, corpus
+  CID/evaluated count, policy, effective environment, commands, measurement
+  schema, and status while Git HEAD remains diagnostic only;
 * metrics cover cache hit rate, tests selected/full, ground-truth FN/FP,
   outcome discrepancies, static/proof execution, wall samples, paired or
   estimated reused time, route, frontier escalation, counterexample context,
@@ -22,18 +23,34 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
+import stat
 import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import pytest
+
+from ipfs_accelerate_py.agent_supervisor.verification import (
+    source_snapshot as snapshot_module,
+)
 from ipfs_accelerate_py.agent_supervisor.verification.evaluation import (
     MeasurementStatus,
     default_fixture_root,
 )
 from ipfs_accelerate_py.agent_supervisor.verification.model_route import (
     ModelRoute,
+)
+from ipfs_accelerate_py.agent_supervisor.verification.source_snapshot import (
+    SOURCE_SNAPSHOT_DOMAIN,
+    SOURCE_SNAPSHOT_EXCLUDED_PATHS,
+    SOURCE_SNAPSHOT_SCHEMA,
+    SourceSnapshot,
+    SourceSnapshotEntry,
+    SourceSnapshotError,
+    build_source_snapshot,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -82,7 +99,10 @@ REQUIRED_TOP_LEVEL = {
     "goal_id",
     "authoritative",
     "status",
-    "tree_id",
+    "source_snapshot_id",
+    "source_snapshot_schema",
+    "source_snapshot_domain",
+    "observed_head",
     "corpus",
     "policy",
     "effective_environment",
@@ -123,14 +143,392 @@ def _load_artifact() -> dict[str, Any]:
     return payload
 
 
-def _git_head() -> str:
+def _git(repo: Path, *args: str) -> str:
     completed = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
-        check=True,
+        ["git", "-C", str(repo), *args],
+        check=False,
         capture_output=True,
         text=True,
+        timeout=30,
     )
+    assert completed.returncode == 0, completed.stderr
     return completed.stdout.strip()
+
+
+def _init_nested_repository(path: Path, label: str) -> str:
+    path.mkdir(parents=True)
+    _git(path, "init", "--quiet")
+    _git(path, "config", "user.email", "ivp@example.invalid")
+    _git(path, "config", "user.name", "IVP Test")
+    (path / "payload.txt").write_text(f"{label}\n", encoding="utf-8")
+    _git(path, "add", "payload.txt")
+    _git(path, "commit", "--quiet", "-m", f"initialize {label}")
+    return _git(path, "rev-parse", "HEAD")
+
+
+def _init_snapshot_repository(
+    path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, dict[str, str]]:
+    path.mkdir()
+    _git(path, "init", "--quiet")
+    _git(path, "config", "user.email", "ivp@example.invalid")
+    _git(path, "config", "user.name", "IVP Test")
+
+    (path / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+    (path / "source.py").write_text("VALUE = 1\n", encoding="utf-8")
+    executable = path / "tool.sh"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    (path / "link").symlink_to("source.py")
+    todo = path / "docs" / "architecture" / "incremental_verification_planner.todo.md"
+    todo.parent.mkdir(parents=True)
+    todo.write_text(
+        "# Board\n\n## IVP-021 Snapshot\n\n"
+        "- Status: todo\n- Note: Status: todo remains source\n",
+        encoding="utf-8",
+    )
+    artifact = (
+        path / "artifacts" / "agent_supervisor" / "incremental_verification"
+        / "benchmark.json"
+    )
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("{}\n", encoding="utf-8")
+    report = path / "docs" / "architecture" / "INCREMENTAL_VERIFICATION_PLANNER_REPORT.md"
+    report.write_text("report\n", encoding="utf-8")
+
+    reviewed = {
+        name: _init_nested_repository(path / name, name)
+        for name in ("ipfs_kit_py", "ipfs_datasets_py")
+    }
+    vendor_oid = _init_nested_repository(path / "vendor", "vendor")
+    _git(path, "add", ".gitignore", "source.py", "tool.sh", "link", "docs", "artifacts")
+    for name, oid in {**reviewed, "vendor": vendor_oid}.items():
+        _git(path, "update-index", "--add", "--cacheinfo", f"160000,{oid},{name}")
+    _git(path, "commit", "--quiet", "-m", "initial source")
+    monkeypatch.setattr(snapshot_module, "_REVIEWED_GITLINKS", reviewed)
+    return path, reviewed
+
+
+# ---------------------------------------------------------------------------
+# Canonical source-snapshot contract
+# ---------------------------------------------------------------------------
+
+
+def test_source_snapshot_is_stable_across_provenance_history_and_clone_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, reviewed = _init_snapshot_repository(tmp_path / "source", monkeypatch)
+    baseline = build_source_snapshot(root)
+    assert baseline.schema == SOURCE_SNAPSHOT_SCHEMA
+    assert baseline.domain == SOURCE_SNAPSHOT_DOMAIN
+    assert baseline.source_snapshot_id.startswith("sha256:")
+    assert len(baseline.source_snapshot_id) == len("sha256:") + 64
+    assert set(SOURCE_SNAPSHOT_EXCLUDED_PATHS).isdisjoint(
+        entry.path for entry in baseline.entries
+    )
+
+    # Adding the same effective path to the index and then committing it does
+    # not add provenance to the manifest.
+    loose = root / "loose.txt"
+    loose.write_text("same bytes\n", encoding="utf-8")
+    untracked = build_source_snapshot(root)
+    _git(root, "add", "loose.txt")
+    staged = build_source_snapshot(root)
+    assert staged.source_snapshot_id == untracked.source_snapshot_id
+    _git(root, "commit", "--quiet", "-m", "track existing bytes")
+    committed = build_source_snapshot(root)
+    assert committed.source_snapshot_id == staged.source_snapshot_id
+    assert committed.observed_head != staged.observed_head
+
+    # HEAD, branch, exact IVP lifecycle values, ignored files, and the two
+    # closed self-referential outputs are not identity inputs.
+    stable_id = committed.source_snapshot_id
+    _git(root, "checkout", "--quiet", "-b", "other-branch")
+    _git(root, "commit", "--quiet", "--allow-empty", "-m", "history only")
+    todo = root / "docs" / "architecture" / "incremental_verification_planner.todo.md"
+    todo.write_text(
+        todo.read_text(encoding="utf-8").replace(
+            "- Status: todo", "- Status: completed", 1
+        ),
+        encoding="utf-8",
+    )
+    (root / "ignored.txt").write_text("ignored churn\n", encoding="utf-8")
+    git_dir = Path(_git(root, "rev-parse", "--git-dir"))
+    if not git_dir.is_absolute():
+        git_dir = root / git_dir
+    info = git_dir / "info"
+    info.mkdir(parents=True, exist_ok=True)
+    (info / "exclude").write_text("info-ignored.txt\n", encoding="utf-8")
+    (root / "info-ignored.txt").write_text("ignored by info/exclude\n", encoding="utf-8")
+    for relative in SOURCE_SNAPSHOT_EXCLUDED_PATHS:
+        (root / relative).write_text("excluded churn\n", encoding="utf-8")
+    stable = build_source_snapshot(root)
+    assert stable.source_snapshot_id == stable_id
+    assert stable.observed_head != committed.observed_head
+
+    # A clone with identical effective paths has the same identity even though
+    # its absolute root is different.
+    _git(root, "add", todo.relative_to(root).as_posix())
+    _git(root, "commit", "--quiet", "-m", "lifecycle transition")
+    clone = tmp_path / "clone"
+    _git(tmp_path, "clone", "--quiet", str(root), str(clone))
+    for name in reviewed:
+        (clone / name).mkdir(exist_ok=True)
+        _git(clone / name, "init", "--quiet")
+        _git(clone / name, "fetch", "--quiet", str(root / name), reviewed[name])
+        _git(clone / name, "checkout", "--quiet", "--detach", reviewed[name])
+    assert build_source_snapshot(clone).source_snapshot_id == build_source_snapshot(
+        root
+    ).source_snapshot_id
+
+
+def test_source_snapshot_detects_effective_source_mode_symlink_and_gitlink_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, _reviewed = _init_snapshot_repository(tmp_path / "source", monkeypatch)
+    baseline = build_source_snapshot(root).source_snapshot_id
+
+    source = root / "source.py"
+    original = source.read_bytes()
+    source.write_bytes(original + b"# drift\n")
+    assert build_source_snapshot(root).source_snapshot_id != baseline
+    source.write_bytes(original)
+
+    tool = root / "tool.sh"
+    tool.chmod(0o644)
+    assert build_source_snapshot(root).source_snapshot_id != baseline
+    tool.chmod(0o755)
+
+    link = root / "link"
+    link.unlink()
+    link.symlink_to("tool.sh")
+    assert build_source_snapshot(root).source_snapshot_id != baseline
+    link.unlink()
+    link.symlink_to("source.py")
+
+    untracked = root / "new.py"
+    untracked.write_text("new = True\n", encoding="utf-8")
+    assert build_source_snapshot(root).source_snapshot_id != baseline
+    untracked.unlink()
+
+    # Status-like prose and malformed status rows remain identity-bearing.
+    todo = root / "docs" / "architecture" / "incremental_verification_planner.todo.md"
+    todo.write_text(
+        todo.read_text(encoding="utf-8").replace(
+            "Status: todo remains source", "Status: completed remains source"
+        ),
+        encoding="utf-8",
+    )
+    assert build_source_snapshot(root).source_snapshot_id != baseline
+
+    todo.write_text(
+        todo.read_text(encoding="utf-8").replace(
+            "- Status: Todo", "- Status: <ivp-task-lifecycle>"
+        ),
+        encoding="utf-8",
+    )
+    assert build_source_snapshot(root).source_snapshot_id != baseline
+    _git(root, "checkout", "--", todo.relative_to(root).as_posix())
+
+    # A gitlink is represented by its exact index object, never by a recursive
+    # hash of its nested checkout.
+    vendor = root / "vendor"
+    (vendor / "payload.txt").write_text("vendor changed\n", encoding="utf-8")
+    assert build_source_snapshot(root).source_snapshot_id == baseline
+    _git(vendor, "add", "payload.txt")
+    _git(vendor, "commit", "--quiet", "-m", "vendor drift")
+    assert build_source_snapshot(root).source_snapshot_id == baseline
+    _git(root, "add", "vendor")
+    assert build_source_snapshot(root).source_snapshot_id != baseline
+
+
+def test_source_snapshot_deletion_fixed_point_and_reviewed_gitlink_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, reviewed = _init_snapshot_repository(tmp_path / "source", monkeypatch)
+    source = root / "source.py"
+    source.unlink()
+    deleted = build_source_snapshot(root)
+    _git(root, "add", "--update")
+    _git(root, "commit", "--quiet", "-m", "delete source")
+    committed = build_source_snapshot(root)
+    assert committed.source_snapshot_id == deleted.source_snapshot_id
+    assert committed.observed_head != deleted.observed_head
+
+    kit = root / "ipfs_kit_py"
+    (kit / "dirty.txt").write_text("dirty\n", encoding="utf-8")
+    with pytest.raises(SourceSnapshotError, match="contains untracked paths"):
+        build_source_snapshot(root)
+    (kit / "dirty.txt").unlink()
+
+    (kit / "payload.txt").write_text("different HEAD\n", encoding="utf-8")
+    _git(kit, "add", "payload.txt")
+    _git(kit, "commit", "--quiet", "-m", "unreviewed dependency")
+    with pytest.raises(SourceSnapshotError, match="does not equal gitlink"):
+        build_source_snapshot(root)
+    _git(kit, "checkout", "--quiet", "--detach", reviewed["ipfs_kit_py"])
+
+    monkeypatch.setattr(
+        snapshot_module,
+        "_REVIEWED_GITLINKS",
+        {**reviewed, "ipfs_kit_py": "0" * 40},
+    )
+    with pytest.raises(SourceSnapshotError, match="must equal reviewed object"):
+        build_source_snapshot(root)
+
+
+def test_source_snapshot_rejects_nested_index_and_filemode_cleanliness_bypasses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, reviewed = _init_snapshot_repository(tmp_path / "source", monkeypatch)
+    kit = root / "ipfs_kit_py"
+
+    _git(kit, "update-index", "--assume-unchanged", "payload.txt")
+    (kit / "payload.txt").write_text("hidden dirty content\n", encoding="utf-8")
+    with pytest.raises(SourceSnapshotError, match="non-normal index flag"):
+        build_source_snapshot(root)
+    _git(kit, "update-index", "--no-assume-unchanged", "payload.txt")
+    _git(kit, "checkout", "--quiet", reviewed["ipfs_kit_py"], "--", "payload.txt")
+
+    _git(kit, "config", "core.fileMode", "false")
+    payload = kit / "payload.txt"
+    payload.chmod(payload.stat().st_mode | stat.S_IXUSR)
+    assert _git(kit, "status", "--porcelain=v1") == ""
+    with pytest.raises(SourceSnapshotError, match="mode differs from its index"):
+        build_source_snapshot(root)
+
+
+def test_source_snapshot_rejects_reviewed_gitlink_clean_filter_bypass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, reviewed = _init_snapshot_repository(tmp_path / "source", monkeypatch)
+    kit = root / "ipfs_kit_py"
+    attributes = kit / ".gitattributes"
+    payload = kit / "payload.txt"
+    attributes.write_text("payload.txt filter=sealed\n", encoding="utf-8")
+    payload.write_bytes(b"sealed")
+    _git(kit, "config", "filter.sealed.clean", "printf sealed")
+    _git(kit, "config", "filter.sealed.smudge", "cat")
+    _git(kit, "config", "filter.sealed.required", "true")
+    _git(kit, "add", ".gitattributes", "payload.txt")
+    _git(kit, "commit", "--quiet", "-m", "configure clean filter")
+    reviewed_head = _git(kit, "rev-parse", "HEAD")
+    reviewed["ipfs_kit_py"] = reviewed_head
+    _git(
+        root,
+        "update-index",
+        "--cacheinfo",
+        f"160000,{reviewed_head},ipfs_kit_py",
+    )
+    baseline = build_source_snapshot(root).source_snapshot_id
+
+    payload.write_bytes(b"EVIL DIFFERENT PHYSICAL")
+    _git(kit, "add", "payload.txt")
+    assert _git(kit, "status", "--porcelain=v1") == ""
+    with pytest.raises(SourceSnapshotError, match="physical bytes differ"):
+        build_source_snapshot(root)
+    assert baseline
+
+
+def test_source_snapshot_does_not_execute_reviewed_gitlink_filter_commands(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, reviewed = _init_snapshot_repository(tmp_path / "source", monkeypatch)
+    kit = root / "ipfs_kit_py"
+    marker = tmp_path / "filter-executed"
+    filter_script = tmp_path / "clean-filter.sh"
+    filter_script.write_text(
+        f"#!/bin/sh\ntouch {marker}\ncat\n",
+        encoding="utf-8",
+    )
+    filter_script.chmod(0o755)
+    (kit / ".gitattributes").write_text(
+        "payload.txt filter=probe\n", encoding="utf-8"
+    )
+    _git(kit, "config", "filter.probe.clean", str(filter_script))
+    _git(kit, "config", "filter.probe.smudge", "cat")
+    _git(kit, "config", "filter.probe.required", "true")
+    _git(kit, "add", ".gitattributes", "payload.txt")
+    _git(kit, "commit", "--quiet", "-m", "configure probe filter")
+    reviewed_head = _git(kit, "rev-parse", "HEAD")
+    reviewed["ipfs_kit_py"] = reviewed_head
+    _git(
+        root,
+        "update-index",
+        "--cacheinfo",
+        f"160000,{reviewed_head},ipfs_kit_py",
+    )
+    marker.unlink(missing_ok=True)
+
+    build_source_snapshot(root)
+    assert not marker.exists()
+
+
+def test_source_snapshot_uses_owner_execute_and_rejects_same_path_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, _reviewed = _init_snapshot_repository(tmp_path / "source", monkeypatch)
+    source = root / "source.py"
+    baseline = build_source_snapshot(root)
+    baseline_entry = next(entry for entry in baseline.entries if entry.path == "source.py")
+
+    source.chmod(source.stat().st_mode | stat.S_IXGRP)
+    group_only = build_source_snapshot(root)
+    group_entry = next(entry for entry in group_only.entries if entry.path == "source.py")
+    assert group_entry.mode == baseline_entry.mode == "100644"
+    assert group_only.source_snapshot_id == baseline.source_snapshot_id
+    source.chmod(0o644)
+
+    original_reader = snapshot_module._stable_regular_bytes
+    replaced = False
+
+    def _replace_after_read(path: Path) -> tuple[bytes, int]:
+        nonlocal replaced
+        result = original_reader(path)
+        if path == source and not replaced:
+            replacement = source.with_name("replacement.tmp")
+            replacement.write_text("VALUE = 2\n", encoding="utf-8")
+            replacement.replace(source)
+            replaced = True
+        return result
+
+    monkeypatch.setattr(snapshot_module, "_stable_regular_bytes", _replace_after_read)
+    with pytest.raises(SourceSnapshotError, match="content changed"):
+        build_source_snapshot(root)
+
+
+def test_malformed_task_status_remains_identity_bearing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, _reviewed = _init_snapshot_repository(tmp_path / "source", monkeypatch)
+    baseline = build_source_snapshot(root).source_snapshot_id
+    todo = root / "docs" / "architecture" / "incremental_verification_planner.todo.md"
+    todo.write_text(
+        todo.read_text(encoding="utf-8").replace("- Status: todo", "- Status: Todo"),
+        encoding="utf-8",
+    )
+    assert build_source_snapshot(root).source_snapshot_id != baseline
+
+
+def test_source_snapshot_public_records_reject_forged_identity() -> None:
+    entry = SourceSnapshotEntry(path="source.py", mode="100644", sha256="0" * 64)
+    with pytest.raises(SourceSnapshotError, match="does not match"):
+        SourceSnapshot(
+            entries=(entry,),
+            source_snapshot_id="sha256:" + ("f" * 64),
+            observed_head=None,
+        )
+    with pytest.raises(SourceSnapshotError, match="canonical"):
+        SourceSnapshotEntry(path="source.py", mode="100664", sha256="0" * 64)
 
 
 # ---------------------------------------------------------------------------
@@ -141,9 +539,9 @@ def _git_head() -> str:
 def test_benchmark_module_exists_and_exports_runner() -> None:
     assert BENCHMARK_MODULE.is_file()
     assert callable(run_incremental_verification_benchmark)
-    assert BENCHMARK_SCHEMA.endswith("incremental-verification-benchmark@1")
-    assert BENCHMARK_INTERFACE == "IncrementalVerificationBenchmark@1"
-    assert BENCHMARK_EVIDENCE == "ivp/benchmark@1"
+    assert BENCHMARK_SCHEMA.endswith("incremental-verification-benchmark@2")
+    assert BENCHMARK_INTERFACE == "IncrementalVerificationBenchmark@2"
+    assert BENCHMARK_EVIDENCE == "ivp/benchmark@2"
     assert TASK_ID == "IVP-017"
     assert GOAL_ID == "IVP-G090"
 
@@ -159,7 +557,15 @@ def test_artifact_exists_and_binds_identity_surfaces() -> None:
     assert doc["goal_id"] == GOAL_ID
     assert doc["authoritative"] is False
     assert doc["target_success_asserted"] is False
-    assert doc["tree_id"] == _git_head()
+    current = build_source_snapshot(REPO_ROOT)
+    assert doc["source_snapshot_id"] == current.source_snapshot_id
+    assert doc["source_snapshot_schema"] == SOURCE_SNAPSHOT_SCHEMA
+    assert doc["source_snapshot_domain"] == SOURCE_SNAPSHOT_DOMAIN
+    # Checked-in evidence survives the commit that introduced it. HEAD is a
+    # diagnostic observation only, so it may lag while source identity cannot.
+    assert doc["observed_head"] is None or re.fullmatch(
+        r"[0-9a-f]{40,64}", str(doc["observed_head"])
+    )
     assert doc["status"] in {"green", "red", "yellow", "not_measured"}
 
     corpus = doc["corpus"]
@@ -288,7 +694,9 @@ def test_deterministic_commitments_and_historical_preservation() -> None:
     commitments = doc["commitments"]
     assert commitments["deterministic"] is True
     assert commitments.get("commitment_cid")
-    assert commitments.get("body", {}).get("tree_id") == doc["tree_id"]
+    assert commitments.get("body", {}).get("source_snapshot_id") == doc[
+        "source_snapshot_id"
+    ]
 
     hist = doc["historical_preservation"]
     assert hist["holds"] is True
@@ -387,7 +795,7 @@ def test_provers_typed_available_or_unavailable() -> None:
         assert provers["probes"][name]["status"] == "unavailable"
 
 
-def test_fresh_run_binds_current_tree_and_is_schema_stable(
+def test_fresh_run_binds_current_source_and_is_schema_stable(
     tmp_path: Path,
 ) -> None:
     out = tmp_path / "benchmark.json"
@@ -396,14 +804,16 @@ def test_fresh_run_binds_current_tree_and_is_schema_stable(
         wall_samples=2,
         output_path=out,
     )
-    assert artifact["tree_id"] == _git_head()
+    current = build_source_snapshot(REPO_ROOT)
+    assert artifact["source_snapshot_id"] == current.source_snapshot_id
+    assert artifact["observed_head"] == current.observed_head
     assert artifact["schema"] == BENCHMARK_SCHEMA
     assert artifact["authoritative"] is False
     assert "content_id" in artifact
-    # Deterministic commitment body includes tree and corpus.
+    # Deterministic commitment body includes source snapshot and corpus.
     body = artifact["commitments"]["body"]
-    assert body["tree_id"] == artifact["tree_id"]
-    # Re-run yields same commitment for same tree/corpus (timing fields excluded).
+    assert body["source_snapshot_id"] == artifact["source_snapshot_id"]
+    # Re-run yields the same commitment for the same source/corpus.
     again = run_incremental_verification_benchmark(
         repo_root_path=REPO_ROOT,
         wall_samples=2,
@@ -474,7 +884,9 @@ def test_cli_writes_output(tmp_path: Path) -> None:
     assert out.is_file()
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload["schema"] == BENCHMARK_SCHEMA
-    assert payload["tree_id"] == _git_head()
+    assert payload["source_snapshot_id"] == build_source_snapshot(
+        REPO_ROOT
+    ).source_snapshot_id
     # Ephemeral process noise must not appear in the stable artifact.
     assert "pid" not in (payload.get("effective_environment") or {})
     assert "generated_at_unix_ms" not in payload

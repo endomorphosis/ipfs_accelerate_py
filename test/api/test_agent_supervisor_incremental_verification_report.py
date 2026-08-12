@@ -1,8 +1,9 @@
 """IVP-018: release report validator for operations, schemas, and limitations.
 
-A report validator binds the report and benchmark to the current tree, corpus,
-policy, effective environment, command identities, and measurement status, and
-rejects stale or missing sections.
+A report validator binds the report and benchmark to the canonical current
+source snapshot, corpus, policy, effective environment, command identities,
+and measurement status, and rejects stale or missing sections. Git HEAD is
+retained only as diagnostic metadata.
 
 Required report coverage:
 
@@ -32,6 +33,12 @@ from typing import Any, Final
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.verification.source_snapshot import (
+    SOURCE_SNAPSHOT_DOMAIN,
+    SOURCE_SNAPSHOT_SCHEMA,
+    build_source_snapshot,
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REPORT_PATH = (
     REPO_ROOT / "docs" / "architecture" / "INCREMENTAL_VERIFICATION_PLANNER_REPORT.md"
@@ -56,14 +63,17 @@ CHECKED_IN_ARTIFACT = (
 
 REPORT_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "incremental-verification-release-report-binding@1"
+    "incremental-verification-release-report-binding@2"
 )
-REPORT_INTERFACE: Final[str] = "IncrementalVerificationReleaseReport@1"
+REPORT_INTERFACE: Final[str] = "IncrementalVerificationReleaseReport@2"
 TASK_ID: Final[str] = "IVP-018"
 GOAL_ID: Final[str] = "IVP-G100"
 DOCUMENTATION_EVIDENCE: Final[str] = "ivp/documentation@1"
-RELEASE_REPORT_EVIDENCE: Final[str] = "ivp/release-report@1"
-BENCHMARK_EVIDENCE: Final[str] = "ivp/benchmark@1"
+RELEASE_REPORT_EVIDENCE: Final[str] = "ivp/release-report@2"
+BENCHMARK_EVIDENCE: Final[str] = "ivp/benchmark@2"
+BENCHMARK_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@2"
+)
 
 REQUIRED_COMMAND_IDENTITIES: Final[tuple[str, ...]] = (
     "generate_artifact",
@@ -166,7 +176,7 @@ def _extract_binding_json(report_text: str) -> dict[str, Any]:
             return payload
         if payload.get("interface") == REPORT_INTERFACE:
             return payload
-        if payload.get("task_id") == TASK_ID and "tree_id" in payload:
+        if payload.get("task_id") == TASK_ID and "source_snapshot_id" in payload:
             return payload
     raise ReportValidationError(
         "report missing machine-checkable binding JSON "
@@ -200,20 +210,22 @@ def validate_incremental_verification_report(
     report_text: str,
     *,
     benchmark: Mapping[str, Any],
-    current_tree_id: str,
+    current_source_snapshot_id: str,
     readme_text: str | None = None,
     require_readme: bool = True,
 ) -> dict[str, Any]:
     """Bind report + benchmark to current identities; reject stale/missing sections.
 
     Returns a structured validation receipt. Raises :class:`ReportValidationError`
-    on any hard failure (stale tree, missing sections, binding mismatch).
+    on any hard failure (stale source, missing sections, binding mismatch).
     """
 
     if not isinstance(report_text, str) or not report_text.strip():
         raise ReportValidationError("report text is empty")
-    if not current_tree_id or not isinstance(current_tree_id, str):
-        raise ReportValidationError("current_tree_id is required")
+    if not current_source_snapshot_id or not isinstance(
+        current_source_snapshot_id, str
+    ):
+        raise ReportValidationError("current_source_snapshot_id is required")
     if not isinstance(benchmark, Mapping):
         raise ReportValidationError("benchmark must be a mapping")
 
@@ -245,24 +257,41 @@ def validate_incremental_verification_report(
             if required not in evidence_set:
                 errors.append(f"binding evidence missing {required}")
 
-    # --- current tree binding (stale rejection) ---
-    report_tree = str(binding.get("tree_id") or "")
-    bench_tree = str(benchmark.get("tree_id") or "")
-    if report_tree != current_tree_id:
+    # --- canonical source-snapshot binding (stale rejection) ---
+    report_source = str(binding.get("source_snapshot_id") or "")
+    bench_source = str(benchmark.get("source_snapshot_id") or "")
+    if report_source != current_source_snapshot_id:
         errors.append(
-            "stale report tree_id: "
-            f"report={report_tree!r} current={current_tree_id!r}"
+            "stale report source_snapshot_id: "
+            f"report={report_source!r} current={current_source_snapshot_id!r}"
         )
-    if bench_tree != current_tree_id:
+    if bench_source != current_source_snapshot_id:
         errors.append(
-            "stale benchmark tree_id: "
-            f"benchmark={bench_tree!r} current={current_tree_id!r}"
+            "stale benchmark source_snapshot_id: "
+            f"benchmark={bench_source!r} current={current_source_snapshot_id!r}"
         )
-    if report_tree and bench_tree and report_tree != bench_tree:
+    if report_source and bench_source and report_source != bench_source:
         errors.append(
-            "report/benchmark tree_id mismatch: "
-            f"report={report_tree!r} benchmark={bench_tree!r}"
+            "report/benchmark source_snapshot_id mismatch: "
+            f"report={report_source!r} benchmark={bench_source!r}"
         )
+    for label, payload in (("report", binding), ("benchmark", benchmark)):
+        if payload.get("source_snapshot_schema") != SOURCE_SNAPSHOT_SCHEMA:
+            errors.append(f"{label} source_snapshot_schema mismatch")
+        if payload.get("source_snapshot_domain") != SOURCE_SNAPSHOT_DOMAIN:
+            errors.append(f"{label} source_snapshot_domain mismatch")
+    if benchmark.get("schema") != BENCHMARK_SCHEMA:
+        errors.append("benchmark schema mismatch")
+    if benchmark.get("evidence") != BENCHMARK_EVIDENCE:
+        errors.append("benchmark evidence mismatch")
+    for field_name in ("schema", "evidence", "content_id"):
+        report_field = f"benchmark_{field_name}"
+        if binding.get(report_field) != benchmark.get(field_name):
+            errors.append(
+                f"{report_field} mismatch: "
+                f"report={binding.get(report_field)!r} "
+                f"benchmark={benchmark.get(field_name)!r}"
+            )
 
     # --- corpus ---
     report_corpus = _require_mapping(binding.get("corpus"), field="corpus")
@@ -479,7 +508,8 @@ def validate_incremental_verification_report(
         "interface": REPORT_INTERFACE,
         "task_id": TASK_ID,
         "goal_id": GOAL_ID,
-        "tree_id": current_tree_id,
+        "source_snapshot_id": current_source_snapshot_id,
+        "observed_head": binding.get("observed_head"),
         "corpus_id": report_corpus.get("corpus_id"),
         "corpus_cid": report_corpus.get("corpus_cid"),
         "policy_id": report_policy.get("policy_id"),
@@ -497,13 +527,13 @@ def validate_incremental_verification_report(
 
 
 def _fresh_benchmark() -> dict[str, Any]:
-    """Run the IVP-017 harness for the current tree (in-process)."""
+    """Run the IVP-017 harness for the current source (in-process)."""
 
     module = _load_benchmark_module()
     result = module.run_incremental_verification_benchmark(repo_root_path=REPO_ROOT)
     if isinstance(result, Mapping):
         # Harness returns the artifact dict directly.
-        if "tree_id" in result and "corpus" in result:
+        if "source_snapshot_id" in result and "corpus" in result:
             return dict(result)
         artifact = result.get("artifact") or result.get("payload")
         if isinstance(artifact, Mapping):
@@ -528,16 +558,16 @@ def _load_report_and_readme() -> tuple[str, str]:
 
 
 @pytest.fixture(scope="module")
-def current_tree_id() -> str:
-    return _git_head()
+def current_source_snapshot_id() -> str:
+    return build_source_snapshot(REPO_ROOT).source_snapshot_id
 
 
 @pytest.fixture(scope="module")
-def fresh_benchmark(current_tree_id: str) -> dict[str, Any]:
+def fresh_benchmark(current_source_snapshot_id: str) -> dict[str, Any]:
     artifact = _fresh_benchmark()
-    assert artifact.get("tree_id") == current_tree_id, (
-        f"fresh benchmark not bound to HEAD: {artifact.get('tree_id')} "
-        f"!= {current_tree_id}"
+    assert artifact.get("source_snapshot_id") == current_source_snapshot_id, (
+        "fresh benchmark not bound to source snapshot: "
+        f"{artifact.get('source_snapshot_id')} != {current_source_snapshot_id}"
     )
     return artifact
 
@@ -572,24 +602,24 @@ def test_binding_json_extractable_and_schema_stable(report_docs: tuple[str, str]
 
 
 # ---------------------------------------------------------------------------
-# Full validator against current tree + fresh benchmark
+# Full validator against current source + fresh benchmark
 # ---------------------------------------------------------------------------
 
 
 def test_validator_accepts_current_report_and_fresh_benchmark(
     report_docs: tuple[str, str],
     fresh_benchmark: dict[str, Any],
-    current_tree_id: str,
+    current_source_snapshot_id: str,
 ) -> None:
     report, readme = report_docs
     receipt = validate_incremental_verification_report(
         report,
         benchmark=fresh_benchmark,
-        current_tree_id=current_tree_id,
+        current_source_snapshot_id=current_source_snapshot_id,
         readme_text=readme,
     )
     assert receipt["valid"] is True
-    assert receipt["tree_id"] == current_tree_id
+    assert receipt["source_snapshot_id"] == current_source_snapshot_id
     assert receipt["measurement_status"] == fresh_benchmark["status"]
     assert receipt["corpus_id"] == fresh_benchmark["corpus"]["corpus_id"]
     assert receipt["policy_id"] == fresh_benchmark["policy"]["policy_id"]
@@ -642,15 +672,15 @@ def test_report_includes_metrics_snapshot_fields(
 # ---------------------------------------------------------------------------
 
 
-def test_validator_rejects_stale_report_tree(
+def test_validator_rejects_stale_report_source_snapshot(
     report_docs: tuple[str, str],
     fresh_benchmark: dict[str, Any],
-    current_tree_id: str,
+    current_source_snapshot_id: str,
 ) -> None:
     report, readme = report_docs
     binding = _extract_binding_json(report)
     stale = copy.deepcopy(binding)
-    stale["tree_id"] = "0" * 40
+    stale["source_snapshot_id"] = "sha256:" + ("0" * 64)
     stale_report = report.replace(
         json.dumps(binding, indent=2, sort_keys=True),
         json.dumps(stale, indent=2, sort_keys=True),
@@ -658,37 +688,68 @@ def test_validator_rejects_stale_report_tree(
     )
     # If pretty formatting differs, force-inject via marker replacement.
     if stale_report == report:
-        stale_report = report.replace(binding["tree_id"], stale["tree_id"], 1)
-    with pytest.raises(ReportValidationError, match="stale report tree_id"):
+        stale_report = report.replace(
+            binding["source_snapshot_id"], stale["source_snapshot_id"], 1
+        )
+    with pytest.raises(ReportValidationError, match="stale report source_snapshot_id"):
         validate_incremental_verification_report(
             stale_report,
             benchmark=fresh_benchmark,
-            current_tree_id=current_tree_id,
+            current_source_snapshot_id=current_source_snapshot_id,
             readme_text=readme,
         )
 
 
-def test_validator_rejects_stale_benchmark_tree(
+def test_validator_rejects_stale_benchmark_source_snapshot(
     report_docs: tuple[str, str],
     fresh_benchmark: dict[str, Any],
-    current_tree_id: str,
+    current_source_snapshot_id: str,
 ) -> None:
     report, readme = report_docs
     stale_bench = copy.deepcopy(dict(fresh_benchmark))
-    stale_bench["tree_id"] = "a" * 40
-    with pytest.raises(ReportValidationError, match="stale benchmark tree_id"):
+    stale_bench["source_snapshot_id"] = "sha256:" + ("a" * 64)
+    with pytest.raises(
+        ReportValidationError, match="stale benchmark source_snapshot_id"
+    ):
         validate_incremental_verification_report(
             report,
             benchmark=stale_bench,
-            current_tree_id=current_tree_id,
+            current_source_snapshot_id=current_source_snapshot_id,
             readme_text=readme,
         )
+
+
+def test_observed_head_is_diagnostic_not_freshness_authority(
+    report_docs: tuple[str, str],
+    fresh_benchmark: dict[str, Any],
+    current_source_snapshot_id: str,
+) -> None:
+    report, readme = report_docs
+    binding = _extract_binding_json(report)
+    altered = copy.deepcopy(binding)
+    altered["observed_head"] = "f" * 40
+    altered_report = report.replace(
+        f'"observed_head": "{binding["observed_head"]}"',
+        f'"observed_head": "{altered["observed_head"]}"',
+        1,
+    )
+    assert altered_report != report
+    benchmark = copy.deepcopy(fresh_benchmark)
+    benchmark["observed_head"] = "e" * 40
+    receipt = validate_incremental_verification_report(
+        altered_report,
+        benchmark=benchmark,
+        current_source_snapshot_id=current_source_snapshot_id,
+        readme_text=readme,
+    )
+    assert receipt["valid"] is True
+    assert receipt["source_snapshot_id"] == current_source_snapshot_id
 
 
 def test_validator_rejects_missing_section(
     report_docs: tuple[str, str],
     fresh_benchmark: dict[str, Any],
-    current_tree_id: str,
+    current_source_snapshot_id: str,
 ) -> None:
     report, readme = report_docs
     # Strip commitment non-claim and a required section phrase.
@@ -698,20 +759,20 @@ def test_validator_rejects_missing_section(
         validate_incremental_verification_report(
             mutilated,
             benchmark=fresh_benchmark,
-            current_tree_id=current_tree_id,
+            current_source_snapshot_id=current_source_snapshot_id,
             readme_text=readme,
         )
 
 
 def test_validator_rejects_missing_binding_json(
     fresh_benchmark: dict[str, Any],
-    current_tree_id: str,
+    current_source_snapshot_id: str,
 ) -> None:
     with pytest.raises(ReportValidationError, match="binding JSON"):
         validate_incremental_verification_report(
             "# empty report without binding\n",
             benchmark=fresh_benchmark,
-            current_tree_id=current_tree_id,
+            current_source_snapshot_id=current_source_snapshot_id,
             require_readme=False,
         )
 
@@ -719,7 +780,7 @@ def test_validator_rejects_missing_binding_json(
 def test_validator_rejects_corpus_policy_or_measurement_mismatch(
     report_docs: tuple[str, str],
     fresh_benchmark: dict[str, Any],
-    current_tree_id: str,
+    current_source_snapshot_id: str,
 ) -> None:
     report, readme = report_docs
     binding = _extract_binding_json(report)
@@ -728,7 +789,7 @@ def test_validator_rejects_corpus_policy_or_measurement_mismatch(
         altered = copy.deepcopy(binding)
         mutator(altered)
         text = report
-        # Replace tree-stable pretty block if present; else rewrite first JSON fence.
+        # Replace snapshot-stable pretty block; else rewrite one binding field.
         try:
             text = report.replace(
                 json.dumps(binding, indent=2, sort_keys=True),
@@ -769,7 +830,7 @@ def test_validator_rejects_corpus_policy_or_measurement_mismatch(
         validate_incremental_verification_report(
             _with_binding(_set_policy),
             benchmark=fresh_benchmark,
-            current_tree_id=current_tree_id,
+            current_source_snapshot_id=current_source_snapshot_id,
             readme_text=readme,
         )
 
@@ -781,7 +842,7 @@ def test_validator_rejects_corpus_policy_or_measurement_mismatch(
             validate_incremental_verification_report(
                 _with_binding(_set_status),
                 benchmark=fresh_benchmark,
-                current_tree_id=current_tree_id,
+                current_source_snapshot_id=current_source_snapshot_id,
                 readme_text=readme,
             )
 
@@ -789,7 +850,7 @@ def test_validator_rejects_corpus_policy_or_measurement_mismatch(
 def test_validator_rejects_missing_command_identity(
     report_docs: tuple[str, str],
     fresh_benchmark: dict[str, Any],
-    current_tree_id: str,
+    current_source_snapshot_id: str,
 ) -> None:
     report, readme = report_docs
     binding = _extract_binding_json(report)
@@ -810,7 +871,7 @@ def test_validator_rejects_missing_command_identity(
         validate_incremental_verification_report(
             text,
             benchmark=fresh_benchmark,
-            current_tree_id=current_tree_id,
+            current_source_snapshot_id=current_source_snapshot_id,
             readme_text=readme,
         )
 
@@ -862,7 +923,7 @@ def test_commitment_contract_flags_align_with_docs() -> None:
 
 
 def test_checked_in_artifact_if_present_is_structurally_benchmark_shaped(
-    current_tree_id: str,
+    current_source_snapshot_id: str,
 ) -> None:
     if not CHECKED_IN_ARTIFACT.is_file():
         pytest.skip("no checked-in benchmark artifact")
@@ -873,14 +934,14 @@ def test_checked_in_artifact_if_present_is_structurally_benchmark_shaped(
     assert "commands" in payload
     assert "measurement_schema" in payload
     assert "status" in payload
-    # If the on-disk artifact lags HEAD, the report validator must reject it.
-    if payload.get("tree_id") != current_tree_id:
+    # If the artifact lags effective source, the report validator must reject it.
+    if payload.get("source_snapshot_id") != current_source_snapshot_id:
         report, readme = _load_report_and_readme()
         with pytest.raises(ReportValidationError, match="stale"):
             validate_incremental_verification_report(
                 report,
                 benchmark=payload,
-                current_tree_id=current_tree_id,
+                current_source_snapshot_id=current_source_snapshot_id,
                 readme_text=readme,
             )
 
