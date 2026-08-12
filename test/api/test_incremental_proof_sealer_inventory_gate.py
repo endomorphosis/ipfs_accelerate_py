@@ -597,6 +597,114 @@ def test_control_transition_admits_sibling_inventory_second_parent(
     )
 
 
+def test_control_transition_skips_dead_competing_nested_inventory_tip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Losing concurrent nested inventory tips must not fail first-parent control.
+
+    When a no-ff merge keeps the first-parent gitlink (TREESAME / -s ours), the
+    candidate remains reachable in the DAG but never rewrote first-parent content.
+    """
+
+    taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
+    root = tmp_path / "dead-competing-tip"
+    _init_repository(
+        root,
+        {
+            taskboard: _taskboard_text_with_inventory_todos(),
+            "source.py": "captured\n",
+        },
+    )
+    target = _git(root, "branch", "--show-current")
+    origin = tmp_path / "kit-origin"
+    _init_repository(origin, {"source.py": "captured\n"})
+    _git(
+        root,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "-q",
+        str(origin),
+        "ipfs_kit_py",
+    )
+    control_captured, _ = _commit(root, "capture nested")
+    nested = root / "ipfs_kit_py"
+    _git(nested, "config", "user.email", "inventory-gate@example.invalid")
+    _git(nested, "config", "user.name", "Inventory Gate Test")
+
+    # Winning tip lands on first-parent history.
+    for relative in gate.NESTED_INVENTORY_OUTPUTS["ipfs_kit_py"]:
+        _write(
+            nested / relative,
+            "{}\n" if relative.endswith(".json") else "winning inventory\n",
+        )
+    _commit(nested, "IPS-003 winning nested inventory")
+    _git(root, "add", "--", "ipfs_kit_py")
+    _git(root, "commit", "-q", "-m", "IPS-003 first-parent inventory tip")
+    winning_gitlink = _git(root, "rev-parse", f"HEAD:ipfs_kit_py")
+
+    # Losing concurrent tip on a side branch from capture (before winning tip).
+    capture_gitlink = _git(root, "rev-parse", f"{control_captured}:ipfs_kit_py")
+    _git(root, "checkout", "-q", "-b", "losing-candidate", control_captured)
+    nested_losing = root / "ipfs_kit_py"
+    _git(nested_losing, "checkout", "-q", "-f", capture_gitlink)
+    for relative in gate.NESTED_INVENTORY_OUTPUTS["ipfs_kit_py"]:
+        _write(
+            nested_losing / relative,
+            "{}\n" if relative.endswith(".json") else "losing inventory\n",
+        )
+    _commit(nested_losing, "IPS-003 losing nested inventory")
+    _git(root, "add", "--", "ipfs_kit_py")
+    _git(root, "commit", "-q", "-m", "IPS-003 losing outer candidate")
+    losing_candidate = _git(root, "rev-parse", "HEAD")
+    losing_gitlink = _git(root, "rev-parse", "HEAD:ipfs_kit_py")
+    assert losing_gitlink != winning_gitlink
+
+    # Merge keeps first-parent gitlink (dead competing tip).
+    _git(root, "checkout", "-q", target)
+    _git(
+        root,
+        "merge",
+        "-q",
+        "-s",
+        "ours",
+        "--no-ff",
+        "losing-candidate",
+        "-m",
+        "merge losing IPS-003 without taking tip",
+    )
+    assert _git(root, "rev-parse", f"HEAD:ipfs_kit_py") == winning_gitlink
+    completion = _complete_task(root, "IPS-001")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    errors: list[str] = []
+    gate._validate_accelerate_control_transition(
+        task_id="IPS-001",
+        captured_revision=control_captured,
+        current_revision=completion,
+        configured_receipts={},
+        errors=errors,
+    )
+    assert not any("untrusted merged side branch" in error for error in errors), errors
+    assert losing_candidate in set(
+        _git(root, "rev-list", f"{control_captured}..{completion}").splitlines()
+    )
+    assert gate._is_dead_competing_inventory_tip(
+        repository=root,
+        commit=losing_candidate,
+        first_parent_commits=set(
+            _git(
+                root,
+                "rev-list",
+                "--first-parent",
+                f"{control_captured}..{completion}",
+            ).splitlines()
+        ),
+        outputs={"ipfs_kit_py"},
+    )
+
+
 def test_operational_residual_board_appendix_is_admitted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
