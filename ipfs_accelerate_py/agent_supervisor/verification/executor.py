@@ -35,7 +35,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import CancelledError, Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
@@ -53,7 +53,6 @@ from .bundle import (
     build_verification_summary,
 )
 from .contracts import (
-    CacheReuseDecision,
     CacheReuseDisposition,
     CounterexampleReceipt,
     DirectExecutionObservation,
@@ -73,12 +72,12 @@ from .contracts import (
     VerificationReceiptKey,
     VerificationReceiptKind,
     VerificationSummary,
-    aggregate_terminal_status,
 )
 from .counterexamples import minimize_counterexample
 from .model_route import (
-    default_inventory,
+    ModelRouteError,
     decide_model_route,
+    default_inventory,
     derive_model_route_facts,
     policy_cid_for,
 )
@@ -87,7 +86,12 @@ from .process_runner import (
     VerificationProcessRunner,
     fence_process_tree,
 )
-from .receipt_cache import VerificationReceiptCache, production_eligible
+from .receipt_cache import (
+    ReceiptCacheError,
+    VerificationReceiptCache,
+    production_eligible,
+)
+from .receipt_store import ReceiptStoreError
 
 # ---------------------------------------------------------------------------
 # Schema / interface / evidence
@@ -668,20 +672,15 @@ def _receipt_for_status(
     )
     # Non-completed observations may omit stream CIDs only when exit_code is
     # None; contracts require both streams whenever exit_code is set.
-    if exit_code is None and status not in {
-        TerminalStatus.PASSED,
-        TerminalStatus.PROVED,
-        TerminalStatus.DISPROVED,
+    if exit_code is None and status in {
+        TerminalStatus.UNAVAILABLE,
+        TerminalStatus.CANCELLED,
+        TerminalStatus.TIMEOUT,
     }:
         # Keep streams for auditability on failure-like paths that still have
         # an exit code; unavailable/cancel/timeout may omit them.
-        if status in {
-            TerminalStatus.UNAVAILABLE,
-            TerminalStatus.CANCELLED,
-            TerminalStatus.TIMEOUT,
-        }:
-            stdout_cid = ""
-            stderr_cid = ""
+        stdout_cid = ""
+        stderr_cid = ""
 
     observation = DirectExecutionObservation(
         receipt_key_cid=key.key_id,
@@ -1103,7 +1102,6 @@ class VerificationExecutor:
             decisions = {
                 item.key_cid: item for item in plan.cache_reuse_decisions
             }
-            keys_by_id = {key.key_id: key for key in plan.required_receipt_keys}
             reused: list[VerificationReceipt] = []
             to_execute: list[VerificationReceiptKey] = []
             stale_keys: list[VerificationReceiptKey] = []
@@ -1198,7 +1196,7 @@ class VerificationExecutor:
                         )
                         if cas.success:
                             tombstones.append(key.key_id)
-                    except Exception:
+                    except (ReceiptCacheError, ReceiptStoreError):
                         reason_codes.append("tombstone_publish_failed")
 
             # ---- DAG + bounded parallel execution ------------------------
@@ -1304,9 +1302,14 @@ class VerificationExecutor:
                     }
                     for future in as_completed(futures):
                         step = futures[future]
-                        try:
+                        exc = (
+                            CancelledError()
+                            if future.cancelled()
+                            else future.exception()
+                        )
+                        if exc is None:
                             step, outcome, _timeout_ms = future.result()
-                        except Exception as exc:  # pragma: no cover - defensive
+                        elif isinstance(exc, Exception):
                             key = step_to_key[step]
                             outcome = CheckRunOutcome(
                                 receipt=_receipt_for_status(
@@ -1319,6 +1322,8 @@ class VerificationExecutor:
                                 unavailable=True,
                                 reason_codes=("check_runner_error",),
                             )
+                        else:
+                            raise exc
 
                         key = step_to_key[step]
                         with lock:
@@ -1326,40 +1331,43 @@ class VerificationExecutor:
                             completed_steps.add(step)
 
                             # Late-success fence: cancellation wins.
-                            if cancel.is_cancelled() and outcome.receipt is not None:
-                                if (
+                            if (
+                                cancel.is_cancelled()
+                                and outcome.receipt is not None
+                                and (
                                     outcome.receipt.status in _PRODUCTION_SUCCESS
                                     or outcome.publication_allowed
-                                ):
-                                    late_fenced += 1
-                                    cancellation_fenced = True
-                                    if outcome.process is not None:
-                                        fence_process_tree(outcome.process)
-                                    outcome = CheckRunOutcome(
-                                        receipt=_receipt_for_status(
-                                            key,
-                                            TerminalStatus.CANCELLED,
-                                            label="late-fenced",
-                                            reason_codes=(
-                                                "late_receipt_fenced",
-                                                "cancelled",
-                                            ),
-                                            duration_ms=int(
-                                                outcome.receipt.execution.duration_ms
-                                            ),
-                                            command_argv=tuple(
-                                                outcome.receipt.execution.command_argv
-                                            ),
-                                        ),
-                                        publication_allowed=False,
-                                        cancelled=True,
+                                )
+                            ):
+                                late_fenced += 1
+                                cancellation_fenced = True
+                                if outcome.process is not None:
+                                    fence_process_tree(outcome.process)
+                                outcome = CheckRunOutcome(
+                                    receipt=_receipt_for_status(
+                                        key,
+                                        TerminalStatus.CANCELLED,
+                                        label="late-fenced",
                                         reason_codes=(
                                             "late_receipt_fenced",
                                             "cancelled",
                                         ),
-                                        process_tree_fenced=True,
-                                    )
-                                    reason_codes.append("late_receipt_fenced")
+                                        duration_ms=int(
+                                            outcome.receipt.execution.duration_ms
+                                        ),
+                                        command_argv=tuple(
+                                            outcome.receipt.execution.command_argv
+                                        ),
+                                    ),
+                                    publication_allowed=False,
+                                    cancelled=True,
+                                    reason_codes=(
+                                        "late_receipt_fenced",
+                                        "cancelled",
+                                    ),
+                                    process_tree_fenced=True,
+                                )
+                                reason_codes.append("late_receipt_fenced")
 
                             if outcome.resource_rejection is not None:
                                 resource_rejections.append(outcome.resource_rejection)
@@ -1417,31 +1425,30 @@ class VerificationExecutor:
                                 outcome.cancelled
                                 or outcome.timed_out
                                 or not outcome.publication_allowed
-                            ):
-                                if receipt.status in _PRODUCTION_SUCCESS:
-                                    late_fenced += 1
-                                    status = (
-                                        TerminalStatus.CANCELLED
-                                        if outcome.cancelled
-                                        else TerminalStatus.TIMEOUT
-                                        if outcome.timed_out
-                                        else TerminalStatus.UNAVAILABLE
-                                    )
-                                    receipt = _receipt_for_status(
-                                        key,
-                                        status,
-                                        label="publication-fenced",
-                                        reason_codes=(
-                                            "publication_fenced",
-                                            *outcome.reason_codes,
-                                        ),
-                                        duration_ms=int(
-                                            receipt.execution.duration_ms
-                                        ),
-                                        command_argv=tuple(
-                                            receipt.execution.command_argv
-                                        ),
-                                    )
+                            ) and receipt.status in _PRODUCTION_SUCCESS:
+                                late_fenced += 1
+                                status = (
+                                    TerminalStatus.CANCELLED
+                                    if outcome.cancelled
+                                    else TerminalStatus.TIMEOUT
+                                    if outcome.timed_out
+                                    else TerminalStatus.UNAVAILABLE
+                                )
+                                receipt = _receipt_for_status(
+                                    key,
+                                    status,
+                                    label="publication-fenced",
+                                    reason_codes=(
+                                        "publication_fenced",
+                                        *outcome.reason_codes,
+                                    ),
+                                    duration_ms=int(
+                                        receipt.execution.duration_ms
+                                    ),
+                                    command_argv=tuple(
+                                        receipt.execution.command_argv
+                                    ),
+                                )
 
                             executed_by_key[key.key_id] = receipt
                             step_outcomes[step] = {
@@ -1486,7 +1493,7 @@ class VerificationExecutor:
                             ):
                                 try:
                                     self._cache.admit(receipt, for_production=True)
-                                except Exception:
+                                except ReceiptCacheError:
                                     reason_codes.append("cache_admit_failed")
 
             # Remaining unfinished steps after cancel/timeout.
@@ -1617,12 +1624,9 @@ class VerificationExecutor:
             )
         finally:
             if plan_lease is not None:
-                try:
-                    self._scheduler.release(
-                        plan_lease, reason="verification_plan_complete"
-                    )
-                except Exception:
-                    pass
+                self._scheduler.release(
+                    plan_lease, reason="verification_plan_complete"
+                )
 
     # -- internals ---------------------------------------------------------
 
@@ -1703,26 +1707,13 @@ class VerificationExecutor:
                 reason_codes=("tool_unavailable", "no_check_runner"),
             )
 
-        try:
-            outcome = runner(
-                key,
-                step_id=step_id,
-                timeout_ms=timeout_ms,
-                cancellation=cancellation,
-                plan=plan,
-            )
-        except Exception as exc:
-            return CheckRunOutcome(
-                receipt=_receipt_for_status(
-                    key,
-                    TerminalStatus.UNAVAILABLE,
-                    label="runner-error",
-                    reason_codes=("check_runner_error", type(exc).__name__),
-                ),
-                publication_allowed=False,
-                unavailable=True,
-                reason_codes=("check_runner_error", type(exc).__name__),
-            )
+        outcome = runner(
+            key,
+            step_id=step_id,
+            timeout_ms=timeout_ms,
+            cancellation=cancellation,
+            plan=plan,
+        )
 
         if not isinstance(outcome, CheckRunOutcome):
             raise VerificationExecutorError(
@@ -1790,7 +1781,13 @@ class VerificationExecutor:
                 payload.pop("content_id", None)
                 cx = CounterexampleReceipt.from_dict(payload)
             return cx
-        except Exception:
+        except (
+            AttributeError,
+            KeyError,
+            VerificationContractError,
+            TypeError,
+            ValueError,
+        ):
             return None
 
     def _choose_route(
@@ -1837,7 +1834,7 @@ class VerificationExecutor:
                 available_models=inventory,
                 policy=policy,
             )
-        except Exception:
+        except (KeyError, ModelRouteError, TypeError, ValueError):
             # Fail closed to a deterministic small-local route when routing
             # inputs are incomplete; never invent provider identity.
             return ModelRouteDecision(
@@ -2120,16 +2117,16 @@ def create_verification_executor(
 
 
 __all__ = [
-    "CheckRunOutcome",
-    "CheckRunner",
     "EXECUTION_BUNDLE_EVIDENCE",
     "EXECUTION_RESULT_SCHEMA",
+    "VERIFICATION_EXECUTOR_INTERFACE",
+    "VERIFICATION_EXECUTOR_SCHEMA",
+    "CheckRunOutcome",
+    "CheckRunner",
     "IdentityRevalidation",
     "ObservedPlanIdentities",
     "ResourceRejection",
     "ResourceRejectionKind",
-    "VERIFICATION_EXECUTOR_INTERFACE",
-    "VERIFICATION_EXECUTOR_SCHEMA",
     "VerificationExecutionResult",
     "VerificationExecutor",
     "VerificationExecutorError",

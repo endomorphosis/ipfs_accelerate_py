@@ -433,10 +433,8 @@ class MinimizationQuality:
                 self, "guarantee", MinimizationGuarantee(str(guarantee))
             )
         score = float(self.score)
-        if score < 0.0:
-            score = 0.0
-        if score > 1.0:
-            score = 1.0
+        score = max(score, 0.0)
+        score = min(score, 1.0)
         object.__setattr__(self, "score", score)
         object.__setattr__(
             self,
@@ -842,7 +840,7 @@ def slice_traceback(
                 continue
             _add(normalized_frame)
             continue
-        if stripped.startswith("E ") or stripped.startswith("> "):
+        if stripped.startswith(("E ", "> ")):
             _add(stripped)
             continue
         if "Error" in stripped or stripped.lower().startswith("assert"):
@@ -886,20 +884,24 @@ def prune_log_lines(
             continue
         stripped = line.strip()
         # Drop pure progress / noise.
-        if stripped.startswith("=") and "FAILURES" not in stripped:
-            if stripped.startswith("=") and stripped.endswith("="):
-                if "short test summary" in stripped.lower():
-                    continue
-                if "FAILURES" not in stripped and "ERRORS" not in stripped:
-                    continue
+        if (
+            stripped.startswith("=")
+            and stripped.endswith("=")
+            and "FAILURES" not in stripped
+        ):
+            if "short test summary" in stripped.lower():
+                continue
+            if "ERRORS" not in stripped:
+                continue
         if re.fullmatch(r"\.+|F+|E+|s+|x+|X+|p+", stripped):
             continue
-        if stripped.startswith("INFO ") or stripped.startswith("DEBUG "):
+        if stripped.startswith(("INFO ", "DEBUG ")):
             continue
-        if _is_irrelevant_frame(stripped):
+        if _is_irrelevant_frame(stripped) and any(
+            marker in stripped for marker in _IRRELEVANT_FRAME_MARKERS
+        ):
             # Full path noise lines (e.g. site-packages stack) skip.
-            if any(marker in stripped for marker in _IRRELEVANT_FRAME_MARKERS):
-                continue
+            continue
         keep = False
         for pattern in _LOG_KEEP_PATTERNS:
             if pattern.search(stripped):
@@ -952,8 +954,7 @@ def minimize_source_spans(
             continue
         if start < 1:
             continue
-        if end < start:
-            end = start
+        end = max(end, start)
         artifact_cid = str(span.get("artifact_cid") or "").strip()
         if not artifact_cid:
             artifact_cid = content_identity(
@@ -1121,13 +1122,14 @@ class CounterexampleMinimizer:
                 "request must be a MinimizationRequest"
             )
         receipt = request.failed_receipt
-        if not isinstance(receipt, (TestReceipt, TypeCheckReceipt)):
+        if not isinstance(receipt, (TestReceipt, TypeCheckReceipt)) and (
+            not hasattr(receipt, "key") or not hasattr(receipt, "execution")
+        ):
             # Accept other VerificationReceipt forms structurally via duck typing
             # of .key / .execution / .receipt_id / .artifact_cids.
-            if not hasattr(receipt, "key") or not hasattr(receipt, "execution"):
-                raise CounterexampleMinimizationError(
-                    "failed_receipt must be a verification receipt with key and execution"
-                )
+            raise CounterexampleMinimizationError(
+                "failed_receipt must be a verification receipt with key and execution"
+            )
 
         key = receipt.key
         execution = receipt.execution
@@ -1157,16 +1159,6 @@ class CounterexampleMinimizer:
             _normalize_repo_path(p, cone_paths) for p in cone_paths if str(p).strip()
         )
         cone_paths = tuple(p for p in cone_paths if p and not _is_irrelevant_frame(p))
-        cone_symbols = tuple(
-            dict.fromkeys(
-                [
-                    *(material.relevant_symbols or ()),
-                    *(request.semantic_cone_symbols or ()),
-                    *tuple(key.affected_symbol_version_cids or ()),
-                ]
-            )
-        )
-
         original_argv = tuple(
             str(item)
             for item in (
@@ -1233,10 +1225,13 @@ class CounterexampleMinimizer:
         )
 
         # If inputs fully redacted due to secrets, keep redacted state.
-        if material.relevant_input is None and relevant_input.get("state") == "unavailable":
+        if (
+            material.relevant_input is None
+            and relevant_input.get("state") == "unavailable"
+            and not isinstance(receipt, TestReceipt)
+        ):
             # Explicit not_applicable when the check family has no fixture input.
-            if not isinstance(receipt, TestReceipt):
-                relevant_input = diagnostic_not_applicable()
+            relevant_input = diagnostic_not_applicable()
 
         source_spans = minimize_source_spans(
             material.source_spans,
@@ -1728,7 +1723,7 @@ def _normalize_repo_path(path: str, cone: Sequence[str] | set[str] = ()) -> str:
         candidate = str(item or "").replace("\\", "/").lstrip("./")
         if not candidate:
             continue
-        if rel.endswith("/" + candidate) or rel.endswith(candidate):
+        if rel.endswith(("/" + candidate, candidate)):
             return candidate
         idx = rel.find("/" + candidate)
         if idx >= 0:
@@ -1788,7 +1783,7 @@ def _detect_assertion(lines: Sequence[str]) -> tuple[str, str]:
             if ":" in body:
                 head, _, rest = body.partition(":")
                 head = head.strip()
-                if head.endswith("Error") or head.endswith("Exception"):
+                if head.endswith(("Error", "Exception")):
                     exception_type = head
                     assertion = rest.strip() or body
                     break
@@ -1805,7 +1800,7 @@ def _detect_assertion(lines: Sequence[str]) -> tuple[str, str]:
     for line in lines:
         stripped = line.strip()
         # Skip session summary lines that embed the exception type.
-        if stripped.startswith("FAILED ") or stripped.startswith("ERROR "):
+        if stripped.startswith(("FAILED ", "ERROR ")):
             # Recover exception type only when detail lines were absent.
             if "AssertionError" in stripped and not exception_type:
                 exception_type = "AssertionError"
@@ -1903,9 +1898,9 @@ def _quality_score(
 __all__ = [
     "ALGORITHM_VERSION",
     "COUNTEREXAMPLE_EVIDENCE",
+    "COUNTEREXAMPLE_MINIMIZATION_RESULT_SCHEMA",
     "COUNTEREXAMPLE_MINIMIZER_INTERFACE",
     "COUNTEREXAMPLE_MINIMIZER_SCHEMA",
-    "COUNTEREXAMPLE_MINIMIZATION_RESULT_SCHEMA",
     "FAILURE_IDENTITY_SCHEMA",
     "MINIMIZATION_QUALITY_SCHEMA",
     "CounterexampleMinimizationError",

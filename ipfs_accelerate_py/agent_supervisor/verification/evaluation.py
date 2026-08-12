@@ -463,8 +463,8 @@ class EvaluationSnapshotIdentity:
 
     @classmethod
     def from_value(
-        cls, value: "EvaluationSnapshotIdentity | Mapping[str, Any]"
-    ) -> "EvaluationSnapshotIdentity":
+        cls, value: EvaluationSnapshotIdentity | Mapping[str, Any]
+    ) -> EvaluationSnapshotIdentity:
         if isinstance(value, EvaluationSnapshotIdentity):
             return value
         if not isinstance(value, Mapping):
@@ -479,7 +479,7 @@ class EvaluationSnapshotIdentity:
             schema=str(value.get("schema") or EVALUATION_SNAPSHOT_SCHEMA),
         )
 
-    def matches(self, other: "EvaluationSnapshotIdentity") -> bool:
+    def matches(self, other: EvaluationSnapshotIdentity) -> bool:
         return (
             self.tree_id == other.tree_id
             and self.environment_id == other.environment_id
@@ -593,8 +593,8 @@ class SuiteObservation:
 
     @classmethod
     def from_value(
-        cls, value: "SuiteObservation | Mapping[str, Any]"
-    ) -> "SuiteObservation":
+        cls, value: SuiteObservation | Mapping[str, Any]
+    ) -> SuiteObservation:
         if isinstance(value, SuiteObservation):
             return value
         if not isinstance(value, Mapping):
@@ -920,8 +920,8 @@ class ControlledSemanticFixture:
 
     @classmethod
     def from_value(
-        cls, value: "ControlledSemanticFixture | Mapping[str, Any]"
-    ) -> "ControlledSemanticFixture":
+        cls, value: ControlledSemanticFixture | Mapping[str, Any]
+    ) -> ControlledSemanticFixture:
         if isinstance(value, ControlledSemanticFixture):
             return value
         if not isinstance(value, Mapping):
@@ -1324,7 +1324,7 @@ class TestSelectionEvaluation:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "TestSelectionEvaluation":
+    def from_dict(cls, payload: Mapping[str, Any]) -> TestSelectionEvaluation:
         if not isinstance(payload, Mapping):
             raise EvaluationError("evaluation payload must be a mapping")
         snapshot_raw = payload.get("snapshot")
@@ -1621,9 +1621,7 @@ def _uncertain_selector(
         return True
     if selection.critical_uncertain_edges:
         return True
-    if selection.fallback_mode is not FallbackMode.EXACT:
-        return True
-    return False
+    return selection.fallback_mode is not FallbackMode.EXACT
 
 
 # ---------------------------------------------------------------------------
@@ -1913,11 +1911,6 @@ def compare_selected_with_full_suite(
             and selected_obs.snapshot.matches(full_obs.snapshot)
             and selected_obs.snapshot.matches(snapshot)
         )
-    else:
-        # Without a selected observation we can still measure set membership
-        # against ground truth using the forced/selected test list, but outcome
-        # comparison requires selected observation for oracle FN.
-        snapshots_identical = snapshots_identical
 
     if not snapshots_identical:
         reasons.append(REASON_SNAPSHOT_MISMATCH)
@@ -2431,8 +2424,8 @@ __all__ = [
     "TEST_SELECTION_EVALUATION_INTERFACE",
     "TEST_SELECTION_EVALUATION_SCHEMA",
     "ControlledSemanticFixture",
-    "EvaluationError",
     "EvaluationBoundsError",
+    "EvaluationError",
     "EvaluationSnapshotIdentity",
     "FixtureChangeKind",
     "MeasurementStatus",

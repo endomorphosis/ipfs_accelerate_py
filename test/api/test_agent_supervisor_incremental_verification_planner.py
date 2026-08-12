@@ -18,7 +18,6 @@ Acceptance coverage:
 from __future__ import annotations
 
 import hashlib
-from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -35,7 +34,6 @@ from ipfs_accelerate_py.agent_supervisor.analysis.repository_forest import (
 from ipfs_accelerate_py.agent_supervisor.contract_analysis.execution_profile import (
     CapabilitySnapshot,
     LockIdentity,
-    ToolIdentity,
 )
 from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import cid_for_bytes
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
@@ -46,19 +44,23 @@ from ipfs_accelerate_py.agent_supervisor.verification.contracts import (
     DirectExecutionObservation,
     TerminalStatus,
     TestReceipt,
-    VerificationIdentityCompiler,
     VerificationReceiptKind,
 )
 from ipfs_accelerate_py.agent_supervisor.verification.datasets_adapter import (
     DATASETS_CONTEXT_PACK_SCHEMA,
     DATASETS_INVALIDATION_PLAN_SCHEMA,
     DATASETS_REPOSITORY_STATE_SCHEMA,
-    DatasetsVerificationInputAdapter,
     InputKind,
     create_datasets_verification_input_adapter,
 )
 from ipfs_accelerate_py.agent_supervisor.verification.planner import (
     PLANNER_EVIDENCE,
+    REASON_CROSS_TREE_REJECTED,
+    REASON_NO_PENDING_FALLBACK,
+    REASON_POLICY_CONFLICT,
+    REASON_PRODUCTION_SUCCESS_REQUIRED,
+    REASON_SCOPE_CROSSING,
+    REASON_UNBOUND_SANDBOX,
     VERIFICATION_PLANNER_INTERFACE,
     VERIFICATION_PLANNER_SCHEMA,
     CheckToolSpec,
@@ -69,12 +71,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.planner import (
     PlannerError,
     PlannerIdentityError,
     PlannerPolicy,
-    REASON_CROSS_TREE_REJECTED,
-    REASON_NO_PENDING_FALLBACK,
-    REASON_POLICY_CONFLICT,
-    REASON_PRODUCTION_SUCCESS_REQUIRED,
-    REASON_SCOPE_CROSSING,
-    REASON_UNBOUND_SANDBOX,
     compile_check_receipt_key,
     create_incremental_verification_planner,
     create_verification_plan,
@@ -90,7 +86,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.selection import (
     SelectionPolicy,
     VerificationCatalog,
 )
-
 
 TREE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/observed-repository-tree@1"
 SEMANTIC_SCHEMA = "ipfs_accelerate_py/agent-supervisor/observed-semantic-state@1"
@@ -791,7 +786,7 @@ def test_resource_and_timeout_bounds_positive_and_capped() -> None:
     assert plan.max_execution_time_ms > 0
     assert plan.step_timeouts_ms
     assert set(plan.step_timeouts_ms) == set(plan.dependency_dag)
-    for step, timeout in plan.step_timeouts_ms.items():
+    for timeout in plan.step_timeouts_ms.values():
         assert timeout > 0
         assert timeout <= plan.max_execution_time_ms
     assert plan.execution_order

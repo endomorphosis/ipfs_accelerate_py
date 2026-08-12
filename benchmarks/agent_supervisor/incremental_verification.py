@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Incremental-verification benchmark harness (IVP-017 / IVP-G090).
 
 Produces a schema- and order-deterministic current-tree artifact that measures
@@ -41,11 +40,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final
 
-_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
-if str(_PACKAGE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PACKAGE_ROOT))
-
-from ipfs_accelerate_py.agent_supervisor.analysis.repository_forest import (  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.analysis.repository_forest import (
     AuthorityMode,
     LocalLocator,
     PortableGitClosure,
@@ -54,18 +49,18 @@ from ipfs_accelerate_py.agent_supervisor.analysis.repository_forest import (  # 
     RepositoryForest,
     RepositoryIdentity,
 )
-from ipfs_accelerate_py.agent_supervisor.contract_analysis.execution_profile import (  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.contract_analysis.execution_profile import (
     CapabilitySnapshot,
     LockIdentity,
     ToolIdentity,
 )
-from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
     cid_for_bytes,
 )
-from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
 )
-from ipfs_accelerate_py.agent_supervisor.verification.contracts import (  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.verification.contracts import (
     CacheReuseDisposition,
     DirectExecutionObservation,
     ModelRoute,
@@ -74,19 +69,19 @@ from ipfs_accelerate_py.agent_supervisor.verification.contracts import (  # noqa
     VerificationIdentityCompiler,
     VerificationReceiptKind,
 )
-from ipfs_accelerate_py.agent_supervisor.verification.evaluation import (  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.verification.evaluation import (
     CANONICAL_CORPUS_ID,
     CORPUS_MANIFEST_NAME,
     DEFAULT_FIXTURE_RELPATH,
+    REASON_OUTCOME_DISCREPANCY,
     ControlledSemanticFixture,
     MeasurementStatus,
-    REASON_OUTCOME_DISCREPANCY,
     compare_selected_with_full_suite,
     default_fixture_root,
     evaluate_controlled_fixture_corpus,
     load_controlled_fixtures,
 )
-from ipfs_accelerate_py.agent_supervisor.verification.model_route import (  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.verification.model_route import (
     AnalysisKind,
     CounterexampleQuality,
     ModelRouteFacts,
@@ -96,10 +91,10 @@ from ipfs_accelerate_py.agent_supervisor.verification.model_route import (  # no
     default_inventory,
     policy_cid_for,
 )
-from ipfs_accelerate_py.agent_supervisor.verification.receipt_cache import (  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.verification.receipt_cache import (
     VerificationReceiptCache,
 )
-from ipfs_accelerate_py.agent_supervisor.verification.receipt_store import (  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.verification.receipt_store import (
     HermeticVerificationReceiptStore,
 )
 
@@ -895,7 +890,7 @@ def measure_receipt_cache() -> dict[str, Any]:
             "hits": hits,
             "misses": misses,
             "hit_rate": hit_rate,
-            "hit_rate_bps": int(round(hit_rate * 10_000)),
+            "hit_rate_bps": round(hit_rate * 10_000),
             "cold_miss": cold_decision.disposition.value,
             "hot_hit": hot_decision.disposition.value,
             "hot_reusable": hot_decision.reusable is True,
@@ -1089,7 +1084,7 @@ def _percentile(sorted_samples: Sequence[float], fraction: float) -> float:
         return 0.0
     if len(sorted_samples) == 1:
         return float(sorted_samples[0])
-    index = min(len(sorted_samples) - 1, max(0, int(round(fraction * (len(sorted_samples) - 1)))))
+    index = min(len(sorted_samples) - 1, max(0, round(fraction * (len(sorted_samples) - 1))))
     return float(sorted_samples[index])
 
 
@@ -1421,9 +1416,7 @@ def _aggregate_targets(
     )
     if not corpus_present and not hard_red:
         overall = BenchmarkStatus.NOT_MEASURED
-    elif hard_red:
-        overall = BenchmarkStatus.RED
-    elif soft_red:
+    elif hard_red or soft_red:
         overall = BenchmarkStatus.RED
     else:
         overall = BenchmarkStatus.GREEN

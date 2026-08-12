@@ -28,8 +28,6 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-import pytest
-
 from ipfs_accelerate_py.agent_supervisor.verification.evaluation import (
     MeasurementStatus,
     default_fixture_root,
@@ -37,7 +35,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.evaluation import (
 from ipfs_accelerate_py.agent_supervisor.verification.model_route import (
     ModelRoute,
 )
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BENCHMARK_MODULE = (

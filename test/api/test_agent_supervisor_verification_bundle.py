@@ -43,7 +43,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.contracts import (
     TerminalStatus,
     TestReceipt,
     TypeCheckReceipt,
-    VerificationBundle,
     VerificationCommitment,
     VerificationIdentityError,
     VerificationReceiptKind,
@@ -61,7 +60,6 @@ from test.api.test_agent_supervisor_verification_contracts import (
     _route,
     _structured_cid,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers local to this suite
@@ -617,22 +615,23 @@ def test_commitment_fail_closed_aggregate_lattice_cannot_upgrade_leaves() -> Non
 
 
 def test_commitment_and_docs_state_non_claims_explicitly() -> None:
-    import ipfs_accelerate_py.agent_supervisor.verification.bundle as bundle_module
     import re
+
+    import ipfs_accelerate_py.agent_supervisor.verification.bundle as bundle_module
 
     module_doc = bundle_module.__doc__ or ""
     # Markdown emphasis may wrap "not" as **not**; match either form.
     assert re.search(
-        r"(\*\*)?not(\*\*)?\s+a zero-knowledge proof", module_doc, re.I
+        r"(\*\*)?not(\*\*)?\s+a zero-knowledge proof", module_doc, re.IGNORECASE
     )
     assert "trusted" in module_doc.lower()
     assert "structural validation" in module_doc.lower()
     assert re.search(
-        r"(\*\*)?not(\*\*)?\s+cryptographic validation", module_doc, re.I
+        r"(\*\*)?not(\*\*)?\s+cryptographic validation", module_doc, re.IGNORECASE
     )
 
     commitment_doc = inspect.getdoc(build_verification_commitment) or ""
-    assert re.search(r"not a ZK proof|not a zero-knowledge", commitment_doc, re.I)
+    assert re.search(r"not a ZK proof|not a zero-knowledge", commitment_doc, re.IGNORECASE)
     assert "trusted" in commitment_doc.lower()
     assert "structural validation" in commitment_doc.lower()
 
@@ -643,7 +642,7 @@ def test_commitment_and_docs_state_non_claims_explicitly() -> None:
     assert re.search(
         r"structural validation\s+is not cryptographic validation",
         class_doc,
-        re.I,
+        re.IGNORECASE,
     )
 
     assert VERIFICATION_SUMMARY_EVIDENCE == "ivp/verification-summary@1"

@@ -41,7 +41,6 @@ from .contracts import (
     VerificationIdentityError,
     VerificationReceipt,
     VerificationReceiptKey,
-    VerificationReceiptKind,
 )
 from .receipt_store import (
     CompareAndSwapResult,
@@ -741,10 +740,8 @@ class VerificationReceiptCache:
 
 
 __all__ = [
-    "AdmitResult",
     "CONCURRENT_WRITER_EVIDENCE",
     "DEFAULT_MAX_CAS_RETRIES",
-    "ProductionEligibility",
     "REASON_ADMITTED",
     "REASON_ADMIT_REJECTED",
     "REASON_BODY_CID_MISMATCH",
@@ -763,10 +760,12 @@ __all__ = [
     "REASON_UNAVAILABLE",
     "RECEIPT_CACHE_EVIDENCE",
     "REPLAY_CORRUPTION_EVIDENCE",
+    "VERIFICATION_RECEIPT_CACHE_INTERFACE",
+    "AdmitResult",
+    "ProductionEligibility",
     "ReceiptCacheAdmitError",
     "ReceiptCacheError",
     "ReceiptCacheIntegrityError",
-    "VERIFICATION_RECEIPT_CACHE_INTERFACE",
     "VerificationReceiptCache",
     "classify_candidate",
     "decode_verification_receipt",

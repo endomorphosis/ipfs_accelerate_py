@@ -23,7 +23,6 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -76,7 +75,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.receipt_store import (
     cas_publish_entry,
     mapping_cid,
 )
-
 
 TREE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/observed-repository-tree@1"
 SEMANTIC_SCHEMA = "ipfs_accelerate_py/agent-supervisor/observed-semantic-state@1"

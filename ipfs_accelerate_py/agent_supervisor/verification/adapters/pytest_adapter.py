@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Any, Final, Optional
+from typing import Any, Final
 
 from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
     cid_for_bytes,
@@ -319,13 +319,16 @@ class PytestVerificationRequest:
                 "python_executable is required",
                 reason_code="invalid_python",
             )
-        if not PurePosixPath(python).is_absolute() and not Path(python).is_absolute():
+        if (
+            not PurePosixPath(python).is_absolute()
+            and not Path(python).is_absolute()
+            and not Path(python).expanduser().is_absolute()
+        ):
             # Allow non-posix absolute (Windows) via Path.
-            if not Path(python).expanduser().is_absolute():
-                raise PytestVerificationAdapterError(
-                    "python_executable must be absolute",
-                    reason_code="invalid_python",
-                )
+            raise PytestVerificationAdapterError(
+                "python_executable must be absolute",
+                reason_code="invalid_python",
+            )
         object.__setattr__(self, "python_executable", python)
         if not isinstance(self.sandbox, VerificationSandboxIdentity):
             raise PytestVerificationAdapterError(
@@ -724,7 +727,6 @@ def parse_phase_report(
     Returns ``(items, collected, collection_errors, usage_error, malformed)``.
     """
 
-    reasons: list[str] = []
     if source is None:
         return (), 0, (), False, True
     payload: Any
@@ -948,9 +950,8 @@ def project_terminal_status(
 
     if run_result is not None and run_result.exit_code not in (0, None):
         # Exit non-zero without phase failure evidence is still a failure.
-        if run_result.exit_code != 0:
-            reasons.append("nonzero_exit")
-            return TerminalStatus.FAILED, _unique_reasons(reasons)
+        reasons.append("nonzero_exit")
+        return TerminalStatus.FAILED, _unique_reasons(reasons)
 
     reasons.append("all_required_phases_passed")
     return TerminalStatus.PASSED, _unique_reasons(reasons)

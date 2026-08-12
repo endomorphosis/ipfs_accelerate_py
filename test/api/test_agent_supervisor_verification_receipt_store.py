@@ -40,7 +40,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.receipt_store import (
     raw_cid,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -95,7 +94,7 @@ def test_hermetic_put_get_mapping_and_reopen(tmp_path: Path) -> None:
         loaded = store.get_receipt_envelope(put.cid)
         assert loaded["body"] == body
         assert loaded["body_cid"] == mapping_cid(body)
-        raw = store.get_bytes(put.cid)
+        assert store.get_bytes(put.cid)
         assert mapping_cid(store.get_mapping(put.cid)) == put.cid
         assert raw_cid(b"hello-raw")  # smoke
         raw_put = store.put_bytes(b"hello-raw")

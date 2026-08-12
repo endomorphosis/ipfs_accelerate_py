@@ -43,6 +43,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Final
 
+from ..core.multiformats_identity import cid_for_dag_json
 from .contracts import (
     MAX_COLLECTION_ITEMS,
     MAX_RESOURCE_QUANTITY,
@@ -54,7 +55,6 @@ from .contracts import (
 from .contracts import _cid as _contract_cid
 from .contracts import _integer as _contract_integer
 from .contracts import _token as _contract_token
-from ..core.multiformats_identity import cid_for_dag_json
 
 # ---------------------------------------------------------------------------
 # Evidence / schema constants
@@ -774,7 +774,7 @@ def _context_token_estimate(context_pack: Any) -> int:
         return context_pack.context_token_estimate
     if hasattr(context_pack, "token_estimate"):
         return _nonneg_int(
-            getattr(context_pack, "token_estimate"), field_name="token_estimate"
+            context_pack.token_estimate, field_name="token_estimate"
         )
     if isinstance(context_pack, Mapping):
         return _nonneg_int(
@@ -1521,30 +1521,18 @@ def policy_cid_for(label: str) -> str:
 
 __all__ = [
     "AVAILABLE_MODEL_CAPABILITY_SCHEMA",
-    "AnalysisKind",
-    "AvailableModelCapability",
     "CAP_BOUNDED_CONTEXT",
     "CAP_FRONTIER_REASONING",
     "CAP_HUMAN_JUDGMENT",
     "CAP_LOCAL_EXECUTION",
     "CAP_MECHANICAL_TRANSFORM",
     "CAP_MULTI_FILE_SYNTHESIS",
-    "CapabilityLocality",
-    "CounterexampleQuality",
     "MODEL_ROUTE_EVIDENCE",
     "MODEL_ROUTE_FACTS_SCHEMA",
     "MODEL_ROUTE_PLANNER_INTERFACE",
     "MODEL_ROUTE_PLANNER_SCHEMA",
     "MODEL_ROUTE_POLICY_SCHEMA",
-    "ModelRoute",
-    "ModelRouteDecision",
-    "ModelRouteError",
-    "ModelRouteFacts",
-    "ModelRoutePlanner",
-    "ModelRoutePolicy",
-    "ModelRoutePolicyError",
     "PRIOR_REPAIR_ATTEMPT_SCHEMA",
-    "PriorRepairAttempt",
     "REASON_AMBIGUOUS_WORK",
     "REASON_BROAD_DEPENDENCY_CONE",
     "REASON_CONFLICTING_PROOF_REQUIREMENTS",
@@ -1563,6 +1551,18 @@ __all__ = [
     "REASON_UNRESOLVED_AUTHORITY",
     "REASON_UNSAFE_CONTEXT",
     "REASON_VERIFICATION_INCOMPLETE",
+    "AnalysisKind",
+    "AvailableModelCapability",
+    "CapabilityLocality",
+    "CounterexampleQuality",
+    "ModelRoute",
+    "ModelRouteDecision",
+    "ModelRouteError",
+    "ModelRouteFacts",
+    "ModelRoutePlanner",
+    "ModelRoutePolicy",
+    "ModelRoutePolicyError",
+    "PriorRepairAttempt",
     "RiskLevel",
     "apply_availability",
     "choose_model_route",

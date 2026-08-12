@@ -34,12 +34,13 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, BinaryIO, Optional
+from typing import Any, BinaryIO
 
 from ..core.multiformats_identity import cid_for_bytes
 from ..runtime.resource_scheduler import (
@@ -149,6 +150,49 @@ _CLOSED_FILESYSTEM_POLICY: Mapping[str, str] = MappingProxyType(
 Clock = Callable[[], float]
 PopenFactory = Callable[..., Any]
 Sleep = Callable[[float], None]
+_PROCESS_HANDLE_ERRORS = (
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+    subprocess.SubprocessError,
+)
+
+
+@contextmanager
+def _temporary_binary_stream() -> Iterator[BinaryIO]:
+    """Yield one automatically closed binary stream for bounded capture."""
+
+    with tempfile.TemporaryFile(mode="w+b") as stream:
+        yield stream
+
+
+def _process_returncode(process: Any) -> tuple[bool, int | None]:
+    """Return whether a generic process handle could be polled safely."""
+
+    try:
+        returncode = process.poll()
+    except _PROCESS_HANDLE_ERRORS:
+        return False, None
+    return True, None if returncode is None else int(returncode)
+
+
+def _best_effort_wait(process: Any, *, timeout: float) -> None:
+    """Reap a generic process handle without overriding fence evidence."""
+
+    try:
+        process.wait(timeout=timeout)
+    except _PROCESS_HANDLE_ERRORS:
+        return
+
+
+def _close_stream_files(stream_files: ExitStack) -> None:
+    """Close capture streams without overriding the run's terminal result."""
+
+    try:
+        stream_files.close()
+    except OSError:
+        return
 
 
 # ---------------------------------------------------------------------------
@@ -871,11 +915,10 @@ def _resolve_executable(executable: str) -> tuple[str | None, str | None]:
         return None, "executable_missing"
     if not resolved.is_file():
         return None, "executable_not_file"
-    if not os.access(resolved, os.X_OK):
+    if not os.access(resolved, os.X_OK) and os.name == "posix":
         # Still allow non-executable scripts only when the platform would; treat
         # lack of execute bit as unavailable for fail-closed hermetic runs.
-        if os.name == "posix":
-            return None, "executable_not_executable"
+        return None, "executable_not_executable"
     return str(resolved), None
 
 
@@ -997,27 +1040,30 @@ def fence_process_tree(
 
     if process is None:
         return True
-    try:
-        if process.poll() is not None:
-            # Still walk descendants that may have been reparented before wait.
-            pid = getattr(process, "pid", None)
-            if pid is None:
-                return True
-            return terminate_pid_tree(
+    poll_succeeded, returncode = _process_returncode(process)
+    if poll_succeeded and returncode is not None:
+        # Still walk descendants that may have been reparented before wait.
+        pid = getattr(process, "pid", None)
+        if pid is None:
+            return True
+        try:
+            exited_tree_gone = terminate_pid_tree(
                 int(pid),
                 grace_seconds=grace_seconds,
                 freeze_first=True,
                 require_gone=require_gone,
                 owned_process_group_id=int(pid) if os.name == "posix" else None,
             )
-    except Exception:
-        pass
+        except _PROCESS_HANDLE_ERRORS:
+            exited_tree_gone = None
+        if exited_tree_gone is not None:
+            return exited_tree_gone
 
     pid = getattr(process, "pid", None)
     if pid is None:
         try:
             process.kill()
-        except Exception:
+        except _PROCESS_HANDLE_ERRORS:
             return False
         return True
 
@@ -1032,16 +1078,11 @@ def fence_process_tree(
     # Best-effort wait on the Popen handle so zombie state is reaped here.
     deadline = time.monotonic() + max(0.0, kill_wait_seconds)
     while time.monotonic() < deadline:
-        try:
-            if process.poll() is not None:
-                break
-        except Exception:
+        poll_succeeded, returncode = _process_returncode(process)
+        if not poll_succeeded or returncode is not None:
             break
         time.sleep(0.02)
-    try:
-        process.wait(timeout=0.05)
-    except Exception:
-        pass
+    _best_effort_wait(process, timeout=0.05)
     if require_gone and pid_alive(root_pid):
         try:
             if os.name == "posix":
@@ -1228,6 +1269,7 @@ class VerificationProcessRunner:
         stderr_artifact = _empty_stream_artifact()
         reason_codes: list[str] = []
         reason = ""
+        stream_files = ExitStack()
 
         try:
             # Re-check cancellation after lease acquisition (fence).
@@ -1243,8 +1285,12 @@ class VerificationProcessRunner:
                     publication_allowed=False,
                 )
 
-            stdout_file = tempfile.TemporaryFile(mode="w+b")
-            stderr_file = tempfile.TemporaryFile(mode="w+b")
+            stdout_file = stream_files.enter_context(
+                _temporary_binary_stream()
+            )
+            stderr_file = stream_files.enter_context(
+                _temporary_binary_stream()
+            )
             spawn_kwargs = _spawn_kwargs()
             # Shell is always False — never accept override via factory kwargs alone.
             spawn_kwargs["shell"] = False
@@ -1305,10 +1351,7 @@ class VerificationProcessRunner:
                         kill_wait_seconds=self._kill_wait_seconds,
                         require_gone=True,
                     )
-                    try:
-                        exit_code = process.poll()
-                    except Exception:
-                        exit_code = None
+                    _poll_succeeded, exit_code = _process_returncode(process)
                     break
                 now = self._clock()
                 if now >= deadline:
@@ -1321,10 +1364,7 @@ class VerificationProcessRunner:
                         kill_wait_seconds=self._kill_wait_seconds,
                         require_gone=True,
                     )
-                    try:
-                        exit_code = process.poll()
-                    except Exception:
-                        exit_code = None
+                    _poll_succeeded, exit_code = _process_returncode(process)
                     break
                 remaining = deadline - now
                 self._sleep(min(self._poll_interval_seconds, max(0.0, remaining)))
@@ -1418,17 +1458,11 @@ class VerificationProcessRunner:
                     kill_wait_seconds=self._kill_wait_seconds,
                     require_gone=False,
                 )
-            for handle in (stdout_file, stderr_file):
-                if handle is not None:
-                    try:
-                        handle.close()
-                    except OSError:
-                        pass
+            _close_stream_files(stream_files)
             if lease is not None:
-                try:
-                    self._scheduler.release(lease, reason="verification_process_complete")
-                except Exception:
-                    pass
+                self._scheduler.release(
+                    lease, reason="verification_process_complete"
+                )
 
     # -- lease helpers -----------------------------------------------------
 

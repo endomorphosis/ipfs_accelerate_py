@@ -63,12 +63,11 @@ from .contracts import (
 from .datasets_adapter import (
     ContextPackView,
     DatasetsVerificationInputAdapter,
-    InputKind,
     InvalidationPlanView,
     RepositoryStateView,
     create_datasets_verification_input_adapter,
 )
-from .receipt_cache import VerificationReceiptCache, classify_candidate
+from .receipt_cache import VerificationReceiptCache
 from .selection import (
     AffectedVerificationSelection,
     SelectionPolicy,
@@ -407,7 +406,7 @@ class CheckToolSpec:
             object.__setattr__(
                 self,
                 "tool_version_probe_output_bytes",
-                f"{self.tool_name} {self.tool_version}\n".encode("utf-8"),
+                f"{self.tool_name} {self.tool_version}\n".encode(),
             )
         if self.tool_identity is None:
             sha = "sha256:" + hashlib.sha256(self.tool_executable_bytes).hexdigest()
@@ -1550,11 +1549,14 @@ def compile_check_receipt_key(
         )
     # Ensure base tree is bound into the observation.
     obs = dict(tree_obs)
-    if obs.get("base_repository_tree_id") not in (None, "", identity.patch_base_tree_id):
-        if obs.get("base_repository_tree_id") != identity.patch_base_tree_id:
-            raise PlannerIdentityError(
-                "tree observation base disagrees with patch base"
-            )
+    if obs.get("base_repository_tree_id") not in (
+        None,
+        "",
+        identity.patch_base_tree_id,
+    ):
+        raise PlannerIdentityError(
+            "tree observation base disagrees with patch base"
+        )
     obs.setdefault("base_repository_tree_id", identity.patch_base_tree_id)
     expected = _structured_cid(_TREE_IDENTITY_INPUT_SCHEMA, obs)
     if expected != tree_cid:
@@ -1684,12 +1686,18 @@ def _normalize_inputs(
     # the effective identity binding CIDs (when those are known).
     # Environment is tool-dependent so we only check lock here when identity
     # already carries a lock cid; environment checked after first key compile.
-    if rs.dependency_lock_root_cid and policy_obj.identity.dependency_lock_cid:
-        if rs.dependency_lock_root_cid != policy_obj.identity.dependency_lock_cid:
-            raise PlannerIdentityError(REASON_LOCK_ROOT_MISMATCH)
-    if cp.dependency_lock_root_cid and policy_obj.identity.dependency_lock_cid:
-        if cp.dependency_lock_root_cid != policy_obj.identity.dependency_lock_cid:
-            raise PlannerIdentityError(REASON_LOCK_ROOT_MISMATCH)
+    if (
+        rs.dependency_lock_root_cid
+        and policy_obj.identity.dependency_lock_cid
+        and rs.dependency_lock_root_cid != policy_obj.identity.dependency_lock_cid
+    ):
+        raise PlannerIdentityError(REASON_LOCK_ROOT_MISMATCH)
+    if (
+        cp.dependency_lock_root_cid
+        and policy_obj.identity.dependency_lock_cid
+        and cp.dependency_lock_root_cid != policy_obj.identity.dependency_lock_cid
+    ):
+        raise PlannerIdentityError(REASON_LOCK_ROOT_MISMATCH)
 
     return _NormalizedInputs(
         repository_state=rs,
@@ -2100,10 +2108,13 @@ def _observed_mismatch_reasons(
         if key.dependency_lock_cid != identity.dependency_lock_cid:
             reasons.append(REASON_LOCK_MISMATCH)
             break
-        if key.environment_cid and identity.environment_cid:
-            if key.environment_cid != identity.environment_cid:
-                reasons.append(REASON_ENVIRONMENT_MISMATCH)
-                break
+        if (
+            key.environment_cid
+            and identity.environment_cid
+            and key.environment_cid != identity.environment_cid
+        ):
+            reasons.append(REASON_ENVIRONMENT_MISMATCH)
+            break
 
     # Tool observation consistency: environment tool fields must match key.
     for key in keys:
@@ -2373,17 +2384,9 @@ __all__ = [
     "DEFAULT_MAX_EXECUTION_TIME_MS",
     "DEFAULT_STEP_TIMEOUT_MS",
     "IDENTITY_BINDING_SCHEMA",
-    "IncrementalVerificationPlanner",
-    "IdentityBinding",
     "PATCH_DELTA_SCHEMA",
     "PLANNER_EVIDENCE",
     "PLANNER_POLICY_SCHEMA",
-    "PatchDelta",
-    "PlannerBoundsError",
-    "PlannerError",
-    "PlannerIdentityError",
-    "PlannerPolicy",
-    "CheckToolSpec",
     "REASON_CROSS_TREE_REJECTED",
     "REASON_ENVIRONMENT_MISMATCH",
     "REASON_LOCK_MISMATCH",
@@ -2398,6 +2401,14 @@ __all__ = [
     "REASON_UNBOUND_SANDBOX",
     "VERIFICATION_PLANNER_INTERFACE",
     "VERIFICATION_PLANNER_SCHEMA",
+    "CheckToolSpec",
+    "IdentityBinding",
+    "IncrementalVerificationPlanner",
+    "PatchDelta",
+    "PlannerBoundsError",
+    "PlannerError",
+    "PlannerIdentityError",
+    "PlannerPolicy",
     "compile_check_receipt_key",
     "create_incremental_verification_planner",
     "create_verification_plan",

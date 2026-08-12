@@ -538,7 +538,7 @@ class SelectionPolicy:
         }
 
     @classmethod
-    def from_value(cls, value: Any | None) -> "SelectionPolicy":
+    def from_value(cls, value: Any | None) -> SelectionPolicy:
         if value is None:
             return cls()
         if isinstance(value, cls):
@@ -658,7 +658,7 @@ class VerificationCatalog:
         }
 
     @classmethod
-    def from_value(cls, value: Any | None) -> "VerificationCatalog":
+    def from_value(cls, value: Any | None) -> VerificationCatalog:
         if value is None:
             return cls()
         if isinstance(value, cls):
@@ -867,7 +867,7 @@ class AffectedVerificationSelection:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "AffectedVerificationSelection":
+    def from_dict(cls, payload: Mapping[str, Any]) -> AffectedVerificationSelection:
         if not isinstance(payload, Mapping):
             raise SelectionError("selection payload must be a mapping")
         mode = payload.get("fallback_mode", FallbackMode.EXACT.value)
@@ -1006,7 +1006,7 @@ def _validation_nodes(
 
 
 def _looks_like_path(token: str) -> bool:
-    return "/" in token or token.endswith(".py") or token.endswith(".toml")
+    return "/" in token or token.endswith((".py", ".toml"))
 
 
 def _looks_like_test(token: str) -> bool:
@@ -1037,9 +1037,7 @@ def _edge_is_uncertain(edge: SelectionEdge) -> bool:
         return True
     if edge.kind in _UNCERTAIN_KINDS:
         return True
-    if edge.disposition in _UNCERTAIN_DISPOSITIONS:
-        return True
-    return False
+    return edge.disposition in _UNCERTAIN_DISPOSITIONS
 
 
 def _uncertainty_reason(edge: SelectionEdge) -> str:
@@ -1100,8 +1098,8 @@ def _build_reverse_adjacency(
             continue
         # source depends on target => changing target impacts source.
         reverse.setdefault(edge.target, []).append((edge.source, edge))
-    for key in reverse:
-        reverse[key].sort(key=lambda item: (item[0], item[1].edge_id))
+    for value in reverse.values():
+        value.sort(key=lambda item: (item[0], item[1].edge_id))
     return reverse
 
 
@@ -1116,8 +1114,8 @@ def _collect_selector_edges(
         if edge.kind not in kinds:
             continue
         mapping.setdefault(edge.source, []).append((edge.target, edge))
-    for key in mapping:
-        mapping[key].sort(key=lambda item: (item[0], item[1].edge_id))
+    for value in mapping.values():
+        value.sort(key=lambda item: (item[0], item[1].edge_id))
     return mapping
 
 
@@ -1355,9 +1353,12 @@ def select_affected_verification(
     if truncated_flag:
         broader_flag = True
         fallback_reasons.append(REASON_TRUNCATED_FRONTIER)
-    if broader_flag and REASON_INPUT_REQUIRES_BROADER not in fallback_reasons:
-        if requires_broader_selection or plan_broader:
-            fallback_reasons.append(REASON_INPUT_REQUIRES_BROADER)
+    if (
+        broader_flag
+        and REASON_INPUT_REQUIRES_BROADER not in fallback_reasons
+        and (requires_broader_selection or plan_broader)
+    ):
+        fallback_reasons.append(REASON_INPUT_REQUIRES_BROADER)
 
     for edge in all_edges:
         if not _edge_is_uncertain(edge):
@@ -1656,12 +1657,15 @@ def select_affected_verification(
     exact_proofs = _unique_sorted(selected_proofs)
 
     # Unrelated edit signal: changes present but zero exact expansion.
-    if (symbols or paths) and not (
-        exact_tests or exact_static or exact_type or exact_proofs
+    if (
+        (symbols or paths)
+        and not (exact_tests or exact_static or exact_type or exact_proofs)
+        and not broader_flag
+        and not critical_uncertain
+        and not conflicting
     ):
         # Only annotate when there is no uncertainty forcing broader.
-        if not broader_flag and not critical_uncertain and not conflicting:
-            selection_reasons.append(REASON_UNRELATED_NO_EXPANSION)
+        selection_reasons.append(REASON_UNRELATED_NO_EXPANSION)
 
     # --- Fallback escalation ---
     full_suite = bool(policy_obj.force_full_suite)
@@ -1846,10 +1850,7 @@ __all__ = [
     "AFFECTED_CHECK_SELECTOR_INTERFACE",
     "AFFECTED_VERIFICATION_SELECTION_INTERFACE",
     "AFFECTED_VERIFICATION_SELECTION_SCHEMA",
-    "AffectedCheckSelector",
-    "AffectedVerificationSelection",
     "DEFAULT_MAX_REASON_CHAIN",
-    "FallbackMode",
     "REASON_BROADER_REQUIRED",
     "REASON_CONFIG_EDGE",
     "REASON_CONFLICTING_CRITICAL",
@@ -1877,12 +1878,15 @@ __all__ = [
     "REASON_VALIDATION_MAPPING_INCOMPLETE",
     "SELECTION_EVIDENCE",
     "SELECTION_POLICY_SCHEMA",
+    "VERIFICATION_CATALOG_SCHEMA",
+    "AffectedCheckSelector",
+    "AffectedVerificationSelection",
+    "FallbackMode",
+    "SelectionBoundsError",
     "SelectionDisposition",
     "SelectionEdge",
     "SelectionError",
-    "SelectionBoundsError",
     "SelectionPolicy",
-    "VERIFICATION_CATALOG_SCHEMA",
     "VerificationCatalog",
     "compute_dependency_cone",
     "create_affected_check_selector",
