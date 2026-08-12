@@ -4,7 +4,7 @@
   "repository": "accelerate",
   "evidence_subset": "ips/accelerate-inventory@2",
   "planning_revision": "8881344bb2162f3f8d82f22d8348bc0ac7536f95",
-  "inventory_worktree_parent_revision": "1d7b2ef78e24cfa82e4f8437faefe37c3a45d29a",
+  "inventory_worktree_parent_revision": "c202f147ef481105b214dbce888cd8461574a23f",
   "baseline_evidence": {
     "path": "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/accelerate.json",
     "receipt_digest": "sha256:8db3857c748ef217a9da15dcc4cef81d8522170e44d0ee7cf9c337bc9f4acc52",
@@ -39,7 +39,7 @@
   "explicit_nonclaims": [
     "TestPassReceipt is an integrity/assertion envelope with issuer_key_id fields; it is not a signed receipt and is not called signed.",
     "ProofReceipt is a canonical integrity envelope projecting assurance from typed evidence; it is not a signed receipt and is not called signed.",
-    "Cache admission gates (formal_verification_cache, doctor_proof_cache, mcp_contract_proof_cache, prover_evidence_store) re-check keys and evidence; they are not receipt-aggregation proofs.",
+    "Cache admission gates (formal_verification_cache, doctor_proof_cache, mcp_contract_proof_cache, prover_evidence_store, test_proof_cache) re-check keys and evidence; they are not receipt-aggregation proofs.",
     "proof_attestation prepares statements only from existing independently kernel-checked ProofReceipt values; it does not claim arbitrary Python correctness from a ZKP.",
     "provekit_setup and ipfs_datasets_zk_attestation close without tools/keys and never install packages; absence is typed unavailable, not fabricated capability.",
     "proof_reuse_real_groth16_fixture discovers disposable test-only Groth16 artifacts; missing artifacts remain a typed non-blocking gap and never authorize a false skip.",
@@ -47,6 +47,7 @@
     "repository_forest binds portable multi-checkout identity; it is not a proof-seal storage authority and does not decide reuse.",
     "manual_completion_seal checks operator-issued external seals for protected activation; it is not cryptographic test-execution proof.",
     "release_evidence exports and checks release-domain evidence bindings; it is not a production recursive verifier.",
+    "provisioning_cli is an explicit operator command for optional proof-reuse capabilities; import never installs packages or generates keys.",
     "Controlled-offline baseline capture disables Groth16/ProveKit enablement, builds, downloads, and auto-install; the receipt reference does not establish new real proving.",
     "Planning-time historical pytest counts and the unreproducible 257-result slice are not baseline evidence and are not reconstructed here.",
     "No inspected accelerate surface implements a reliable recursive verifier; default aggregation remains Merkle manifest completeness.",
@@ -87,7 +88,7 @@
       "classification": "integrity_capture",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "Aggregates setup/call/teardown into TestPassReceipt; storage and deferred proving do not alter pytest outcome labels."
+      "notes": "Aggregates setup/call/teardown into TestPassReceipt; storage and deferred proving do not alter pytest labels."
     },
     {
       "surface": "test/api/proof_reuse_real_groth16_fixture.py",
@@ -123,7 +124,7 @@
       "classification": "diagnostic_fallback_not_assurance",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "proof_fallbacks.py routes counterexamples and named validation IDs; fallback tests are not formal assurance and do not change proof verdict."
+      "notes": "proof_fallbacks.py routes counterexamples and named validation IDs; fallback paths are not formal assurance and do not change proof verdict."
     },
     {
       "surface": "ipfs_accelerate_py/agent_supervisor/proof/proof_metrics.py",
@@ -142,6 +143,15 @@
       "classification_method": "static source inventory",
       "surfaces_found": 1,
       "notes": "prover_evidence_store.py persists conformance-bound portfolio keys; cache admission is re-evaluated and is not receipt aggregation."
+    },
+    {
+      "surface": "ipfs_accelerate_py/agent_supervisor/proof/database_evidence_store.py",
+      "family": "evidence_store",
+      "role": "database_backed_evidence_persistence",
+      "classification": "integrity_store",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "database_evidence_store.py persists structured evidence records; store presence is not cryptographic proof of execution."
     },
     {
       "surface": "ipfs_accelerate_py/agent_supervisor/control/manual_completion_seal.py",
@@ -186,7 +196,7 @@
       "classification": "execution_orchestration",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "proof_scheduler.py runs durable dependency-aware ProofPlan DAGs with leases/fencing, cooperative cancellation, and receipt deduplication. Presence is not recursive proving."
+      "notes": "proof_scheduler.py runs durable dependency-aware ProofPlan DAGs with leases/fencing, cooperative cancellation, deadlines, and receipt deduplication. Presence is not recursive proving."
     },
     {
       "surface": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
@@ -195,16 +205,25 @@
       "classification": "resource_admission",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "resource_scheduler.py admits host/provider capacity with integer-only serialization. Needs proof-seal stage and GPU-memory propagation for sealer use."
+      "notes": "resource_scheduler.py admits host/provider capacity with integer-only serialization and ProofWorkCancellationToken cooperative cancel. Needs proof-seal stage and GPU-memory propagation for sealer use."
+    },
+    {
+      "surface": "ipfs_accelerate_py/agent_supervisor/runtime/scheduler_metrics.py",
+      "family": "scheduler",
+      "role": "adaptive_resources_and_scheduler_metrics",
+      "classification": "observability_projection",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "scheduler_metrics.py projects adaptive_resources and scheduler telemetry without treating metrics as proof acceptance."
     },
     {
       "surface": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_resources.py",
       "family": "scheduler",
-      "role": "multi_prover_resource_binding",
+      "role": "multi_prover_resource_binding_and_process_group_termination",
       "classification": "resource_binding",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "Multi-prover resource surface used with portfolio routing."
+      "notes": "Multi-prover resource surface with portfolio routing and _terminate_process_group TERM/KILL for prover subprocesses; bounded output capture is local to the runner."
     },
     {
       "surface": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
@@ -214,6 +233,15 @@
       "classification_method": "static source inventory",
       "surfaces_found": 1,
       "notes": "Routes prover portfolio selection; route presence is not proof acceptance."
+    },
+    {
+      "surface": "ipfs_accelerate_py/cli_runtime/process_runner.py",
+      "family": "cancellation_process_tree",
+      "role": "CancellationToken_and_terminate_process_tree",
+      "classification": "process_tree_termination",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "cli_runtime/process_runner.py owns CancellationToken and terminate_process_tree for cooperative cancel then TERM/KILL of isolated process groups with bounded output."
     },
     {
       "surface": "ipfs_accelerate_py/agent_supervisor/proof/provekit_setup.py",
@@ -276,7 +304,7 @@
       "classification": "provider_boundary",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "Provider responses remain untrusted until independent kernel and evidence projection."
+      "notes": "Provider responses remain untrusted until independent kernel and evidence projection; CancellationToken and deadline bound subprocess work."
     },
     {
       "surface": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_capabilities.py",
@@ -324,6 +352,15 @@
       "notes": "Finalizes admitted TestPassReceipt publication path; production path requires approved key material."
     },
     {
+      "surface": "ipfs_accelerate_py/testing/proof_reuse/publication.py",
+      "family": "proof_reuse_runtime",
+      "role": "publication_helpers",
+      "classification": "publication_path_structural",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Shared publication helpers for admitted candidates; not a recursive aggregation circuit."
+    },
+    {
       "surface": "ipfs_accelerate_py/testing/proof_reuse/item_identity.py",
       "family": "proof_reuse_runtime",
       "role": "item_identity_and_repository_forest_binding",
@@ -358,6 +395,15 @@
       "classification_method": "static source inventory",
       "surfaces_found": 1,
       "notes": "Service composition for proof reuse; lazy install paths exist but controlled-offline capture disables auto-install."
+    },
+    {
+      "surface": "ipfs_accelerate_py/testing/proof_reuse/provisioning_cli.py",
+      "family": "cli",
+      "role": "explicit_proof_reuse_provision_command",
+      "classification": "operator_cli_not_install_hook",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "provisioning_cli.py is an explicit operator command only; never installs on import and never generates Groth16 keys."
     },
     {
       "surface": "ipfs_accelerate_py/testing/proof_reuse/xdist.py",
@@ -420,7 +466,7 @@
       "classification": "focused_test_surface",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "Focused proof scheduler tests included in operator core/wide suites. Static inventory reports surfaces_found only."
+      "notes": "Focused proof scheduler module in operator core/wide suites. Static inventory reports surfaces_found only."
     },
     {
       "surface": "test/api/test_agent_supervisor_proof_resource_scheduler.py",
@@ -429,7 +475,34 @@
       "classification": "focused_test_surface",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "Focused resource scheduler tests in operator core/wide suites."
+      "notes": "Focused resource scheduler module in operator core/wide suites."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_adaptive_resources.py",
+      "family": "focused_tests",
+      "role": "adaptive_resources_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Focused adaptive resources module in operator core/wide suites."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_multi_prover_resources.py",
+      "family": "focused_tests",
+      "role": "multi_prover_resources_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Focused multi-prover resources module in operator core/wide suites."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_multi_prover_router.py",
+      "family": "focused_tests",
+      "role": "multi_prover_router_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Focused multi-prover router module in operator core/wide suites."
     },
     {
       "surface": "test/api/test_agent_supervisor_provekit_setup.py",
@@ -438,7 +511,79 @@
       "classification": "focused_test_surface",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "Focused ProveKit setup tests in operator core/wide suites."
+      "notes": "Focused ProveKit setup module in operator core/wide suites."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py",
+      "family": "focused_tests",
+      "role": "datasets_zk_attestation_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Focused datasets Groth16/ProveKit binding module in operator core/wide suites."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_program_analysis_zkp.py",
+      "family": "focused_tests",
+      "role": "program_analysis_zkp_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Focused program-analysis ZK module in operator core/wide suites."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_program_analysis_zkp_conformance.py",
+      "family": "focused_tests",
+      "role": "program_analysis_zkp_conformance_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Focused program-analysis ZK conformance module in operator core/wide suites."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_formal_verification_contracts.py",
+      "family": "focused_tests",
+      "role": "formal_verification_contracts_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Focused formal verification contracts module in operator core/wide suites."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_formal_verification_cache.py",
+      "family": "focused_tests",
+      "role": "formal_verification_cache_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Focused formal verification cache module in operator core/wide suites."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_formal_verification_capabilities.py",
+      "family": "focused_tests",
+      "role": "formal_verification_capabilities_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Focused formal verification capabilities module in operator core/wide suites."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_formal_verification_provider.py",
+      "family": "focused_tests",
+      "role": "formal_verification_provider_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Focused formal verification provider module in operator core/wide suites."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_formal_verification_policy.py",
+      "family": "focused_tests",
+      "role": "formal_verification_policy_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Focused formal verification policy module in operator core/wide suites."
     },
     {
       "surface": "test/api/test_agent_supervisor_code_proof_attestation_policy.py",
@@ -447,7 +592,7 @@
       "classification": "focused_test_surface",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "Focused proof attestation policy tests in operator core/wide suites."
+      "notes": "Focused proof attestation policy module in operator core/wide suites."
     },
     {
       "surface": "test/api/test_proof_reuse_v4_publication_integration.py",
@@ -456,7 +601,7 @@
       "classification": "focused_test_surface",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "v4 publication integration tests in operator reuse-migration suite."
+      "notes": "v4 publication integration module in operator reuse-migration suite."
     },
     {
       "surface": "test/api/test_proof_reuse_runtime_activation_e2e.py",
@@ -465,7 +610,25 @@
       "classification": "focused_test_surface",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "Runtime activation e2e tests in operator reuse-migration suite."
+      "notes": "Runtime activation e2e module in operator reuse-migration suite."
+    },
+    {
+      "surface": "test/api/test_pytest_proof_reuse_plugin.py",
+      "family": "focused_tests",
+      "role": "pytest_proof_reuse_plugin_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Pytest proof-reuse plugin module in operator reuse-migration suite."
+    },
+    {
+      "surface": "test/api/test_pytest_proof_reuse_xdist.py",
+      "family": "focused_tests",
+      "role": "pytest_proof_reuse_xdist_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "xdist publication-authority module in operator reuse-migration suite."
     },
     {
       "surface": "test/api/test_proof_reuse_cross_repository_e2e.py",
@@ -474,7 +637,7 @@
       "classification": "focused_test_surface",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "Cross-repository e2e tests in operator reuse-cross-repo suite."
+      "notes": "Cross-repository e2e module in operator reuse-cross-repo suite."
     },
     {
       "surface": "test/api/test_proof_reuse_accelerator_bootstrap.py",
@@ -483,7 +646,7 @@
       "classification": "focused_test_surface",
       "classification_method": "static source inventory",
       "surfaces_found": 1,
-      "notes": "Accelerator bootstrap and entry-point tests in operator reuse-cross-repo suite."
+      "notes": "Accelerator bootstrap and entry-point module in operator reuse-cross-repo suite."
     }
   ]
 }
