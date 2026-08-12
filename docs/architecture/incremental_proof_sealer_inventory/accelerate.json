@@ -4,10 +4,10 @@
   "repository": "accelerate",
   "evidence_subset": "ips/accelerate-inventory@2",
   "planning_revision": "8881344bb2162f3f8d82f22d8348bc0ac7536f95",
-  "inventory_worktree_parent_revision": "c202f147ef481105b214dbce888cd8461574a23f",
+  "inventory_worktree_parent_revision": "c725756bbe4cd27101e4b259eb1e9a776f52d96a",
   "baseline_evidence": {
     "path": "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/accelerate.json",
-    "receipt_digest": "sha256:8db3857c748ef217a9da15dcc4cef81d8522170e44d0ee7cf9c337bc9f4acc52",
+    "receipt_digest": "sha256:d761d5b7684961c415138cad8a431bfb10095bec41e3ab10ff164ff575554f58",
     "required_command_ids": [
       "accelerate-proof-focused-core-15",
       "accelerate-proof-focused-wide-36",
@@ -134,6 +134,24 @@
       "classification_method": "static source inventory",
       "surfaces_found": 1,
       "notes": "proof_metrics.py projects identifiers, verdicts, counts, and timings without proof bodies or witnesses."
+    },
+    {
+      "surface": "ipfs_accelerate_py/agent_supervisor/proof/supervisor_code_proof_benchmark.py",
+      "family": "benchmark",
+      "role": "codebase_proof_benchmark_measurement_gate",
+      "classification": "measurement_boundary_not_assurance",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "supervisor_code_proof_benchmark.py is a measurement and gate boundary for preregistered suites; measurement is not cryptographic proof of execution."
+    },
+    {
+      "surface": "ipfs_accelerate_py/agent_supervisor/proof/leanstral_goal_benchmark.py",
+      "family": "benchmark",
+      "role": "leanstral_goal_benchmark_report_boundary",
+      "classification": "measurement_boundary_not_assurance",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "leanstral_goal_benchmark.py consumes measurements for paired reports and rollout gates; model output is never authority."
     },
     {
       "surface": "ipfs_accelerate_py/agent_supervisor/proof/prover_evidence_store.py",

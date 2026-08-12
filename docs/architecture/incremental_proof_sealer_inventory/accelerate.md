@@ -10,7 +10,7 @@ the receipt-tested control lineage. This document is a companion to
 | Field | Value |
 | --- | --- |
 | `planning_revision` | `8881344bb2162f3f8d82f22d8348bc0ac7536f95` |
-| `inventory_worktree_parent_revision` | `c202f147ef481105b214dbce888cd8461574a23f` |
+| `inventory_worktree_parent_revision` | `c725756bbe4cd27101e4b259eb1e9a776f52d96a` |
 
 `inventory_worktree_parent_revision` is immutable and equals the accelerate
 task-start parent during candidate validation. Final task commits come from
@@ -24,7 +24,7 @@ command lines, outcome tallies, logs, or execution claims.
 | Field | Value |
 | --- | --- |
 | path | `artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/accelerate.json` |
-| receipt_digest | `sha256:8db3857c748ef217a9da15dcc4cef81d8522170e44d0ee7cf9c337bc9f4acc52` |
+| receipt_digest | `sha256:d761d5b7684961c415138cad8a431bfb10095bec41e3ab10ff164ff575554f58` |
 | required_command_ids | `accelerate-proof-focused-core-15`, `accelerate-proof-focused-wide-36`, `accelerate-proof-reuse-migration`, `accelerate-proof-reuse-cross-repo` |
 | evidence_origin | `operator_capture` |
 | assurance | `process_observed_only` |
@@ -84,7 +84,7 @@ and incomplete-collection evidence nodes. Providers only reference the pin above
 | `ipfs_accelerate_py/agent_supervisor/proof/ipfs_datasets_zk_attestation.py` | datasets Groth16/ProveKit binding | real_backend_candidate_closed |
 | `ipfs_accelerate_py/agent_supervisor/proof/program_analysis_zkp.py` | program contract trace ZK surface | bounded_trace_zk_candidate |
 
-### Kernel, conformance, fallbacks, metrics, evidence store
+### Kernel, conformance, fallbacks, metrics, benchmarks, evidence store
 
 | Path | Role | Classification |
 | --- | --- | --- |
@@ -92,6 +92,8 @@ and incomplete-collection evidence nodes. Providers only reference the pin above
 | `ipfs_accelerate_py/agent_supervisor/proof/prover_conformance.py` | semantic conformance and quarantine | structural_conformance_gate |
 | `ipfs_accelerate_py/agent_supervisor/proof/proof_fallbacks.py` | bounded unsuccessful routing | diagnostic_fallback_not_assurance |
 | `ipfs_accelerate_py/agent_supervisor/proof/proof_metrics.py` | metrics and benchmark projection | observability_projection |
+| `ipfs_accelerate_py/agent_supervisor/proof/supervisor_code_proof_benchmark.py` | codebase proof measurement gate | measurement_boundary_not_assurance |
+| `ipfs_accelerate_py/agent_supervisor/proof/leanstral_goal_benchmark.py` | Leanstral paired benchmark reports | measurement_boundary_not_assurance |
 | `ipfs_accelerate_py/agent_supervisor/proof/prover_evidence_store.py` | portfolio evidence persistence | integrity_cache_not_aggregation |
 | `ipfs_accelerate_py/agent_supervisor/proof/database_evidence_store.py` | database-backed evidence store | integrity_store |
 
