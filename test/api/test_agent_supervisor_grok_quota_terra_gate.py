@@ -523,6 +523,191 @@ def test_typed_preflight_process_uses_its_isolated_workspace_as_os_cwd(
     assert command[command.index("--max-turns") + 1] == "1"
     assert command[command.index("--permission-mode") + 1] == "dontAsk"
     assert captured["prompt"] == grok_cli_runner.GROK_QUOTA_PROBE_PROMPT
+    assert not Path(captured["cwd"]).exists()
+
+
+def _typed_preflight_attempt(
+    stderr_text: str,
+    *,
+    nonce: str = "a" * 64,
+    returncode: int = 41,
+) -> tuple[int, dict[str, object], bool, str]:
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text=stderr_text,
+        nonce=nonce,
+        model="grok-4.5",
+        probe_returncode=returncode,
+        primary_dispatched=False,
+    )
+    return returncode, receipt, False, stderr_text
+
+
+def test_typed_preflight_retries_exact_max_turns_artifact_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+    results = iter(
+        (
+            _typed_preflight_attempt("Error: max turns reached\n"),
+            (0, {}, False, ""),
+        )
+    )
+
+    def fake_attempt(**kwargs):
+        calls.append(dict(kwargs))
+        return next(results)
+
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_typed_grok_preflight_once",
+        fake_attempt,
+    )
+
+    result = grok_cli_runner._run_typed_grok_preflight(
+        grok_bin="/usr/local/bin/grok",
+        base_env={},
+        nonce="a" * 64,
+    )
+
+    assert result == (0, {}, False)
+    assert len(calls) == 2
+    assert calls[0] == calls[1]
+
+
+@pytest.mark.parametrize(
+    "stderr_text",
+    (
+        "Error: max turns reached",
+        "error: max turns reached\n",
+        "Error: max turns reached\n\n",
+        "Error: Not signed in",
+        "Grok Build usage balance exhausted",
+    ),
+)
+def test_typed_preflight_does_not_retry_near_match_auth_or_quota(
+    monkeypatch: pytest.MonkeyPatch,
+    stderr_text: str,
+) -> None:
+    calls = 0
+    attempt = _typed_preflight_attempt(stderr_text)
+
+    def fake_attempt(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return attempt
+
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_typed_grok_preflight_once",
+        fake_attempt,
+    )
+
+    result = grok_cli_runner._run_typed_grok_preflight(
+        grok_bin="/usr/local/bin/grok",
+        base_env={},
+        nonce="a" * 64,
+    )
+
+    assert result == attempt[:3]
+    assert calls == 1
+
+
+def test_repeated_exact_max_turns_is_one_unknown_denial_without_terra(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    workspace = tmp_path / "workspace"
+    provider_bin = tmp_path / "provider-bin"
+    workspace.mkdir()
+    provider_bin.mkdir()
+    grok = provider_bin / "grok"
+    codex = provider_bin / "codex"
+    for executable in (grok, codex):
+        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        executable.chmod(0o700)
+
+    nonce = "a" * 64
+    attempt = _typed_preflight_attempt(
+        "Error: max turns reached\n",
+        nonce=nonce,
+    )
+    calls = 0
+
+    def fake_attempt(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return attempt
+
+    monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("implement"))
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_resolve_trusted_grok_bin",
+        lambda **_kwargs: str(grok),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_typed_grok_preflight_once",
+        fake_attempt,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_workspace_content_fingerprint",
+        lambda _workspace: "clean",
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_repository_head",
+        lambda _workspace: "b" * 40,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_independently_verify_grok_quota",
+        lambda **_kwargs: pytest.fail("unknown evidence must not run verifier"),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_codex_quota_fallback_in_docker",
+        lambda *_args, **_kwargs: pytest.fail("Terra must remain forbidden"),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_select_grok_isolation_backend",
+        lambda **_kwargs: pytest.fail("task Grok must not run after denial"),
+    )
+    route_plan = llm_router._AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE
+    monkeypatch.setattr(
+        llm_router,
+        "resolve_agent_implementation_route_binding",
+        lambda *_args, **_kwargs: route_plan,
+    )
+
+    result = grok_cli_runner.main(
+        [
+            "--workspace",
+            str(workspace),
+            "--grok-bin",
+            str(grok),
+            "--model",
+            "grok-4.5",
+            "--codex-fallback-command-json",
+            json.dumps(_terra_fallback_command(str(codex), workspace)),
+            "--grok-failure-receipt-nonce",
+            nonce,
+            "--agent-implementation-route-json",
+            json.dumps(route_plan.as_binding_dict()),
+        ]
+    )
+
+    assert result == 41
+    assert calls == 2
+    rendered = capsys.readouterr().err
+    assert rendered.count(grok_cli_runner.GROK_FAILURE_RECEIPT_PREFIX) == 1
+    outcomes = provider_failure_policy.extract_grok_route_outcomes(rendered)
+    assert len(outcomes) == 1
+    assert outcomes[0]["decision"] == "denied"
+    assert outcomes[0]["failure_class"] == "unknown"
+    assert outcomes[0]["fallback_dispatched"] is False
 
 
 def test_scoped_route_rejects_prompt_cid_before_grok_preflight(

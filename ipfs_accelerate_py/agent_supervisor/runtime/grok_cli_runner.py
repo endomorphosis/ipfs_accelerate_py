@@ -4187,12 +4187,12 @@ def _independently_verify_grok_quota(
         _robust_remove_runner_temp_tree(verifier_root)
 
 
-def _run_typed_grok_preflight(
+def _run_typed_grok_preflight_once(
     *,
     grok_bin: str,
     base_env: dict[str, str],
     nonce: str,
-) -> tuple[int, dict[str, object], bool]:
+) -> tuple[int, dict[str, object], bool, str]:
     """Run the fixed no-tools probe and return its runner-authored receipt.
 
     The probe has no task prompt or task workspace and runs before the primary
@@ -4255,7 +4255,7 @@ def _run_typed_grok_preflight(
         )
         )
         if returncode == 0:
-            return 0, {}, stderr_overflow
+            return 0, {}, stderr_overflow, ""
         receipt_evidence = (
             "isolated Grok quota probe stderr exceeded the trusted evidence "
             f"limit ({stderr_size} bytes)"
@@ -4277,8 +4277,8 @@ def _run_typed_grok_preflight(
             model=DEFAULT_GROK_MODEL,
             returncode=returncode,
         ):
-            return returncode, {}, stderr_overflow
-        return returncode, receipt, stderr_overflow
+            return returncode, {}, stderr_overflow, receipt_evidence
+        return returncode, receipt, stderr_overflow, receipt_evidence
     finally:
         if isolated_home is not None:
             _robust_remove_runner_temp_tree(Path(isolated_home.name))
@@ -4286,6 +4286,41 @@ def _run_typed_grok_preflight(
         _robust_remove_runner_temp_tree(probe_root)
 
 
+def _run_typed_grok_preflight(
+    *,
+    grok_bin: str,
+    base_env: dict[str, str],
+    nonce: str,
+) -> tuple[int, dict[str, object], bool]:
+    """Run the typed probe, retrying only its exact transient turn artifact."""
+
+    from ipfs_accelerate_py.llm_router import (
+        retryable_agent_implementation_preflight_failure,
+    )
+
+    returncode, receipt, overflow, evidence = _run_typed_grok_preflight_once(
+        grok_bin=grok_bin,
+        base_env=base_env,
+        nonce=nonce,
+    )
+    if returncode == 0 or not receipt:
+        return returncode, receipt, overflow
+    if not retryable_agent_implementation_preflight_failure(
+        evidence,
+        receipt,
+        nonce=nonce,
+        model=DEFAULT_GROK_MODEL,
+        probe_returncode=returncode,
+    ):
+        return returncode, receipt, overflow
+    retry_returncode, retry_receipt, retry_overflow, _retry_evidence = (
+        _run_typed_grok_preflight_once(
+            grok_bin=grok_bin,
+            base_env=base_env,
+            nonce=nonce,
+        )
+    )
+    return retry_returncode, retry_receipt, retry_overflow
 
 
 def _stream_grok_process(

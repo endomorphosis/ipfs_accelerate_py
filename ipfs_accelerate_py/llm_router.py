@@ -472,6 +472,9 @@ _AGENT_IMPLEMENTATION_FAILURE_SOURCE = (
 _AGENT_IMPLEMENTATION_PROBE_PROMPT = (
     "This is a provider-capacity preflight. Reply with exactly OK."
 )
+_AGENT_IMPLEMENTATION_TRANSIENT_MAX_TURNS_EVIDENCE = (
+    b"Error: max turns reached\n"
+)
 _AGENT_IMPLEMENTATION_PROBE_CONTRACT = {
     "schema": "ipfs_accelerate_py.agent_supervisor.grok-quota-probe@1",
     "model": "grok-4.5",
@@ -776,6 +779,39 @@ def valid_agent_implementation_failure_receipt(
         and observed_returncode == probe_returncode != 0
         and receipt.get("receipt_id")
         == _content_addressed_mapping(receipt, identity_field="receipt_id")
+    )
+
+
+def retryable_agent_implementation_preflight_failure(
+    stderr_text: str,
+    receipt: Mapping[str, object],
+    *,
+    nonce: str,
+    model: str,
+    probe_returncode: int,
+) -> bool:
+    """Authorize one fresh probe retry for the exact CLI turn-limit artifact.
+
+    The evidence remains an ``unknown`` provider failure and therefore cannot
+    authorize cross-provider fallback.  Keeping the byte match beside the
+    canonical failure classifier prevents runner-local policy from widening
+    this transient exception to auth, quota, transport, or near-match output.
+    """
+
+    evidence = str(stderr_text or "").encode("utf-8", errors="replace")
+    return bool(
+        evidence == _AGENT_IMPLEMENTATION_TRANSIENT_MAX_TURNS_EVIDENCE
+        and receipt.get("failure_class") == "unknown"
+        and receipt.get("evidence_size") == len(evidence)
+        and receipt.get("evidence_overflow") is False
+        and receipt.get("evidence_sha256")
+        == "sha256:" + hashlib.sha256(evidence).hexdigest()
+        and valid_agent_implementation_failure_receipt(
+            receipt,
+            nonce=nonce,
+            model=model,
+            probe_returncode=probe_returncode,
+        )
     )
 
 
