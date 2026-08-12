@@ -291,6 +291,117 @@ def _persist_active_attempt_state(
     return state
 
 
+def _legacy_maintenance_claim_fixture(
+    tmp_path: Path,
+) -> tuple[
+    PortalImplementationDaemon,
+    PortalImplementationSupervisor,
+    PortalTask,
+    Path,
+    dict[str, object],
+]:
+    """Build the exact pre-process-birth claim shape from deployed daemons."""
+
+    state_path = tmp_path / "lane-worker" / "legacy_task_state.json"
+    daemon = _daemon(tmp_path, state_path=state_path)
+    supervisor = _supervisor(
+        tmp_path,
+        state_path=tmp_path / "lane-maintenance" / "task-state.json",
+    )
+    task = _task(outputs=["src/example.py"])
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        2,
+        "2026-08-12T00:00:00+00:00",
+    )
+    metadata.pop("owner_process_birth")
+    metadata.pop("lease_role")
+    metadata["owner_script"] = "implementation_daemon.py"
+    metadata["repo_root"] = str(tmp_path.resolve())
+    metadata.pop("worktree_root")
+    metadata.pop("repository_id")
+    return daemon, supervisor, task, claim_path, metadata
+
+
+def _write_legacy_maintenance_claim(
+    claim_path: Path,
+    metadata: dict[str, object],
+) -> None:
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    claim_path.write_text(
+        json.dumps(metadata, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def _write_legacy_lane_state(
+    state_path: Path,
+    **overrides: object,
+) -> None:
+    state_payload: dict[str, object] = {
+        "implementation_in_progress": False,
+        "active_task_id": "",
+        "active_task_cid": "",
+        "active_attempt": 0,
+    }
+    state_payload.update(overrides)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps(state_payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    state_path.chmod(0o600)
+
+
+def _legacy_daemon_argv(
+    metadata: dict[str, object],
+    *,
+    state_dir: str | None = None,
+    state_prefix: str | None = None,
+) -> tuple[str, ...]:
+    state_path = Path(str(metadata["state_path"]))
+    suffix = "_task_state.json"
+    derived_prefix = state_path.name[: -len(suffix)]
+    return (
+        "/usr/bin/python3",
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+        "--state-dir",
+        state_dir if state_dir is not None else str(metadata["state_dir"]),
+        "--state-prefix",
+        state_prefix if state_prefix is not None else derived_prefix,
+    )
+
+
+def _patch_live_legacy_daemon(
+    monkeypatch: pytest.MonkeyPatch,
+    metadata: dict[str, object],
+    *,
+    argv: tuple[str, ...] | None = None,
+) -> None:
+    expected_pid = int(metadata["pid"])
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "process_is_running",
+        lambda pid: pid == expected_pid,
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "read_process_command_argv",
+        lambda pid: (
+            argv if pid == expected_pid else None
+        )
+        if argv is not None
+        else (
+            _legacy_daemon_argv(metadata) if pid == expected_pid else None
+        ),
+    )
+
+
 def _quiesced_terminal_task_claim(
     tmp_path: Path,
     *,
@@ -727,6 +838,335 @@ def test_live_shared_maintenance_lease_survives_empty_process_command_line(
     assert persisted["lease_id"] == lease["lease_id"]
 
 
+@pytest.mark.parametrize("empty_lease_role", [False, True])
+def test_legacy_live_quiescent_claim_does_not_block_maintenance_and_is_retained(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    empty_lease_role: bool,
+) -> None:
+    daemon, supervisor, _task_record, claim_path, metadata = (
+        _legacy_maintenance_claim_fixture(tmp_path)
+    )
+    if empty_lease_role:
+        metadata["lease_role"] = ""
+    state_path = Path(str(metadata["state_path"]))
+    _write_legacy_lane_state(state_path)
+    _write_legacy_maintenance_claim(claim_path, metadata)
+    _patch_live_legacy_daemon(monkeypatch, metadata)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_is_running",
+        lambda pid: pid == os.getpid(),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: str(metadata["owner_script"]),
+    )
+
+    assert daemon._implementation_task_claim_owner_is_active(metadata) is True
+    assert supervisor._active_implementation_task_claims_for_maintenance() == []
+    lease, guard = supervisor._acquire_protected_path_maintenance_lease()
+    try:
+        assert lease is not None
+        assert guard["blocked"] is False
+        assert claim_path.is_file()
+        assert json.loads(claim_path.read_text(encoding="utf-8")) == metadata
+    finally:
+        if lease is not None:
+            supervisor._release_protected_path_maintenance_lease(lease)
+
+
+@pytest.mark.parametrize(
+    "state_payload",
+    [
+        {
+            "implementation_in_progress": False,
+            "active_task_id": "EX-001",
+            "active_task_cid": "baguqeera-pending",
+            "active_attempt": 2,
+        },
+        {
+            "implementation_in_progress": True,
+            "active_task_id": "EX-001",
+            "active_task_cid": "baguqeera-active",
+            "active_attempt": 2,
+        },
+    ],
+    ids=["pending", "active"],
+)
+def test_legacy_live_pending_or_active_claim_still_blocks_maintenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    state_payload: dict[str, object],
+) -> None:
+    _daemon_record, supervisor, task, claim_path, metadata = (
+        _legacy_maintenance_claim_fixture(tmp_path)
+    )
+    _write_legacy_lane_state(
+        Path(str(metadata["state_path"])),
+        **state_payload,
+    )
+    _write_legacy_maintenance_claim(claim_path, metadata)
+    _patch_live_legacy_daemon(monkeypatch, metadata)
+
+    active = supervisor._active_implementation_task_claims_for_maintenance()
+
+    assert active[0]["task_id"] == task.task_id
+    assert active[0]["owner_live"] is True
+    assert claim_path.is_file()
+
+
+@pytest.mark.parametrize(
+    "invalid_case",
+    [
+        "missing_state",
+        "malformed_state",
+        "missing_state_field",
+        "wrong_state_field_type",
+        "duplicate_state_key",
+        "state_symlink",
+        "state_symlink_ancestor",
+        "state_dotdot_alias",
+        "state_path_parent_mismatch",
+        "state_mode_0666",
+        "state_hardlink",
+        "missing_claim_binding",
+        "boolean_attempt",
+        "empty_canonical_cid",
+        "boolean_pid",
+        "missing_owner_script",
+        "mismatched_owner_script",
+        "mismatched_daemon_module_argv",
+        "missing_state_dir_argv",
+        "mismatched_state_dir_argv",
+        "duplicate_state_dir_argv",
+        "mismatched_state_prefix_argv",
+        "nonempty_lease_role",
+        "repository_inconclusive",
+    ],
+)
+def test_legacy_live_claim_uncertainty_remains_maintenance_blocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_case: str,
+) -> None:
+    _daemon_record, supervisor, task, claim_path, metadata = (
+        _legacy_maintenance_claim_fixture(tmp_path)
+    )
+    state_path = Path(str(metadata["state_path"]))
+    process_argv: tuple[str, ...] | None = None
+    if invalid_case == "malformed_state":
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text("{not-json", encoding="utf-8")
+        state_path.chmod(0o600)
+    elif invalid_case == "missing_state_field":
+        _write_legacy_lane_state(state_path)
+        state_payload = json.loads(state_path.read_text(encoding="utf-8"))
+        state_payload.pop("active_task_cid")
+        state_path.write_text(json.dumps(state_payload), encoding="utf-8")
+    elif invalid_case == "wrong_state_field_type":
+        _write_legacy_lane_state(state_path, active_attempt=False)
+    elif invalid_case == "duplicate_state_key":
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            '{"implementation_in_progress":false,'
+            '"active_task_id":"","active_task_cid":"",'
+            '"active_attempt":0,"active_attempt":0}',
+            encoding="utf-8",
+        )
+        state_path.chmod(0o600)
+    elif invalid_case == "state_symlink":
+        target = tmp_path / "quiescent-target.json"
+        _write_legacy_lane_state(target)
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.symlink_to(target)
+    else:
+        if invalid_case != "missing_state":
+            _write_legacy_lane_state(state_path)
+        if invalid_case == "state_path_parent_mismatch":
+            metadata["state_dir"] = str(tmp_path / "different-state-dir")
+        elif invalid_case == "state_symlink_ancestor":
+            real_parent = tmp_path / "real-lane-worker"
+            state_path.parent.rename(real_parent)
+            state_path.parent.symlink_to(
+                real_parent.name,
+                target_is_directory=True,
+            )
+        elif invalid_case == "state_dotdot_alias":
+            aliased_state_dir = state_path.parent / ".." / state_path.parent.name
+            metadata["state_dir"] = str(aliased_state_dir)
+            metadata["state_path"] = str(aliased_state_dir / state_path.name)
+        elif invalid_case == "state_mode_0666":
+            state_path.chmod(0o666)
+        elif invalid_case == "state_hardlink":
+            os.link(state_path, tmp_path / "second-state-link.json")
+        elif invalid_case == "missing_claim_binding":
+            metadata.pop("lease_id")
+        elif invalid_case == "boolean_attempt":
+            metadata["attempt"] = True
+        elif invalid_case == "empty_canonical_cid":
+            metadata["canonical_task_cid"] = ""
+        elif invalid_case == "boolean_pid":
+            metadata["pid"] = True
+        elif invalid_case == "missing_owner_script":
+            metadata.pop("owner_script")
+        elif invalid_case == "mismatched_owner_script":
+            metadata["owner_script"] = "unrelated_daemon.py"
+        elif invalid_case == "mismatched_daemon_module_argv":
+            argv_parts = list(_legacy_daemon_argv(metadata))
+            argv_parts[2] = "untrusted.implementation_daemon"
+            process_argv = tuple(argv_parts)
+        elif invalid_case == "missing_state_dir_argv":
+            argv_parts = list(_legacy_daemon_argv(metadata))
+            state_dir_index = argv_parts.index("--state-dir")
+            del argv_parts[state_dir_index : state_dir_index + 2]
+            process_argv = tuple(argv_parts)
+        elif invalid_case == "mismatched_state_dir_argv":
+            process_argv = _legacy_daemon_argv(
+                metadata,
+                state_dir=str(tmp_path / "foreign-state"),
+            )
+        elif invalid_case == "duplicate_state_dir_argv":
+            process_argv = (
+                *_legacy_daemon_argv(metadata),
+                "--state-dir",
+                str(metadata["state_dir"]),
+            )
+        elif invalid_case == "mismatched_state_prefix_argv":
+            process_argv = _legacy_daemon_argv(
+                metadata,
+                state_prefix="foreign_state_prefix",
+            )
+        elif invalid_case == "nonempty_lease_role":
+            metadata["lease_role"] = "implementation_dispatch_intent"
+        elif invalid_case == "repository_inconclusive":
+            metadata.pop("repo_root")
+    _write_legacy_maintenance_claim(claim_path, metadata)
+    _patch_live_legacy_daemon(
+        monkeypatch,
+        metadata,
+        argv=process_argv,
+    )
+
+    active = supervisor._active_implementation_task_claims_for_maintenance()
+
+    assert active[0]["task_id"] == task.task_id
+    assert claim_path.exists() or claim_path.is_symlink()
+
+
+@pytest.mark.parametrize("open_failure", ["regular_to_fifo", "open_error"])
+def test_legacy_live_claim_state_open_races_fail_closed_without_blocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    open_failure: str,
+) -> None:
+    _daemon_record, supervisor, task, claim_path, metadata = (
+        _legacy_maintenance_claim_fixture(tmp_path)
+    )
+    state_path = Path(str(metadata["state_path"]))
+    _write_legacy_lane_state(state_path)
+    _write_legacy_maintenance_claim(claim_path, metadata)
+    _patch_live_legacy_daemon(monkeypatch, metadata)
+    real_open = os.open
+    replaced: list[str] = []
+
+    def hostile_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if (
+            str(path) == state_path.name
+            and dir_fd is not None
+            and not replaced
+        ):
+            replaced.append(open_failure)
+            assert flags & getattr(os, "O_NONBLOCK", 0)
+            if open_failure == "open_error":
+                raise PermissionError("deterministic state open failure")
+            state_path.unlink()
+            os.mkfifo(state_path, mode=0o600)
+        if dir_fd is None:
+            return real_open(path, flags, mode)
+        return real_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(
+        implementation_supervisor_module.os,
+        "open",
+        hostile_open,
+    )
+
+    active = supervisor._active_implementation_task_claims_for_maintenance()
+
+    assert replaced == [open_failure]
+    assert active[0]["task_id"] == task.task_id
+    assert claim_path.is_file()
+
+
+@pytest.mark.parametrize(
+    "birth_payload",
+    [
+        "valid",
+        {"pid": 1},
+        "malformed-process-birth",
+        None,
+    ],
+)
+def test_birth_bound_or_malformed_birth_claim_never_uses_legacy_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    birth_payload: object,
+) -> None:
+    daemon, supervisor, task, claim_path, metadata = (
+        _legacy_maintenance_claim_fixture(tmp_path)
+    )
+    metadata["owner_process_birth"] = (
+        daemon._implementation_dispatch_process_birth.to_dict()
+        if birth_payload == "valid"
+        else birth_payload
+    )
+    _write_legacy_lane_state(Path(str(metadata["state_path"])))
+    _write_legacy_maintenance_claim(claim_path, metadata)
+    _patch_live_legacy_daemon(monkeypatch, metadata)
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "owner_liveness",
+        lambda _owner: implementation_supervisor_module.OwnerLiveness.ALIVE,
+    )
+
+    active = supervisor._active_implementation_task_claims_for_maintenance()
+
+    assert active[0]["task_id"] == task.task_id
+    assert claim_path.is_file()
+
+
+def test_legacy_quiescent_claim_with_protected_fence_still_blocks_maintenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _daemon_record, supervisor, task, claim_path, metadata = (
+        _legacy_maintenance_claim_fixture(tmp_path)
+    )
+    state_path = Path(str(metadata["state_path"]))
+    _write_legacy_lane_state(state_path)
+    fence_path = (
+        state_path.parent
+        / implementation_daemon_module.IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
+    )
+    fence_path.write_text('{}\n', encoding="utf-8")
+    _write_legacy_maintenance_claim(claim_path, metadata)
+    _patch_live_legacy_daemon(monkeypatch, metadata)
+
+    active = supervisor._active_implementation_task_claims_for_maintenance()
+
+    assert active[0]["task_id"] == task.task_id
+    assert active[0]["protected_fence_paths"] == [str(fence_path)]
+    assert claim_path.is_file()
+
+
 def test_shared_protected_maintenance_waits_for_active_task_claim(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -830,6 +1270,48 @@ def test_shared_maintenance_mixed_version_postcheck_withdraws_lease(
     assert guard["reason"] == "shared_implementation_task_claim_active"
     assert guard["claim_check"] == "after_lease_publication"
     assert guard["active_claims"][0]["task_id"] == task.task_id
+    assert not supervisor._protected_path_maintenance_lock_path().exists()
+
+
+def test_mixed_version_postcheck_blocks_newly_pending_legacy_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _daemon_record, supervisor, task, claim_path, metadata = (
+        _legacy_maintenance_claim_fixture(tmp_path)
+    )
+    state_path = Path(str(metadata["state_path"]))
+    publish = supervisor._publish_implementation_maintenance_lease
+
+    def publish_then_pending_legacy_claim(
+        lock_path: Path,
+        lease_metadata: dict[str, object],
+    ) -> bool:
+        published = publish(lock_path, lease_metadata)
+        if published:
+            _write_legacy_lane_state(
+                state_path,
+                active_task_id=task.task_id,
+                active_task_cid=str(metadata["canonical_task_cid"]),
+                active_attempt=int(metadata["attempt"]),
+            )
+            _write_legacy_maintenance_claim(claim_path, metadata)
+        return published
+
+    _patch_live_legacy_daemon(monkeypatch, metadata)
+    monkeypatch.setattr(
+        supervisor,
+        "_publish_implementation_maintenance_lease",
+        publish_then_pending_legacy_claim,
+    )
+
+    lease, guard = supervisor._acquire_protected_path_maintenance_lease()
+
+    assert lease is None
+    assert guard["reason"] == "shared_implementation_task_claim_active"
+    assert guard["claim_check"] == "after_lease_publication"
+    assert guard["active_claims"][0]["task_id"] == task.task_id
+    assert claim_path.is_file()
     assert not supervisor._protected_path_maintenance_lock_path().exists()
 
 

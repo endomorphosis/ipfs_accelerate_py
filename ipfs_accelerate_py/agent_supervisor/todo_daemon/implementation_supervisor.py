@@ -3266,6 +3266,350 @@ class PortalImplementationSupervisor:
             process_is_running=process_is_running,
         )
 
+    @staticmethod
+    def _legacy_implementation_task_claim_is_quiescent_for_maintenance(
+        metadata: Mapping[str, Any],
+        *,
+        same_repository: bool,
+        owner_live: bool,
+        protected_fence_paths: Sequence[str],
+    ) -> bool:
+        """Recognize one narrow stale-live legacy task-claim shape.
+
+        Legacy daemons bound every historical claim to their long-lived
+        process PID.  A PID probe therefore keeps completed claims live until
+        the daemon exits, which can indefinitely exclude repo-wide
+        maintenance.  Only the exact pre-process-birth/pre-lease-role record
+        shape may consult its bound lane projection.  The projection must be
+        an exact, regular, quiescent JSON state file; every uncertainty remains
+        blocking, and the durable claim is deliberately retained.
+        """
+
+        if (
+            metadata.get("kind") != IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
+            or "owner_process_birth" in metadata
+            or (
+                "lease_role" in metadata
+                and metadata.get("lease_role") != ""
+            )
+            or same_repository is not True
+            or owner_live is not True
+            or bool(protected_fence_paths)
+        ):
+            return False
+
+        pid = metadata.get("pid")
+        attempt = metadata.get("attempt")
+        if (
+            type(pid) is not int
+            or pid <= 0
+            or type(attempt) is not int
+            or attempt <= 0
+        ):
+            return False
+
+        required_text: dict[str, str] = {}
+        for field_name in (
+            "task_id",
+            "canonical_task_cid",
+            "lease_id",
+            "state_dir",
+            "state_path",
+            "owner_script",
+        ):
+            value = metadata.get(field_name)
+            if (
+                type(value) is not str
+                or not value
+                or value != value.strip()
+            ):
+                return False
+            required_text[field_name] = value
+
+        if required_text["owner_script"] != "implementation_daemon.py":
+            return False
+
+        def lexical_absolute_path(value: str) -> Path | None:
+            if (
+                not value.startswith(os.sep)
+                or value.startswith(os.sep * 2)
+                or "\x00" in value
+                or len(os.fsencode(value)) > 4096
+                or os.path.abspath(value) != value
+                or os.path.normpath(value) != value
+                or any(
+                    part in {"", ".", ".."}
+                    for part in value.split(os.sep)[1:]
+                )
+            ):
+                return None
+            path = Path(value)
+            if not path.is_absolute() or path.anchor != os.sep:
+                return None
+            return path
+
+        state_dir = lexical_absolute_path(required_text["state_dir"])
+        state_path = lexical_absolute_path(required_text["state_path"])
+        if state_dir is None or state_path is None:
+            return False
+        if state_path.parent != state_dir:
+            return False
+        state_suffix = "_task_state.json"
+        if not state_path.name.endswith(state_suffix):
+            return False
+        state_prefix = state_path.name[: -len(state_suffix)]
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", state_prefix):
+            return False
+
+        argv = read_process_command_argv(pid)
+        daemon_module = (
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_daemon"
+        )
+        if (
+            not isinstance(argv, tuple)
+            or len(argv) < 3
+            or any(
+                type(token) is not str or not token or "\x00" in token
+                for token in argv
+            )
+            or argv[1:3] != ("-m", daemon_module)
+        ):
+            return False
+
+        def exact_option_value(option: str) -> str | None:
+            values: list[str] = []
+            index = 0
+            while index < len(argv):
+                token = argv[index]
+                if token == option:
+                    if index + 1 >= len(argv):
+                        return None
+                    value = argv[index + 1]
+                    if not value or value.startswith("--"):
+                        return None
+                    values.append(value)
+                    index += 2
+                    continue
+                option_prefix = option + "="
+                if token.startswith(option_prefix):
+                    value = token[len(option_prefix) :]
+                    if not value:
+                        return None
+                    values.append(value)
+                index += 1
+            return values[0] if len(values) == 1 else None
+
+        if (
+            exact_option_value("--state-dir") != required_text["state_dir"]
+            or exact_option_value("--state-prefix") != state_prefix
+        ):
+            return False
+
+        def identity(value: os.stat_result) -> tuple[int, ...]:
+            return (
+                int(value.st_dev),
+                int(value.st_ino),
+                int(value.st_mode),
+                int(value.st_nlink),
+                int(value.st_uid),
+                int(value.st_gid),
+                int(value.st_size),
+                int(value.st_mtime_ns),
+                int(value.st_ctime_ns),
+            )
+
+        def directory_identity(value: os.stat_result) -> tuple[int, ...]:
+            return (
+                int(value.st_dev),
+                int(value.st_ino),
+                int(value.st_mode),
+                int(value.st_nlink),
+                int(value.st_uid),
+                int(value.st_gid),
+            )
+
+        directory_flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_DIRECTORY", 0)
+        )
+        file_flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        directory_fds: list[int] = []
+        directory_edges: list[tuple[int, str, tuple[int, ...]]] = []
+        file_fd: int | None = None
+        state_dir = Path(required_text["state_dir"])
+        state_path = Path(required_text["state_path"])
+        try:
+            root_path = Path(state_dir.anchor)
+            root_before = root_path.lstat()
+            if stat.S_ISLNK(root_before.st_mode) or not stat.S_ISDIR(
+                root_before.st_mode
+            ):
+                return False
+            root_fd = os.open(root_path, directory_flags)
+            directory_fds.append(root_fd)
+            root_opened = os.fstat(root_fd)
+            if directory_identity(root_before) != directory_identity(
+                root_opened
+            ):
+                return False
+
+            current_fd = root_fd
+            relative_parts = state_dir.relative_to(root_path).parts
+            if not relative_parts or len(relative_parts) > 128:
+                return False
+            for part in relative_parts:
+                before = os.stat(
+                    part,
+                    dir_fd=current_fd,
+                    follow_symlinks=False,
+                )
+                if stat.S_ISLNK(before.st_mode) or not stat.S_ISDIR(
+                    before.st_mode
+                ):
+                    return False
+                child_fd = os.open(part, directory_flags, dir_fd=current_fd)
+                directory_fds.append(child_fd)
+                opened = os.fstat(child_fd)
+                if directory_identity(before) != directory_identity(opened):
+                    return False
+                after_open = os.stat(
+                    part,
+                    dir_fd=current_fd,
+                    follow_symlinks=False,
+                )
+                expected_directory = directory_identity(opened)
+                if directory_identity(after_open) != expected_directory:
+                    return False
+                directory_edges.append(
+                    (current_fd, part, expected_directory)
+                )
+                current_fd = child_fd
+
+            before = os.stat(
+                state_path.name,
+                dir_fd=current_fd,
+                follow_symlinks=False,
+            )
+            if (
+                stat.S_ISLNK(before.st_mode)
+                or not stat.S_ISREG(before.st_mode)
+                or int(before.st_nlink) != 1
+                or int(before.st_uid) != os.geteuid()
+                or stat.S_IMODE(before.st_mode) != 0o600
+                or int(before.st_size) < 0
+                or int(before.st_size) > 1_048_576
+            ):
+                return False
+            file_fd = os.open(
+                state_path.name,
+                file_flags,
+                dir_fd=current_fd,
+            )
+            opened_stat = os.fstat(file_fd)
+            if (
+                identity(opened_stat) != identity(before)
+                or not stat.S_ISREG(opened_stat.st_mode)
+                or int(opened_stat.st_nlink) != 1
+                or int(opened_stat.st_uid) != os.geteuid()
+                or stat.S_IMODE(opened_stat.st_mode) != 0o600
+            ):
+                return False
+
+            chunks: list[bytes] = []
+            remaining = 1_048_577
+            while remaining > 0:
+                chunk = os.read(file_fd, min(65_536, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            payload_bytes = b"".join(chunks)
+            if len(payload_bytes) > 1_048_576:
+                return False
+            after_read = os.fstat(file_fd)
+            after_path = os.stat(
+                state_path.name,
+                dir_fd=current_fd,
+                follow_symlinks=False,
+            )
+            if (
+                identity(after_read) != identity(opened_stat)
+                or identity(after_path) != identity(opened_stat)
+                or stat.S_ISLNK(after_path.st_mode)
+                or not stat.S_ISREG(after_path.st_mode)
+                or int(after_path.st_nlink) != 1
+                or int(after_path.st_uid) != os.geteuid()
+                or stat.S_IMODE(after_path.st_mode) != 0o600
+            ):
+                return False
+            for parent_fd, part, expected_directory in directory_edges:
+                after_directory = os.stat(
+                    part,
+                    dir_fd=parent_fd,
+                    follow_symlinks=False,
+                )
+                if (
+                    stat.S_ISLNK(after_directory.st_mode)
+                    or not stat.S_ISDIR(after_directory.st_mode)
+                    or directory_identity(after_directory)
+                    != expected_directory
+                ):
+                    return False
+
+            def reject_duplicate_keys(
+                pairs: list[tuple[str, Any]],
+            ) -> dict[str, Any]:
+                result: dict[str, Any] = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError("duplicate state JSON key")
+                    result[key] = value
+                return result
+
+            state_payload = json.loads(
+                payload_bytes.decode("utf-8"),
+                object_pairs_hook=reject_duplicate_keys,
+            )
+        except (
+            OSError,
+            TypeError,
+            ValueError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ):
+            return False
+        finally:
+            if file_fd is not None:
+                os.close(file_fd)
+            for directory_fd in reversed(directory_fds):
+                os.close(directory_fd)
+
+        if not isinstance(state_payload, dict):
+            return False
+        if (
+            type(state_payload.get("implementation_in_progress")) is not bool
+            or type(state_payload.get("active_task_id")) is not str
+            or type(state_payload.get("active_task_cid")) is not str
+            or type(state_payload.get("active_attempt")) is not int
+        ):
+            return False
+        return (
+            state_payload["implementation_in_progress"] is False
+            and state_payload["active_task_id"] == ""
+            and state_payload["active_task_cid"] == ""
+            and state_payload["active_attempt"] == 0
+            and process_is_running(pid)
+        )
+
     def _active_implementation_task_claims_for_maintenance(
         self,
     ) -> list[dict[str, Any]]:
@@ -3313,7 +3657,8 @@ class PortalImplementationSupervisor:
                 )
             # The claim directory itself is repo-global.  Inconclusive
             # physical identity must therefore fail closed as a match.
-            same_repository = repository_matches[repository_key] is not False
+            repository_match = repository_matches[repository_key]
+            same_repository = repository_match is not False
             protected_fence_paths = (
                 implementation_task_claim_protected_fence_paths(metadata)
             )
@@ -3352,6 +3697,13 @@ class PortalImplementationSupervisor:
                 and same_repository
                 and (owner_live or protected_fence_paths)
             ):
+                if self._legacy_implementation_task_claim_is_quiescent_for_maintenance(
+                    metadata,
+                    same_repository=(repository_match is True),
+                    owner_live=owner_live,
+                    protected_fence_paths=protected_fence_paths,
+                ):
+                    continue
                 active.append(
                     {
                         "claim_path": str(claim_path),
