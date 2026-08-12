@@ -156,12 +156,16 @@ def _run_relevance(
 ) -> list[str]:
     previous_root = gate.REPO_ROOT
     previous_paths = gate.REPOSITORY_PATHS
+    previous_gitlinks = gate.RUNNER_UNMATERIALIZED_GITLINKS
     gate.REPO_ROOT = repository
-    gate.REPOSITORY_PATHS = {
-        "accelerate": Path("."),
-        "datasets": Path("datasets"),
-        "kit": Path("kit"),
-    }
+    gate.REPOSITORY_PATHS = {"accelerate": Path(".")}
+    fixture_gitlinks: dict[str, str] = {}
+    for line in _git(repository, "ls-files", "--stage").splitlines():
+        metadata, relative = line.split("\t", 1)
+        mode, oid, _stage = metadata.split(" ", 2)
+        if mode == "160000":
+            fixture_gitlinks[relative] = oid
+    gate.RUNNER_UNMATERIALIZED_GITLINKS = {"accelerate": fixture_gitlinks}
     try:
         errors: list[str] = []
         gate._validate_inventory_source_relevance(
@@ -186,6 +190,7 @@ def _run_relevance(
     finally:
         gate.REPO_ROOT = previous_root
         gate.REPOSITORY_PATHS = previous_paths
+        gate.RUNNER_UNMATERIALIZED_GITLINKS = previous_gitlinks
 
 
 def test_post_capture_allowed_bundle_is_inventory_relevant(tmp_path: Path) -> None:
@@ -898,6 +903,11 @@ def bound_gate(
             "kit": Path("ipfs_kit_py"),
         },
     )
+    monkeypatch.setattr(
+        gate,
+        "RUNNER_UNMATERIALIZED_GITLINKS",
+        {"accelerate": {}, "datasets": {}, "kit": {}},
+    )
     monkeypatch.setattr(gate, "ACCELERATE_REVISION", bundle.planning_revisions["accelerate"])
     monkeypatch.setattr(gate, "DATASETS_REVISION", bundle.planning_revisions["datasets"])
     monkeypatch.setattr(gate, "KIT_REVISION", bundle.planning_revisions["kit"])
@@ -914,6 +924,117 @@ def bound_gate(
 def test_capture_pin_and_artifact_gate_end_to_end(bound_gate: CapturedBundle) -> None:
     result = gate.validate_artifact("IPS-003")
     assert result["valid"], result["errors"]
+
+
+def _reanchor_receipt_command_paths(
+    receipt: dict[str, Any], old_root: str, new_root: str, *, command_indexes: set[int]
+) -> None:
+    for index, command in enumerate(receipt["commands"]):
+        if index not in command_indexes:
+            continue
+        command["argv"] = [token.replace(old_root, new_root) for token in command["argv"]]
+        variables = command["environment"]["variables"]
+        command["environment"]["variables"] = {
+            key: value.replace(old_root, new_root) for key, value in variables.items()
+        }
+        command["command_digest"] = "sha256:" + hashlib.sha256(
+            gate._canonical_json_bytes(
+                {
+                    "id": command["id"],
+                    "argv": command["argv"],
+                    "cwd": command["cwd"],
+                    "environment": command["environment"],
+                }
+            )
+        ).hexdigest()
+
+
+def test_gate_accepts_pinned_receipt_from_deleted_historical_checkout(
+    bound_gate: CapturedBundle,
+) -> None:
+    historical_root = str(bound_gate.root.parent / "deleted-capture-checkout")
+    bound_gate.write_receipt(
+        lambda receipt: _reanchor_receipt_command_paths(
+            receipt,
+            str(bound_gate.root),
+            historical_root,
+            command_indexes=set(range(len(receipt["commands"]))),
+        )
+    )
+
+    errors: list[str] = []
+    receipt = gate._validate_baseline_receipt("IPS-003", bound_gate.spec, errors)
+    config = json.loads(bound_gate.config_path.read_text(encoding="utf-8"))
+
+    assert historical_root != str(bound_gate.root)
+    assert not Path(historical_root).exists()
+    assert errors == []
+    assert config["operator_baseline_receipts"]["IPS-003"] == (
+        gate._expected_receipt_pin(bound_gate.spec, receipt)
+    )
+
+
+@pytest.mark.parametrize("mutation", ("mixed", "swapped", "relative", "traversal"))
+def test_gate_rejects_ambiguous_or_unsafe_historical_capture_anchors(
+    bound_gate: CapturedBundle,
+    mutation: str,
+) -> None:
+    def mutate(receipt: dict[str, Any]) -> None:
+        old_root = str(bound_gate.root)
+        _reanchor_receipt_command_paths(
+            receipt,
+            old_root,
+            "/historical/operator/one",
+            command_indexes=set(range(len(receipt["commands"]))),
+        )
+        if mutation == "mixed":
+            _reanchor_receipt_command_paths(
+                receipt,
+                "/historical/operator/one",
+                "/historical/operator/two",
+                command_indexes={1},
+            )
+        elif mutation == "swapped":
+            first, second = receipt["commands"][:2]
+            first_cache = next(
+                token for token in first["argv"] if token.startswith("cache_dir=")
+            )
+            second_cache = next(
+                token for token in second["argv"] if token.startswith("cache_dir=")
+            )
+            first["argv"][first["argv"].index(first_cache)] = second_cache
+        elif mutation == "relative":
+            receipt["commands"][0]["environment"]["variables"]["HOME"] = (
+                "relative/capture/home"
+            )
+        else:
+            command = receipt["commands"][0]
+            workspace = command["workspace_relative_path"]
+            command["environment"]["variables"]["HOME"] = (
+                f"/historical/operator/one/../escape/{workspace}/home"
+            )
+        for command in receipt["commands"]:
+            command["command_digest"] = "sha256:" + hashlib.sha256(
+                gate._canonical_json_bytes(
+                    {
+                        "id": command["id"],
+                        "argv": command["argv"],
+                        "cwd": command["cwd"],
+                        "environment": command["environment"],
+                    }
+                )
+            ).hexdigest()
+
+    bound_gate.write_receipt(mutate)
+    errors: list[str] = []
+    gate._validate_baseline_receipt("IPS-003", bound_gate.spec, errors)
+
+    assert any(
+        "historical capture root" in error
+        or "canonical absolute capture path" in error
+        or "exact capture-local suffix" in error
+        for error in errors
+    ), errors
 
 
 @pytest.mark.parametrize(
@@ -1395,6 +1516,8 @@ def test_bootstrap_config_accepts_only_exact_empty_pin_phase() -> None:
             encoding="utf-8"
         )
     )
+    config["operator_baseline_receipts"] = {}
+    config["protected_paths"] = list(gate.BASE_PROTECTED_PATHS)
     bootstrap_errors: list[str] = []
     preflight_errors: list[str] = []
 
@@ -1484,10 +1607,22 @@ def test_operator_bundle_rejects_mixed_capture_ids(
         },
     }
     monkeypatch.setattr(gate, "BASELINE_RECEIPT_SPECS", specs)
+
+    def validate_receipt(
+        task_id: str,
+        _spec: dict[str, Any],
+        _errors: list[str],
+        *,
+        bundle_capture_roots: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if bundle_capture_roots is not None:
+            bundle_capture_roots[task_id] = gate.PurePosixPath("/historical")
+        return receipts[task_id]
+
     monkeypatch.setattr(
         gate,
         "_validate_baseline_receipt",
-        lambda task_id, spec, errors: receipts[task_id],
+        validate_receipt,
     )
     monkeypatch.setattr(
         gate,
@@ -1761,6 +1896,124 @@ def test_gate_allows_only_explicit_redirected_cache_roots(
             parent.rmdir()
             parent = parent.parent
     assert errors == []
+
+
+def _init_opaque_gitlink_fixture(root: Path) -> tuple[Path, str]:
+    origin = root.parent / f"{root.name}-reviewed-origin"
+    reviewed_oid, _ = _init_repository(origin, {"reviewed.py": "VALUE = 1\n"})
+    _init_repository(root, {"README.md": "outer\n"})
+    _git(
+        root,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "-q",
+        str(origin),
+        "vendor/reviewed",
+    )
+    _commit(root, "bind reviewed opaque gitlink")
+    return origin, reviewed_oid
+
+
+@pytest.mark.parametrize("materialization", ("absent", "clean"))
+def test_current_scan_prunes_only_exact_index_bound_opaque_gitlinks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    materialization: str,
+) -> None:
+    root = tmp_path / f"opaque-{materialization}"
+    _origin, reviewed_oid = _init_opaque_gitlink_fixture(root)
+    if materialization == "absent":
+        _git(root, "submodule", "deinit", "-f", "--", "vendor/reviewed")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    monkeypatch.setattr(gate, "REPOSITORY_PATHS", {"accelerate": Path(".")})
+    monkeypatch.setattr(
+        gate,
+        "RUNNER_UNMATERIALIZED_GITLINKS",
+        {"accelerate": {"vendor/reviewed": reviewed_oid}},
+    )
+    errors: list[str] = []
+
+    gate._validate_current_trust_sensitive_ignored_inputs(errors)
+
+    assert errors == []
+
+
+@pytest.mark.parametrize(
+    "drift",
+    ("unknown_gitlink", "oid", "dirty_materialization", "nonrepo_materialization"),
+)
+def test_current_scan_rejects_opaque_gitlink_trust_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    drift: str,
+) -> None:
+    root = tmp_path / f"opaque-drift-{drift}"
+    _origin, reviewed_oid = _init_opaque_gitlink_fixture(root)
+    expected_oid = reviewed_oid
+    if drift == "unknown_gitlink":
+        unknown_origin = tmp_path / "unknown-origin"
+        _init_repository(unknown_origin, {"unknown.py": "VALUE = 2\n"})
+        _git(
+            root,
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "-q",
+            str(unknown_origin),
+            "vendor/unknown",
+        )
+        _commit(root, "add unknown opaque gitlink")
+    elif drift == "oid":
+        expected_oid = "0" * 40
+    elif drift == "dirty_materialization":
+        _write(root / "vendor/reviewed/untracked.py", "UNTRUSTED = True\n")
+    else:
+        _git(root, "submodule", "deinit", "-f", "--", "vendor/reviewed")
+        _write(root / "vendor/reviewed/untrusted.bin", "not a repository\n")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    monkeypatch.setattr(gate, "REPOSITORY_PATHS", {"accelerate": Path(".")})
+    monkeypatch.setattr(
+        gate,
+        "RUNNER_UNMATERIALIZED_GITLINKS",
+        {"accelerate": {"vendor/reviewed": expected_oid}},
+    )
+    errors: list[str] = []
+
+    gate._validate_current_trust_sensitive_ignored_inputs(errors)
+
+    assert errors
+    assert any(
+        token in error
+        for error in errors
+        for token in (
+            "unknown opaque gitlinks",
+            "index mode/OID drifted",
+            "worktree contains staged, unstaged, untracked, or ignored drift",
+            "non-repository directory",
+        )
+    ), errors
+
+
+def test_current_scan_rejects_unknown_nested_git_admin_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "nested-git-admin"
+    _init_repository(root, {"README.md": "source\n"})
+    _write(root / "ordinary/.git", "gitdir: /untrusted\n")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    monkeypatch.setattr(gate, "REPOSITORY_PATHS", {"accelerate": Path(".")})
+    monkeypatch.setattr(
+        gate, "RUNNER_UNMATERIALIZED_GITLINKS", {"accelerate": {}}
+    )
+    errors: list[str] = []
+
+    gate._validate_current_trust_sensitive_ignored_inputs(errors)
+
+    assert any("unknown nested Git administration entry" in error for error in errors)
 
 
 def test_gate_rejects_log_traversal(bound_gate: CapturedBundle) -> None:
@@ -3495,6 +3748,24 @@ def test_release_work_is_ignored_but_final_evidence_is_not() -> None:
             check=False,
         )
         assert visible.returncode == 1, relative
+
+
+def test_accelerate_inventory_json_has_one_narrow_gitignore_exception() -> None:
+    exact = "docs/architecture/incremental_proof_sealer_inventory/accelerate.json"
+    neighbor = "docs/architecture/incremental_proof_sealer_inventory/unreviewed.json"
+    exact_result = subprocess.run(
+        ("git", "check-ignore", "--no-index", "-q", "--", exact),
+        cwd=ROOT,
+        check=False,
+    )
+    neighbor_result = subprocess.run(
+        ("git", "check-ignore", "--no-index", "-q", "--", neighbor),
+        cwd=ROOT,
+        check=False,
+    )
+
+    assert exact_result.returncode == 1
+    assert neighbor_result.returncode == 0
 
 
 def test_release_work_cleanup_unlinks_hardlink_without_chmodding_external_inode(

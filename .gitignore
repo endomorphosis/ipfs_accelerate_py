@@ -242,4 +242,5 @@ state/**/*.out
 !/artifacts/agent_supervisor/incremental_proof_sealer/release_validation.json
 !/artifacts/agent_supervisor/incremental_proof_sealer/release_validation.log
 /artifacts/agent_supervisor/incremental_proof_sealer/release-work/
+!/docs/architecture/incremental_proof_sealer_inventory/accelerate.json
 !docs/architecture/formal_verification_g213_terminal_evidence.json

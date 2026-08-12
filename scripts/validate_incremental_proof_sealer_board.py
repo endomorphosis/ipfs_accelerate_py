@@ -1105,11 +1105,214 @@ def _git_ignored_paths(
     }
 
 
+def _materialized_opaque_gitlink_is_clean(
+    *,
+    repository: str,
+    relative: str,
+    target: Path,
+    expected_oid: str,
+    errors: list[str],
+) -> bool:
+    """Verify an initialized allowlisted gitlink before treating it as opaque."""
+
+    initial_error_count = len(errors)
+    label = f"{repository} current opaque gitlink {relative!r}"
+    top = _git_stdout(
+        target,
+        errors,
+        f"resolve {label} worktree root",
+        "rev-parse",
+        "--show-toplevel",
+    )
+    try:
+        resolved_target = target.resolve(strict=True)
+        resolved_top = Path(top).resolve(strict=True) if top else None
+    except OSError as exc:
+        errors.append(f"cannot resolve {label}: {type(exc).__name__}")
+        return False
+    if resolved_top != resolved_target:
+        errors.append(f"{label} is materialized as a non-repository directory")
+        return False
+    _reject_git_replacement_state(target, label=label, errors=errors)
+    head = _git_stdout(target, errors, f"resolve {label} HEAD", "rev-parse", "HEAD")
+    if head != expected_oid:
+        errors.append(f"{label} HEAD does not match its reviewed index OID")
+
+    tree_raw = _git_bytes(
+        target,
+        errors,
+        f"read {label} HEAD tree",
+        "ls-tree",
+        "-rz",
+        "--full-tree",
+        "HEAD",
+    )
+    index_raw = _git_bytes(
+        target,
+        errors,
+        f"read {label} index",
+        "ls-files",
+        "--stage",
+        "-z",
+        "--",
+    )
+    tags_raw = _git_bytes(
+        target,
+        errors,
+        f"read {label} index flags",
+        "ls-files",
+        "-v",
+        "-z",
+        "--",
+    )
+    status_raw = _git_bytes(
+        target,
+        errors,
+        f"inspect {label} worktree",
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--ignored=matching",
+        "--ignore-submodules=none",
+    )
+    if None not in (tree_raw, index_raw, tags_raw, status_raw):
+        assert tree_raw is not None
+        assert index_raw is not None
+        assert tags_raw is not None
+        assert status_raw is not None
+        tree_entries = _parse_runner_tree(tree_raw, repository, errors)
+        index_entries = _parse_runner_index(index_raw, repository, errors)
+        expected_index = {
+            path: [(mode, oid, 0)]
+            for path, (mode, _kind, oid) in tree_entries.items()
+        }
+        if index_entries != expected_index:
+            errors.append(f"{label} index differs from its exact HEAD tree")
+        index_tags = _parse_runner_index_tags(tags_raw, repository, errors)
+        if set(index_tags) != set(index_entries) or any(
+            tag != "H" for tag in index_tags.values()
+        ):
+            errors.append(f"{label} index contains non-ordinary flags")
+        if status_raw:
+            errors.append(
+                f"{label} worktree contains staged, unstaged, untracked, or ignored drift"
+            )
+    return len(errors) == initial_error_count
+
+
+def _validated_current_opaque_gitlinks(
+    repository: str,
+    repository_root: Path,
+    errors: list[str],
+) -> set[str] | None:
+    """Bind the closed opaque-gitlink set to index OIDs and disk state."""
+
+    expected = dict(RUNNER_UNMATERIALIZED_GITLINKS.get(repository, {}))
+    initial_error_count = len(errors)
+    index_raw = _git_bytes(
+        repository_root,
+        errors,
+        f"read {repository} current index for opaque gitlinks",
+        "ls-files",
+        "--stage",
+        "-z",
+        "--",
+    )
+    if index_raw is None:
+        return None
+    index_entries = _parse_runner_index(index_raw, repository, errors)
+    delegated_repositories = (
+        {
+            relative.as_posix()
+            for name, relative in REPOSITORY_PATHS.items()
+            if repository == "accelerate"
+            and name != "accelerate"
+            and relative != Path(".")
+        }
+        if repository == "accelerate"
+        else set()
+    )
+    observed_gitlinks = {
+        relative
+        for relative, entries in index_entries.items()
+        if any(mode == "160000" for mode, _oid, _stage in entries)
+    }
+    unknown = sorted(observed_gitlinks - set(expected) - delegated_repositories)
+    if unknown:
+        errors.append(
+            f"{repository} current index contains unknown opaque gitlinks: {unknown[:12]}"
+        )
+
+    for relative, expected_oid in sorted(expected.items()):
+        pure = PurePosixPath(relative)
+        if (
+            not relative
+            or pure.is_absolute()
+            or relative != pure.as_posix()
+            or any(part in {"", ".", ".."} for part in pure.parts)
+        ):
+            errors.append(
+                f"{repository} opaque gitlink allowlist has an unsafe path: {relative!r}"
+            )
+            continue
+        entries = index_entries.get(relative)
+        if entries != [("160000", expected_oid, 0)]:
+            errors.append(
+                f"{repository} current opaque gitlink {relative!r} index mode/OID drifted"
+            )
+
+    if len(errors) != initial_error_count:
+        return None
+
+    for relative, expected_oid in sorted(expected.items()):
+        target = repository_root / PurePosixPath(relative)
+        if not os.path.lexists(target):
+            continue
+        try:
+            info = target.lstat()
+        except OSError as exc:
+            errors.append(
+                f"cannot inspect {repository} current opaque gitlink {relative!r}: "
+                f"{type(exc).__name__}"
+            )
+            continue
+        if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            errors.append(
+                f"{repository} current opaque gitlink {relative!r} is a symlink or special entry"
+            )
+            continue
+        try:
+            has_entries = next(target.iterdir(), None) is not None
+        except OSError as exc:
+            errors.append(
+                f"cannot enumerate {repository} current opaque gitlink {relative!r}: "
+                f"{type(exc).__name__}"
+            )
+            continue
+        if has_entries:
+            _materialized_opaque_gitlink_is_clean(
+                repository=repository,
+                relative=relative,
+                target=target,
+                expected_oid=expected_oid,
+                errors=errors,
+            )
+    if len(errors) != initial_error_count:
+        return None
+    return set(expected)
+
+
 def _validate_current_trust_sensitive_ignored_inputs(errors: list[str]) -> None:
     """Deny current ignored inputs outside explicitly irrelevant cache roots."""
 
     for repository, relative_root in REPOSITORY_PATHS.items():
         repository_root = (REPO_ROOT / relative_root).resolve()
+        opaque_gitlinks = _validated_current_opaque_gitlinks(
+            repository, repository_root, errors
+        )
+        if opaque_gitlinks is None:
+            continue
         visited = 0
         candidates: list[str] = []
         try:
@@ -1121,12 +1324,20 @@ def _validate_current_trust_sensitive_ignored_inputs(errors: list[str]) -> None:
                 pruned: list[str] = []
                 for name in directory_names:
                     relative = (relative_current / name).as_posix()
+                    if not relative_current.parts and name == ".git":
+                        continue
                     if name == ".git":
+                        errors.append(
+                            f"{repository} current checkout contains unknown nested "
+                            f"Git administration entry: {relative}"
+                        )
                         continue
                     if repository == "accelerate" and relative in {
                         "ipfs_datasets_py",
                         "ipfs_kit_py",
                     }:
+                        continue
+                    if relative in opaque_gitlinks:
                         continue
                     child = repository_root / relative
                     try:
@@ -1151,6 +1362,14 @@ def _validate_current_trust_sensitive_ignored_inputs(errors: list[str]) -> None:
                 directory_names[:] = pruned
                 for name in file_names:
                     relative = (relative_current / name).as_posix()
+                    if not relative_current.parts and name == ".git":
+                        continue
+                    if name == ".git":
+                        errors.append(
+                            f"{repository} current checkout contains unknown nested "
+                            f"Git administration entry: {relative}"
+                        )
+                        continue
                     visited += 1
                     candidates.append(relative)
                 if visited > CURRENT_SENSITIVE_SCAN_MAX_ENTRIES:
@@ -3337,11 +3556,12 @@ def _reviewed_suite_registry(errors: list[str]) -> dict[str, dict[str, Any]]:
 
 def _expected_controlled_environment(
     *,
+    capture_root: PurePosixPath,
     workspace_relative: str,
     pytest_module_path: str,
 ) -> dict[str, str]:
-    workspace = (REPO_ROOT / workspace_relative).resolve()
-    pytest_path = Path(pytest_module_path).resolve()
+    workspace = capture_root / PurePosixPath(workspace_relative)
+    pytest_path = PurePosixPath(pytest_module_path)
     try:
         site_packages = pytest_path.parents[1]
     except IndexError:
@@ -3354,9 +3574,9 @@ def _expected_controlled_environment(
         and len(workspace_parts) >= len(work_prefix) + 2
         else "invalid-capture"
     )
-    source_root = REPO_ROOT.joinpath(*work_prefix, capture_id, "source")
+    source_root = capture_root.joinpath(*work_prefix, capture_id, "source")
     python_path = os.pathsep.join(
-        str(path.resolve())
+        str(path)
         for path in (
             source_root,
             source_root / "ipfs_datasets_py",
@@ -3400,6 +3620,165 @@ def _expected_controlled_environment(
         "TRANSFORMERS_OFFLINE": "1",
         "TZ": "UTC",
     }
+
+
+def _capture_root_from_absolute_path(
+    value: Any,
+    *,
+    expected_suffix: str,
+    label: str,
+    errors: list[str],
+) -> PurePosixPath | None:
+    """Strip one exact capture-local suffix from a canonical absolute path."""
+
+    if not isinstance(value, str) or not value:
+        errors.append(f"{label} must be a canonical absolute capture path")
+        return None
+    path = PurePosixPath(value)
+    suffix = PurePosixPath(expected_suffix)
+    if (
+        not path.is_absolute()
+        or value.startswith("//")
+        or value != path.as_posix()
+        or any(part in {"", ".", ".."} for part in path.parts[1:])
+    ):
+        errors.append(f"{label} must be a canonical absolute capture path")
+        return None
+    suffix_parts = suffix.parts
+    if (
+        suffix.is_absolute()
+        or expected_suffix != suffix.as_posix()
+        or not suffix_parts
+        or any(part in {"", ".", ".."} for part in suffix_parts)
+        or tuple(path.parts[-len(suffix_parts) :]) != suffix_parts
+    ):
+        errors.append(f"{label} does not have the exact capture-local suffix")
+        return None
+    root_parts = path.parts[: -len(suffix_parts)]
+    if not root_parts:
+        errors.append(f"{label} does not contain an absolute capture root")
+        return None
+    root = PurePosixPath(*root_parts)
+    if not root.is_absolute() or root.as_posix().startswith("//"):
+        errors.append(f"{label} does not contain an absolute capture root")
+        return None
+    return root
+
+
+def _infer_historical_capture_root(
+    commands: list[Any],
+    *,
+    expected_ids: list[str],
+    capture_id: str,
+    receipt_label: str,
+    errors: list[str],
+) -> PurePosixPath | None:
+    """Infer one immutable historical checkout root from every command anchor."""
+
+    roots: list[tuple[str, PurePosixPath]] = []
+
+    def add_anchor(value: Any, suffix: str, anchor_label: str) -> None:
+        root = _capture_root_from_absolute_path(
+            value,
+            expected_suffix=suffix,
+            label=anchor_label,
+            errors=errors,
+        )
+        if root is not None:
+            roots.append((anchor_label, root))
+
+    work_root = f"{BASELINE_RECEIPT_ROOT}/work/{capture_id}"
+    for index, expected_id in enumerate(expected_ids):
+        command = commands[index] if index < len(commands) else None
+        if not isinstance(command, Mapping):
+            continue
+        label = f"{receipt_label}.commands[{expected_id}]"
+        workspace_relative = f"{work_root}/{expected_id}"
+        argv = command.get("argv")
+        if isinstance(argv, list):
+            for prefix, leaf in (
+                ("cache_dir=", "pytest-cache"),
+                ("--basetemp=", "pytest"),
+            ):
+                values = [
+                    token[len(prefix) :]
+                    for token in argv
+                    if isinstance(token, str) and token.startswith(prefix)
+                ]
+                if len(values) != 1:
+                    errors.append(f"{label}.argv must contain one exact {prefix} anchor")
+                else:
+                    add_anchor(
+                        values[0],
+                        f"{workspace_relative}/{leaf}",
+                        f"{label}.argv {prefix}",
+                    )
+        environment = command.get("environment")
+        variables = (
+            environment.get("variables") if isinstance(environment, Mapping) else None
+        )
+        if not isinstance(variables, Mapping):
+            continue
+        for key, leaf in (
+            ("HOME", "home"),
+            ("HYPOTHESIS_STORAGE_DIRECTORY", "hypothesis"),
+            ("IPFS_PATH", "ipfs-repo"),
+            ("PYTHONPYCACHEPREFIX", "pycache"),
+            ("TMPDIR", "tmp"),
+        ):
+            add_anchor(
+                variables.get(key),
+                f"{workspace_relative}/{leaf}",
+                f"{label}.environment.{key}",
+            )
+        benchmark = variables.get("PYTEST_ADDOPTS")
+        benchmark_prefix = "--benchmark-storage=file://"
+        if not isinstance(benchmark, str) or not benchmark.startswith(
+            benchmark_prefix
+        ):
+            errors.append(
+                f"{label}.environment.PYTEST_ADDOPTS lacks its exact file anchor"
+            )
+        else:
+            add_anchor(
+                benchmark[len(benchmark_prefix) :],
+                f"{workspace_relative}/pytest-benchmark",
+                f"{label}.environment.PYTEST_ADDOPTS",
+            )
+        python_path = variables.get("PYTHONPATH")
+        python_entries = (
+            python_path.split(os.pathsep) if isinstance(python_path, str) else []
+        )
+        if len(python_entries) != 4:
+            errors.append(
+                f"{label}.environment.PYTHONPATH must contain four ordered paths"
+            )
+        else:
+            source_relative = f"{work_root}/source"
+            for entry_index, suffix in enumerate(
+                (
+                    source_relative,
+                    f"{source_relative}/ipfs_datasets_py",
+                    f"{source_relative}/ipfs_kit_py",
+                )
+            ):
+                add_anchor(
+                    python_entries[entry_index],
+                    suffix,
+                    f"{label}.environment.PYTHONPATH[{entry_index}]",
+                )
+
+    distinct = {root.as_posix() for _label, root in roots}
+    if not roots:
+        errors.append(f"{receipt_label} has no valid historical capture-root anchors")
+        return None
+    if len(distinct) != 1:
+        errors.append(
+            f"{receipt_label} command paths do not bind one canonical absolute "
+            "historical capture root"
+        )
+        return None
+    return roots[0][1]
 
 
 def _looks_patterned_digest(hex_digest: str) -> bool:
@@ -3732,6 +4111,7 @@ def _validate_baseline_command(
     expected_timeout: int,
     expected_suite: Mapping[str, Any],
     capture_id: str,
+    historical_capture_root: PurePosixPath | None,
     receipt_label: str,
     seen_logs: set[str],
     errors: list[str],
@@ -3817,8 +4197,8 @@ def _validate_baseline_command(
     expected_workspace_prefix = f"{BASELINE_RECEIPT_ROOT}/work/{capture_id}/{expected_id}"
     if workspace_relative != expected_workspace_prefix:
         errors.append(f"{label}.workspace_relative_path is not the fixed capture workspace")
-    else:
-        workspace = (REPO_ROOT / expected_workspace_prefix).resolve()
+    elif historical_capture_root is not None:
+        workspace = historical_capture_root / PurePosixPath(expected_workspace_prefix)
         expected_basetemp = f"--basetemp={workspace / 'pytest'}"
         expected_cache = f"cache_dir={workspace / 'pytest-cache'}"
         for token in (
@@ -3930,8 +4310,11 @@ def _validate_baseline_command(
         errors.append(f"{label}.environment.variables must be a string map")
     elif set(variables) != BASELINE_ENVIRONMENT_KEYS:
         errors.append(f"{label}.environment.variables is not the closed hermetic set")
-    elif workspace_relative == expected_workspace_prefix:
-        workspace = (REPO_ROOT / expected_workspace_prefix).resolve()
+    elif (
+        workspace_relative == expected_workspace_prefix
+        and historical_capture_root is not None
+    ):
+        workspace = historical_capture_root / PurePosixPath(expected_workspace_prefix)
         if variables.get("HOME") != str(workspace / "home"):
             errors.append(f"{label}.environment HOME is not capture-local")
         if variables.get("TMPDIR") != str(workspace / "tmp"):
@@ -3960,8 +4343,9 @@ def _validate_baseline_command(
         isinstance(workspace_relative, str)
         and isinstance(python_executable, str)
         and isinstance(module_path, str)
+        and historical_capture_root is not None
     ):
-        workspace = (REPO_ROOT / workspace_relative).resolve()
+        workspace = historical_capture_root / PurePosixPath(workspace_relative)
         template = expected_suite.get("argv_template")
         if isinstance(template, list):
             expected_argv = [
@@ -3973,6 +4357,7 @@ def _validate_baseline_command(
             if argv != expected_argv:
                 errors.append(f"{label}.argv differs from the protected reviewed suite")
         expected_variables = _expected_controlled_environment(
+            capture_root=historical_capture_root,
             workspace_relative=workspace_relative,
             pytest_module_path=module_path,
         )
@@ -4206,6 +4591,8 @@ def _validate_baseline_receipt(
     task_id: str,
     spec: Mapping[str, Any],
     errors: list[str],
+    *,
+    bundle_capture_roots: dict[str, PurePosixPath] | None = None,
 ) -> Mapping[str, Any]:
     receipt_relative = str(spec["receipt"])
     retained_receipt = _secure_read_repo_file(
@@ -4380,6 +4767,15 @@ def _validate_baseline_receipt(
     ]
     if actual_ids != expected_ids:
         errors.append(f"{label}.commands does not exactly cover the fixed ordered command set")
+    historical_capture_root = _infer_historical_capture_root(
+        commands,
+        expected_ids=expected_ids,
+        capture_id=capture_id,
+        receipt_label=label,
+        errors=errors,
+    )
+    if historical_capture_root is not None and bundle_capture_roots is not None:
+        bundle_capture_roots[task_id] = historical_capture_root
     seen_logs: set[str] = set()
     for index, expected_id in enumerate(expected_ids):
         command = commands[index] if index < len(commands) else None
@@ -4393,6 +4789,7 @@ def _validate_baseline_receipt(
             expected_timeout=int(spec["timeouts"][index]),
             expected_suite=reviewed_registry.get(expected_id, {}),
             capture_id=capture_id,
+            historical_capture_root=historical_capture_root,
             receipt_label=label,
             seen_logs=seen_logs,
             errors=errors,
@@ -4469,11 +4866,13 @@ def _validate_operator_baseline_bundle(
     ):
         return {}
     receipts: dict[str, Mapping[str, Any]] = {}
+    capture_roots: dict[str, PurePosixPath] = {}
     for task_id, spec in BASELINE_RECEIPT_SPECS.items():
         receipt = _validate_baseline_receipt(
             task_id,
             spec,
             errors,
+            bundle_capture_roots=capture_roots,
         )
         receipts[task_id] = receipt
         if configured.get(task_id) != _expected_receipt_pin(spec, receipt):
@@ -4491,6 +4890,13 @@ def _validate_operator_baseline_bundle(
     capture_ids = [receipt.get("capture_id") for receipt in receipts.values()]
     if not capture_ids or any(capture_id != capture_ids[0] for capture_id in capture_ids[1:]):
         errors.append("operator baseline receipts do not share one exact capture id")
+    if set(capture_roots) != set(BASELINE_RECEIPT_SPECS) or len(
+        {root.as_posix() for root in capture_roots.values()}
+    ) != 1:
+        errors.append(
+            "operator baseline receipts do not share one canonical absolute "
+            "historical capture root"
+        )
     toolchain_contexts: list[list[tuple[Any, Any]]] = []
     for receipt in receipts.values():
         commands = receipt.get("commands")
