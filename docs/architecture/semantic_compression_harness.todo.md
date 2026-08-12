@@ -324,7 +324,7 @@ A9  SCH-018
 
 ## SCH-010 Implement safe fenced worktree and patch validation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: worktree
