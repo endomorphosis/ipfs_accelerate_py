@@ -351,7 +351,7 @@ A9  SCH-018
 
 ## SCH-011 Implement the complete 14-step harness loop
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: harness-loop
