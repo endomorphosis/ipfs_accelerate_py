@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
-import hashlib
 import json
 import os
 import re
@@ -38,7 +37,7 @@ SCHEDULER_PATH = (
 BOARD_NAMESPACE = "incremental-verification-planner-v1"
 BRANCH = "integration/incremental-verification-planner-main-20260811"
 BASE_REVISION = "c1e33e8f443253e106c464d7c5b5c341c3095876"
-TASK_IDS = tuple(f"IVP-{index:03d}" for index in range(21))
+TASK_IDS = tuple(f"IVP-{index:03d}" for index in range(22))
 GOAL_IDS = (
     "IVP-G000",
     "IVP-G010",
@@ -55,6 +54,29 @@ GOAL_IDS = (
 TERMINAL_TASK = "IVP-019"
 INITIAL_COMPLETED = ("IVP-000",)
 INITIAL_READY = ("IVP-001",)
+SOURCE_SNAPSHOT_TASK = "IVP-021"
+SOURCE_SNAPSHOT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/ivp-source-snapshot@1"
+)
+BENCHMARK_SCHEMA_V2 = (
+    "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@2"
+)
+REPORT_BINDING_SCHEMA_V2 = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "incremental-verification-release-report-binding@2"
+)
+SOURCE_SNAPSHOT_EXCLUSIONS = (
+    "artifacts/agent_supervisor/incremental_verification/benchmark.json",
+    "docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md",
+)
+SOURCE_SNAPSHOT_OUTPUTS = (
+    "ipfs_accelerate_py/agent_supervisor/verification/source_snapshot.py",
+    "benchmarks/agent_supervisor/incremental_verification.py",
+    "test/benchmarks/test_incremental_verification_planner_benchmark.py",
+    *SOURCE_SNAPSHOT_EXCLUSIONS[:1],
+    "test/api/test_agent_supervisor_incremental_verification_report.py",
+    *SOURCE_SNAPSHOT_EXCLUSIONS[1:],
+)
 
 EXPECTED_DEPENDENCIES = {
     "IVP-000": (),
@@ -85,8 +107,9 @@ EXPECTED_DEPENDENCIES = {
     "IVP-016": ("IVP-012", "IVP-013", "IVP-014", "IVP-015"),
     "IVP-017": ("IVP-015",),
     "IVP-018": ("IVP-017",),
-    "IVP-019": ("IVP-016", "IVP-017", "IVP-018", "IVP-020"),
+    "IVP-019": ("IVP-016", "IVP-017", "IVP-018", "IVP-021"),
     "IVP-020": ("IVP-016", "IVP-017", "IVP-018"),
+    "IVP-021": ("IVP-020",),
 }
 
 EXPECTED_GROUPS = {
@@ -99,7 +122,7 @@ EXPECTED_GROUPS = {
     "IVP-G070": ("IVP-012",),
     "IVP-G080": ("IVP-014",),
     "IVP-G090": ("IVP-015", "IVP-016", "IVP-017"),
-    "IVP-G100": ("IVP-018", "IVP-020", "IVP-019"),
+    "IVP-G100": ("IVP-018", "IVP-020", "IVP-021", "IVP-019"),
 }
 
 EXPECTED_GOAL_DEPENDENCIES = {
@@ -240,6 +263,11 @@ REQUIRED_PLAN_TERMS = (
     "not a zero-knowledge proof",
     "signed receipts do not prove test execution",
     "structural validation is not cryptographic validation",
+    "ivp-source-snapshot@1",
+    "source_snapshot_id",
+    "nonignored untracked",
+    "observed_head",
+    "production receipt tree binding remains unchanged",
     "automatic dependency installation",
     "x402",
     "cache hit rate",
@@ -279,6 +307,7 @@ EXPECTED_WAVES = (
     ("IVP-016", "IVP-017"),
     ("IVP-018",),
     ("IVP-020",),
+    ("IVP-021",),
     ("IVP-019",),
 )
 
@@ -631,6 +660,55 @@ def _validate_tasks(text: str, scheduler: Mapping[str, object], errors: list[str
             if "python3 -m pytest" in validation_text and "--timeout=" not in validation_text:
                 errors.append(f"{task.task_id} pytest validation lacks a per-test timeout")
 
+    task_by_id = {task.task_id: task for task in tasks}
+    snapshot_task = task_by_id.get(SOURCE_SNAPSHOT_TASK)
+    if snapshot_task is None:
+        errors.append(f"missing {SOURCE_SNAPSHOT_TASK} source-snapshot repair task")
+    else:
+        if tuple(snapshot_task.outputs) != SOURCE_SNAPSHOT_OUTPUTS:
+            errors.append(
+                f"{SOURCE_SNAPSHOT_TASK} outputs differ from the closed evidence envelope"
+            )
+        if tuple(_csv(snapshot_task.metadata.get("predicted files"))) != (
+            SOURCE_SNAPSHOT_OUTPUTS
+        ):
+            errors.append(
+                f"{SOURCE_SNAPSHOT_TASK} predicted files differ from its outputs"
+            )
+        snapshot_contract = " ".join(
+            str(snapshot_task.metadata.get(field) or "")
+            for field in ("conflict policy", "preconditions", "effects", "acceptance")
+        )
+        for term in (
+            SOURCE_SNAPSHOT_SCHEMA,
+            BENCHMARK_SCHEMA_V2,
+            REPORT_BINDING_SCHEMA_V2,
+            "source_snapshot_id",
+            "observed_head",
+            *SOURCE_SNAPSHOT_EXCLUSIONS,
+            "5a7a2df8181cfdc33bc19be09989df7ff83f2d4e",
+            "6cd037c7738f44904add46391537588e67f6f238",
+        ):
+            if term not in snapshot_contract:
+                errors.append(
+                    f"{SOURCE_SNAPSHOT_TASK} contract omits reviewed term {term!r}"
+                )
+    terminal_task = task_by_id.get(TERMINAL_TASK)
+    if terminal_task is not None:
+        terminal_outputs = set(terminal_task.outputs)
+        benchmark_artifact = SOURCE_SNAPSHOT_EXCLUSIONS[0]
+        if benchmark_artifact not in terminal_outputs:
+            errors.append("terminal task does not own the regenerated benchmark artifact")
+        terminal_validation = str(terminal_task.metadata.get("validation") or "")
+        expected_generator = (
+            "python3 benchmarks/agent_supervisor/incremental_verification.py "
+            f"--output {benchmark_artifact}"
+        )
+        if expected_generator not in terminal_validation:
+            errors.append("terminal task does not regenerate benchmark evidence first")
+        if "source_snapshot_id" not in str(terminal_task.acceptance or ""):
+            errors.append("terminal task acceptance omits final source snapshot equality")
+
     for task_id, dependencies in edges.items():
         goal_id = TASK_GOALS.get(task_id, "")
         goal_closure = _transitive_dependencies(goal_id, EXPECTED_GOAL_DEPENDENCIES)
@@ -766,7 +844,13 @@ def _validate_scheduler(scheduler: Mapping[str, object], errors: list[str]) -> N
                 errors.append(f"scheduler lane {index} has a sharding mismatch")
             initial = tuple(str(item) for item in lane.get("initial_task_ids", ()))
             for task_id in initial:
-                remainder = int(hashlib.sha256(task_id.encode()).hexdigest()[:8], 16) % 3
+                match = re.fullmatch(r"IVP-(\d{3})", task_id)
+                if match is None:
+                    errors.append(
+                        f"scheduler initial task {task_id} has an invalid task ID"
+                    )
+                    continue
+                remainder = int(match.group(1)) % 3
                 if remainder != index:
                     errors.append(f"scheduler initial task {task_id} is assigned to wrong lane")
         all_initial = tuple(
@@ -790,7 +874,7 @@ def _validate_scheduler(scheduler: Mapping[str, object], errors: list[str]) -> N
             errors.append("scheduler task_groups differ from the reviewed goal projection")
     projection = scheduler.get("initial_projection")
     expected_projection = {
-        "task_count": 21,
+        "task_count": 22,
         "completed_task_ids": list(INITIAL_COMPLETED),
         "ready_task_ids": list(INITIAL_READY),
         "blocked_task_ids": [],

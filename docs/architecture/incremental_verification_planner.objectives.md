@@ -38,16 +38,16 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Parallel lane: release
 - Resource class: cpu-medium
 - Goal: Deliver one focused IncrementalVerificationPlanner subsystem that selects affected checks, reuses exact valid receipts, executes missing work reproducibly, minimizes failures, and emits a safe next-repair route.
-- Evidence: ivp/release-report@1, ivp/conformance-matrix@1, ivp/benchmark@1
-- Evidence requirements JSON: ["ivp/release-report@1","ivp/conformance-matrix@1","ivp/benchmark@1"]
+- Evidence: ivp/conformance-matrix@1, ivp/source-snapshot@1, ivp/benchmark@2, ivp/release-report@2
+- Evidence requirements JSON: ["ivp/conformance-matrix@1","ivp/source-snapshot@1","ivp/benchmark@2","ivp/release-report@2"]
 - Evidence criteria: {"all_required_children_authoritatively_completed":true,"stale_accepted":0,"simulated_production_accepted":0,"fixture_false_negatives":0,"deterministic_commitments":true}
-- Outputs: ipfs_accelerate_py/agent_supervisor/verification, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
-- Predicted files: ipfs_accelerate_py/agent_supervisor/verification, test/api/test_agent_supervisor_incremental_verification_conformance.py, benchmarks/agent_supervisor/incremental_verification.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
+- Outputs: ipfs_accelerate_py/agent_supervisor/verification, artifacts/agent_supervisor/incremental_verification/benchmark.json, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
+- Predicted files: ipfs_accelerate_py/agent_supervisor/verification, test/api/test_agent_supervisor_incremental_verification_conformance.py, benchmarks/agent_supervisor/incremental_verification.py, test/benchmarks/test_incremental_verification_planner_benchmark.py, artifacts/agent_supervisor/incremental_verification/benchmark.json, test/api/test_agent_supervisor_incremental_verification_report.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
 - Interfaces: create_verification_plan, choose_model_route, build_verification_commitment
 - Validation: python3 -m pytest -q test/api/test_agent_supervisor_incremental_verification_conformance.py
 - Acceptance: Every required receipt mutation fails closed; controlled selection has zero false negatives; unavailable, timeout, stale, and simulated results remain non-passes; provider selection remains separate; the benchmark and limitations are honest.
-- Gap task: IVP-019
-- Refinement: Children own disjoint contracts, adapters, cache, selection, routing, orchestration, and evidence before the terminal fan-in.
+- Gap task: IVP-021, IVP-019
+- Refinement: Children own disjoint contracts, adapters, cache, selection, routing, orchestration, and evidence; the release path repairs lint, establishes a fixed-point source snapshot, then performs terminal regeneration and fan-in.
 - Embedding query: incremental verification exact receipt cache semantic test selection reproducible checks counterexample model route commitment
 - AST query: Locate proof receipt contracts, validation DAG selection, process-tree fencing, resource admission, semantic impact graphs, and cache authority reused by the focused planner.
 - Conflict policy: Extend existing trust and runtime primitives; do not fork assurance lattices or build a generic agent platform.
@@ -298,16 +298,16 @@ IVP-G000  Trustworthy incremental verification and repair routing
 - Parallel lane: release
 - Resource class: cpu-large
 - Goal: Document the subsystem, freeze public exports, run focused/regression suites and static checks, and publish the requested final report including the exact ZK-aggregation next step.
-- Evidence: ivp/public-api@1, ivp/final-validation@1, ivp/release-report@1
-- Evidence requirements JSON: ["ivp/public-api@1","ivp/final-validation@1","ivp/release-report@1"]
+- Evidence: ivp/public-api@1, ivp/final-validation@1, ivp/source-snapshot@1, ivp/benchmark@2, ivp/release-report@2
+- Evidence requirements JSON: ["ivp/public-api@1","ivp/final-validation@1","ivp/source-snapshot@1","ivp/benchmark@2","ivp/release-report@2"]
 - Evidence criteria: {"public_apis_importable":true,"focused_suite_green":true,"regression_suite_green":true,"limitations_listed":true,"zk_next_step_exact":true}
-- Outputs: ipfs_accelerate_py/agent_supervisor/verification/README.md, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md, ipfs_accelerate_py/agent_supervisor/verification/__init__.py
-- Predicted files: ipfs_accelerate_py/agent_supervisor/verification/README.md, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md, test/api/test_agent_supervisor_incremental_verification_report.py, ipfs_accelerate_py/agent_supervisor/verification/__init__.py
-- Interfaces: package public exports, final report
+- Outputs: ipfs_accelerate_py/agent_supervisor/verification/README.md, ipfs_accelerate_py/agent_supervisor/verification/source_snapshot.py, benchmarks/agent_supervisor/incremental_verification.py, test/benchmarks/test_incremental_verification_planner_benchmark.py, artifacts/agent_supervisor/incremental_verification/benchmark.json, test/api/test_agent_supervisor_incremental_verification_report.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md, ipfs_accelerate_py/agent_supervisor/verification/__init__.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/verification/README.md, ipfs_accelerate_py/agent_supervisor/verification/source_snapshot.py, benchmarks/agent_supervisor/incremental_verification.py, test/benchmarks/test_incremental_verification_planner_benchmark.py, artifacts/agent_supervisor/incremental_verification/benchmark.json, test/api/test_agent_supervisor_incremental_verification_report.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md, ipfs_accelerate_py/agent_supervisor/verification/__init__.py
+- Interfaces: package public exports, SourceSnapshot, source_snapshot_id, final report
 - Validation: python3 -m pytest -q test/api/test_agent_supervisor_verification_contracts.py test/api/test_agent_supervisor_verification_receipt_cache.py test/api/test_agent_supervisor_incremental_verification_planner.py test/api/test_agent_supervisor_verification_executor.py test/api/test_agent_supervisor_incremental_verification_conformance.py
-- Acceptance: Clean target branch; required APIs and types exported; full report contains modules/adapters/schemas/key/invalidation/tests/proofs/hits/routes/counterexamples/commitment/limitations; ZK work remains external and subsequent to trusted ordinary receipts.
-- Gap task: IVP-018, IVP-020, IVP-019
-- Refinement: Documentation may draft after benchmark; the sealed IVP-020 repair owns inherited Ruff debt, and terminal fan-in owns exports and integrated corrections after that receipt lands.
+- Acceptance: Clean target branch; required APIs and types exported; benchmark and report bind the same recomputed source_snapshot_id; full report contains modules/adapters/schemas/key/invalidation/tests/proofs/hits/routes/counterexamples/commitment/limitations; ZK work remains external and subsequent to trusted ordinary receipts.
+- Gap task: IVP-018, IVP-020, IVP-021, IVP-019
+- Refinement: Documentation may draft after benchmark; IVP-020 owns inherited Ruff debt, IVP-021 establishes the evidence fixed point, and terminal fan-in regenerates evidence after freezing exports.
 - Embedding query: incremental verification public API final report receipt cache model route ZK aggregator next step
 - AST query: Verify all new imports, package exports, focused tests, and regressions against the final tree.
 - Conflict policy: Do not mark targets met without current evidence or expand scope during release cleanup.

@@ -504,15 +504,34 @@ No ZK backend is added. A future aggregator may prove membership/aggregation
 over this stable receipt Merkle tree after the ordinary receipt chain has been
 validated in production.
 
+### 11.5 Evidence-envelope source snapshot
+
+Checked benchmark and release-report evidence binds a canonical
+`ivp-source-snapshot@1` identity rather than Git HEAD. The manifest represents
+the effective set of present tracked and nonignored untracked paths, binding
+regular-file bytes and canonical modes, symlink targets, and exact gitlink
+object IDs. It excludes exactly the benchmark artifact and release report and
+normalizes only exact IVP task-block `- Status: todo` / `- Status: completed`
+rows. It never binds tracked/untracked provenance, a ref or commit, timestamps,
+observation time, or an absolute checkout path.
+
+The reviewed `ipfs_kit_py` and `ipfs_datasets_py` gitlinks must be initialized,
+clean, and have nested HEAD equal to the superproject gitlink at their reviewed
+revisions. Benchmark schema v2 and release-report binding schema v2 carry the
+same recomputed `source_snapshot_id`; `observed_head` is diagnostic only.
+Production receipt tree binding remains unchanged: this fixed-point identity is
+only for the self-containing checked evidence envelope.
+
 ## 12. Parallel implementation program
 
 ### 12.1 Advisory workstreams
 
 `Parallel lane` task metadata names an ownership workstream; it is not dispatch
-authority. The configured supervisor dispatches through three strict SHA-256
-task-ID shards and file/resource claims. `Allow concurrent with` remains empty;
-readiness comes only from the dependency DAG and conflicts are fenced by exact
-predicted-file/resource claims.
+authority. The configured supervisor dispatches through three strict shards
+computed from the trailing decimal task-ID suffix modulo three, plus exact
+file/resource claims. `Allow concurrent with` remains empty; readiness comes
+only from the dependency DAG and conflicts are fenced by exact predicted-file/
+resource claims.
 
 | Workstream | Ownership | Tasks |
 | --- | --- | --- |
@@ -526,15 +545,16 @@ predicted-file/resource claims.
 | routing | provider-neutral model route | IVP-012 |
 | orchestration | execute plan and bundle results | IVP-014 |
 | evaluation | differential fixtures, conformance, benchmark | IVP-015–IVP-017 |
-| release | docs/report/public surface and bounded lint repair | IVP-018, IVP-020, IVP-019 |
+| release | docs/report/public surface, lint repair, and fixed-point evidence | IVP-018, IVP-020, IVP-021, IVP-019 |
 
 Actual strict shard assignment is:
 
-- shard 0: IVP-001, IVP-004, IVP-011;
-- shard 1: IVP-000, IVP-005, IVP-008, IVP-009, IVP-010, IVP-013,
-  IVP-014, IVP-016, IVP-019;
-- shard 2: IVP-002, IVP-003, IVP-006, IVP-007, IVP-012, IVP-015,
-  IVP-017, IVP-018, IVP-020.
+- shard 0: IVP-000, IVP-003, IVP-006, IVP-009, IVP-012, IVP-015,
+  IVP-018, IVP-021;
+- shard 1: IVP-001, IVP-004, IVP-007, IVP-010, IVP-013, IVP-016,
+  IVP-019;
+- shard 2: IVP-002, IVP-005, IVP-008, IVP-011, IVP-014, IVP-017,
+  IVP-020.
 
 ### 12.2 Waves
 
@@ -550,13 +570,16 @@ Actual strict shard assignment is:
 | 7 | IVP-016, IVP-017 | hard conformance and benchmark evidence independently |
 | 8 | IVP-018 | benchmark/report evidence even if hard conformance is red |
 | 9 | IVP-020 | bounded repair of inherited Ruff debt after retry-budget exhaustion |
-| 10 | IVP-019 | conformance, benchmark, report, and full release gate |
+| 10 | IVP-021 | canonical fixed-point source-snapshot binding for benchmark/report evidence |
+| 11 | IVP-019 | conformance, regenerated benchmark, rebound report, and full release gate |
 
 Tasks have disjoint predicted files wherever possible. IVP-001 owns only the
 minimal lazy package stub needed for focused contract imports. IVP-020 is a
 sealed, semantics-preserving recovery step for the exact Ruff surface exposed
-by terminal validation; IVP-019 alone freezes the complete public export
-surface and performs cross-module fan-in after that repair receipt lands.
+by terminal validation. IVP-021 replaces the self-referential Git-HEAD evidence
+check with the closed source snapshot. IVP-019 alone freezes the complete
+public export surface, regenerates the evidence after that export change, and
+performs cross-module fan-in.
 
 ## 13. Required test matrix
 

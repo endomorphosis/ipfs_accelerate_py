@@ -10,10 +10,11 @@ verification authority. Unknown or uncertain selection broadens execution.
 
 ## Advisory workstreams
 
-These labels describe ownership only. Runtime dispatch uses the three sealed
-SHA-256 shards in the scheduler config; dependency readiness and exact file/
-resource claims are authoritative. `Allow concurrent with` is intentionally
-empty for every task because it is not a configured-board dispatch input.
+These labels describe ownership only. Runtime dispatch uses three sealed shards
+computed from the trailing decimal task-ID suffix modulo three; dependency
+readiness and exact file/resource claims are authoritative. `Allow concurrent
+with` is intentionally empty for every task because it is not a
+configured-board dispatch input.
 
 | Workstream | Tasks |
 | --- | --- |
@@ -26,7 +27,7 @@ empty for every task because it is not a configured-board dispatch input.
 | routing | IVP-012 |
 | orchestration | IVP-014 |
 | evaluation | IVP-015, IVP-016, IVP-017 |
-| release | IVP-018, IVP-019 |
+| release | IVP-018, IVP-020, IVP-021, IVP-019 |
 
 ## IVP-000 Seal the incremental-verification planning controls
 
@@ -625,10 +626,10 @@ empty for every task because it is not a configured-board dispatch input.
 - Review only: false
 - Priority: P0
 - Track: release
-- Depends on: IVP-016, IVP-017, IVP-018, IVP-020
+- Depends on: IVP-016, IVP-017, IVP-018, IVP-021
 - Goal id: IVP-G100
-- Outputs: ipfs_accelerate_py/agent_supervisor/verification/__init__.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
-- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_contracts.py test/api/test_agent_supervisor_verification_datasets_adapter.py test/api/test_agent_supervisor_verification_receipt_store.py test/api/test_agent_supervisor_verification_process_runner.py test/api/test_agent_supervisor_pytest_verification_adapter.py test/api/test_agent_supervisor_mypy_verification_adapter.py test/api/test_agent_supervisor_prover_verification_adapters.py test/api/test_agent_supervisor_verification_receipt_cache.py test/api/test_agent_supervisor_verification_selection.py test/api/test_agent_supervisor_incremental_verification_planner.py test/api/test_agent_supervisor_verification_counterexamples.py test/api/test_agent_supervisor_verification_model_route.py test/api/test_agent_supervisor_verification_bundle.py test/api/test_agent_supervisor_verification_executor.py test/api/test_agent_supervisor_verification_selection_evaluation.py test/api/test_agent_supervisor_incremental_verification_conformance.py test/api/test_agent_supervisor_incremental_verification_report.py test/benchmarks/test_incremental_verification_planner_benchmark.py; PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_test_execution_identity.py test/api/test_proof_reuse_invalidation_mutations.py test/api/test_proof_reuse_security_concurrency.py test/api/test_agent_supervisor_formal_verification_cache.py test/api/test_agent_supervisor_validation_scheduler.py test/api/test_agent_supervisor_process_tree_fencing.py test/api/test_agent_supervisor_resource_scheduler.py; PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m ruff check ipfs_accelerate_py/agent_supervisor/verification benchmarks/agent_supervisor/incremental_verification.py test/benchmarks/test_incremental_verification_planner_benchmark.py test/api/test_agent_supervisor_verification_*.py test/api/test_agent_supervisor_incremental_verification_*.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/verification/__init__.py, artifacts/agent_supervisor/incremental_verification/benchmark.json, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 benchmarks/agent_supervisor/incremental_verification.py --output artifacts/agent_supervisor/incremental_verification/benchmark.json; PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_verification_contracts.py test/api/test_agent_supervisor_verification_datasets_adapter.py test/api/test_agent_supervisor_verification_receipt_store.py test/api/test_agent_supervisor_verification_process_runner.py test/api/test_agent_supervisor_pytest_verification_adapter.py test/api/test_agent_supervisor_mypy_verification_adapter.py test/api/test_agent_supervisor_prover_verification_adapters.py test/api/test_agent_supervisor_verification_receipt_cache.py test/api/test_agent_supervisor_verification_selection.py test/api/test_agent_supervisor_incremental_verification_planner.py test/api/test_agent_supervisor_verification_counterexamples.py test/api/test_agent_supervisor_verification_model_route.py test/api/test_agent_supervisor_verification_bundle.py test/api/test_agent_supervisor_verification_executor.py test/api/test_agent_supervisor_verification_selection_evaluation.py test/api/test_agent_supervisor_incremental_verification_conformance.py test/api/test_agent_supervisor_incremental_verification_report.py test/benchmarks/test_incremental_verification_planner_benchmark.py; PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/api/test_agent_supervisor_test_execution_identity.py test/api/test_proof_reuse_invalidation_mutations.py test/api/test_proof_reuse_security_concurrency.py test/api/test_agent_supervisor_formal_verification_cache.py test/api/test_agent_supervisor_validation_scheduler.py test/api/test_agent_supervisor_process_tree_fencing.py test/api/test_agent_supervisor_resource_scheduler.py; PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m ruff check ipfs_accelerate_py/agent_supervisor/verification benchmarks/agent_supervisor/incremental_verification.py test/benchmarks/test_incremental_verification_planner_benchmark.py test/api/test_agent_supervisor_verification_*.py test/api/test_agent_supervisor_incremental_verification_*.py
 - Board namespace: incremental-verification-planner-v1
 - Bundle: agent-supervisor/incremental-verification/release
 - Parallel lane: release
@@ -636,16 +637,16 @@ empty for every task because it is not a configured-board dispatch input.
 - Resource stage: release
 - Estimated tokens: 18000
 - Implementation timeout seconds: 5400
-- Predicted files: ipfs_accelerate_py/agent_supervisor/verification/__init__.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md, ipfs_accelerate_py/agent_supervisor/verification/contracts.py, ipfs_accelerate_py/agent_supervisor/verification/datasets_adapter.py, ipfs_accelerate_py/agent_supervisor/verification/receipt_store.py, ipfs_accelerate_py/agent_supervisor/verification/process_runner.py, ipfs_accelerate_py/agent_supervisor/verification/receipt_cache.py, ipfs_accelerate_py/agent_supervisor/verification/selection.py, ipfs_accelerate_py/agent_supervisor/verification/planner.py, ipfs_accelerate_py/agent_supervisor/verification/counterexamples.py, ipfs_accelerate_py/agent_supervisor/verification/model_route.py, ipfs_accelerate_py/agent_supervisor/verification/bundle.py, ipfs_accelerate_py/agent_supervisor/verification/executor.py, ipfs_accelerate_py/agent_supervisor/verification/evaluation.py, ipfs_accelerate_py/agent_supervisor/verification/adapters/pytest_adapter.py, ipfs_accelerate_py/agent_supervisor/verification/adapters/mypy_adapter.py, ipfs_accelerate_py/agent_supervisor/verification/adapters/prover_adapters.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/verification/__init__.py, ipfs_accelerate_py/agent_supervisor/verification/source_snapshot.py, artifacts/agent_supervisor/incremental_verification/benchmark.json, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md, ipfs_accelerate_py/agent_supervisor/verification/contracts.py, ipfs_accelerate_py/agent_supervisor/verification/datasets_adapter.py, ipfs_accelerate_py/agent_supervisor/verification/receipt_store.py, ipfs_accelerate_py/agent_supervisor/verification/process_runner.py, ipfs_accelerate_py/agent_supervisor/verification/receipt_cache.py, ipfs_accelerate_py/agent_supervisor/verification/selection.py, ipfs_accelerate_py/agent_supervisor/verification/planner.py, ipfs_accelerate_py/agent_supervisor/verification/counterexamples.py, ipfs_accelerate_py/agent_supervisor/verification/model_route.py, ipfs_accelerate_py/agent_supervisor/verification/bundle.py, ipfs_accelerate_py/agent_supervisor/verification/executor.py, ipfs_accelerate_py/agent_supervisor/verification/evaluation.py, ipfs_accelerate_py/agent_supervisor/verification/adapters/pytest_adapter.py, ipfs_accelerate_py/agent_supervisor/verification/adapters/mypy_adapter.py, ipfs_accelerate_py/agent_supervisor/verification/adapters/prover_adapters.py
 - Interfaces: create_verification_plan, choose_model_route, build_verification_commitment, VerificationReceiptCache, IncrementalVerificationPlanner, ModelRoutePlanner
 - Allow concurrent with:
 - Conflict policy: Terminal sequential fan-in may correct only integrated import/static/regression failures; no scope expansion, status weakening, provider hardcoding, or unsupported completion claim.
-- Preconditions: Conformance, benchmark, and report tasks are complete with current-tree evidence.
-- Effects: Exports the stable focused public API, runs the complete focused suite plus relevant receipt/cache/process regressions and ruff, updates report with exact final observations, and leaves a clean merge target.
-- Evidence subset: ivp/public-api@1, ivp/final-validation@1, ivp/release-report@1
+- Preconditions: IVP-021 is complete and the benchmark and report bind the same recomputed source_snapshot_id.
+- Effects: Exports the stable focused public API, regenerates the benchmark after the __init__.py change, rebinds the report, runs the complete focused suite plus relevant receipt/cache/process regressions and Ruff, and leaves a clean merge target.
+- Evidence subset: ivp/public-api@1, ivp/final-validation@1, ivp/source-snapshot@1, ivp/benchmark@2, ivp/release-report@2
 - Symbolic first: true
 - LLM context budget bytes: 230000
-- Acceptance: Required public names import lazily; focused test matrix and the declared existing identity/proof-reuse/formal-cache/validation/process-tree/resource regressions pass; ruff passes for new package/tests; target branch has no unmanaged changes; final report truthfully records measured results/limitations and no stale, simulated, timeout, unavailable, unknown, not_modeled, invalid, cancelled, or pending full-suite receipt is accepted as production success.
+- Acceptance: Required public names import lazily; the regenerated benchmark and rebound report share the exact recomputed final source_snapshot_id; focused test matrix and the declared existing identity/proof-reuse/formal-cache/validation/process-tree/resource regressions pass; Ruff passes for new package/tests; target branch has no unmanaged changes; final report truthfully records measured results/limitations and no stale, simulated, timeout, unavailable, unknown, not_modeled, invalid, cancelled, or pending full-suite receipt is accepted as production success.
 - Embedding query: terminal release fan in public incremental verification APIs full tests ruff report clean branch
 
 ## IVP-020 Resolve validation retry-budget failure for IVP-019
@@ -678,3 +679,34 @@ empty for every task because it is not a configured-board dispatch input.
 - LLM context budget bytes: 230000
 - Acceptance: The exact declared Ruff command passes without ignores or rule weakening; the repair merge is clean and marks IVP-020 completed so every lane releases IVP-019 from strategy blocked_tasks before terminal fan-in reruns.
 - Embedding query: IVP-019 retry budget ruff lint release repair verification package tests benchmark
+
+## IVP-021 Replace Git-HEAD evidence binding with a canonical source snapshot
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: release
+- Depends on: IVP-020
+- Goal id: IVP-G100
+- Outputs: ipfs_accelerate_py/agent_supervisor/verification/source_snapshot.py, benchmarks/agent_supervisor/incremental_verification.py, test/benchmarks/test_incremental_verification_planner_benchmark.py, artifacts/agent_supervisor/incremental_verification/benchmark.json, test/api/test_agent_supervisor_incremental_verification_report.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
+- Validation: PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 benchmarks/agent_supervisor/incremental_verification.py --output artifacts/agent_supervisor/incremental_verification/benchmark.json; PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q --timeout=300 test/benchmarks/test_incremental_verification_planner_benchmark.py test/api/test_agent_supervisor_incremental_verification_report.py; PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m ruff check ipfs_accelerate_py/agent_supervisor/verification/source_snapshot.py benchmarks/agent_supervisor/incremental_verification.py test/benchmarks/test_incremental_verification_planner_benchmark.py test/api/test_agent_supervisor_incremental_verification_report.py
+- Board namespace: incremental-verification-planner-v1
+- Bundle: agent-supervisor/incremental-verification/release-evidence-identity
+- Parallel lane: release
+- Resource class: cpu-medium
+- Resource stage: release
+- Estimated tokens: 24000
+- Implementation timeout seconds: 5400
+- Predicted files: ipfs_accelerate_py/agent_supervisor/verification/source_snapshot.py, benchmarks/agent_supervisor/incremental_verification.py, test/benchmarks/test_incremental_verification_planner_benchmark.py, artifacts/agent_supervisor/incremental_verification/benchmark.json, test/api/test_agent_supervisor_incremental_verification_report.py, docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md
+- Interfaces: SourceSnapshot, build_source_snapshot, source_snapshot_id, run_incremental_verification_benchmark, validate_incremental_verification_report
+- Allow concurrent with:
+- Conflict policy: Repair only the release-evidence envelope; do not change VerificationReceiptKey repository-tree binding, executed-tree admission, cache reuse, benchmark measurements/statuses, or production authority. The exclusion set is closed to the exact benchmark artifact and release report, dirty nonignored source cannot be omitted, and normalization is limited to exact IVP task Status metadata values.
+- Preconditions: IVP-020 is authoritatively completed; ipfs_kit_py is initialized, clean, and has nested HEAD equal to gitlink 5a7a2df8181cfdc33bc19be09989df7ff83f2d4e; ipfs_datasets_py is initialized, clean, and has nested HEAD equal to gitlink 6cd037c7738f44904add46391537588e67f6f238; the schema-v1 benchmark/report gates are stale solely because a tracked artifact cannot bind the Git commit that contains itself.
+- Effects: Adds canonical ivp-source-snapshot@1 identity, upgrades benchmark and report bindings to schema/evidence version 2, and yields an identity stable across staging, commit creation, task lifecycle Status transitions, and updates to the two self-referential evidence outputs.
+- Evidence subset: ivp/source-snapshot@1, ivp/benchmark@2, ivp/release-report@2
+- Symbolic first: true
+- LLM context budget bytes: 230000
+- Acceptance: The source snapshot uses schema ipfs_accelerate_py/agent-supervisor/ivp-source-snapshot@1 and domain ivp-source-snapshot@1; it hashes the sorted effective set of present tracked and nonignored untracked paths without binding tracked/untracked provenance, Git HEAD, branch/ref, commit metadata, timestamps, absolute repository root, or observation time. Regular files bind canonical Git mode and exact bytes, executable-bit changes alter identity, symlinks bind mode 120000 and target bytes, and gitlinks bind mode 160000 and exact object ID without recursively hashing their worktrees. Deleted tracked paths are absent from the effective manifest so dirty deletion and the equivalent committed deletion share identity. Only artifacts/agent_supervisor/incremental_verification/benchmark.json and docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md are excluded, with no wildcard or caller-widenable exclusions. Within docs/architecture/incremental_verification_planner.todo.md only exact task-block rows “- Status: todo” and “- Status: completed” are normalized to one lifecycle sentinel; titles, dependencies, all other metadata, status-like prose, malformed rows, and every other byte remain identity-bearing. The two reviewed adapter gitlinks must be initialized and clean with nested HEAD equal to the superproject gitlink and the exact reviewed hashes or snapshot construction fails closed. Tracking or committing unchanged effective bytes does not change source_snapshot_id; tracked content/path/mode/symlink/gitlink changes and nonignored untracked additions do; ignored files, the two exact exclusions, exact task Status transitions, HEAD-only commits, and clone-root changes do not. Benchmark schema ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@2 and report-binding schema ipfs_accelerate_py/agent-supervisor/incremental-verification-release-report-binding@2 bind the same recomputed source_snapshot_id; observed_head is diagnostic only and is excluded from freshness authority and structural content identity. Existing production receipt and VerificationCommitment tree binding remains unchanged. Focused mutation/fixed-point tests, artifact generation, report validation, and Ruff all pass without ignores or dependency installation.
+- Embedding query: canonical source snapshot fixed point benchmark report evidence identity tracked untracked modes symlink gitlink task status normalization observed head

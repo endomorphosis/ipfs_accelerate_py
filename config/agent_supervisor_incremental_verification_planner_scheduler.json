@@ -24,7 +24,7 @@
     "planning_revision_is_runtime_completion_evidence": false
   },
   "initial_projection": {
-    "task_count": 21,
+    "task_count": 22,
     "completed_task_ids": [
       "IVP-000"
     ],
@@ -81,24 +81,24 @@
       "index": 0,
       "name": "ivp-lane-0",
       "strict_shard_remainder": 0,
-      "initial_task_ids": [
-        "IVP-001"
-      ],
-      "initial_focus": "contracts-and-execution-boundaries"
+      "initial_task_ids": [],
+      "initial_focus": "storage-selection-routing-and-evidence"
     },
     {
       "index": 1,
       "name": "ivp-lane-1",
       "strict_shard_remainder": 1,
-      "initial_task_ids": [],
-      "initial_focus": "cache-selection-and-diagnostics"
+      "initial_task_ids": [
+        "IVP-001"
+      ],
+      "initial_focus": "contracts-runtime-conformance-and-release"
     },
     {
       "index": 2,
       "name": "ivp-lane-2",
       "strict_shard_remainder": 2,
       "initial_task_ids": [],
-      "initial_focus": "adapters-routing-and-evaluation"
+      "initial_focus": "adapters-cache-orchestration-and-benchmark"
     }
   ],
   "task_groups": {
@@ -140,6 +140,7 @@
     "IVP-G100": [
       "IVP-018",
       "IVP-020",
+      "IVP-021",
       "IVP-019"
     ]
   },
