@@ -1,0 +1,806 @@
+{
+  "schema_version": "incremental-proof-sealer-inventory@2",
+  "task_id": "IPS-001",
+  "repository": "accelerate",
+  "evidence_subset": "ips/accelerate-inventory@2",
+  "planning_revision": "8881344bb2162f3f8d82f22d8348bc0ac7536f95",
+  "inventory_worktree_parent_revision": "006afc0e7c6169eda50d9daf37819134b42aa1e9",
+  "inspection": {
+    "mode": "source_code_read",
+    "reports": "surfaces_found",
+    "does_not_report": "execution_outcomes"
+  },
+  "baseline_evidence": {
+    "path": "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/accelerate.json",
+    "receipt_digest": "sha256:bec760fcc447ba525a7e7b15e44d670eb224e637c73e6bc39854e7237fdfcde5",
+    "required_command_ids": [
+      "accelerate-proof-focused-core-15",
+      "accelerate-proof-focused-wide-36",
+      "accelerate-proof-reuse-migration",
+      "accelerate-proof-reuse-cross-repo"
+    ],
+    "evidence_origin": "operator_capture",
+    "assurance": "process_observed_only",
+    "nonclaim": "pytest_execution_not_cryptographically_proven"
+  },
+  "surfaces_found": [
+    {
+      "surface_id": "formal_verification_contracts",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "kind": "proof_contract_surface",
+      "proof_class": "integrity_only",
+      "notes": "Owns ProofReceipt and related canonical contracts. ProofReceipt is an unsigned integrity envelope; assurance is a projection of typed evidence, not a cryptographic signature."
+    },
+    {
+      "surface_id": "test_execution_contracts",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/test_execution_contracts.py",
+      "kind": "receipt_contract_surface",
+      "proof_class": "integrity_only",
+      "notes": "Owns TestPassReceipt@1. TestPassReceipt is an unsigned integrity and admission envelope, not a signed receipt."
+    },
+    {
+      "surface_id": "proof_attestation",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_attestation.py",
+      "kind": "attestation_backend_policy",
+      "proof_class": "attestation_binding",
+      "notes": "Attestation backend modes distinguish cryptographic versus simulated backends. Simulated backend identities cannot be pinned as cryptographic or satisfy ATTESTED assurance."
+    },
+    {
+      "surface_id": "formal_verification_cache",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "kind": "proof_cache_admission",
+      "proof_class": "cache_admission",
+      "notes": "Trust-aware cache admission for ProofReceipt values. Cache admission is not receipt aggregation and never upgrades provider claims."
+    },
+    {
+      "surface_id": "test_proof_cache",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/test_proof_cache.py",
+      "kind": "test_reuse_cache_admission",
+      "proof_class": "cache_admission",
+      "notes": "Authority adapter for proof-backed test reuse. Rehashes retained certificate bytes and rechecks current locator and policy; not a receipt-aggregation proof."
+    },
+    {
+      "surface_id": "test_certificate_store",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/test_certificate_store.py",
+      "kind": "certificate_cas_store",
+      "proof_class": "integrity_only",
+      "notes": "Immutable certificate CAS and fenced locator indexes. Persistence only; authority remains in test_proof_cache."
+    },
+    {
+      "surface_id": "provekit_setup",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/provekit_setup.py",
+      "kind": "zk_setup_identity_gate",
+      "proof_class": "real_proving_path_when_artifacts_present",
+      "notes": "Exact ProveKit executable/setup/circuit/verifier identity and self-test gate. Absent tools emit typed unavailable; never installs tools; simulated ZK remains non-attested."
+    },
+    {
+      "surface_id": "ipfs_datasets_zk_attestation",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/ipfs_datasets_zk_attestation.py",
+      "kind": "groth16_provekit_binding",
+      "proof_class": "attestation_binding",
+      "notes": "Binds datasets Groth16/ProveKit to an already kernel-checked ProofReceipt predicate. Does not claim source-code correctness from a ZKP alone."
+    },
+    {
+      "surface_id": "program_analysis_zkp",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/program_analysis_zkp.py",
+      "kind": "program_trace_zk_contract",
+      "proof_class": "declared_computation_only",
+      "notes": "Program-analysis ZK public inputs and witness policy. Trace checks only declared transitions for committed public inputs; simulated backends cannot emit authoritative receipts."
+    },
+    {
+      "surface_id": "kernel_verification",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/kernel_verification.py",
+      "kind": "kernel_reconstruction_boundary",
+      "proof_class": "structural_and_kernel_checked",
+      "notes": "Independent kernel reconstruction boundary for formal proof receipts. Provider-claimed kernel status is untrusted until reconstruction evidence is rechecked."
+    },
+    {
+      "surface_id": "prover_conformance",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/prover_conformance.py",
+      "kind": "prover_route_conformance",
+      "proof_class": "structural_validation",
+      "notes": "Semantic conformance suites and quarantine gates for prover routes. Conformance receipts cannot upgrade an incomplete route."
+    },
+    {
+      "surface_id": "proof_fallbacks",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_fallbacks.py",
+      "kind": "proof_fallback_routing",
+      "proof_class": "structural_validation",
+      "notes": "Bounded routing for unsuccessful proof obligations. Fallback diagnostics and validation IDs are not formal assurance upgrades."
+    },
+    {
+      "surface_id": "proof_metrics",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_metrics.py",
+      "kind": "proof_metrics_projection",
+      "proof_class": "measurement_only",
+      "notes": "Queryable proof-scheduler metrics and benchmark projections without proof bodies or witnesses."
+    },
+    {
+      "surface_id": "prover_evidence_store",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/prover_evidence_store.py",
+      "kind": "portfolio_evidence_store",
+      "proof_class": "cache_admission",
+      "notes": "Durable multi-prover portfolio evidence with re-evaluated cache admission. Model-only or non-conformant receipts stay audit-only."
+    },
+    {
+      "surface_id": "proof_scheduler",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py",
+      "kind": "proof_plan_scheduler",
+      "proof_class": "scheduling_orchestration",
+      "notes": "Dependency-aware proof-plan DAG scheduler with leases, fencing, resource admission, and process-tree cancellation. Callback return alone is never trusted as proof."
+    },
+    {
+      "surface_id": "resource_scheduler",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "kind": "resource_admission_scheduler",
+      "proof_class": "scheduling_orchestration",
+      "notes": "Host and provider resource admission for proof and supervisor lanes."
+    },
+    {
+      "surface_id": "multi_prover_router",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "kind": "multi_prover_portfolio_router",
+      "proof_class": "scheduling_orchestration",
+      "notes": "Property-specific multi-prover portfolio routing. Solver or Hammer candidates never self-promote to proved without independent reconstruction or model-checking authority."
+    },
+    {
+      "surface_id": "multi_prover_resources",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_resources.py",
+      "kind": "multi_prover_resource_policy",
+      "proof_class": "scheduling_orchestration",
+      "notes": "Resource budgeting for multi-prover portfolios."
+    },
+    {
+      "surface_id": "formal_verification_provider",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py",
+      "kind": "proof_provider_boundary",
+      "proof_class": "untrusted_provider_boundary",
+      "notes": "Optional subprocess provider boundary. Provider output is untrusted and never becomes proof evidence merely because the provider reports completion."
+    },
+    {
+      "surface_id": "formal_verification_capabilities",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_capabilities.py",
+      "kind": "capability_probe",
+      "proof_class": "capability_discovery_only",
+      "notes": "Import-safe capability probes. Probes do not execute provers or claim any proposition has been proved."
+    },
+    {
+      "surface_id": "formal_verification_policy",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_policy.py",
+      "kind": "assurance_policy",
+      "proof_class": "structural_validation",
+      "notes": "Assurance and rollout policy for formal verification."
+    },
+    {
+      "surface_id": "doctor_proof_cache",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py",
+      "kind": "doctor_proof_cache_federation",
+      "proof_class": "cache_admission",
+      "notes": "Federated exact proof-cache gate for the deterministic doctor. Not a second proof store; positive hits require complete key recheck against FormalVerificationCache."
+    },
+    {
+      "surface_id": "mcp_contract_proof_cache",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/mcp_contract_proof_cache.py",
+      "kind": "mcp_contract_proof_cache",
+      "proof_class": "cache_admission",
+      "notes": "MCP contract proof cache adapter over FormalVerificationCache. Does not maintain a second receipt store."
+    },
+    {
+      "surface_id": "manual_completion_seal",
+      "path": "ipfs_accelerate_py/agent_supervisor/control/manual_completion_seal.py",
+      "kind": "operator_manual_completion_seal",
+      "proof_class": "signed_assertion",
+      "notes": "HMAC-backed operator manual completion seal verification. Manual task status alone is scheduling metadata, not proof authority."
+    },
+    {
+      "surface_id": "release_evidence",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/release_evidence.py",
+      "kind": "release_evidence_export",
+      "proof_class": "integrity_only",
+      "notes": "Content-addressed AgentSupervisorReleaseEvidence@1 export. Metrics presence alone is never completion authority."
+    },
+    {
+      "surface_id": "repository_forest",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/repository_forest.py",
+      "kind": "repository_forest_identity",
+      "proof_class": "content_addressing",
+      "notes": "Repository descriptors and authority forests with portable forest identity and gitlink closure."
+    },
+    {
+      "surface_id": "multiformats_identity",
+      "path": "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+      "kind": "cid_canonicalization_bridge",
+      "proof_class": "content_addressing",
+      "notes": "Strict CIDv1/dag-json/raw/sha2-256 identity bridge for supervisor content addresses."
+    },
+    {
+      "surface_id": "cid_utils",
+      "path": "ipfs_accelerate_py/utils/cid_utils.py",
+      "kind": "cid_wire_implementation",
+      "proof_class": "content_addressing",
+      "notes": "Dependency-free CIDv1 wire implementation for the closed supervisor profile."
+    },
+    {
+      "surface_id": "proof_reuse_plugin",
+      "path": "ipfs_accelerate_py/testing/proof_reuse/plugin.py",
+      "kind": "pytest_proof_reuse_plugin",
+      "proof_class": "runtime_activation",
+      "notes": "Cold-import-safe pytest integration for proof-backed test reuse. Optional components load only after reuse is enabled."
+    },
+    {
+      "surface_id": "proof_reuse_activation_contracts",
+      "path": "ipfs_accelerate_py/testing/proof_reuse/activation_contracts.py",
+      "kind": "runtime_activation_contracts",
+      "proof_class": "structural_validation",
+      "notes": "Runtime activation and candidate-context contracts. Trusted complete-execution receipts are not skips; only authoritative certificates after current-context comparison may authorize SKIP."
+    },
+    {
+      "surface_id": "proof_reuse_publication",
+      "path": "ipfs_accelerate_py/testing/proof_reuse/publication.py",
+      "kind": "v4_publication_path",
+      "proof_class": "real_proving_path_when_artifacts_present",
+      "notes": "Controller-owned atomic issuance and v4 certificate publication. Requires datasets verify_test_execution_certificate_v2 accepted certificate before put_candidate; no structural boolean or self-claim reaches publication."
+    },
+    {
+      "surface_id": "proof_reuse_lookup",
+      "path": "ipfs_accelerate_py/testing/proof_reuse/lookup.py",
+      "kind": "proof_reuse_lookup",
+      "proof_class": "cache_admission",
+      "notes": "Bounded candidate lookup and skip application. Two-stage warm path rehashes retained bytes; revalidation alone never skips."
+    },
+    {
+      "surface_id": "proof_reuse_receipt",
+      "path": "ipfs_accelerate_py/testing/proof_reuse/receipt.py",
+      "kind": "test_pass_receipt_collection",
+      "proof_class": "integrity_only",
+      "notes": "TestPassReceipt collection and deferred issuance envelopes for pytest lifecycle observations."
+    },
+    {
+      "surface_id": "proof_reuse_runtime_revalidation",
+      "path": "ipfs_accelerate_py/testing/proof_reuse/runtime_revalidation.py",
+      "kind": "runtime_revalidation",
+      "proof_class": "structural_validation",
+      "notes": "Fresh current-context rebuild and comparison before reuse decisions."
+    },
+    {
+      "surface_id": "proof_reuse_real_groth16_fixture",
+      "path": "test/api/proof_reuse_real_groth16_fixture.py",
+      "kind": "real_groth16_test_fixture",
+      "proof_class": "real_proving_fixture",
+      "notes": "Reviewed disposable fixture for genuine local Groth16 artifacts and direct-node subprocesses. Missing artifacts remain a typed gap; never injects fake verifiers into the production plugin path."
+    },
+    {
+      "surface_id": "proof_reuse_benchmark",
+      "path": "ipfs_accelerate_py/agent_supervisor/self_improvement/proof_reuse_benchmark.py",
+      "kind": "proof_reuse_benchmark",
+      "proof_class": "measurement_only",
+      "notes": "Shadow and warm proof-reuse measurement boundary. Performance never relaxes authority."
+    },
+    {
+      "surface_id": "solver_readiness",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/solver_readiness.py",
+      "kind": "solver_readiness_probe",
+      "proof_class": "capability_discovery_only",
+      "notes": "Solver backend readiness observations without installing packages or claiming proved propositions."
+    },
+    {
+      "surface_id": "prover_matrix_registry",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/prover_matrix_registry.py",
+      "kind": "prover_matrix_registry",
+      "proof_class": "structural_validation",
+      "notes": "Reviewed prover matrix registry for portfolio selection."
+    },
+    {
+      "surface_id": "database_evidence_store",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/database_evidence_store.py",
+      "kind": "database_evidence_store",
+      "proof_class": "integrity_only",
+      "notes": "Durable database-backed evidence persistence for proof workflows."
+    },
+    {
+      "surface_id": "test_candidate_context_store",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/test_candidate_context_store.py",
+      "kind": "candidate_context_store",
+      "proof_class": "integrity_only",
+      "notes": "Immutable candidate-context retention for two-stage warm lookup."
+    },
+    {
+      "surface_id": "configured_board_scheduler",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+      "kind": "board_scheduler",
+      "proof_class": "scheduling_orchestration",
+      "notes": "Board scheduler runtime for supervised task lanes."
+    },
+    {
+      "surface_id": "validation_scheduler",
+      "path": "ipfs_accelerate_py/agent_supervisor/validation/validation_scheduler.py",
+      "kind": "validation_scheduler",
+      "proof_class": "scheduling_orchestration",
+      "notes": "Validation command scheduling surface."
+    },
+    {
+      "surface_id": "supervisor_code_proof_benchmark",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/supervisor_code_proof_benchmark.py",
+      "kind": "code_proof_benchmark",
+      "proof_class": "measurement_only",
+      "notes": "Supervisor code-proof measurement surface."
+    },
+    {
+      "surface_id": "focused_test_provekit_setup",
+      "path": "test/api/test_agent_supervisor_provekit_setup.py",
+      "kind": "focused_test",
+      "proof_class": "structural_and_capability",
+      "notes": "Focused ProveKit setup identity and readiness tests in the operator core suite registry."
+    },
+    {
+      "surface_id": "focused_test_zk_attestation",
+      "path": "test/api/test_agent_supervisor_ipfs_datasets_zk_attestation.py",
+      "kind": "focused_test",
+      "proof_class": "structural_and_attestation",
+      "notes": "Focused datasets ZK attestation binding tests."
+    },
+    {
+      "surface_id": "focused_test_program_analysis_zkp",
+      "path": "test/api/test_agent_supervisor_program_analysis_zkp.py",
+      "kind": "focused_test",
+      "proof_class": "structural_and_declared_computation",
+      "notes": "Focused program-analysis ZKP contract tests."
+    },
+    {
+      "surface_id": "focused_test_program_analysis_zkp_conformance",
+      "path": "test/api/test_agent_supervisor_program_analysis_zkp_conformance.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused program-analysis ZKP conformance tests."
+    },
+    {
+      "surface_id": "focused_test_proof_scheduler",
+      "path": "test/api/test_agent_supervisor_proof_scheduler.py",
+      "kind": "focused_test",
+      "proof_class": "scheduling_orchestration",
+      "notes": "Focused proof scheduler dependency-order and resource-limit tests."
+    },
+    {
+      "surface_id": "focused_test_proof_resource_scheduler",
+      "path": "test/api/test_agent_supervisor_proof_resource_scheduler.py",
+      "kind": "focused_test",
+      "proof_class": "scheduling_orchestration",
+      "notes": "Focused proof resource scheduler tests."
+    },
+    {
+      "surface_id": "focused_test_adaptive_resources",
+      "path": "test/api/test_agent_supervisor_adaptive_resources.py",
+      "kind": "focused_test",
+      "proof_class": "scheduling_orchestration",
+      "notes": "Focused adaptive resource admission tests."
+    },
+    {
+      "surface_id": "focused_test_multi_prover_resources",
+      "path": "test/api/test_agent_supervisor_multi_prover_resources.py",
+      "kind": "focused_test",
+      "proof_class": "scheduling_orchestration",
+      "notes": "Focused multi-prover resource tests."
+    },
+    {
+      "surface_id": "focused_test_multi_prover_router",
+      "path": "test/api/test_agent_supervisor_multi_prover_router.py",
+      "kind": "focused_test",
+      "proof_class": "scheduling_orchestration",
+      "notes": "Focused multi-prover router portfolio tests."
+    },
+    {
+      "surface_id": "focused_test_formal_verification_contracts",
+      "path": "test/api/test_agent_supervisor_formal_verification_contracts.py",
+      "kind": "focused_test",
+      "proof_class": "integrity_only",
+      "notes": "Focused formal verification contract serialization and trust projection tests."
+    },
+    {
+      "surface_id": "focused_test_formal_verification_cache",
+      "path": "test/api/test_agent_supervisor_formal_verification_cache.py",
+      "kind": "focused_test",
+      "proof_class": "cache_admission",
+      "notes": "Focused formal verification cache admission tests."
+    },
+    {
+      "surface_id": "focused_test_formal_verification_capabilities",
+      "path": "test/api/test_agent_supervisor_formal_verification_capabilities.py",
+      "kind": "focused_test",
+      "proof_class": "capability_discovery_only",
+      "notes": "Focused capability probe tests."
+    },
+    {
+      "surface_id": "focused_test_formal_verification_provider",
+      "path": "test/api/test_agent_supervisor_formal_verification_provider.py",
+      "kind": "focused_test",
+      "proof_class": "untrusted_provider_boundary",
+      "notes": "Focused untrusted provider boundary tests."
+    },
+    {
+      "surface_id": "focused_test_formal_verification_policy",
+      "path": "test/api/test_agent_supervisor_formal_verification_policy.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused formal verification policy tests."
+    },
+    {
+      "surface_id": "focused_test_code_proof_attestation_policy",
+      "path": "test/api/test_agent_supervisor_code_proof_attestation_policy.py",
+      "kind": "focused_test",
+      "proof_class": "attestation_binding",
+      "notes": "Focused code-proof attestation policy tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_v4_publication",
+      "path": "test/api/test_proof_reuse_v4_publication_integration.py",
+      "kind": "focused_test",
+      "proof_class": "real_proving_path_when_artifacts_present",
+      "notes": "Focused v4 publication integration tests in the reuse-migration suite."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_runtime_activation_e2e",
+      "path": "test/api/test_proof_reuse_runtime_activation_e2e.py",
+      "kind": "focused_test",
+      "proof_class": "runtime_activation",
+      "notes": "Focused runtime activation end-to-end tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_cross_repository_e2e",
+      "path": "test/api/test_proof_reuse_cross_repository_e2e.py",
+      "kind": "focused_test",
+      "proof_class": "runtime_activation",
+      "notes": "Focused cross-repository proof-reuse bootstrap and lifecycle tests."
+    },
+    {
+      "surface_id": "focused_test_test_execution_identity",
+      "path": "test/api/test_agent_supervisor_test_execution_identity.py",
+      "kind": "focused_test",
+      "proof_class": "integrity_only",
+      "notes": "Focused TestPassReceipt identity and admission envelope tests in the wide suite."
+    },
+    {
+      "surface_id": "focused_test_test_execution_identity_vectors",
+      "path": "test/api/test_agent_supervisor_test_execution_identity_vectors.py",
+      "kind": "focused_test",
+      "proof_class": "integrity_only",
+      "notes": "Focused identity vector fixtures for TestPassReceipt envelopes."
+    },
+    {
+      "surface_id": "focused_test_test_proof_reuse_doctrine",
+      "path": "test/api/test_agent_supervisor_test_proof_reuse_doctrine.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused proof-reuse doctrine and mode-surface tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_activation_contracts",
+      "path": "test/api/test_proof_reuse_activation_contracts.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused activation contract classification tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_receipt",
+      "path": "test/api/test_proof_reuse_receipt.py",
+      "kind": "focused_test",
+      "proof_class": "integrity_only",
+      "notes": "Focused TestPassReceipt collection and deferred issuance tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_runtime_activation_report",
+      "path": "test/api/test_proof_reuse_runtime_activation_report.py",
+      "kind": "focused_test",
+      "proof_class": "runtime_activation",
+      "notes": "Focused runtime activation reporting surface tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_controller_issuance",
+      "path": "test/api/test_proof_reuse_controller_issuance.py",
+      "kind": "focused_test",
+      "proof_class": "real_proving_path_when_artifacts_present",
+      "notes": "Focused controller issuance binding tests; missing keys remain typed gaps."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_candidate_publication_context",
+      "path": "test/api/test_proof_reuse_candidate_publication_context.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused candidate publication context rebuild tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_locator_first_collection",
+      "path": "test/api/test_proof_reuse_locator_first_collection.py",
+      "kind": "focused_test",
+      "proof_class": "cache_admission",
+      "notes": "Focused locator-first collection and warm-path admission tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_two_stage_warm_lookup",
+      "path": "test/api/test_proof_reuse_two_stage_warm_lookup.py",
+      "kind": "focused_test",
+      "proof_class": "cache_admission",
+      "notes": "Focused two-stage warm lookup and rehash tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_runtime_revalidation",
+      "path": "test/api/test_proof_reuse_runtime_revalidation.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused current-context rebuild before reuse decision tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_degradation_matrix",
+      "path": "test/api/test_proof_reuse_degradation_matrix.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused optional-provider degradation matrix tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_cold_pass_publication",
+      "path": "test/api/test_proof_reuse_cold_pass_publication.py",
+      "kind": "focused_test",
+      "proof_class": "real_proving_path_when_artifacts_present",
+      "notes": "Focused cold-path publication surface tests; not an operator outcome claim."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_default_identity_services",
+      "path": "test/api/test_proof_reuse_default_identity_services.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused default identity service wiring tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_default_runtime_services",
+      "path": "test/api/test_proof_reuse_default_runtime_services.py",
+      "kind": "focused_test",
+      "proof_class": "runtime_activation",
+      "notes": "Focused default runtime service composition tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_security_concurrency",
+      "path": "test/api/test_proof_reuse_security_concurrency.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused concurrency and security fence tests for reuse publication."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_invalidation_mutations",
+      "path": "test/api/test_proof_reuse_invalidation_mutations.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused invalidation mutation and dependency-change tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_issued_material_retention",
+      "path": "test/api/test_proof_reuse_issued_material_retention.py",
+      "kind": "focused_test",
+      "proof_class": "integrity_only",
+      "notes": "Focused issued-material retention and CAS integrity tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_setup_provisioning",
+      "path": "test/api/test_proof_reuse_setup_provisioning.py",
+      "kind": "focused_test",
+      "proof_class": "capability_discovery_only",
+      "notes": "Focused setup provisioning command surface tests; no install authority."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_service_injection",
+      "path": "test/api/test_proof_reuse_service_injection.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused service injection and reviewed-sibling install policy tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_lazy_provisioning",
+      "path": "test/api/test_proof_reuse_lazy_provisioning.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused lazy private-snapshot provisioning and tamper rejection tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_runtime_composition",
+      "path": "test/api/test_proof_reuse_runtime_composition.py",
+      "kind": "focused_test",
+      "proof_class": "runtime_activation",
+      "notes": "Focused runtime composition tests in the reuse-migration suite."
+    },
+    {
+      "surface_id": "focused_test_pytest_proof_reuse_item_identity",
+      "path": "test/api/test_pytest_proof_reuse_item_identity.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused pytest item-identity mapping tests."
+    },
+    {
+      "surface_id": "focused_test_pytest_proof_reuse_lookup",
+      "path": "test/api/test_pytest_proof_reuse_lookup.py",
+      "kind": "focused_test",
+      "proof_class": "cache_admission",
+      "notes": "Focused pytest plugin lookup and skip-application tests."
+    },
+    {
+      "surface_id": "focused_test_pytest_proof_reuse_plugin",
+      "path": "test/api/test_pytest_proof_reuse_plugin.py",
+      "kind": "focused_test",
+      "proof_class": "runtime_activation",
+      "notes": "Focused cold-import-safe pytest plugin activation tests."
+    },
+    {
+      "surface_id": "focused_test_pytest_proof_reuse_receipt",
+      "path": "test/api/test_pytest_proof_reuse_receipt.py",
+      "kind": "focused_test",
+      "proof_class": "integrity_only",
+      "notes": "Focused pytest lifecycle receipt collection tests."
+    },
+    {
+      "surface_id": "focused_test_pytest_proof_reuse_xdist",
+      "path": "test/api/test_pytest_proof_reuse_xdist.py",
+      "kind": "focused_test",
+      "proof_class": "runtime_activation",
+      "notes": "Focused xdist controller-only publication authority tests."
+    },
+    {
+      "surface_id": "focused_test_proof_reuse_accelerator_bootstrap",
+      "path": "test/api/test_proof_reuse_accelerator_bootstrap.py",
+      "kind": "focused_test",
+      "proof_class": "structural_validation",
+      "notes": "Focused accelerate bootstrap entry-point and loader tests."
+    },
+    {
+      "surface_id": "proof_reuse_item_identity",
+      "path": "ipfs_accelerate_py/testing/proof_reuse/item_identity.py",
+      "kind": "pytest_item_identity",
+      "proof_class": "structural_validation",
+      "notes": "Pytest item identity mapping for proof-reuse locators."
+    },
+    {
+      "surface_id": "proof_reuse_xdist",
+      "path": "ipfs_accelerate_py/testing/proof_reuse/xdist.py",
+      "kind": "xdist_publication_authority",
+      "proof_class": "runtime_activation",
+      "notes": "xdist controller is the only publication authority; workers do not publish."
+    },
+    {
+      "surface_id": "proof_reuse_candidate_publication",
+      "path": "ipfs_accelerate_py/testing/proof_reuse/candidate_publication.py",
+      "kind": "candidate_publication_context",
+      "proof_class": "structural_validation",
+      "notes": "Candidate publication context assembly before v4 put_candidate."
+    },
+    {
+      "surface_id": "proof_reuse_default_identity_services",
+      "path": "ipfs_accelerate_py/testing/proof_reuse/default_identity_services.py",
+      "kind": "identity_service_defaults",
+      "proof_class": "structural_validation",
+      "notes": "Default identity service wiring for proof-reuse."
+    },
+    {
+      "surface_id": "proof_reuse_services",
+      "path": "ipfs_accelerate_py/testing/proof_reuse/services.py",
+      "kind": "runtime_service_composition",
+      "proof_class": "runtime_activation",
+      "notes": "Runtime service composition for optional proof-reuse components."
+    },
+    {
+      "surface_id": "p2p_merkle_clock",
+      "path": "ipfs_accelerate_py/p2p_workflow_scheduler.py",
+      "kind": "merkle_clock_scheduler",
+      "proof_class": "integrity_only",
+      "notes": "P2P workflow merkle clock is a hash commitment for task assignment, not a ZK proof-seal authority."
+    }
+  ],
+  "classifications": {
+    "unsigned_receipts": {
+      "TestPassReceipt": {
+        "path": "ipfs_accelerate_py/agent_supervisor/proof/test_execution_contracts.py",
+        "proof_class": "integrity_only",
+        "signed": false,
+        "notes": "Unsigned integrity and admission envelope; not a signed receipt."
+      },
+      "ProofReceipt": {
+        "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+        "proof_class": "integrity_only",
+        "signed": false,
+        "notes": "Unsigned integrity envelope; assurance is derived from typed evidence, not a signature field."
+      }
+    },
+    "cache_admission_not_receipt_aggregation": [
+      "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "ipfs_accelerate_py/agent_supervisor/proof/test_proof_cache.py",
+      "ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py",
+      "ipfs_accelerate_py/agent_supervisor/proof/mcp_contract_proof_cache.py",
+      "ipfs_accelerate_py/agent_supervisor/proof/prover_evidence_store.py",
+      "ipfs_accelerate_py/testing/proof_reuse/lookup.py"
+    ],
+    "real_proving_and_setup_paths": [
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/proof/provekit_setup.py",
+        "claim_bound_to": "executable ProveKit identity digests and mandatory self-tests when present",
+        "unavailable_behavior": "typed unavailable without install or download"
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/proof/ipfs_datasets_zk_attestation.py",
+        "claim_bound_to": "already kernel-checked ProofReceipt predicate plus backend self-tests",
+        "unavailable_behavior": "typed non-attested when backend or keys absent"
+      },
+      {
+        "path": "test/api/proof_reuse_real_groth16_fixture.py",
+        "claim_bound_to": "discovered local Groth16 binaries and key artifacts",
+        "unavailable_behavior": "typed non-blocking gap"
+      },
+      {
+        "path": "ipfs_accelerate_py/testing/proof_reuse/publication.py",
+        "claim_bound_to": "datasets verify_test_execution_certificate_v2 accepted certificate before put_candidate",
+        "unavailable_behavior": "publication denied without approved artifacts"
+      }
+    ],
+    "simulated_or_mock_paths": [
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_attestation.py",
+        "proof_class": "simulated_or_mock_when_backend_simulated",
+        "notes": "AttestationBackendMode.SIMULATED and simulated backend_id tokens are non-authoritative."
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/proof/provekit_setup.py",
+        "proof_class": "simulated_or_mock_when_status_simulated",
+        "notes": "ProveKitSetupStatus.SIMULATED remains non-attested."
+      }
+    ],
+    "recursion_and_direct_execution": {
+      "recursive_verifier_operational": false,
+      "notes": "No reliable recursive verifier surface was found in executable accelerate code. Default design is individually checked leaves plus Merkle manifest completeness commitment elsewhere. Direct-execution claims are limited to declared computation paths with executable evidence (program_analysis_zkp, real Groth16 fixture when artifacts present).",
+      "direct_execution_surfaces": [
+        "ipfs_accelerate_py/agent_supervisor/proof/program_analysis_zkp.py",
+        "test/api/proof_reuse_real_groth16_fixture.py"
+      ]
+    },
+    "schedulers": [
+      "ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+      "ipfs_accelerate_py/agent_supervisor/validation/validation_scheduler.py",
+      "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "ipfs_accelerate_py/testing/proof_reuse/xdist.py"
+    ],
+    "metrics_benchmarks_evidence_stores": [
+      "ipfs_accelerate_py/agent_supervisor/proof/proof_metrics.py",
+      "ipfs_accelerate_py/agent_supervisor/proof/prover_evidence_store.py",
+      "ipfs_accelerate_py/agent_supervisor/proof/database_evidence_store.py",
+      "ipfs_accelerate_py/agent_supervisor/proof/supervisor_code_proof_benchmark.py",
+      "ipfs_accelerate_py/agent_supervisor/self_improvement/proof_reuse_benchmark.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/release_evidence.py"
+    ],
+    "doctor_mcp_caches": [
+      "ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py",
+      "ipfs_accelerate_py/agent_supervisor/proof/mcp_contract_proof_cache.py"
+    ],
+    "manual_and_release_seals": [
+      "ipfs_accelerate_py/agent_supervisor/control/manual_completion_seal.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/release_evidence.py"
+    ],
+    "cid_canonicalization_merkle": [
+      "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+      "ipfs_accelerate_py/utils/cid_utils.py",
+      "ipfs_accelerate_py/agent_supervisor/analysis/repository_forest.py",
+      "ipfs_accelerate_py/p2p_workflow_scheduler.py"
+    ]
+  },
+  "nonclaims": [
+    "TestPassReceipt is not signed.",
+    "ProofReceipt is not signed.",
+    "Cache admission is not receipt aggregation.",
+    "Capability probes and setup identity gates do not prove pytest execution.",
+    "Operator baseline receipts are process observations only; pytest execution is not cryptographically proven.",
+    "No operational recursive verifier was found in accelerate executable code.",
+    "Simulated attestation backends are non-authoritative.",
+    "P2P merkle clock hash commitments are not ZK proof-seal authorities.",
+    "Historical planning counts are not reconstructed or claimed by this inventory."
+  ],
+  "operator_suite_reference_ids": [
+    "accelerate-proof-focused-core-15",
+    "accelerate-proof-focused-wide-36",
+    "accelerate-proof-reuse-migration",
+    "accelerate-proof-reuse-cross-repo"
+  ]
+}
