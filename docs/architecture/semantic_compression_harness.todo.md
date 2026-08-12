@@ -486,7 +486,7 @@ A9  SCH-018
 
 ## SCH-016 Create the exactly-40-task benchmark corpus
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: benchmark-corpus
