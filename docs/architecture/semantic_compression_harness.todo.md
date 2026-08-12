@@ -13,15 +13,14 @@ Protected companion artifacts:
 
 These control documents are reviewed inputs and may be changed only by the
 operator while sealing `SCH-000`; implementation workers must not edit them.
-`SCH-000` is deliberately open. Do not launch implementation lanes until the
-accelerator placeholder and both datasets placeholders have been replaced by
-exact final repaired commits, the already-pinned `ipfs_kit_py` durable-root
-commit is validated, the deterministic seal validator passes, and the task is
-manually marked complete. Accelerator candidate `8a1136d…` is not an authority.
-The seal records all five independent audit failures: live-owner/no-heartbeat
-split brain with a swallowed lost fence, task-index lost update, fail-open
-empty/unavailable process snapshots, untracked/submodule whitespace omission,
-and fast-zombie birth capture/lease leakage.
+`SCH-000` is sealed. Implementation lanes may launch against the pinned
+five-role authority. Workers must not edit protected control files or change
+pins.
+The final audited accelerator authority is `271e331af802f37d759c000666282631a99f7aab`
+(tree `5859208bdab59338eab67a5cd0102c193ca6c388`); it resolves the five findings
+against parent `8a1136d…`. Its hardened ten-file sealed producer command includes
+the runtime-authority vector and passed 355/355. The 334/334 legacy command and
+97/97 focused audit are supporting evidence only.
 
 Implementation is focused in
 `ipfs_accelerate_py.agent_supervisor.semantic_state`. Workers consume the pinned
@@ -55,7 +54,7 @@ A9  SCH-018
 
 ## SCH-000 Pin and validate phase-two contract authorities
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -76,9 +75,9 @@ A9  SCH-018
 - Predicted symbols: SemanticStateDependencySeal
 - Interfaces: SemanticStateDependencySeal@1
 - Conflict policy: Operator-only launch gate. No implementation worker may infer, update, merge, complete, or bypass dependency pins or edit any protected control file. The phase-one and phase-two datasets authorities require separate canonical clean worktree roots; neither may be inferred from the other's ancestry or from this harness checkout.
-- Preconditions: The accelerator runtime commit is `UNRESOLVED_REPAIRED_ACCELERATE_COMMIT`; candidate `8a1136d1114cd83a0c7a9cdcc03a41c4ed81ed14` is rejected until it prevents live-owner/no-heartbeat split brain and propagates lost fences, locks/rechecks task-index publication against newer active owners, fails closed on empty/unavailable process snapshots, validates whitespace through an isolated index or equivalent materialized proposal including dirty/clean untracked and submodule outputs, and cleans up fast-zombie birth-capture leases. MCP++ is `dc3164653a48d059ae9812078359daeafb451c07`; kit is `05ba9375923cd5fb52e2c9c18b98b530d57d077f`; the exact final repaired datasets ISI and semantic-state commits also remain unresolved. Separate `${SCH_ACCELERATE_CHECKOUT}`, `${SCH_ISI_CHECKOUT}`, `${SCH_DSS_CHECKOUT}`, `${SCH_KIT_CHECKOUT}`, and `${SCH_MCP_PLUS_PLUS_CHECKOUT}` roots, a fresh nonexistent absolute `${SCH_FRESH_RECEIPT_DIR}`, and an operator-supplied absolute `${SCH_PYTHON312}` whose binary/pytest/environment projection exactly matches the v2 seal are required.
-- Effects: Replaces the unresolved accelerator and two datasets commit/tree/schema/API/blob/fingerprint projections; retains the two fixed kit/MCP++ authorities; validates the policy-owned five-role order, exact clean HEADs, origins, full tracked working bytes, hidden index flags, required path sets, tree-wide dependency closure, mandatory argv tuples, timeouts, source/schema-extracted APIs, and complete fingerprints. It runs each command in a fresh private Git-object materialization and process group, revalidates all five roots before and after each command, fences descendants, and writes one SHA-256-addressed closed producer receipt per role command. It AST-rejects aliases, dynamic imports, canonicalizers/CID implementations, generic envelopes, reflection, and forged provider bodies in the current harness tree.
-- Acceptance: The validator rejects duplicate keys, non-JSON recursive values, NaN/Infinity, placeholders, unknown fields, wrong pins/origins, dirty/wrong-HEAD/non-root/shared checkouts, `assume-unchanged`/`skip-worktree`, missing or mismatched working/Git/materialized bytes, source/schema extraction drift, weakened closure/argv, missing or substituted Python/pytest/environment bindings, skipped/timed-out/descendant-leaking tests, mutation of any of the five roots, malformed/tampered/incomplete receipts, or local duplicate authorities. `exact_clean_head` makes no remote-ref reachability claim. The future repaired accelerator pin must source-extract `canonicalize_artifact`/`cid_for_bytes`, pass the real-CID/process vector, and include regressions for all five recorded accelerator audit failures; the exact `SemanticCapsuleRef`, `TestSelectionRef`, datasets-owned `SemanticStateView/get_block`, kit artifact vector layout, and actual MCP++ Profile A/B/F field authorities are then sealed. Datasets separately proves both public pipelines, kit proves its durable root port, the task/goal DAGs are acyclic, and only then is SCH-000 manually marked complete.
+- Preconditions: The accelerator runtime commit is `271e331af802f37d759c000666282631a99f7aab`, tree `5859208bdab59338eab67a5cd0102c193ca6c388`; it prevents live-owner/no-heartbeat split brain and propagates lost fences, locks/rechecks task-index publication against newer active owners, fails closed on empty/unavailable process snapshots, validates whitespace through an isolated index or equivalent materialized proposal including dirty/clean untracked and child-submodule outputs, and cleans up fast-zombie birth-capture leases, including direct-child terminal paths. MCP++ is `dc3164653a48d059ae9812078359daeafb451c07`; kit is `df2f9cc092456329de9724c45a50c54b410875d1`; datasets ISI and semantic-state are `1330038f626ef92993f03d46f21e1a57719e9c25` (tree `c1686dfce8e14ebd32327a0214c0f62ff6a5c7d6`). Separate `${SCH_ACCELERATE_CHECKOUT}`, `${SCH_ISI_CHECKOUT}`, `${SCH_DSS_CHECKOUT}`, `${SCH_KIT_CHECKOUT}`, and `${SCH_MCP_PLUS_PLUS_CHECKOUT}` roots, a fresh nonexistent absolute `${SCH_FRESH_RECEIPT_DIR}`, and an operator-supplied absolute `${SCH_PYTHON312}` whose binary/pytest/environment projection exactly matches the v2 seal are required.
+- Effects: Binds the audited accelerator, datasets ISI/semantic-state, kit, and MCP++ commit/tree/API/blob/fingerprint projections; validates the policy-owned five-role order, exact clean HEADs, origins, full tracked working bytes, hidden index flags, required path sets, tree-wide dependency closure, mandatory argv tuples, timeouts, source/schema-extracted APIs, and complete fingerprints. It runs each command in a fresh private safe Git-object projection and captured process group, permits at most 100 ms of monotonic natural drain after the leader exits, revalidates all five roots before and after each command, and fences persistent descendants. Source commit/tree/blob identity stays exact; every Git symlink becomes an empty inert non-executable regular record at its source path, and receipt v2 separately binds path/mode/blob OID/source-target digest/empty-materialized digest/kind plus observed natural drain. It writes a SHA-256-addressed closed producer receipt only after zero exit, no timeout or persistent leak, and a clean all-role postcheck. It AST-rejects aliases, dynamic imports, canonicalizers/CID implementations, generic envelopes, reflection, and forged provider bodies in the current harness tree.
+- Acceptance: The validator rejects duplicate keys, non-JSON recursive values, NaN/Infinity, placeholders, unknown fields, wrong pins/origins, dirty/wrong-HEAD/non-root/shared checkouts, `assume-unchanged`/`skip-worktree`, missing or mismatched working/Git/materialized bytes, archive traversal/collisions, executable or non-inert symlink projections, source/schema extraction drift, weakened closure/argv, missing or substituted Python/pytest/environment bindings, skipped/timed-out/descendant-leaking tests (including inherited-pipe holders past the leader-bound deadline), unavailable process inspection or reused group identity, mutation of any of the five roots, malformed/tampered/incomplete/failure receipts, or local duplicate authorities. `exact_clean_head` makes no remote-ref reachability claim. The pinned accelerator source-extracts `canonicalize_artifact`/`cid_for_bytes`; its ten-file sealed command includes the real-CID/process/runtime-authority vector, binds regressions for all five accelerator audit findings, and passed 355/355. The exact `SemanticCapsuleRef`, `TestSelectionRef`, datasets-owned `SemanticStateView/get_block`, kit artifact vector layout, and actual MCP++ Profile A/B/F field authorities are then sealed. Datasets separately proves both public pipelines, kit proves its durable root port, the task/goal DAGs are acyclic, and only then is SCH-000 manually marked complete.
 
 ## SCH-001 Implement MCP++ wire codec and interface descriptor
 

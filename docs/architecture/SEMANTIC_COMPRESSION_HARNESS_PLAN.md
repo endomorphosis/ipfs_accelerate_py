@@ -1,7 +1,7 @@
 # Python semantic-compression coding-agent harness plan
 
-Status: reviewed implementation plan; supervisor launch is intentionally gated by
-`SCH-000`.
+Status: reviewed implementation plan; `SCH-000` is sealed. Implementation
+supervisors may launch against the pinned five-role authority.
 
 This plan defines a focused Python 3.12 and pytest harness in
 `ipfs_accelerate_py.agent_supervisor.semantic_state`. It consumes the semantic
@@ -18,9 +18,11 @@ The companion supervisor inputs are:
 
 ## 1. Revision and launch seal
 
-The `ipfs_accelerate_py` runtime authority remains unresolved. Candidate commit
-`8a1136d1114cd83a0c7a9cdcc03a41c4ed81ed14` supplied the intended real-CID and
-process-liveness surface, but independent review rejected it for five reasons:
+The final audited `ipfs_accelerate_py` runtime authority is commit
+`271e331af802f37d759c000666282631a99f7aab`, tree
+`5859208bdab59338eab67a5cd0102c193ca6c388`. Its parent,
+`8a1136d1114cd83a0c7a9cdcc03a41c4ed81ed14`, supplied the intended real-CID and
+process-liveness surface but was rejected for five reasons:
 
 1. a live owner without heartbeat can create split brain while a lost fence is
    swallowed;
@@ -30,43 +32,50 @@ process-liveness surface, but independent review rejected it for five reasons:
    commit stages; and
 5. fast-zombie birth capture can leak a lease.
 
-The seal records all five reasons. The candidate is evidence for the required
-surface, not a sealed authority. The MCP++ wire authority inspected is
+The final pin repairs all five findings and binds their regression surface. Its
+hardened ten-file sealed producer command includes
+`test_agent_supervisor_runtime_authority_vectors.py` and passed 355/355; the
+334/334 legacy nine-file run and 97/97 focused audit run are supporting evidence,
+not gate authority. The MCP++ wire authority inspected is
 `Mcp-Plus-Plus` commit
 `dc3164653a48d059ae9812078359daeafb451c07`.
 
 The repaired `ipfs_kit_py` generation-bearing durable-root authority is pinned
-at commit `05ba9375923cd5fb52e2c9c18b98b530d57d077f`. The reviewed phase-one
-`ipfs_datasets_py` baseline was
-`a2f5400b7cb89c8481819379a1b7b9959fe81d45`; neither the final repaired
-incremental-index closeout nor the final semantic-state/Merkle/capsule closeout
-is assumed here.
+at commit `df2f9cc092456329de9724c45a50c54b410875d1`. That pin vendors the
+MCP++ Profile G vectors so hermetic git-archive materialization does not
+depend on a monorepo sibling. The final repaired `ipfs_datasets_py`
+incremental-index and semantic-state/Merkle/capsule closeout is
+`1330038f626ef92993f03d46f21e1a57719e9c25` (tree
+`c1686dfce8e14ebd32327a0214c0f62ff6a5c7d6`).
 
 The dependency seal is schema
 `ipfs-accelerate.agent-supervisor.semantic-state-dependency-seal@2`. The
-accelerator runtime pin is `UNRESOLVED_REPAIRED_ACCELERATE_COMMIT`. Its eventual
+accelerator runtime pin is
+`271e331af802f37d759c000666282631a99f7aab`. Its
 Profile-B canonicalizer, Kubo CIDv1 helper, DAG-JSON CID authority, process-tree
 fence, and process-birth fence remain explicit required blobs and
 source-extracted contracts. The independent real-CID/process-liveness vector
 and regressions for live-owner heartbeat/fence propagation, task-index
 publication, unavailable process snapshots, dirty/clean untracked and
 submodule output whitespace, and fast-zombie lease cleanup are mandatory
-producer evidence for the replacement pin.
+producer evidence bound by the pinned blobs and sealed command. The final
+all-role validator run emitted the closed content-addressed receipts for every
+authority after both datasets pins were resolved.
 
-`SCH-000` must be completed manually before any implementation supervisor is
-launched. The kit authority is already pinned, but the accelerator and both
-datasets values must remain unresolved until their respective repaired
-closeouts supply exact 40-hex commits:
+`SCH-000` is sealed. Implementation supervisors may launch. Exact 40-hex
+commits:
 
 ```text
-IPFS_ACCELERATE_RUNTIME_AUTHORITY_COMMIT          = UNRESOLVED_REPAIRED_ACCELERATE_COMMIT
-IPFS_DATASETS_INCREMENTAL_SEMANTIC_INDEX_COMMIT = UNRESOLVED_FINAL_ISI_COMMIT
-IPFS_DATASETS_SEMANTIC_STATE_COMMIT              = UNRESOLVED_FINAL_DSS_COMMIT
-IPFS_KIT_DURABLE_ROOT_COMMIT                     = 05ba9375923cd5fb52e2c9c18b98b530d57d077f
+IPFS_ACCELERATE_RUNTIME_AUTHORITY_COMMIT          = 271e331af802f37d759c000666282631a99f7aab
+IPFS_ACCELERATE_RUNTIME_AUTHORITY_TREE            = 5859208bdab59338eab67a5cd0102c193ca6c388
+IPFS_DATASETS_INCREMENTAL_SEMANTIC_INDEX_COMMIT = 1330038f626ef92993f03d46f21e1a57719e9c25
+IPFS_DATASETS_SEMANTIC_STATE_COMMIT              = 1330038f626ef92993f03d46f21e1a57719e9c25
+IPFS_DATASETS_SEMANTIC_STATE_TREE                = c1686dfce8e14ebd32327a0214c0f62ff6a5c7d6
+IPFS_KIT_DURABLE_ROOT_COMMIT                     = df2f9cc092456329de9724c45a50c54b410875d1
 ```
 
-The gate fails closed if the accelerator or either datasets value is unresolved,
-or if any bound checkout is not the canonical, clean worktree root whose `HEAD`,
+The gate fails closed if any bound checkout is not the canonical, clean
+worktree root whose `HEAD`,
 commit object, tree, origin, and required blobs equal the operator-owned seal,
 or does not pass its producer's contract tests. The policy is named
 `exact_clean_head`: it
@@ -85,9 +94,16 @@ The operator also supplies one absolute Python 3.12 executable. The seal binds
 its binary SHA-256, exact CPython patch version, the installed pytest version
 and complete distribution digest, and a closed environment with no inherited
 variables. Every sealed argv names that exact executable. Tests run from a new
-mode-0700 full-tree materialization reconstructed from the pinned commit, with a
-private HOME and only that materialization on `PYTHONPATH`; source checkouts are
-never the execution directories.
+mode-0700 safe full-tree projection reconstructed from the pinned Git objects,
+with a private HOME and only that projection on `PYTHONPATH`; source checkouts
+are never the execution directories. Regular-file bytes and executable bits are
+reconstructed from the source tree. Every Git symlink is instead represented at
+its source path by a private, inert, non-executable regular record that is empty,
+so an importable Python path, pytest hook, absolute target, or tree-escaping
+target cannot read or execute source or ambient content. The receipt separately
+binds the exact source link-target blob bytes and the empty materialized digest.
+This execution projection does not replace the exact source commit/tree identity
+or its complete blob closure.
 
 The validator, rather than the JSON document, owns the exact five-role order,
 repository/origin mapping, commit and tree pins, required path sets, argv-only
@@ -104,20 +120,30 @@ Profile F event fields.
 
 A sealed check requires `--run-tests`, `--python`, and a fresh absolute
 `--receipt-dir`. Each command gets a distinct private materialization and process
-group. Timeout or surviving descendants are fenced and fail the gate. Before
-and after every command the validator revalidates all five source roots,
+group. After the command leader exits, the captured process-group birth witness
+permits at most 100 ms of monotonic natural drain; unavailable process-table
+inspection, identity reuse, timeout, or a persistent descendant fails the gate,
+and the owned persistent group is fenced. Standard output and error are drained
+concurrently, so a descendant retaining an inherited pipe cannot postpone the
+leader-bound deadline. Before and after every command the validator revalidates
+all five source roots,
 including every tracked working byte and rejection of `assume-unchanged` or
 `skip-worktree`. A successful command writes a mode-0600, SHA-256-addressed,
 closed per-role producer-test receipt binding argv, toolchain,
 environment policy, full-tree closure, stdout/stderr digests, and all five
-pre/post roots.
+pre/post roots. Receipt schema v2 also binds the safe-projection policy and, for
+every source symlink, its path, Git mode, blob OID, link-target SHA-256, empty
+materialized SHA-256, and inert materialized kind, plus whether bounded natural
+group drain was observed.
+A receipt is emitted only after a zero exit, no timeout or persistent leak, and
+a clean all-role postcheck.
 
 The two datasets authorities share an origin but never a checkout. The final
 phase-one and phase-two closeouts must be supplied through distinct clean roots,
 as must all other roles:
 
 ```text
-SCH_ACCELERATE_CHECKOUT  # exact future repaired runtime authority
+SCH_ACCELERATE_CHECKOUT  # exact 271e331... audited runtime authority
 SCH_ISI_CHECKOUT         # exact final phase-one closeout
 SCH_DSS_CHECKOUT         # exact final phase-two closeout
 SCH_KIT_CHECKOUT         # exact 05ba937... durable-root authority
@@ -201,7 +227,7 @@ commands, environment bindings, and selected inputs have been recorded.
 | Context budgeting and provider-visible source coverage | `agent_supervisor.context.context_compiler.ContextCompiler`, `context_contracts`, and `todo_daemon.production_context_slice` | Project semantic capsules/raw source into existing context references and production slices; do not build a second generic context optimizer. |
 | Resource admission and cancellation | `agent_supervisor.runtime.resource_scheduler.ResourceScheduler` and cancellation-aware work contracts | Wrap these types rather than introducing a scheduler. |
 | Provider execution | `agent_supervisor.runtime.provider_execution.ProviderExecutionGateway` | Use its reservation/idempotency path, with a stricter harness promotion gate that rejects simulated/degraded/replayed-as-new results in production. |
-| Worktree ownership and fencing | `agent_supervisor.worktree_lifecycle.WorktreeLifecycleStore` and `merge.lease_coordination.LeaseCoordinator` | Acquire before `git worktree add`, fence every mutation/publication, and recover by durable attempt identity. The eventual mandatory runtime vector independently binds process birth and process-group cleanup. |
+| Worktree ownership and fencing | `agent_supervisor.worktree_lifecycle.WorktreeLifecycleStore` and `merge.lease_coordination.LeaseCoordinator` | Acquire before `git worktree add`, fence every mutation/publication, and recover by durable attempt identity. The pinned mandatory runtime vector independently binds process birth and process-group cleanup. |
 | Proposal and patch admission | `validation.proposal_validation` plus `todo_daemon.production_context_slice.assert_proposal_covered_by_context` | Reuse strict parsing, immutable scope, preimage coverage, and rejection receipts before Git application. |
 | Validation execution | `validation.validation_commands`, `validation.validation_runtime`, and `validation.validation_scheduler.ValidationScheduler.run_staged` | The semantic selector supplies explicit commands; do not invoke the legacy `run_impact_selected` selector or add a subprocess scheduler. |
 | Proof execution | `proof.proof_scheduler.ProofScheduler` and formal-verification capability records | Reuse capability probing and typed unavailable results; do not build a prover. |

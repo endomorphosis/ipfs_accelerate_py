@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import argparse
 import ast
+import ctypes
 import hashlib
 import io
 import json
 import os
 import re
+import select
 import signal
 import stat
 import subprocess
@@ -47,17 +49,17 @@ EXPECTED_ORIGINS = {
     role: f"https://github.com/{repository}" for role, repository in EXPECTED_REPOSITORIES.items()
 }
 EXPECTED_COMMITS = {
-    "accelerate_harness": "UNRESOLVED_REPAIRED_ACCELERATE_COMMIT",
-    "incremental_semantic_index": "UNRESOLVED_FINAL_ISI_COMMIT",
-    "semantic_state_contracts": "UNRESOLVED_FINAL_DSS_COMMIT",
-    "kit_state_roots": "05ba9375923cd5fb52e2c9c18b98b530d57d077f",
+    "accelerate_harness": "271e331af802f37d759c000666282631a99f7aab",
+    "incremental_semantic_index": "1330038f626ef92993f03d46f21e1a57719e9c25",
+    "semantic_state_contracts": "1330038f626ef92993f03d46f21e1a57719e9c25",
+    "kit_state_roots": "df2f9cc092456329de9724c45a50c54b410875d1",
     "mcp_plus_plus": "dc3164653a48d059ae9812078359daeafb451c07",
 }
 EXPECTED_TREES = {
-    "accelerate_harness": "UNRESOLVED_REPAIRED_ACCELERATE_TREE",
-    "incremental_semantic_index": "UNRESOLVED_FINAL_ISI_TREE",
-    "semantic_state_contracts": "UNRESOLVED_FINAL_DSS_TREE",
-    "kit_state_roots": "a770206fe9e11852a9a230b9ce64d0cce254dd50",
+    "accelerate_harness": "5859208bdab59338eab67a5cd0102c193ca6c388",
+    "incremental_semantic_index": "c1686dfce8e14ebd32327a0214c0f62ff6a5c7d6",
+    "semantic_state_contracts": "c1686dfce8e14ebd32327a0214c0f62ff6a5c7d6",
+    "kit_state_roots": "d3f2d9ae8b1cbf0145c7d54114a5408d90b49fd0",
     "mcp_plus_plus": "6560c3d0c926be12df860afb7d7c82043a1769ba",
 }
 REACHABILITY_POLICY = "exact_clean_head"
@@ -127,24 +129,18 @@ EXTRACTION_FIELDS = frozenset({"kind", "path", "selector", "value"})
 CLOSURE_FIELDS = frozenset({"blob_scope", "import_scope", "test_scope", "materialization"})
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 FINGERPRINT = re.compile(r"^sha256:[0-9a-f]{64}$")
-PLACEHOLDER = re.compile(r"(?:UNRESOLVED|PLACEHOLDER|\\bTODO\\b)", re.IGNORECASE)
+PLACEHOLDER = re.compile(
+    r"(?<![A-Za-z0-9_])(?:UNRESOLVED|PLACEHOLDER)(?:_[A-Z0-9]+)*(?![A-Za-z0-9_])"
+    r"|(?<![A-Za-z0-9_.-])TODO(?![A-Za-z0-9_.-])",
+    re.IGNORECASE,
+)
 
 EXPECTED_TARGET = {
     "language": "python",
     "python_minor": "3.12",
     "test_framework": "pytest",
 }
-EXPECTED_UNRESOLVED_AUTHORITY_REASONS = {
-    "accelerate_harness": [
-        "live_owner_without_heartbeat_can_split_brain_and_swallow_lost_fence",
-        "stale_owner_can_overwrite_newer_active_task_index",
-        "empty_or_unavailable_process_snapshot_fails_open",
-        "whitespace_validation_omits_untracked_and_submodule_outputs",
-        "fast_zombie_birth_capture_can_leak_lease",
-    ],
-    "incremental_semantic_index": ["final_repaired_authority_not_supplied"],
-    "semantic_state_contracts": ["final_repaired_authority_not_supplied"],
-}
+EXPECTED_UNRESOLVED_AUTHORITY_REASONS = {}
 EXPECTED_ENVIRONMENT_POLICY = {
     "inherit": [],
     "fixed": {
@@ -165,9 +161,10 @@ EXPECTED_CLOSURE_POLICY = {
     "blob_scope": "entire_commit_tree",
     "import_scope": "entire_commit_tree_fail_closed",
     "test_scope": "sealed_argv_and_repository_configuration_with_tree_fallback",
-    "materialization": "fresh_private_git_archive",
+    "materialization": "fresh_private_git_archive_with_inert_symlink_records",
 }
-PRODUCER_RECEIPT_SCHEMA = "ipfs-accelerate.agent-supervisor.semantic-state-producer-test-receipt@1"
+PRODUCER_RECEIPT_SCHEMA = "ipfs-accelerate.agent-supervisor.semantic-state-producer-test-receipt@2"
+MATERIALIZATION_POLICY = "git_archive_with_inert_symlink_records@1"
 EXPECTED_WIRE_CONTRACT = {
     "authority_role": "mcp_plus_plus",
     "profiles": ["A", "B", "F"],
@@ -363,31 +360,29 @@ EXPECTED_INTERFACE_CONTRACTS = {
     "incremental_semantic_index": {
         "contract_name": "SemanticCapsuleIndexConsumer@2",
         "consumer_schema_requirements": [
-            ["extractor_name", "UNRESOLVED_FINAL_ISI_EXTRACTOR_NAME"],
-            ["extractor_version", "UNRESOLVED_FINAL_ISI_EXTRACTOR_VERSION"],
-            ["semantic_index_schema", "UNRESOLVED_FINAL_ISI_SCHEMA"],
+            ["extractor_name", "python-cpython-ast"],
+            ["extractor_version", "1"],
+            ["semantic_index_schema", "ipfs-datasets.software-contracts.semantic-index@2"],
         ],
         "consumer_api_requirements": [
-            "SemanticIndexForCapsules.incoming_edges(stable_symbol_id:str)->tuple[DependencyEdge,...]",
-            "SemanticIndexForCapsules.outgoing_edges(stable_symbol_id:str)->tuple[DependencyEdge,...]",
-            "SemanticIndexForCapsules.read_source_blob(source_cid:str)->bytes",
-            "SemanticIndexForCapsules.read_source_span(stable_symbol_id:str)->bytes",
-            "SemanticIndexForCapsules.source_slice(stable_symbol_id:str)->SourceSliceRef",
-            "SemanticIndexForCapsules.state_root_cid:str",
-            "SemanticIndexForCapsules.symbol(stable_symbol_id:str)->SymbolRecord",
+            "RepositoryState.edges:Sequence[DependencyEdge]",
+            "RepositoryState.state_cid:str",
+            "RepositoryState.symbols:Sequence[SymbolRecord]",
+            "SymbolRecord.stable_id|version_cid|source_cid|module_path|span",
             "calculate_invalidation(previous_state,current_state,delta)->InvalidationPlan",
             "diff_repository_states(previous_state,current_state)->RepositoryStateDelta",
+            "explain_symbol(repository_state,symbol_id)->SymbolExplanation",
             "scan_repository(repo_path,previous_state=None)->RepositoryState",
         ],
     },
     "semantic_state_contracts": {
         "contract_name": "SemanticStateProvider@1",
         "consumer_schema_requirements": [
-            ["capsule_compiler_version", "UNRESOLVED_FINAL_DSS_CAPSULE_COMPILER_VERSION"],
-            ["capsule_schema", "UNRESOLVED_FINAL_DSS_CAPSULE_SCHEMA"],
-            ["merkle_compiler_version", "UNRESOLVED_FINAL_DSS_MERKLE_COMPILER_VERSION"],
-            ["selection_schema", "UNRESOLVED_FINAL_DSS_SELECTION_SCHEMA"],
-            ["semantic_state_schema", "UNRESOLVED_FINAL_DSS_SEMANTIC_STATE_SCHEMA"],
+            ["capsule_compiler_version", "1"],
+            ["capsule_schema", "ipfs-datasets.software-contracts.semantic-capsule@1"],
+            ["merkle_compiler_version", "1"],
+            ["selection_schema", "ipfs-datasets.software-contracts.semantic-test-selection@1"],
+            ["semantic_state_schema", "ipfs-datasets.software-contracts.semantic-state@1"],
         ],
         "consumer_api_requirements": [
             "SemanticStateView.capsule(stable_symbol_id:str)->SemanticCapsule",
@@ -722,12 +717,16 @@ def _unknown_fields(value: Mapping[str, Any], allowed: frozenset[str], label: st
 
 
 def _contains_placeholder(value: Any) -> bool:
+    """Detect unresolved placeholder *values*, not ordinary field names.
+
+    Field names such as ``unresolved_authority_reasons`` must not trip the gate
+    after the seal is closed with an empty reasons map.
+    """
+
     if isinstance(value, str):
         return bool(PLACEHOLDER.search(value))
     if isinstance(value, Mapping):
-        return any(
-            _contains_placeholder(key) or _contains_placeholder(item) for key, item in value.items()
-        )
+        return any(_contains_placeholder(item) for item in value.values())
     if isinstance(value, list):
         return any(_contains_placeholder(item) for item in value)
     return False
@@ -1648,53 +1647,148 @@ def _safe_materialization_member(name: str) -> PurePosixPath:
 
 
 def _materialize_commit(checkout: Path, commit: str, destination: Path) -> None:
+    try:
+        destination_info = destination.lstat()
+        destination_entries = tuple(destination.iterdir())
+    except OSError as exc:
+        raise ValueError(f"materialization destination unavailable: {exc}") from exc
+    if not stat.S_ISDIR(destination_info.st_mode) or stat.S_ISLNK(destination_info.st_mode):
+        raise ValueError("materialization destination must be a real directory")
+    if destination_entries:
+        raise ValueError("materialization destination must be empty")
+
     archived = _git_bytes(checkout, "archive", "--format=tar", commit)
     if archived.returncode:
         raise ValueError("git archive failed")
-    with tarfile.open(fileobj=io.BytesIO(archived.stdout), mode="r:") as archive:
+    seen: set[PurePosixPath] = set()
+    directories: set[PurePosixPath] = {PurePosixPath(".")}
+    non_directories: set[PurePosixPath] = set()
+    with tarfile.open(
+        fileobj=io.BytesIO(archived.stdout),
+        mode="r:",
+        encoding="utf-8",
+        errors="surrogateescape",
+    ) as archive:
         for member in archive.getmembers():
             relative = _safe_materialization_member(member.name)
-            target = destination.joinpath(*relative.parts)
-            target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            if member.isdir():
-                target.mkdir(mode=0o700, exist_ok=True)
-                continue
-            if member.issym():
-                link = PurePosixPath(member.linkname)
-                if link.is_absolute() or ".." in link.parts:
-                    raise ValueError(f"unsafe archive symlink: {member.name!r}")
-                os.symlink(member.linkname, target)
-                continue
-            if not member.isfile():
-                raise ValueError(f"unsupported archive member: {member.name!r}")
-            source = archive.extractfile(member)
-            if source is None:
-                raise ValueError(f"archive member has no bytes: {member.name!r}")
-            descriptor = os.open(
-                target,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-                0o700 if member.mode & 0o111 else 0o600,
+            if relative in seen:
+                raise ValueError(f"duplicate archive member: {member.name!r}")
+            seen.add(relative)
+            parents = tuple(
+                parent for parent in relative.parents if parent != PurePosixPath(".")
             )
-            with os.fdopen(descriptor, "wb") as stream:
-                stream.write(source.read())
+            if any(parent in non_directories for parent in parents):
+                raise ValueError(f"archive member crosses a non-directory: {member.name!r}")
+            if not member.isdir() and relative in directories:
+                raise ValueError(f"archive member collides with a directory: {member.name!r}")
+            target = destination.joinpath(*relative.parts)
+            try:
+                target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                directories.update(parents)
+                if member.isdir():
+                    if relative in non_directories:
+                        raise ValueError(
+                            f"archive directory collides with a file: {member.name!r}"
+                        )
+                    target.mkdir(mode=0o700, exist_ok=True)
+                    directories.add(relative)
+                    continue
+                if member.issym():
+                    # A Git symlink's target is source data, not execution authority.
+                    # An empty record at the source path is inert even when the name is
+                    # importable Python or a pytest configuration hook.  The exact target
+                    # bytes remain bound from the source Git blob in the receipt; putting
+                    # those bytes here would make a malicious ``*.py`` target executable.
+                    data = b""
+                    mode = 0o600
+                elif member.isfile():
+                    source = archive.extractfile(member)
+                    if source is None:
+                        raise ValueError(f"archive member has no bytes: {member.name!r}")
+                    data = source.read()
+                    mode = 0o700 if member.mode & 0o111 else 0o600
+                else:
+                    raise ValueError(f"unsupported archive member: {member.name!r}")
+                descriptor = os.open(
+                    target,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                    mode,
+                )
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(data)
+                non_directories.add(relative)
+            except OSError as exc:
+                raise ValueError(f"archive member collision or write failure: {member.name!r}") from exc
 
 
-def _verify_materialization(checkout: Path, commit: str, materialization: Path) -> list[str]:
+SYMLINK_MATERIALIZATION_FIELDS = frozenset(
+    {
+        "path",
+        "source_mode",
+        "source_blob_oid",
+        "target_sha256",
+        "materialized_sha256",
+        "materialized_kind",
+    }
+)
+
+
+def _inspect_materialization(
+    checkout: Path, commit: str, materialization: Path
+) -> tuple[list[str], list[dict[str, str]]]:
     errors: list[str] = []
+    symlink_projection: list[dict[str, str]] = []
     try:
         entries = _tracked_entries(checkout, commit)
     except ValueError as exc:
-        return [str(exc)]
-    for mode, oid, relative in entries:
+        return [str(exc)], symlink_projection
+    for mode, oid, relative in sorted(entries, key=lambda entry: entry[2]):
         if mode == "160000":
             continue
+        path = materialization / relative
+        if mode == "120000":
+            source = _git_bytes(checkout, "cat-file", "blob", oid)
+            if source.returncode:
+                errors.append(f"source symlink blob unavailable: {relative}")
+                continue
+            try:
+                info = path.lstat()
+                data = path.read_bytes()
+            except OSError as exc:
+                errors.append(f"materialized symlink record unavailable: {relative}: {exc}")
+                continue
+            if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+                errors.append(f"materialized symlink record is not inert: {relative}")
+                continue
+            if info.st_mode & 0o111:
+                errors.append(f"materialized symlink record is executable: {relative}")
+            if _git_blob_oid(source.stdout) != oid:
+                errors.append(f"source symlink blob mismatch: {relative}")
+            if data:
+                errors.append(f"materialized symlink record is not empty: {relative}")
+            symlink_projection.append(
+                {
+                    "path": relative,
+                    "source_mode": mode,
+                    "source_blob_oid": oid,
+                    "target_sha256": _sha256_bytes(source.stdout),
+                    "materialized_sha256": _sha256_bytes(data),
+                    "materialized_kind": "inert_regular_file",
+                }
+            )
+            continue
         try:
-            data = _working_bytes(materialization / relative, mode)
+            data = _working_bytes(path, mode)
         except (OSError, ValueError) as exc:
             errors.append(f"materialized bytes unavailable: {relative}: {exc}")
             continue
         if _git_blob_oid(data) != oid:
             errors.append(f"materialized bytes mismatch: {relative}")
+    return errors, symlink_projection
+
+
+def _verify_materialization(checkout: Path, commit: str, materialization: Path) -> list[str]:
+    errors, _symlink_projection = _inspect_materialization(checkout, commit, materialization)
     return errors
 
 
@@ -1721,41 +1815,279 @@ def _revalidate_all_roots(
     return errors
 
 
-def _process_group_exists(process_group_id: int) -> bool:
+PROCESS_GROUP_NATURAL_DRAIN_SECONDS = 0.1
+PROCESS_GROUP_POLL_SECONDS = 0.005
+PROCESS_FENCE_POLICY = "linux_subreaper_and_birth_tracked_process_group@1"
+OUTPUT_CAPTURE_MAX_BYTES = 1024 * 1024
+OUTPUT_CAPTURE_POLICY = "combined_stdout_stderr_fail_closed_at_1048576_bytes@1"
+_PR_SET_CHILD_SUBREAPER = 36
+
+
+def _proc_stat(
+    pid: int, *, proc_root: Path = Path("/proc")
+) -> tuple[int, int, int, int, str] | None:
     try:
-        os.killpg(process_group_id, 0)
-    except ProcessLookupError:
+        raw = (proc_root / str(pid) / "stat").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ValueError(f"process table unavailable for pid {pid}: {exc}") from exc
+    close = raw.rfind(")")
+    fields = raw[close + 2 :].split() if close >= 0 else []
+    if len(fields) < 20:
+        raise ValueError(f"malformed process table record for pid {pid}")
+    try:
+        return int(fields[1]), int(fields[2]), int(fields[3]), int(fields[19]), fields[0]
+    except ValueError as exc:
+        raise ValueError(f"malformed process table record for pid {pid}") from exc
+
+
+def _process_table_snapshot(
+    *, proc_root: Path = Path("/proc")
+) -> dict[int, tuple[int, int, int, int, str]] | None:
+    try:
+        entries = tuple(proc_root.iterdir())
+    except OSError:
+        return None
+    snapshot: dict[int, tuple[int, int, int, int, str]] = {}
+    try:
+        for entry in entries:
+            if not entry.name.isdigit():
+                continue
+            record = _proc_stat(int(entry.name), proc_root=proc_root)
+            if record is not None:
+                snapshot[int(entry.name)] = record
+    except ValueError:
+        return None
+    return snapshot
+
+
+def _enable_child_subreaper() -> bool:
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        prctl = libc.prctl
+        prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+        prctl.restype = ctypes.c_int
+        return prctl(_PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) == 0
+    except (AttributeError, OSError):
         return False
-    except PermissionError:
-        return True
+
+
+def _observe_owned_descendants(
+    *,
+    supervisor_pid: int,
+    leader_pid: int,
+    leader_start_time_ticks: int,
+    baseline_direct_children: Mapping[int, int],
+    tracked: dict[int, int],
+) -> tuple[str, dict[int, int]]:
+    """Observe command descendants reparented through the Linux subreaper."""
+
+    snapshot = _process_table_snapshot()
+    if snapshot is None:
+        return "unavailable", {}
+    leader = snapshot.get(leader_pid)
+    if leader is not None and leader[3] != leader_start_time_ticks:
+        return "identity_reused", {}
+
+    owned: dict[int, int] = {}
+    for pid, expected_start in tuple(tracked.items()):
+        record = snapshot.get(pid)
+        if record is None:
+            continue
+        if record[3] != expected_start:
+            return "identity_reused", {}
+        owned[pid] = expected_start
+
+    changed = True
+    while changed:
+        changed = False
+        for pid, record in snapshot.items():
+            parent_pid, _group_id, _session_id, start_time_ticks, _state = record
+            if pid == leader_pid or baseline_direct_children.get(pid) == start_time_ticks:
+                continue
+            parent_is_leader = parent_pid == leader_pid and (
+                leader is None or leader[3] == leader_start_time_ticks
+            )
+            parent_is_owned = parent_pid in owned
+            reparented_to_supervisor = parent_pid == supervisor_pid
+            if not (parent_is_leader or parent_is_owned or reparented_to_supervisor):
+                continue
+            expected = tracked.setdefault(pid, start_time_ticks)
+            if expected != start_time_ticks:
+                return "identity_reused", {}
+            if pid not in owned:
+                owned[pid] = start_time_ticks
+                changed = True
+
+    for pid, expected_start in tuple(owned.items()):
+        record = snapshot.get(pid)
+        if record is None or record[3] != expected_start:
+            continue
+        parent_pid, _group_id, _session_id, _start_time_ticks, state = record
+        if parent_pid != supervisor_pid or state != "Z":
+            continue
+        try:
+            os.waitpid(pid, os.WNOHANG)
+        except (ChildProcessError, OSError):
+            continue
+        owned.pop(pid, None)
+    return ("present", owned) if owned else ("empty", {})
+
+
+def _signal_owned_descendants(descendants: Mapping[int, int], sig: int) -> bool:
+    for pid, expected_start in descendants.items():
+        try:
+            record = _proc_stat(pid)
+        except ValueError:
+            return False
+        if record is None:
+            continue
+        if record[3] != expected_start:
+            return False
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            continue
+        except PermissionError:
+            return False
     return True
 
 
-def _wait_process_group_gone(process: subprocess.Popen[bytes], *, timeout_seconds: float) -> bool:
+def _terminate_owned_descendants(
+    *,
+    supervisor_pid: int,
+    leader_pid: int,
+    leader_start_time_ticks: int,
+    baseline_direct_children: Mapping[int, int],
+    tracked: dict[int, int],
+) -> bool:
+    for sig, timeout_seconds in ((signal.SIGTERM, 1.0), (signal.SIGKILL, 2.0)):
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            status, descendants = _observe_owned_descendants(
+                supervisor_pid=supervisor_pid,
+                leader_pid=leader_pid,
+                leader_start_time_ticks=leader_start_time_ticks,
+                baseline_direct_children=baseline_direct_children,
+                tracked=tracked,
+            )
+            if status == "empty":
+                return True
+            if status in {"identity_reused", "unavailable"}:
+                return False
+            if not _signal_owned_descendants(descendants, sig):
+                return False
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(PROCESS_GROUP_POLL_SECONDS)
+    status, _descendants = _observe_owned_descendants(
+        supervisor_pid=supervisor_pid,
+        leader_pid=leader_pid,
+        leader_start_time_ticks=leader_start_time_ticks,
+        baseline_direct_children=baseline_direct_children,
+        tracked=tracked,
+    )
+    return status == "empty"
+
+
+def _process_group_observation(
+    process_group_id: int,
+    leader_start_time_ticks: int,
+    *,
+    proc_root: Path = Path("/proc"),
+) -> str:
+    """Return empty, present, present_unobserved, identity_reused, or unavailable."""
+
+    try:
+        entries = tuple(proc_root.iterdir())
+    except OSError:
+        return "unavailable"
+    members = 0
+    try:
+        for entry in entries:
+            if not entry.name.isdigit():
+                continue
+            record = _proc_stat(int(entry.name), proc_root=proc_root)
+            if record is None:
+                continue
+            _parent_pid, group_id, _session_id, start_time_ticks, _state = record
+            if group_id != process_group_id:
+                continue
+            members += 1
+            if int(entry.name) == process_group_id and start_time_ticks != leader_start_time_ticks:
+                return "identity_reused"
+    except ValueError:
+        return "unavailable"
+    if members:
+        return "present"
+    try:
+        os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return "empty"
+    except PermissionError:
+        return "unavailable"
+    return "present_unobserved"
+
+
+def _wait_process_group_gone(
+    process: subprocess.Popen[bytes],
+    leader_start_time_ticks: int,
+    *,
+    timeout_seconds: float,
+) -> tuple[bool, bool]:
+    """Return (gone, natural_drain_observed) with unavailable inspection fail-closed."""
+
     deadline = time.monotonic() + timeout_seconds
+    observed_present = False
     while True:
         process.poll()  # Reap the group leader when it has exited.
-        if not _process_group_exists(process.pid):
-            return True
+        observation = _process_group_observation(process.pid, leader_start_time_ticks)
+        if observation == "empty":
+            return True, observed_present
+        if observation in {"identity_reused", "unavailable"}:
+            return False, False
+        observed_present = True
         if time.monotonic() >= deadline:
-            return False
-        time.sleep(0.01)
+            return False, False
+        time.sleep(PROCESS_GROUP_POLL_SECONDS)
 
 
-def _terminate_process_group(process: subprocess.Popen[bytes]) -> bool:
+def _terminate_process_group(
+    process: subprocess.Popen[bytes], leader_start_time_ticks: int
+) -> bool:
     """Fence the complete owned process group, even after its leader exits."""
 
+    leader_is_unreaped = process.poll() is None
+    observation = _process_group_observation(process.pid, leader_start_time_ticks)
+    if observation == "empty":
+        process.poll()
+        return True
+    if observation in {"identity_reused", "unavailable"} and not leader_is_unreaped:
+        return False
+    # While Popen still owns the unreaped leader PID, that PID cannot have been
+    # reused.  The initial setsid/group birth witness therefore remains enough
+    # to kill its group even when a later process-table read becomes unavailable.
     try:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
         process.poll()
         return True
-    if not _wait_process_group_gone(process, timeout_seconds=1.0):
+    gone, _natural_drain = _wait_process_group_gone(
+        process, leader_start_time_ticks, timeout_seconds=1.0
+    )
+    if not gone:
+        observation = _process_group_observation(process.pid, leader_start_time_ticks)
+        leader_is_unreaped = process.poll() is None
+        if observation in {"identity_reused", "unavailable"} and not leader_is_unreaped:
+            return False
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-    gone = _wait_process_group_gone(process, timeout_seconds=2.0)
+    gone, _natural_drain = _wait_process_group_gone(
+        process, leader_start_time_ticks, timeout_seconds=2.0
+    )
     try:
         process.wait(timeout=0.1)
     except subprocess.TimeoutExpired:
@@ -1765,7 +2097,18 @@ def _terminate_process_group(process: subprocess.Popen[bytes]) -> bool:
 
 def _run_fenced_command(
     command: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout: int
-) -> tuple[int, bytes, bytes, bool, bool]:
+) -> tuple[int, bytes, bytes, bool, bool, bool, bool]:
+    supervisor_pid = os.getpid()
+    if not _enable_child_subreaper():
+        return -1, b"", b"child subreaper unavailable", False, True, False, False
+    baseline_snapshot = _process_table_snapshot()
+    if baseline_snapshot is None:
+        return -1, b"", b"process table unavailable", False, True, False, False
+    baseline_direct_children = {
+        pid: record[3]
+        for pid, record in baseline_snapshot.items()
+        if record[0] == supervisor_pid
+    }
     process = subprocess.Popen(
         list(command),
         cwd=cwd,
@@ -1775,34 +2118,246 @@ def _run_fenced_command(
         stderr=subprocess.PIPE,
         start_new_session=True,
     )
-    timed_out = False
-    try:
-        stdout, stderr = process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        _terminate_process_group(process)
+
+    def abort_unwitnessed_process() -> tuple[int, bytes, bytes, bool, bool, bool, bool]:
+        # The direct child has not been reaped, so its PID cannot be reused even
+        # when /proc cannot supply the stronger birth witness.
         try:
-            stdout, stderr = process.communicate(timeout=2)
-        except subprocess.TimeoutExpired as exc:
-            # A descendant that escaped the owned group must not stall the
-            # control plane by retaining an inherited pipe.
-            stdout = exc.output or b""
-            stderr = exc.stderr or b""
-            if process.stdout is not None:
-                process.stdout.close()
-            if process.stderr is not None:
-                process.stderr.close()
-    descendant_leak = False
-    if not timed_out:
-        try:
-            os.killpg(process.pid, 0)
+            os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        else:
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+        exit_code = process.returncode if isinstance(process.returncode, int) else -1
+        return exit_code, b"", b"process birth witness unavailable", False, True, False, False
+
+    try:
+        leader_record = _proc_stat(process.pid)
+    except ValueError:
+        leader_record = None
+    if leader_record is None:
+        return abort_unwitnessed_process()
+    (
+        _leader_parent_pid,
+        leader_group_id,
+        leader_session_id,
+        leader_start_time_ticks,
+        _leader_state,
+    ) = leader_record
+    if leader_group_id != process.pid or leader_session_id != process.pid:
+        return abort_unwitnessed_process()
+
+    stdout_buffer = bytearray()
+    stderr_buffer = bytearray()
+    output_limit_exceeded = False
+    streams: dict[int, tuple[io.BufferedReader, bytearray]] = {}
+    for stream, buffer in (
+        (process.stdout, stdout_buffer),
+        (process.stderr, stderr_buffer),
+    ):
+        if stream is None:
+            continue
+        os.set_blocking(stream.fileno(), False)
+        streams[stream.fileno()] = (stream, buffer)
+
+    def drain_pipes(wait_seconds: float) -> None:
+        nonlocal output_limit_exceeded
+        if not streams:
+            if wait_seconds:
+                time.sleep(wait_seconds)
+            return
+        try:
+            ready, _writable, _exceptional = select.select(
+                list(streams), [], [], wait_seconds
+            )
+        except (OSError, ValueError):
+            ready = []
+        for descriptor in ready:
+            stream, buffer = streams[descriptor]
+            while True:
+                try:
+                    chunk = os.read(descriptor, 65536)
+                except BlockingIOError:
+                    break
+                except OSError:
+                    chunk = b""
+                if chunk:
+                    remaining = OUTPUT_CAPTURE_MAX_BYTES - (
+                        len(stdout_buffer) + len(stderr_buffer)
+                    )
+                    if len(chunk) > remaining:
+                        if remaining > 0:
+                            buffer.extend(chunk[:remaining])
+                        output_limit_exceeded = True
+                        return
+                    buffer.extend(chunk)
+                    continue
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+                streams.pop(descriptor, None)
+                break
+
+    started = time.monotonic()
+    command_deadline = started + timeout
+    leader_exit_at: float | None = None
+    natural_drain_deadline: float | None = None
+    group_gone = False
+    descendants_gone = False
+    observed_group_after_exit = False
+    tracked_descendants: dict[int, int] = {}
+    timed_out = False
+    descendant_leak = False
+    natural_drain_observed = False
+
+    while True:
+        drain_pipes(0.0)
+        now = time.monotonic()
+        process.poll()
+        if output_limit_exceeded:
+            group_gone = _terminate_process_group(process, leader_start_time_ticks)
+            process.poll()
+            leader_exit_at = time.monotonic()
+            descendants_gone = _terminate_owned_descendants(
+                supervisor_pid=supervisor_pid,
+                leader_pid=process.pid,
+                leader_start_time_ticks=leader_start_time_ticks,
+                baseline_direct_children=baseline_direct_children,
+                tracked=tracked_descendants,
+            )
+            descendant_leak = not group_gone or not descendants_gone
+            for stream, _buffer in tuple(streams.values()):
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+            streams.clear()
+            break
+        if process.returncode is not None and leader_exit_at is None:
+            leader_exit_at = now
+            natural_drain_deadline = now + PROCESS_GROUP_NATURAL_DRAIN_SECONDS
+
+        if leader_exit_at is None and now >= command_deadline:
+            timed_out = True
             descendant_leak = True
-            _terminate_process_group(process)
+            group_gone = _terminate_process_group(process, leader_start_time_ticks)
+            process.poll()
+            leader_exit_at = time.monotonic()
+            natural_drain_deadline = leader_exit_at
+            descendants_gone = _terminate_owned_descendants(
+                supervisor_pid=supervisor_pid,
+                leader_pid=process.pid,
+                leader_start_time_ticks=leader_start_time_ticks,
+                baseline_direct_children=baseline_direct_children,
+                tracked=tracked_descendants,
+            )
+
+        if leader_exit_at is not None and not group_gone and not timed_out:
+            observation = _process_group_observation(process.pid, leader_start_time_ticks)
+            if observation == "empty":
+                group_gone = True
+                natural_drain_observed = observed_group_after_exit
+            elif observation in {"identity_reused", "unavailable"}:
+                descendant_leak = True
+                group_gone = _terminate_process_group(process, leader_start_time_ticks)
+            else:
+                observed_group_after_exit = True
+                if time.monotonic() >= (natural_drain_deadline or now):
+                    descendant_leak = True
+                    group_gone = _terminate_process_group(
+                        process, leader_start_time_ticks
+                    )
+
+        if leader_exit_at is not None and not timed_out:
+            descendant_status, _owned_descendants = _observe_owned_descendants(
+                supervisor_pid=supervisor_pid,
+                leader_pid=process.pid,
+                leader_start_time_ticks=leader_start_time_ticks,
+                baseline_direct_children=baseline_direct_children,
+                tracked=tracked_descendants,
+            )
+            if descendant_status == "empty":
+                descendants_gone = True
+            elif descendant_status in {"identity_reused", "unavailable"}:
+                descendant_leak = True
+                descendants_gone = _terminate_owned_descendants(
+                    supervisor_pid=supervisor_pid,
+                    leader_pid=process.pid,
+                    leader_start_time_ticks=leader_start_time_ticks,
+                    baseline_direct_children=baseline_direct_children,
+                    tracked=tracked_descendants,
+                )
+            else:
+                descendants_gone = False
+                observed_group_after_exit = True
+                if time.monotonic() >= (natural_drain_deadline or now):
+                    descendant_leak = True
+                    descendants_gone = _terminate_owned_descendants(
+                        supervisor_pid=supervisor_pid,
+                        leader_pid=process.pid,
+                        leader_start_time_ticks=leader_start_time_ticks,
+                        baseline_direct_children=baseline_direct_children,
+                        tracked=tracked_descendants,
+                    )
+
+        drain_pipes(0.0)
+        now = time.monotonic()
+        if leader_exit_at is not None and group_gone and descendants_gone and not streams:
+            break
+        if leader_exit_at is not None and now >= (natural_drain_deadline or now):
+            if not group_gone:
+                descendant_leak = True
+                group_gone = _terminate_process_group(process, leader_start_time_ticks)
+            if not descendants_gone:
+                descendant_leak = True
+                descendants_gone = _terminate_owned_descendants(
+                    supervisor_pid=supervisor_pid,
+                    leader_pid=process.pid,
+                    leader_start_time_ticks=leader_start_time_ticks,
+                    baseline_direct_children=baseline_direct_children,
+                    tracked=tracked_descendants,
+                )
+            # Open inherited pipes after the leader-bound drain deadline prove a
+            # descendant outside the observable group or an incomplete fence.
+            if streams:
+                descendant_leak = True
+                for stream, _buffer in tuple(streams.values()):
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass
+                streams.clear()
+            break
+
+        next_deadline = (
+            command_deadline if leader_exit_at is None else natural_drain_deadline or now
+        )
+        drain_pipes(min(PROCESS_GROUP_POLL_SECONDS, max(0.0, next_deadline - now)))
+
+    stdout = bytes(stdout_buffer)
+    stderr = bytes(stderr_buffer)
+    natural_drain_observed = (
+        observed_group_after_exit
+        and not descendant_leak
+        and not timed_out
+        and not output_limit_exceeded
+    )
     exit_code = process.returncode if isinstance(process.returncode, int) else -1
-    return exit_code, stdout, stderr, timed_out, descendant_leak
+    return (
+        exit_code,
+        stdout,
+        stderr,
+        timed_out,
+        descendant_leak,
+        natural_drain_observed,
+        output_limit_exceeded,
+    )
 
 
 RECEIPT_FIELDS = frozenset(
@@ -1818,13 +2373,19 @@ RECEIPT_FIELDS = frozenset(
         "python_sha256",
         "pytest_sha256",
         "environment_policy_sha256",
-        "materialization_tree",
+        "process_fence_policy",
+        "output_capture_policy",
+        "materialization_policy",
+        "materialization_source_tree",
+        "symlink_materialization",
         "closure_tree",
         "stdout_sha256",
         "stderr_sha256",
         "exit_code",
         "timed_out",
         "descendant_leak_detected",
+        "natural_process_group_drain_observed",
+        "output_capture_limit_exceeded",
         "pre_roots",
         "post_roots",
         "receipt_sha256",
@@ -1849,15 +2410,51 @@ def _receipt_structure_errors(receipt: Mapping[str, Any]) -> list[str]:
     for field in (
         "commit",
         "tree",
-        "materialization_tree",
+        "materialization_source_tree",
         "closure_tree",
     ):
         if not HEX40.fullmatch(str(receipt.get(field, ""))):
             errors.append(f"receipt {field} is not a Git object ID")
-    if receipt.get("materialization_tree") != receipt.get("tree"):
-        errors.append("receipt materialization tree differs from authority tree")
+    if receipt.get("materialization_policy") != MATERIALIZATION_POLICY:
+        errors.append("receipt materialization policy differs from the sealed safe projection")
+    if receipt.get("process_fence_policy") != PROCESS_FENCE_POLICY:
+        errors.append("receipt process fence policy differs from the sealed policy")
+    if receipt.get("output_capture_policy") != OUTPUT_CAPTURE_POLICY:
+        errors.append("receipt output capture policy differs from the sealed policy")
+    if receipt.get("materialization_source_tree") != receipt.get("tree"):
+        errors.append("receipt materialization source tree differs from authority tree")
     if receipt.get("closure_tree") != receipt.get("tree"):
         errors.append("receipt closure tree differs from authority tree")
+    symlink_materialization = receipt.get("symlink_materialization")
+    if not isinstance(symlink_materialization, list):
+        errors.append("receipt symlink materialization is not a list")
+    else:
+        paths: list[str] = []
+        for index, item in enumerate(symlink_materialization):
+            label = f"receipt symlink_materialization[{index}]"
+            if not isinstance(item, Mapping):
+                errors.append(f"{label} is not an object")
+                continue
+            if set(item) != SYMLINK_MATERIALIZATION_FIELDS:
+                errors.append(f"{label} is not a closed projection")
+                continue
+            path = item.get("path")
+            if not isinstance(path, str) or not _safe_repo_path(path):
+                errors.append(f"{label} path is unsafe")
+            else:
+                paths.append(path)
+            if item.get("source_mode") != "120000":
+                errors.append(f"{label} source mode is not a Git symlink")
+            if not HEX40.fullmatch(str(item.get("source_blob_oid", ""))):
+                errors.append(f"{label} source blob OID is invalid")
+            if not FINGERPRINT.fullmatch(str(item.get("target_sha256", ""))):
+                errors.append(f"{label} target digest is invalid")
+            if item.get("materialized_sha256") != _sha256_bytes(b""):
+                errors.append(f"{label} materialized digest is not the empty inert record")
+            if item.get("materialized_kind") != "inert_regular_file":
+                errors.append(f"{label} materialized kind is not inert")
+        if paths != sorted(paths) or len(paths) != len(set(paths)):
+            errors.append("receipt symlink materialization paths are not unique and sorted")
     command_index = receipt.get("command_index")
     if isinstance(command_index, bool) or not isinstance(command_index, int) or command_index < 0:
         errors.append("receipt command index is not a non-negative integer")
@@ -1886,9 +2483,22 @@ def _receipt_structure_errors(receipt: Mapping[str, Any]) -> list[str]:
     exit_code = receipt.get("exit_code")
     if isinstance(exit_code, bool) or not isinstance(exit_code, int):
         errors.append("receipt exit code is not an integer")
-    for field in ("timed_out", "descendant_leak_detected"):
+    elif exit_code != 0:
+        errors.append("receipt does not prove a successful command exit")
+    for field in (
+        "timed_out",
+        "descendant_leak_detected",
+        "natural_process_group_drain_observed",
+        "output_capture_limit_exceeded",
+    ):
         if not isinstance(receipt.get(field), bool):
             errors.append(f"receipt {field} is not Boolean")
+    if receipt.get("timed_out") is not False:
+        errors.append("receipt cannot claim a timed-out command")
+    if receipt.get("descendant_leak_detected") is not False:
+        errors.append("receipt cannot claim a command with a descendant leak")
+    if receipt.get("output_capture_limit_exceeded") is not False:
+        errors.append("receipt cannot claim a command that exceeded its output capture limit")
     roots: dict[str, Mapping[str, Any]] = {}
     for field in ("pre_roots", "post_roots"):
         projection = receipt.get(field)
@@ -2001,7 +2611,7 @@ def _run_all_required_tests(
                 except (OSError, ValueError, tarfile.TarError) as exc:
                     errors.append(f"checkout[{role}]: private materialization failed: {exc}")
                     return errors, receipts
-                materialization_errors = _verify_materialization(
+                materialization_errors, symlink_projection = _inspect_materialization(
                     checkout, str(authority["commit"]), materialization
                 )
                 if materialization_errors:
@@ -2009,7 +2619,15 @@ def _run_all_required_tests(
                     return errors, receipts
                 environment = _test_environment(materialization)
                 try:
-                    exit_code, stdout, stderr, timed_out, leaked = _run_fenced_command(
+                    (
+                        exit_code,
+                        stdout,
+                        stderr,
+                        timed_out,
+                        leaked,
+                        natural_drain_observed,
+                        output_limit_exceeded,
+                    ) = _run_fenced_command(
                         command,
                         materialization,
                         environment,
@@ -2020,6 +2638,24 @@ def _run_all_required_tests(
                     return errors, receipts
                 post_errors = _revalidate_all_roots(authorities, repositories)
                 post_roots = _root_projection(authorities, repositories)
+                if timed_out:
+                    errors.append(
+                        f"checkout[{role}]: required test timed out after "
+                        f"{authority['test_timeout_seconds']}s: {' '.join(command)}"
+                    )
+                if leaked:
+                    errors.append(f"checkout[{role}]: required test leaked a descendant process")
+                if output_limit_exceeded:
+                    errors.append(
+                        f"checkout[{role}]: required test exceeded the sealed output capture limit"
+                    )
+                if exit_code:
+                    errors.append(
+                        f"checkout[{role}]: required test failed ({exit_code}): {' '.join(command)}"
+                    )
+                errors.extend(post_errors)
+                if errors:
+                    return errors, receipts
                 receipt = seal_producer_receipt(
                     {
                         "schema": PRODUCER_RECEIPT_SCHEMA,
@@ -2035,37 +2671,29 @@ def _run_all_required_tests(
                         "environment_policy_sha256": _sha256_bytes(
                             _canonical_bytes(toolchain["environment_policy"])
                         ),
-                        "materialization_tree": authority["tree"],
+                        "process_fence_policy": PROCESS_FENCE_POLICY,
+                        "output_capture_policy": OUTPUT_CAPTURE_POLICY,
+                        "materialization_policy": MATERIALIZATION_POLICY,
+                        "materialization_source_tree": authority["tree"],
+                        "symlink_materialization": symlink_projection,
                         "closure_tree": authority["tree"],
                         "stdout_sha256": _sha256_bytes(stdout),
                         "stderr_sha256": _sha256_bytes(stderr),
                         "exit_code": exit_code,
                         "timed_out": timed_out,
                         "descendant_leak_detected": leaked,
+                        "natural_process_group_drain_observed": natural_drain_observed,
+                        "output_capture_limit_exceeded": output_limit_exceeded,
                         "pre_roots": pre_roots,
                         "post_roots": post_roots,
                     }
                 )
-                receipts.append(receipt)
                 try:
                     _write_receipt(receipt_dir, receipt)
                 except (OSError, ValueError) as exc:
                     errors.append(f"checkout[{role}]: producer receipt write failed: {exc}")
                     return errors, receipts
-                if timed_out:
-                    errors.append(
-                        f"checkout[{role}]: required test timed out after "
-                        f"{authority['test_timeout_seconds']}s: {' '.join(command)}"
-                    )
-                if leaked:
-                    errors.append(f"checkout[{role}]: required test leaked a descendant process")
-                if exit_code:
-                    errors.append(
-                        f"checkout[{role}]: required test failed ({exit_code}): {' '.join(command)}"
-                    )
-                errors.extend(post_errors)
-                if errors:
-                    return errors, receipts
+                receipts.append(receipt)
     errors.extend(_receipt_population_errors(receipt_dir, receipts))
     return errors, receipts
 
@@ -2081,6 +2709,14 @@ def _run_required_tests(authority: Mapping[str, Any], checkout: Path) -> list[st
         with tempfile.TemporaryDirectory(prefix="sch-unit-") as raw_directory:
             materialization = Path(raw_directory)
             _materialize_commit(checkout, str(authority["commit"]), materialization)
+            materialization_errors, _symlink_projection = _inspect_materialization(
+                checkout, str(authority["commit"]), materialization
+            )
+            if materialization_errors:
+                errors.extend(
+                    f"checkout[{role}]: {error}" for error in materialization_errors
+                )
+                break
             environment = _test_environment(materialization)
             result = _run_fenced_command(
                 command,
@@ -2088,7 +2724,15 @@ def _run_required_tests(authority: Mapping[str, Any], checkout: Path) -> list[st
                 environment,
                 int(authority["test_timeout_seconds"]),
             )
-            exit_code, _stdout, _stderr, timed_out, leaked = result
+            (
+                exit_code,
+                _stdout,
+                _stderr,
+                timed_out,
+                leaked,
+                _natural_drain_observed,
+                output_limit_exceeded,
+            ) = result
             if timed_out:
                 errors.append(
                     f"checkout[{role}]: required test timed out after "
@@ -2096,6 +2740,10 @@ def _run_required_tests(authority: Mapping[str, Any], checkout: Path) -> list[st
                 )
             elif leaked:
                 errors.append(f"checkout[{role}]: required test leaked a descendant process")
+            elif output_limit_exceeded:
+                errors.append(
+                    f"checkout[{role}]: required test exceeded the sealed output capture limit"
+                )
             elif exit_code:
                 errors.append(
                     f"checkout[{role}]: required test failed ({exit_code}): {' '.join(command)}"

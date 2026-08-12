@@ -1,16 +1,20 @@
-"""Control-plane tests for the deliberately unresolved SCH-000 seal."""
+"""Control-plane tests for the sealed, fail-closed SCH-000 dependency gate."""
 
 from __future__ import annotations
 
 import copy
 import importlib.util
+import io
 import json
 import os
 import subprocess
 import sys
+import tarfile
 import time
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SEAL_PATH = REPO_ROOT / "config/semantic_state_dependencies.seal.json"
@@ -74,38 +78,40 @@ def _repository_authority(
     return repository, authority
 
 
-def test_checked_in_seal_is_intentionally_unresolved_and_fails_closed(
+def test_checked_in_seal_is_fully_resolved_and_still_fails_closed_without_bindings(
     capsys,
 ) -> None:
     validator = _load_validator()
     seal = validator.load_seal(SEAL_PATH)
     authorities = {item["role"]: item for item in seal["authorities"]}
 
-    assert seal["status"] == "unresolved"
-    assert authorities["accelerate_harness"]["commit"] == ("UNRESOLVED_REPAIRED_ACCELERATE_COMMIT")
-    assert authorities["accelerate_harness"]["tree"] == ("UNRESOLVED_REPAIRED_ACCELERATE_TREE")
-    assert authorities["accelerate_harness"]["interface_fingerprint"] == (
-        "UNRESOLVED_REPAIRED_ACCELERATE_INTERFACE_FINGERPRINT"
+    assert seal["status"] == "sealed"
+    assert authorities["accelerate_harness"]["commit"] == (
+        "271e331af802f37d759c000666282631a99f7aab"
     )
-    assert authorities["incremental_semantic_index"]["commit"] == ("UNRESOLVED_FINAL_ISI_COMMIT")
-    assert authorities["semantic_state_contracts"]["commit"] == ("UNRESOLVED_FINAL_DSS_COMMIT")
-    assert authorities["kit_state_roots"]["commit"] == ("05ba9375923cd5fb52e2c9c18b98b530d57d077f")
+    assert authorities["accelerate_harness"]["tree"] == (
+        "5859208bdab59338eab67a5cd0102c193ca6c388"
+    )
+    assert authorities["accelerate_harness"]["interface_fingerprint"] == (
+        "sha256:e88a505934170981bdf0e52152c5d968ff93dd03bc9dc69df56ade9cf29540ae"
+    )
+    assert authorities["incremental_semantic_index"]["commit"] == (
+        "1330038f626ef92993f03d46f21e1a57719e9c25"
+    )
+    assert authorities["semantic_state_contracts"]["commit"] == (
+        "1330038f626ef92993f03d46f21e1a57719e9c25"
+    )
+    assert authorities["kit_state_roots"]["commit"] == ("df2f9cc092456329de9724c45a50c54b410875d1")
     assert authorities["mcp_plus_plus"]["commit"] == ("dc3164653a48d059ae9812078359daeafb451c07")
-    assert seal["unresolved_authority_reasons"]["accelerate_harness"] == [
-        "live_owner_without_heartbeat_can_split_brain_and_swallow_lost_fence",
-        "stale_owner_can_overwrite_newer_active_task_index",
-        "empty_or_unavailable_process_snapshot_fails_open",
-        "whitespace_validation_omits_untracked_and_submodule_outputs",
-        "fast_zombie_birth_capture_can_leak_lease",
-    ]
+    assert seal["unresolved_authority_reasons"] == {}
 
     errors = validator.validate_seal(SEAL_PATH)
-    assert "seal: status must be 'sealed'" in errors
-    assert "seal: unresolved placeholder present" in errors
+    assert "seal: sealed validation requires --run-tests" in errors
     assert any(error.startswith("checkout bindings missing:") for error in errors)
 
     assert validator.main(["--check", str(SEAL_PATH)]) == 1
-    assert "ERROR: seal: unresolved placeholder present" in capsys.readouterr().err
+    captured = capsys.readouterr().err
+    assert "ERROR: seal: sealed validation requires --run-tests" in captured
 
 
 def test_resolved_authority_fingerprints_bind_complete_contracts() -> None:
@@ -113,7 +119,7 @@ def test_resolved_authority_fingerprints_bind_complete_contracts() -> None:
     seal = validator.load_seal(SEAL_PATH)
     authorities = {item["role"]: item for item in seal["authorities"]}
 
-    for role in ("kit_state_roots", "mcp_plus_plus"):
+    for role in validator.EXPECTED_ROLES:
         authority = authorities[role]
         assert authority["interface_fingerprint"] == (validator.authority_fingerprint(authority))
 
@@ -126,14 +132,48 @@ def test_document_contract_rejects_unknown_fields_even_while_unresolved() -> Non
     assert "seal: unknown fields: unexpected_relaxation" in validator.validate_document(seal)
 
 
-def test_accelerator_audit_reasons_cannot_be_partially_cleared() -> None:
+def test_sealed_document_rejects_reintroduced_unresolved_authority_reasons() -> None:
     validator = _load_validator()
     seal = copy.deepcopy(validator.load_seal(SEAL_PATH))
-    seal["unresolved_authority_reasons"]["accelerate_harness"].pop()
+    seal["unresolved_authority_reasons"] = {
+        "incremental_semantic_index": ["final_repaired_authority_not_supplied"],
+    }
 
     assert (
         "seal: unresolved authority reasons do not equal the operator audit"
         in validator.validate_document(seal)
+    )
+
+
+def test_accelerator_pin_requires_the_hardened_ten_file_authority_command() -> None:
+    seal = json.loads(SEAL_PATH.read_text(encoding="utf-8"))
+    accelerator = next(
+        authority for authority in seal["authorities"] if authority["role"] == "accelerate_harness"
+    )
+
+    assert accelerator["required_test_commands"] == [
+        [
+            "/home/barberb/lift_coding/.venv/bin/python",
+            "-m",
+            "pytest",
+            "-q",
+            "test/api/test_agent_supervisor_context_compiler.py",
+            "test/api/test_agent_supervisor_lease_coordination.py",
+            "test/api/test_agent_supervisor_production_context_slice.py",
+            "test/api/test_agent_supervisor_proof_scheduler.py",
+            "test/api/test_agent_supervisor_proposal_validation.py",
+            "test/api/test_agent_supervisor_provider_execution.py",
+            "test/api/test_agent_supervisor_resource_scheduler.py",
+            "test/api/test_agent_supervisor_runtime_authority_vectors.py",
+            "test/api/test_agent_supervisor_validation_scheduler.py",
+            "test/api/test_agent_supervisor_worktree_lifecycle.py",
+        ]
+    ]
+    assert accelerator["producer_receipt_schema"] == (
+        "ipfs-accelerate.agent-supervisor.semantic-state-producer-test-receipt@2"
+    )
+    assert accelerator["closure_policy"]["materialization"] == (
+        "fresh_private_git_archive_with_inert_symlink_records"
     )
 
 
@@ -434,6 +474,134 @@ def test_private_materialization_reconstructs_exact_git_objects(tmp_path: Path) 
     assert validator._verify_materialization(repository, authority["commit"], materialization) == []
 
 
+def test_private_materialization_makes_absolute_and_escaping_symlinks_inert(
+    tmp_path: Path,
+) -> None:
+    validator = _load_validator()
+    repository, authority = _repository_authority(tmp_path)
+    outside = tmp_path / "outside-target.sh"
+    execution_marker = tmp_path / "target-executed"
+    outside.write_text(f"#!/bin/sh\ntouch {execution_marker}\n", encoding="utf-8")
+    outside.chmod(0o700)
+    os.symlink(os.fspath(outside), repository / "absolute-link")
+    os.symlink("../outside-target.sh", repository / "escaping-link")
+    _git(repository, "add", "absolute-link", "escaping-link")
+    _git(repository, "commit", "-q", "-m", "symlink sources")
+    authority["commit"] = _git(repository, "rev-parse", "HEAD")
+    authority["tree"] = _git(repository, "rev-parse", "HEAD^{tree}")
+    materialization = tmp_path / "private-symlinks"
+    materialization.mkdir(mode=0o700)
+
+    validator._materialize_commit(repository, authority["commit"], materialization)
+    errors, projection = validator._inspect_materialization(
+        repository, authority["commit"], materialization
+    )
+
+    assert errors == []
+    assert [item["path"] for item in projection] == ["absolute-link", "escaping-link"]
+    for name, target in (
+        ("absolute-link", os.fspath(outside)),
+        ("escaping-link", "../outside-target.sh"),
+    ):
+        record = materialization / name
+        assert record.is_file() and not record.is_symlink()
+        assert record.read_bytes() == b""
+        assert record.stat().st_mode & 0o111 == 0
+        assert os.access(record, os.X_OK) is False
+        item = next(value for value in projection if value["path"] == name)
+        assert item == {
+            "path": name,
+            "source_mode": "120000",
+            "source_blob_oid": _git(repository, "rev-parse", f"HEAD:{name}"),
+            "target_sha256": validator._sha256_bytes(target.encode()),
+            "materialized_sha256": validator._sha256_bytes(b""),
+            "materialized_kind": "inert_regular_file",
+        }
+    with pytest.raises(PermissionError):
+        subprocess.run([os.fspath(materialization / "absolute-link")], check=False)
+    assert execution_marker.exists() is False
+
+
+def test_private_materialization_never_executes_python_symlink_target(
+    tmp_path: Path,
+) -> None:
+    validator = _load_validator()
+    repository, authority = _repository_authority(tmp_path)
+    execution_marker = tmp_path / "python-target-executed"
+    target = f"__import__('pathlib').Path({str(execution_marker)!r}).touch()"
+    os.symlink(target, repository / "payload.py")
+    os.symlink(target, repository / "conftest.py")
+    (repository / "test_safe.py").write_text("def test_safe():\n    assert True\n", encoding="utf-8")
+    _git(repository, "add", "payload.py", "conftest.py", "test_safe.py")
+    _git(repository, "commit", "-q", "-m", "python symlink sources")
+    authority["commit"] = _git(repository, "rev-parse", "HEAD")
+    authority["tree"] = _git(repository, "rev-parse", "HEAD^{tree}")
+    materialization = tmp_path / "private-python-symlinks"
+    materialization.mkdir(mode=0o700)
+
+    validator._materialize_commit(repository, authority["commit"], materialization)
+    errors, projection = validator._inspect_materialization(
+        repository, authority["commit"], materialization
+    )
+
+    assert errors == []
+    assert [item["path"] for item in projection] == ["conftest.py", "payload.py"]
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.fspath(materialization)
+    imported = subprocess.run(
+        [sys.executable, "-c", "import payload"],
+        cwd=materialization,
+        env=environment,
+        check=False,
+        capture_output=True,
+    )
+    collected = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "test_safe.py"],
+        cwd=materialization,
+        env=environment,
+        check=False,
+        capture_output=True,
+    )
+    assert imported.returncode == 0
+    assert collected.returncode == 0
+    assert execution_marker.exists() is False
+
+
+def test_private_materialization_rejects_archive_traversal_and_collisions(
+    tmp_path: Path, monkeypatch
+) -> None:
+    validator = _load_validator()
+
+    def archive_bytes(names: list[str]) -> bytes:
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:") as archive:
+            for name in names:
+                payload = b"sealed\n"
+                member = tarfile.TarInfo(name)
+                member.size = len(payload)
+                archive.addfile(member, io.BytesIO(payload))
+        return buffer.getvalue()
+
+    def install_archive(names: list[str]) -> None:
+        result = subprocess.CompletedProcess(
+            args=["git", "archive"], returncode=0, stdout=archive_bytes(names), stderr=b""
+        )
+        monkeypatch.setattr(validator, "_git_bytes", lambda *_args: result)
+
+    traversal = tmp_path / "traversal"
+    traversal.mkdir()
+    install_archive(["../escape"])
+    with pytest.raises(ValueError, match="unsafe archive member"):
+        validator._materialize_commit(tmp_path, "a" * 40, traversal)
+    assert (tmp_path / "escape").exists() is False
+
+    collision = tmp_path / "collision"
+    collision.mkdir()
+    install_archive(["duplicate", "duplicate"])
+    with pytest.raises(ValueError, match="duplicate archive member"):
+        validator._materialize_commit(tmp_path, "a" * 40, collision)
+
+
 def test_process_group_fence_detects_and_kills_descendants(tmp_path: Path) -> None:
     validator = _load_validator()
     code = (
@@ -442,13 +610,73 @@ def test_process_group_fence_detects_and_kills_descendants(tmp_path: Path) -> No
         "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)"
     )
 
-    exit_code, _stdout, _stderr, timed_out, leaked = validator._run_fenced_command(
-        [sys.executable, "-c", code], tmp_path, {}, 5
-    )
+    (
+        exit_code,
+        _stdout,
+        _stderr,
+        timed_out,
+        leaked,
+        natural_drain_observed,
+        output_limit_exceeded,
+    ) = validator._run_fenced_command([sys.executable, "-c", code], tmp_path, {}, 5)
 
     assert exit_code == 0
     assert timed_out is False
     assert leaked is True
+    assert natural_drain_observed is False
+    assert output_limit_exceeded is False
+
+
+def test_process_group_fence_accepts_a_bounded_natural_child_drain(tmp_path: Path) -> None:
+    code = (
+        "import subprocess,sys;"
+        "subprocess.Popen([sys.executable,'-c','import time;time.sleep(0.03)'],"
+        "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)"
+    )
+
+    (
+        exit_code,
+        _stdout,
+        _stderr,
+        timed_out,
+        leaked,
+        natural_drain_observed,
+        output_limit_exceeded,
+    ) = _load_validator()._run_fenced_command([sys.executable, "-c", code], tmp_path, {}, 5)
+
+    assert exit_code == 0
+    assert timed_out is False
+    assert leaked is False
+    assert natural_drain_observed is True
+    assert output_limit_exceeded is False
+
+
+def test_inherited_pipe_cannot_hide_a_descendant_past_the_leader_deadline(
+    tmp_path: Path,
+) -> None:
+    code = (
+        "import subprocess,sys;"
+        "subprocess.Popen([sys.executable,'-c','import time;time.sleep(0.25)'])"
+    )
+
+    result = _load_validator()._run_fenced_command(
+        [sys.executable, "-c", code], tmp_path, {}, 5
+    )
+
+    assert result[0] == 0
+    assert result[3:] == (False, True, False, False)
+
+
+def test_process_group_inspection_unavailable_fails_closed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    validator = _load_validator()
+    monkeypatch.setattr(validator, "_process_group_observation", lambda *_args, **_kwargs: "unavailable")
+
+    result = validator._run_fenced_command([sys.executable, "-c", "pass"], tmp_path, {}, 5)
+
+    assert result[0] == 0
+    assert result[3:] == (False, True, False, False)
 
 
 def test_process_group_fence_kills_descendants_that_ignore_sigterm(tmp_path: Path) -> None:
@@ -468,19 +696,74 @@ def test_process_group_fence_kills_descendants_that_ignore_sigterm(tmp_path: Pat
         "[(time.sleep(0.01)) for _ in range(200) if not p.exists()]"
     )
 
-    exit_code, _stdout, _stderr, timed_out, leaked = validator._run_fenced_command(
-        [sys.executable, "-c", parent_code], tmp_path, {}, 5
-    )
+    (
+        exit_code,
+        _stdout,
+        _stderr,
+        timed_out,
+        leaked,
+        natural_drain_observed,
+        output_limit_exceeded,
+    ) = validator._run_fenced_command([sys.executable, "-c", parent_code], tmp_path, {}, 5)
 
     assert exit_code == 0
     assert timed_out is False
     assert leaked is True
+    assert natural_drain_observed is False
+    assert output_limit_exceeded is False
     assert pid_path.is_file()
     descendant = int(pid_path.read_text(encoding="utf-8"))
     deadline = time.monotonic() + 2
     while Path(f"/proc/{descendant}").exists() and time.monotonic() < deadline:
         time.sleep(0.01)
     assert not Path(f"/proc/{descendant}").exists()
+
+
+def test_subreaper_fence_kills_a_descendant_that_escapes_the_process_group(
+    tmp_path: Path,
+) -> None:
+    validator = _load_validator()
+    pid_path = tmp_path / "detached.pid"
+    child_code = (
+        "import os,time;from pathlib import Path;"
+        f"Path({str(pid_path)!r}).write_text(str(os.getpid()));"
+        "time.sleep(0.5)"
+    )
+    parent_code = (
+        "import subprocess,sys,time;from pathlib import Path;"
+        f"p=Path({str(pid_path)!r});"
+        f"subprocess.Popen([sys.executable,'-c',{child_code!r}],"
+        "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,"
+        "start_new_session=True);"
+        "[(time.sleep(0.005)) for _ in range(200) if not p.exists()]"
+    )
+
+    result = validator._run_fenced_command(
+        [sys.executable, "-c", parent_code], tmp_path, {}, 5
+    )
+
+    assert result[0] == 0
+    assert result[3:] == (False, True, False, False)
+    descendant = int(pid_path.read_text(encoding="utf-8"))
+    assert not Path(f"/proc/{descendant}").exists()
+
+
+def test_output_capture_limit_fails_closed_and_fences_the_writer(tmp_path: Path) -> None:
+    validator = _load_validator()
+    code = (
+        "import sys,time;"
+        f"sys.stdout.buffer.write(b'x'*{validator.OUTPUT_CAPTURE_MAX_BYTES + 1});"
+        "sys.stdout.buffer.flush();time.sleep(30)"
+    )
+
+    result = validator._run_fenced_command(
+        [sys.executable, "-c", code], tmp_path, {}, 5
+    )
+
+    assert result[3] is False
+    assert result[5] is False
+    assert result[6] is True
+    assert len(result[1]) + len(result[2]) == validator.OUTPUT_CAPTURE_MAX_BYTES
 
 
 def test_producer_receipts_are_closed_content_addressed_records(tmp_path: Path) -> None:
@@ -504,13 +787,28 @@ def test_producer_receipts_are_closed_content_addressed_records(tmp_path: Path) 
             "python_sha256": "sha256:" + "1" * 64,
             "pytest_sha256": "sha256:" + "2" * 64,
             "environment_policy_sha256": "sha256:" + "3" * 64,
-            "materialization_tree": own_root["tree"],
+            "process_fence_policy": validator.PROCESS_FENCE_POLICY,
+            "output_capture_policy": validator.OUTPUT_CAPTURE_POLICY,
+            "materialization_policy": validator.MATERIALIZATION_POLICY,
+            "materialization_source_tree": own_root["tree"],
+            "symlink_materialization": [
+                {
+                    "path": "link",
+                    "source_mode": "120000",
+                    "source_blob_oid": "6" * 40,
+                    "target_sha256": "sha256:" + "6" * 64,
+                    "materialized_sha256": validator._sha256_bytes(b""),
+                    "materialized_kind": "inert_regular_file",
+                }
+            ],
             "closure_tree": own_root["tree"],
             "stdout_sha256": "sha256:" + "4" * 64,
             "stderr_sha256": "sha256:" + "5" * 64,
             "exit_code": 0,
             "timed_out": False,
             "descendant_leak_detected": False,
+            "natural_process_group_drain_observed": True,
+            "output_capture_limit_exceeded": False,
             "pre_roots": roots,
             "post_roots": copy.deepcopy(roots),
         }
@@ -518,6 +816,18 @@ def test_producer_receipts_are_closed_content_addressed_records(tmp_path: Path) 
     receipt = validator.seal_producer_receipt(body)
 
     assert validator.verify_producer_receipt(receipt) is True
+    for override in (
+        {"exit_code": 1},
+        {"timed_out": True},
+        {"descendant_leak_detected": True},
+        {"output_capture_limit_exceeded": True},
+        {"timed_out": True, "natural_process_group_drain_observed": True},
+    ):
+        failed = copy.deepcopy(body)
+        failed.update(override)
+        assert validator.verify_producer_receipt(
+            validator.seal_producer_receipt(failed)
+        ) is False
     validator._write_receipt(tmp_path, receipt)
     address = receipt["receipt_sha256"].removeprefix("sha256:")
     assert (tmp_path / f"{address}.json").stat().st_mode & 0o077 == 0
@@ -529,6 +839,11 @@ def test_producer_receipts_are_closed_content_addressed_records(tmp_path: Path) 
     assert validator.verify_producer_receipt(receipt) is False
     malformed = validator.seal_producer_receipt({**body, "exit_code": "0"})
     assert validator.verify_producer_receipt(malformed) is False
+    unsafe_projection = copy.deepcopy(body)
+    unsafe_projection["symlink_materialization"][0]["materialized_kind"] = "symlink"
+    assert validator.verify_producer_receipt(
+        validator.seal_producer_receipt(unsafe_projection)
+    ) is False
 
 
 def test_all_five_roots_are_revalidated_around_every_command(tmp_path: Path, monkeypatch) -> None:
@@ -556,12 +871,12 @@ def test_all_five_roots_are_revalidated_around_every_command(tmp_path: Path, mon
 
     monkeypatch.setattr(validator, "_revalidate_all_roots", revalidate)
     monkeypatch.setattr(validator, "_materialize_commit", lambda *_args: None)
-    monkeypatch.setattr(validator, "_verify_materialization", lambda *_args: [])
+    monkeypatch.setattr(validator, "_inspect_materialization", lambda *_args: ([], []))
     monkeypatch.setattr(validator, "_test_environment", lambda _path: {})
 
     def run(_command, cwd, _environment, _timeout):
         materializations.append(str(cwd))
-        return 0, b"", b"", False, False
+        return 0, b"", b"", False, False, False, False
 
     monkeypatch.setattr(validator, "_run_fenced_command", run)
     toolchain = {
@@ -582,6 +897,68 @@ def test_all_five_roots_are_revalidated_around_every_command(tmp_path: Path, mon
     assert len(calls) == 2 * len(validator.EXPECTED_ROLES)
     assert len(set(materializations)) == len(validator.EXPECTED_ROLES)
     assert all(not Path(path).exists() for path in materializations)
+    assert all(receipt["materialization_policy"] == validator.MATERIALIZATION_POLICY for receipt in receipts)
+    assert all(receipt["symlink_materialization"] == [] for receipt in receipts)
+    assert all(receipt["natural_process_group_drain_observed"] is False for receipt in receipts)
+    assert all(receipt["process_fence_policy"] == validator.PROCESS_FENCE_POLICY for receipt in receipts)
+    assert all(receipt["output_capture_policy"] == validator.OUTPUT_CAPTURE_POLICY for receipt in receipts)
+    assert all(receipt["output_capture_limit_exceeded"] is False for receipt in receipts)
+
+
+@pytest.mark.parametrize(
+    ("post_errors", "run_result"),
+    [
+        ([], (0, b"", b"", False, True, False, False)),
+        (["checkout root changed after command"], (0, b"", b"", False, False, False, False)),
+        ([], (0, b"", b"", False, False, False, True)),
+    ],
+)
+def test_receipts_are_not_emitted_for_a_leak_or_failed_postcheck(
+    tmp_path: Path, monkeypatch, post_errors, run_result
+) -> None:
+    validator = _load_validator()
+    authorities = {
+        role: {
+            "role": role,
+            "repository": validator.EXPECTED_REPOSITORIES[role],
+            "commit": f"{index + 1:x}" * 40,
+            "tree": f"{index + 6:x}" * 40,
+            "required_test_commands": [["/sealed/python", "-c", "pass"]],
+            "test_timeout_seconds": 1,
+        }
+        for index, role in enumerate(validator.EXPECTED_ROLES)
+    }
+    repositories = {
+        role: tmp_path / f"repo-{index}" for index, role in enumerate(validator.EXPECTED_ROLES)
+    }
+    revalidation_count = 0
+
+    def revalidate(_authorities, _repositories):
+        nonlocal revalidation_count
+        revalidation_count += 1
+        return [] if revalidation_count == 1 else post_errors
+
+    monkeypatch.setattr(validator, "_revalidate_all_roots", revalidate)
+    monkeypatch.setattr(validator, "_materialize_commit", lambda *_args: None)
+    monkeypatch.setattr(validator, "_inspect_materialization", lambda *_args: ([], []))
+    monkeypatch.setattr(validator, "_test_environment", lambda _path: {})
+    monkeypatch.setattr(validator, "_run_fenced_command", lambda *_args: run_result)
+    toolchain = {
+        "python_executable": "/sealed/python",
+        "python_sha256": "sha256:" + "a" * 64,
+        "pytest_sha256": "sha256:" + "b" * 64,
+        "environment_policy": validator.EXPECTED_ENVIRONMENT_POLICY,
+    }
+    receipt_dir = tmp_path / "receipts"
+    receipt_dir.mkdir()
+
+    errors, receipts = validator._run_all_required_tests(
+        authorities, repositories, toolchain, receipt_dir
+    )
+
+    assert errors
+    assert receipts == []
+    assert list(receipt_dir.iterdir()) == []
 
 
 def test_ast_audit_rejects_dynamic_identity_and_forged_provider_bodies(
@@ -615,7 +992,7 @@ def test_ast_audit_rejects_dynamic_identity_and_forged_provider_bodies(
     assert any("not direct delegation" in item for item in violations)
 
 
-def test_required_accelerator_surface_and_fixed_kit_mcp_sources() -> None:
+def test_pinned_accelerator_surface_and_fixed_authority_sources() -> None:
     validator = _load_validator()
     seal = validator.load_seal(SEAL_PATH)
     authorities = {item["role"]: item for item in seal["authorities"]}
@@ -637,29 +1014,40 @@ def test_required_accelerator_surface_and_fixed_kit_mcp_sources() -> None:
     assert "CIDExecutionValidator.REQUIRED_ENVELOPE_FIELDS" in mcp_selectors
     assert "EventDAGValidator.validate_event.required_fields" in mcp_selectors
     fixed_checkouts = {
+        "accelerate_harness": REPO_ROOT.parent / "ipfs-accelerate-sch-pin",
         "kit_state_roots": REPO_ROOT.parent / "ipfs-kit-semantic-state-roots",
         "mcp_plus_plus": REPO_ROOT.parents[1] / "Mcp-Plus-Plus",
     }
     for role, checkout in fixed_checkouts.items():
         assert validator._verify_source_extractions(authorities[role], checkout) == []
+        assert validator.validate_checkout(authorities[role], checkout) == []
 
 
 def test_control_documents_keep_manual_gate_open_and_state_reachability_honestly() -> None:
     plan = PLAN_PATH.read_text(encoding="utf-8")
     todo = TODO_PATH.read_text(encoding="utf-8")
+    compact_plan = " ".join(plan.split())
     assert "exact_clean_head" in plan
     assert "does not claim" in plan
     assert "SCH_ISI_CHECKOUT" in plan
     assert "SCH_DSS_CHECKOUT" in plan
-    assert "UNRESOLVED_REPAIRED_ACCELERATE_COMMIT" in plan
-    assert "live owner without heartbeat" in plan
-    assert "newer active task index" in plan
-    assert "empty or unavailable process snapshot fails open" in plan
-    assert "untracked and submodule outputs" in plan
-    assert "fast-zombie birth capture can leak a lease" in plan
+    assert "271e331af802f37d759c000666282631a99f7aab" in plan
+    assert "5859208bdab59338eab67a5cd0102c193ca6c388" in plan
+    assert "passed 355/355" in plan
+    assert "334/334 legacy nine-file run" in plan
+    assert "97/97 focused audit run" in plan
+    assert "final all-role validator run" in compact_plan
+    assert "safe full-tree projection" in plan
+    assert "inert, non-executable regular record" in plan
+    assert "Receipt schema v2" in plan
+    assert "1330038f626ef92993f03d46f21e1a57719e9c25" in plan
+    assert "df2f9cc092456329de9724c45a50c54b410875d1" in plan
+    assert "UNRESOLVED_FINAL_ISI_COMMIT" not in plan
+    assert "UNRESOLVED_FINAL_DSS_COMMIT" not in plan
     block = todo.split("## SCH-000", 1)[1].split("## SCH-001", 1)[0]
-    assert "- Status: todo" in block
+    assert "- Status: completed" in block
     assert "- Completion: manual" in block
+    assert "passed 355/355" in block
     assert "locks/rechecks task-index publication" in block
     assert "isolated index or equivalent materialized proposal" in block
     assert "fails closed on empty/unavailable process snapshots" in block
