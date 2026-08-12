@@ -49,6 +49,15 @@ LIFECYCLE_WITNESS_PATH = Path(
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
     "local_profile_lifecycle_witness_20260808.json"
 )
+VGO_AUTHORIZATION_PATH = Path(llm_router._VGO_AGENT_ROUTE_AUTHORIZATION_PATH)
+VGO_BOARD_NAMESPACE = llm_router._VGO_AGENT_ROUTE_BOARD_NAMESPACE
+VGO_LIFECYCLE_ROOT_PIN_PATH = Path(
+    llm_router._VGO_AGENT_LIFECYCLE_ROOT_PIN_PATH
+)
+VGO_LIFECYCLE_WITNESS_PATH = Path(
+    llm_router._VGO_AGENT_LIFECYCLE_WITNESS_PREFIX
+    + "local_profile_lifecycle_witness_20260812.json"
+)
 SPENDING_LIMIT_MESSAGE = (
     "API error (status 403 Forbidden): personal-team-blocked:spending-limit: "
     "You have run out of credits or need a Grok subscription. Add credits at "
@@ -106,9 +115,16 @@ def _git(repo: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
-def _authorized_repo(tmp_path: Path) -> _AuthorizedRepository:
+def _authorized_repo(
+    tmp_path: Path,
+    *,
+    board_namespace: str = BOARD_NAMESPACE,
+    authorization_path: Path = AUTHORIZATION_PATH,
+    lifecycle_root_pin_path: Path = LIFECYCLE_ROOT_PIN_PATH,
+    lifecycle_witness_path: Path = LIFECYCLE_WITNESS_PATH,
+) -> _AuthorizedRepository:
     repo = tmp_path / "repo"
-    repo.mkdir()
+    repo.mkdir(parents=True)
     _git(repo, "init", "-b", "main")
     _git(repo, "config", "user.name", "Route Test")
     _git(repo, "config", "user.email", "route@example.invalid")
@@ -157,7 +173,7 @@ def _authorized_repo(tmp_path: Path) -> _AuthorizedRepository:
     pinned_at_ms = int(time.time()) * 1000
     root_pin: dict[str, Any] = {
         "schema": llm_router._AGENT_LIFECYCLE_ROOT_PIN_SCHEMA,
-        "board_namespace": BOARD_NAMESPACE,
+        "board_namespace": board_namespace,
         "base_head": source_head,
         "base_tree": source_tree,
         "root_identity_did": root_identity_did,
@@ -167,10 +183,10 @@ def _authorized_repo(tmp_path: Path) -> _AuthorizedRepository:
         root_pin,
         identity_field="pin_id",
     )
-    root_pin_path = repo / LIFECYCLE_ROOT_PIN_PATH
+    root_pin_path = repo / lifecycle_root_pin_path
     root_pin_path.parent.mkdir(parents=True)
     root_pin_path.write_bytes(_canonical(root_pin))
-    _git(repo, "add", LIFECYCLE_ROOT_PIN_PATH.as_posix())
+    _git(repo, "add", lifecycle_root_pin_path.as_posix())
     _git(repo, "commit", "-m", "pin lifecycle root")
     root_pin_path.chmod(0o400)
     root_pin_sha256 = "sha256:" + hashlib.sha256(
@@ -183,7 +199,7 @@ def _authorized_repo(tmp_path: Path) -> _AuthorizedRepository:
     authorized_at_ms = int(time.time()) * 1000
     witness = export_local_profile_lifecycle_witness(
         repository_cid="repository:one",
-        board_namespace=BOARD_NAMESPACE,
+        board_namespace=board_namespace,
         base_head=source_head,
         base_tree=source_tree,
         nonce=witness_nonce,
@@ -192,7 +208,8 @@ def _authorized_repo(tmp_path: Path) -> _AuthorizedRepository:
         observed_at_ms=authorized_at_ms,
         expires_at_ms=authorized_at_ms + 10 * 60 * 1000,
     )
-    witness_path = repo / LIFECYCLE_WITNESS_PATH
+    witness_path = repo / lifecycle_witness_path
+    witness_path.parent.mkdir(parents=True, exist_ok=True)
     witness_path.write_bytes(_canonical(witness))
     witness_sha256 = "sha256:" + hashlib.sha256(
         witness_path.read_bytes()
@@ -206,7 +223,7 @@ def _authorized_repo(tmp_path: Path) -> _AuthorizedRepository:
         "authority_cid": profile.content_id,
     }
     review_payload = llm_router.agent_implementation_route_review_payload(
-        board_namespace=BOARD_NAMESPACE,
+        board_namespace=board_namespace,
         authorization_kind="explicit_operator_override",
         source_head=source_head,
         source_tree=source_tree,
@@ -218,11 +235,11 @@ def _authorized_repo(tmp_path: Path) -> _AuthorizedRepository:
         reviewer_profile_content_id=profile.content_id,
         reviewer_lifecycle_anchor_id=profile.lifecycle_anchor_id,
         reviewer_lifecycle_generation=profile.lifecycle_generation,
-        reviewer_witness_path=LIFECYCLE_WITNESS_PATH.as_posix(),
+        reviewer_witness_path=lifecycle_witness_path.as_posix(),
         reviewer_witness_sha256=witness_sha256,
         lifecycle_root_identity_did=root_identity_did,
         lifecycle_witness_nonce=witness_nonce,
-        lifecycle_root_pin_path=LIFECYCLE_ROOT_PIN_PATH.as_posix(),
+        lifecycle_root_pin_path=lifecycle_root_pin_path.as_posix(),
         lifecycle_root_pin_sha256=root_pin_sha256,
         authorized_at_ms=authorized_at_ms,
         fallback_implementer_identity="codex",
@@ -232,7 +249,7 @@ def _authorized_repo(tmp_path: Path) -> _AuthorizedRepository:
             "ipfs_accelerate_py.agent_supervisor."
             "provider-fallback-policy-authorization@2"
         ),
-        "board_namespace": BOARD_NAMESPACE,
+        "board_namespace": board_namespace,
         "authorization_source": {
             "kind": "explicit_operator_override",
             "source_head": source_head,
@@ -256,7 +273,7 @@ def _authorized_repo(tmp_path: Path) -> _AuthorizedRepository:
             "profile_content_id": profile.content_id,
             "lifecycle_anchor_id": profile.lifecycle_anchor_id,
             "generation": profile.lifecycle_generation,
-            "witness_path": LIFECYCLE_WITNESS_PATH.as_posix(),
+            "witness_path": lifecycle_witness_path.as_posix(),
             "witness_sha256": witness_sha256,
             "signature": _sign(reviewer_key, review_payload),
         },
@@ -264,17 +281,18 @@ def _authorized_repo(tmp_path: Path) -> _AuthorizedRepository:
         "fallback_implementer_identity": "codex",
         "lifecycle_root_identity_did": root_identity_did,
         "lifecycle_witness_nonce": witness_nonce,
-        "lifecycle_root_pin_path": LIFECYCLE_ROOT_PIN_PATH.as_posix(),
+        "lifecycle_root_pin_path": lifecycle_root_pin_path.as_posix(),
         "lifecycle_root_pin_sha256": root_pin_sha256,
         "authorized_at_ms": authorized_at_ms,
     }
-    artifact = repo / AUTHORIZATION_PATH
+    artifact = repo / authorization_path
+    artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_bytes(_canonical(payload))
     _git(
         repo,
         "add",
-        AUTHORIZATION_PATH.as_posix(),
-        LIFECYCLE_WITNESS_PATH.as_posix(),
+        authorization_path.as_posix(),
+        lifecycle_witness_path.as_posix(),
     )
     _git(repo, "commit", "-m", "authorize route")
     for accepted_path in (root_pin_path, witness_path, artifact):
@@ -581,6 +599,198 @@ def test_scoped_high_route_binds_artifact_source_and_full_plan(
     assert environment[
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_HEAD"
     ] == plan.authorization.source_head
+
+
+def test_vgo_scope_loads_exact_reviewed_terra_high_authority(
+    tmp_path: Path,
+) -> None:
+    fixture = _authorized_repo(
+        tmp_path,
+        board_namespace=VGO_BOARD_NAMESPACE,
+        authorization_path=VGO_AUTHORIZATION_PATH,
+        lifecycle_root_pin_path=VGO_LIFECYCLE_ROOT_PIN_PATH,
+        lifecycle_witness_path=VGO_LIFECYCLE_WITNESS_PATH,
+    )
+
+    authorization = llm_router.load_agent_implementation_route_authorization(
+        repo_root=fixture.repo,
+        artifact_path=VGO_AUTHORIZATION_PATH.as_posix(),
+        board_namespace=VGO_BOARD_NAMESPACE,
+    )
+    route = llm_router.resolve_agent_implementation_route(
+        primary_provider_id="grok_cli",
+        primary_model_id="grok-4.5",
+        fallback_provider_id="codex",
+        fallback_model_id="gpt-5.6-terra",
+        fallback_trigger="primary_quota_or_auth_unavailable",
+        fallback_reasoning_effort="high",
+        authorization=authorization,
+    )
+
+    assert authorization.artifact_path == VGO_AUTHORIZATION_PATH.as_posix()
+    assert authorization.board_namespace == VGO_BOARD_NAMESPACE
+    assert (
+        authorization.lifecycle_root_pin_path
+        == VGO_LIFECYCLE_ROOT_PIN_PATH.as_posix()
+    )
+    assert authorization.reviewer_witness_path.startswith(
+        llm_router._VGO_AGENT_LIFECYCLE_WITNESS_PREFIX
+    )
+    assert route.route_id == ROUTE_ID
+    assert route.fallback_model_id == "gpt-5.6-terra"
+    assert route.fallback_reasoning_effort == "high"
+
+
+def test_route_authorization_scope_rejects_cross_scope_and_unknown_pairs(
+    tmp_path: Path,
+) -> None:
+    fixture = _authorized_repo(
+        tmp_path,
+        board_namespace=VGO_BOARD_NAMESPACE,
+        authorization_path=VGO_AUTHORIZATION_PATH,
+        lifecycle_root_pin_path=VGO_LIFECYCLE_ROOT_PIN_PATH,
+        lifecycle_witness_path=VGO_LIFECYCLE_WITNESS_PATH,
+    )
+    invalid_pairs = (
+        (BOARD_NAMESPACE, VGO_AUTHORIZATION_PATH.as_posix()),
+        (VGO_BOARD_NAMESPACE, AUTHORIZATION_PATH.as_posix()),
+        ("unknown-board-v1", VGO_AUTHORIZATION_PATH.as_posix()),
+        (
+            VGO_BOARD_NAMESPACE,
+            "implementation_plan/evidence/verified_gui_optimizer/"
+            "provider_route/unknown_authorization.json",
+        ),
+    )
+
+    for namespace, artifact_path in invalid_pairs:
+        with pytest.raises(ValueError, match="not authorized for this board"):
+            llm_router.load_agent_implementation_route_authorization(
+                repo_root=fixture.repo,
+                artifact_path=artifact_path,
+                board_namespace=namespace,
+            )
+
+
+def test_vgo_historical_snapshot_accepts_exact_scope_and_denies_cross_scope_replay(
+    tmp_path: Path,
+) -> None:
+    fixture = _authorized_repo(
+        tmp_path,
+        board_namespace=VGO_BOARD_NAMESPACE,
+        authorization_path=VGO_AUTHORIZATION_PATH,
+        lifecycle_root_pin_path=VGO_LIFECYCLE_ROOT_PIN_PATH,
+        lifecycle_witness_path=VGO_LIFECYCLE_WITNESS_PATH,
+    )
+    authorization = llm_router.load_agent_implementation_route_authorization(
+        repo_root=fixture.repo,
+        artifact_path=VGO_AUTHORIZATION_PATH.as_posix(),
+        board_namespace=VGO_BOARD_NAMESPACE,
+    )
+    artifact_raw = (fixture.repo / authorization.artifact_path).read_bytes()
+    root_pin_raw = (
+        fixture.repo / authorization.lifecycle_root_pin_path
+    ).read_bytes()
+    witness_raw = (
+        fixture.repo / authorization.reviewer_witness_path
+    ).read_bytes()
+
+    def git_blob_id(raw: bytes) -> str:
+        return hashlib.sha1(
+            f"blob {len(raw)}\0".encode("ascii") + raw,
+            usedforsecurity=False,
+        ).hexdigest()
+
+    repository_receipt: dict[str, Any] = {
+        "schema": (
+            "ipfs_accelerate_py.agent-supervisor/"
+            "provider-effect-repository-authority@1"
+        ),
+        "accepted_head": _git(fixture.repo, "rev-parse", "HEAD^{commit}"),
+        "accepted_tree": _git(fixture.repo, "rev-parse", "HEAD^{tree}"),
+        "authorization_path": authorization.artifact_path,
+        "authorization_blob_id": git_blob_id(artifact_raw),
+        "witness_path": authorization.reviewer_witness_path,
+        "witness_blob_id": git_blob_id(witness_raw),
+        "root_pin_path": authorization.lifecycle_root_pin_path,
+        "root_pin_blob_id": git_blob_id(root_pin_raw),
+        "authorization_commit_time_ms": int(
+            _git(
+                fixture.repo,
+                "log",
+                "-1",
+                "--format=%ct",
+                "HEAD",
+                "--",
+                authorization.artifact_path,
+            )
+        )
+        * 1000,
+    }
+    repository_receipt["receipt_id"] = (
+        llm_router._content_addressed_mapping(
+            repository_receipt,
+            identity_field="receipt_id",
+        )
+    )
+    historical_inputs = {
+        "artifact_raw": artifact_raw,
+        "artifact": json.loads(artifact_raw),
+        "root_pin_raw": root_pin_raw,
+        "root_pin": json.loads(root_pin_raw),
+        "witness_raw": witness_raw,
+        "witness": json.loads(witness_raw),
+        "repository_receipt": repository_receipt,
+    }
+
+    llm_router._agent_verify_historical_authority_snapshot(
+        authorization=authorization,
+        **historical_inputs,
+    )
+    with pytest.raises(
+        ValueError,
+        match="not authorized for this board scope",
+    ):
+        llm_router._agent_verify_historical_authority_snapshot(
+            authorization=replace(
+                authorization,
+                board_namespace=BOARD_NAMESPACE,
+            ),
+            **historical_inputs,
+        )
+
+
+@pytest.mark.parametrize("drift", ("root_pin", "witness"))
+def test_vgo_scope_rejects_noncanonical_lifecycle_paths(
+    tmp_path: Path,
+    drift: str,
+) -> None:
+    root_pin_path = VGO_LIFECYCLE_ROOT_PIN_PATH
+    witness_path = VGO_LIFECYCLE_WITNESS_PATH
+    if drift == "root_pin":
+        root_pin_path = Path(
+            llm_router._VGO_AGENT_LIFECYCLE_WITNESS_PREFIX
+            + "unexpected_lifecycle_root_pin.json"
+        )
+    else:
+        witness_path = Path(
+            "implementation_plan/evidence/verified_gui_optimizer/"
+            "other_route/local_profile_lifecycle_witness_20260812.json"
+        )
+    fixture = _authorized_repo(
+        tmp_path,
+        board_namespace=VGO_BOARD_NAMESPACE,
+        authorization_path=VGO_AUTHORIZATION_PATH,
+        lifecycle_root_pin_path=root_pin_path,
+        lifecycle_witness_path=witness_path,
+    )
+
+    expected = "root pin path" if drift == "root_pin" else "witness path"
+    with pytest.raises(ValueError, match=expected):
+        llm_router.load_agent_implementation_route_authorization(
+            repo_root=fixture.repo,
+            artifact_path=VGO_AUTHORIZATION_PATH.as_posix(),
+            board_namespace=VGO_BOARD_NAMESPACE,
+        )
 
 
 def test_exact_auth_authorizes_but_mixed_or_overflowed_evidence_denies(

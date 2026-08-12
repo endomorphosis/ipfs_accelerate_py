@@ -243,6 +243,21 @@ _V3_AGENT_LIFECYCLE_ROOT_PIN_PATH = (
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
     "local_profile_lifecycle_root_pin_20260808.json"
 )
+_V3_AGENT_LIFECYCLE_WITNESS_PREFIX = (
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
+)
+_VGO_AGENT_ROUTE_BOARD_NAMESPACE = "verified-gui-optimizer-v1"
+_VGO_AGENT_ROUTE_AUTHORIZATION_PATH = (
+    "implementation_plan/evidence/verified_gui_optimizer/provider_route/"
+    "provider_fallback_policy_authorization_20260812.json"
+)
+_VGO_AGENT_LIFECYCLE_ROOT_PIN_PATH = (
+    "implementation_plan/evidence/verified_gui_optimizer/provider_route/"
+    "local_profile_lifecycle_root_pin_20260812.json"
+)
+_VGO_AGENT_LIFECYCLE_WITNESS_PREFIX = (
+    "implementation_plan/evidence/verified_gui_optimizer/provider_route/"
+)
 _AGENT_ROUTE_AUTHORIZATION_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
     "provider-fallback-policy-authorization@2"
@@ -337,6 +352,80 @@ _LEGACY_AGENT_IMPLEMENTATION_ROUTE_ID = (
 _V3_AGENT_IMPLEMENTATION_ROUTE_ID = (
     "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _AgentImplementationRouteAuthorizationScope:
+    """Closed repository paths for one reviewed board authority."""
+
+    board_namespace: str
+    authorization_path: str
+    lifecycle_root_pin_path: str
+    lifecycle_witness_prefix: str
+
+
+_V3_AGENT_ROUTE_AUTHORIZATION_SCOPE = (
+    _AgentImplementationRouteAuthorizationScope(
+        board_namespace=_V3_AGENT_ROUTE_BOARD_NAMESPACE,
+        authorization_path=_V3_AGENT_ROUTE_AUTHORIZATION_PATH,
+        lifecycle_root_pin_path=_V3_AGENT_LIFECYCLE_ROOT_PIN_PATH,
+        lifecycle_witness_prefix=_V3_AGENT_LIFECYCLE_WITNESS_PREFIX,
+    )
+)
+_VGO_AGENT_ROUTE_AUTHORIZATION_SCOPE = (
+    _AgentImplementationRouteAuthorizationScope(
+        board_namespace=_VGO_AGENT_ROUTE_BOARD_NAMESPACE,
+        authorization_path=_VGO_AGENT_ROUTE_AUTHORIZATION_PATH,
+        lifecycle_root_pin_path=_VGO_AGENT_LIFECYCLE_ROOT_PIN_PATH,
+        lifecycle_witness_prefix=_VGO_AGENT_LIFECYCLE_WITNESS_PREFIX,
+    )
+)
+_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_SCOPES = (
+    _V3_AGENT_ROUTE_AUTHORIZATION_SCOPE,
+    _VGO_AGENT_ROUTE_AUTHORIZATION_SCOPE,
+)
+
+
+def _agent_implementation_route_authorization_scope(
+    *,
+    board_namespace: str,
+    artifact_path: str,
+) -> _AgentImplementationRouteAuthorizationScope:
+    """Return only an explicitly registered namespace/path pairing."""
+
+    matches = tuple(
+        scope
+        for scope in _AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_SCOPES
+        if scope.board_namespace == board_namespace
+        and scope.authorization_path == artifact_path
+    )
+    if len(matches) != 1:
+        raise ValueError(
+            "auth-or-quota/high route is not authorized for this board scope"
+        )
+    return matches[0]
+
+
+def _agent_implementation_lifecycle_witness_path_is_scoped(
+    path: str,
+    *,
+    scope: _AgentImplementationRouteAuthorizationScope,
+) -> bool:
+    """Reject aliases and traversal outside a scope's exact witness prefix."""
+
+    relative = PurePosixPath(path)
+    return bool(
+        path
+        and not relative.is_absolute()
+        and ".." not in relative.parts
+        and relative.as_posix() == path
+        and relative.suffix == ".json"
+        and path.startswith(scope.lifecycle_witness_prefix)
+        and path != scope.authorization_path
+        and path != scope.lifecycle_root_pin_path
+    )
+
+
 # Runner and scheduler code import these projections instead of maintaining
 # another provider/model/reasoning tuple.
 AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_MODEL_ID = "gpt-5.6-terra"
@@ -4355,6 +4444,19 @@ def _agent_verify_historical_authority_snapshot(
     bounds = authorization.authority_bounds
     if bounds is None:
         raise ValueError("historical authority bounds are unavailable")
+    scope = _agent_implementation_route_authorization_scope(
+        board_namespace=authorization.board_namespace,
+        artifact_path=authorization.artifact_path,
+    )
+    if (
+        authorization.lifecycle_root_pin_path
+        != scope.lifecycle_root_pin_path
+        or not _agent_implementation_lifecycle_witness_path_is_scoped(
+            authorization.reviewer_witness_path,
+            scope=scope,
+        )
+    ):
+        raise ValueError("historical authorization scope drifted")
     expected_top = {
         "schema",
         "board_namespace",
@@ -4940,13 +5042,10 @@ def load_agent_implementation_route_authorization(
         raise ValueError("agent route authorization repository contains a symlink")
     relative = str(artifact_path or "").strip()
     namespace = str(board_namespace or "").strip()
-    if (
-        relative != _V3_AGENT_ROUTE_AUTHORIZATION_PATH
-        or namespace != _V3_AGENT_ROUTE_BOARD_NAMESPACE
-    ):
-        raise ValueError(
-            "auth-or-quota/high route is not authorized for this board scope"
-        )
+    scope = _agent_implementation_route_authorization_scope(
+        board_namespace=namespace,
+        artifact_path=relative,
+    )
     unresolved_candidate = resolve_agent_implementation_private_state_path(
         root / relative
     )
@@ -5228,7 +5327,7 @@ def load_agent_implementation_route_authorization(
         raise ValueError(
             "agent route authorization does not grant the exact scoped route"
         )
-    if lifecycle_root_pin_path != _V3_AGENT_LIFECYCLE_ROOT_PIN_PATH:
+    if lifecycle_root_pin_path != scope.lifecycle_root_pin_path:
         raise ValueError("agent route lifecycle root pin path is invalid")
     unresolved_root_pin = resolve_agent_implementation_private_state_path(
         root / lifecycle_root_pin_path
@@ -5292,17 +5391,9 @@ def load_agent_implementation_route_authorization(
         != _content_addressed_mapping(root_pin, identity_field="pin_id")
     ):
         raise ValueError("agent route lifecycle root pin is invalid")
-    witness_relative_path = Path(reviewer_witness_path)
-    if (
-        witness_relative_path.is_absolute()
-        or ".." in witness_relative_path.parts
-        or witness_relative_path.as_posix() != reviewer_witness_path
-        or witness_relative_path.suffix != ".json"
-        or not reviewer_witness_path.startswith(
-            "data/agent_supervisor/prompt_only_self_improvement_v3/"
-            "convergence/"
-        )
-        or reviewer_witness_path == relative
+    if not _agent_implementation_lifecycle_witness_path_is_scoped(
+        reviewer_witness_path,
+        scope=scope,
     ):
         raise ValueError("agent route lifecycle witness path is invalid")
     unresolved_witness = resolve_agent_implementation_private_state_path(
