@@ -213,6 +213,7 @@ from ..task_sources.taskboard_store import (
 )
 from ..validation.project_dependency_preflight import (
     PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS,
+    SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
     project_dependency_preflight_backoff_seconds,
     project_dependency_preflight_error_receipt,
     preflight_validation_project_dependencies,
@@ -27260,13 +27261,29 @@ class PortalImplementationDaemon:
         task: PortalTask,
         attempt: int,
         branch_name: str = "",
+        prior_seed_authority: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Gate provider dispatch on the approved dependency environment."""
 
         try:
+            identity = self._identity_for_task(task)
+            preflight_kwargs: dict[str, Any] = {
+                "task_authority": {
+                    "board_namespace": identity.board_namespace,
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "declared_outputs": list(
+                        task_declared_output_paths(task)
+                    ),
+                }
+            }
+            if prior_seed_authority is not None:
+                preflight_kwargs["prior_seed_authority"] = dict(
+                    prior_seed_authority
+                )
             raw_receipt = preflight_validation_project_dependencies(
                 workspace_path,
                 task.validation,
+                **preflight_kwargs,
             )
             if not isinstance(raw_receipt, Mapping):
                 raise TypeError(
@@ -27302,6 +27319,113 @@ class PortalImplementationDaemon:
             receipt,
             backoff_seconds=backoff_seconds,
         )
+
+    def _dependency_prior_seed_authority(
+        self,
+        *,
+        task: PortalTask,
+        baseline_ref: str,
+        baseline_receipt: Mapping[str, Any],
+        seed_apply: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Bind a replayed absent output to its accepted proposal receipt."""
+
+        if (
+            seed_apply.get("applied") is not True
+            or seed_apply.get("reason") != "replayed_prior_delta"
+        ):
+            return None
+        proposal_gate = seed_apply.get("pre_dispatch_proposal_gate")
+        proposal_authority = seed_apply.get("proposal_authority")
+        seeded_outputs = seed_apply.get("seeded_outputs")
+        if not (
+            isinstance(proposal_gate, Mapping)
+            and proposal_gate.get("accepted") is True
+            and isinstance(proposal_authority, Mapping)
+            and proposal_authority.get("ok") is True
+            and isinstance(seeded_outputs, list)
+            and seeded_outputs
+        ):
+            return None
+        identity = self._identity_for_task(task)
+        proposal_id = str(proposal_gate.get("proposal_id") or "").strip()
+        proposal_receipt_id = str(
+            proposal_gate.get("receipt_id") or ""
+        ).strip()
+        source_proposal_id = str(
+            proposal_authority.get("proposal_id") or ""
+        ).strip()
+        source_proposal_receipt_id = str(
+            proposal_authority.get("receipt_id") or ""
+        ).strip()
+        proposal_repository_tree_id = str(
+            proposal_gate.get("repository_tree_id") or ""
+        ).strip()
+        baseline_commit_id = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            str(baseline_ref or "").strip(),
+        )
+        baseline_tree = self._candidate_repository_tree(
+            baseline_commit_id
+        )
+        repository_tree_id = (
+            f"git-tree:{baseline_tree}" if baseline_tree else ""
+        )
+        if (
+            not proposal_id
+            or not proposal_receipt_id
+            or not source_proposal_id
+            or not source_proposal_receipt_id
+            or not baseline_commit_id
+            or not repository_tree_id
+            or proposal_repository_tree_id
+            not in {baseline_commit_id, repository_tree_id}
+            or proposal_authority.get("task_id") != task.task_id
+            or proposal_authority.get("canonical_task_cid")
+            != identity.canonical_task_cid
+        ):
+            return None
+        changed_paths = proposal_gate.get("changed_paths")
+        authorized_paths = proposal_authority.get("authorized_paths")
+        if not (
+            isinstance(changed_paths, list)
+            and changed_paths
+            and isinstance(authorized_paths, list)
+            and authorized_paths
+        ):
+            return None
+        body: dict[str, Any] = {
+            "schema": SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
+            "board_namespace": identity.board_namespace,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "baseline_receipt": dict(baseline_receipt),
+            "baseline_commit_id": baseline_commit_id,
+            "repository_tree_id": repository_tree_id,
+            "proposal_repository_tree_id": (
+                proposal_repository_tree_id
+            ),
+            "source_proposal_id": source_proposal_id,
+            "source_proposal_receipt_id": source_proposal_receipt_id,
+            "proposal_id": proposal_id,
+            "proposal_receipt_id": proposal_receipt_id,
+            "changed_paths": list(changed_paths),
+            "authorized_paths": list(authorized_paths),
+            "seeded_outputs": [
+                dict(output)
+                for output in seeded_outputs
+                if isinstance(output, Mapping)
+            ],
+        }
+        if len(body["seeded_outputs"]) != len(seeded_outputs):
+            return None
+        encoded = json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8", errors="surrogatepass")
+        body["authority_sha256"] = hashlib.sha256(encoded).hexdigest()
+        return body
 
     def _run_implementation_in_ephemeral_worktree(
         self,
@@ -27414,6 +27538,21 @@ class PortalImplementationDaemon:
             # task's provisional timestamp path before any command, state, or
             # merge metadata is built from it.
             worktree_path = self._effective_pooled_worktree_path(worktree_path)
+            # Prove an @2 declared-output-absent target against the clean task
+            # baseline before any preserved prior-attempt delta is replayed.
+            # The post-replay pass below rechecks every dependency authority
+            # file and accepts a materialized target only through a content-
+            # bound, same-task proposal attestation tied to this receipt.
+            baseline_dependency_preflight = (
+                self._require_validation_project_dependency_preflight(
+                    workspace_path=worktree_path,
+                    task=task,
+                    attempt=attempt,
+                    branch_name=branch_name,
+                )
+                if seed_plan.get("reuse_prior_attempt")
+                else None
+            )
             seed_apply = (
                 {
                     "applied": False,
@@ -27479,12 +27618,29 @@ class PortalImplementationDaemon:
                 )
             workspace_setup = self._worktree_setup_result(worktree_path)
             workspace_setup["prior_attempt_seed"] = dict(seed_apply)
+            if isinstance(baseline_dependency_preflight, Mapping):
+                workspace_setup[
+                    "validation_project_dependency_preflight_baseline"
+                ] = dict(baseline_dependency_preflight)
+            prior_seed_dependency_authority = (
+                self._dependency_prior_seed_authority(
+                    task=task,
+                    baseline_ref=baseline_ref,
+                    baseline_receipt=baseline_dependency_preflight,
+                    seed_apply=seed_apply,
+                )
+                if isinstance(baseline_dependency_preflight, Mapping)
+                else None
+            )
             dependency_preflight = (
                 self._require_validation_project_dependency_preflight(
                     workspace_path=worktree_path,
                     task=task,
                     attempt=attempt,
                     branch_name=branch_name,
+                    prior_seed_authority=(
+                        prior_seed_dependency_authority
+                    ),
                 )
             )
             workspace_setup[
@@ -31523,9 +31679,14 @@ class PortalImplementationDaemon:
                             "proposal_gate": compact_gate,
                         },
                     )
+                    seeded_outputs = self._prior_seed_output_attestations(
+                        proposal_validation,
+                        task,
+                    )
                     return {
                         **root_apply,
                         "pre_dispatch_proposal_gate": compact_gate,
+                        "seeded_outputs": seeded_outputs,
                         "submodule_reconciliation": reconciliation,
                     }
             if reconciliation.get("reconciled"):
@@ -37083,6 +37244,51 @@ class PortalImplementationDaemon:
             "proof_authoritative": False,
             "completion_authoritative": False,
         }
+
+    @staticmethod
+    def _prior_seed_output_attestations(
+        proposal_validation: Any,
+        task: PortalTask,
+    ) -> list[dict[str, str]]:
+        """Project exact added task outputs without retaining candidate source."""
+
+        proposal = getattr(proposal_validation, "proposal", None)
+        entries = tuple(getattr(proposal, "candidate_diff", ()) or ())
+        declared_outputs = set(task_declared_output_paths(task))
+        attestations: list[dict[str, str]] = []
+        for entry in entries:
+            change_kind = str(
+                getattr(
+                    getattr(entry, "change_kind", ""),
+                    "value",
+                    getattr(entry, "change_kind", ""),
+                )
+                or ""
+            )
+            path = str(getattr(entry, "new_path", "") or "")
+            source = getattr(entry, "after_source", None)
+            blob_id = str(getattr(entry, "after_blob_id", "") or "")
+            if not (
+                change_kind == "add"
+                and path in declared_outputs
+                and not str(getattr(entry, "old_path", "") or "")
+                and getattr(entry, "before_source", None) is None
+                and not str(getattr(entry, "before_blob_id", "") or "")
+                and isinstance(source, str)
+                and not bool(getattr(entry, "binary", False))
+                and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", blob_id)
+            ):
+                continue
+            attestations.append(
+                {
+                    "path": path,
+                    "sha256": hashlib.sha256(
+                        source.encode("utf-8", errors="strict")
+                    ).hexdigest(),
+                    "git_blob_id": blob_id,
+                }
+            )
+        return sorted(attestations, key=lambda item: item["path"])
 
     def _detach_in_process_proposal_validation(
         self,

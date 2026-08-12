@@ -10,6 +10,8 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight import (
     PROJECT_DEPENDENCY_PROBE_SCHEMA,
     SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA,
+    SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
+    SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
     preflight_validation_project_dependencies,
 )
 
@@ -91,6 +93,96 @@ authority = {{ file = "setup.py", sha256 = "{hashlib.sha256(setup_payload).hexdi
     return project, f"cd project && python3 -m pytest {target} -q"
 
 
+def _write_v2_project(
+    tmp_path: Path,
+    *,
+    target_states: tuple[str, ...] = ("present", "present"),
+    selected_index: int = 0,
+) -> tuple[Path, str, dict[str, object], list[dict[str, object]]]:
+    project = tmp_path / "project"
+    project.mkdir()
+    setup_source = (
+        "from setuptools import setup\n"
+        f"setup(extras_require={{'test': {SETUP_TEST_EXTRA!r}}})\n"
+    )
+    setup_payload = setup_source.encode("utf-8")
+    (project / "setup.py").write_bytes(setup_payload)
+
+    entries: list[dict[str, object]] = []
+    encoded_entries: list[str] = []
+    for index, state in enumerate(target_states):
+        target = f"tests/unit/logic/gui_optimizer/test_v2_{index}.py"
+        command = f"cd project && python3 -m pytest {target} -q"
+        command_sha256 = hashlib.sha256(command.encode("utf-8")).hexdigest()
+        requirements = SETUP_TEST_EXTRA[: index + 1]
+        board_namespace = "v2-board"
+        task_cid = f"canonical-task-{index}"
+        declared_output = f"project/{target}"
+        target_payload = f"# target {index}\n".encode()
+        baseline_fields = f"state = {json.dumps(state)}"
+        if state == "present":
+            target_path = project / target
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_bytes(target_payload)
+            baseline_fields += (
+                ", sha256 = "
+                + json.dumps(hashlib.sha256(target_payload).hexdigest())
+            )
+        entries.append(
+            {
+                "target": target,
+                "command": command,
+                "command_sha256": command_sha256,
+                "requirements": list(requirements),
+                "board_namespace": board_namespace,
+                "canonical_task_cid": task_cid,
+                "declared_output": declared_output,
+                "baseline_state": state,
+            }
+        )
+        encoded_entries.append(
+            "{ "
+            f"target = {json.dumps(target)}, "
+            f"validation-command-sha256 = {json.dumps(command_sha256)}, "
+            f"requirements = {json.dumps(requirements)}, "
+            "task = { "
+            f"board-namespace = {json.dumps(board_namespace)}, "
+            f"canonical-task-cid = {json.dumps(task_cid)}, "
+            f"declared-output = {json.dumps(declared_output)}"
+            " }, "
+            f"baseline = {{ {baseline_fields} }}"
+            " }"
+        )
+
+    joined_entries = ",\n".join(encoded_entries)
+    (project / "pyproject.toml").write_text(
+        f"""
+[project]
+name = "scoped-project-v2"
+version = "1.0.0"
+requires-python = ">=3.12"
+dynamic = ["dependencies"]
+
+[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight]
+schema = {json.dumps(SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2)}
+requires-python = ">=3.12"
+authority = {{ file = "setup.py", sha256 = "{hashlib.sha256(setup_payload).hexdigest()}", extra = "test", extra-requirements-sha256 = "{_content_sha256(SETUP_TEST_EXTRA)}" }}
+targets = [
+{joined_entries}
+]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    selected = entries[selected_index]
+    task_authority = {
+        "board_namespace": selected["board_namespace"],
+        "canonical_task_cid": selected["canonical_task_cid"],
+        "declared_outputs": [selected["declared_output"]],
+    }
+    return project, str(selected["command"]), task_authority, entries
+
+
 def _passing_probe(payloads: list[dict[str, object]]):
     def probe(payload, **_kwargs):
         payloads.append(payload)
@@ -102,6 +194,38 @@ def _passing_probe(payloads: list[dict[str, object]]):
         }
 
     return probe
+
+
+def _prior_seed_authority(
+    baseline_receipt: dict[str, object],
+    task_authority: dict[str, object],
+    declared_output: str,
+    payload: bytes,
+) -> dict[str, object]:
+    body: dict[str, object] = {
+        "schema": SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
+        "board_namespace": task_authority["board_namespace"],
+        "canonical_task_cid": task_authority["canonical_task_cid"],
+        "baseline_receipt": baseline_receipt,
+        "baseline_commit_id": "b" * 40,
+        "repository_tree_id": "git-tree:" + "c" * 40,
+        "proposal_repository_tree_id": "b" * 40,
+        "source_proposal_id": "source-proposal-v2-seed",
+        "source_proposal_receipt_id": "source-receipt-v2-seed",
+        "proposal_id": "proposal-v2-seed",
+        "proposal_receipt_id": "receipt-v2-seed",
+        "changed_paths": [declared_output],
+        "authorized_paths": [declared_output],
+        "seeded_outputs": [
+            {
+                "path": declared_output,
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "git_blob_id": "a" * 40,
+            }
+        ],
+    }
+    body["authority_sha256"] = _content_sha256(body)
+    return body
 
 
 def test_exact_target_contract_resolves_setup_extra_subset_without_execution(
@@ -141,6 +265,390 @@ def test_exact_target_contract_resolves_setup_extra_subset_without_execution(
         "test"
     ]
     assert payloads[0]["projects"][0]["requires_python"] == ">=3.12"
+
+
+@pytest.mark.parametrize(
+    ("baseline_states", "selected_index", "expected_manifest_count"),
+    [
+        (("present", "present"), 1, 2),
+        (("declared-output-absent", "present"), 0, 1),
+    ],
+)
+def test_v2_selects_one_exact_task_bound_target(
+    tmp_path: Path,
+    baseline_states: tuple[str, ...],
+    selected_index: int,
+    expected_manifest_count: int,
+) -> None:
+    _project, command, task_authority, entries = _write_v2_project(
+        tmp_path,
+        target_states=baseline_states,
+        selected_index=selected_index,
+    )
+    payloads: list[dict[str, object]] = []
+
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [command],
+        task_authority=task_authority,
+        probe_runner=_passing_probe(payloads),
+    )
+
+    assert receipt["passed"] is True
+    project = receipt["projects"][0]
+    selected = entries[selected_index]
+    assert project["dependency_contract_schema"] == (
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2
+    )
+    assert project["scoped_validation_target_sha256"] == hashlib.sha256(
+        str(selected["target"]).encode("utf-8")
+    ).hexdigest()
+    assert project["scoped_validation_command_sha256"] == selected[
+        "command_sha256"
+    ]
+    assert project["scoped_validation_target_baseline_state"] == (
+        baseline_states[selected_index]
+    )
+    assert len(project["dependency_manifests"]) == expected_manifest_count
+    assert payloads[0]["projects"][0]["requirements"] == selected[
+        "requirements"
+    ]
+
+
+def test_v2_authenticated_prior_seed_may_materialize_absent_target(
+    tmp_path: Path,
+) -> None:
+    project, command, task_authority, entries = _write_v2_project(
+        tmp_path,
+        target_states=("declared-output-absent", "present"),
+    )
+    baseline_receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [command],
+        task_authority=task_authority,
+        probe_runner=_passing_probe([]),
+    )
+    assert baseline_receipt["passed"] is True
+    assert baseline_receipt["projects"][0][
+        "scoped_validation_target_materialization_state"
+    ] == "absent"
+
+    target = project / str(entries[0]["target"])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = b"# replayed accepted prior attempt\n"
+    target.write_bytes(payload)
+    authority = _prior_seed_authority(
+        baseline_receipt,
+        task_authority,
+        str(entries[0]["declared_output"]),
+        payload,
+    )
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [command],
+        task_authority=task_authority,
+        prior_seed_authority=authority,
+        probe_runner=_passing_probe([]),
+    )
+
+    assert receipt["passed"] is True
+    project_receipt = receipt["projects"][0]
+    assert project_receipt[
+        "scoped_validation_target_materialization_state"
+    ] == "authenticated-prior-seed"
+    assert project_receipt[
+        "scoped_validation_prior_seed_authority_sha256"
+    ] == authority["authority_sha256"]
+    assert len(project_receipt["dependency_manifests"]) == 2
+
+
+@pytest.mark.parametrize(
+    "drift",
+    [
+        "missing_authority",
+        "baseline_receipt",
+        "task",
+        "proposal_path",
+        "content",
+        "authority_digest",
+    ],
+)
+def test_v2_present_absent_target_requires_exact_prior_seed_attestation(
+    tmp_path: Path,
+    drift: str,
+) -> None:
+    project, command, task_authority, entries = _write_v2_project(
+        tmp_path,
+        target_states=("declared-output-absent", "present"),
+    )
+    baseline_receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [command],
+        task_authority=task_authority,
+        probe_runner=_passing_probe([]),
+    )
+    target = project / str(entries[0]["target"])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = b"# replayed accepted prior attempt\n"
+    target.write_bytes(payload)
+    authority = _prior_seed_authority(
+        baseline_receipt,
+        task_authority,
+        str(entries[0]["declared_output"]),
+        payload,
+    )
+    if drift == "missing_authority":
+        authority = None
+    elif drift == "baseline_receipt":
+        authority["baseline_receipt"]["passed"] = False
+        unsigned = dict(authority)
+        unsigned.pop("authority_sha256")
+        authority["authority_sha256"] = _content_sha256(unsigned)
+    elif drift == "task":
+        authority["canonical_task_cid"] = "other-task"
+        unsigned = dict(authority)
+        unsigned.pop("authority_sha256")
+        authority["authority_sha256"] = _content_sha256(unsigned)
+    elif drift == "proposal_path":
+        authority["changed_paths"] = ["project/other.py"]
+        unsigned = dict(authority)
+        unsigned.pop("authority_sha256")
+        authority["authority_sha256"] = _content_sha256(unsigned)
+    elif drift == "content":
+        target.write_bytes(b"# tampered after attestation\n")
+    else:
+        authority["authority_sha256"] = "f" * 64
+
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [command],
+        task_authority=task_authority,
+        prior_seed_authority=authority,
+        probe_runner=lambda *_args, **_kwargs: pytest.fail(
+            "unauthenticated seed must fail before probing"
+        ),
+    )
+
+    assert receipt["passed"] is False
+    assert receipt["projects"][0]["reason"] == "dynamic_dependencies_unresolved"
+
+
+@pytest.mark.parametrize(
+    "unsafe_target",
+    [
+        "tests/unit/$HOME.py",
+        "tests/unit/`id`.py",
+        "tests/unit/$(id).py",
+        "tests/unit/foo;touch.py",
+        "tests/unit/foo&&touch.py",
+        "tests/unit/foo|touch.py",
+        "tests/unit/foo>out.py",
+        "tests/unit/foo space.py",
+        "tests/unit/café.py",
+    ],
+)
+def test_v2_rejects_targets_outside_conservative_shell_safe_charset(
+    tmp_path: Path,
+    unsafe_target: str,
+) -> None:
+    project, command, task_authority, entries = _write_v2_project(
+        tmp_path,
+        target_states=("declared-output-absent", "present"),
+    )
+    text = (project / "pyproject.toml").read_text(encoding="utf-8")
+    text = text.replace(json.dumps(entries[0]["target"]), json.dumps(unsafe_target), 1)
+    (project / "pyproject.toml").write_text(text, encoding="utf-8")
+
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [command],
+        task_authority=task_authority,
+        probe_runner=lambda *_args, **_kwargs: pytest.fail(
+            "unsafe target must fail before probing"
+        ),
+    )
+
+    assert receipt["passed"] is False
+    assert receipt["projects"][0]["contract_error_reason"] == (
+        "v2_target_path_invalid"
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing_runtime_authority",
+        "task_cid_drift",
+        "output_not_declared",
+        "command_digest_drift",
+        "command_target_drift",
+        "present_digest_drift",
+        "absent_target_appeared",
+        "unknown_target_field",
+        "unknown_task_field",
+        "unknown_baseline_field",
+        "duplicate_target",
+        "duplicate_command_digest",
+        "coerced_target",
+        "unsafe_target",
+    ],
+)
+def test_v2_target_contract_drift_fails_closed(
+    tmp_path: Path,
+    case: str,
+) -> None:
+    project, command, task_authority, entries = _write_v2_project(
+        tmp_path,
+        target_states=("declared-output-absent", "present"),
+    )
+    if case == "missing_runtime_authority":
+        task_authority = None
+    elif case == "task_cid_drift":
+        task_authority["canonical_task_cid"] = "other-task"
+    elif case == "output_not_declared":
+        task_authority["declared_outputs"] = ["project/result.py"]
+    elif case == "command_digest_drift":
+        text = (project / "pyproject.toml").read_text(encoding="utf-8")
+        (project / "pyproject.toml").write_text(
+            text.replace(str(entries[0]["command_sha256"]), "a" * 64, 1),
+            encoding="utf-8",
+        )
+    elif case == "command_target_drift":
+        command = command.replace("test_v2_0.py", "test_v2_1.py")
+    elif case == "present_digest_drift":
+        command = str(entries[1]["command"])
+        task_authority = {
+            "board_namespace": entries[1]["board_namespace"],
+            "canonical_task_cid": entries[1]["canonical_task_cid"],
+            "declared_outputs": [entries[1]["declared_output"]],
+        }
+        target = project / str(entries[1]["target"])
+        target.write_text("# drift\n", encoding="utf-8")
+    elif case == "absent_target_appeared":
+        target = project / str(entries[0]["target"])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("# appeared\n", encoding="utf-8")
+    elif case == "unknown_target_field":
+        text = (project / "pyproject.toml").read_text(encoding="utf-8")
+        (project / "pyproject.toml").write_text(
+            text.replace("target = ", "unknown = true, target = ", 1),
+            encoding="utf-8",
+        )
+    elif case == "unknown_task_field":
+        text = (project / "pyproject.toml").read_text(encoding="utf-8")
+        (project / "pyproject.toml").write_text(
+            text.replace(
+                "task = { ",
+                "task = { unknown = true, ",
+                1,
+            ),
+            encoding="utf-8",
+        )
+    elif case == "unknown_baseline_field":
+        text = (project / "pyproject.toml").read_text(encoding="utf-8")
+        (project / "pyproject.toml").write_text(
+            text.replace(
+                'baseline = { state = "declared-output-absent" }',
+                'baseline = { state = "declared-output-absent", sha256 = "'
+                + "a" * 64
+                + '" }',
+                1,
+            ),
+            encoding="utf-8",
+        )
+    elif case in {"duplicate_target", "duplicate_command_digest"}:
+        text = (project / "pyproject.toml").read_text(encoding="utf-8")
+        if case == "duplicate_target":
+            text = text.replace(
+                str(entries[1]["target"]), str(entries[0]["target"]), 1
+            )
+        else:
+            text = text.replace(
+                str(entries[1]["command_sha256"]),
+                str(entries[0]["command_sha256"]),
+                1,
+            )
+        (project / "pyproject.toml").write_text(text, encoding="utf-8")
+    elif case in {"coerced_target", "unsafe_target"}:
+        text = (project / "pyproject.toml").read_text(encoding="utf-8")
+        replacement = "1" if case == "coerced_target" else '"tests/../escape.py"'
+        text = text.replace(json.dumps(entries[0]["target"]), replacement, 1)
+        (project / "pyproject.toml").write_text(text, encoding="utf-8")
+
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [command],
+        task_authority=task_authority,
+        probe_runner=lambda *_args, **_kwargs: pytest.fail(
+            "invalid v2 contracts must fail before probing"
+        ),
+    )
+
+    assert receipt["passed"] is False
+    assert receipt["projects"][0]["reason"] == "dynamic_dependencies_unresolved"
+    expected_reasons = {
+        "missing_runtime_authority": "v2_runtime_task_authority_fields_invalid",
+        "task_cid_drift": "v2_validation_task_authority_mismatch",
+        "output_not_declared": "v2_validation_task_authority_mismatch",
+        "command_digest_drift": "v2_validation_command_not_declared",
+        "command_target_drift": "v2_validation_task_authority_mismatch",
+        "present_digest_drift": "v2_present_target_digest_mismatch",
+        "absent_target_appeared": "v2_absent_target_is_present",
+        "unknown_target_field": "v2_target_fields_invalid",
+        "unknown_task_field": "v2_target_task_fields_invalid",
+        "unknown_baseline_field": "v2_absent_baseline_fields_invalid",
+        "duplicate_target": "v2_targets_duplicate_or_oversized",
+        "duplicate_command_digest": (
+            "v2_validation_command_digest_invalid_or_duplicate"
+        ),
+        "coerced_target": "v2_target_type_invalid",
+        "unsafe_target": "v2_target_path_invalid",
+    }
+    assert receipt["projects"][0]["contract_error_reason"] == (
+        expected_reasons[case]
+    )
+
+
+def test_v2_failure_retries_distinguish_command_target_and_task_drift(
+    tmp_path: Path,
+) -> None:
+    fingerprints: set[str] = set()
+    reasons: set[str] = set()
+    for case in ("command", "target", "task"):
+        fixture_root = tmp_path / case
+        fixture_root.mkdir()
+        project, command, task_authority, entries = _write_v2_project(
+            fixture_root,
+            target_states=("declared-output-absent", "present"),
+        )
+        if case == "command":
+            command += " --maxfail=1"
+        elif case == "target":
+            target = project / str(entries[0]["target"])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("# appeared\n", encoding="utf-8")
+        else:
+            task_authority["canonical_task_cid"] = "other-task"
+
+        receipt = preflight_validation_project_dependencies(
+            fixture_root,
+            [command],
+            task_authority=task_authority,
+            probe_runner=lambda *_args, **_kwargs: pytest.fail(
+                "contract drift must fail before probing"
+            ),
+        )
+
+        assert receipt["passed"] is False
+        fingerprints.add(str(receipt["retry_fingerprint"]))
+        reasons.add(str(receipt["projects"][0]["contract_error_reason"]))
+
+    assert len(fingerprints) == 3
+    assert reasons == {
+        "v2_validation_command_not_declared",
+        "v2_absent_target_is_present",
+        "v2_validation_task_authority_mismatch",
+    }
 
 
 @pytest.mark.parametrize(

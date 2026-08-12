@@ -35362,6 +35362,66 @@ def test_implementation_daemon_dispatches_provider_after_dependency_preflight_pa
     )
 
 
+def test_implementation_daemon_passes_exact_task_authority_to_dependency_preflight(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Create identity target",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["external/project/tests/test_identity.py"],
+        validation=[
+            "cd external/project && python3 -m pytest "
+            "tests/test_identity.py -q"
+        ],
+        canonical_task_cid="canonical-task-cid",
+        board_namespace="board-v2",
+    )
+    calls: list[dict[str, object]] = []
+
+    def dependency_preflight(*_args, **kwargs):
+        calls.append(dict(kwargs))
+        return {"passed": True, "receipt_id": "dependency-receipt"}
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "preflight_validation_project_dependencies",
+        dependency_preflight,
+    )
+
+    receipt = daemon._require_validation_project_dependency_preflight(
+        workspace_path=repo,
+        task=task,
+        attempt=1,
+    )
+
+    assert receipt["passed"] is True
+    assert calls == [
+        {
+            "task_authority": {
+                "board_namespace": "board-v2",
+                "canonical_task_cid": daemon._canonical_ref(task),
+                "declared_outputs": [
+                    "external/project/tests/test_identity.py"
+                ],
+            }
+        }
+    ]
+
+
 def test_implementation_daemon_dispatches_provider_for_dependency_neutral_validation(
     tmp_path,
     monkeypatch,
