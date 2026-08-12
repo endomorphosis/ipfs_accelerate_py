@@ -112,7 +112,7 @@ ensure_provider_command_bindings(
     strict=False,
 )
 
-DEFAULT_GROK_MODEL = "grok-4.5"
+DEFAULT_GROK_MODEL = "grok-4.6"
 # Grok CLI validates --max-turns as 1..=4294967295 (u32::MAX).
 DEFAULT_GROK_MAX_TURNS = 4_294_967_295
 GROK_QUOTA_EXHAUSTED_EXIT_CODE = 86
@@ -5144,7 +5144,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         )
     if codex_fallback_command and model != DEFAULT_GROK_MODEL:
         print(
-            "Default Grok/Codex route requires primary model grok-4.5",
+            "Default Grok/Codex route requires primary model grok-4.6",
             file=sys.stderr,
         )
         return 2

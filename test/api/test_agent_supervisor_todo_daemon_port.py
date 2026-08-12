@@ -4491,7 +4491,7 @@ def test_implementation_multi_supervisor_env_defaults_are_reusable():
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
             "primary_quota_exhausted"
         ),
-        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.6",
         "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
         "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
@@ -4510,7 +4510,7 @@ def test_implementation_multi_supervisor_env_defaults_are_reusable():
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
             "primary_quota_exhausted"
         ),
-        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.6",
         "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
         "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
@@ -13873,7 +13873,7 @@ def _seal_ordered_grok_codex_route(monkeypatch) -> None:
     )
     monkeypatch.setenv(
         implementation_daemon_module._GROK_MODEL_ENV,
-        "grok-4.5",
+        "grok-4.6",
     )
     monkeypatch.setenv(
         implementation_daemon_module._CODEX_MODEL_ENV,
@@ -13951,7 +13951,7 @@ def _issue_ordered_grok_quota_authority(
     runner_receipt = {
         "schema": implementation_daemon_module.GROK_QUOTA_RECEIPT_SCHEMA,
         "provider": "grok_cli",
-        "model": "grok-4.5",
+        "model": "grok-4.6",
         "failure_kind": "quota_or_balance_exhausted",
         "message": "Grok Build usage balance exhausted",
         "raw_error_sha256": hashlib.sha256(raw_error).hexdigest(),
@@ -14042,7 +14042,7 @@ def test_ordered_grok_route_uses_reviewed_primary_model_and_labels_fallback(
     _seal_ordered_grok_codex_route(monkeypatch)
     monkeypatch.setenv(
         implementation_daemon_module._GROK_MODEL_ENV,
-        "grok-4.5",
+        "grok-4.6",
     )
     monkeypatch.setenv(
         implementation_daemon_module._CODEX_MODEL_ENV,
@@ -14085,7 +14085,7 @@ def test_ordered_grok_route_uses_reviewed_primary_model_and_labels_fallback(
 
     assert command[0] == sys.executable
     assert command[1].endswith("grok_cli_runner.py")
-    assert command[command.index("--model") + 1] == "grok-4.5"
+    assert command[command.index("--model") + 1] == "grok-4.6"
     assert daemon._current_implementation_provider_labels() == {
         "grok",
         "xai",
@@ -14135,7 +14135,7 @@ def test_ordered_grok_route_rejects_inexact_policy_fields(
     assert daemon._ordered_grok_codex_route_configured() is False
     with pytest.raises(
         implementation_daemon_module.ImplementationRetryDeferred,
-        match="requires exact grok_cli/grok-4.5",
+        match="requires exact grok_cli/grok-4.6",
     ):
         daemon._build_implementation_command(repo)
 
@@ -14158,7 +14158,7 @@ def test_ordered_grok_route_fails_closed_when_primary_is_unavailable(
     _seal_ordered_grok_codex_route(monkeypatch)
     monkeypatch.setenv(
         implementation_daemon_module._GROK_MODEL_ENV,
-        "grok-4.5",
+        "grok-4.6",
     )
     monkeypatch.setenv(
         implementation_daemon_module._CODEX_MODEL_ENV,
@@ -14453,7 +14453,7 @@ def test_ordered_codex_fallback_requires_live_exact_daemon_authority(
     )
 
     authority = result["grok_quota_fallback_authority"]
-    assert authority["model_id"] == "grok-4.5"
+    assert authority["model_id"] == "grok-4.6"
     assert authority["command"] == failed_grok_command
     assert authority["command_cid"]
     assert authority["implementation_started_event_id"]
@@ -15052,7 +15052,7 @@ def test_task_declared_grok_partial_ordered_route_fails_closed(
 
     with pytest.raises(
         implementation_daemon_module.ImplementationRetryDeferred,
-        match="requires exact grok_cli/grok-4.5",
+        match="requires exact grok_cli/grok-4.6",
     ):
         daemon._build_implementation_command(repo, task=task)
 
@@ -17948,12 +17948,12 @@ def test_supervisor_worker_watchdog_recognizes_codex_exec_with_global_options(
     "cmdline",
     [
         (
-            "/home/example/.local/bin/grok --model grok-4.5 "
+            "/home/example/.local/bin/grok --model grok-4.6 "
             "--prompt-file /dev/stdin --output-format plain "
             "--permission-mode bypassPermissions --no-plan --no-memory"
         ),
         (
-            "node /home/example/.local/bin/grok --model grok-4.5 "
+            "node /home/example/.local/bin/grok --model grok-4.6 "
             "--prompt-file /dev/stdin"
         ),
     ],
@@ -22218,7 +22218,7 @@ def test_implementation_daemon_recognizes_grok_cli_runner_as_inflight(
             "--workspace",
             str(worktree_path),
             "--model",
-            "grok-4.5",
+            "grok-4.6",
         ],
     }
     monkeypatch.setattr(
@@ -22227,12 +22227,12 @@ def test_implementation_daemon_recognizes_grok_cli_runner_as_inflight(
         lambda: [
             (
                 f"/usr/bin/python3 -m ipfs_accelerate_py.agent_supervisor."
-                f"grok_cli_runner --workspace {worktree_path} --model grok-4.5"
+                f"grok_cli_runner --workspace {worktree_path} --model grok-4.6"
             ),
             # Truncated docker child may lose the worktree path.
             (
                 "docker run --name ipfs-accelerate-grok-123 "
-                "/opt/ipfs-accelerate/grok --model grok-4.5"
+                "/opt/ipfs-accelerate/grok --model grok-4.6"
             ),
         ],
     )

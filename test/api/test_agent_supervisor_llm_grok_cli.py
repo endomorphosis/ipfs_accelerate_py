@@ -143,7 +143,7 @@ print(json.dumps({
     config = LlmRouterInvocation(
         repo_root=empty_child_cwd,
         provider="grok",
-        model_name="grok-4.5",
+        model_name="grok-4.6",
         allow_local_fallback=False,
         timeout_seconds=15,
         timeout_grace_seconds=2,
@@ -152,7 +152,7 @@ print(json.dumps({
         required_effective_providers=("grok_cli",),
     )
 
-    assert call_llm_router("child-smoke", config) == "supervisor:grok-4.5:child-smoke"
+    assert call_llm_router("child-smoke", config) == "supervisor:grok-4.6:child-smoke"
     assert sitecustomize_marker.exists() is False
     assert script_root_marker.exists() is False
 
@@ -180,7 +180,7 @@ def test_grok_agent_runner_forwards_resolved_launch_policy(
             "--grok-bin",
             "/bin/true",
             "--model",
-            "grok-4.5",
+            "grok-4.6",
             "--max-turns",
             "1234",
             "--permission-mode",
@@ -194,7 +194,7 @@ def test_grok_agent_runner_forwards_resolved_launch_policy(
     assert captured["prompt"] == "repair the board"
     cmd = captured["cmd"]
     assert isinstance(cmd, list)
-    assert cmd[cmd.index("--model") + 1] == "grok-4.5"
+    assert cmd[cmd.index("--model") + 1] == "grok-4.6"
     assert cmd[cmd.index("--max-turns") + 1] == "1234"
     assert cmd[cmd.index("--permission-mode") + 1] == "acceptEdits"
     assert cmd[cmd.index("--output-format") + 1] == "plain"

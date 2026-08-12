@@ -1875,7 +1875,7 @@ _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE: Final = {
         "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
     ),
     "primary_provider_id": "grok_cli",
-    "primary_model_id": "grok-4.5",
+    "primary_model_id": "grok-4.6",
     "fallback_provider_id": "codex",
     "fallback_model_id": "gpt-5.6-terra",
     "fallback_reasoning_effort": "high",
@@ -3980,7 +3980,7 @@ _ASE3_019_ACCEPTED_CONTROL_PLANE: Final = {
     "canonical_route_owner": "ipfs_accelerate_py.llm_router",
     "route_id": _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE["route_id"],
     "primary_provider_id": "grok_cli",
-    "primary_model_id": "grok-4.5",
+    "primary_model_id": "grok-4.6",
     "fallback_provider_id": "codex",
     "fallback_model_id": "gpt-5.6-terra",
     "fallback_reasoning_effort": "high",
@@ -9140,7 +9140,7 @@ def validate_operator_salvage_receipt_019(
                     PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME
                 ),
                 "authorization_artifact_sha256": (
-                    "sha256:dcbf5e539cda6d160752fd0bfb7bf2a3c98dbec58d5e51e4d26a4a8c1dd36fd2"
+                    "sha256:1f2c354ae473d2ea7007d75b2a839df69127d866f3850d184d46e5ff87739e94"
                 ),
                 "prospective_only": True,
                 "route_id": _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE["route_id"],

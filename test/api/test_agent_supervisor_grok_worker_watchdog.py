@@ -16,7 +16,7 @@ def test_grok_cli_runner_module_is_an_active_worktree_worker(
     command = (
         f"/usr/bin/python3 {python_option}-m "
         "ipfs_accelerate_py.agent_supervisor.grok_cli_runner "
-        "--workspace /tmp/agent-worktree --model grok-4.5"
+        "--workspace /tmp/agent-worktree --model grok-4.6"
     )
     monkeypatch.setattr(
         supervisor,

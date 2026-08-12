@@ -140,7 +140,7 @@ def _authorized_repo(
     route: dict[str, Any] = {
         "route_id": ROUTE_ID,
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -371,7 +371,7 @@ def _high_plan(repo: Path):
     )
     return llm_router.resolve_agent_implementation_route(
         primary_provider_id="grok_cli",
-        primary_model_id="grok-4.5",
+        primary_model_id="grok-4.6",
         fallback_provider_id="codex",
         fallback_model_id="gpt-5.6-terra",
         fallback_trigger="primary_quota_or_auth_unavailable",
@@ -490,7 +490,7 @@ def _receipt(stderr: str, *, overflow: bool = False):
     return llm_router.build_agent_implementation_failure_receipt(
         probe_stderr_text=stderr,
         nonce="a" * 64,
-        model="grok-4.5",
+        model="grok-4.6",
         probe_returncode=41,
         evidence_size=size,
         evidence_overflow=overflow,
@@ -541,7 +541,7 @@ def _native_quota_home(
         json.dumps(
             {
                 "info": {"id": session_id},
-                "current_model_id": "grok-4.5",
+                "current_model_id": "grok-4.6",
                 "grok_home": str(home),
             },
             sort_keys=True,
@@ -549,7 +549,7 @@ def _native_quota_home(
         encoding="utf-8",
     )
     summary.chmod(0o600)
-    assert receipt["primary_model"] == "grok-4.5"
+    assert receipt["primary_model"] == "grok-4.6"
     return home, session_id
 
 
@@ -621,7 +621,7 @@ def test_vgo_scope_loads_exact_reviewed_terra_high_authority(
     )
     route = llm_router.resolve_agent_implementation_route(
         primary_provider_id="grok_cli",
-        primary_model_id="grok-4.5",
+        primary_model_id="grok-4.6",
         fallback_provider_id="codex",
         fallback_model_id="gpt-5.6-terra",
         fallback_trigger="primary_quota_or_auth_unavailable",
@@ -805,7 +805,7 @@ def test_exact_auth_authorizes_but_mixed_or_overflowed_evidence_denies(
         repo_root=repo,
         failure_receipt=exact,
         expected_nonce="a" * 64,
-        expected_model="grok-4.5",
+        expected_model="grok-4.6",
         expected_probe_returncode=41,
         expected_invocation_binding=invocation.signed_payload(),
         now_ms=invocation.issued_at_ms,
@@ -824,7 +824,7 @@ def test_exact_auth_authorizes_but_mixed_or_overflowed_evidence_denies(
             repo_root=repo,
             failure_receipt=receipt,
             expected_nonce="a" * 64,
-            expected_model="grok-4.5",
+            expected_model="grok-4.6",
             expected_probe_returncode=41,
             expected_invocation_binding=invocation.signed_payload(),
             now_ms=invocation.issued_at_ms,
@@ -840,7 +840,7 @@ def test_native_quota_evidence_is_opaque_and_bound_to_receipt(
     receipt = llm_router.build_agent_implementation_failure_receipt(
         probe_stderr_text="Grok Build usage balance exhausted",
         nonce="a" * 64,
-        model="grok-4.5",
+        model="grok-4.6",
         probe_returncode=41,
         observed_at_ms=invocation.issued_at_ms,
     )
@@ -860,7 +860,7 @@ def test_native_quota_evidence_is_opaque_and_bound_to_receipt(
     verifier_command = [
         str(grok.resolve()),
         "--model",
-        "grok-4.5",
+        "grok-4.6",
         "--max-turns",
         "1",
         "--cwd",
@@ -900,7 +900,7 @@ def test_native_quota_evidence_is_opaque_and_bound_to_receipt(
         repo_root=repo,
         failure_receipt=receipt,
         expected_nonce="a" * 64,
-        expected_model="grok-4.5",
+        expected_model="grok-4.6",
         expected_probe_returncode=41,
         independent_quota_evidence=evidence,
         expected_invocation_binding=invocation.signed_payload(),
@@ -918,7 +918,7 @@ def test_native_quota_evidence_is_opaque_and_bound_to_receipt(
             repo_root=repo,
             failure_receipt=receipt,
             expected_nonce="a" * 64,
-            expected_model="grok-4.5",
+            expected_model="grok-4.6",
             expected_probe_returncode=41,
             independent_quota_evidence=forged,
             expected_invocation_binding=invocation.signed_payload(),

@@ -30,7 +30,7 @@ Additional optional providers (opt-in by selecting provider):
     - `ipfs_accelerate_py_GEMINI_CLI_CMD` (supports `{prompt}` placeholder)
 - `grok_cli`: xAI Grok Build CLI via the official `grok` binary
     - `ipfs_accelerate_py_GROK_CLI_CMD` (supports `{prompt}` and `{model}` placeholders)
-    - `ipfs_accelerate_py_GROK_CLI_MODEL` (default: grok-4.5; run `grok models`)
+    - `ipfs_accelerate_py_GROK_CLI_MODEL` (default: grok-4.6; run `grok models`)
     - Authenticate with `grok login` or `XAI_API_KEY`
 - `gemini_py`: Python wrapper in `ipfs_accelerate_py.utils.gemini_cli.GeminiCLI`
 - `claude_code`: Claude Code CLI command
@@ -47,7 +47,7 @@ Additional optional providers (opt-in by selecting provider):
     - `MISTRAL_API_KEY` or `ipfs_accelerate_py_MISTRAL_API_KEY` for auth
 - `xai`: xAI Grok AI (REST API, OpenAI-compatible)
     - `XAI_API_KEY` or `ipfs_accelerate_py_XAI_API_KEY`
-    - `ipfs_accelerate_py_XAI_MODEL` (default model: grok-4.5)
+    - `ipfs_accelerate_py_XAI_MODEL` (default model: grok-4.6)
     - `ipfs_accelerate_py_XAI_BASE_URL` (default: https://api.x.ai/v1)
 - `meta_ai`: Meta Model API / Muse Spark (OpenAI-compatible)
     - encrypted credential `meta_ai_api_key`, `MODEL_API_KEY`,
@@ -352,6 +352,7 @@ _LEGACY_AGENT_IMPLEMENTATION_ROUTE_ID = (
 _V3_AGENT_IMPLEMENTATION_ROUTE_ID = (
     "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
 )
+AGENT_IMPLEMENTATION_PRIMARY_MODEL_ID = "grok-4.6"
 
 
 @dataclass(frozen=True, slots=True)
@@ -477,7 +478,7 @@ _AGENT_IMPLEMENTATION_TRANSIENT_MAX_TURNS_EVIDENCE = (
 )
 _AGENT_IMPLEMENTATION_PROBE_CONTRACT = {
     "schema": "ipfs_accelerate_py.agent_supervisor.grok-quota-probe@1",
-    "model": "grok-4.5",
+    "model": "grok-4.6",
     "mode": "chat",
     "max_turns": 1,
     "permission_mode": "dontAsk",
@@ -748,7 +749,7 @@ def valid_agent_implementation_failure_receipt(
         and re.fullmatch(r"[0-9a-f]{64}", str(nonce or ""))
         and receipt.get("nonce") == nonce
         and receipt.get("primary_provider") == "grok"
-        and receipt.get("primary_model") == model == "grok-4.5"
+        and receipt.get("primary_model") == model == "grok-4.6"
         and receipt.get("primary_dispatched") is False
         and isinstance(evidence_size, int)
         and not isinstance(evidence_size, bool)
@@ -3606,7 +3607,7 @@ def _canonical_agent_quota_verifier_command(
     expected = [
         str(executable),
         "--model",
-        "grok-4.5",
+        "grok-4.6",
         "--max-turns",
         "1",
         "--cwd",
@@ -3669,7 +3670,7 @@ def validate_agent_implementation_quota_evidence(
         else ()
     )
     if (
-        expected_model != "grok-4.5"
+        expected_model != "grok-4.6"
         or not isinstance(preflight_receipt_id, str)
         or re.fullmatch(r"sha256:[0-9a-f]{64}", preflight_receipt_id) is None
         or not isinstance(preflight_nonce, str)
@@ -4029,7 +4030,7 @@ def _valid_agent_implementation_quota_evidence(
         != failure_receipt.get("primary_provider")
         or evidence.primary_model
         != failure_receipt.get("primary_model")
-        or evidence.primary_model != "grok-4.5"
+        or evidence.primary_model != "grok-4.6"
         or evidence.verifier_provider != "grok_cli"
         or evidence.verifier_model != evidence.primary_model
         or isinstance(evidence.verifier_returncode, bool)
@@ -4566,7 +4567,7 @@ def _agent_verify_historical_authority_snapshot(
     expected_route = {
         "route_id": _V3_AGENT_IMPLEMENTATION_ROUTE_ID,
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -4989,7 +4990,7 @@ def _agent_implementation_route_plan(
 ) -> AgentImplementationRoutePlan:
     values = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": fallback_trigger,
@@ -5300,7 +5301,7 @@ def load_agent_implementation_route_authorization(
         raise ValueError("agent route authorization bounds are invalid") from exc
     expected_route = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -10577,7 +10578,7 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
                 "GROK_CLI_MODEL",
                 "IPFS_ACCELERATE_AGENT_GROK_MODEL",
             )
-            or "grok-4.5"
+            or "grok-4.6"
         ).strip()
     if pk == "grok" or pk in _XAI_API_PROVIDER_ALIASES:
         return (
@@ -10587,7 +10588,7 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
                 "IPFS_DATASETS_PY_XAI_MODEL",
             )
             or _generic_llm_model_env()
-            or "grok-4.5"
+            or "grok-4.6"
         ).strip()
     if pk in {"meta_ai", "meta-ai", "meta_llama", "meta", "meta_spark", "spark"}:
         return normalize_meta_model_name(
@@ -12977,7 +12978,7 @@ def _grok_default_model() -> str:
             "GROK_MODEL",
             "ipfs_accelerate_py_XAI_MODEL",
         )
-        or "grok-4.5"
+        or "grok-4.6"
     )
 
 

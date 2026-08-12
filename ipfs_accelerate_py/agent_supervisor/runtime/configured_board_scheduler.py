@@ -177,7 +177,7 @@ ORDERED_PROVIDER_FIELDS = (
     "fallback_reasoning_effort",
 )
 ORDERED_PRIMARY_PROVIDER_ID = "grok_cli"
-ORDERED_PRIMARY_MODEL_ID = "grok-4.5"
+ORDERED_PRIMARY_MODEL_ID = "grok-4.6"
 ORDERED_FALLBACK_PROVIDER_ID = "codex"
 ORDERED_FALLBACK_MODEL_ID = "gpt-5.6-terra"
 ORDERED_FALLBACK_TRIGGER = "primary_quota_exhausted"
@@ -1875,7 +1875,7 @@ def load_configured_board(
             )
         if primary_model_id != ORDERED_PRIMARY_MODEL_ID:
             raise ConfiguredBoardError(
-                "provider.primary_model_id must be 'grok-4.5' for "
+                "provider.primary_model_id must be 'grok-4.6' for "
                 "the ordered provider contract"
             )
         if fallback_provider_id != ORDERED_FALLBACK_PROVIDER_ID:

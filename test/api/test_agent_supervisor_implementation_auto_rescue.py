@@ -477,7 +477,7 @@ def test_inline_provider_rescue_keeps_unsealed_command_without_pass_fds(
     daemon, _events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
     daemon._scoped_control_plane_launch = None
     daemon._scoped_recovery_control_plane_launches = {}
-    command = ["/opt/providers/grok", "--model", "grok-4.5"]
+    command = ["/opt/providers/grok", "--model", "grok-4.6"]
     calls: list[dict[str, object]] = []
 
     def fake_stream(run_command, **kwargs):

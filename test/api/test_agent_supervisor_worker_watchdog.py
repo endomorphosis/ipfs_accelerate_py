@@ -166,7 +166,7 @@ def _sealed_receipt_case(
         "--workspace",
         str(workspace),
         "--model",
-        "grok-4.5",
+        "grok-4.6",
         "--agent-implementation-route-json",
         json.dumps(
             binding,
@@ -995,7 +995,7 @@ def test_birth_callback_accepts_canonical_signed_route_fixture(tmp_path) -> None
             "--workspace",
             str(workspace.resolve()),
             "--model",
-            "grok-4.5",
+            "grok-4.6",
             "--agent-implementation-route-json",
             json.dumps(
                 route.as_binding_dict(),
@@ -1270,16 +1270,16 @@ def test_callback_failure_strictly_fences_child(
         (
             "/home/example/.local/bin/python -m "
             "ipfs_accelerate_py.agent_supervisor.grok_cli_runner "
-            "--workspace /tmp/task --model grok-4.5"
+            "--workspace /tmp/task --model grok-4.6"
         ),
         (
             "/usr/bin/python3 -P -m "
             "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner "
-            "--workspace /tmp/task --model grok-4.5"
+            "--workspace /tmp/task --model grok-4.6"
         ),
         (
             "/usr/bin/python3 /opt/ipfs/agent_supervisor/grok_cli_runner.py "
-            "--workspace /tmp/task --model grok-4.5"
+            "--workspace /tmp/task --model grok-4.6"
         ),
     ],
 )
@@ -1392,7 +1392,7 @@ def test_supervisor_loop_graces_packaged_runner_disappearance(
                     "cmdline": (
                         "/usr/bin/python3.12 -m "
                         "ipfs_accelerate_py.agent_supervisor.grok_cli_runner "
-                        "--workspace /tmp/task --model grok-4.5"
+                        "--workspace /tmp/task --model grok-4.6"
                     ),
                 }
             ]

@@ -2133,7 +2133,7 @@ def _grok_cli_command(
             or os.environ.get("GROK_CLI_MODEL", "").strip()
             or os.environ.get("GROK_MODEL", "").strip()
             or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
-            or "grok-4.5"
+            or "grok-4.6"
         )
     )
     # Prefer an effectively uncapped turn budget; the implementation daemon
@@ -2167,7 +2167,7 @@ def _grok_cli_command(
             "typed Grok authentication fallback requires a trusted Codex CLI"
         )
     # Preserve explicit model override after the packaged Grok-4.5 default.
-    if model and model != "grok-4.5":
+    if model and model != "grok-4.6":
         if "--model" in command:
             command[command.index("--model") + 1] = model
         else:
@@ -2209,7 +2209,7 @@ _CODEX_CONTEXT_WINDOW_ENV = "IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW"
 _CODEX_REASONING_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
 _CODEX_MAX_THREADS_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_THREADS"
 _CODEX_MAX_DEPTH_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH"
-DEFAULT_AUTOMATIC_GROK_MODEL = "grok-4.5"
+DEFAULT_AUTOMATIC_GROK_MODEL = "grok-4.6"
 DEFAULT_CODEX_MODEL = "gpt-5.6-terra"
 DEFAULT_CODEX_REASONING_EFFORT = "medium"
 

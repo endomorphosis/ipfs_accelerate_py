@@ -67,7 +67,7 @@ def _write_native_session_home(
         json.dumps(
             {
                 "info": {"id": session_id},
-                "current_model_id": "grok-4.5",
+                "current_model_id": "grok-4.6",
                 "grok_home": str(grok_home),
             },
             sort_keys=True,
@@ -157,7 +157,7 @@ def _seal_auth_or_quota_route(monkeypatch: pytest.MonkeyPatch) -> None:
         implementation_daemon.IMPLEMENTATION_FALLBACK_TRIGGER_ENV: (
             "primary_quota_or_auth_unavailable"
         ),
-        implementation_daemon._GROK_MODEL_ENV: "grok-4.5",
+        implementation_daemon._GROK_MODEL_ENV: "grok-4.6",
         implementation_daemon._CODEX_MODEL_ENV: "gpt-5.6-terra",
         implementation_daemon._CODEX_REASONING_EFFORT_ENV: "high",
     }
@@ -418,7 +418,7 @@ def test_auth_or_quota_route_keeps_explicit_grok_task_grok_only(
     daemon._require_primary_provider_readiness(task)
     command = daemon._build_implementation_command(tmp_path, task=task)
 
-    assert command[command.index("--model") + 1] == "grok-4.5"
+    assert command[command.index("--model") + 1] == "grok-4.6"
     assert "--codex-fallback-command-json" not in command
     assert "--grok-failure-receipt-nonce" not in command
 
@@ -535,7 +535,7 @@ def _typed_preflight_attempt(
     receipt = grok_cli_runner.build_grok_failure_receipt(
         probe_stderr_text=stderr_text,
         nonce=nonce,
-        model="grok-4.5",
+        model="grok-4.6",
         probe_returncode=returncode,
         primary_dispatched=False,
     )
@@ -689,7 +689,7 @@ def test_repeated_exact_max_turns_is_one_unknown_denial_without_terra(
             "--grok-bin",
             str(grok),
             "--model",
-            "grok-4.5",
+            "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(_terra_fallback_command(str(codex), workspace)),
             "--grok-failure-receipt-nonce",
@@ -788,7 +788,7 @@ def test_scoped_route_rejects_prompt_cid_before_grok_preflight(
             "--grok-bin",
             str(grok),
             "--model",
-            "grok-4.5",
+            "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(_terra_fallback_command(str(codex), workspace)),
             "--grok-failure-receipt-nonce",
@@ -825,7 +825,7 @@ def test_typed_preflight_probe_overflow_is_measured_fail_closed(
     receipt = grok_cli_runner.build_grok_failure_receipt(
         probe_stderr_text=retained,
         nonce="f" * 64,
-        model="grok-4.5",
+        model="grok-4.6",
         probe_returncode=returncode,
         primary_dispatched=False,
         evidence_size=evidence_size,
@@ -880,7 +880,7 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
     receipt = grok_cli_runner.build_grok_failure_receipt(
         probe_stderr_text="Grok Build usage balance exhausted",
         nonce="1" * 64,
-        model="grok-4.5",
+        model="grok-4.6",
         probe_returncode=41,
         primary_dispatched=False,
     )
@@ -1036,7 +1036,7 @@ def test_direct_no_nonce_native_quota_cannot_cross_providers(
             "--grok-bin",
             str(grok),
             "--model",
-            "grok-4.5",
+            "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(fallback),
         ]
@@ -1089,7 +1089,7 @@ def test_merge_resolver_marker_mints_fresh_legacy_preflight_route(
         receipt = grok_cli_runner.build_grok_failure_receipt(
             probe_stderr_text="Grok Build usage balance exhausted",
             nonce=nonce,
-            model="grok-4.5",
+            model="grok-4.6",
             probe_returncode=41,
             primary_dispatched=False,
         )
@@ -1310,7 +1310,7 @@ def test_typed_preflight_requires_independent_quota_confirmation(
     receipt = grok_cli_runner.build_grok_failure_receipt(
         probe_stderr_text=probe_stderr,
         nonce=nonce,
-        model="grok-4.5",
+        model="grok-4.6",
         probe_returncode=41,
         primary_dispatched=False,
     )
@@ -1414,7 +1414,7 @@ def test_typed_preflight_requires_independent_quota_confirmation(
             "--grok-bin",
             str(grok),
             "--model",
-            "grok-4.5",
+            "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(fallback),
             "--grok-failure-receipt-nonce",
@@ -1446,7 +1446,7 @@ def test_terminal_route_outcome_is_bound_to_receipt_route_and_runner_exit() -> N
     receipt = grok_cli_runner.build_grok_failure_receipt(
         probe_stderr_text="Grok Build usage balance exhausted",
         nonce=nonce,
-        model="grok-4.5",
+        model="grok-4.6",
         probe_returncode=41,
         primary_dispatched=False,
     )
@@ -1546,7 +1546,7 @@ def test_nonce_route_nonzero_never_restores_provider_attempt(
     receipt = grok_cli_runner.build_grok_failure_receipt(
         probe_stderr_text="Error: Not signed in",
         nonce=nonce,
-        model="grok-4.5",
+        model="grok-4.6",
         probe_returncode=41,
         primary_dispatched=False,
     )
@@ -1576,7 +1576,7 @@ def test_nonce_route_nonzero_never_restores_provider_attempt(
         "/usr/bin/python3",
         "grok_cli_runner.py",
         "--model",
-        "grok-4.5",
+        "grok-4.6",
         "--grok-failure-receipt-nonce",
         nonce,
         "--agent-implementation-route-json",
@@ -1965,7 +1965,7 @@ def test_grok_docker_primary_parses_attached_start_not_create_output(
         "--grok-bin",
         str(harness["grok"]),
         "--model",
-        "grok-4.5",
+        "grok-4.6",
     ]
     if typed_route:
         argv.extend(
@@ -2042,7 +2042,7 @@ def test_grok_docker_create_failure_cleans_without_provider_or_fallback(
             "--grok-bin",
             str(harness["grok"]),
             "--model",
-            "grok-4.5",
+            "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(
                 _terra_fallback_command(
@@ -2090,7 +2090,7 @@ def test_grok_docker_start_failure_cleans_without_fallback(
             "--grok-bin",
             str(harness["grok"]),
             "--model",
-            "grok-4.5",
+            "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(
                 _terra_fallback_command(
@@ -2644,7 +2644,7 @@ def test_build_grok_quota_routed_agent_command_embeds_terra_shape(
         "-m",
         "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
     ]
-    assert command[command.index("--model") + 1] == "grok-4.5"
+    assert command[command.index("--model") + 1] == "grok-4.6"
     fallback = json.loads(command[command.index("--codex-fallback-command-json") + 1])
     assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
     assert 'model_reasoning_effort="medium"' in fallback

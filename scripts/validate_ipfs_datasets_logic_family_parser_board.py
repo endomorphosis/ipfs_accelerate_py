@@ -219,7 +219,7 @@ CONTROL_PATHS = frozenset(
 )
 EXPECTED_PROVIDER = {
     "primary_provider_id": "grok_cli",
-    "primary_model_id": "grok-4.5",
+    "primary_model_id": "grok-4.6",
     "fallback_provider_id": "codex",
     "fallback_model_id": "gpt-5.6-terra",
     "fallback_trigger": "primary_quota_exhausted",

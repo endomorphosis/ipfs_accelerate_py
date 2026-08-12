@@ -500,7 +500,7 @@ def _commit_v3_route_authorization(
     route = {
         "route_id": V3_ROUTE_ID,
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -628,7 +628,7 @@ def _seed_v3_task_repo(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_or_auth_unavailable",
@@ -1528,7 +1528,7 @@ def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
             "primary_quota_exhausted"
         ),
-        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.6",
         "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
         "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
@@ -1661,7 +1661,7 @@ def test_ordered_provider_contract_requires_complete_unambiguous_fields(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "max_concurrency": 2,
     }
@@ -1707,7 +1707,7 @@ def test_ordered_provider_contract_seals_fallback_authority(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_or_auth_unavailable",
@@ -1728,7 +1728,7 @@ def test_ordered_provider_contract_accepts_legacy_quota_medium_tuple(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_exhausted",
@@ -1760,7 +1760,7 @@ def test_ordered_provider_contract_rejects_hybrid_legacy_trigger_high_effort(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_exhausted",
@@ -1800,7 +1800,7 @@ def test_launch_config_overrides_ambient_provider_environment(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_or_auth_unavailable",

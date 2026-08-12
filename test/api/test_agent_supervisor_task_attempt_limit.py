@@ -82,7 +82,7 @@ def _framed_grok_quota_stderr(
     receipt = {
         "schema": GROK_QUOTA_RECEIPT_SCHEMA,
         "provider": "grok_cli",
-        "model": "grok-4.5",
+        "model": "grok-4.6",
         "failure_kind": "quota_or_balance_exhausted",
         "message": "Grok Build usage balance exhausted",
         "raw_error_sha256": hashlib.sha256(raw_bytes).hexdigest(),
