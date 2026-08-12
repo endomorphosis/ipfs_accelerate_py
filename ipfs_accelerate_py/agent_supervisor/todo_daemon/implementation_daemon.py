@@ -51011,7 +51011,42 @@ class PortalImplementationDaemon:
             ):
                 continue
             task_ids.update(bound_task_ids)
-        return task_ids
+        return self._filter_inventory_merges_still_valid(task_ids)
+
+    def _filter_inventory_merges_still_valid(
+        self,
+        task_ids: set[str],
+    ) -> set[str]:
+        """Drop inventory completions that no longer pass the published gate.
+
+        Fresh capture epochs can leave historical merge events pointing at
+        outputs that no longer bind current operator receipts. Those tasks must
+        not be force-recompleted after an operator reopen.
+        """
+
+        inventory_tasks = {"IPS-001", "IPS-002", "IPS-003"}
+        if not task_ids.intersection(inventory_tasks):
+            return task_ids
+        try:
+            from scripts import validate_incremental_proof_sealer_board as ips_gate
+        except Exception:
+            # Fail closed: do not re-assert inventory completions without a gate.
+            return {task_id for task_id in task_ids if task_id not in inventory_tasks}
+        kept: set[str] = set()
+        for task_id in task_ids:
+            if task_id not in inventory_tasks:
+                kept.add(task_id)
+                continue
+            try:
+                result = ips_gate.validate_artifact(
+                    task_id,
+                    require_published=True,
+                )
+            except Exception:
+                continue
+            if isinstance(result, dict) and result.get("valid") is True:
+                kept.add(task_id)
+        return kept
 
     def _task_has_recent_no_change_outcome(
         self,
