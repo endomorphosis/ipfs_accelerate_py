@@ -25931,6 +25931,8 @@ class PortalImplementationDaemon:
         lifecycle_record: WorkspaceLifecycleRecord | None = None
         implementation_started = False
         lifecycle_race_exception = False
+        typed_pre_dispatch_deferral = False
+        generic_pre_dispatch_deferral = False
         submodule_setup_deferral = False
         dependency_setup_deferral = False
 
@@ -27573,6 +27575,11 @@ class PortalImplementationDaemon:
                 isinstance(exc, WorktreeLifecycleError)
                 and not implementation_started
             )
+            typed_pre_dispatch_deferral = (
+                isinstance(exc, ImplementationRetryDeferred)
+                and not implementation_started
+                and not provider_dispatched
+            )
             submodule_setup_deferral = (
                 isinstance(exc, WorktreeSubmoduleInitializationDeferred)
                 and not implementation_started
@@ -27637,6 +27644,25 @@ class PortalImplementationDaemon:
                         "dependency_preflight": dict(exc.receipt),
                     }
                 )
+            generic_pre_dispatch_deferral = bool(
+                typed_pre_dispatch_deferral
+                and not submodule_setup_deferral
+                and not dependency_setup_deferral
+            )
+            if generic_pre_dispatch_deferral:
+                exception_result.update(
+                    {
+                        "reason": exc.reason.replace(" ", "_"),
+                        "deferred": True,
+                        "infrastructure_failure": True,
+                        "failure_kind": (
+                            LifecycleFailureKind.LIFECYCLE_SETUP.value
+                        ),
+                        "provider_call_allowed": False,
+                        "attempt_consumed": False,
+                        "backoff_seconds": int(exc.backoff_seconds),
+                    }
+                )
             if protected_path_violation:
                 exception_result["reason"] = "implementation_protected_path_mutated"
                 exception_result["protected_path_violation"] = (
@@ -27674,10 +27700,7 @@ class PortalImplementationDaemon:
                         attempt=attempt,
                         exception_result=exception_result,
                     )
-                    if (
-                        submodule_setup_deferral
-                        or dependency_setup_deferral
-                    ):
+                    if typed_pre_dispatch_deferral:
                         cleanup_result.update(
                             {
                                 "failure_kind": (
@@ -27775,6 +27798,7 @@ class PortalImplementationDaemon:
             protected_path_external_deferral
             or lifecycle_setup_deferral
             or lifecycle_race_exception
+            or typed_pre_dispatch_deferral
             or submodule_setup_deferral
             or dependency_setup_deferral
         )
@@ -28194,6 +28218,24 @@ class PortalImplementationDaemon:
                     ),
                     "dependency_preflight": dict(
                         exception_result.get("dependency_preflight") or {}
+                    ),
+                }
+            )
+        if generic_pre_dispatch_deferral:
+            result.update(
+                {
+                    "reason": str(
+                        exception_result.get("reason")
+                        or "implementation_retry_deferred"
+                    ),
+                    "deferred": True,
+                    "infrastructure_failure": True,
+                    "failure_kind": (
+                        LifecycleFailureKind.LIFECYCLE_SETUP.value
+                    ),
+                    "provider_call_allowed": False,
+                    "backoff_seconds": int(
+                        exception_result.get("backoff_seconds") or 0
                     ),
                 }
             )
@@ -53787,13 +53829,9 @@ class PortalImplementationDaemon:
                 "scoped fallback route has no signed authority bounds",
                 backoff_seconds=300,
             )
-        context = self._last_implementation_context
-        capsule = getattr(context, "capsule", None)
-        if not isinstance(capsule, ContextCapsule):
-            raise ImplementationRetryDeferred(
-                "scoped fallback route requires a compiled context capsule",
-                backoff_seconds=300,
-            )
+        capsule = self._scoped_provider_context_capsule(
+            self._last_implementation_context
+        )
         try:
             baseline = self._run_git(
                 ["rev-parse", "--verify", "HEAD^{commit}"],
@@ -54002,6 +54040,51 @@ class PortalImplementationDaemon:
             expected_binding=invocation.signed_payload(),
             now_ms=issued_at_ms,
             max_age_ms=5 * 60 * 1000,
+        )
+
+    @staticmethod
+    def _scoped_provider_context_capsule(
+        context: ContextCompileResult | ContextDeltaResult | None,
+    ) -> ContextCapsule:
+        """Resolve the full authority-bearing capsule for scoped dispatch.
+
+        Retry prompts intentionally transmit a compact ``ContextDeltaCapsule``.
+        Route authority, however, remains bound to the exact reconstructed full
+        capsule.  Keep that distinction explicit at the provider boundary and
+        recheck the receipt/invariant identities before signing an invocation.
+        """
+
+        if isinstance(context, ContextCompileResult):
+            capsule = context.capsule
+            if (
+                not context.required_context_preserved
+                or context.receipt.capsule_id != capsule.capsule_id
+            ):
+                raise ImplementationRetryDeferred(
+                    "scoped fallback compiled context authority is invalid",
+                    backoff_seconds=300,
+                )
+            return capsule
+        if isinstance(context, ContextDeltaResult):
+            capsule = context.reconstructed_capsule
+            receipt = context.receipt
+            if (
+                not context.invariant_core_preserved
+                or receipt.parent_capsule_id
+                != context.parent_capsule.capsule_id
+                or receipt.delta_capsule_id
+                != context.delta_capsule.capsule_id
+                or receipt.reconstructed_capsule_id != capsule.capsule_id
+                or receipt.full_replay_tokens != capsule.input_tokens
+            ):
+                raise ImplementationRetryDeferred(
+                    "scoped fallback reconstructed context authority is invalid",
+                    backoff_seconds=300,
+                )
+            return capsule
+        raise ImplementationRetryDeferred(
+            "scoped fallback route requires a compiled context capsule",
+            backoff_seconds=300,
         )
 
     def _protected_effect_recovery_command(

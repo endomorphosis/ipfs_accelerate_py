@@ -171,6 +171,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_supervisor as implementation_supervisor_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    ImplementationRetryDeferred,
     RETRY_BUDGET_REPAIR_SCHEMA,
     PortalTask,
     TodoTaskState,
@@ -34890,6 +34891,178 @@ def test_implementation_daemon_defers_failed_submodule_setup_before_provider_wit
     )
     assert retry_event["failure_kind"] == "lifecycle_setup"
     assert retry_event["attempt_consumed"] is False
+
+
+def test_implementation_daemon_defers_typed_command_setup_before_provider_without_attempt_charge(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Defer typed provider setup",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["result.py"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "bounded prompt",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+
+    def defer_command(*_args, **_kwargs):
+        raise ImplementationRetryDeferred(
+            "scoped fallback route requires a compiled context capsule",
+            backoff_seconds=300,
+        )
+
+    monkeypatch.setattr(daemon, "_build_implementation_command", defer_command)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("provider must not run"),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["reason"] == (
+        "scoped_fallback_route_requires_a_compiled_context_capsule"
+    )
+    assert result["deferred"] is True
+    assert result["infrastructure_failure"] is True
+    assert result["failure_kind"] == "lifecycle_setup"
+    assert result["provider_call_allowed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["backoff_seconds"] == 300
+    assert result["cleanup_result"]["cleaned"] is True
+    assert persisted.implementation_attempts == {}
+    assert persisted.implementation_attempts_by_cid == {}
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task))
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    retry_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_retry_deferred"
+    )
+    assert retry_event["attempt_consumed"] is False
+    assert retry_event["provider_call_allowed"] is False
+
+
+def test_implementation_daemon_charges_typed_deferral_after_provider_dispatch(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-command",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Charge post-dispatch failure",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["result.py"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "bounded prompt",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_evaluate_pre_implementation_provider_gate",
+        lambda **_kwargs: {
+            "skip_provider": False,
+            "provider_authorized": True,
+            "receipt_cid": "receipt:authorized",
+            "event": {},
+        },
+    )
+
+    def dispatched_deferral(*_args, **_kwargs):
+        raise ImplementationRetryDeferred(
+            "provider-side typed failure",
+            backoff_seconds=300,
+        )
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        dispatched_deferral,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is True
+    assert result.get("deferred") is not True
+    assert persisted.implementation_attempts[task.task_id] == 1
+    assert persisted.implementation_attempts_by_cid[
+        daemon._canonical_ref(task)
+    ] == 1
 
 
 @pytest.mark.parametrize(
