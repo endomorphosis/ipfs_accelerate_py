@@ -123,6 +123,46 @@ def test_implementation_daemon_releases_stale_quarantined_inventory_merge(tmp_pa
     assert events[-1]["resolved"] is True
 
 
+def test_release_skips_ancestor_inventory_merge_waiting_on_status_commit(tmp_path):
+    daemon = _daemon(tmp_path)
+    finished = {
+        "IPS-002": {
+            "type": "implementation_finished",
+            "task_id": "IPS-002",
+            "attempt": 4,
+            "branch": "implementation/ips-002-landed",
+            "implementation_commit": "531ce91c0323deadbeefdeadbeefdeadbeefde",
+            "merge_result": {
+                "queued": True,
+                "request_id": "req-ips-002",
+                "reason": "merge_queued",
+            },
+        }
+    }
+
+    class _Queue:
+        def get(self, request_id):
+            return type(
+                "Request",
+                (),
+                {
+                    "status": "quarantined",
+                    "failure_reason": "inventory_published_gate_not_satisfied",
+                },
+            )()
+
+    daemon.merge_queue = _Queue()
+    daemon._latest_implementation_finished_by_task = lambda: finished  # type: ignore[method-assign]
+    daemon._implementation_commit_was_reconciled = (  # type: ignore[method-assign]
+        lambda task_id, commit: False
+    )
+    daemon._git_ref_is_ancestor = lambda ancestor, descendant: True  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._inventory_task_passes_published_gate = lambda task_id: False  # type: ignore[method-assign]
+
+    assert daemon._release_stale_quarantined_merges() == []
+
+
 def test_has_unresolved_merge_failure_ignores_reconciled_last_implementation(
     tmp_path,
 ):

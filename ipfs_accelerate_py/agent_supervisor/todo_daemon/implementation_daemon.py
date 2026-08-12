@@ -381,12 +381,6 @@ ABANDONED_MERGE_RECONCILE_REASONS = frozenset(
         "dirty_worktree",
     }
 )
-STALE_QUARANTINED_MERGE_FAILURE_REASONS = frozenset(
-    {
-        "inventory_published_gate_not_satisfied",
-        "merge_branch_candidate_mismatch",
-    }
-)
 INVENTORY_TASK_IDS = frozenset({"IPS-001", "IPS-002", "IPS-003"})
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS = 30.0
@@ -24531,14 +24525,17 @@ class PortalImplementationDaemon:
                 result["reason"] = "merge_cleanup_failed"
                 result["returncode"] = 1
             elif (
-                str(task.task_id) in {"IPS-001", "IPS-002", "IPS-003"}
+                result.get("already_merged")
+                and str(task.task_id) in INVENTORY_TASK_IDS
                 and not self._inventory_task_passes_published_gate(
                     str(task.task_id)
                 )
             ):
                 # Historical inventory merges may still look "already merged"
                 # after a capture-epoch reopen. Do not force-complete until the
-                # published gate accepts the bound inventory outputs.
+                # published gate accepts the bound inventory outputs. A fresh
+                # merge in this pass still writes the daemon status commit the
+                # published lineage requires.
                 result["merged"] = False
                 result["already_merged"] = False
                 result["completion_skipped"] = True
@@ -51149,16 +51146,14 @@ class PortalImplementationDaemon:
                 target_branch,
             )
             inventory_task = task_id in INVENTORY_TASK_IDS
-            inventory_gate_failed = inventory_task and (
-                failure_reason in STALE_QUARANTINED_MERGE_FAILURE_REASONS
-                or not self._inventory_task_passes_published_gate(task_id)
-            )
             if request_status != "quarantined" and not inventory_task:
                 continue
+            # A published-gate miss on a commit that is already on the target
+            # first-parent is usually just the missing daemon status commit.
+            # Only abandon merges that cannot land (wrong branch / off-history).
             if not (
                 not_ancestor
-                or inventory_gate_failed
-                or failure_reason in STALE_QUARANTINED_MERGE_FAILURE_REASONS
+                or failure_reason == "merge_branch_candidate_mismatch"
             ):
                 continue
             result = {
