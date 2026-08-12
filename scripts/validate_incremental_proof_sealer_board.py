@@ -88,6 +88,7 @@ RECONCILIATION_RESIDUAL_KINDS = frozenset(
         "preflight_merge_conflict",
         "dirty_worktree",
         "content_not_in_target",
+        "main_checkout_dirty",
     }
 )
 GOAL_IDS = ("IPS-G000",) + tuple(
@@ -1721,6 +1722,8 @@ def _validate_taskboard_status_transition(
             continue
         if _is_operational_residual_board_appendix(parent, commit):
             continue
+        if _is_operational_residual_status_commit(parent, commit):
+            continue
         if _is_operator_inventory_reopen_commit(parent, commit):
             continue
         _validate_taskboard_status_commit(parent, commit, errors)
@@ -2021,6 +2024,79 @@ def _is_operational_residual_board_appendix(
         end = after_text.find("\n## IPS-", start + 1)
         block = after_text[start:] if end < 0 else after_text[start:end]
         if not _residual_block_is_admitted(block):
+            return False
+    return True
+
+
+def _is_operational_residual_status_commit(
+    parent_revision: str,
+    current_revision: str,
+) -> bool:
+    """True when a board commit only retires residual guardrail Status values.
+
+    Reconciliation residuals start blocked and are later marked completed by the
+    supervisor backlog refinery, not the Implementation Daemon envelope.
+    """
+
+    relative = "docs/architecture/incremental_proof_sealer.todo.md"
+    parents = _commit_parent_tokens(REPO_ROOT, current_revision)
+    if len(parents) != 1 or parents[0] != parent_revision:
+        return False
+    if _commit_changed_paths(REPO_ROOT, parent_revision, current_revision) != {
+        relative
+    }:
+        return False
+    before = _git("show", f"{parent_revision}:{relative}", cwd=REPO_ROOT)
+    after = _git("show", f"{current_revision}:{relative}", cwd=REPO_ROOT)
+    if before.returncode != 0 or after.returncode != 0:
+        return False
+    before_text, after_text = before.stdout, after.stdout
+    before_order = re.findall(r"^## (IPS-\d{3})\s+", before_text, re.MULTILINE)
+    after_order = re.findall(r"^## (IPS-\d{3})\s+", after_text, re.MULTILINE)
+    if before_order != after_order:
+        return False
+    sealed = set(SEALED_TASK_IDS)
+    residual_ids = [task_id for task_id in after_order if task_id not in sealed]
+    if not residual_ids:
+        return False
+    retired = 0
+    for task_id in residual_ids:
+        b_start = before_text.find(f"## {task_id} ")
+        a_start = after_text.find(f"## {task_id} ")
+        if b_start < 0 or a_start < 0:
+            return False
+        b_end = before_text.find("\n## ", b_start + 1)
+        a_end = after_text.find("\n## ", a_start + 1)
+        if b_end < 0:
+            b_end = len(before_text)
+        if a_end < 0:
+            a_end = len(after_text)
+        b_block = before_text[b_start:b_end]
+        a_block = after_text[a_start:a_end]
+        if b_block == a_block:
+            continue
+        if not _residual_block_is_admitted(b_block):
+            return False
+        if "- Status: blocked" not in b_block or "- Status: completed" not in a_block:
+            return False
+        if b_block.replace("- Status: blocked", "- Status: completed", 1) != a_block:
+            return False
+        retired += 1
+    if retired == 0:
+        return False
+    # Sealed task blocks must be byte-identical.
+    for task_id in SEALED_TASK_IDS:
+        b_start = before_text.find(f"## {task_id} ")
+        a_start = after_text.find(f"## {task_id} ")
+        if b_start < 0 or a_start < 0:
+            return False
+        b_end = before_text.find("\n## ", b_start + 1)
+        a_end = after_text.find("\n## ", a_start + 1)
+        if b_end < 0:
+            b_end = len(before_text)
+        if a_end < 0:
+            a_end = len(after_text)
+        if before_text[b_start:b_end] != after_text[a_start:a_end]:
             return False
     return True
 
@@ -2361,6 +2437,8 @@ def _validate_accelerate_control_transition(
                 continue
             if _is_operational_residual_board_appendix(first_parent, commit):
                 continue
+            if _is_operational_residual_status_commit(first_parent, commit):
+                continue
             if _is_operator_inventory_reopen_commit(first_parent, commit):
                 continue
             _validate_taskboard_status_commit(first_parent, commit, errors)
@@ -2580,6 +2658,8 @@ def _task_completion_in_history(
             continue
         if _is_operational_residual_board_appendix(parents[0], revision):
             continue
+        if _is_operational_residual_status_commit(parents[0], revision):
+            continue
         if _is_operator_inventory_reopen_commit(parents[0], revision):
             continue
         probe: list[str] = []
@@ -2710,6 +2790,8 @@ def _reject_side_branch_taskboard_commits(
         if changed is None or relative not in changed:
             continue
         if _is_operational_residual_board_appendix(parents[0], commit):
+            continue
+        if _is_operational_residual_status_commit(parents[0], commit):
             continue
         if _is_operator_inventory_reopen_commit(parents[0], commit):
             continue
