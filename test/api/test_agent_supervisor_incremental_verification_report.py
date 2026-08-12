@@ -345,12 +345,15 @@ def validate_incremental_verification_report(
     gen_identity = str(report_commands.get("generate_artifact") or "")
     gen_cmd = bench_commands.get("generate_artifact")
     gen_blob = " ".join(gen_cmd) if isinstance(gen_cmd, Sequence) else str(gen_cmd)
-    if gen_identity and gen_identity not in gen_blob.replace("\\", "/"):
+    if (
+        gen_identity
+        and gen_identity not in gen_blob.replace("\\", "/")
+        and "incremental_verification.py" not in gen_blob
+    ):
         # Allow report to name the module path while benchmark lists argv with output.
-        if "incremental_verification.py" not in gen_blob:
-            errors.append(
-                "benchmark generate command does not reference incremental_verification.py"
-            )
+        errors.append(
+            "benchmark generate command does not reference incremental_verification.py"
+        )
 
     # --- measurement status + schema ---
     measurement_status = binding.get("measurement_status")
@@ -401,9 +404,8 @@ def validate_incremental_verification_report(
             )
 
     bench_cross = benchmark.get("cross_tree_unaffected_reuse")
-    if isinstance(bench_cross, Mapping):
-        if bench_cross.get("status") != "unmet":
-            errors.append("benchmark cross_tree_unaffected_reuse.status must be unmet")
+    if isinstance(bench_cross, Mapping) and bench_cross.get("status") != "unmet":
+        errors.append("benchmark cross_tree_unaffected_reuse.status must be unmet")
 
     # --- required prose sections ---
     missing_sections = _missing_phrases(report_text, REQUIRED_REPORT_SECTIONS)
@@ -733,7 +735,7 @@ def test_validator_rejects_corpus_policy_or_measurement_mismatch(
                 json.dumps(altered, indent=2, sort_keys=True),
                 1,
             )
-        except Exception:
+        except (OverflowError, RecursionError, TypeError, ValueError):
             text = report
         if text == report:
             # Fallback: replace policy_id string.

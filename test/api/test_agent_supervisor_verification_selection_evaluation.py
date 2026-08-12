@@ -65,7 +65,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.selection import (
     select_affected_verification,
 )
 
-
 # ---------------------------------------------------------------------------
 # Paths / constants
 # ---------------------------------------------------------------------------
@@ -850,7 +849,7 @@ def test_real_mini_repo_selected_versus_full_suite(tmp_path: Path) -> None:
                 "disposition": "exact",
             },
         ),
-        catalog={"tests": list(sorted(full_outcomes))},
+        catalog={"tests": sorted(full_outcomes)},
         policy={"critical_uncertainty_requires_full_suite": False},
         forced_selected_tests=(node_fn,),
         selected_observation=selected_obs,

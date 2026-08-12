@@ -36,6 +36,8 @@ from pathlib import Path
 from types import MappingProxyType, ModuleType
 from typing import Any, Final, Protocol, runtime_checkable
 
+from typing_extensions import Self
+
 from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
     MultiformatsIdentityError,
     cid_for_bytes,
@@ -104,7 +106,7 @@ class ReceiptStoreConflictError(ReceiptStoreError):
 class ReceiptStoreUnavailableError(ReceiptStoreError):
     """Typed unavailable: missing backend, revision, or CAS capability."""
 
-    def __init__(self, unavailable: "StoreUnavailable") -> None:
+    def __init__(self, unavailable: StoreUnavailable) -> None:
         super().__init__(unavailable.reason)
         self.unavailable = unavailable
 
@@ -349,7 +351,7 @@ class IndexEntry:
         return payload
 
     @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> "IndexEntry":
+    def from_dict(cls, value: Mapping[str, Any]) -> IndexEntry:
         if not isinstance(value, Mapping):
             raise ReceiptStoreIntegrityError("IndexEntry must be an object")
         return cls(
@@ -425,7 +427,7 @@ class TombstoneRecord:
         return payload
 
     @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> "TombstoneRecord":
+    def from_dict(cls, value: Mapping[str, Any]) -> TombstoneRecord:
         if not isinstance(value, Mapping):
             raise ReceiptStoreIntegrityError("TombstoneRecord must be an object")
         tombstone_cid = value.get("tombstone_cid")
@@ -515,7 +517,7 @@ class IndexSnapshot:
         created_at_ms: int | None = None,
         tombstones: Iterable[TombstoneRecord] | None = None,
         metadata: Mapping[str, Any] | None = None,
-    ) -> "IndexSnapshot":
+    ) -> IndexSnapshot:
         return IndexSnapshot(
             generation=self.generation if generation is None else generation,
             entries=tuple(entries),
@@ -528,11 +530,11 @@ class IndexSnapshot:
         )
 
     @classmethod
-    def empty(cls, *, created_at_ms: int = 0) -> "IndexSnapshot":
+    def empty(cls, *, created_at_ms: int = 0) -> IndexSnapshot:
         return cls(generation=0, created_at_ms=created_at_ms)
 
     @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> "IndexSnapshot":
+    def from_dict(cls, value: Mapping[str, Any]) -> IndexSnapshot:
         if not isinstance(value, Mapping):
             raise ReceiptStoreIntegrityError("IndexSnapshot must be an object")
         schema = value.get("schema")
@@ -609,7 +611,7 @@ class GCMetadata:
         return payload
 
     @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> "GCMetadata":
+    def from_dict(cls, value: Mapping[str, Any]) -> GCMetadata:
         if not isinstance(value, Mapping):
             raise ReceiptStoreIntegrityError("GCMetadata must be an object")
         return cls(
@@ -1405,11 +1407,13 @@ class HermeticVerificationReceiptStore:
             if current.generation > 0:
                 # Ensure history contains the current generation.
                 by_gen = {item.generation: item for item in history}
-                if current.generation in by_gen:
-                    if by_gen[current.generation].root_cid != current.root_cid:
-                        raise ReceiptStoreIntegrityError(
-                            "HEAD root diverges from history snapshot"
-                        )
+                if (
+                    current.generation in by_gen
+                    and by_gen[current.generation].root_cid != current.root_cid
+                ):
+                    raise ReceiptStoreIntegrityError(
+                        "HEAD root diverges from history snapshot"
+                    )
         return RecoverResult(
             verified_blocks=verified,
             rebuilt=rebuild,
@@ -1420,10 +1424,10 @@ class HermeticVerificationReceiptStore:
     def close(self) -> None:
         self._closed = True
 
-    def __enter__(self) -> "HermeticVerificationReceiptStore":
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *_: Any) -> None:
+    def __exit__(self, *_: object) -> None:
         self.close()
 
 
@@ -1520,7 +1524,7 @@ class IpfsKitVerificationReceiptStore:
         cls,
         storage_dir: os.PathLike[str] | str,
         **kwargs: Any,
-    ) -> "IpfsKitVerificationReceiptStore | StoreUnavailable":
+    ) -> IpfsKitVerificationReceiptStore | StoreUnavailable:
         """Open the adapter or return typed unavailable without raising."""
 
         probe = probe_durable_coordination_store()
@@ -1633,7 +1637,15 @@ class IpfsKitVerificationReceiptStore:
             if mapping_cid(value) != cid:
                 raise ReceiptStoreIntegrityError(f"coordination mapping CID mismatch for {cid}")
             return value
-        except Exception as exc:
+        except (
+            AttributeError,
+            KeyError,
+            OSError,
+            ReceiptStoreError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as exc:
             assert self._local_blocks is not None
             try:
                 return self._local_blocks.get_mapping(cid)
@@ -1823,10 +1835,10 @@ class IpfsKitVerificationReceiptStore:
         if callable(close):
             close()
 
-    def __enter__(self) -> "IpfsKitVerificationReceiptStore":
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *_: Any) -> None:
+    def __exit__(self, *_: object) -> None:
         self.close()
 
 
@@ -1874,29 +1886,29 @@ def cas_publish_entry(
 
 __all__ = [
     "CONCURRENT_STORE_CAS_EVIDENCE",
-    "CompareAndSwapResult",
     "DURABLE_COORDINATION_LEAF_MODULE",
     "DURABLE_COORDINATION_SYMBOL",
+    "INDEX_SNAPSHOT_SCHEMA",
+    "RECEIPT_ENVELOPE_SCHEMA",
+    "STORE_PROTOCOL_EVIDENCE",
+    "TOMBSTONE_SCHEMA",
+    "VERIFICATION_RECEIPT_STORE_INTERFACE",
+    "CompareAndSwapResult",
     "DurableCoordinationProbe",
     "GCMetadata",
     "HermeticVerificationReceiptStore",
-    "INDEX_SNAPSHOT_SCHEMA",
     "IndexEntry",
     "IndexSnapshot",
     "IpfsKitVerificationReceiptStore",
     "PutResult",
-    "RECEIPT_ENVELOPE_SCHEMA",
-    "RecoverResult",
     "ReceiptStoreConflictError",
     "ReceiptStoreError",
     "ReceiptStoreIntegrityError",
     "ReceiptStoreUnavailableError",
-    "STORE_PROTOCOL_EVIDENCE",
+    "RecoverResult",
     "StoreUnavailable",
     "StoreUnavailableCode",
-    "TOMBSTONE_SCHEMA",
     "TombstoneRecord",
-    "VERIFICATION_RECEIPT_STORE_INTERFACE",
     "VerificationReceiptStore",
     "build_raw_bytes_envelope",
     "build_receipt_envelope",

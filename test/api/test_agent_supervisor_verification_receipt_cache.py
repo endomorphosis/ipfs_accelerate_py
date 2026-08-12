@@ -76,7 +76,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.receipt_store import (
     mapping_cid,
 )
 
-
 TREE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/observed-repository-tree@1"
 SEMANTIC_SCHEMA = "ipfs_accelerate_py/agent-supervisor/observed-semantic-state@1"
 ENVIRONMENT_SCHEMA = (

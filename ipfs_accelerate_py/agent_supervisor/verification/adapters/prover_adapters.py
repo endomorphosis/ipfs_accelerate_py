@@ -1009,13 +1009,10 @@ def source_contains_incomplete_or_unsafe_proof(source: str) -> tuple[bool, str]:
     if _UNSAFE_PROOF_RE.search(text):
         return True, "unsafe_or_axiom_escape"
     # Lean admission helper is the strongest local check for Lean drafts.
-    try:
-        # Use a minimal template with one hole; if the source itself is a draft
-        # containing sorry, admit_lean_proof_text rejects incomplete proofs.
-        if "sorry" in text.lower() or "admit" in text.lower():
-            return True, "incomplete_proof_sorry_or_admit"
-    except Exception:  # pragma: no cover - defensive
-        pass
+    # Use a minimal template with one hole; if the source itself is a draft
+    # containing sorry, admit_lean_proof_text rejects incomplete proofs.
+    if "sorry" in text.lower() or "admit" in text.lower():
+        return True, "incomplete_proof_sorry_or_admit"
     return False, ""
 
 
@@ -2499,11 +2496,10 @@ class ExistingProofAssistantAdapter:
             TerminalStatus.TIMEOUT,
             TerminalStatus.UNAVAILABLE,
             TerminalStatus.CANCELLED,
-        }:
+        } and not using_existing_evidence:
             # Fence conclusive formal material on non-execution terminals.
-            if not using_existing_evidence:
-                formal = None
-                attempt = None
+            formal = None
+            attempt = None
 
         # Model drafts / sorry cannot keep a PROVED projection from direct exec.
         if (

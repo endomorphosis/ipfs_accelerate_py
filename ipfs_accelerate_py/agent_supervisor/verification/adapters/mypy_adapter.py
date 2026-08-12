@@ -1104,11 +1104,7 @@ class MypyVerificationAdapter:
                 "request must be a MypyVerificationRequest",
                 reason_code="invalid_request",
             )
-        cache_dir: str | None = None
-        try:
-            cache_dir = str(Path(request.sandbox.artifact_root) / ".mypy_cache")
-        except Exception:
-            cache_dir = None
+        cache_dir = str(Path(request.sandbox.artifact_root) / ".mypy_cache")
         return build_mypy_argv(
             invocation=request.invocation,
             mypy_executable=request.mypy_executable,
@@ -1323,11 +1319,8 @@ class MypyVerificationAdapter:
         if not env:
             env = build_hermetic_environment()
         # Keep mypy cache under the private artifact root when possible.
-        try:
-            cache_dir = str(Path(request.sandbox.artifact_root) / ".mypy_cache")
-            env.setdefault("MYPY_CACHE_DIR", cache_dir)
-        except Exception:
-            pass
+        cache_dir = str(Path(request.sandbox.artifact_root) / ".mypy_cache")
+        env.setdefault("MYPY_CACHE_DIR", cache_dir)
         return VerificationCommand(
             argv=list(argv),
             cwd=request.cwd,

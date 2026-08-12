@@ -37,7 +37,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.datasets_adapter import (
     probe_top_level_namespace_alone,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
@@ -460,7 +459,7 @@ def test_absent_leaf_modules_produce_typed_observations() -> None:
 
     adapter = DatasetsVerificationInputAdapter(importer=missing_importer)
     evidence = adapter.probe_code_evidence()
-    for symbol, capability in evidence.items():
+    for capability in evidence.values():
         assert capability.available is False
         assert capability.reason_code == "leaf_module_absent"
         assert capability.authoritative is False

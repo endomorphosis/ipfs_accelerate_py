@@ -66,7 +66,6 @@ from ipfs_accelerate_py.agent_supervisor.verification.model_route import (
     select_required_route,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

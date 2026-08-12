@@ -38,7 +38,6 @@ from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
     validate_cid,
 )
 
-
 # ---------------------------------------------------------------------------
 # Interface / schema constants
 # ---------------------------------------------------------------------------
@@ -202,7 +201,6 @@ class EdgeDisposition(str, Enum):
 class RepositoryStateProtocol(Protocol):
     """Typing-only protocol.  Runtime acceptance requires Mapping or registry."""
 
-    pass
 
 
 @runtime_checkable
@@ -2070,6 +2068,11 @@ __all__ = [
     "DATASETS_SEMANTIC_CAPSULE_SCHEMA",
     "DATASETS_VERIFICATION_INPUT_ADAPTER_INTERFACE",
     "DATASETS_VERIFICATION_INPUT_ADAPTER_VERSION",
+    "LEAF_CAPABILITY_SCHEMA",
+    "REPOSITORY_STATE_VIEW_SCHEMA",
+    "SEMANTIC_CAPSULE_VIEW_SCHEMA",
+    "TOP_LEVEL_NAMESPACE_MODULE",
+    "VALIDATION_SELECTION_SCHEMA",
     "AdapterObservation",
     "ContextPackProtocol",
     "ContextPackView",
@@ -2080,19 +2083,14 @@ __all__ = [
     "InputKind",
     "InvalidationPlanProtocol",
     "InvalidationPlanView",
-    "LEAF_CAPABILITY_SCHEMA",
     "LeafCapability",
     "NormalizeResult",
     "ObservationKind",
-    "REPOSITORY_STATE_VIEW_SCHEMA",
     "RepositoryStateProtocol",
     "RepositoryStateView",
-    "SEMANTIC_CAPSULE_VIEW_SCHEMA",
     "SemanticCapsuleProtocol",
     "SemanticCapsuleView",
     "SourceSpanView",
-    "TOP_LEVEL_NAMESPACE_MODULE",
-    "VALIDATION_SELECTION_SCHEMA",
     "ValidationSelectionView",
     "create_datasets_verification_input_adapter",
     "probe_leaf_symbol",
