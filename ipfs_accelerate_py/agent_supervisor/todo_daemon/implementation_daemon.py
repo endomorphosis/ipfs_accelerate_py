@@ -159,6 +159,10 @@ from ..validation.validation_scheduler import (
     ValidationScheduler,
     build_declared_validation_plan_graph,
 )
+from .contract_packet_provider_router import (
+    IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
+    PROVIDER_EXECUTION_RECEIPT_INTERFACE,
+)
 from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
@@ -427,6 +431,19 @@ DEFAULT_AUTHORITY_VALIDATION_CONTAINER_IMAGE = (
 
 AUTHORITY_VALIDATION_DOCKER_ENDPOINT = "unix:///run/docker.sock"
 
+# Hard limits for the isolated authority-validation container.  These are
+# daemon-local because the authority runner is an implementation-path fence,
+# not a shared validation-runtime policy surface.
+AUTHORITY_VALIDATION_CPU_LIMIT = 4
+AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES = 4 * 1024 * 1024 * 1024
+AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES = 1024 * 1024 * 1024
+AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES = 16 * 1024 * 1024
+AUTHORITY_VALIDATION_PIDS_LIMIT = 256
+AUTHORITY_VALIDATION_TIMEOUT_LIMIT_SECONDS = 900
+AUTHORITY_VALIDATION_IMAGE_SITE_PACKAGES = (
+    "/opt/ipfs-validation-site-packages"
+)
+
 REQUIRE_TASK_EXECUTION_METADATA_ENV = (
     "IPFS_ACCELERATE_AGENT_REQUIRE_TASK_EXECUTION_METADATA"
 )
@@ -486,6 +503,21 @@ DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES = 2_500_000
 DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES = 1_000_000
 MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES = 16_000_000
 MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES = 24_000_000
+MAX_DECLARED_IGNORED_OUTPUT_FILES = 256
+MAX_DECLARED_OUTPUT_SCAN_FILES = 4_096
+DETERMINISTIC_VALIDATION_PLAN_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "deterministic-declared-validation-plan@1"
+)
+DETERMINISTIC_TASK_EXECUTION_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "deterministic-task-execution-integration@1"
+)
+MODEL_ASSISTED_PROVIDER_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "model-assisted-provider-route-integration@1"
+)
+MODEL_ASSISTED_PROVIDER_ROUTE_EVENT = "model_assisted_provider_route"
 RECONCILIATION_VALIDATION_LOG_TAIL_BYTES = 128 * 1024
 PLAYWRIGHT_HOST_PREFLIGHT_FAILURE_MARKER = (
     "Playwright host dependency preflight failed on Linux."
