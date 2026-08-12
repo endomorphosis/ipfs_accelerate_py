@@ -378,7 +378,7 @@ A9  SCH-018
 
 ## SCH-012 Implement incremental session, watch, restart, and replay
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: session
