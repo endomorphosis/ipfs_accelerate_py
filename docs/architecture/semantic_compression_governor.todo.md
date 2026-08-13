@@ -1157,7 +1157,7 @@ W28 SCG-048
 
 ## SCG-041 Prove structural omission, stale-artifact, policy, and bounded-expansion cases
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
