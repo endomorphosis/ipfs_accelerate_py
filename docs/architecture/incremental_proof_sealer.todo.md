@@ -973,7 +973,7 @@ Global invariants for every task:
 
 ## IPS-030 Implement allowlisted verification-key, proving-key, and signer trust policy
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
