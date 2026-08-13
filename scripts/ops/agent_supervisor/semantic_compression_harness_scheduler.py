@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """SCH-specific supervisor adapter for the completed semantic-compression board.
 
-The generic configured-board control plane currently cannot import on this
-tree. This adapter binds the sealed SCH scheduler JSON to the existing
-implementation supervisor without that import.
+The generic configured-board scheduler now imports again. This adapter still
+binds the sealed SCH scheduler JSON to the implementation supervisor so SCH
+launch does not depend on the remaining gutted PortalSupervisorConfig fields.
 """
 
 from __future__ import annotations
