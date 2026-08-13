@@ -603,7 +603,7 @@ test -f "$SHQ_REPO/$SHQ_HISTORY_TODO"
 ! rg -q '^## SHQ-' "$SHQ_REPO/$SHQ_ACTIVE_TODO"
 test ! -e "$SHQ_REPO/$SHQ_PROJECTION"
 
-python -m ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon \
+( cd "$SHQ_REPO" && python -m ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon \
   --repo-root "$SHQ_REPO" \
   --objective-path docs/architecture/self_hosting_qualification.objectives.md \
   --todo-path "$SHQ_ACTIVE_TODO" \
@@ -643,6 +643,7 @@ python -m ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/hidden_evaluator_manifest.json \
   --protected-output-path config/self_hosting_qualification_policy.json \
   --protected-output-path config/self_hosting_qualification_trusted_keys.json
+)
 ```
 
 The history board retains old `SHQ-001` as blocked, non-schedulable, historical
@@ -675,8 +676,23 @@ from creating the G007 worktree until G006 has merged, so G007 observes the
 clean merged implementation identity. Do not pause for objective reconciliation
 between the task commits. Once both runtime todos are terminal, both commits
 are merged and the target branch is clean, run the focused suite and no-output
-CLI probes. Then create current tree-bound local gates and formally reconcile
-G006 followed by G007, without external receipts or scan exclusions:
+CLI probes.
+
+**Current execution boundary:** stop the bootstrap run after those probes and
+the immutable G007 snapshot are complete. Do not execute the reconciliation
+commands below in this qualification revision. The scoped reconciler checks
+tracked bundle shards and paired successful merge events, but it has not yet
+been independently qualified against the authoritative Profile-G TaskReceipt,
+coordination lease, fencing token, and state-database lineage. Until that
+narrow authority binding is implemented, reviewed, and named here by an exact
+commit, G006 and G007 remain implementation evidence rather than formally
+completed goals. This limitation is off the bootstrap path because generation
+uses `--no-reconcile-goal-completion`, and it cannot open external gate G010.
+
+The following blocks are retained as a **non-executable future protocol**. Once
+the missing authority binding is qualified, create current tree-bound local
+gates and formally reconcile G006 followed by G007, without external receipts
+or scan exclusions:
 
 ```bash
 test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
@@ -705,9 +721,16 @@ SHQ_RECONCILE_G006=(
   --task-prefix SHQ-
   --max-findings 96
   --scope-goal-id SHQ-G006
+  --objective-goal-completion-scope-goal-id SHQ-G006
   --surplus-findings-per-goal 1
   --no-persist-ast-dataset
+  --no-generate-bounded-work
+  --no-todo-vector-index
+  --objective-goal-completion-reconciliation-only
+  --objective-goal-completion-board-scope explicit
   --objective-goal-completion-todo-board "$SHQ_G006_RUNTIME_TODO::## SHQ-"
+  --objective-goal-completion-member-receipt-state-root "${SHQ_G006_RUNTIME_TODO%/*}"
+  --objective-goal-completion-bundle-index-path "$SHQ_PROJECTION/bundles/index.json"
   --objective-goal-completion-gate-path "$SHQ_GATE"
   --protected-output-path docs/architecture/self_hosting_qualification.objectives.md
   --protected-output-path docs/architecture/self_hosting_qualification.todo.md
@@ -716,14 +739,15 @@ SHQ_RECONCILE_G006=(
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
-"${SHQ_RECONCILE_G006[@]}"  # active -> provisionally_complete
+# FUTURE PROTOCOL ONLY; do not invoke in the current qualification revision.
+( cd "$SHQ_REPO" && "${SHQ_RECONCILE_G006[@]}" )  # active -> provisionally_complete
 git -C "$SHQ_REPO" add \
   docs/architecture/self_hosting_qualification.objectives.md
 git -C "$SHQ_REPO" commit -m 'chore: provisionally complete prerequisite observer'
 test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
 
 # Independently refresh $SHQ_GATE against this commit and its parent ledger.
-"${SHQ_RECONCILE_G006[@]}"  # provisional -> verified_complete
+( cd "$SHQ_REPO" && "${SHQ_RECONCILE_G006[@]}" )  # provisional -> verified_complete
 git -C "$SHQ_REPO" add \
   docs/architecture/self_hosting_qualification.objectives.md
 git -C "$SHQ_REPO" commit -m 'chore: verify prerequisite observer completion'
@@ -758,9 +782,16 @@ SHQ_RECONCILE_G007=(
   --task-prefix SHQ-
   --max-findings 96
   --scope-goal-id SHQ-G007
+  --objective-goal-completion-scope-goal-id SHQ-G007
   --surplus-findings-per-goal 1
   --no-persist-ast-dataset
+  --no-generate-bounded-work
+  --no-todo-vector-index
+  --objective-goal-completion-reconciliation-only
+  --objective-goal-completion-board-scope explicit
   --objective-goal-completion-todo-board "$SHQ_G007_RUNTIME_TODO::## SHQ-"
+  --objective-goal-completion-member-receipt-state-root "${SHQ_G007_RUNTIME_TODO%/*}"
+  --objective-goal-completion-bundle-index-path "$SHQ_PROJECTION/bundles/index.json"
   --objective-goal-completion-gate-path "$SHQ_GATE"
   --protected-output-path docs/architecture/self_hosting_qualification.objectives.md
   --protected-output-path docs/architecture/self_hosting_qualification.todo.md
@@ -769,14 +800,15 @@ SHQ_RECONCILE_G007=(
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
-"${SHQ_RECONCILE_G007[@]}"  # active -> provisionally_complete
+# FUTURE PROTOCOL ONLY; do not invoke in the current qualification revision.
+( cd "$SHQ_REPO" && "${SHQ_RECONCILE_G007[@]}" )  # active -> provisionally_complete
 git -C "$SHQ_REPO" add \
   docs/architecture/self_hosting_qualification.objectives.md
 git -C "$SHQ_REPO" commit -m 'chore: provisionally complete prerequisite snapshot'
 test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
 
 # Independently refresh $SHQ_GATE against this commit and its parent ledger.
-"${SHQ_RECONCILE_G007[@]}"  # provisional -> verified_complete
+( cd "$SHQ_REPO" && "${SHQ_RECONCILE_G007[@]}" )  # provisional -> verified_complete
 git -C "$SHQ_REPO" add \
   docs/architecture/self_hosting_qualification.objectives.md
 git -C "$SHQ_REPO" commit -m 'chore: verify prerequisite snapshot completion'
@@ -816,7 +848,9 @@ gate input at `$SHQ_GATE`. Both live under the operator-owned run directory,
 not in a model worktree. They must bind the exact clean outer commit/tree,
 recursive gitlinks, admission artifact CID, run-plan/ledger identities,
 different producer and validator identities and a current freshness window.
-Use both files on every reconciliation:
+This external protocol is dormant until the local authority binding above is
+qualified and all ten prerequisite releases are independently admitted. Use
+both files on every future reconciliation:
 
 ```bash
 SHQ_RECONCILE_G010=(
@@ -834,8 +868,13 @@ SHQ_RECONCILE_G010=(
   --task-prefix SHQ-
   --max-findings 96
   --scope-goal-id SHQ-G010
+  --objective-goal-completion-scope-goal-id SHQ-G010
   --surplus-findings-per-goal 1
   --no-persist-ast-dataset
+  --no-generate-bounded-work
+  --no-todo-vector-index
+  --objective-goal-completion-reconciliation-only
+  --objective-goal-completion-board-scope explicit
   --objective-goal-completion-gate-path "$SHQ_GATE"
   --objective-external-completion-receipt-path "$SHQ_EXTERNAL_AUTHORITY"
   --protected-output-path docs/architecture/self_hosting_qualification.objectives.md
@@ -850,7 +889,7 @@ SHQ_RECONCILE_G010=(
   --protected-output-path config/self_hosting_qualification_trusted_keys.json
 )
 
-"${SHQ_RECONCILE_G010[@]}"  # transition 1: active -> provisionally_complete
+( cd "$SHQ_REPO" && "${SHQ_RECONCILE_G010[@]}" )  # transition 1: active -> provisionally_complete
 ```
 
 Review the exact projection, commit the tracked objective transition, and make
@@ -866,7 +905,7 @@ git -C "$SHQ_REPO" commit -m 'chore: provisionally admit self-hosting prerequisi
 test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
 
 # Independently refresh $SHQ_EXTERNAL_AUTHORITY and $SHQ_GATE here.
-"${SHQ_RECONCILE_G010[@]}"  # transition 2: provisional -> verified_complete
+( cd "$SHQ_REPO" && "${SHQ_RECONCILE_G010[@]}" )  # transition 2: provisional -> verified_complete
 
 git -C "$SHQ_REPO" add \
   docs/architecture/self_hosting_qualification.objectives.md

@@ -1342,35 +1342,69 @@ def evaluate_external_completion_authority(
     repo_root: Path,
     objective_path: Path,
     goal_evidence_terms: Mapping[str, Sequence[str]],
+    goal_ids: Iterable[str] | None = None,
     now: datetime | str | None = None,
     freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
 ) -> ExternalCompletionEvaluation:
-    """Validate all governed bindings and produce generic completion evidence."""
+    """Validate selected governed bindings and produce completion evidence.
+
+    ``goal_ids`` is an evaluation scope, not a trust relaxation.  Omission
+    retains the historical all-goals behavior.  When supplied, requirements
+    and receipts for other governed goals remain part of the signed authority
+    identity but are neither evaluated nor included in diagnostics.
+    """
 
     normalized = (
         authority
         if isinstance(authority, ExternalCompletionAuthority)
         else ExternalCompletionAuthority.from_dict(authority)
     )
+    selected_goal_ids = (
+        None
+        if goal_ids is None
+        else {
+            str(goal_id).strip()
+            for goal_id in goal_ids
+            if str(goal_id).strip()
+        }
+    )
+    if selected_goal_ids is not None:
+        unknown_goal_ids = selected_goal_ids - set(normalized.governed_goal_ids)
+        if unknown_goal_ids:
+            raise ValueError(
+                "external completion evaluation scope contains ungoverned "
+                "goal ids: " + ", ".join(sorted(unknown_goal_ids))
+            )
+    governed_goal_ids = tuple(
+        goal_id
+        for goal_id in normalized.governed_goal_ids
+        if selected_goal_ids is None or goal_id in selected_goal_ids
+    )
     current = _now(now)
     source_inspection = inspect_external_source(
         repo_root,
         objective_path=objective_path,
     )
-    requirements = {item.binding: item for item in normalized.requirements}
+    requirements = {
+        item.binding: item
+        for item in normalized.requirements
+        if item.goal_id in governed_goal_ids
+    }
     receipts_by_binding: dict[
         tuple[str, str],
         list[ExternalOperationalCompletionReceipt],
     ] = {}
     for receipt in normalized.receipts:
+        if receipt.goal_id not in governed_goal_ids:
+            continue
         receipts_by_binding.setdefault(receipt.binding, []).append(receipt)
 
     results: list[ExternalReceiptValidationResult] = []
     evidence_records: dict[str, list[CompletionEvidence]] = {
-        goal_id: [] for goal_id in normalized.governed_goal_ids
+        goal_id: [] for goal_id in governed_goal_ids
     }
-    for goal_id in normalized.governed_goal_ids:
+    for goal_id in governed_goal_ids:
         expected_terms = tuple(
             str(item).strip()
             for item in goal_evidence_terms.get(goal_id, ())
@@ -1379,7 +1413,7 @@ def evaluate_external_completion_authority(
         expected_set = set(expected_terms)
         requirement_terms = {
             item.evidence_term
-            for item in normalized.requirements
+            for item in requirements.values()
             if item.goal_id == goal_id
         }
         for missing_term in sorted(expected_set - requirement_terms):
@@ -1467,7 +1501,7 @@ def evaluate_external_completion_authority(
 
     return ExternalCompletionEvaluation(
         authority_cid=normalized.authority_cid,
-        governed_goal_ids=normalized.governed_goal_ids,
+        governed_goal_ids=governed_goal_ids,
         evidence_records={
             goal_id: tuple(records)
             for goal_id, records in evidence_records.items()

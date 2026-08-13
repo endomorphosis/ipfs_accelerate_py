@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import shlex
+import subprocess
 import tempfile
 from dataclasses import asdict, dataclass, is_dataclass, replace
 from pathlib import Path, PurePosixPath
@@ -3265,6 +3266,7 @@ def load_goal_completion_gate_records(
     path: Path | None,
     *,
     repo_root: Path | None = None,
+    goal_ids: Iterable[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Load gate records; edit-target-bearing records require ``repo_root``."""
 
@@ -3286,11 +3288,21 @@ def load_goal_completion_gate_records(
     if not isinstance(raw, Mapping):
         raise ValueError("goal completion gate artifact 'goals' must be an object")
     validation_root = repo_root.resolve() if repo_root is not None else None
+    selected_goal_ids = (
+        None
+        if goal_ids is None
+        else {str(item).strip() for item in goal_ids if str(item).strip()}
+    )
     records: dict[str, dict[str, Any]] = {}
     for goal_id, record in raw.items():
         normalized_goal_id = str(goal_id).strip()
         if not normalized_goal_id:
             raise ValueError("goal completion gate artifact contains an empty goal id")
+        if (
+            selected_goal_ids is not None
+            and normalized_goal_id not in selected_goal_ids
+        ):
+            continue
         if not isinstance(record, Mapping):
             raise ValueError(
                 f"goal completion gate record for {normalized_goal_id!r} must be an object"
@@ -3384,6 +3396,8 @@ def load_goal_completion_gate_records(
 
 def load_goal_completion_evidence_records(
     path: Path | None,
+    *,
+    goal_ids: Iterable[str] | None = None,
 ) -> dict[str, list[CompletionEvidence]]:
     """Load canonical external evidence records indexed by objective goal.
 
@@ -3420,11 +3434,21 @@ def load_goal_completion_evidence_records(
     raw = payload.get("goals")
     if not isinstance(raw, Mapping):
         raise ValueError("goal completion evidence artifact 'goals' must be an object")
+    selected_goal_ids = (
+        None
+        if goal_ids is None
+        else {str(item).strip() for item in goal_ids if str(item).strip()}
+    )
     records: dict[str, list[CompletionEvidence]] = {}
     for goal_id, raw_goal_value in raw.items():
         normalized_goal_id = str(goal_id).strip()
         if not normalized_goal_id:
             raise ValueError("goal completion evidence artifact contains an empty goal id")
+        if (
+            selected_goal_ids is not None
+            and normalized_goal_id not in selected_goal_ids
+        ):
+            continue
         goal_binding: Mapping[str, Any] = {}
         if isinstance(raw_goal_value, Mapping):
             supplied_goal_binding = raw_goal_value.get("binding")
@@ -3797,6 +3821,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "does not merely prioritize the named goals."
         ),
     )
+    parser.add_argument(
+        "--objective-goal-completion-scope-goal-id",
+        action="append",
+        default=[],
+        help=(
+            "Restrict completion reconciliation to this exact objective goal "
+            "id. Repeat for multiple goals. Omission preserves legacy "
+            "unscoped reconciliation and is independent of --scope-goal-id."
+        ),
+    )
     parser.add_argument("--repeat-existing", action="store_true", help="Do not suppress fingerprints already in discovery files")
     parser.add_argument("--max-findings", type=int, default=10)
     parser.add_argument(
@@ -3837,6 +3871,45 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help=(
             "Extra todo board that can keep objective goals open while referenced work is pending. "
             "Use 'path::TASK-' or 'path::## TASK-' and repeat for shared cross-track boards."
+        ),
+    )
+    parser.add_argument(
+        "--objective-goal-completion-board-scope",
+        choices=("union", "explicit"),
+        default="union",
+        help=(
+            "Select completion boards. 'union' preserves the primary todo "
+            "board plus overlays; 'explicit' uses only repeated "
+            "--objective-goal-completion-todo-board values and requires an "
+            "exact completed task for each scoped local goal."
+        ),
+    )
+    parser.add_argument(
+        "--objective-goal-completion-reconciliation-only",
+        action="store_true",
+        help=(
+            "Run only scoped completion reconciliation and return before todo, "
+            "discovery, bundle, dataset, graph, plan, or vector generation."
+        ),
+    )
+    parser.add_argument(
+        "--objective-goal-completion-member-receipt-state-root",
+        action="append",
+        type=Path,
+        default=[],
+        help=(
+            "Supervisor lane state root containing durable exact member "
+            "completion receipts for explicit local-board reconciliation. "
+            "Repeat for multiple lane roots."
+        ),
+    )
+    parser.add_argument(
+        "--objective-goal-completion-bundle-index-path",
+        type=Path,
+        default=None,
+        help=(
+            "Immutable reviewed bundle index whose exact task identities "
+            "authorize explicit local completion reconciliation."
         ),
     )
     parser.add_argument(
@@ -4020,6 +4093,54 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     bundle_dir = (args.bundle_dir or state_root / "objective_bundles").resolve()
     dataset_dir = (args.dataset_dir or state_root / "objective_datasets").resolve()
     graph_path = (getattr(args, "graph_path", None) or state_root / "objective_graph.json").resolve()
+    completion_reconciliation_only = bool(
+        getattr(
+            args,
+            "objective_goal_completion_reconciliation_only",
+            False,
+        )
+    )
+    if completion_reconciliation_only:
+        incompatible_flags = [
+            name
+            for name in (
+                "ensure_tracking_document",
+                "refine_objective_heap",
+                "seed_interoperability_goals",
+                "seed_launch_readiness_goals",
+            )
+            if bool(getattr(args, name, False))
+        ]
+        if incompatible_flags:
+            raise ValueError(
+                "completion-reconciliation-only mode forbids mutating "
+                "generation flags: " + ", ".join(incompatible_flags)
+            )
+    scope_goal_ids = split_csv(
+        getattr(args, "scope_goal_id", []) or []
+    )
+    completion_scope_goal_ids = split_csv(
+        getattr(
+            args,
+            "objective_goal_completion_scope_goal_id",
+            (),
+        )
+        or ()
+    )
+    completion_reconciliation_enabled = not bool(
+        getattr(args, "no_reconcile_goal_completion", False)
+    )
+    if completion_reconciliation_only:
+        if not completion_reconciliation_enabled:
+            raise ValueError(
+                "completion-reconciliation-only mode requires completion "
+                "reconciliation to be enabled"
+            )
+        if not completion_scope_goal_ids:
+            raise ValueError(
+                "completion-reconciliation-only mode requires at least one "
+                "--objective-goal-completion-scope-goal-id"
+            )
     external_completion_path = getattr(
         args,
         "objective_external_completion_receipt_path",
@@ -4032,10 +4153,6 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         external_completion_authority = load_external_completion_authority(
             external_completion_path
         )
-    completion_reconciliation_enabled = not bool(
-        getattr(args, "no_reconcile_goal_completion", False)
-    )
-
     seen_fingerprints = set(split_csv(args.seen_fingerprint))
     if not args.repeat_existing:
         seen_fingerprints.update(discovery_fingerprints(discovery_dir))
@@ -4056,7 +4173,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         ensured_goal_ids = tracking.appended_goal_ids
 
     deduplicated_interoperability_goal_ids: list[str] = []
-    if objective_path.exists():
+    if not completion_reconciliation_only and objective_path.exists():
         deduplicated_interoperability_goal_ids = deduplicate_interoperability_goals(objective_path)
 
     seeded_interoperability_goal_ids: list[str] = []
@@ -4093,6 +4210,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     completion_gate_records = load_goal_completion_gate_records(
         completion_gate_path,
         repo_root=repo_root,
+        goal_ids=completion_scope_goal_ids or None,
     )
     completion_evidence_path = getattr(
         args,
@@ -4105,7 +4223,8 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         completion_evidence_records_from_gate_records(completion_gate_records)
     )
     completion_evidence_records = load_goal_completion_evidence_records(
-        completion_evidence_path
+        completion_evidence_path,
+        goal_ids=completion_scope_goal_ids or None,
     )
     duplicate_evidence_goal_ids = sorted(
         set(embedded_completion_evidence_records) & set(completion_evidence_records)
@@ -4119,6 +4238,17 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         **embedded_completion_evidence_records,
         **completion_evidence_records,
     }
+    if completion_scope_goal_ids:
+        completion_gate_records = {
+            goal_id: record
+            for goal_id, record in completion_gate_records.items()
+            if goal_id in completion_scope_goal_ids
+        }
+        completion_evidence_records = {
+            goal_id: records
+            for goal_id, records in completion_evidence_records.items()
+            if goal_id in completion_scope_goal_ids
+        }
     completion_control_paths = [
         path
         for path in (completion_gate_path, completion_evidence_path)
@@ -4130,6 +4260,337 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         repo_root=repo_root,
         default_task_prefix=args.task_prefix,
     )
+    completion_bundle_index_path = getattr(
+        args,
+        "objective_goal_completion_bundle_index_path",
+        None,
+    )
+    if (
+        completion_bundle_index_path is not None
+        and not completion_bundle_index_path.is_absolute()
+    ):
+        completion_bundle_index_path = (
+            repo_root / completion_bundle_index_path
+        ).resolve()
+    expected_completion_tasks: dict[str, dict[str, Any]] = {}
+    if completion_bundle_index_path is not None:
+        if not completion_bundle_index_path.is_file():
+            raise ValueError(
+                "objective completion bundle index does not exist: "
+                f"{completion_bundle_index_path}"
+            )
+        try:
+            bundle_payload = json.loads(
+                completion_bundle_index_path.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "objective completion bundle index is unreadable or malformed"
+            ) from exc
+        from ..runtime.artifact_store import BUNDLE_INDEX_KIND, QUERY_SCHEMA
+        from ..task_sources.todo_vector_index import parse_todo_blocks
+
+        def require_head_bound_path(path: Path, *, label: str) -> str:
+            try:
+                relative = path.resolve().relative_to(repo_root).as_posix()
+            except (OSError, ValueError) as exc:
+                raise ValueError(f"{label} must be inside the target repository") from exc
+            tracked = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", "--", relative],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            unchanged = subprocess.run(
+                ["git", "diff", "--quiet", "HEAD", "--", relative],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if tracked.returncode != 0 or unchanged.returncode != 0:
+                raise ValueError(f"{label} must be tracked and byte-identical to HEAD: {relative}")
+            return relative
+
+        require_head_bound_path(
+            completion_bundle_index_path,
+            label="objective completion bundle index",
+        )
+        query_store = (
+            bundle_payload.get("query_store")
+            if isinstance(bundle_payload, Mapping)
+            else None
+        )
+        if (
+            not isinstance(query_store, Mapping)
+            or str(query_store.get("schema") or "") != QUERY_SCHEMA
+            or str(query_store.get("artifact_kind") or "") != BUNDLE_INDEX_KIND
+            or str(query_store.get("catalog_table") or "") != "artifact_catalog"
+        ):
+            raise ValueError(
+                "objective completion bundle index lacks the canonical query-artifact binding"
+            )
+        expected_source_todo = repo_relative_path(repo_root, todo_path)
+        if str(bundle_payload.get("source_todo") or "") != expected_source_todo:
+            raise ValueError(
+                "objective completion bundle index source_todo does not bind the active source board"
+            )
+        raw_bundles = (
+            bundle_payload.get("bundles")
+            if isinstance(bundle_payload, Mapping)
+            else None
+        )
+        if not isinstance(raw_bundles, Mapping):
+            raise ValueError(
+                "objective completion bundle index must contain a bundles object"
+            )
+        indexed_tasks_by_goal: dict[str, list[dict[str, Any]]] = {}
+        for raw_bundle in raw_bundles.values():
+            if not isinstance(raw_bundle, Mapping):
+                raise ValueError(
+                    "objective completion bundle index contains malformed bundle"
+                )
+            shard_value = str(raw_bundle.get("shard_path") or "").strip()
+            if not shard_value:
+                raise ValueError(
+                    "objective completion bundle index bundle lacks shard_path"
+                )
+            shard_path = (repo_root / shard_value).resolve()
+            require_head_bound_path(
+                shard_path,
+                label="objective completion bundle shard",
+            )
+            try:
+                shard_text = shard_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeError) as exc:
+                raise ValueError(
+                    "objective completion bundle shard is unreadable"
+                ) from exc
+            if f"Source todo: {expected_source_todo}" not in shard_text.splitlines():
+                raise ValueError(
+                    "objective completion bundle shard source_todo binding is missing"
+                )
+            shard_tasks = {
+                task_id: fields
+                for task_id, _title, _line, fields in parse_todo_blocks(
+                    shard_text,
+                    task_header_prefix=args.task_prefix,
+                )
+            }
+            raw_tasks = raw_bundle.get("tasks")
+            if not isinstance(raw_tasks, list):
+                raise ValueError(
+                    "objective completion bundle index bundle lacks tasks"
+                )
+            for raw_task in raw_tasks:
+                if not isinstance(raw_task, Mapping):
+                    raise ValueError(
+                        "objective completion bundle index contains malformed task"
+                    )
+                task = {
+                    field_name: str(raw_task.get(field_name) or "").strip()
+                    for field_name in (
+                        "task_id",
+                        "goal_id",
+                        "canonical_task_cid",
+                        "canonical_task_key",
+                        "board_namespace",
+                    )
+                }
+                if not all(task.values()):
+                    raise ValueError(
+                        "objective completion bundle index task lacks exact identity"
+                    )
+                if task["task_id"] in expected_completion_tasks:
+                    raise ValueError(
+                        "objective completion bundle index contains duplicate task "
+                        f"id {task['task_id']}"
+                    )
+                shard_task = shard_tasks.get(task["task_id"])
+                if not isinstance(shard_task, Mapping) or any(
+                    str(shard_task.get(field_name) or "").strip()
+                    != task[field_name]
+                    for field_name in (
+                        "goal_id",
+                        "canonical_task_cid",
+                        "canonical_task_key",
+                        "board_namespace",
+                    )
+                ):
+                    raise ValueError(
+                        "objective completion bundle index task identity does not match its tracked shard"
+                    )
+                expected_completion_tasks[task["task_id"]] = task
+                indexed_tasks_by_goal.setdefault(task["goal_id"], []).append(task)
+        parsed_goals = {
+            goal.goal_id: goal
+            for goal in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+        }
+        scoped_local_goal_ids = {
+            goal_id
+            for goal_id in completion_scope_goal_ids
+            if goal_id in parsed_goals
+            and not parsed_goals[goal_id].requires_external_completion
+        }
+        for goal_id in sorted(scoped_local_goal_ids):
+            matches = indexed_tasks_by_goal.get(goal_id, [])
+            if len(matches) != 1:
+                raise ValueError(
+                    "objective completion bundle index must contain exactly one task "
+                    f"for scoped local goal {goal_id}; observed {len(matches)}"
+                )
+        expected_completion_tasks = {
+            task_id: task
+            for task_id, task in expected_completion_tasks.items()
+            if task["goal_id"] in scoped_local_goal_ids
+        }
+    completion_member_receipts: dict[str, dict[str, Any]] = {}
+    completion_member_receipt_state_roots: list[Path] = []
+    for raw_root in (
+        getattr(
+            args,
+            "objective_goal_completion_member_receipt_state_root",
+            (),
+        )
+        or ()
+    ):
+        state_path = Path(raw_root)
+        if not state_path.is_absolute():
+            state_path = repo_root / state_path
+        state_path = state_path.resolve()
+        if not state_path.is_dir():
+            raise ValueError(
+                "objective completion member-receipt state root does not "
+                f"exist or is not a directory: {state_path}"
+            )
+        completion_member_receipt_state_roots.append(state_path)
+        from .bundle_supervisor import bundle_member_completion_event_sources
+        from ..runtime.event_log import read_jsonl_events
+
+        for event_path in bundle_member_completion_event_sources(state_path):
+            events = list(read_jsonl_events(event_path))
+            finished_events = [
+                event
+                for event in events
+                if str(event.get("type") or "") == "implementation_finished"
+            ]
+            for event in events:
+                if str(event.get("type") or "") != "todo_status_updated":
+                    continue
+                todo_path_value = str(event.get("path") or "").strip()
+                try:
+                    resolved_todo_path = str(Path(todo_path_value).resolve())
+                except (OSError, RuntimeError, ValueError):
+                    continue
+                raw_receipts = event.get("completion_receipts")
+                if not isinstance(raw_receipts, list):
+                    continue
+                for raw_receipt in raw_receipts:
+                    if not isinstance(raw_receipt, Mapping):
+                        continue
+                    receipt = dict(raw_receipt)
+                    task_id = str(receipt.get("task_id") or "").strip()
+                    expected_task = expected_completion_tasks.get(task_id)
+                    if expected_task is None:
+                        continue
+                    if str(receipt.get("schema") or "") != (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "member_completion_receipt@1"
+                    ):
+                        raise ValueError(
+                            "objective completion member receipt has an unsupported schema"
+                        )
+                    if str(receipt.get("status") or "").strip().casefold() != "succeeded":
+                        raise ValueError(
+                            "objective completion member receipt is not succeeded"
+                        )
+                    task_cid = str(
+                        receipt.get("canonical_task_cid") or ""
+                    ).strip()
+                    if task_cid != expected_task["canonical_task_cid"]:
+                        raise ValueError(
+                            "objective completion member receipt task CID does not match the bundle index"
+                        )
+                    paired_finish: Mapping[str, Any] | None = None
+                    for candidate in finished_events:
+                        if (
+                            str(candidate.get("task_id") or "").strip() != task_id
+                            or str(
+                                candidate.get("canonical_task_cid")
+                                or candidate.get("task_cid")
+                                or ""
+                            ).strip()
+                            != task_cid
+                            or candidate.get("returncode") != 0
+                        ):
+                            continue
+                        merge_result = candidate.get("merge_result")
+                        if not isinstance(merge_result, Mapping) or merge_result.get("merged") is not True:
+                            continue
+                        todo_update = (
+                            merge_result.get("todo_update_result")
+                            if isinstance(merge_result.get("todo_update_result"), Mapping)
+                            else candidate.get("todo_update_result")
+                        )
+                        if not isinstance(todo_update, Mapping):
+                            continue
+                        try:
+                            finish_todo_path = str(Path(str(todo_update.get("path") or "")).resolve())
+                        except (OSError, RuntimeError, ValueError):
+                            continue
+                        if finish_todo_path != resolved_todo_path:
+                            continue
+                        finish_receipts = todo_update.get("completion_receipts")
+                        if (
+                            not isinstance(finish_receipts, list)
+                            or receipt not in finish_receipts
+                        ):
+                            continue
+                        integration_proof = merge_result.get("integration_commit_proof")
+                        if integration_proof is not None and (
+                            not isinstance(integration_proof, Mapping)
+                            or integration_proof.get("passed") is not True
+                        ):
+                            continue
+                        merge_commit = str(merge_result.get("merge_commit") or "").strip()
+                        if not merge_commit:
+                            continue
+                        ancestor = subprocess.run(
+                            ["git", "merge-base", "--is-ancestor", merge_commit, "HEAD"],
+                            cwd=repo_root,
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                        )
+                        if ancestor.returncode != 0:
+                            continue
+                        paired_finish = candidate
+                        break
+                    if paired_finish is None:
+                        raise ValueError(
+                            "objective completion member receipt lacks a paired successful integrated implementation event"
+                        )
+                    receipt["event_path"] = str(event_path)
+                    receipt["todo_path"] = resolved_todo_path
+                    receipt["implementation_event_id"] = str(
+                        paired_finish.get("event_id") or ""
+                    )
+                    receipt["merge_commit"] = str(
+                        (paired_finish.get("merge_result") or {}).get("merge_commit")
+                        or ""
+                    )
+                    prior = completion_member_receipts.get(task_cid)
+                    if prior is not None and prior != receipt:
+                        raise ValueError(
+                            "conflicting exact member completion receipts for "
+                            f"canonical task CID {task_cid}"
+                        )
+                    completion_member_receipts[task_cid] = receipt
+    completion_board_scope = str(
+        getattr(args, "objective_goal_completion_board_scope", "union")
+        or "union"
+    )
     if completion_reconciliation_enabled and objective_path.exists():
         completion = reconcile_objective_goal_completion(
             repo_root=repo_root,
@@ -4137,6 +4598,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             todo_path=todo_path,
             task_header_prefix=args.task_prefix,
             todo_boards=goal_completion_todo_boards,
+            completion_board_scope=completion_board_scope,
+            scope_goal_ids=completion_scope_goal_ids or None,
+            completion_task_receipts=completion_member_receipts,
+            expected_completion_tasks=expected_completion_tasks,
             completion_evidence_records=completion_evidence_records,
             completion_gate_records=completion_gate_records,
             completion_control_paths=completion_control_paths,
@@ -4154,6 +4619,54 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             scan_exclude_paths=scan_exclude_paths,
         ).tree_id
         external_completion_results = completion.external_completion
+
+    if completion_reconciliation_only:
+        return {
+            "schema": "ipfs_accelerate_py.agent_supervisor.objective_daemon",
+            "repo_root": str(repo_root),
+            "objective_path": repo_relative_path(repo_root, objective_path),
+            "todo_path": repo_relative_path(repo_root, todo_path),
+            "scope_goal_ids": scope_goal_ids,
+            "objective_goal_completion_scope_goal_ids": (
+                completion_scope_goal_ids
+            ),
+            "objective_goal_completion_board_scope": completion_board_scope,
+            "objective_completion_reconciliation_enabled": True,
+            "objective_completion_reconciliation_only": True,
+            "completed_goal_ids": completed_goal_ids,
+            "objective_completed_goal_count": objective_completed_goal_count,
+            "objective_completion_validation_results": (
+                objective_completion_validation_results
+            ),
+            "objective_completion_decisions": objective_completion_decisions,
+            "objective_external_completion": external_completion_results,
+            "objective_external_completion_authority_cid": (
+                external_completion_authority.authority_cid
+                if external_completion_authority is not None
+                else ""
+            ),
+            "objective_external_completion_governed_goal_ids": list(
+                external_completion_results.get("governed_goal_ids", ())
+            ),
+            "goal_completion_todo_boards": [
+                {
+                    "todo_path": repo_relative_path(repo_root, path),
+                    "task_prefix": prefix,
+                }
+                for path, prefix in goal_completion_todo_boards
+            ],
+            "objective_goal_completion_member_receipt_state_roots": [
+                repo_relative_path(repo_root, path)
+                for path in completion_member_receipt_state_roots
+            ],
+            "objective_goal_completion_bundle_index_path": (
+                repo_relative_path(repo_root, completion_bundle_index_path)
+                if completion_bundle_index_path is not None
+                else ""
+            ),
+            "generated_count": 0,
+            "task_ids": [],
+        }
 
     refined_goal_ids: list[str] = []
     if getattr(args, "refine_objective_heap", False) and objective_path.exists():
@@ -4202,9 +4715,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             *refined_goal_ids,
             *split_csv(getattr(args, "force_goal_id", []) or []),
         ],
-        scope_goal_ids=split_csv(
-            getattr(args, "scope_goal_id", []) or []
-        ),
+        scope_goal_ids=scope_goal_ids,
         persist_ast_dataset=not args.no_persist_ast_dataset,
         write_todo_vector_index=not getattr(args, "no_todo_vector_index", False),
         todo_vector_index_path=getattr(args, "todo_vector_index_path", None),
@@ -4571,8 +5082,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "graph_path": repo_relative_path(repo_root, graph_path),
         "scan_exclude_paths": scan_exclude_metadata,
         "scan_exclude_path_count": len(scan_exclude_metadata),
-        "scope_goal_ids": split_csv(
-            getattr(args, "scope_goal_id", []) or []
+        "scope_goal_ids": scope_goal_ids,
+        "objective_goal_completion_scope_goal_ids": (
+            completion_scope_goal_ids
         ),
         "protected_output_paths": list(protected_output_paths),
         "protected_output_path_count": len(protected_output_paths),
@@ -4643,6 +5155,16 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             }
             for path, prefix in goal_completion_todo_boards
         ],
+        "objective_goal_completion_member_receipt_state_roots": [
+            repo_relative_path(repo_root, path)
+            for path in completion_member_receipt_state_roots
+        ],
+        "objective_goal_completion_bundle_index_path": (
+            repo_relative_path(repo_root, completion_bundle_index_path)
+            if completion_bundle_index_path is not None
+            else ""
+        ),
+        "objective_goal_completion_board_scope": completion_board_scope,
         "objective_completion_validation_results": objective_completion_validation_results,
         "objective_completion_decisions": objective_completion_decisions,
         "objective_completion_gate_inputs": completion_gate_records,
@@ -4660,9 +5182,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             else ""
         ),
         "objective_external_completion_governed_goal_ids": (
-            list(external_completion_authority.governed_goal_ids)
-            if external_completion_authority is not None
-            else []
+            list(external_completion_results.get("governed_goal_ids", ()))
         ),
         "objective_goal_completion_gate_path": (
             repo_relative_path(repo_root, completion_gate_path) if completion_gate_path else ""

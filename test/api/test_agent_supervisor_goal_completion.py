@@ -2064,6 +2064,285 @@ def test_objective_tracker_does_not_treat_an_empty_configured_board_as_task_drai
     assert "- Status: active" in objective_path.read_text(encoding="utf-8")
 
 
+def test_scoped_explicit_reconciliation_ignores_open_source_overlay_and_external_goal(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    source_board = repo / "source.todo.md"
+    runtime_board = repo / "runtime.todo.md"
+    objective_path.write_text(
+        """# Goals
+
+## G006 Local observer
+
+- Status: active
+- Acceptance: observer implementation
+- Validation: true
+
+## G010 External prerequisite release
+
+- Status: active
+- Completion authority: external
+- External completion required: true
+- Acceptance: external operational receipt
+- Validation: false
+
+## G099 Unrelated asserted completion
+
+- Status: verified_complete
+- Acceptance: unrelated proof
+- Validation: false
+""",
+        encoding="utf-8",
+    )
+    source_board.write_text(
+        """# Source projection
+
+## SHQ-001 Implement observer
+
+- Status: todo
+- Goal id: G006
+""",
+        encoding="utf-8",
+    )
+    runtime_board.write_text(
+        """# Runtime board
+
+## SHQ-001 Implement observer
+
+- Status: completed
+- Goal id: G006
+- Canonical task key: task/v1/g006
+- Canonical task CID: bafy-g006
+- Board namespace: runtime-g006
+""",
+        encoding="utf-8",
+    )
+    original_g010 = objective_path.read_text(encoding="utf-8").split(
+        "## G010", 1
+    )[1].split("## G099", 1)[0]
+    original_g099 = objective_path.read_text(encoding="utf-8").split(
+        "## G099", 1
+    )[1]
+
+    result = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=source_board,
+        todo_boards=((runtime_board, "## SHQ-"),),
+        completion_board_scope="explicit",
+        scope_goal_ids=("G006",),
+        completion_task_receipts={
+            "bafy-g006": {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "member_completion_receipt@1"
+                ),
+                "task_id": "SHQ-001",
+                "canonical_task_cid": "bafy-g006",
+                "canonical_task_key": "task/v1/g006",
+                "board_namespace": "runtime-g006",
+                "status": "succeeded",
+                "event_path": "/durable/lane/events.jsonl",
+                "todo_path": str(runtime_board.resolve()),
+            }
+        },
+        expected_completion_tasks={
+            "SHQ-001": {
+                "task_id": "SHQ-001",
+                "goal_id": "G006",
+                "canonical_task_cid": "bafy-g006",
+                "canonical_task_key": "task/v1/g006",
+                "board_namespace": "runtime-g006",
+            }
+        },
+    )
+
+    rewritten = objective_path.read_text(encoding="utf-8")
+    assert result.provisional_goal_ids == ["G006"]
+    assert set(result.decisions) == {"G006"}
+    assert set(result.validation_results) == set()
+    assert result.external_completion["governed_goal_ids"] == []
+    assert rewritten.split("## G010", 1)[1].split("## G099", 1)[0] == original_g010
+    assert rewritten.split("## G099", 1)[1] == original_g099
+
+
+@pytest.mark.parametrize("task_status", ["todo", "blocked", "failed", "cancelled"])
+def test_explicit_completion_scope_requires_exact_completed_runtime_task(
+    tmp_path,
+    task_status: str,
+) -> None:
+    objective_path = tmp_path / "objective.md"
+    runtime_board = tmp_path / "runtime.todo.md"
+    objective_path.write_text(
+        "## G006 Local observer\n\n- Status: active\n- Acceptance: proof\n",
+        encoding="utf-8",
+    )
+    runtime_board.write_text(
+        "## SHQ-001 Observer\n\n"
+        f"- Status: {task_status}\n"
+        "- Goal id: G006\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="not exactly completed"):
+        reconcile_objective_goal_completion(
+            repo_root=tmp_path,
+            objective_path=objective_path,
+            todo_boards=((runtime_board, "## SHQ-"),),
+            completion_board_scope="explicit",
+            scope_goal_ids=("G006",),
+        )
+
+
+def test_scoped_local_completion_rejects_unscoped_external_ancestor(tmp_path) -> None:
+    objective_path = tmp_path / "objective.md"
+    runtime_board = tmp_path / "runtime.todo.md"
+    objective_path.write_text(
+        """## G010 External gate
+
+- Status: verified_complete
+- Completion authority: external
+- External completion required: true
+- Acceptance: external receipt
+
+## G072 Local descendant
+
+- Status: active
+- Parents: G010
+- Acceptance: local receipt
+""",
+        encoding="utf-8",
+    )
+    runtime_board.write_text(
+        "## SHQ-072 Local descendant\n\n"
+        "- Status: completed\n"
+        "- Goal id: G072\n",
+        encoding="utf-8",
+    )
+
+    original = objective_path.read_bytes()
+    with pytest.raises(ValueError, match="external ancestors outside"):
+        reconcile_objective_goal_completion(
+            repo_root=tmp_path,
+            objective_path=objective_path,
+            todo_boards=((runtime_board, "## SHQ-"),),
+            completion_board_scope="explicit",
+            scope_goal_ids=("G072",),
+        )
+    assert objective_path.read_bytes() == original
+
+
+def test_scoped_external_completion_requires_authority_before_any_write(
+    tmp_path,
+) -> None:
+    objective_path = tmp_path / "objective.md"
+    objective_path.write_text(
+        """## G010 External gate
+
+- Status: active
+- Completion authority: external
+- External completion required: true
+- Acceptance: external receipt
+""",
+        encoding="utf-8",
+    )
+    original = objective_path.read_bytes()
+
+    with pytest.raises(ValueError, match="requires supplied authority"):
+        reconcile_objective_goal_completion(
+            repo_root=tmp_path,
+            objective_path=objective_path,
+            completion_board_scope="explicit",
+            scope_goal_ids=("G010",),
+        )
+
+    assert objective_path.read_bytes() == original
+
+
+def test_completion_scope_rejects_unknown_goal_before_any_write(tmp_path) -> None:
+    objective_path = tmp_path / "objective.md"
+    objective_path.write_text(
+        "## G006 Local observer\n\n- Status: active\n- Acceptance: proof\n",
+        encoding="utf-8",
+    )
+    original = objective_path.read_bytes()
+
+    with pytest.raises(ValueError, match="unknown goal ids"):
+        reconcile_objective_goal_completion(
+            repo_root=tmp_path,
+            objective_path=objective_path,
+            scope_goal_ids=("G999",),
+        )
+
+    assert objective_path.read_bytes() == original
+
+
+@pytest.mark.parametrize("board_kind", ["absent", "nonreferencing"])
+def test_explicit_completion_scope_requires_readable_referencing_board(
+    tmp_path,
+    board_kind: str,
+) -> None:
+    objective_path = tmp_path / "objective.md"
+    board_path = tmp_path / "runtime.todo.md"
+    objective_path.write_text(
+        "## G006 Local observer\n\n- Status: active\n- Acceptance: proof\n",
+        encoding="utf-8",
+    )
+    if board_kind == "nonreferencing":
+        board_path.write_text(
+            "## SHQ-999 Other\n\n- Status: completed\n- Goal id: G999\n",
+            encoding="utf-8",
+        )
+    original = objective_path.read_bytes()
+
+    error = "does not exist" if board_kind == "absent" else "do not reference"
+    with pytest.raises(ValueError, match=error):
+        reconcile_objective_goal_completion(
+            repo_root=tmp_path,
+            objective_path=objective_path,
+            todo_boards=((board_path, "## SHQ-"),),
+            completion_board_scope="explicit",
+            scope_goal_ids=("G006",),
+        )
+
+    assert objective_path.read_bytes() == original
+
+
+def test_explicit_completion_scope_rejects_status_without_member_receipt(
+    tmp_path,
+) -> None:
+    objective_path = tmp_path / "objective.md"
+    board_path = tmp_path / "runtime.todo.md"
+    objective_path.write_text(
+        "## G006 Local observer\n\n- Status: active\n- Acceptance: proof\n",
+        encoding="utf-8",
+    )
+    board_path.write_text(
+        "## SHQ-006 Observer\n\n"
+        "- Status: completed\n"
+        "- Goal id: G006\n"
+        "- Canonical task key: task/v1/g006\n"
+        "- Canonical task CID: bafy-g006\n"
+        "- Board namespace: runtime-g006\n",
+        encoding="utf-8",
+    )
+    original = objective_path.read_bytes()
+
+    with pytest.raises(ValueError, match="durable exact member"):
+        reconcile_objective_goal_completion(
+            repo_root=tmp_path,
+            objective_path=objective_path,
+            todo_boards=((board_path, "## SHQ-"),),
+            completion_board_scope="explicit",
+            scope_goal_ids=("G006",),
+        )
+
+    assert objective_path.read_bytes() == original
+
+
 def test_objective_tracker_reopens_self_asserted_verified_state_without_evidence(
     tmp_path,
 ) -> None:

@@ -83,6 +83,302 @@ def _git(cwd: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
+@pytest.mark.parametrize(
+    ("tamper", "error_match"),
+    [
+        (None, ""),
+        ("runtime_cid", "durable exact member completion receipts"),
+        ("other_lane", "durable exact member completion receipts"),
+        ("legacy_event", "paired successful integrated implementation event"),
+        ("wrong_schema", "unsupported schema"),
+        ("wrong_index", "tracked and byte-identical to HEAD"),
+    ],
+)
+def test_objective_daemon_wires_distinct_completion_scope_and_explicit_board(
+    tmp_path: Path,
+    tamper: str | None,
+    error_match: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective.md"
+    source_board = repo / "source.todo.md"
+    runtime_board = repo / "runtime.todo.md"
+    receipt_state_root = repo / "receipt-state"
+    receipt_state_root.mkdir()
+    bundle_index_path = repo / "bundle-index.json"
+    bundle_shard_path = repo / "bundles" / "observer.todo.md"
+    bundle_shard_path.parent.mkdir()
+    objective_path.write_text(
+        """## G006 Local observer
+
+- Status: active
+- Acceptance: observer proof
+- Validation: true
+
+## G010 External release
+
+- Status: active
+- Completion authority: external
+- External completion required: true
+- Acceptance: external receipt
+- Validation: false
+""",
+        encoding="utf-8",
+    )
+    source_board.write_text(
+        "## SHQ-001 Observer\n\n- Status: todo\n- Goal id: G006\n",
+        encoding="utf-8",
+    )
+    runtime_board.write_text(
+        "## SHQ-001 Observer\n\n"
+        "- Status: completed\n"
+        "- Goal id: G006\n"
+        "- Canonical task key: task/v1/g006\n"
+        "- Canonical task CID: bafy-g006\n"
+        "- Board namespace: runtime-g006\n",
+        encoding="utf-8",
+    )
+    exact_receipt = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "member_completion_receipt@1"
+        ),
+        "task_id": "SHQ-001",
+        "canonical_task_cid": "bafy-g006",
+        "canonical_task_key": "task/v1/g006",
+        "board_namespace": "runtime-g006",
+        "status": "succeeded",
+    }
+    bundle_shard_path.write_text(
+        "# Objective Bundle: observer\n\n"
+        "Source todo: source.todo.md\n\n"
+        "## SHQ-001 Observer\n\n"
+        "- Status: todo\n"
+        "- Goal id: G006\n"
+        "- Canonical task key: task/v1/g006\n"
+        "- Canonical task CID: bafy-g006\n"
+        "- Board namespace: runtime-g006\n",
+        encoding="utf-8",
+    )
+    bundle_index_path.write_text(
+        json.dumps(
+            {
+                "query_store": {
+                    "schema": "ipfs_accelerate_py.agent_supervisor.queryable_artifact@2",
+                    "artifact_kind": "bundle_planning_index",
+                    "duckdb_path": "bundle-index.duckdb",
+                    "catalog_table": "artifact_catalog",
+                },
+                "source_todo": "source.todo.md",
+                "bundles": {
+                    "observer": {
+                        "shard_path": "bundles/observer.todo.md",
+                        "tasks": [
+                            {
+                                "task_id": "SHQ-001",
+                                "goal_id": "G006",
+                                "canonical_task_cid": "bafy-g006",
+                                "canonical_task_key": "task/v1/g006",
+                                "board_namespace": "runtime-g006",
+                            }
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective.md", "source.todo.md", "bundle-index.json", "bundles/observer.todo.md")
+    _git(repo, "commit", "-m", "seed completion inputs")
+    merge_commit = _git(repo, "rev-parse", "HEAD")
+    (receipt_state_root / "lane_events.jsonl").write_text(
+        "\n".join(
+            json.dumps(event)
+            for event in (
+                {
+                "type": "todo_status_updated",
+                "updated": True,
+                "updated_task_ids": ["SHQ-001"],
+                "timestamp": "2026-08-13T08:00:00+00:00",
+                "path": str(runtime_board.resolve()),
+                    "completion_receipts": [exact_receipt],
+                },
+                {
+                    "type": "implementation_finished",
+                    "event_id": "finish-g006",
+                    "task_id": "SHQ-001",
+                    "canonical_task_cid": "bafy-g006",
+                    "returncode": 0,
+                    "merge_result": {
+                        "merged": True,
+                        "returncode": 0,
+                        "merge_commit": merge_commit,
+                        "integration_commit_proof": {"passed": True},
+                        "todo_update_result": {
+                            "path": str(runtime_board.resolve()),
+                            "completion_receipts": [exact_receipt],
+                        },
+                    },
+                },
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    if tamper == "runtime_cid":
+        runtime_board.write_text(
+            runtime_board.read_text(encoding="utf-8").replace(
+                "bafy-g006", "bafy-forged"
+            ),
+            encoding="utf-8",
+        )
+    elif tamper == "other_lane":
+        other_lane = repo / "other-lane.runtime.todo.md"
+        events_path = receipt_state_root / "lane_events.jsonl"
+        events_path.write_text(
+            events_path.read_text(encoding="utf-8").replace(
+                str(runtime_board.resolve()), str(other_lane.resolve())
+            ),
+            encoding="utf-8",
+        )
+    elif tamper == "legacy_event":
+        events_path = receipt_state_root / "lane_events.jsonl"
+        events = [
+            json.loads(line)
+            for line in events_path.read_text(encoding="utf-8").splitlines()
+        ]
+        events_path.write_text(
+            json.dumps(events[0]) + "\n",
+            encoding="utf-8",
+        )
+    elif tamper == "wrong_schema":
+        events_path = receipt_state_root / "lane_events.jsonl"
+        events_path.write_text(
+            events_path.read_text(encoding="utf-8").replace(
+                "member_completion_receipt@1", "member_completion_receipt@0"
+            ),
+            encoding="utf-8",
+        )
+    elif tamper == "wrong_index":
+        bundle_index_path.write_text(
+            bundle_index_path.read_text(encoding="utf-8").replace(
+                "bafy-g006", "bafy-forged"
+            ),
+            encoding="utf-8",
+        )
+    args = build_objective_daemon_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--task-prefix",
+            "SHQ-",
+            "--todo-path",
+            str(source_board),
+            "--discovery-dir",
+            str(repo / "state" / "discovery"),
+            "--bundle-dir",
+            str(repo / "state" / "bundles"),
+            "--dataset-dir",
+            str(repo / "state" / "datasets"),
+            "--graph-path",
+            str(repo / "state" / "graph.json"),
+            "--scope-goal-id",
+            "G010",
+            "--objective-goal-completion-scope-goal-id",
+            "G006",
+            "--objective-goal-completion-board-scope",
+            "explicit",
+            "--objective-goal-completion-todo-board",
+            f"{runtime_board}::## SHQ-",
+            "--objective-goal-completion-member-receipt-state-root",
+            str(receipt_state_root),
+            "--objective-goal-completion-bundle-index-path",
+            str(bundle_index_path),
+            "--max-findings",
+            "0",
+            "--no-persist-ast-dataset",
+            "--no-todo-vector-index",
+            "--no-generate-bounded-work",
+            "--objective-goal-completion-reconciliation-only",
+        ]
+    )
+
+    if error_match:
+        original_objective = objective_path.read_bytes()
+        with pytest.raises(ValueError, match=error_match):
+            run_objective_daemon(args)
+        assert objective_path.read_bytes() == original_objective
+        assert not (repo / "state").exists()
+        return
+
+    result = run_objective_daemon(args)
+
+    assert result["scope_goal_ids"] == ["G010"]
+    assert result["objective_goal_completion_scope_goal_ids"] == ["G006"]
+    assert result["objective_goal_completion_board_scope"] == "explicit"
+    assert result["objective_completion_reconciliation_only"] is True
+    assert set(result["objective_completion_decisions"]) == {"G006"}
+    assert result["objective_external_completion_governed_goal_ids"] == []
+    rewritten = objective_path.read_text(encoding="utf-8")
+    assert "## G006 Local observer\n\n- Status: provisionally_complete" in rewritten
+    assert "## G010 External release\n\n- Status: active" in rewritten
+    assert source_board.read_text(encoding="utf-8").startswith("## SHQ-001")
+    assert not (repo / "state").exists()
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "error_match"),
+    [
+        ([], "requires at least one"),
+        (
+            [
+                "--objective-goal-completion-scope-goal-id",
+                "G006",
+                "--no-reconcile-goal-completion",
+            ],
+            "requires completion reconciliation to be enabled",
+        ),
+    ],
+)
+def test_completion_reconciliation_only_preflight_fails_before_writes(
+    tmp_path: Path,
+    extra_args: list[str],
+    error_match: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        "## G006 Local observer\n\n- Status: active\n- Acceptance: proof\n",
+        encoding="utf-8",
+    )
+    original = objective_path.read_bytes()
+    args = build_objective_daemon_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--objective-goal-completion-reconciliation-only",
+            *extra_args,
+        ]
+    )
+
+    with pytest.raises(ValueError, match=error_match):
+        run_objective_daemon(args)
+
+    assert objective_path.read_bytes() == original
+    assert not (repo / "data").exists()
+    assert not (repo / "docs").exists()
+
+
 def _seed_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
     repo = tmp_path / "repo"
     repo.mkdir()

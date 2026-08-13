@@ -185,6 +185,142 @@ def _authority(
     )
 
 
+def test_external_completion_evaluator_scopes_results_but_validates_authority(
+    tmp_path,
+) -> None:
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    first = _authority(repo, objective_path)
+    first_requirement = first.requirements[0]
+    first_receipt = first.receipts[0]
+    second_term = "SECOND_EXTERNAL_OPERATION_COMPLETE"
+    second_requirement = ExternalCompletionRequirement(
+        **{
+            **{
+                key: value
+                for key, value in first_requirement.__dict__.items()
+                if key not in {"requirement_cid", "goal_id", "evidence_term"}
+            },
+            "goal_id": "EXT-G002",
+            "evidence_term": second_term,
+        }
+    )
+    second_receipt = ExternalOperationalCompletionReceipt(
+        **{
+            **{
+                key: value
+                for key, value in first_receipt.__dict__.items()
+                if key not in {
+                    "receipt_cid",
+                    "goal_id",
+                    "evidence_term",
+                    "validator_receipt_cid",
+                }
+            },
+            "goal_id": "EXT-G002",
+            "evidence_term": second_term,
+            "validator_receipt_cid": _cid("second-validator-receipt"),
+        }
+    )
+    authority = ExternalCompletionAuthority(
+        requirements=(first_requirement, second_requirement),
+        receipts=(first_receipt, second_receipt),
+    )
+
+    result = evaluate_external_completion_authority(
+        authority,
+        repo_root=repo,
+        objective_path=objective_path,
+        goal_evidence_terms={
+            "EXT-G001": (EVIDENCE_TERM,),
+            "EXT-G002": (second_term,),
+        },
+        goal_ids=("EXT-G001",),
+        now=OBSERVED_AT,
+    )
+
+    assert result.authority_cid == authority.authority_cid
+    assert result.governed_goal_ids == ("EXT-G001",)
+    assert set(result.evidence_records) == {"EXT-G001"}
+    assert {item.goal_id for item in result.results} == {"EXT-G001"}
+    with pytest.raises(ValueError, match="ungoverned goal ids"):
+        evaluate_external_completion_authority(
+            authority,
+            repo_root=repo,
+            objective_path=objective_path,
+            goal_evidence_terms={},
+            goal_ids=("EXT-G999",),
+            now=OBSERVED_AT,
+        )
+
+
+def test_explicit_mixed_scope_allows_valid_external_goal_without_board_card(
+    tmp_path,
+) -> None:
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    objective_path.write_text(
+        objective_path.read_text(encoding="utf-8")
+        + """
+## LOCAL-G002 Governed local continuation
+
+- Status: active
+- Parent: EXT-G001
+- Acceptance: local implementation receipt
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    board_path = repo / "runtime.todo.md"
+    board_path.write_text(
+        "## SHQ-002 Local continuation\n\n"
+        "- Status: completed\n"
+        "- Goal id: LOCAL-G002\n"
+        "- Canonical task key: task/v1/local-g002\n"
+        "- Canonical task CID: bafy-local-g002\n"
+        "- Board namespace: runtime-local-g002\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "add local governed continuation")
+    authority = _authority(repo, objective_path)
+
+    result = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_boards=((board_path, "## SHQ-"),),
+        completion_board_scope="explicit",
+        scope_goal_ids=("EXT-G001", "LOCAL-G002"),
+        completion_task_receipts={
+            "bafy-local-g002": {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "member_completion_receipt@1"
+                ),
+                "task_id": "SHQ-002",
+                "canonical_task_cid": "bafy-local-g002",
+                "canonical_task_key": "task/v1/local-g002",
+                "board_namespace": "runtime-local-g002",
+                "status": "succeeded",
+                "event_path": "/durable/lane/events.jsonl",
+                "todo_path": str(board_path.resolve()),
+            }
+        },
+        expected_completion_tasks={
+            "SHQ-002": {
+                "task_id": "SHQ-002",
+                "goal_id": "LOCAL-G002",
+                "canonical_task_cid": "bafy-local-g002",
+                "canonical_task_key": "task/v1/local-g002",
+                "board_namespace": "runtime-local-g002",
+            }
+        },
+        external_completion_authority=authority,
+        now=OBSERVED_AT,
+    )
+
+    assert result.external_completion["governed_goal_ids"] == ["EXT-G001"]
+    assert "EXT-G001" in result.decisions
+
+
 def _completion_gate(
     repo: Path,
     objective_path: Path,

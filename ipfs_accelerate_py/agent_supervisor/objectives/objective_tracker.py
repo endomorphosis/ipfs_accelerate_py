@@ -3156,6 +3156,35 @@ def referenced_goal_ids_from_todo_boards(
     return goal_ids
 
 
+def non_completed_goal_ids_from_todo_boards(
+    todo_boards: Sequence[tuple[Path, str]],
+) -> dict[str, list[str]]:
+    """Map goals to boards containing a task not exactly ``completed``."""
+
+    from ..todo_daemon.implementation_daemon import TASK_HEADER_PREFIX, parse_task_file
+
+    incomplete: dict[str, list[str]] = {}
+    seen_boards: set[tuple[str, str]] = set()
+    for todo_path, task_header_prefix in todo_boards:
+        board_key = (str(todo_path), str(task_header_prefix))
+        if board_key in seen_boards:
+            continue
+        seen_boards.add(board_key)
+        for task in parse_task_file(
+            todo_path,
+            task_header_prefix or TASK_HEADER_PREFIX,
+        ):
+            if str(task.status or "").strip().casefold() == "completed":
+                continue
+            task_goal_ids: set[str] = set()
+            for key in TASK_GOAL_METADATA_KEYS:
+                task_goal_ids.update(split_terms(task.metadata.get(key, "")))
+            for goal_id in task_goal_ids:
+                if goal_id:
+                    incomplete.setdefault(goal_id, []).append(str(todo_path))
+    return incomplete
+
+
 def open_goal_ids_from_todo_boards(
     todo_boards: Sequence[tuple[Path, str]],
 ) -> dict[str, list[str]]:
@@ -3191,6 +3220,164 @@ def open_implementation_goal_ids_from_todo_boards(
         ):
             open_goal_ids.setdefault(goal_id, []).append(str(todo_path))
     return open_goal_ids
+
+
+def _completion_todo_boards(
+    *,
+    todo_path: Path | None,
+    task_header_prefix: str,
+    todo_boards: Sequence[tuple[Path, str]] | None,
+    completion_board_scope: str,
+) -> list[tuple[Path, str]]:
+    """Select the exact boards authorized for completion reconciliation.
+
+    ``union`` preserves the historical primary-board-plus-overlays behavior.
+    ``explicit`` uses only ``todo_boards`` so an operator can bind completion
+    to a terminal runtime board without an obsolete open projection card
+    overriding it.  Callers validate explicit scope coverage before using the
+    selected boards; an empty selection is reserved for a currently verified
+    external-authority-only reconciliation.
+    """
+
+    normalized_scope = str(completion_board_scope or "").strip().casefold()
+    if normalized_scope not in {"union", "explicit"}:
+        raise ValueError(
+            "completion_board_scope must be 'union' or 'explicit'"
+        )
+    selected = list(todo_boards or ())
+    if normalized_scope == "explicit":
+        return selected
+    if todo_path is not None:
+        selected.insert(0, (todo_path, task_header_prefix))
+    return selected
+
+
+def _validate_explicit_completion_boards(
+    *,
+    completion_board_scope: str,
+    boards: Sequence[tuple[Path, str]],
+    required_goal_ids: Iterable[str],
+    board_optional_goal_ids: Iterable[str] = (),
+    completion_task_receipts: Mapping[str, Mapping[str, Any]] | None = None,
+    expected_completion_tasks: Mapping[str, Mapping[str, Any]] | None = None,
+) -> None:
+    """Fail closed unless explicit boards cover the exact reconciliation scope."""
+
+    if str(completion_board_scope or "").strip().casefold() != "explicit":
+        return
+    required = {
+        str(goal_id).strip()
+        for goal_id in required_goal_ids
+        if str(goal_id).strip()
+    }
+    optional_without_boards = {
+        str(goal_id).strip()
+        for goal_id in board_optional_goal_ids
+        if str(goal_id).strip()
+    }
+    for board_path, _prefix in boards:
+        if not board_path.is_file():
+            raise ValueError(
+                "explicit completion todo board does not exist or is not a "
+                f"regular file: {board_path}"
+            )
+        try:
+            board_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise ValueError(
+                f"explicit completion todo board is unreadable: {board_path}"
+            ) from exc
+    if not boards:
+        missing = required - optional_without_boards
+    else:
+        referenced = set(referenced_goal_ids_from_todo_boards(boards))
+        missing = required - referenced - optional_without_boards
+    if missing:
+        raise ValueError(
+            "explicit completion todo boards do not reference every scoped "
+            "goal: " + ", ".join(sorted(missing))
+        )
+    non_completed = set(non_completed_goal_ids_from_todo_boards(boards))
+    invalid_statuses = (required - optional_without_boards) & non_completed
+    if invalid_statuses:
+        raise ValueError(
+            "explicit completion todo boards contain scoped tasks whose "
+            "normalized status is not exactly completed: "
+            + ", ".join(sorted(invalid_statuses))
+        )
+    local_required = required - optional_without_boards
+    if not local_required:
+        return
+    receipts = completion_task_receipts or {}
+    expected_tasks = expected_completion_tasks or {}
+    invalid_receipt_goals: set[str] = set()
+    from ..todo_daemon.implementation_daemon import TASK_HEADER_PREFIX, parse_task_file
+
+    for board_path, task_header_prefix in boards:
+        for task in parse_task_file(
+            board_path,
+            task_header_prefix or TASK_HEADER_PREFIX,
+        ):
+            task_goal_ids: set[str] = set()
+            for key in TASK_GOAL_METADATA_KEYS:
+                task_goal_ids.update(split_terms(task.metadata.get(key, "")))
+            relevant_goal_ids = local_required & task_goal_ids
+            if not relevant_goal_ids:
+                continue
+            declared_cid = str(
+                task.metadata.get("canonical task cid") or ""
+            ).strip()
+            declared_key = str(
+                task.metadata.get("canonical task key") or ""
+            ).strip()
+            declared_namespace = str(
+                task.metadata.get("board namespace") or ""
+            ).strip()
+            expected = expected_tasks.get(task.task_id)
+            receipt = receipts.get(declared_cid)
+            valid = bool(
+                declared_cid
+                and declared_key
+                and declared_namespace
+                and task.canonical_task_cid == declared_cid
+                and task.canonical_task_key == declared_key
+                and task.board_namespace == declared_namespace
+                and isinstance(expected, Mapping)
+                and str(expected.get("goal_id") or "") in relevant_goal_ids
+                and str(expected.get("task_id") or "") == task.task_id
+                and str(expected.get("canonical_task_cid") or "")
+                == declared_cid
+                and str(expected.get("canonical_task_key") or "")
+                == declared_key
+                and str(expected.get("board_namespace") or "")
+                == declared_namespace
+                and isinstance(receipt, Mapping)
+                and str(receipt.get("schema") or "")
+                == (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "member_completion_receipt@1"
+                )
+                and str(receipt.get("task_id") or "") == task.task_id
+                and str(receipt.get("canonical_task_cid") or "")
+                == declared_cid
+                and str(receipt.get("canonical_task_key") or "")
+                == declared_key
+                and str(receipt.get("board_namespace") or "")
+                == declared_namespace
+                and str(receipt.get("status") or "").strip().casefold()
+                == "succeeded"
+                and str(receipt.get("event_path") or "").strip()
+                and str(receipt.get("todo_path") or "")
+                == str(board_path.resolve())
+            )
+            if not valid:
+                invalid_receipt_goals.update(relevant_goal_ids)
+    if invalid_receipt_goals:
+        raise ValueError(
+            "explicit completion todo boards lack durable exact member "
+            "completion receipts for: "
+            + ", ".join(sorted(invalid_receipt_goals))
+        )
 
 
 def run_goal_validation(
@@ -4725,6 +4912,9 @@ def migrate_legacy_objective_goals(
     todo_path: Path | None = None,
     task_header_prefix: str = "",
     todo_boards: Sequence[tuple[Path, str]] | None = None,
+    completion_board_scope: str = "union",
+    completion_task_receipts: Mapping[str, Mapping[str, Any]] | None = None,
+    expected_completion_tasks: Mapping[str, Mapping[str, Any]] | None = None,
     completion_evidence_records: Mapping[
         str, Sequence[CompletionEvidence | Mapping[str, Any]]
     ] | None = None,
@@ -4797,10 +4987,25 @@ def migrate_legacy_objective_goals(
     batch = candidates[:limit]
     remaining = candidates[limit:]
     gate_records = completion_gate_records or {}
-    boards: list[tuple[Path, str]] = []
-    if todo_path is not None:
-        boards.append((todo_path, task_header_prefix))
-    boards.extend(todo_boards or ())
+    boards = _completion_todo_boards(
+        todo_path=todo_path,
+        task_header_prefix=task_header_prefix,
+        todo_boards=todo_boards,
+        completion_board_scope=completion_board_scope,
+    )
+    _validate_explicit_completion_boards(
+        completion_board_scope=completion_board_scope,
+        boards=boards,
+        required_goal_ids=(goal.goal_id for goal in candidates),
+        board_optional_goal_ids=(
+            goal.goal_id
+            for goal in candidates
+            if goal.goal_id in _external_goal_ids
+            and supplied_external_records(goal.goal_id)
+        ),
+        completion_task_receipts=completion_task_receipts,
+        expected_completion_tasks=expected_completion_tasks,
+    )
     open_goals = open_goal_ids_from_todo_boards(boards)
     identity = completion_tree_identity(
         repo_root,
@@ -4933,6 +5138,10 @@ def reconcile_objective_goal_completion(
     todo_path: Path | None = None,
     task_header_prefix: str = "",
     todo_boards: Sequence[tuple[Path, str]] | None = None,
+    completion_board_scope: str = "union",
+    scope_goal_ids: Iterable[str] | None = None,
+    completion_task_receipts: Mapping[str, Mapping[str, Any]] | None = None,
+    expected_completion_tasks: Mapping[str, Mapping[str, Any]] | None = None,
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
     completion_evidence_records: Mapping[
         str, Sequence[CompletionEvidence | Mapping[str, Any]]
@@ -4969,20 +5178,117 @@ def reconcile_objective_goal_completion(
     supplied_gate_records = completion_gate_records or {}
     initial_text = objective_path.read_text(encoding="utf-8")
     initial_goals = parse_goal_heap(initial_text)
+    known_initial_goal_ids = {
+        goal.goal_id for goal in initial_goals if goal.goal_id
+    }
+    if scope_goal_ids is None:
+        selected_goal_ids = set(known_initial_goal_ids)
+    else:
+        selected_goal_ids = {
+            str(goal_id).strip()
+            for goal_id in scope_goal_ids
+            if str(goal_id).strip()
+        }
+        if not selected_goal_ids:
+            raise ValueError("completion reconciliation scope cannot be empty")
+        unknown_scope_goal_ids = selected_goal_ids - known_initial_goal_ids
+        if unknown_scope_goal_ids:
+            raise ValueError(
+                "completion reconciliation scope contains unknown goal ids: "
+                + ", ".join(sorted(unknown_scope_goal_ids))
+            )
+    normalized_external_authority = (
+        external_completion_authority
+        if isinstance(external_completion_authority, ExternalCompletionAuthority)
+        else (
+            ExternalCompletionAuthority.from_dict(external_completion_authority)
+            if external_completion_authority is not None
+            else None
+        )
+    )
     external_completion: ExternalCompletionEvaluation | None = None
     current_authority_goal_ids: set[str] = set()
-    externally_governed_goal_ids = {
+    all_externally_governed_goal_ids = {
         goal.goal_id
         for goal in initial_goals
         if goal.goal_id and _requires_external_completion(goal)
     }
+    if normalized_external_authority is not None:
+        all_externally_governed_goal_ids.update(
+            normalized_external_authority.governed_goal_ids
+        )
+    externally_governed_goal_ids = (
+        all_externally_governed_goal_ids & selected_goal_ids
+    )
+    initial_goals_by_id = {
+        goal.goal_id: goal for goal in initial_goals if goal.goal_id
+    }
+    external_ancestors_by_selected_goal: dict[str, set[str]] = {}
+    for selected_goal_id in sorted(selected_goal_ids):
+        if selected_goal_id in all_externally_governed_goal_ids:
+            continue
+        selected_goal = initial_goals_by_id[selected_goal_id]
+        pending = list(
+            (*selected_goal.parent_goal_ids, *selected_goal.dependencies)
+        )
+        seen_ancestors: set[str] = set()
+        governing_external_ancestors: set[str] = set()
+        while pending:
+            ancestor_id = str(pending.pop(0))
+            if not ancestor_id or ancestor_id in seen_ancestors:
+                continue
+            seen_ancestors.add(ancestor_id)
+            if ancestor_id in all_externally_governed_goal_ids:
+                governing_external_ancestors.add(ancestor_id)
+            ancestor = initial_goals_by_id.get(ancestor_id)
+            if ancestor is not None:
+                pending.extend(
+                    (*ancestor.parent_goal_ids, *ancestor.dependencies)
+                )
+        external_ancestors_by_selected_goal[selected_goal_id] = (
+            governing_external_ancestors
+        )
+        missing_external_scope = governing_external_ancestors - selected_goal_ids
+        if missing_external_scope:
+            raise ValueError(
+                f"scoped local goal {selected_goal_id} has governing external "
+                "ancestors outside the completion scope: "
+                + ", ".join(sorted(missing_external_scope))
+            )
     for goal_id in externally_governed_goal_ids:
         # Once an operational goal has external provenance, omitting the
         # explicit authority cannot downgrade it into ordinary local evidence.
         supplied_records[goal_id] = []
-    if external_completion_authority is not None:
+    authority_scope_goal_ids = (
+        set(normalized_external_authority.governed_goal_ids)
+        & selected_goal_ids
+        if normalized_external_authority is not None
+        else set()
+    )
+    if scope_goal_ids is not None:
+        missing_scoped_external_authority = (
+            externally_governed_goal_ids - authority_scope_goal_ids
+        )
+        if missing_scoped_external_authority:
+            raise ValueError(
+                "scoped external completion requires supplied authority for: "
+                + ", ".join(sorted(missing_scoped_external_authority))
+            )
+    missing_external_authority = {
+        ancestor_id
+        for ancestor_ids in external_ancestors_by_selected_goal.values()
+        for ancestor_id in ancestor_ids
+        if ancestor_id not in authority_scope_goal_ids
+    }
+    if scope_goal_ids is not None and missing_external_authority:
+        raise ValueError(
+            "scoped local completion requires supplied authority for governing "
+            "external ancestors: "
+            + ", ".join(sorted(missing_external_authority))
+        )
+    if normalized_external_authority is not None and authority_scope_goal_ids:
         external_completion = evaluate_external_completion_authority(
-            external_completion_authority,
+            normalized_external_authority,
             repo_root=repo_root,
             objective_path=objective_path,
             goal_evidence_terms={
@@ -4990,6 +5296,7 @@ def reconcile_objective_goal_completion(
                 for goal in initial_goals
                 if goal.goal_id
             },
+            goal_ids=authority_scope_goal_ids,
             now=now,
             freshness_seconds=evidence_freshness_seconds,
         )
@@ -5003,17 +5310,66 @@ def reconcile_objective_goal_completion(
             supplied_records[goal_id] = list(
                 external_completion.evidence_records.get(goal_id, ())
             )
+    completion_boards = _completion_todo_boards(
+        todo_path=todo_path,
+        task_header_prefix=task_header_prefix,
+        todo_boards=todo_boards,
+        completion_board_scope=completion_board_scope,
+    )
+    board_optional_goal_ids: set[str] = set()
+    if external_completion is not None:
+        goals_by_initial_id = {
+            goal.goal_id: goal for goal in initial_goals if goal.goal_id
+        }
+        for goal_id in current_authority_goal_ids:
+            goal = goals_by_initial_id.get(goal_id)
+            required_terms = set(goal.required_evidence if goal else ())
+            covered_terms = {
+                record.acceptance_criterion
+                for record in external_completion.evidence_records.get(
+                    goal_id, ()
+                )
+            }
+            authority_results = external_completion.results_for_goal(goal_id)
+            if (
+                authority_results
+                and all(item.get("valid") is True for item in authority_results)
+                and required_terms <= covered_terms
+            ):
+                board_optional_goal_ids.add(goal_id)
+    if scope_goal_ids is not None:
+        invalid_scoped_external_authority = (
+            externally_governed_goal_ids - board_optional_goal_ids
+        )
+        if invalid_scoped_external_authority:
+            raise ValueError(
+                "scoped external completion requires fresh valid authority "
+                "evidence for: "
+                + ", ".join(sorted(invalid_scoped_external_authority))
+            )
+    _validate_explicit_completion_boards(
+        completion_board_scope=completion_board_scope,
+        boards=completion_boards,
+        required_goal_ids=selected_goal_ids,
+        board_optional_goal_ids=board_optional_goal_ids,
+        completion_task_receipts=completion_task_receipts,
+        expected_completion_tasks=expected_completion_tasks,
+    )
     migration_result = migrate_legacy_objective_goals(
         repo_root=repo_root,
         objective_path=objective_path,
         todo_path=todo_path,
         task_header_prefix=task_header_prefix,
         todo_boards=todo_boards,
+        completion_board_scope=completion_board_scope,
+        completion_task_receipts=completion_task_receipts,
+        expected_completion_tasks=expected_completion_tasks,
         completion_evidence_records=supplied_records,
         completion_gate_records=supplied_gate_records,
         completion_control_paths=completion_control_paths,
         require_artifact_binding=require_artifact_binding,
         scan_exclude_paths=scan_exclude_paths,
+        goal_ids=selected_goal_ids,
         now=now,
         evidence_freshness_seconds=evidence_freshness_seconds,
     )
@@ -5073,17 +5429,20 @@ def reconcile_objective_goal_completion(
 
         for goal_id in sorted(parents_by_goal):
             verify_acyclic(goal_id)
-    externally_governed_goal_ids.update(
+    all_externally_governed_goal_ids.update(
         goal.goal_id
         for goal in goals
         if goal.goal_id and _requires_external_completion(goal)
     )
-    if external_completion_authority is not None:
+    externally_governed_goal_ids = (
+        all_externally_governed_goal_ids & selected_goal_ids
+    )
+    if normalized_external_authority is not None and authority_scope_goal_ids:
         # Migration may rewrite the tracked objective heap. Reinspect after
         # that phase so no pre-migration clean snapshot can authorize the
         # resulting source state.
         external_completion = evaluate_external_completion_authority(
-            external_completion_authority,
+            normalized_external_authority,
             repo_root=repo_root,
             objective_path=objective_path,
             goal_evidence_terms={
@@ -5091,6 +5450,7 @@ def reconcile_objective_goal_completion(
                 for goal in goals
                 if goal.goal_id
             },
+            goal_ids=authority_scope_goal_ids,
             now=now,
             freshness_seconds=evidence_freshness_seconds,
         )
@@ -5098,7 +5458,7 @@ def reconcile_objective_goal_completion(
             external_completion.governed_goal_ids
         )
         externally_governed_goal_ids.update(current_authority_goal_ids)
-        for goal_id in externally_governed_goal_ids:
+        for goal_id in current_authority_goal_ids:
             supplied_records[goal_id] = list(
                 external_completion.evidence_records.get(goal_id, ())
             )
@@ -5114,6 +5474,8 @@ def reconcile_objective_goal_completion(
     candidate_goals = []
     persisted_records: dict[str, list[CompletionEvidence]] = {}
     for goal in goals:
+        if goal.goal_id not in selected_goal_ids:
+            continue
         if require_artifact_binding:
             records = [
                 item
@@ -5185,10 +5547,6 @@ def reconcile_objective_goal_completion(
     validation_results: dict[str, dict[str, Any]] = {}
     decisions: dict[str, dict[str, Any]] = {}
     transitioned_at = now or utc_now()
-    completion_boards: list[tuple[Path, str]] = []
-    if todo_path is not None:
-        completion_boards.append((todo_path, task_header_prefix))
-    completion_boards.extend(todo_boards or ())
     open_goal_ids = open_implementation_goal_ids_from_todo_boards(
         completion_boards
     )
@@ -5201,7 +5559,7 @@ def reconcile_objective_goal_completion(
     }
     external_final_states = {
         goal_id: effective_states[goal_id]
-        for goal_id in externally_governed_goal_ids
+        for goal_id in all_externally_governed_goal_ids
         if goal_id in effective_states
     }
 
@@ -5209,7 +5567,11 @@ def reconcile_objective_goal_completion(
         """Return every transitive external gate governing ``goal_id``."""
 
         goal = goals_by_id.get(goal_id)
-        pending = list(goal.parent_goal_ids if goal is not None else ())
+        pending = list(
+            (*goal.parent_goal_ids, *goal.dependencies)
+            if goal is not None
+            else ()
+        )
         seen: set[str] = set()
         external_ancestors: set[str] = set()
         while pending:
@@ -5217,11 +5579,13 @@ def reconcile_objective_goal_completion(
             if not parent_id or parent_id in seen:
                 continue
             seen.add(parent_id)
-            if parent_id in externally_governed_goal_ids:
+            if parent_id in all_externally_governed_goal_ids:
                 external_ancestors.add(parent_id)
             parent_goal = goals_by_id.get(parent_id)
             if parent_goal is not None:
-                pending.extend(parent_goal.parent_goal_ids)
+                pending.extend(
+                    (*parent_goal.parent_goal_ids, *parent_goal.dependencies)
+                )
         return external_ancestors
 
     candidate_by_id = {goal.goal_id: goal for goal in candidate_goals}
@@ -5496,7 +5860,7 @@ def reconcile_objective_goal_completion(
         elif goal.goal_id in externally_governed_goal_ids:
             missing_authority_reason = (
                 "external_authority_not_supplied"
-                if external_completion_authority is None
+                if normalized_external_authority is None
                 else "external_authority_binding_missing"
             )
             missing_authority_results = [

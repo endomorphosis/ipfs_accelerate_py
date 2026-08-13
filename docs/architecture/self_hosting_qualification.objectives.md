@@ -3,10 +3,12 @@
 Machine-ingestible goal hierarchy for the bounded
 `SelfHostingQualificationHarness` capstone and its narrow
 `GovernedCodingAgentRuntime` facade. After the v1 observer-task migration, the
-executable projection is
-`data/agent_supervisor/self_hosting_qualification/projections/v2/self_hosting_qualification.todo.md`
-with task prefix `SHQ-`; the legacy `docs/architecture/self_hosting_qualification.todo.md`
-is not an active task source. This heap is fail-closed. `SHQ-G010` is an
+executable task board is
+`docs/architecture/self_hosting_qualification.todo.md` with task prefix
+`SHQ-`; v2 bundle, graph and dataset projections live below
+`data/agent_supervisor/self_hosting_qualification/projections/v2/`. The retired
+v1 card lives only in `self_hosting_qualification.v1_history.todo.md`, which is
+never a task source. This heap is fail-closed. `SHQ-G010` is an
 externally governed release-admission
 gate. Until it has typed, current-tree completion receipts for every prerequisite
 system, the objective daemon must not project any descendant implementation work.
