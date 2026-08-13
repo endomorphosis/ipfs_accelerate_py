@@ -660,7 +660,7 @@ W20 AAE-063
 
 ## AAE-023 Construct explained expected detection sets from semantic dependencies
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
