@@ -6,8 +6,8 @@ Machine-ingestible goal hierarchy for the bounded
 executable task board is
 `docs/architecture/self_hosting_qualification.todo.md` with task prefix
 `SHQ-`; the current bounded-retry bundle, graph and dataset projections live
-below `data/agent_supervisor/self_hosting_qualification/projections/v3/`. The
-retired v1 and cancelled v2 cards live only in their versioned history boards,
+below `data/agent_supervisor/self_hosting_qualification/projections/v4/`. The
+retired v1, cancelled v2 and prelaunch v3 cards live only in versioned history boards,
 which are never task sources. This heap is fail-closed. `SHQ-G010` is an
 externally governed release-admission
 gate. Until it has typed, current-tree completion receipts for every prerequisite
@@ -128,8 +128,8 @@ SHQ-G000  Bounded self-hosting qualification and truthful release decision
 - Fib priority: 100
 - Track: prerequisite-observation
 - Priority: P0
-- Bundle: agent-supervisor/self-hosting/prerequisite-observer-implementation-bounded-v3
-- Parallel lane: prerequisite-observer-implementation-bounded-v3
+- Bundle: agent-supervisor/self-hosting/prerequisite-observer-implementation-bounded-v4
+- Parallel lane: prerequisite-observer-implementation-bounded-v4
 - Resource class: cpu-small
 - Token class: medium
 - Goal: Implement and independently test a deterministic observer that records current commit/API/test/board evidence for the ten prerequisites and distinguishes released, in-flight, missing, mismatched-name and unverifiable states; do not generate the repository observation artifact in this goal.
@@ -154,8 +154,8 @@ SHQ-G000  Bounded self-hosting qualification and truthful release decision
 - Fib priority: 100
 - Track: prerequisite-observation
 - Priority: P0
-- Bundle: agent-supervisor/self-hosting/prerequisite-observation-snapshot-bounded-v3
-- Parallel lane: prerequisite-observation-snapshot-bounded-v3
+- Bundle: agent-supervisor/self-hosting/prerequisite-observation-snapshot-bounded-v4
+- Parallel lane: prerequisite-observation-snapshot-bounded-v4
 - Resource class: cpu-small
 - Token class: small
 - Goal: From the clean merged `SHQ-G006` implementation commit, execute the observer and persist the non-authoritative current prerequisite snapshot without changing observer code, tests or ignore policy.
@@ -163,13 +163,14 @@ SHQ-G000  Bounded self-hosting qualification and truthful release decision
 - Outputs: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
 - Predicted files: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
 - Interfaces: PrerequisiteObservation@1
+- Submodules: ipfs_datasets_py, ipfs_kit_py, ipfs_accelerate_py/mcplusplus
 - Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py; python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode observe --quiet; python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode require-terminal --quiet && exit 99 || test "$?" -eq 1
-- Acceptance: The only changed path is `artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json`; the task begins from a clean merged G006 commit and the snapshot binds exactly that pre-observation outer commit/tree, recursive gitlinks and matching submodule HEADs while excluding only its own artifact path; all ten rows and limitations are current and deterministic; the artifact declares that it is neither completion nor proof nor release authority; its later artifact commit is an evidence projection and never claimed as the observed source; native validation and local two-pass completion receipts independently bind the clean post-artifact tree.
+- Acceptance: The only changed path is `artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json`; the task begins from the clean merged current bounded G006 successor, never the retired SHQ-002 worktree or rescue branch, and the snapshot binds exactly that pre-observation outer commit/tree, recursive gitlinks and matching submodule HEADs while excluding only its own artifact path; all ten rows and limitations are current and deterministic; all reads stay within the disposable task worktree and its three declared gitlinks; the artifact declares that it is neither completion nor proof nor release authority; its later artifact commit is an evidence projection and never claimed as the observed source; native validation and local two-pass completion receipts independently bind the clean post-artifact tree.
 - Gap task: Generate and validate the non-authoritative observation artifact only after the merged G006 implementation tree is clean.
-- Refinement: Refuse dirty input, gitlink/HEAD mismatch or an already modified output; never repair or upgrade a prerequisite and never turn an observe result into terminal admission.
+- Refinement: Refuse dirty input, gitlink/HEAD mismatch, a retired predecessor identity or an already modified output; never read sibling worktrees or operator state, repair or upgrade a prerequisite, or turn an observe result into terminal admission.
 - Embedding query: post merge prerequisite observation snapshot clean source projection recursive gitlinks
 - AST query: PrerequisiteObservation observation_to_json write_observation_artifact
-- Conflict policy: Do not edit `.gitignore`, observer implementation, tests, prerequisite owners, release admission, policies, keys or generated supervisor state.
+- Conflict policy: Do not edit `.gitignore`, observer implementation, tests, prerequisite owners, release admission, policies, keys or generated supervisor state; never read arbitrary host paths.
 
 ## SHQ-G010 Externally admit all ten prerequisite releases
 

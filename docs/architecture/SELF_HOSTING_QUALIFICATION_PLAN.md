@@ -586,26 +586,29 @@ submit to a task queue.
 ```bash
 SHQ_REPO=/home/barberb/lift_coding/.worktrees/ipfs-accelerate-self-hosting-qualification
 SHQ_DATA=data/agent_supervisor/self_hosting_qualification
-SHQ_PROJECTION="$SHQ_DATA/projections/v3"
+SHQ_PROJECTION="$SHQ_DATA/projections/v4"
 SHQ_ACTIVE_TODO=docs/architecture/self_hosting_qualification.todo.md
 SHQ_V1_HISTORY_TODO=docs/architecture/self_hosting_qualification.v1_history.todo.md
 SHQ_V2_HISTORY_TODO=docs/architecture/self_hosting_qualification.v2_history.todo.md
+SHQ_V3_HISTORY_TODO=docs/architecture/self_hosting_qualification.v3_history.todo.md
 SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v1
 SHQ_GATE="$SHQ_RUN/operator/objective_completion_gate.json"
 SHQ_EXTERNAL_AUTHORITY="$SHQ_RUN/operator/external_completion_authority.json"
 SHQ_SIGNING_KEY="$SHQ_RUN/operator/signing.key"
 SHQ_IMPLEMENTATION_COMMAND="/usr/local/bin/codex exec --ephemeral --ignore-user-config --strict-config --dangerously-bypass-approvals-and-sandbox --color never -m gpt-5.6-terra -c model_context_window=24576 -c 'model_reasoning_effort=\"high\"' -c agents.max_threads=1 -c agents.max_depth=0 -"
-SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-implementation-bounded-v3/state/agent_agent_supervisor_self_hosting_prerequisite_observer_implementation_bounded_v3_runtime.todo.md"
-SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v3/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_bounded_v3_runtime.todo.md"
+SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-implementation-bounded-v4/state/agent_agent_supervisor_self_hosting_prerequisite_observer_implementation_bounded_v4_runtime.todo.md"
+SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v4/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_bounded_v4_runtime.todo.md"
 
 # Reviewed migrations: retain SHQ-001 in the v1 history board. Move cancelled
 # SHQ-002 and its never-launched dependent SHQ-003 into the v2 history board,
-# retain both canonical task blocks byte-for-byte, record their cancellation and
-# supersession only in the history-board preamble, then leave SHQ_ACTIVE_TODO
-# with only its title. Never mark a retired task completed; retain all three
-# discovery files so their display IDs stay reserved.
+# retain every historical canonical task block byte-for-byte and record outcome
+# only in its history-board preamble. SHQ-004/005 are prelaunch v3 projections:
+# neither entered coordination, and SHQ-005 exposed a semantic-CID collision
+# fixed in the current G007 contract. Leave SHQ_ACTIVE_TODO title-only and retain
+# all five discovery files so their display IDs stay reserved.
 test -f "$SHQ_REPO/$SHQ_V1_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V2_HISTORY_TODO"
+test -f "$SHQ_REPO/$SHQ_V3_HISTORY_TODO"
 ! rg -q '^## SHQ-' "$SHQ_REPO/$SHQ_ACTIVE_TODO"
 test ! -e "$SHQ_REPO/$SHQ_PROJECTION"
 
@@ -644,6 +647,7 @@ test ! -e "$SHQ_REPO/$SHQ_PROJECTION"
   --protected-output-path "$SHQ_ACTIVE_TODO" \
   --protected-output-path "$SHQ_V1_HISTORY_TODO" \
   --protected-output-path "$SHQ_V2_HISTORY_TODO" \
+  --protected-output-path "$SHQ_V3_HISTORY_TODO" \
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
@@ -655,15 +659,16 @@ test ! -e "$SHQ_REPO/$SHQ_PROJECTION"
 
 The history boards retain `SHQ-001` as an abandoned combined task, `SHQ-002` as
 a cancelled unbounded implementation attempt, and `SHQ-003` as its unlaunched
-dependent. Their canonical task blocks remain unchanged, while a preamble records
+dependent. SHQ-004/005 record a never-launched v3 projection whose snapshot CID
+exposed missing retry semantics before scheduling. Canonical blocks remain unchanged; preambles record
 the cancelled/unlaunched dispositions and successors. They are never completion
 evidence or scheduler sources. Their discovery records stay
-in `$SHQ_DATA/discovery`, reserving `SHQ-001` through `SHQ-003`; the clean active
-board therefore receives `SHQ-004` and `SHQ-005`. New graph, dataset and bundle
+in `$SHQ_DATA/discovery`, reserving `SHQ-001` through `SHQ-005`; the clean active
+board therefore receives `SHQ-006` and `SHQ-007`. New graph, dataset and bundle
 projections live under `$SHQ_PROJECTION`; no scheduler may read a v1 or v2
 bundle index.
 
-Review the portable v3 Markdown and JSON projections and add those exact files
+Review the portable v4 Markdown and JSON projections and add those exact files
 with `git add -f`; do not add DuckDB databases, lock files, runtime state or
 provider logs. The archived v1 board and both objective-control documents are
 exact protected paths for every subsequent implementation lane.
@@ -678,9 +683,8 @@ would create a different, incomplete completion identity.
 ### Local `SHQ-G006` implementation and `SHQ-G007` snapshot
 
 G006 owns only `.gitignore`, the observer and its tests; G007 owns only the JSON
-snapshot. Their bounded-v3 bundle keys prevent either task from inheriting the
-stale state of the abandoned combined task or cancelled v2 attempt. Both are
-projected in the v3 index. The G006 task may inspect only the exact rescue commit
+snapshot. Their bounded-v4 bundle keys prevent either task from inheriting stale
+state from retired projections. Both are projected in the v4 index. The G006 task may inspect only the exact rescue commit
 named in its content-addressed refinement; all reads and searches remain within
 its disposable worktree. The generated task dependency prevents the scheduler
 from creating the G007 worktree until G006 has merged, so G007 observes the
@@ -748,6 +752,7 @@ SHQ_RECONCILE_G006=(
   --protected-output-path "$SHQ_ACTIVE_TODO"
   --protected-output-path "$SHQ_V1_HISTORY_TODO"
   --protected-output-path "$SHQ_V2_HISTORY_TODO"
+  --protected-output-path "$SHQ_V3_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
@@ -810,6 +815,7 @@ SHQ_RECONCILE_G007=(
   --protected-output-path "$SHQ_ACTIVE_TODO"
   --protected-output-path "$SHQ_V1_HISTORY_TODO"
   --protected-output-path "$SHQ_V2_HISTORY_TODO"
+  --protected-output-path "$SHQ_V3_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
@@ -895,6 +901,7 @@ SHQ_RECONCILE_G010=(
   --protected-output-path "$SHQ_ACTIVE_TODO"
   --protected-output-path "$SHQ_V1_HISTORY_TODO"
   --protected-output-path "$SHQ_V2_HISTORY_TODO"
+  --protected-output-path "$SHQ_V3_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json
@@ -973,6 +980,7 @@ python -m ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor \
   --implementation-protected-path "$SHQ_ACTIVE_TODO" \
   --implementation-protected-path "$SHQ_V1_HISTORY_TODO" \
   --implementation-protected-path "$SHQ_V2_HISTORY_TODO" \
+  --implementation-protected-path "$SHQ_V3_HISTORY_TODO" \
   --implementation-protected-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
