@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 import sys
 from pathlib import Path
 
@@ -176,6 +178,77 @@ def test_strict_shard_idle_reason_ignores_cross_shard_resource_claim(
     )
     assert borrower_result["selection_idle_reason"] == (
         "all_selectable_ready_tasks_deferred_by_resource_claim"
+    )
+
+
+def test_resource_claim_ignores_sibling_worktree_with_same_repository_id(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    sibling = tmp_path / "sibling"
+    repo.mkdir()
+    sibling.mkdir()
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_daemon.process_command_line",
+        lambda _pid: (
+            "python -m ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_daemon"
+        ),
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "lane" / "state.json",
+        strategy_path=repo / "lane" / "strategy.json",
+        events_path=repo / "lane" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## IPS-",
+        implement=True,
+        worktree_submodule_paths=("ipfs_datasets_py",),
+    )
+    daemon.merge_target_repository_id = "repository:shared-accelerate"
+    task = PortalTask(
+        task_id="IPS-007",
+        title="Identities",
+        status="todo",
+        completion="auto",
+        priority="P0",
+        track="datasets-identity",
+        outputs=[
+            "ipfs_datasets_py/ipfs_datasets_py/logic/zkp/incremental_sealing/identity.py"
+        ],
+    )
+    claim_path = daemon._implementation_resource_claim_path("ipfs_datasets_py")
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "kind": "implementation_resource_claim",
+        "lease_id": "foreign-scg",
+        "pid": os.getpid(),
+        "owner_script": "implementation_daemon.py",
+        "repo_root": "",
+        "worktree_root": str(sibling.resolve()),
+        "repository_id": "repository:shared-accelerate",
+        "state_dir": str((sibling / "lane").resolve()),
+        "task_id": "SCG-016",
+        "board_namespace": "semantic-compression-governor-v1",
+        "resource_kind": "submodule",
+        "resource_path": "ipfs_datasets_py",
+    }
+    claim_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert (
+        daemon._implementation_resource_claim_owner_is_active(payload) is False
+    )
+    assert daemon._active_implementation_resource_claims([task]) == {}
+
+    local = dict(payload)
+    local["worktree_root"] = str(repo.resolve())
+    local["task_id"] = "IPS-006"
+    claim_path.write_text(json.dumps(local), encoding="utf-8")
+    assert daemon._implementation_resource_claim_owner_is_active(local) is True
+    assert "ipfs_datasets_py" in daemon._active_implementation_resource_claims(
+        [task]
     )
 
 

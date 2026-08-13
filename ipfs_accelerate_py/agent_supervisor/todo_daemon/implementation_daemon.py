@@ -48670,19 +48670,23 @@ class PortalImplementationDaemon:
         metadata: dict[str, Any],
     ) -> bool:
         repository_id = str(metadata.get("repository_id") or "")
-        if repository_id:
-            if repository_id != self.merge_target_repository_id:
+        if repository_id and repository_id != self.merge_target_repository_id:
+            return False
+        worktree_root = str(
+            metadata.get("worktree_root") or metadata.get("repo_root") or ""
+        )
+        try:
+            if (
+                worktree_root
+                and Path(worktree_root).resolve() != self.repo_root.resolve()
+            ):
+                # checkout_lock_metadata keeps repo_root empty and records the
+                # checkout in worktree_root. Sibling worktrees share one
+                # git-common-dir lock folder; a live claim in another
+                # checkout must not serialize this board.
                 return False
-        else:
-            repo_root = str(metadata.get("repo_root") or "")
-            try:
-                if (
-                    repo_root
-                    and Path(repo_root).resolve() != self.repo_root.resolve()
-                ):
-                    return False
-            except OSError:
-                return False
+        except OSError:
+            return False
         resource_path = str(metadata.get("resource_path") or "")
         if not resource_path:
             return False
