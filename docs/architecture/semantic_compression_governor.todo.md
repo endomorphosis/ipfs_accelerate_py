@@ -158,7 +158,7 @@ W28 SCG-048
 
 ## SCG-004 Inventory MCP++ shared schemas/vectors and proof-sealer availability
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
