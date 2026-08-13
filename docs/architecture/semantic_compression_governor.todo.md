@@ -590,7 +590,7 @@ W28 SCG-048
 
 ## SCG-020 Implement append-only audit, calibration, and benchmark histories
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
