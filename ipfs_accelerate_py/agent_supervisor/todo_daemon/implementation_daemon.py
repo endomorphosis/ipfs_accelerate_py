@@ -108,6 +108,16 @@ from ..merge.merge_conflict_repair import (
     resolve_reconciliation_guardrail_todo_conflicts,
 )
 from ..core.submodule_degradation import DegradationState
+from ...llm_router import (
+    agent_implementation_control_plane_source_generation,
+    materialize_agent_implementation_control_plane_capsule,
+    seal_agent_implementation_control_plane_capsule,
+)
+from ..runtime.resource_scheduler import (
+    CapacityDriftAction,
+    CapacityDriftDecision,
+    evaluate_capacity_drift,
+)
 from ..task_sources.persistent_task_queue import PersistentTaskQueue
 from ..task_sources.task_identity import (
     TaskIdentity,
@@ -116,14 +126,25 @@ from ..task_sources.task_identity import (
 )
 from ..task_sources.task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,
+    ActivePlanBinding,
+    ActivePlanRevisionError,
     CanonicalTaskSource,
+    CompiledClaimPreconditions,
     TaskSourceConflictError,
     DualTaskSource,
+    MissingActivePlanRevisionError,
+    PlanRuntimeDispatchDecision,
     TaskSourceError,
     TaskSourceIdentity,
     TaskSourceIntegrityError,
     TaskSourceTask,
+    bind_active_plan_revision,
+    compiled_claim_preconditions,
+    evaluate_plan_runtime_dispatch,
+    load_active_plan_binding_from_store,
     open_task_source,
+    order_ready_by_fairness_and_critical_path,
+    recompute_readiness_statuses,
 )
 from ..task_sources.taskboard_store import (
     ProjectionDeltaCheckpointStore,
@@ -288,6 +309,9 @@ WORKTREE_LIFECYCLE_LEASE_SECONDS_ENV = (
 )
 WORKTREE_LIFECYCLE_STARTUP_GRACE_ENV = (
     "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_STARTUP_GRACE_SECONDS"
+)
+WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV = (
+    "IPFS_ACCELERATE_AGENT_RECLAIM_DEAD_WORKTREE_LEASES_ON_STARTUP"
 )
 IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND = "implementation_resource_claim"
 IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME = "implementation-resource-claims"
@@ -3139,6 +3163,11 @@ class PortalImplementationDaemon:
         assumed_completed_task_ids: Sequence[str] = (),
         execution_slice_task_ids: Sequence[str] = (),
         execution_slice_task_cids: Sequence[str] = (),
+        plan_revision_store: Any = None,
+        parallel_execution_plan: Mapping[str, Any] | Any | None = None,
+        require_active_plan_revision: bool | None = None,
+        plan_capacity_snapshot: Mapping[str, Any] | None = None,
+        plan_provider_snapshots: Sequence[Mapping[str, Any]] | None = None,
         llm_merge_resolver_command: str | None = None,
         llm_merge_resolver_timeout_seconds: float | None = None,
         merge_reconciliation_max_merges: int | None = None,
@@ -3442,6 +3471,27 @@ class PortalImplementationDaemon:
             for task_cid in execution_slice_task_cids
             if str(task_cid).strip()
         )
+        self.plan_revision_store = plan_revision_store
+        self._configured_parallel_execution_plan = parallel_execution_plan
+        self._plan_capacity_snapshot = (
+            dict(plan_capacity_snapshot) if plan_capacity_snapshot else None
+        )
+        self._plan_provider_snapshots = (
+            tuple(dict(item) for item in plan_provider_snapshots)
+            if plan_provider_snapshots
+            else ()
+        )
+        if require_active_plan_revision is None:
+            self.require_active_plan_revision = bool(
+                plan_revision_store is not None
+                or parallel_execution_plan is not None
+            )
+        else:
+            self.require_active_plan_revision = bool(require_active_plan_revision)
+        self._active_plan_binding: ActivePlanBinding | None = None
+        self._last_plan_runtime_decision: PlanRuntimeDispatchDecision | None = None
+        self._last_capacity_drift: CapacityDriftDecision | None = None
+        self._compiled_claim_preconditions: CompiledClaimPreconditions | None = None
         self.llm_merge_resolver_command = (
             default_llm_merge_resolver_command()
             if llm_merge_resolver_command is None
@@ -3594,6 +3644,354 @@ class PortalImplementationDaemon:
             dict(cached_result) if isinstance(cached_result, Mapping) else None
         )
         self._last_safety_reconciliation_monotonic = time.monotonic()
+
+    def _plan_runtime_enabled(self) -> bool:
+        return bool(
+            self.require_active_plan_revision
+            or self.plan_revision_store is not None
+            or self._configured_parallel_execution_plan is not None
+            or self._active_plan_binding is not None
+        )
+
+    def _load_active_plan_binding(
+        self,
+        *,
+        refresh: bool = False,
+    ) -> ActivePlanBinding | None:
+        """Load the active plan revision and compiled execution plan."""
+
+        if not refresh and self._active_plan_binding is not None:
+            return self._active_plan_binding
+        if not self._plan_runtime_enabled():
+            return None
+        try:
+            if self.plan_revision_store is not None:
+                binding = load_active_plan_binding_from_store(
+                    self.plan_revision_store,
+                    execution_plan=self._configured_parallel_execution_plan,
+                    execution_slice_task_ids=self.execution_slice_task_ids,
+                    execution_slice_task_cids=self.execution_slice_task_cids,
+                )
+            elif self._configured_parallel_execution_plan is not None:
+                plan = self._configured_parallel_execution_plan
+                plan_payload = (
+                    plan.to_dict()
+                    if hasattr(plan, "to_dict")
+                    else dict(plan)
+                )
+                plan_id = str(plan_payload.get("plan_id") or "execution-plan:configured")
+                binding = bind_active_plan_revision(
+                    active={
+                        "revision_cid": str(
+                            plan_payload.get("revision_cid")
+                            or plan_payload.get("plan_root_cid")
+                            or f"revision:{plan_id}"
+                        ),
+                        "plan_root_cid": str(
+                            plan_payload.get("plan_root_cid")
+                            or plan_payload.get("repository_tree_id")
+                            or f"plan-root:{plan_id}"
+                        ),
+                        "semantic_revision": int(
+                            plan_payload.get("semantic_revision") or 1
+                        ),
+                        "event_cursor": str(plan_payload.get("event_cursor") or ""),
+                        "active_cid": str(plan_payload.get("active_cid") or plan_id),
+                    },
+                    revision={
+                        "revision_cid": str(
+                            plan_payload.get("revision_cid")
+                            or plan_payload.get("plan_root_cid")
+                            or f"revision:{plan_id}"
+                        ),
+                        "plan_root_cid": str(
+                            plan_payload.get("plan_root_cid")
+                            or plan_payload.get("repository_tree_id")
+                            or f"plan-root:{plan_id}"
+                        ),
+                        "execution_plan_cid": plan_id,
+                        "semantic_revision": int(
+                            plan_payload.get("semantic_revision") or 1
+                        ),
+                    },
+                    execution_plan=plan_payload,
+                    execution_slice_task_ids=self.execution_slice_task_ids,
+                    execution_slice_task_cids=self.execution_slice_task_cids,
+                )
+            else:
+                if self.require_active_plan_revision:
+                    raise MissingActivePlanRevisionError(
+                        "active plan revision is required but no store or plan is bound",
+                        reason="missing_active_plan_revision",
+                    )
+                return None
+        except ActivePlanRevisionError:
+            if self.require_active_plan_revision:
+                raise
+            return None
+        self._active_plan_binding = binding
+        return binding
+
+    def _live_capacity_for_plan_runtime(
+            self,
+        ) -> tuple[Mapping[str, Any] | None, Sequence[Mapping[str, Any]]]:
+            host = self._plan_capacity_snapshot
+            providers: Sequence[Mapping[str, Any]] = self._plan_provider_snapshots
+            return host, providers
+
+    def _observe_active_revision_cid(self, binding: ActivePlanBinding) -> str:
+            store = self.plan_revision_store
+            if store is not None:
+                get_active = getattr(store, "get_active", None)
+                if callable(get_active):
+                    active = get_active()
+                    if active is not None:
+                        payload = (
+                            active.to_dict()
+                            if hasattr(active, "to_dict")
+                            else dict(active)
+                        )
+                        observed = str(payload.get("revision_cid") or "").strip()
+                        if observed:
+                            return observed
+            return binding.revision_cid
+
+    def _evaluate_capacity_drift_for_binding(
+            self,
+            binding: ActivePlanBinding,
+            *,
+            candidate_task_ids: Sequence[str],
+        ) -> CapacityDriftDecision:
+            widths = binding.execution_plan.get("widths") or {}
+            if isinstance(widths, Mapping):
+                planned_width = int(
+                    widths.get("admitted")
+                    or widths.get("resource")
+                    or widths.get("conflict")
+                    or widths.get("graph")
+                    or 1
+                )
+            else:
+                planned_width = int(
+                    binding.execution_plan.get("admitted_width")
+                    or binding.execution_plan.get("resource_width")
+                    or 1
+                )
+            live_host, live_providers = self._live_capacity_for_plan_runtime()
+            # When no live observation is configured, treat the plan snapshot as
+            # still valid so unit tests and single-lane bootstrap can dispatch.
+            if live_host is None and not live_providers:
+                decision = CapacityDriftDecision(
+                    action=CapacityDriftAction.PROCEED,
+                    planned_width=max(1, planned_width),
+                    live_width=max(1, planned_width),
+                    admitted_width=max(1, planned_width),
+                    planned_capacity_snapshot_id=binding.capacity_snapshot_id,
+                    live_capacity_snapshot_id=binding.capacity_snapshot_id,
+                    admitted_task_ids=tuple(
+                        str(item).strip()
+                        for item in candidate_task_ids
+                        if str(item).strip()
+                    )[: max(1, planned_width)],
+                )
+            else:
+                decision = evaluate_capacity_drift(
+                    planned_width=max(1, planned_width),
+                    planned_capacity_snapshot_id=binding.capacity_snapshot_id,
+                    live_host=live_host,
+                    live_providers=live_providers,
+                    live_capacity_snapshot_id=str(
+                        (live_host or {}).get("snapshot_id")
+                        if isinstance(live_host, Mapping)
+                        else ""
+                    ),
+                    candidate_task_ids=candidate_task_ids,
+                )
+            self._last_capacity_drift = decision
+            return decision
+
+    def _require_plan_runtime_before_claim(
+            self,
+            task: PortalTask,
+            *,
+            tasks: Sequence[PortalTask] | None = None,
+            completed_ids: Iterable[str] = (),
+            blocked_ids: Iterable[str] = (),
+            active_task_ids: Iterable[str] = (),
+            concurrent_claim_task_ids: Iterable[str] = (),
+        ) -> dict[str, Any] | None:
+            """Fail closed before publishing a claim when plan runtime is bound.
+
+            Returns ``None`` when dispatch is admitted (or plan runtime is off).
+            Otherwise returns a skip/defer result dict for the implement path.
+            On success, stores compiled claim preconditions that must be acquired
+            (lease/worktree/fence names) before the claim is published.
+            """
+
+            if not self._plan_runtime_enabled():
+                self._compiled_claim_preconditions = None
+                return None
+            try:
+                binding = self._load_active_plan_binding(refresh=True)
+            except ActivePlanRevisionError as exc:
+                result = {
+                    "skipped": True,
+                    "reason": f"plan_runtime_{exc.reason}",
+                    "task_id": task.task_id,
+                    "plan_runtime_error": str(exc),
+                    "details": dict(exc.details),
+                }
+                self._record_event("plan_runtime_rejected", result)
+                return result
+            if binding is None:
+                if self.require_active_plan_revision:
+                    result = {
+                        "skipped": True,
+                        "reason": "plan_runtime_missing_active_plan_revision",
+                        "task_id": task.task_id,
+                    }
+                    self._record_event("plan_runtime_rejected", result)
+                    return result
+                self._compiled_claim_preconditions = None
+                return None
+
+            task_records: list[Any] = []
+            for item in tasks or (task,):
+                task_records.append(
+                    {
+                        "task_id": item.task_id,
+                        "status": getattr(item, "status", "ready"),
+                        "depends_on": list(getattr(item, "depends_on", ()) or ()),
+                        "dependency_task_ids": list(
+                            getattr(item, "depends_on", ()) or ()
+                        ),
+                    }
+                )
+            decision = evaluate_plan_runtime_dispatch(
+                binding,
+                task_id=task.task_id,
+                task_cid=self._canonical_ref(task),
+                tasks=task_records,
+                completed_ids=completed_ids,
+                blocked_ids=blocked_ids,
+                active_task_ids=active_task_ids,
+                observed_active_revision_cid=self._observe_active_revision_cid(binding),
+                task_status=str(getattr(task, "status", "") or ""),
+                concurrent_claim_task_ids=concurrent_claim_task_ids,
+            )
+            self._last_plan_runtime_decision = decision
+            if not decision.admitted:
+                result = {
+                    "skipped": True,
+                    "reason": f"plan_runtime_{decision.reason}",
+                    "task_id": task.task_id,
+                    "plan_runtime": decision.to_dict(),
+                }
+                self._record_event("plan_runtime_rejected", result)
+                self._compiled_claim_preconditions = None
+                return result
+
+            drift = self._evaluate_capacity_drift_for_binding(
+                binding,
+                candidate_task_ids=[task.task_id],
+            )
+            if not drift.may_dispatch or task.task_id not in set(
+                drift.admitted_task_ids or (task.task_id,)
+            ):
+                # Capacity drift: wait rather than overcommit.
+                if drift.action is CapacityDriftAction.WAIT or not drift.may_dispatch:
+                    result = {
+                        "skipped": True,
+                        "deferred": True,
+                        "reason": "plan_runtime_capacity_wait",
+                        "task_id": task.task_id,
+                        "capacity_drift": drift.to_dict(),
+                        "attempt_consumed": False,
+                        "provider_dispatched": False,
+                    }
+                    self._record_event("plan_runtime_capacity_wait", result)
+                    self._compiled_claim_preconditions = None
+                    return result
+                if drift.action is CapacityDriftAction.DEGRADE and (
+                    drift.admitted_task_ids
+                    and task.task_id not in drift.admitted_task_ids
+                ):
+                    result = {
+                        "skipped": True,
+                        "deferred": True,
+                        "reason": "plan_runtime_capacity_degraded",
+                        "task_id": task.task_id,
+                        "capacity_drift": drift.to_dict(),
+                        "attempt_consumed": False,
+                        "provider_dispatched": False,
+                    }
+                    self._record_event("plan_runtime_capacity_degraded", result)
+                    self._compiled_claim_preconditions = None
+                    return result
+
+            preconditions = decision.preconditions
+            if preconditions is None:
+                try:
+                    preconditions = compiled_claim_preconditions(binding, task.task_id)
+                except ActivePlanRevisionError as exc:
+                    result = {
+                        "skipped": True,
+                        "reason": f"plan_runtime_{exc.reason}",
+                        "task_id": task.task_id,
+                        "details": dict(exc.details),
+                    }
+                    self._record_event("plan_runtime_rejected", result)
+                    self._compiled_claim_preconditions = None
+                    return result
+            # Acquire compiled lease/worktree/fence *names* into claim metadata
+            # before the claim is published.  Actual workspace creation remains on
+            # the existing fenced worktree lifecycle path (ASI-171).
+            self._compiled_claim_preconditions = preconditions
+            self._record_event(
+                "plan_runtime_admitted",
+                {
+                    "task_id": task.task_id,
+                    "revision_cid": binding.revision_cid,
+                    "plan_id": binding.plan_id,
+                    "lease_id": preconditions.lease_id,
+                    "worktree_id": preconditions.worktree_id,
+                    "fence_token": preconditions.fence_token,
+                    "fence_epoch": preconditions.fence_epoch,
+                    "merge_train_id": preconditions.merge_train_id,
+                    "post_merge_validation": list(preconditions.post_merge_validation),
+                    "capacity_drift": drift.to_dict(),
+                    "critical_path_rank": preconditions.critical_path_rank,
+                    "fairness_key": preconditions.fairness_key,
+                },
+            )
+            return None
+
+    def _compiled_claim_metadata_fields(self) -> dict[str, Any]:
+            preconditions = self._compiled_claim_preconditions
+            if preconditions is None:
+                return {}
+            return {
+                "plan_revision_cid": preconditions.revision_cid,
+                "execution_plan_id": preconditions.plan_id,
+                "compiled_lease_id": preconditions.lease_id,
+                "compiled_lease_scope": preconditions.lease_scope,
+                "compiled_worktree_id": preconditions.worktree_id,
+                "compiled_worktree_path": preconditions.worktree_path,
+                "compiled_fence_epoch": preconditions.fence_epoch,
+                "compiled_fence_token": preconditions.fence_token,
+                "compiled_affinity_key": preconditions.affinity_key,
+                "compiled_exclusive_group": preconditions.exclusive_group,
+                "compiled_exclusive_paths": list(preconditions.exclusive_paths),
+                "compiled_provider_id": preconditions.provider_id,
+                "compiled_resource_class": preconditions.resource_class,
+                "compiled_merge_train_id": preconditions.merge_train_id,
+                "compiled_post_merge_validation": list(
+                    preconditions.post_merge_validation
+                ),
+                "compiled_claim_acquired_before_publish": True,
+            }
+
+
 
     @staticmethod
     def _task_source_metadata_text(value: Any) -> str:
@@ -45400,6 +45798,53 @@ def main(argv: list[str] | None = None) -> None:
             daemon.wait_for_wake(timeout=args.interval)
     finally:
         daemon.close_event_runtime()
+
+
+def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
+    """Seal the generation that finished importing this daemon module."""
+
+    source_root = Path(__file__).resolve(strict=True).parents[3]
+    head_before, tree_before = (
+        agent_implementation_control_plane_source_generation(source_root)
+    )
+    parent = Path(tempfile.mkdtemp(prefix="asref-imported-control-plane-"))
+    try:
+        pin = materialize_agent_implementation_control_plane_capsule(
+            source_root=source_root,
+            capsule_parent=parent,
+            source_head=head_before,
+            source_tree=tree_before,
+        )
+        launch = seal_agent_implementation_control_plane_capsule(pin)
+        head_after, tree_after = (
+            agent_implementation_control_plane_source_generation(source_root)
+        )
+        if (head_after, tree_after) != (head_before, tree_before):
+            raise ValueError(
+                "accepted control-plane changed while import was sealed"
+            )
+        return pin, launch, parent
+    except Exception:
+        try:
+            shutil.rmtree(parent)
+        except OSError:
+            pass
+        raise
+
+
+try:
+    (
+        _IMPORTED_CONTROL_PLANE_CAPSULE,
+        _IMPORTED_CONTROL_PLANE_LAUNCH,
+        _IMPORTED_CONTROL_PLANE_TEMP_ROOT,
+    ) = _capture_imported_control_plane_generation()
+except (OSError, ValueError, subprocess.SubprocessError):
+    # Dirty development/import trees cannot be used for the protected route.
+    # Its constructor will retry only against the same on-disk generation and
+    # fail closed if no clean exact capsule can be proven.
+    _IMPORTED_CONTROL_PLANE_CAPSULE = None
+    _IMPORTED_CONTROL_PLANE_LAUNCH = None
+    _IMPORTED_CONTROL_PLANE_TEMP_ROOT = None
 
 
 if __name__ == "__main__":
