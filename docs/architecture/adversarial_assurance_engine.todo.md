@@ -471,7 +471,7 @@ W20 AAE-063
 
 ## AAE-016 Implement data, schema, and interface-contract mutation operators
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
