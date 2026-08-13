@@ -563,7 +563,7 @@ W28 SCG-048
 
 ## SCG-019 Implement immutable audit artifact storage
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
