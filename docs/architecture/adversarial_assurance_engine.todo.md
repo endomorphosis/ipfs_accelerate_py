@@ -957,7 +957,7 @@ W20 AAE-063
 
 ## AAE-034 Store immutable mutant and campaign artifacts over DurableCoordinationStore
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
