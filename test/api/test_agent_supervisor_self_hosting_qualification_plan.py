@@ -14,6 +14,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OBJECTIVE_PATH = (
     REPO_ROOT / "docs/architecture/self_hosting_qualification.objectives.md"
 )
+ACTIVE_TODO_PATH = (
+    REPO_ROOT / "docs/architecture/self_hosting_qualification.todo.md"
+)
+V1_HISTORY_PATH = (
+    REPO_ROOT / "docs/architecture/self_hosting_qualification.v1_history.todo.md"
+)
 
 
 def _goals():
@@ -39,7 +45,7 @@ def test_plan_has_one_closed_combined_goal_dag() -> None:
     goal_id_set = set(goal_ids)
     hierarchy = goal_graph(goals)
 
-    assert len(goals) == 47
+    assert len(goals) == 48
     assert len(goal_id_set) == len(goal_ids)
     assert hierarchy["roots"] == ["SHQ-G000"]
     assert all(
@@ -100,6 +106,7 @@ def test_external_admission_and_preregistration_gates_fail_closed() -> None:
     assert blocked == expected_blocked
     assert external_authority_goal_fence(goals)[1] == expected_blocked
     assert "SHQ-G006" not in blocked
+    assert "SHQ-G007" not in blocked
     assert _descendant_closure(goals, {"SHQ-G072"}) == {
         "SHQ-G072",
         "SHQ-G073",
@@ -124,8 +131,8 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
 
     assert "endomorphosis/ipfs_kit_py:ipfs_kit_py/core/wal" in source
     assert "`core.operation_contracts` is a read-only dependency" in normalized_source
-    assert len(work_goals) == 39
-    assert len(local_work_goals) == 37
+    assert len(work_goals) == 40
+    assert len(local_work_goals) == 38
     assert {goal.goal_id for goal in external_work_goals} == {
         "SHQ-G010",
         "SHQ-G072",
@@ -144,6 +151,27 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     assert "QualificationRuntimePort@1" in by_id["SHQ-G031"].fields["interfaces"]
     assert "GovernedCodingAgentRuntime" in by_id["SHQ-G052"].fields["interfaces"]
     assert "SelfHostingQualificationHarness" in by_id["SHQ-G053"].fields["interfaces"]
+
+    assert by_id["SHQ-G006"].predicted_files == [
+        ".gitignore",
+        "scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py",
+        "test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py",
+    ]
+    assert by_id["SHQ-G007"].predicted_files == [
+        "artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json"
+    ]
+    assert by_id["SHQ-G007"].dependencies == ["SHQ-G006"]
+    assert by_id["SHQ-G010"].dependencies == ["SHQ-G007"]
+    assert by_id["SHQ-G006"].fields["bundle"] != by_id["SHQ-G007"].fields["bundle"]
+
+    active_todo = ACTIVE_TODO_PATH.read_text(encoding="utf-8")
+    history = V1_HISTORY_PATH.read_text(encoding="utf-8")
+    assert "## SHQ-001 " not in active_todo
+    assert "## SHQ-001 " in history
+    assert "- Status: blocked" in history
+    assert "- Completion: superseded:SHQ-002" in history
+    assert "- Historical task: true" in history
+    assert "- Is schedulable: false" in history
 
     datasets_goal_ids = {
         "SHQ-G032",

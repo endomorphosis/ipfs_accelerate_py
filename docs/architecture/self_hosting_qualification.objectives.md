@@ -2,10 +2,12 @@
 
 Machine-ingestible goal hierarchy for the bounded
 `SelfHostingQualificationHarness` capstone and its narrow
-`GovernedCodingAgentRuntime` facade. The executable projection is
-`self_hosting_qualification.todo.md` with task prefix `SHQ-`.
-
-This heap is fail-closed. `SHQ-G010` is an externally governed release-admission
+`GovernedCodingAgentRuntime` facade. After the v1 observer-task migration, the
+executable projection is
+`data/agent_supervisor/self_hosting_qualification/projections/v2/self_hosting_qualification.todo.md`
+with task prefix `SHQ-`; the legacy `docs/architecture/self_hosting_qualification.todo.md`
+is not an active task source. This heap is fail-closed. `SHQ-G010` is an
+externally governed release-admission
 gate. Until it has typed, current-tree completion receipts for every prerequisite
 system, the objective daemon must not project any descendant implementation work.
 
@@ -28,7 +30,8 @@ this protected heap before corpus construction.
 ```text
 SHQ-G000  Bounded self-hosting qualification and truthful release decision
 ├── SHQ-G005  Prerequisite observation
-│   └── SHQ-G006  Install the dependency-state observer and bind current facts
+│   ├── SHQ-G006  Install and test the dependency-state observer
+│   └── SHQ-G007  Generate the post-merge prerequisite observation snapshot
 ├── SHQ-G010  Externally admit all ten prerequisite releases
 ├── SHQ-G020  Reproducible baseline and environment freeze
 │   ├── SHQ-G021  Inventory exact revisions, versions, schemas, routes and proofs
@@ -115,7 +118,7 @@ SHQ-G000  Bounded self-hosting qualification and truthful release decision
 - Refinement: Observation is not completion authority and is safe to execute before the release gate.
 - Conflict policy: Read other supervisors and repositories only; never edit their boards, worktrees, receipts, branches, state databases, keys, or policies.
 
-## SHQ-G006 Install the prerequisite-state observer and bind current facts
+## SHQ-G006 Install and test the prerequisite-state observer
 
 - Status: active
 - Parent: SHQ-G005
@@ -123,28 +126,53 @@ SHQ-G000  Bounded self-hosting qualification and truthful release decision
 - Fib priority: 100
 - Track: prerequisite-observation
 - Priority: P0
-- Bundle: agent-supervisor/self-hosting/prerequisite-observer
-- Parallel lane: prerequisite-observer
+- Bundle: agent-supervisor/self-hosting/prerequisite-observer-implementation
+- Parallel lane: prerequisite-observer-implementation
 - Resource class: cpu-small
 - Token class: medium
-- Goal: Implement a deterministic observer that records current commit/API/test/board evidence for the ten prerequisites and distinguishes released, in-flight, missing, mismatched-name and unverifiable states.
-- Evidence: scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py, artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
-- Outputs: scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py, artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
-- Predicted files: scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py, artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Goal: Implement and independently test a deterministic observer that records current commit/API/test/board evidence for the ten prerequisites and distinguishes released, in-flight, missing, mismatched-name and unverifiable states; do not generate the repository observation artifact in this goal.
+- Evidence: .gitignore, scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
+- Outputs: .gitignore, scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
+- Predicted files: .gitignore, scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
 - Interfaces: observe_prerequisite_releases, PrerequisiteObservation
-- Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
-- Acceptance: Ordinary observation succeeds even when an upstream system is incomplete; require-terminal mode fails closed; every row binds repository, commit, API mapping, test selector, board state and evidence time; no row claims release from prompt text or branch name alone.
-- Gap task: Implement and run the read-only prerequisite observer, preserving an honest in-flight snapshot.
-- Refinement: Recognize versioned functional interfaces such as ContextPacker only through an explicit compatibility map; do not manufacture missing facade classes.
+- Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py; python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode observe --quiet; python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode require-terminal --quiet && exit 99 || test "$?" -eq 1
+- Acceptance: `.gitignore` contains the exact narrow exception `!artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json`; ordinary observation succeeds when an upstream is incomplete, while `require-terminal` validates the complete snapshot before any output write and leaves no artifact on failure; every row binds a clean repository commit/tree, the exact superproject gitlink and matching submodule HEAD, a complete module-level API or explicit versioned compatibility resolution, current focused-test execution receipts, a fully parsed owner board, evidence time and limitations; selector presence alone is never release evidence; malformed or unreadable modules, receipts or boards are unverifiable; every recognized task block has exactly one recognized status and an unrecognized/missing/duplicate status prevents terminal classification; datasets boards `ipfs_datasets_py/docs/architecture/incremental_semantic_index.todo.md` and `ipfs_datasets_py/docs/architecture/semantic_state_contract.todo.md` are bound; no row claims release from prompt text, a branch name, path presence or a partial symbol match. This goal must not create or change `prerequisite_observation.json`.
+- Gap task: Implement and test the read-only prerequisite observer and exact ignore exception without generating the tree-bound observation artifact.
+- Refinement: Resolve every required symbol and interface by AST/module inspection in its declared module, recognizing versioned functional interfaces such as `ContextPacker` only through an explicit compatibility map and never manufacturing missing facades. Keep the ten-name result order stable, but discover future releases of currently missing systems through constrained package exports, release manifests and declared owner-board candidates so a new released module does not require another hard-coded missing result. Tests include independent dirty-tree, gitlink/HEAD mismatch, partial/malformed API, missing/duplicate/unknown board status, stale-or-presence-only test receipt, failed `require-terminal` no-write and two-phase source-binding counterexamples.
 - Embedding query: self hosting qualification prerequisite completion release board commit API focused tests observer
 - AST query: IncrementalSemanticIndex SemanticCapsuleCompiler ContextPacker ContextPackBuilder VerificationReceiptCache IncrementalVerificationPlanner ModelRoutePlanner VerifiedGuiOptimizer IncrementalProofSealer SemanticCompressionGovernor AdversarialAssuranceEngine
 - Conflict policy: Never modify prerequisite implementation or completion evidence from this task.
+
+## SHQ-G007 Generate the post-merge prerequisite observation snapshot
+
+- Status: active
+- Parent: SHQ-G005
+- Depends on: SHQ-G006
+- Fib priority: 100
+- Track: prerequisite-observation
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/prerequisite-observation-snapshot
+- Parallel lane: prerequisite-observation-snapshot
+- Resource class: cpu-small
+- Token class: small
+- Goal: From the clean merged `SHQ-G006` implementation commit, execute the observer and persist the non-authoritative current prerequisite snapshot without changing observer code, tests or ignore policy.
+- Evidence: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Outputs: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Predicted files: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Interfaces: PrerequisiteObservation@1
+- Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py; python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode observe --quiet; python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode require-terminal --quiet && exit 99 || test "$?" -eq 1
+- Acceptance: The only changed path is `artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json`; the task begins from a clean merged G006 commit and the snapshot binds exactly that pre-observation outer commit/tree, recursive gitlinks and matching submodule HEADs while excluding only its own artifact path; all ten rows and limitations are current and deterministic; the artifact declares that it is neither completion nor proof nor release authority; its later artifact commit is an evidence projection and never claimed as the observed source; native validation and local two-pass completion receipts independently bind the clean post-artifact tree.
+- Gap task: Generate and validate the non-authoritative observation artifact only after the merged G006 implementation tree is clean.
+- Refinement: Refuse dirty input, gitlink/HEAD mismatch or an already modified output; never repair or upgrade a prerequisite and never turn an observe result into terminal admission.
+- Embedding query: post merge prerequisite observation snapshot clean source projection recursive gitlinks
+- AST query: PrerequisiteObservation observation_to_json write_observation_artifact
+- Conflict policy: Do not edit `.gitignore`, observer implementation, tests, prerequisite owners, release admission, policies, keys or generated supervisor state.
 
 ## SHQ-G010 Externally admit all ten prerequisite releases
 
 - Status: active
 - Parent: SHQ-G000
-- Depends on: SHQ-G006
+- Depends on: SHQ-G007
 - Fib priority: 100
 - Track: prerequisite-admission
 - Priority: P0

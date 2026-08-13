@@ -67,6 +67,36 @@ capstone integration branch and all gitlinks to those exact revisions; no local
 agent receipt can substitute for that merge/pin authority. `SHQ-G021` then
 freezes the admitted baseline.
 
+The `SHQ-G006` observer implementation is deliberately stricter than a
+file-presence scan; `SHQ-G007` runs it only after G006 is merged and clean.
+For each row it requires a clean repository identity, the outer superproject
+gitlink equal to the observed submodule `HEAD`, complete AST/module-level API
+or explicit compatibility resolution, current focused-test execution receipts,
+and an owner board in which every task block has exactly one recognized status.
+The datasets owner boards are
+`ipfs_datasets_py/docs/architecture/incremental_semantic_index.todo.md` and
+`ipfs_datasets_py/docs/architecture/semantic_state_contract.todo.md`.
+Unreadable or malformed modules, receipts or boards, partial symbol matches,
+unknown/missing/duplicate task statuses, stale receipts and mere selector
+presence all yield `unverifiable`, never `released`. The ten requested rows stay
+stable, while constrained package exports, release manifests and declared
+owner-board candidates let a later release of a currently missing system be
+discovered without rewriting a hard-coded missing entry.
+
+The observation is versioned despite the repository-wide JSON ignore rule:
+`.gitignore` must contain exactly the narrow exception
+`!artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json`.
+It uses explicit two-phase identity rather than an impossible self-reference.
+G006 commits the observer, tests and ignore exception and makes that tree clean;
+G007 then generates the observation. Its source binding is that clean G006
+commit/tree, including recursive gitlinks and matching submodule heads and
+excluding only the observation artifact. Committing the artifact creates an
+evidence projection; it does not change what the JSON claims to have observed.
+Native validation and completion receipts independently bind the clean
+post-artifact tree. `require-terminal` must validate the entire in-memory
+snapshot before atomically writing output, so a failed terminal check leaves no
+new or replaced admission artifact.
+
 ## 3. Why `ipfs_kit_py/core/wal` is representative
 
 The package matches the requested bounded VFS/WAL contract class and exercises
@@ -178,14 +208,15 @@ part of the already frozen executable-source identity.
 
 ## 6. Goal, subgoal and task projection
 
-The objective heap defines 37 autonomous work goals and
+The objective heap defines 38 autonomous work goals and
 two external gates. The objective daemon generates their task IDs in a
 deterministic scan and assigns content IDs after checking repository evidence.
 
 | Goal | Planned work item | Owner | Depends on |
 |---|---|---|---|
-| `SHQ-G006` | Prerequisite observer and current factual snapshot | accelerate | — |
-| `SHQ-G010` | External terminal release admission | operator/upstream owners | G006 |
+| `SHQ-G006` | Prerequisite observer implementation, tests and exact ignore exception | accelerate | — |
+| `SHQ-G007` | Clean post-merge current-fact observation snapshot | accelerate | G006 |
+| `SHQ-G010` | External terminal release admission | operator/upstream owners | G007 |
 | `SHQ-G021` | Exact revision/version/schema/route/proof inventory | accelerate | external gate |
 | `SHQ-G022` | Focused tests and import/no-network/no-install probes | accelerate | G021 |
 | `SHQ-G023` | WAL green check, full proof checkpoint, environment freeze | accelerate + kit evidence | G022 |
@@ -227,7 +258,8 @@ deterministic scan and assigns content IDs after checking repository evidence.
 ### Parallel waves
 
 ```text
-W0   G006
+W0a  G006
+W0b  G007
 WG   G010 external admission
 W1   G021 → G022 → G023
 W2   G031 | G041
@@ -554,25 +586,44 @@ submit to a task queue.
 ```bash
 SHQ_REPO=/home/barberb/lift_coding/.worktrees/ipfs-accelerate-self-hosting-qualification
 SHQ_DATA=data/agent_supervisor/self_hosting_qualification
+SHQ_PROJECTION="$SHQ_DATA/projections/v2"
+SHQ_ACTIVE_TODO=docs/architecture/self_hosting_qualification.todo.md
+SHQ_HISTORY_TODO=docs/architecture/self_hosting_qualification.v1_history.todo.md
 SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v1
 SHQ_GATE="$SHQ_RUN/operator/objective_completion_gate.json"
 SHQ_EXTERNAL_AUTHORITY="$SHQ_RUN/operator/external_completion_authority.json"
 SHQ_SIGNING_KEY="$SHQ_RUN/operator/signing.key"
+SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-implementation/state/agent_agent_supervisor_self_hosting_prerequisite_observer_implementation_runtime.todo.md"
+SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_runtime.todo.md"
+
+# One-time reviewed patch: move old SHQ-001 unchanged into SHQ_HISTORY_TODO,
+# annotate it blocked/historical/superseded, and leave SHQ_ACTIVE_TODO with
+# only its title. Never mark SHQ-001 completed and retain its discovery file.
+test -f "$SHQ_REPO/$SHQ_HISTORY_TODO"
+! rg -q '^## SHQ-' "$SHQ_REPO/$SHQ_ACTIVE_TODO"
+test ! -e "$SHQ_REPO/$SHQ_PROJECTION"
 
 python -m ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon \
   --repo-root "$SHQ_REPO" \
   --objective-path docs/architecture/self_hosting_qualification.objectives.md \
-  --todo-path docs/architecture/self_hosting_qualification.todo.md \
+  --todo-path "$SHQ_ACTIVE_TODO" \
   --discovery-dir "$SHQ_DATA/discovery" \
-  --bundle-dir "$SHQ_DATA/bundles" \
-  --dataset-dir "$SHQ_DATA/datasets" \
-  --graph-path "$SHQ_DATA/objective_graph.json" \
+  --discovery-output-path "$SHQ_DATA/discovery" \
+  --bundle-dir "$SHQ_PROJECTION/bundles" \
+  --dataset-dir "$SHQ_PROJECTION/datasets" \
+  --graph-path "$SHQ_PROJECTION/objective_graph.json" \
+  --plan-evaluation-path "$SHQ_PROJECTION/plan_evaluations.json" \
+  --todo-vector-index-path "$SHQ_PROJECTION/bundles/todo_vector_index.json" \
   --task-prefix SHQ- \
-  --max-findings 96 \
+  --max-findings 2 \
   --scope-goal-id SHQ-G006 \
+  --scope-goal-id SHQ-G007 \
+  --force-goal-id SHQ-G006 \
+  --force-goal-id SHQ-G007 \
   --surplus-findings-per-goal 1 \
   --no-persist-ast-dataset \
   --no-reconcile-goal-completion \
+  --no-generate-bounded-work \
   --scan-exclude-path ipfs_accelerate_py \
   --scan-exclude-path ipfs_datasets_py \
   --scan-exclude-path ipfs_kit_py \
@@ -584,6 +635,8 @@ python -m ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon \
   --scan-exclude-path tests \
   --protected-output-path docs/architecture/self_hosting_qualification.objectives.md \
   --protected-output-path docs/architecture/self_hosting_qualification.todo.md \
+  --protected-output-path "$SHQ_ACTIVE_TODO" \
+  --protected-output-path "$SHQ_HISTORY_TODO" \
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
@@ -592,11 +645,152 @@ python -m ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon \
   --protected-output-path config/self_hosting_qualification_trusted_keys.json
 ```
 
+The history board retains old `SHQ-001` as blocked, non-schedulable, historical
+and superseded by the split successor; it is evidence of an abandoned combined
+task, never completion evidence and never an active scheduler source. Its
+original discovery record remains in `$SHQ_DATA/discovery`, which reserves
+`SHQ-001`; the clean active board therefore receives `SHQ-002` and `SHQ-003`.
+New graph, dataset and bundle projections live under `$SHQ_PROJECTION`; no
+scheduler may read the legacy bundle index.
+
+Review the portable v2 Markdown and JSON projections and add those exact files
+with `git add -f`; do not add DuckDB databases, lock files, runtime state or
+provider logs. The archived v1 board and both objective-control documents are
+exact protected paths for every subsequent implementation lane.
+
+The `--scan-exclude-path` arguments above are bounded bootstrap-generation
+inputs only: they prevent the initial evidence-gap scan from rediscovering the
+entire product while it projects `SHQ-G006` and `SHQ-G007`. They must not appear in a goal
+completion reconciliation. Completion must compute its tree identity over all
+source and recursive gitlinks; carrying these exclusions into reconciliation
+would create a different, incomplete completion identity.
+
+### Local `SHQ-G006` implementation and `SHQ-G007` snapshot
+
+G006 owns only `.gitignore`, the observer and its tests; G007 owns only the JSON
+snapshot. Their distinct bundle keys prevent either task from inheriting the
+exhausted checkpoint of the old combined observer bundle. Both are projected
+in the initial v2 index. The generated task dependency prevents the scheduler
+from creating the G007 worktree until G006 has merged, so G007 observes the
+clean merged implementation identity. Do not pause for objective reconciliation
+between the task commits. Once both runtime todos are terminal, both commits
+are merged and the target branch is clean, run the focused suite and no-output
+CLI probes. Then create current tree-bound local gates and formally reconcile
+G006 followed by G007, without external receipts or scan exclusions:
+
+```bash
+test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
+git -C "$SHQ_REPO" submodule status --recursive
+python -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
+python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py \
+  --repo-root "$SHQ_REPO" --mode observe --quiet
+python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py \
+  --repo-root "$SHQ_REPO" --mode require-terminal --quiet && exit 99 || test "$?" -eq 1
+test -f "$SHQ_REPO/artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json"
+```
+
+```bash
+SHQ_RECONCILE_G006=(
+  python -m ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon
+  --repo-root "$SHQ_REPO"
+  --objective-path docs/architecture/self_hosting_qualification.objectives.md
+  --todo-path "$SHQ_ACTIVE_TODO"
+  --discovery-dir "$SHQ_DATA/discovery"
+  --discovery-output-path "$SHQ_DATA/discovery"
+  --bundle-dir "$SHQ_PROJECTION/bundles"
+  --dataset-dir "$SHQ_PROJECTION/datasets"
+  --graph-path "$SHQ_PROJECTION/objective_graph.json"
+  --plan-evaluation-path "$SHQ_PROJECTION/plan_evaluations.json"
+  --todo-vector-index-path "$SHQ_PROJECTION/bundles/todo_vector_index.json"
+  --task-prefix SHQ-
+  --max-findings 96
+  --scope-goal-id SHQ-G006
+  --surplus-findings-per-goal 1
+  --no-persist-ast-dataset
+  --objective-goal-completion-todo-board "$SHQ_G006_RUNTIME_TODO::## SHQ-"
+  --objective-goal-completion-gate-path "$SHQ_GATE"
+  --protected-output-path docs/architecture/self_hosting_qualification.objectives.md
+  --protected-output-path docs/architecture/self_hosting_qualification.todo.md
+  --protected-output-path "$SHQ_ACTIVE_TODO"
+  --protected-output-path "$SHQ_HISTORY_TODO"
+  --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
+)
+
+"${SHQ_RECONCILE_G006[@]}"  # active -> provisionally_complete
+git -C "$SHQ_REPO" add \
+  docs/architecture/self_hosting_qualification.objectives.md
+git -C "$SHQ_REPO" commit -m 'chore: provisionally complete prerequisite observer'
+test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
+
+# Independently refresh $SHQ_GATE against this commit and its parent ledger.
+"${SHQ_RECONCILE_G006[@]}"  # provisional -> verified_complete
+git -C "$SHQ_REPO" add \
+  docs/architecture/self_hosting_qualification.objectives.md
+git -C "$SHQ_REPO" commit -m 'chore: verify prerequisite observer completion'
+```
+
+The already-merged G007 task started at the clean merged G006 `HEAD` and changed
+only the observation JSON, whose exact
+`.gitignore` exception makes it visible. The JSON binds that pre-observation
+G006 commit/tree, every recursive gitlink and matching submodule `HEAD`, and
+excludes only its own artifact path. Its commit is an evidence projection, not
+the source identity claimed by the JSON. Independently verify `require-terminal`
+without `--output`; tests prove a failing terminal check cannot create or
+replace output.
+
+After G006 reaches verified completion, refresh the local gate against that
+commit and its parent ledger, then perform the same two-transition protocol
+for the already-merged G007 task:
+
+```bash
+SHQ_RECONCILE_G007=(
+  python -m ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon
+  --repo-root "$SHQ_REPO"
+  --objective-path docs/architecture/self_hosting_qualification.objectives.md
+  --todo-path "$SHQ_ACTIVE_TODO"
+  --discovery-dir "$SHQ_DATA/discovery"
+  --discovery-output-path "$SHQ_DATA/discovery"
+  --bundle-dir "$SHQ_PROJECTION/bundles"
+  --dataset-dir "$SHQ_PROJECTION/datasets"
+  --graph-path "$SHQ_PROJECTION/objective_graph.json"
+  --plan-evaluation-path "$SHQ_PROJECTION/plan_evaluations.json"
+  --todo-vector-index-path "$SHQ_PROJECTION/bundles/todo_vector_index.json"
+  --task-prefix SHQ-
+  --max-findings 96
+  --scope-goal-id SHQ-G007
+  --surplus-findings-per-goal 1
+  --no-persist-ast-dataset
+  --objective-goal-completion-todo-board "$SHQ_G007_RUNTIME_TODO::## SHQ-"
+  --objective-goal-completion-gate-path "$SHQ_GATE"
+  --protected-output-path docs/architecture/self_hosting_qualification.objectives.md
+  --protected-output-path docs/architecture/self_hosting_qualification.todo.md
+  --protected-output-path "$SHQ_ACTIVE_TODO"
+  --protected-output-path "$SHQ_HISTORY_TODO"
+  --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
+)
+
+"${SHQ_RECONCILE_G007[@]}"  # active -> provisionally_complete
+git -C "$SHQ_REPO" add \
+  docs/architecture/self_hosting_qualification.objectives.md
+git -C "$SHQ_REPO" commit -m 'chore: provisionally complete prerequisite snapshot'
+test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
+
+# Independently refresh $SHQ_GATE against this commit and its parent ledger.
+"${SHQ_RECONCILE_G007[@]}"  # provisional -> verified_complete
+git -C "$SHQ_REPO" add \
+  docs/architecture/self_hosting_qualification.objectives.md
+git -C "$SHQ_REPO" commit -m 'chore: verify prerequisite snapshot completion'
+```
+
+These local gates prove implementation and snapshot completion only. Neither
+admits a prerequisite release or can satisfy `SHQ-G010`.
+
 ### External `SHQ-G010` admission and two-phase reconciliation
 
 Opening the prerequisite gate is an operator workflow, not an implementation
-task. It begins only after the `SHQ-G006` observer task is merged, validated and
-reconciled complete. First converge the capstone branch and all three gitlinks
+task. It begins only after the `SHQ-G006` implementation and `SHQ-G007`
+snapshot tasks are independently merged, validated and reconciled complete.
+First converge the capstone branch and all three gitlinks
 to the ten terminal releases, run the terminal observer, review and commit its
 admission artifact, and require a completely clean recursive source:
 
@@ -629,28 +823,25 @@ SHQ_RECONCILE_G010=(
   python -m ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon
   --repo-root "$SHQ_REPO"
   --objective-path docs/architecture/self_hosting_qualification.objectives.md
-  --todo-path docs/architecture/self_hosting_qualification.todo.md
+  --todo-path "$SHQ_ACTIVE_TODO"
   --discovery-dir "$SHQ_DATA/discovery"
-  --bundle-dir "$SHQ_DATA/bundles"
-  --dataset-dir "$SHQ_DATA/datasets"
-  --graph-path "$SHQ_DATA/objective_graph.json"
+  --discovery-output-path "$SHQ_DATA/discovery"
+  --bundle-dir "$SHQ_PROJECTION/bundles"
+  --dataset-dir "$SHQ_PROJECTION/datasets"
+  --graph-path "$SHQ_PROJECTION/objective_graph.json"
+  --plan-evaluation-path "$SHQ_PROJECTION/plan_evaluations.json"
+  --todo-vector-index-path "$SHQ_PROJECTION/bundles/todo_vector_index.json"
   --task-prefix SHQ-
   --max-findings 96
   --scope-goal-id SHQ-G010
   --surplus-findings-per-goal 1
   --no-persist-ast-dataset
-  --scan-exclude-path ipfs_accelerate_py
-  --scan-exclude-path ipfs_datasets_py
-  --scan-exclude-path ipfs_kit_py
-  --scan-exclude-path mcpplusplus
-  --scan-exclude-path docs
-  --scan-exclude-path data
-  --scan-exclude-path test
-  --scan-exclude-path tests
   --objective-goal-completion-gate-path "$SHQ_GATE"
   --objective-external-completion-receipt-path "$SHQ_EXTERNAL_AUTHORITY"
   --protected-output-path docs/architecture/self_hosting_qualification.objectives.md
   --protected-output-path docs/architecture/self_hosting_qualification.todo.md
+  --protected-output-path "$SHQ_ACTIVE_TODO"
+  --protected-output-path "$SHQ_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json
@@ -670,8 +861,7 @@ new commit and parent ledger before the second run:
 
 ```bash
 git -C "$SHQ_REPO" add \
-  docs/architecture/self_hosting_qualification.objectives.md \
-  docs/architecture/self_hosting_qualification.todo.md
+  docs/architecture/self_hosting_qualification.objectives.md
 git -C "$SHQ_REPO" commit -m 'chore: provisionally admit self-hosting prerequisites'
 test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
 
@@ -679,8 +869,7 @@ test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
 "${SHQ_RECONCILE_G010[@]}"  # transition 2: provisional -> verified_complete
 
 git -C "$SHQ_REPO" add \
-  docs/architecture/self_hosting_qualification.objectives.md \
-  docs/architecture/self_hosting_qualification.todo.md
+  docs/architecture/self_hosting_qualification.objectives.md
 git -C "$SHQ_REPO" commit -m 'chore: verify self-hosting prerequisite admission'
 test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
 ```
@@ -703,20 +892,25 @@ Dry-plan before starting:
 
 ```bash
 python -m ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor \
-  --bundle-index-path "$SHQ_REPO/$SHQ_DATA/bundles/index.json" \
+  --bundle-index-path "$SHQ_REPO/$SHQ_PROJECTION/bundles/index.json" \
   --repo-root "$SHQ_REPO" \
   --state-root "$SHQ_RUN/state" \
   --worktree-root "$SHQ_RUN/worktrees" \
   --log-dir "$SHQ_RUN/logs" \
   --manifest-path "$SHQ_RUN/bundle_lanes.json" \
   --metrics-path "$SHQ_RUN/scheduler_metrics.json" \
+  --coordination-path "$SHQ_RUN/state/coordination.duckdb" \
+  --provider-capacity-path "$SHQ_RUN/provider-capacity/capacity.json" \
+  --provider-capacity-max-age-ms 30000 \
   --task-prefix '## SHQ-' \
   --implement \
   --max-lanes 1 \
-  --max-task-attempts 3 \
+  --max-task-attempts 5 \
   --merge-target-branch agent/self-hosting-qualification-v1 \
   --implementation-protected-path docs/architecture/self_hosting_qualification.objectives.md \
   --implementation-protected-path docs/architecture/self_hosting_qualification.todo.md \
+  --implementation-protected-path "$SHQ_ACTIVE_TODO" \
+  --implementation-protected-path "$SHQ_HISTORY_TODO" \
   --implementation-protected-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
@@ -755,7 +949,8 @@ Do not pass `--allow-missing-provider-telemetry`. Missing or stale telemetry is
 valid backpressure. Do not enable objective refinement, codebase refill or a
 second one-shot supervisor against a live lane.
 
-The scoped bootstrap scan intentionally produces only `SHQ-G006`. After a
+The scoped bootstrap scan intentionally produces only `SHQ-G006` and
+`SHQ-G007`, in distinct bundle keys with G007 dependent on G006. After a
 validated external receipt admits `SHQ-G010`, rerun the daemon without
 `--scope-goal-id` and with `--surplus-findings-per-goal 1`; retain targeted
 source exclusions only for genuinely unrelated/vendored trees. This preserves
