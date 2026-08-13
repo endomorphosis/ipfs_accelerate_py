@@ -104,7 +104,7 @@ W28 SCG-048
 
 ## SCG-002 Inventory datasets semantic index, state, capsule, invalidation, and selection
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
