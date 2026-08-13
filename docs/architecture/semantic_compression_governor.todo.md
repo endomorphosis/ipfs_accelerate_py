@@ -77,7 +77,7 @@ W28 SCG-048
 
 ## SCG-001 Inventory accelerate harness, verification, routing, execution, and benchmarks
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
