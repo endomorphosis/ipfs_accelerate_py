@@ -63,7 +63,7 @@ W20 AAE-063
 
 ## AAE-001 Inventory accelerate execution, verification, policy, state-machine, and ZK surfaces
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
