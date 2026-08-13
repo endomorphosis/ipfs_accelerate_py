@@ -1103,7 +1103,7 @@ W28 SCG-048
 
 ## SCG-039 Implement privacy-filtered report and dashboard-data projections
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
