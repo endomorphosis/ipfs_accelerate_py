@@ -1252,7 +1252,7 @@ Global invariants for every task:
 
 ## IPS-039 Implement parent-bound delta seals with all transition invariants
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
