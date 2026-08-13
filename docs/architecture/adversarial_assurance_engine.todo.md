@@ -90,7 +90,7 @@ W20 AAE-063
 
 ## AAE-002 Inventory datasets index, capsules, claim analysis, mutation, property, and vacuity assets
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
