@@ -482,7 +482,7 @@ W28 SCG-048
 
 ## SCG-016 Implement empirical capsule, analyzer, task, and route calibration
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
