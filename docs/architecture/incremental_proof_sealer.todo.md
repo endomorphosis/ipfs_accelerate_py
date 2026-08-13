@@ -167,7 +167,7 @@ Global invariants for every task:
 
 ## IPS-004 Synthesize the cross-repository trust matrix and implementation boundary
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
