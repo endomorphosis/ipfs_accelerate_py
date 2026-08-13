@@ -10417,7 +10417,7 @@ def render_task_block(
     *,
     task_id: str,
     finding: ObjectiveFinding,
-    discovery_path: Path,
+    discovery_path: Path | str,
     depends_on: Sequence[str] = (),
     bundle_shard: str = "",
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
@@ -11408,7 +11408,7 @@ def generate_objective_todos(
             task_block = render_task_block(
                 task_id=task_id,
                 finding=projected_finding,
-                discovery_path=discovery_path,
+                discovery_path=repo_relative_path(repo_root, discovery_path),
                 bundle_shard=shard_relative,
                 discovery_output_path=discovery_output_path,
                 evidence_outputs=evidence_outputs,

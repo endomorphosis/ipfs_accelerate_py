@@ -586,20 +586,26 @@ submit to a task queue.
 ```bash
 SHQ_REPO=/home/barberb/lift_coding/.worktrees/ipfs-accelerate-self-hosting-qualification
 SHQ_DATA=data/agent_supervisor/self_hosting_qualification
-SHQ_PROJECTION="$SHQ_DATA/projections/v2"
+SHQ_PROJECTION="$SHQ_DATA/projections/v3"
 SHQ_ACTIVE_TODO=docs/architecture/self_hosting_qualification.todo.md
-SHQ_HISTORY_TODO=docs/architecture/self_hosting_qualification.v1_history.todo.md
+SHQ_V1_HISTORY_TODO=docs/architecture/self_hosting_qualification.v1_history.todo.md
+SHQ_V2_HISTORY_TODO=docs/architecture/self_hosting_qualification.v2_history.todo.md
 SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v1
 SHQ_GATE="$SHQ_RUN/operator/objective_completion_gate.json"
 SHQ_EXTERNAL_AUTHORITY="$SHQ_RUN/operator/external_completion_authority.json"
 SHQ_SIGNING_KEY="$SHQ_RUN/operator/signing.key"
-SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-implementation/state/agent_agent_supervisor_self_hosting_prerequisite_observer_implementation_runtime.todo.md"
-SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_runtime.todo.md"
+SHQ_IMPLEMENTATION_COMMAND="/usr/local/bin/codex exec --ephemeral --ignore-user-config --strict-config --dangerously-bypass-approvals-and-sandbox --color never -m gpt-5.6-terra -c model_context_window=24576 -c 'model_reasoning_effort=\"high\"' -c agents.max_threads=1 -c agents.max_depth=0 -"
+SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-implementation-bounded-v3/state/agent_agent_supervisor_self_hosting_prerequisite_observer_implementation_bounded_v3_runtime.todo.md"
+SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v3/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_bounded_v3_runtime.todo.md"
 
-# One-time reviewed patch: move old SHQ-001 unchanged into SHQ_HISTORY_TODO,
-# annotate it blocked/historical/superseded, and leave SHQ_ACTIVE_TODO with
-# only its title. Never mark SHQ-001 completed and retain its discovery file.
-test -f "$SHQ_REPO/$SHQ_HISTORY_TODO"
+# Reviewed migrations: retain SHQ-001 in the v1 history board. Move cancelled
+# SHQ-002 and its never-launched dependent SHQ-003 into the v2 history board,
+# retain both canonical task blocks byte-for-byte, record their cancellation and
+# supersession only in the history-board preamble, then leave SHQ_ACTIVE_TODO
+# with only its title. Never mark a retired task completed; retain all three
+# discovery files so their display IDs stay reserved.
+test -f "$SHQ_REPO/$SHQ_V1_HISTORY_TODO"
+test -f "$SHQ_REPO/$SHQ_V2_HISTORY_TODO"
 ! rg -q '^## SHQ-' "$SHQ_REPO/$SHQ_ACTIVE_TODO"
 test ! -e "$SHQ_REPO/$SHQ_PROJECTION"
 
@@ -636,7 +642,8 @@ test ! -e "$SHQ_REPO/$SHQ_PROJECTION"
   --protected-output-path docs/architecture/self_hosting_qualification.objectives.md \
   --protected-output-path docs/architecture/self_hosting_qualification.todo.md \
   --protected-output-path "$SHQ_ACTIVE_TODO" \
-  --protected-output-path "$SHQ_HISTORY_TODO" \
+  --protected-output-path "$SHQ_V1_HISTORY_TODO" \
+  --protected-output-path "$SHQ_V2_HISTORY_TODO" \
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
@@ -646,15 +653,17 @@ test ! -e "$SHQ_REPO/$SHQ_PROJECTION"
 )
 ```
 
-The history board retains old `SHQ-001` as blocked, non-schedulable, historical
-and superseded by the split successor; it is evidence of an abandoned combined
-task, never completion evidence and never an active scheduler source. Its
-original discovery record remains in `$SHQ_DATA/discovery`, which reserves
-`SHQ-001`; the clean active board therefore receives `SHQ-002` and `SHQ-003`.
-New graph, dataset and bundle projections live under `$SHQ_PROJECTION`; no
-scheduler may read the legacy bundle index.
+The history boards retain `SHQ-001` as an abandoned combined task, `SHQ-002` as
+a cancelled unbounded implementation attempt, and `SHQ-003` as its unlaunched
+dependent. Their canonical task blocks remain unchanged, while a preamble records
+the cancelled/unlaunched dispositions and successors. They are never completion
+evidence or scheduler sources. Their discovery records stay
+in `$SHQ_DATA/discovery`, reserving `SHQ-001` through `SHQ-003`; the clean active
+board therefore receives `SHQ-004` and `SHQ-005`. New graph, dataset and bundle
+projections live under `$SHQ_PROJECTION`; no scheduler may read a v1 or v2
+bundle index.
 
-Review the portable v2 Markdown and JSON projections and add those exact files
+Review the portable v3 Markdown and JSON projections and add those exact files
 with `git add -f`; do not add DuckDB databases, lock files, runtime state or
 provider logs. The archived v1 board and both objective-control documents are
 exact protected paths for every subsequent implementation lane.
@@ -669,9 +678,11 @@ would create a different, incomplete completion identity.
 ### Local `SHQ-G006` implementation and `SHQ-G007` snapshot
 
 G006 owns only `.gitignore`, the observer and its tests; G007 owns only the JSON
-snapshot. Their distinct bundle keys prevent either task from inheriting the
-exhausted checkpoint of the old combined observer bundle. Both are projected
-in the initial v2 index. The generated task dependency prevents the scheduler
+snapshot. Their bounded-v3 bundle keys prevent either task from inheriting the
+stale state of the abandoned combined task or cancelled v2 attempt. Both are
+projected in the v3 index. The G006 task may inspect only the exact rescue commit
+named in its content-addressed refinement; all reads and searches remain within
+its disposable worktree. The generated task dependency prevents the scheduler
 from creating the G007 worktree until G006 has merged, so G007 observes the
 clean merged implementation identity. Do not pause for objective reconciliation
 between the task commits. Once both runtime todos are terminal, both commits
@@ -735,7 +746,8 @@ SHQ_RECONCILE_G006=(
   --protected-output-path docs/architecture/self_hosting_qualification.objectives.md
   --protected-output-path docs/architecture/self_hosting_qualification.todo.md
   --protected-output-path "$SHQ_ACTIVE_TODO"
-  --protected-output-path "$SHQ_HISTORY_TODO"
+  --protected-output-path "$SHQ_V1_HISTORY_TODO"
+  --protected-output-path "$SHQ_V2_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
@@ -796,7 +808,8 @@ SHQ_RECONCILE_G007=(
   --protected-output-path docs/architecture/self_hosting_qualification.objectives.md
   --protected-output-path docs/architecture/self_hosting_qualification.todo.md
   --protected-output-path "$SHQ_ACTIVE_TODO"
-  --protected-output-path "$SHQ_HISTORY_TODO"
+  --protected-output-path "$SHQ_V1_HISTORY_TODO"
+  --protected-output-path "$SHQ_V2_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
@@ -880,7 +893,8 @@ SHQ_RECONCILE_G010=(
   --protected-output-path docs/architecture/self_hosting_qualification.objectives.md
   --protected-output-path docs/architecture/self_hosting_qualification.todo.md
   --protected-output-path "$SHQ_ACTIVE_TODO"
-  --protected-output-path "$SHQ_HISTORY_TODO"
+  --protected-output-path "$SHQ_V1_HISTORY_TODO"
+  --protected-output-path "$SHQ_V2_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json
@@ -930,6 +944,13 @@ an authoritative JSON artifact immutable or versioned.
 Dry-plan before starting:
 
 ```bash
+test "$(/usr/local/bin/codex --version)" = 'codex-cli 0.147.0'
+test "$(sha256sum /usr/local/lib/node_modules/@openai/codex/bin/codex.js | cut -d' ' -f1)" = \
+  134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477
+test "$(sha256sum /usr/bin/node | cut -d' ' -f1)" = \
+  2b0f6efd95c31c5538cc0a9042d5d13b7328cffcfdcc409f2e2ef336c4402086
+test -z "${IPFS_PROOF_REUSE_STATE_ROOT:-}"
+
 python -m ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor \
   --bundle-index-path "$SHQ_REPO/$SHQ_PROJECTION/bundles/index.json" \
   --repo-root "$SHQ_REPO" \
@@ -943,13 +964,15 @@ python -m ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor \
   --provider-capacity-max-age-ms 30000 \
   --task-prefix '## SHQ-' \
   --implement \
+  --implementation-command "$SHQ_IMPLEMENTATION_COMMAND" \
   --max-lanes 1 \
   --max-task-attempts 5 \
   --merge-target-branch agent/self-hosting-qualification-v1 \
   --implementation-protected-path docs/architecture/self_hosting_qualification.objectives.md \
   --implementation-protected-path docs/architecture/self_hosting_qualification.todo.md \
   --implementation-protected-path "$SHQ_ACTIVE_TODO" \
-  --implementation-protected-path "$SHQ_HISTORY_TODO" \
+  --implementation-protected-path "$SHQ_V1_HISTORY_TODO" \
+  --implementation-protected-path "$SHQ_V2_HISTORY_TODO" \
   --implementation-protected-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
@@ -983,6 +1006,29 @@ plus:
 --implementation-timeout 14400
 --max-restarts 8
 ```
+
+Launch and dry-plan with an explicitly cleared provider environment and these
+positive bindings: `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=codex`,
+`IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra`,
+`IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW=24576`,
+`IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT=high`,
+`IPFS_ACCELERATE_AGENT_CODEX_MAX_THREADS=1`,
+`IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH=0`, and
+`IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS=1`. Clear
+`IMPLEMENTATION_DAEMON_COMMAND`, provider-fallback variables, Copilot tokens and
+`IPFS_PROOF_REUSE_STATE_ROOT`. The explicit `--implementation-command` is the
+route authority: it bypasses auto discovery and the Codex-to-Copilot fallback.
+Parse it with `shlex.split` during preflight and require the exact direct Codex
+argv, no `copilot`, `grok`, `goose` or shell wrapper, and a final stdin marker.
+
+The current supervisor constrains edits, not reads: its native Landlock policy
+does not prevent a provider from reading other host paths. The content-addressed
+G006 task therefore forbids such reads, uses a repo-relative exact rescue-commit
+reference, disables subagents, and is actively monitored. Stop the scheduler
+wrapper if the implementation event differs from the pinned argv or any child
+starts a command whose resolved arguments leave the disposable worktree. Do not
+represent this detective boundary as hard provider sandboxing or qualification
+evidence.
 
 Do not pass `--allow-missing-provider-telemetry`. Missing or stale telemetry is
 valid backpressure. Do not enable objective refinement, codebase refill or a

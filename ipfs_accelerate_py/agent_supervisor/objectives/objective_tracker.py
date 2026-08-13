@@ -64,6 +64,7 @@ from .objective_graph import (
     objective_heap_content_id,
     objective_heap_schedule,
     parse_goal_heap,
+    repo_relative_path,
     safe_bundle_key,
     resolve_scan_exclude_paths,
     split_terms,
@@ -7265,6 +7266,7 @@ def write_objective_graph_artifact(
     *,
     objective_path: Path,
     graph_path: Path,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     """Write a JSON graph artifact for the current objective heap."""
 
@@ -7273,7 +7275,11 @@ def write_objective_graph_artifact(
     payload = {
         "schema": "ipfs_accelerate_py.agent_supervisor.objectives.objective_graph",
         "generated_at": utc_now(),
-        "objective_path": str(objective_path),
+        "objective_path": (
+            repo_relative_path(repo_root, objective_path)
+            if repo_root is not None
+            else str(objective_path)
+        ),
         "goal_count": len(goals),
         "active_goal_count": sum(1 for goal in goals if goal.is_schedulable),
         "completed_goal_count": sum(

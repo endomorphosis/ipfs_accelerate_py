@@ -279,6 +279,7 @@ def persist_objective_plan_evaluations(
     decisions: Sequence[Mapping[str, Any]],
     *,
     bundle_index_path: Path | None = None,
+    repo_root: Path | None = None,
 ) -> None:
     """Persist decisions and project them into scheduler-visible bundle tasks."""
 
@@ -342,7 +343,11 @@ def persist_objective_plan_evaluations(
                 )
                 task["rejected_plan_branches"] = decision.get("rejected", [])
                 task["plan_selection_rationale"] = decision.get("selection_rationale", [])
-    bundle_payload["plan_evaluation_path"] = str(path)
+    bundle_payload["plan_evaluation_path"] = (
+        repo_relative_path(repo_root, path)
+        if repo_root is not None
+        else str(path)
+    )
     bundle_payload["plan_evaluation_count"] = len(ordered)
     from ..runtime.artifact_store import write_bundle_index_artifact
 
@@ -2212,7 +2217,7 @@ def _documentation_completion_gap_proposals(
     }
     namespace = _stable_completion_gap_key(
         "objective-namespace/v1",
-        {"objective_path": objective_path.resolve().as_posix()},
+        {"objective_path": repo_relative_path(repo_root, objective_path)},
     )
     fields = goal.fields
     goal_symbols = tuple(goal.required_evidence)
@@ -2458,7 +2463,7 @@ def _completion_decision_gap_proposal(
     manual_review_only = not predicted_files
     namespace = _stable_completion_gap_key(
         "objective-namespace/v1",
-        {"objective_path": objective_path.resolve().as_posix()},
+        {"objective_path": repo_relative_path(repo_root, objective_path)},
     )
     family_key = _stable_completion_gap_key(
         "objective-family/v1",
@@ -4623,7 +4628,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     if completion_reconciliation_only:
         return {
             "schema": "ipfs_accelerate_py.agent_supervisor.objective_daemon",
-            "repo_root": str(repo_root),
+            "repo_root": repo_relative_path(repo_root, repo_root),
             "objective_path": repo_relative_path(repo_root, objective_path),
             "todo_path": repo_relative_path(repo_root, todo_path),
             "scope_goal_ids": scope_goal_ids,
@@ -4755,6 +4760,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         plan_evaluation_path,
         plan_decisions,
         bundle_index_path=bundle_dir / "index.json",
+        repo_root=repo_root,
     )
     analysis_escalation_path = (
         getattr(args, "analysis_escalation_path", None)
@@ -5051,11 +5057,16 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                         plan_evaluation_path,
                         plan_decisions,
                         bundle_index_path=bundle_dir / "index.json",
+                        repo_root=repo_root,
                     )
     blocked_review_family_keys = blocked_review_objective_generation_families(
         (objective_generation_payload or {}).get("gap_family_states", {})
     )
-    graph_payload = write_objective_graph_artifact(objective_path=objective_path, graph_path=graph_path)
+    graph_payload = write_objective_graph_artifact(
+        objective_path=objective_path,
+        graph_path=graph_path,
+        repo_root=repo_root,
+    )
 
     bundle_index_path = bundle_dir / "index.json"
     submitted_bundle_task_ids: list[str] = []
@@ -5069,7 +5080,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
 
     payload = {
         "schema": "ipfs_accelerate_py.agent_supervisor.objective_daemon",
-        "repo_root": str(repo_root),
+        "repo_root": repo_relative_path(repo_root, repo_root),
         "objective_path": repo_relative_path(repo_root, objective_path),
         "todo_path": repo_relative_path(repo_root, todo_path),
         "discovery_dir": repo_relative_path(repo_root, discovery_dir),

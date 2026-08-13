@@ -5,10 +5,10 @@ Machine-ingestible goal hierarchy for the bounded
 `GovernedCodingAgentRuntime` facade. After the v1 observer-task migration, the
 executable task board is
 `docs/architecture/self_hosting_qualification.todo.md` with task prefix
-`SHQ-`; v2 bundle, graph and dataset projections live below
-`data/agent_supervisor/self_hosting_qualification/projections/v2/`. The retired
-v1 card lives only in `self_hosting_qualification.v1_history.todo.md`, which is
-never a task source. This heap is fail-closed. `SHQ-G010` is an
+`SHQ-`; the current bounded-retry bundle, graph and dataset projections live
+below `data/agent_supervisor/self_hosting_qualification/projections/v3/`. The
+retired v1 and cancelled v2 cards live only in their versioned history boards,
+which are never task sources. This heap is fail-closed. `SHQ-G010` is an
 externally governed release-admission
 gate. Until it has typed, current-tree completion receipts for every prerequisite
 system, the objective daemon must not project any descendant implementation work.
@@ -128,8 +128,8 @@ SHQ-G000  Bounded self-hosting qualification and truthful release decision
 - Fib priority: 100
 - Track: prerequisite-observation
 - Priority: P0
-- Bundle: agent-supervisor/self-hosting/prerequisite-observer-implementation
-- Parallel lane: prerequisite-observer-implementation
+- Bundle: agent-supervisor/self-hosting/prerequisite-observer-implementation-bounded-v3
+- Parallel lane: prerequisite-observer-implementation-bounded-v3
 - Resource class: cpu-small
 - Token class: medium
 - Goal: Implement and independently test a deterministic observer that records current commit/API/test/board evidence for the ten prerequisites and distinguishes released, in-flight, missing, mismatched-name and unverifiable states; do not generate the repository observation artifact in this goal.
@@ -137,13 +137,14 @@ SHQ-G000  Bounded self-hosting qualification and truthful release decision
 - Outputs: .gitignore, scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
 - Predicted files: .gitignore, scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
 - Interfaces: observe_prerequisite_releases, PrerequisiteObservation
+- Submodules: ipfs_datasets_py, ipfs_kit_py, ipfs_accelerate_py/mcplusplus
 - Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py; python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode observe --quiet; python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode require-terminal --quiet && exit 99 || test "$?" -eq 1
-- Acceptance: `.gitignore` contains the exact narrow exception `!artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json`; ordinary observation succeeds when an upstream is incomplete, while `require-terminal` validates the complete snapshot before any output write and leaves no artifact on failure; every row binds a clean repository commit/tree, the exact superproject gitlink and matching submodule HEAD, a complete module-level API or explicit versioned compatibility resolution, current focused-test execution receipts, a fully parsed owner board, evidence time and limitations; selector presence alone is never release evidence; malformed or unreadable modules, receipts or boards are unverifiable; every recognized task block has exactly one recognized status and an unrecognized/missing/duplicate status prevents terminal classification; datasets boards `ipfs_datasets_py/docs/architecture/incremental_semantic_index.todo.md` and `ipfs_datasets_py/docs/architecture/semantic_state_contract.todo.md` are bound; no row claims release from prompt text, a branch name, path presence or a partial symbol match. This goal must not create or change `prerequisite_observation.json`.
+- Acceptance: `.gitignore` contains the exact narrow exception `!artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json`; ordinary observation succeeds when an upstream is incomplete, while `require-terminal` validates the complete snapshot before any output write and leaves no artifact on failure; every row binds a clean repository commit/tree, the exact superproject gitlink and matching submodule HEAD, a complete module-level API or explicit versioned compatibility resolution, current focused-test execution receipts, a fully parsed owner board, evidence time and limitations; selector presence alone is never release evidence; malformed or unreadable modules, receipts or boards are unverifiable; every recognized task block has exactly one recognized status and an unrecognized/missing/duplicate status prevents terminal classification; datasets boards `ipfs_datasets_py/docs/architecture/incremental_semantic_index.todo.md` and `ipfs_datasets_py/docs/architecture/semantic_state_contract.todo.md` are bound; no row claims release from prompt text, a branch name, path presence or a partial symbol match. All discovery and validation reads stay within the disposable task worktree and its declared submodules; recursive search of `/home`, sibling worktrees, supervisor state, or any other host path is prohibited. This goal must not create or change `prerequisite_observation.json`.
 - Gap task: Implement and test the read-only prerequisite observer and exact ignore exception without generating the tree-bound observation artifact.
-- Refinement: Resolve every required symbol and interface by AST/module inspection in its declared module, recognizing versioned functional interfaces such as `ContextPacker` only through an explicit compatibility map and never manufacturing missing facades. Keep the ten-name result order stable, but discover future releases of currently missing systems through constrained package exports, release manifests and declared owner-board candidates so a new released module does not require another hard-coded missing result. Tests include independent dirty-tree, gitlink/HEAD mismatch, partial/malformed API, missing/duplicate/unknown board status, stale-or-presence-only test receipt, failed `require-terminal` no-write and two-phase source-binding counterexamples.
+- Refinement: Resolve every required symbol and interface by AST/module inspection in its declared module, recognizing versioned functional interfaces such as `ContextPacker` only through an explicit compatibility map and never manufacturing missing facades. Keep the ten-name result order stable, but discover future releases of currently missing systems through constrained package exports, release manifests and declared owner-board candidates so a new released module does not require another hard-coded missing result. Work only from the current disposable checkout. As bounded prior-attempt context, inspect exactly `git show 63ea88e41227d4d2d424f41051b9e9390c1a1c32 -- scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py`; audit and repair it against this goal rather than trusting or copying it blindly. Do not enumerate unrelated refs or search outside the checkout. Tests include independent dirty-tree, gitlink/HEAD mismatch, partial/malformed API, missing/duplicate/unknown board status, stale-or-presence-only test receipt, failed `require-terminal` no-write and two-phase source-binding counterexamples.
 - Embedding query: self hosting qualification prerequisite completion release board commit API focused tests observer
 - AST query: IncrementalSemanticIndex SemanticCapsuleCompiler ContextPacker ContextPackBuilder VerificationReceiptCache IncrementalVerificationPlanner ModelRoutePlanner VerifiedGuiOptimizer IncrementalProofSealer SemanticCompressionGovernor AdversarialAssuranceEngine
-- Conflict policy: Never modify prerequisite implementation or completion evidence from this task.
+- Conflict policy: Never modify prerequisite implementation or completion evidence from this task; never read sibling worktrees, operator state, hidden evaluator data, or arbitrary host paths.
 
 ## SHQ-G007 Generate the post-merge prerequisite observation snapshot
 
@@ -153,8 +154,8 @@ SHQ-G000  Bounded self-hosting qualification and truthful release decision
 - Fib priority: 100
 - Track: prerequisite-observation
 - Priority: P0
-- Bundle: agent-supervisor/self-hosting/prerequisite-observation-snapshot
-- Parallel lane: prerequisite-observation-snapshot
+- Bundle: agent-supervisor/self-hosting/prerequisite-observation-snapshot-bounded-v3
+- Parallel lane: prerequisite-observation-snapshot-bounded-v3
 - Resource class: cpu-small
 - Token class: small
 - Goal: From the clean merged `SHQ-G006` implementation commit, execute the observer and persist the non-authoritative current prerequisite snapshot without changing observer code, tests or ignore policy.

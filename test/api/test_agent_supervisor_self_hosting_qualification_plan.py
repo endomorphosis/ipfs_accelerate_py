@@ -20,6 +20,9 @@ ACTIVE_TODO_PATH = (
 V1_HISTORY_PATH = (
     REPO_ROOT / "docs/architecture/self_hosting_qualification.v1_history.todo.md"
 )
+V2_HISTORY_PATH = (
+    REPO_ROOT / "docs/architecture/self_hosting_qualification.v2_history.todo.md"
+)
 
 
 def _goals():
@@ -166,12 +169,22 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
 
     active_todo = ACTIVE_TODO_PATH.read_text(encoding="utf-8")
     history = V1_HISTORY_PATH.read_text(encoding="utf-8")
+    v2_history = V2_HISTORY_PATH.read_text(encoding="utf-8")
     assert "## SHQ-001 " not in active_todo
     assert "## SHQ-001 " in history
     assert "- Status: blocked" in history
     assert "- Completion: superseded:SHQ-002" in history
     assert "- Historical task: true" in history
     assert "- Is schedulable: false" in history
+    assert "## SHQ-002 " in v2_history
+    assert "## SHQ-003 " in v2_history
+    assert "SHQ-002: cancelled/retryable" in v2_history
+    assert "superseded by SHQ-004" in v2_history
+    assert "SHQ-003: never launched" in v2_history
+    assert "superseded by SHQ-005" in v2_history
+    assert v2_history.count("- Status: todo") == 2
+    assert v2_history.count("- Completion: manual") == 2
+    assert v2_history.count("- Is schedulable: true") == 2
 
     datasets_goal_ids = {
         "SHQ-G032",

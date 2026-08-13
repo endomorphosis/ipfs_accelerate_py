@@ -2396,7 +2396,7 @@ def write_todo_vector_index(
     payload: dict[str, Any] = {
         "schema": DEFAULT_TODO_VECTOR_INDEX_SCHEMA,
         "generated_at": generated_at,
-        "repo_root": str(repo_root),
+        "repo_root": repo_relative_path(repo_root, repo_root),
         "todo_path": repo_relative_path(repo_root, todo_path),
         "objective_path": repo_relative_path(repo_root, objective_path) if objective_path else "",
         "task_header_prefix": task_header_prefix,
