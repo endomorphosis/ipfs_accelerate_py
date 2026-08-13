@@ -40,6 +40,9 @@ V6_HISTORY_PATH = (
 V7_HISTORY_PATH = (
     REPO_ROOT / "docs/architecture/self_hosting_qualification.v7_history.todo.md"
 )
+V8_HISTORY_PATH = (
+    REPO_ROOT / "docs/architecture/self_hosting_qualification.v8_history.todo.md"
+)
 
 
 def _goals():
@@ -214,8 +217,8 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
         }
     ) == 3
     assert all(
-        by_id[goal_id].fields["bundle"].endswith("bounded-v8")
-        and by_id[goal_id].fields["parallel_lane"].endswith("bounded-v8")
+        by_id[goal_id].fields["bundle"].endswith("bounded-v9")
+        and by_id[goal_id].fields["parallel_lane"].endswith("bounded-v9")
         for goal_id in local_bootstrap_goal_ids
     )
     assert all(
@@ -232,9 +235,11 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     v5_history = V5_HISTORY_PATH.read_text(encoding="utf-8")
     v6_history = V6_HISTORY_PATH.read_text(encoding="utf-8")
     v7_history = V7_HISTORY_PATH.read_text(encoding="utf-8")
+    v8_history = V8_HISTORY_PATH.read_text(encoding="utf-8")
     normalized_v5_history = " ".join(v5_history.split())
     normalized_v6_history = " ".join(v6_history.split())
     normalized_v7_history = " ".join(v7_history.split())
+    normalized_v8_history = " ".join(v8_history.split())
     assert "## SHQ-001 " not in active_todo
     assert "## SHQ-001 " in history
     assert "- Status: blocked" in history
@@ -300,18 +305,32 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     assert hashlib.sha256(v7_blocks.encode("utf-8")).hexdigest() == (
         "0e296a248293e339d6c23978e49afffcdd4a24b60fe7bb9790dde9ebd3d8b5b6"
     )
+    assert "SHQ-014: rejected/cancelled retryable after attempt 1" in normalized_v8_history
+    assert "SHQ-015: never leased or launched" in normalized_v8_history
+    assert "SHQ-016: never leased or launched" in normalized_v8_history
+    assert "9567c3bce2781e7108e46d4d182bfcd694302269" in v8_history
+    assert "baguqeera2mnn7cvzwqcfyeconn5d3aof4bhojncibyx6mrtj2yl6btvwnfpq" in v8_history
+    assert "baguqeerarv3hrlcnqhmh4qlmpy4kqfvdp62wcoyjvdzstd6ghqposwia4tmq" in v8_history
+    assert "caadaf0d922e5bdabd133e8662d1c4162f21cb107388be1cb92fa20cc20e3b85" in v8_history
+    assert "14 passed" in normalized_v8_history and "80 passed" in normalized_v8_history
+    assert "No `implementation_finished`, implementation commit, or merge occurred" in normalized_v8_history
+    v8_blocks = v8_history[v8_history.index("## SHQ-014 ") :]
+    assert hashlib.sha256(v8_blocks.encode("utf-8")).hexdigest() == (
+        "49ea659afa99acd42cf3c056ec181033ccae9cbf9dd451407da4f4d6e22e9008"
+    )
     # This test is intentionally valid on both sides of the reviewed tracked
-    # v8 migration. Before migration the v7 active blocks must be exact; after
-    # migration the board is title-only until v8 allocates SHQ-014/015/016.
-    if "## SHQ-012 " in active_todo:
-        assert active_todo[active_todo.index("## SHQ-012 ") :] == v7_blocks
+    # v9 migration. Before migration the v8 active blocks must be exact; after
+    # migration the board is title-only until v9 allocates SHQ-017/018/019.
+    if "## SHQ-014 " in active_todo:
+        assert active_todo[active_todo.index("## SHQ-014 ") :] == v8_blocks
     else:
         assert active_todo.strip() == "# Objective Todo" or (
-            "## SHQ-014 " in active_todo
-            and "## SHQ-015 " in active_todo
-            and "## SHQ-016 " in active_todo
-            and "## SHQ-012 " not in active_todo
-            and "## SHQ-013 " not in active_todo
+            "## SHQ-017 " in active_todo
+            and "## SHQ-018 " in active_todo
+            and "## SHQ-019 " in active_todo
+            and "## SHQ-014 " not in active_todo
+            and "## SHQ-015 " not in active_todo
+            and "## SHQ-016 " not in active_todo
         )
 
     datasets_goal_ids = {
@@ -349,7 +368,7 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     )
 
 
-def test_v8_observer_contract_reuses_authorities_and_fails_closed() -> None:
+def test_v9_observer_contract_reuses_authorities_and_fails_closed() -> None:
     source = OBJECTIVE_PATH.read_text(encoding="utf-8")
     plan = PLAN_PATH.read_text(encoding="utf-8")
     normalized = " ".join(source.split())
@@ -373,14 +392,22 @@ def test_v8_observer_contract_reuses_authorities_and_fails_closed() -> None:
     for alias_invariant in (
         'frozenset({("bwrap", "bubblewrap")})',
         "private immutable closed alias constant",
-        "exact standalone `bubblewrap` token",
-        'actual raw probe bytes `bubblewrap 0.9.0\\n`',
+        "ordinary exact-name predicate byte-for-byte in behavior",
+        'tool_version_probe_output_bytes == f"bubblewrap {normalized_tool_version}\\n".encode("ascii")',
+        "one nonempty ASCII `[A-Za-z0-9._+\\-]+` token",
+        "actually read `/usr/bin/bwrap`",
+        "actual executable bytes and SHA-256",
+        '`b"reviewed-launcher:bwrap"`',
+        "help/usage/error/diagnostic prose",
+        "cross-line separated alias/version",
+        "upper-case or mixed-case alias",
+        "embedded CR/LF/tab/space or non-ASCII claimed versions",
         "The declared and keyed `tool_name` remains exact `bwrap`",
         "no caller argument, environment value, configuration, adapter, or subclass",
         "`notbubblewrap`, `bubblewrap-helper`, `not-bwrap`",
         "wrong/missing/subtoken versions",
-        "Existing pytest, mypy, and all ordinary exact-name behavior remain unchanged",
-        "never permits a wrapper or synthetic probe output",
+        "prohibited non-inputs",
+        "clean bounded-v9 task checkout",
     ):
         assert alias_invariant in normalized
     for invariant in (
@@ -439,10 +466,10 @@ def test_v8_observer_contract_reuses_authorities_and_fails_closed() -> None:
         "Generic checkpoint instructions grant no task-input authority",
         "internal ephemeral stream capture and the validation namespace's private `/tmp`",
         "neither is a discovery source nor persisted evidence",
-        "freshly projected bounded-v8 G006 canonical task CID as the sole predecessor identity",
+        "freshly projected bounded-v9 G006 canonical task CID as the sole predecessor identity",
         "retired display ID, alias, canonical key, CID, worktree, receipt, or merge",
-        "The exact fresh predecessor is SHQ-015",
-        "not the compatibility task SHQ-014 or retired SHQ-012",
+        "The exact fresh predecessor is SHQ-018",
+        "not the compatibility task SHQ-017 or retired SHQ-015/SHQ-014/SHQ-012",
         "O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC",
         "fchmod` 0644",
         "os.link(temp_name, target_name",
@@ -453,12 +480,24 @@ def test_v8_observer_contract_reuses_authorities_and_fails_closed() -> None:
 
     assert "PROCESS_RUNNER_SCHEMA" in plan
     assert "PYTEST_VERIFICATION_ADAPTER_SCHEMA" not in plan
-    assert 'SHQ_PROJECTION="$SHQ_DATA/projections/v8"' in plan
+    assert 'SHQ_PROJECTION="$SHQ_DATA/projections/v9"' in plan
     assert "self_hosting_qualification.v4_history.todo.md" in plan
     assert "self_hosting_qualification.v5_history.todo.md" in plan
     assert "self_hosting_qualification.v6_history.todo.md" in plan
     assert "self_hosting_qualification.v7_history.todo.md" in plan
-    assert "must allocate SHQ-014, SHQ-015, and SHQ-016" in plan
+    assert "self_hosting_qualification.v8_history.todo.md" in plan
+    assert plan.count('--protected-output-path "$SHQ_V8_HISTORY_TODO"') == 4
+    assert plan.count('--implementation-protected-path "$SHQ_V8_HISTORY_TODO"') == 1
+    plan_lines = plan.splitlines()
+    for index, line in enumerate(plan_lines):
+        if line.strip().startswith((
+            '--protected-output-path "$SHQ_V7_HISTORY_TODO"',
+            '--implementation-protected-path "$SHQ_V7_HISTORY_TODO"',
+        )):
+            assert plan_lines[index + 1].strip() == line.strip().replace(
+                "V7_HISTORY", "V8_HISTORY"
+            )
+    assert "must allocate SHQ-017, SHQ-018, and SHQ-019" in plan
     assert "leave SHQ_ACTIVE_TODO title-only" in plan
     assert "SHQ_PYTHON=/usr/bin/python3.12" in plan
     assert (
@@ -469,11 +508,14 @@ def test_v8_observer_contract_reuses_authorities_and_fails_closed() -> None:
         '"$SHQ_PYTHON" -m pytest -q '
         "test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py"
     ) not in plan
-    assert "SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v8" in plan
+    assert "SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v9" in plan
     assert "SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v7" not in plan
-    assert "prerequisite-observer-implementation-bounded-v8" in plan
-    assert "prerequisite-observation-snapshot-bounded-v8" in plan
-    assert "verification-banner-alias-compatibility-bounded-v8" in plan
+    assert "prerequisite-observer-implementation-bounded-v9" in plan
+    assert "prerequisite-observation-snapshot-bounded-v9" in plan
+    assert "verification-banner-alias-compatibility-bounded-v9" in plan
+    assert 'tool_version_probe_output_bytes` value dynamically as' in plan
+    assert 'f"bubblewrap {normalized_tool_version}\\n".encode("ascii")' in plan
+    assert "synthetic executable bytes, helper locators" in normalized_plan
     assert "--max-findings 3" in plan
     for goal_id in ("SHQ-G005A", "SHQ-G006", "SHQ-G007"):
         assert f"--scope-goal-id {goal_id}" in plan
