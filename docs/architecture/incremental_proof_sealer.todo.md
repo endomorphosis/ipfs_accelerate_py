@@ -415,7 +415,7 @@ Global invariants for every task:
 
 ## IPS-012 Freeze datasets public exports and migrate existing receipt adapters
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
