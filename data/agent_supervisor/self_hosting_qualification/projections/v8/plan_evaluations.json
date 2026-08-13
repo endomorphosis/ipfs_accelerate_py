@@ -1,0 +1,169 @@
+{
+  "evaluation_count": 3,
+  "evaluations": [
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "SHQ-G005A",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:SHQ-014:focused-1",
+          "dependencies": [
+            "SHQ-G005"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_accelerate_py/agent_supervisor/verification/contracts.py",
+            "test/api/test_agent_supervisor_verification_contracts.py"
+          ],
+          "predicted_symbols": [
+            "VerificationIdentityCompiler compile_key tool version probe banner token"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Add the reviewed bwrap banner-name compatibility",
+          "validation_commands": [
+            "python3 -m pytest -q test/api/test_agent_supervisor_verification_contracts.py -k bwrap_banner_alias",
+            "python3 -m pytest -q test/api/test_agent_supervisor_verification_contracts.py"
+          ],
+          "validation_proof": [
+            "python3 -m pytest -q test/api/test_agent_supervisor_verification_contracts.py -k bwrap_banner_alias exits with status 0",
+            "python3 -m pytest -q test/api/test_agent_supervisor_verification_contracts.py exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "SHQ-014",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "SHQ-G006",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:SHQ-015:focused-1",
+          "dependencies": [
+            "SHQ-G005"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            ".gitignore",
+            "scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py",
+            "test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py"
+          ],
+          "predicted_symbols": [
+            "IncrementalSemanticIndex SemanticCapsuleCompiler ContextPacker ContextPackBuilder VerificationReceiptCache IncrementalVerificationPlanner ModelRoutePlanner VerifiedGuiOptimizer IncrementalProofSealer SemanticCompressionGovernor AdversarialAssuranceEngine"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Install and test the prerequisite-state observer",
+          "validation_commands": [
+            "python3 -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py",
+            "python3 scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode observe --quiet",
+            "python3 scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode require-terminal --quiet && exit 99 || test \"$?\" -eq 1"
+          ],
+          "validation_proof": [
+            "python3 -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py exits with status 0",
+            "python3 scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode observe --quiet exits with status 0",
+            "python3 scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode require-terminal --quiet && exit 99 || test \"$?\" -eq 1 exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "SHQ-015",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "SHQ-G007",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:SHQ-016:focused-1",
+          "dependencies": [
+            "SHQ-G005"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json"
+          ],
+          "predicted_symbols": [
+            "PrerequisiteObservation observation_to_json write_observation_artifact"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Generate the post-merge prerequisite observation snapshot",
+          "validation_commands": [
+            "python3 -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py",
+            "python3 scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode observe --quiet",
+            "python3 scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode require-terminal --quiet && exit 99 || test \"$?\" -eq 1"
+          ],
+          "validation_proof": [
+            "python3 -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py exits with status 0",
+            "python3 scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode observe --quiet exits with status 0",
+            "python3 scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode require-terminal --quiet && exit 99 || test \"$?\" -eq 1 exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "SHQ-016",
+      "used_fallback": false
+    }
+  ],
+  "schema": "ipfs_accelerate_py.agent_supervisor.objective_plan_evaluations@1"
+}
