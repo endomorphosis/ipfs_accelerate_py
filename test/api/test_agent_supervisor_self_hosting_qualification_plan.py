@@ -52,7 +52,7 @@ def test_bootstrap_context_envelope_preserves_the_input_allowance() -> None:
 
     assert "model_context_window=49152" in plan
     assert "IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW=49152" in plan
-    assert "--context-budget-tokens 49152" in plan
+    assert "--context-budget-tokens 24576" in plan
     assert "model_context_window=24576" not in plan
     assert "IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW=24576" not in plan
     assert 49_152 - 16_384 - 8_192 == 24_576

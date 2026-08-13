@@ -958,7 +958,7 @@ test "$(sha256sum /usr/bin/node | cut -d' ' -f1)" = \
   2b0f6efd95c31c5538cc0a9042d5d13b7328cffcfdcc409f2e2ef336c4402086
 test -z "${IPFS_PROOF_REUSE_STATE_ROOT:-}"
 jq -e '.providers.codex_cli.healthy == true and
-       .providers.codex_cli.context_window_tokens == 49152 and
+       .providers.codex_cli.context_window_tokens == 24576 and
        .providers.codex_cli.quota_remaining > 0 and
        .providers.codex_cli.token_budget_remaining > 0' \
   "$SHQ_RUN/provider-capacity/capacity.json"
@@ -1037,10 +1037,12 @@ argv, no `copilot`, `grok`, `goose` or shell wrapper, and a final stdin marker.
 The context-window value is the total provider envelope, not an input-token
 budget. The implementation compiler reserves 16,384 output tokens and 8,192
 tool tokens. A 49,152-token provider window therefore leaves an exact 24,576
-token input allowance. The direct Codex argv, daemon-visible environment and
-fresh provider-capacity snapshot must all report the same 49,152-token window;
-the snapshot's response-token admission budget remains a separate ceiling.
-Fail preflight when any of those values differ. An initial v4 start incorrectly
+token input allowance. The direct Codex argv and daemon-visible environment
+must both report the 49,152-token total envelope. The capacity snapshot's
+`context_window_tokens` field is named like a total window but this producer
+defines it as the usable input admission budget, so it must remain 24,576. Its
+response-token admission budget is a third, separate ceiling. Fail preflight
+when any of those values differ. An initial v4 start incorrectly
 pinned the total window to 24,576 and consequently failed closed in context
 compilation with zero usable input tokens. It created no implementation
 worktree, made no model call, incurred no model billing and produced no task
@@ -1052,7 +1054,7 @@ nonzero provider resource estimate, so bundle admission does not bind the
 explicit Codex command to that telemetry. For this bootstrap, the `jq` check
 above and the live `implementation_started.command` comparison are operator
 preflight/detective controls, not scheduler-enforced route evidence. The
-capacity producer must be restarted with `--context-budget-tokens 49152`
+capacity producer must retain `--context-budget-tokens 24576`
 before the retry. The implemented capstone must close this gap by emitting
 provider-neutral, nonempty route/resource requirements that the resource
 scheduler can enforce; none of this bootstrap telemetry counts as
