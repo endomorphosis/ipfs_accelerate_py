@@ -118,11 +118,11 @@ def test_ivp_config_has_latest_pr_ancestor_and_launcher_fence():
     )
 
 
-def _identity(profile, pid: int):
+def _identity(profile, pid: int, *, parent_pid: int = 1):
     return scheduler.ProcessIdentity(
         pid=pid,
         start_time_ticks=pid,
-        parent_pid=1,
+        parent_pid=parent_pid,
         process_group_id=pid,
         session_id=pid,
         boot_id="test-boot",
@@ -141,9 +141,10 @@ def _identity(profile, pid: int):
 
 
 class _FakeProcessAdapter:
-    def __init__(self):
+    def __init__(self, *, launch_parent_pid: int = 1):
         self.trees = {}
         self.next_pid = 999_991
+        self.launch_parent_pid = launch_parent_pid
 
     def snapshot(self, profile):
         members = tuple(self.trees.get(profile.profile_id, ()))
@@ -156,7 +157,11 @@ class _FakeProcessAdapter:
 
     def launch(self, profile, *, fencing_epoch):
         assert fencing_epoch == 0
-        identity = _identity(profile, self.next_pid)
+        identity = _identity(
+            profile,
+            self.next_pid,
+            parent_pid=self.launch_parent_pid,
+        )
         self.trees[profile.profile_id] = (identity,)
         return identity
 
@@ -291,6 +296,81 @@ def test_launch_persists_exact_identity_and_status_stop_use_it(tmp_path, monkeyp
     stopped = scheduler.stop(board, grace_seconds=1, adapter=adapter)
     assert stopped["fenced"] is True
     assert scheduler.status(board, adapter=adapter)["lifecycle"] == "stopped"
+
+
+def _identity_with(identity, **changes):
+    payload = identity.to_dict()
+    payload.update(changes)
+    payload.pop("identity_id")
+    return scheduler.ProcessIdentity.from_dict(payload)
+
+
+def test_status_accepts_exact_master_after_launcher_reparenting(
+    tmp_path, monkeypatch
+):
+    board = _tmp_board(tmp_path)
+    plan = scheduler.launch_plan(
+        board,
+        implement=True,
+        foreground=False,
+        duration_seconds=60,
+        stamp="20260811T180050Z",
+        expected_task_count=20,
+    )
+    adapter = _FakeProcessAdapter(launch_parent_pid=43210)
+    for name in plan["environment"]:
+        monkeypatch.delenv(name, raising=False)
+
+    assert scheduler.run_launch(board, plan, adapter=adapter) == 0
+    record = json.loads(board.lifecycle_path.read_text(encoding="utf-8"))
+    profile = scheduler.LifecycleProfile.from_dict(record["profile"])
+    launched = scheduler.ProcessIdentity.from_dict(record["identity"])
+    adopted = _identity_with(launched, parent_pid=1)
+    assert adopted.identity_id != launched.identity_id
+    adapter.trees[profile.profile_id] = (adopted,)
+    board.master_pid_path.write_text(f"{launched.pid}\n", encoding="ascii")
+
+    running = scheduler.status(board, adapter=adapter)
+    assert running["lifecycle"] == "running"
+    assert running["healthy"] is True
+    assert running["issues"] == []
+
+
+@pytest.mark.parametrize(
+    ("changes", "case"),
+    (
+        ({"parent_pid": 1, "start_time_ticks": 999_992}, "PID reuse"),
+        ({"parent_pid": 1, "fencing_epoch": 1}, "lifecycle fence drift"),
+    ),
+)
+def test_status_rejects_non_parent_master_identity_drift(
+    tmp_path, monkeypatch, changes, case
+):
+    board = _tmp_board(tmp_path)
+    plan = scheduler.launch_plan(
+        board,
+        implement=True,
+        foreground=False,
+        duration_seconds=60,
+        stamp="20260811T180055Z",
+        expected_task_count=20,
+    )
+    adapter = _FakeProcessAdapter(launch_parent_pid=43210)
+    for name in plan["environment"]:
+        monkeypatch.delenv(name, raising=False)
+
+    assert scheduler.run_launch(board, plan, adapter=adapter) == 0
+    record = json.loads(board.lifecycle_path.read_text(encoding="utf-8"))
+    profile = scheduler.LifecycleProfile.from_dict(record["profile"])
+    launched = scheduler.ProcessIdentity.from_dict(record["identity"])
+    drifted = _identity_with(launched, **changes)
+    adapter.trees[profile.profile_id] = (drifted,)
+    board.master_pid_path.write_text(f"{launched.pid}\n", encoding="ascii")
+
+    report = scheduler.status(board, adapter=adapter)
+    assert report["lifecycle"] == "unhealthy", case
+    assert report["healthy"] is False
+    assert "recorded master identity is not live" in report["issues"]
 
 
 def test_terminal_receipt_requires_fresh_complete_lane_evidence(tmp_path, monkeypatch):

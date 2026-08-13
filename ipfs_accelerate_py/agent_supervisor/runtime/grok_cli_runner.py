@@ -675,6 +675,13 @@ GROK_TERMINAL_QUOTA_RECEIPT_PREFIX = (
 GROK_TERMINAL_RECEIPT_FD_ENV = (
     "IPFS_ACCELERATE_GROK_TERMINAL_RECEIPT_FD"
 )
+# Compatibility export for the legacy physical runner used by the supervised
+# Grok-to-Codex adapter.  ``agent_supervisor.__init__`` redirects the public
+# ``grok_cli_runner`` module name here, while that adapter still launches the
+# physical entrypoint and passes its private failure-receipt descriptor.
+TRUSTED_FAILURE_RECEIPT_FD_ENV = (
+    "IPFS_ACCELERATE_AGENT_TRUSTED_FAILURE_RECEIPT_FD"
+)
 GROK_INVOCATION_BINDING_FLAG = "--invocation-binding-sha256"
 GROK_INVOCATION_ID_FLAG = "--invocation-id"
 GROK_STREAM_FRAME_MAX_BYTES = 256 * 1024

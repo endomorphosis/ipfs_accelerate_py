@@ -1,0 +1,1288 @@
+{
+  "schema": "scg/datasets-inventory@1",
+  "task_id": "SCG-002",
+  "evidence_id": "scg/datasets-inventory@1",
+  "title": "Inventory datasets semantic index, state, capsule, invalidation, and selection",
+  "inspected_at": "2026-08-13",
+  "authority": {
+    "repository": "endomorphosis/ipfs_datasets_py",
+    "gitlink_path": "ipfs_datasets_py",
+    "commit": "1330038f626ef92993f03d46f21e1a57719e9c25",
+    "commit_short": "1330038f6",
+    "status": "completed incremental semantic index and semantic-state/capsule contracts",
+    "planning_baseline_tests": {
+      "claim": "datasets index/capsule/invalidation/selection/content-identity tests: 67 passed (SCG plan baseline on 2026-08-13)",
+      "workspace_collect_only": {
+        "paths": [
+          "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_index",
+          "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state",
+          "ipfs_datasets_py/tests/unit/logic/software_contracts/test_content_identity.py"
+        ],
+        "collected": 503,
+        "note": "Full unit suites under these paths; plan baseline 67 is the focused acceptance subset, not the full collection count."
+      }
+    }
+  },
+  "ownership": {
+    "package_root": "ipfs_datasets_py.logic.software_contracts",
+    "owns": [
+      "incremental semantic index (ISI) scan, delta, invalidation, explain, watch",
+      "storage-neutral semantic-state producer (bundle, root, Merkle, capsules)",
+      "environment bindings and additive semantic invalidation",
+      "pure test/proof selection and pure selected-versus-full oracle metrics",
+      "producer-bound raw source admission",
+      "canonical content identity (CIDv1 profile) for all structured/raw blocks"
+    ],
+    "does_not_own": [
+      "second scanner, AST frontend, symbol identity, call graph, or CID profile",
+      "kit durable store, WAL, root CAS, recovery, or remote providers",
+      "accelerate context packing, patch loop, model routing, verification execution",
+      "MCP++ InterfaceDescriptor/ExecutionEnvelope/ExecutionReceipt/DAGEvent wire types",
+      "LLM summary authority that can raise confidence or discharge obligations"
+    ],
+    "language_targets": {
+      "language": "python",
+      "python_minor": "3.12",
+      "test_framework": "pytest"
+    }
+  },
+  "conflict_policy": {
+    "rule": "Do not infer a public class from an interface name or propose a second scanner, graph, compiler, or CID implementation.",
+    "semantic_capsule_compiler": "SemanticCapsuleCompiler@1 is an interface identifier implemented by the functional capsule compiler; it is not a public class and must not be re-created.",
+    "identity": "Canonical bytes and CID authority only from logic.software_contracts.content."
+  },
+  "packages": {
+    "semantic_index": {
+      "import_path": "ipfs_datasets_py.logic.software_contracts.semantic_index",
+      "source_dir": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index",
+      "modules": [
+        "__init__.py",
+        "index.py",
+        "models.py",
+        "identity.py",
+        "scanner.py",
+        "snapshot.py",
+        "python_analysis.py",
+        "pytest_analysis.py",
+        "symbol_graph.py",
+        "delta.py",
+        "invalidation.py",
+        "explain.py",
+        "persistence.py",
+        "watch.py"
+      ],
+      "docs": [
+        "ipfs_datasets_py/docs/software_contracts/INCREMENTAL_SEMANTIC_INDEX.md"
+      ]
+    },
+    "semantic_state": {
+      "import_path": "ipfs_datasets_py.logic.software_contracts.semantic_state",
+      "source_dir": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state",
+      "modules": [
+        "__init__.py",
+        "api.py",
+        "models.py",
+        "merkle.py",
+        "capsules.py",
+        "bindings.py",
+        "freshness.py",
+        "invalidation.py",
+        "source.py",
+        "test_selection.py",
+        "oracle.py",
+        "schemas/semantic-state.payload.schema.json"
+      ],
+      "docs": [
+        "ipfs_datasets_py/docs/software_contracts/SEMANTIC_STATE_CONTRACT.md",
+        "ipfs_datasets_py/docs/software_contracts/SOUNDNESS_AND_THREAT_MODEL.md"
+      ]
+    },
+    "content_identity": {
+      "import_path": "ipfs_datasets_py.logic.software_contracts.content",
+      "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/content.py",
+      "docs": [
+        "ipfs_datasets_py/docs/software_contracts/CID_PROFILE_V1.md"
+      ]
+    }
+  },
+  "interfaces": {
+    "IncrementalSemanticIndex": {
+      "kind": "public_class_and_functional_api",
+      "interface_role": "ISI convenience facade over pure module-level functions",
+      "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/index.py",
+      "export": "ipfs_datasets_py.logic.software_contracts.semantic_index.IncrementalSemanticIndex",
+      "construction": {
+        "signature": "IncrementalSemanticIndex(*, scanner: RepositoryScanner | None = None, store: SemanticIndexStore | None = None)",
+        "side_effects": "none on construct or import; no store inferred from path; no watch started"
+      },
+      "methods": [
+        {
+          "name": "scan_repository",
+          "alias": "scan",
+          "signature": "(self, repo_path: str | os.PathLike[str], previous_state: RepositoryState | None = None) -> RepositoryState",
+          "notes": "Retains current_state; does not persist. previous_state is verified reuse only."
+        },
+        {
+          "name": "diff_repository_states",
+          "signature": "(self, previous_state: RepositoryState, current_state: RepositoryState) -> RepositoryStateDelta"
+        },
+        {
+          "name": "calculate_invalidation",
+          "signature": "(self, previous_state: RepositoryState, current_state: RepositoryState, delta: RepositoryStateDelta) -> InvalidationPlan"
+        },
+        {
+          "name": "explain_symbol",
+          "signature": "(self, repository_state: RepositoryState, symbol_id: str) -> SymbolExplanation"
+        },
+        {
+          "name": "explain_impact",
+          "signature": "(self, repository_state: RepositoryState, changed_symbol_ids: Iterable[str]) -> ImpactExplanation"
+        },
+        {
+          "name": "watch_repository",
+          "signature": "(self, repo_path: str | os.PathLike[str], callback: Callable[[WatchNotification], object], *, debounce_ms: int = 250) -> RepositoryWatch",
+          "notes": "Only API that may create a worker thread; notification-only, each notification from fresh deterministic scan."
+        },
+        {
+          "name": "store_state",
+          "signature": "(self, state: RepositoryState) -> str",
+          "notes": "Requires injected store."
+        },
+        {
+          "name": "publish_state",
+          "signature": "(self, state: RepositoryState, *, expected_old_cid: str | None = None) -> str",
+          "notes": "CAS publish via injected store."
+        },
+        {
+          "name": "load_state",
+          "signature": "(self, state_cid: str) -> RepositoryState",
+          "notes": "Requires injected store."
+        }
+      ],
+      "module_level_functions": [
+        {
+          "name": "scan_repository",
+          "signature": "(repo_path: str | os.PathLike[str], previous_state: RepositoryState | None = None) -> RepositoryState"
+        },
+        {
+          "name": "diff_repository_states",
+          "signature": "(previous_state: RepositoryState, current_state: RepositoryState) -> RepositoryStateDelta"
+        },
+        {
+          "name": "calculate_invalidation",
+          "signature": "(previous_state: RepositoryState, current_state: RepositoryState, delta: RepositoryStateDelta) -> InvalidationPlan"
+        },
+        {
+          "name": "explain_symbol",
+          "signature": "(repository_state: RepositoryState, symbol_id: str) -> SymbolExplanation"
+        },
+        {
+          "name": "explain_impact",
+          "signature": "(repository_state: RepositoryState, changed_symbol_ids: Iterable[str]) -> ImpactExplanation"
+        },
+        {
+          "name": "watch_repository",
+          "signature": "(repo_path: str | os.PathLike[str], callback: Callable[[WatchNotification], object], *, debounce_ms: int = 250) -> RepositoryWatch"
+        }
+      ],
+      "scanner_constants": {
+        "SCANNER_NAME": "semantic-repository-scanner",
+        "SCANNER_VERSION": "1",
+        "DEFAULT_EXTRACTOR_NAME": "python-cpython-ast",
+        "DEFAULT_EXTRACTOR_VERSION": "1",
+        "PYTEST_ANALYZER_VERSION": "1",
+        "python_analysis_EXTRACTOR_VERSION": "2",
+        "PYTHON_SEMANTIC_ANALYSIS_SCHEMA": "ipfs-datasets.software-contracts.python-semantic-analysis@2"
+      }
+    },
+    "SemanticCapsuleCompiler@1": {
+      "kind": "interface_identifier_functional_compiler",
+      "interface_constant": "SemanticCapsuleCompiler@1",
+      "interface_constant_symbol": "SEMANTIC_CAPSULE_COMPILER_INTERFACE",
+      "schema_constant": "ipfs-datasets.software-contracts.semantic-capsule-compiler@1",
+      "compiler_version": "1",
+      "public_class": false,
+      "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py",
+      "owner_statement": "This module is the sole owner of the SemanticCapsuleCompiler@1 interface.",
+      "functions": [
+        {
+          "name": "compile_semantic_capsule",
+          "export": "ipfs_datasets_py.logic.software_contracts.semantic_state.compile_semantic_capsule",
+          "signature": "(semantic_index: RepositoryState | SemanticIndexForCapsules, stable_symbol_id: str, *, relevant_bindings: EnvironmentBindingSet | None = None, binding_set: EnvironmentBindingSet | None = None, environment_bindings: Sequence[object] | None = None, relevant_projection: RelevantBindingProjection | None = None, projections: Mapping[str, RelevantBindingProjection] | None = None) -> SemanticCapsule",
+          "behavior": [
+            "Compiles one deterministic authoritative capsule from sealed ISI view plus bindings-owned relevant projection",
+            "Never rediscovers binding scope, never reimplements relevant_binding_projection as authority, never raises confidence",
+            "Never references another capsule or symbol-node CID as a dependency (cycle-free content identity)",
+            "Heuristic metadata keys (llm_summary, summary, ai_summary, ...) excluded from authoritative truth",
+            "Promoted metadata keys only: defaults, contracts, effects, exception_behavior, docstring, docstring_hint"
+          ]
+        },
+        {
+          "name": "compile_semantic_capsules",
+          "signature": "(semantic_index: RepositoryState | SemanticIndexForCapsules, *, relevant_bindings: EnvironmentBindingSet | None = None, binding_set: EnvironmentBindingSet | None = None, environment_bindings: Sequence[object] | None = None, projections: Mapping[str, RelevantBindingProjection] | None = None, previous_bundle: SemanticStateBundle | CapsuleCompileResult | None = None) -> CapsuleCompileResult",
+          "behavior": [
+            "Batch compile; previous_bundle may accelerate only after complete current inputs reverify and stored block bytes are byte-identical to cold path",
+            "Cold and verified-incremental compilation over identical inputs are byte-identical"
+          ]
+        },
+        {
+          "name": "verify_capsule_compile_result",
+          "signature": "(result: CapsuleCompileResult) -> CapsuleCompileResult"
+        }
+      ],
+      "supporting_protocol": {
+        "name": "SemanticIndexForCapsules",
+        "required_properties": [
+          "state_cid",
+          "symbols",
+          "artifacts",
+          "edges",
+          "repository_id"
+        ]
+      },
+      "result_type": {
+        "name": "CapsuleCompileResult",
+        "fields": ["capsules", "index", "blocks", "reused_cids"]
+      },
+      "normative_producer_key": [
+        "stable_symbol_id",
+        "version_cid",
+        "semantic_index_schema",
+        "extractor_version"
+      ]
+    },
+    "SemanticStateView": {
+      "kind": "verified_read_only_protocol",
+      "interface_constant": "SemanticStateView@1",
+      "related_interface_constants": {
+        "SemanticStateProducer@1": "SEMANTIC_STATE_PRODUCER_INTERFACE",
+        "SemanticStateBlockReader@1": "SEMANTIC_STATE_BLOCK_READER_INTERFACE",
+        "SemanticStateView@1": "SEMANTIC_STATE_VIEW_INTERFACE",
+        "api_schema": "ipfs-datasets.software-contracts.semantic-state-api@1"
+      },
+      "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+      "protocol": {
+        "name": "SemanticStateView",
+        "members": [
+          {"name": "root", "type": "SemanticStateRoot", "access": "property"},
+          {"name": "get_block", "signature": "(self, cid: str) -> bytes", "notes": "read-only; rehashes against claimed CIDv1"},
+          {"name": "symbol_node", "signature": "(self, stable_symbol_id: str) -> SymbolMerkleNode"},
+          {"name": "capsule", "signature": "(self, stable_symbol_id: str) -> SemanticCapsule"}
+        ]
+      },
+      "implementation": {
+        "name": "VerifiedSemanticStateView",
+        "constructors": [
+          "VerifiedSemanticStateView(_root, _get_block)",
+          "VerifiedSemanticStateView.from_bundle(bundle)",
+          "open_semantic_state(root_cid, get_block)",
+          "view_semantic_state_bundle(bundle)"
+        ]
+      },
+      "block_reader_protocol": {
+        "name": "SemanticStateBlockReader",
+        "members": [{"name": "get_block", "signature": "(self, cid: str) -> bytes"}]
+      },
+      "boundaries": {
+        "storage_neutral": true,
+        "forbidden_on_view": [
+          "put",
+          "CAS",
+          "WAL",
+          "provider",
+          "network",
+          "kit instantiation",
+          "scheduler",
+          "context-pack",
+          "receipt hashing",
+          "MCP++ envelope hashing"
+        ],
+        "typed_errors": {
+          "SemanticStateApiError": "base typed failure",
+          "MissingBlockError": "required block CID absent",
+          "CorruptBlockError": "CID rehash/schema/canonical failure",
+          "UnknownSymbolError": "stable symbol id not in verified index"
+        },
+        "root_exclusions": "SemanticStateRoot excludes previous-root history, deltas, invalidation plans, selections, receipts, clocks, local paths, leases, generations, model data, and MCP++ envelope identities (ROOT_EXCLUDED_FIELD_NAMES)."
+      },
+      "assembly_api": [
+        {
+          "name": "build_semantic_state",
+          "signature": "(semantic_index: RepositoryState | SemanticIndexForCapsules | object, *, environment_bindings: Sequence[EnvironmentBinding] = (), previous_bundle: SemanticStateBundle | None = None) -> SemanticStateBundle",
+          "notes": "Cold or verified-incremental assembly; no persistence side effect. previous_bundle is reuse only after reverify."
+        },
+        {
+          "name": "verify_semantic_state_bundle",
+          "signature": "(bundle: SemanticStateBundle) -> SemanticStateRoot"
+        },
+        {
+          "name": "open_semantic_state",
+          "signature": "(root_cid: str, get_block: Callable[[str], bytes]) -> VerifiedSemanticStateView"
+        },
+        {
+          "name": "view_semantic_state_bundle",
+          "signature": "(bundle: SemanticStateBundle) -> VerifiedSemanticStateView"
+        }
+      ],
+      "bundle": {
+        "type": "SemanticStateBundle",
+        "fields": ["root", "blocks"],
+        "role": "only persistence handoff object from datasets; finite CID->canonical-bytes map"
+      }
+    },
+    "SemanticInvalidationPlan": {
+      "kind": "durable_value_type_and_extension_api",
+      "isi_plan": {
+        "type": "InvalidationPlan",
+        "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/models.py",
+        "schema": "ipfs-datasets.software-contracts.semantic-invalidation-plan@1",
+        "fields": ["previous_state_cid", "current_state_cid", "obligations"],
+        "producer": "calculate_invalidation(previous_state, current_state, delta)"
+      },
+      "semantic_plan": {
+        "type": "SemanticInvalidationPlan",
+        "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+        "schema": "ipfs-datasets.software-contracts.semantic-invalidation-plan@1",
+        "fields": [
+          "previous_root_cid",
+          "current_root_cid",
+          "isi_plan_cid",
+          "obligations"
+        ],
+        "producer": "extend_semantic_invalidation(...)"
+      },
+      "extend_api": {
+        "name": "extend_semantic_invalidation",
+        "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/invalidation.py",
+        "signature": "(previous_index: RepositoryState | SemanticIndexForCapsules, current_index: RepositoryState | SemanticIndexForCapsules, delta: RepositoryStateDelta, plan: InvalidationPlan, previous_state: SemanticStateView, current_state: SemanticStateView, *, previous_bindings: EnvironmentBindingSet | None = None, current_bindings: EnvironmentBindingSet | None = None, max_obligations: int = 2000) -> SemanticInvalidationPlan",
+        "behavior": [
+          "Preserves ISI obligations and adds environment-binding obligations",
+          "Does not invent dependency facts from names or rankings",
+          "MAX_SEMANTIC_INVALIDATION_OBLIGATIONS default bound 2000"
+        ]
+      },
+      "obligation_origins": {
+        "isi": "isi",
+        "environment": "environment"
+      }
+    },
+    "TestSelection": {
+      "kind": "durable_value_type_and_pure_selection_api",
+      "interface_constants": {
+        "TestSelection@1": "TEST_SELECTION_INTERFACE",
+        "ProofSelection@1": "PROOF_SELECTION_INTERFACE"
+      },
+      "type": "TestSelection",
+      "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+      "schema": "ipfs-datasets.software-contracts.semantic-test-selection@1",
+      "fields": [
+        "previous_root_cid",
+        "current_root_cid",
+        "selected_pytest_node_ids",
+        "selected_proof_ids",
+        "reason_paths",
+        "covered_seed_obligation_ids",
+        "unresolved_obligation_ids",
+        "known_test_universe_cid",
+        "known_test_universe_count",
+        "fallback",
+        "fallback_reasons",
+        "policy_cid"
+      ],
+      "select_api": {
+        "name": "select_tests_and_proofs",
+        "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/test_selection.py",
+        "signature": "(previous_state: SemanticStateView | None, current_state: SemanticStateView, invalidation: SemanticInvalidationPlan, *, policy: SelectionPolicy, explicit_rules: Sequence[SelectionRule] = (), previous_index: SemanticIndexForSelection | RepositoryState | None = None, current_index: SemanticIndexForSelection | RepositoryState | None = None) -> TestSelection",
+        "purity": "Never imports or collects target tests; never guesses pytest node IDs from names."
+      },
+      "oracle_api": {
+        "name": "compare_test_selection_oracle",
+        "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/oracle.py",
+        "signature": "(selection: TestSelection, *, baseline_full: TestRunFacts, selected_run: TestRunFacts, candidate_full: TestRunFacts, authored_oracle: Sequence[str] | None = None) -> TestOracleComparison",
+        "purity": "Accelerate supplies normalized run facts; datasets does not execute pytest."
+      },
+      "accelerate_ref_shape": {
+        "name": "TestSelectionRef",
+        "owner": "accelerate (reference only; must not recompile selection)",
+        "fields": [
+          "selection_cid",
+          "previous_semantic_state_root_cid_or_null",
+          "current_semantic_state_root_cid"
+        ]
+      }
+    },
+    "supporting_interfaces": {
+      "CapsuleFreshness@1": {
+        "assess": "assess_capsule_freshness(capsule, *, current_state: SemanticStateView, invalidation: SemanticInvalidationPlan | None = None) -> CapsuleFreshness",
+        "helpers": ["requires_raw_source", "is_safe_substitute"],
+        "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/freshness.py"
+      },
+      "ProducerBoundSource@1": {
+        "read": "read_required_source(semantic_index, stable_symbol_id, *, expected_producer_state_cid: str, read_source_blob: Callable[[str], bytes] | None = None) -> VerifiedSourceMaterialization",
+        "result_fields": ["evidence", "source_bytes"],
+        "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/source.py",
+        "constraints": [
+          "Never reads ambient Path targets",
+          "Never imports target code",
+          "Never treats heuristic/capsule text as exact source",
+          "TOCTOU/corrupt/wrong-state yield typed failures requiring rescan"
+        ]
+      },
+      "SemanticStateRelease@1": {
+        "doc": "ipfs_datasets_py/docs/software_contracts/SEMANTIC_STATE_CONTRACT.md",
+        "role": "documented release surface name for the phase-two producer"
+      }
+    }
+  },
+  "canonical_identity": {
+    "authority_module": "ipfs_datasets_py.logic.software_contracts.content",
+    "profile": {
+      "profile_id": "software-contract-cid-profile-v1",
+      "profile_version": "1.0.0",
+      "cid_version": 1,
+      "base": "base32",
+      "multihash": "sha2-256",
+      "source_codec": "raw",
+      "structured_codec": "dag-json",
+      "structured_accepted_types": ["null", "bool", "int", "str", "list", "map(str -> value)"],
+      "structured_rejected_types": [
+        "float",
+        "bytes",
+        "bytearray",
+        "memoryview",
+        "set",
+        "frozenset",
+        "tuple",
+        "path",
+        "complex",
+        "host_object",
+        "nan",
+        "infinity",
+        "repr_fallback"
+      ],
+      "cid_vectors_fixture": "tests/fixtures/software_contracts/cid_vectors.json"
+    },
+    "public_functions": [
+      "canonical_dag_json_bytes(obj) -> bytes",
+      "cid_for_bytes(data: bytes) -> str",
+      "cid_for_structured(obj) -> str",
+      "validate_cid(value, *, codecs=None) -> str",
+      "validate_structured_value(obj)",
+      "verify_source_read(claimed_cid, data) -> bytes",
+      "verify_structured_read(claimed_cid, obj)",
+      "decode_and_recompute_source(claimed_cid, data) -> str",
+      "decode_and_recompute_structured(claimed_cid, obj) -> str"
+    ],
+    "symbol_identities": {
+      "stable_id": {
+        "schema": "ipfs-datasets.software-contracts.semantic-stable-symbol-id@1",
+        "includes": [
+          "repository_id",
+          "language=python",
+          "normalized repository-relative module_path",
+          "qualified_name",
+          "kind",
+          "namespace"
+        ],
+        "excludes": [
+          "source bytes",
+          "spans",
+          "comments",
+          "formatting",
+          "definition ordinal"
+        ],
+        "function": "stable_symbol_id(...)"
+      },
+      "version_cid": {
+        "schema": "ipfs-datasets.software-contracts.semantic-symbol-version-id@2",
+        "includes": [
+          "stable_id",
+          "semantic_index_schema",
+          "extractor name/version",
+          "normalized AST",
+          "signature",
+          "decorators/property role",
+          "declared annotations"
+        ],
+        "notes": "Raw source_cid is separate provenance; may change while version_cid remains stable (e.g. formatting-only)."
+      }
+    },
+    "schema_versions": {
+      "semantic_index": "ipfs-datasets.software-contracts.semantic-index@2",
+      "symbol": "ipfs-datasets.software-contracts.semantic-symbol@2",
+      "edge": "ipfs-datasets.software-contracts.semantic-edge@1",
+      "repository_state": "ipfs-datasets.software-contracts.semantic-repository-state@1",
+      "repository_delta": "ipfs-datasets.software-contracts.semantic-repository-delta@1",
+      "isi_obligation": "ipfs-datasets.software-contracts.semantic-obligation@1",
+      "isi_invalidation_plan": "ipfs-datasets.software-contracts.semantic-invalidation-plan@1",
+      "semantic_state_domain": "ipfs-datasets.software-contracts.semantic-state@1",
+      "semantic_state_root": "ipfs-datasets.software-contracts.semantic-state-root@1",
+      "semantic_capsule": "ipfs-datasets.software-contracts.semantic-capsule@1",
+      "capsule_freshness": "ipfs-datasets.software-contracts.semantic-capsule-freshness@1",
+      "test_selection": "ipfs-datasets.software-contracts.semantic-test-selection@1",
+      "merkle_compiler_version": "1",
+      "capsule_compiler_version": "1"
+    },
+    "determinism_rules": [
+      "Cold and incremental scans of identical repository bytes produce byte-identical RepositoryState and state_cid",
+      "previous_state / previous_bundle are verified reuse optimizations only; never change cold identity",
+      "Stable symbol ID and version CID are final-ISI authorities; semantic_state never recalculates them",
+      "Index blocks are sorted [logical_key, cid] pair lists; duplicate keys invalid",
+      "Capsules reference dependency stable IDs, versions, fact CIDs, and link IDs — never dependency capsule or symbol-node CIDs",
+      "Unknown fields, unsupported schema versions, forged CIDs, missing blocks, or incompatible confidence fail closed"
+    ]
+  },
+  "statuses_and_taxonomies": {
+    "AnalysisConfidence": {
+      "closed": true,
+      "values": ["exact", "conservative", "heuristic", "opaque"],
+      "promotion_rule": "Confidence is never raised by combining evidence; least-confident wins where ranks are combined."
+    },
+    "FreshnessState": {
+      "closed": true,
+      "values": ["fresh", "stale", "unknown"]
+    },
+    "AdmissionDecision": {
+      "closed": true,
+      "values": [
+        "exact_substitute",
+        "conservative_substitute_with_caveats",
+        "raw_source_required"
+      ],
+      "safe_substitute_rule": "is_safe_substitute true only for fresh exact_substitute or fresh conservative_substitute_with_caveats with at least one visible caveat."
+    },
+    "SelectionFallback": {
+      "closed": true,
+      "values": ["none", "full_pytest", "full_proofs", "both"]
+    },
+    "SelectionRuleKind": {
+      "closed": true,
+      "values": [
+        "include",
+        "exclude",
+        "force_full",
+        "force_full_pytest",
+        "force_full_proofs"
+      ]
+    },
+    "NormalizedTestStatus": {
+      "closed": true,
+      "values": [
+        "passed",
+        "failed",
+        "skipped",
+        "xfailed",
+        "xpassed",
+        "error",
+        "timeout"
+      ]
+    },
+    "OracleApplicability": {
+      "closed": true,
+      "values": ["applicable", "not_applicable"]
+    },
+    "ObligationOrigin": {
+      "closed": true,
+      "values": ["isi", "environment"]
+    },
+    "LinkTargetKind": {
+      "closed": true,
+      "values": ["symbol", "artifact", "unresolved"]
+    },
+    "BindingKind": {
+      "closed": true,
+      "values": [
+        "dependency_manifest",
+        "dependency_lock",
+        "pytest_config",
+        "pytest_plugin",
+        "proof_config",
+        "policy",
+        "interface_descriptor",
+        "generated_input",
+        "python_toolchain",
+        "semantic_schema",
+        "semantic_compiler"
+      ],
+      "note": "BindingKind.INTERFACE_DESCRIPTOR is datasets application data, not MCP++ InterfaceDescriptor wire authority."
+    },
+    "BindingScope": {
+      "closed": true,
+      "values": ["global", "package", "module", "symbol", "unknown"]
+    },
+    "SymbolKind": {
+      "closed": true,
+      "values": [
+        "module",
+        "class",
+        "function",
+        "async_function",
+        "method",
+        "property",
+        "variable",
+        "constant",
+        "parameter",
+        "type_alias",
+        "dataclass",
+        "typed_dict",
+        "enum",
+        "test",
+        "fixture",
+        "artifact",
+        "unknown"
+      ]
+    }
+  },
+  "relations": {
+    "RelationType": [
+      "imports",
+      "calls",
+      "inherits",
+      "implements",
+      "reads_state",
+      "writes_state",
+      "raises",
+      "catches",
+      "serializes",
+      "deserializes",
+      "validates",
+      "tested_by",
+      "uses_fixture",
+      "configured_by",
+      "generated_from",
+      "proof_depends_on"
+    ],
+    "edge_record": {
+      "type": "DependencyEdge",
+      "fields": [
+        "source_id",
+        "target_id",
+        "relation",
+        "extraction_method",
+        "confidence",
+        "extractor_version",
+        "span",
+        "metadata"
+      ],
+      "schema": "ipfs-datasets.software-contracts.semantic-edge@1"
+    },
+    "semantic_link_record": {
+      "type": "SemanticLinkNode",
+      "fields": [
+        "edge_id",
+        "source_stable_id",
+        "source_version_cid",
+        "source_fact_cid",
+        "target_kind",
+        "target_stable_id",
+        "target_version_cid",
+        "target_fact_cid",
+        "relation",
+        "source_span",
+        "extraction_method",
+        "confidence",
+        "extractor_version",
+        "metadata"
+      ]
+    },
+    "notes": [
+      "Symbol graph is an evidence and invalidation boundary, not a complete Python runtime call graph",
+      "Rename candidates are heuristic annotations, not identity preservation",
+      "Heuristic edges may inform retrieval/review priority; they never establish capsule or proof completion"
+    ]
+  },
+  "invalidation": {
+    "isi_reason_codes": [
+      "new_capsule",
+      "proof_rerun",
+      "stale_test_receipt",
+      "caller_signature_mismatch",
+      "obsolete_schema_adapter",
+      "effect_assumption_stale",
+      "exception_recovery_stale",
+      "purity_security_review",
+      "environment_receipt_stale",
+      "deleted_symbol_dependency",
+      "raw_source_requirement"
+    ],
+    "isi_rules": [
+      "body",
+      "signature",
+      "effects",
+      "exceptions",
+      "schema",
+      "fixture_config",
+      "environment",
+      "deletion",
+      "opaque",
+      "edge"
+    ],
+    "isi_remediation_kinds_observed": [
+      "rerun_test",
+      "rerun_proof",
+      "retire_capsule",
+      "retrieve_raw_source",
+      "review_adapter",
+      "review_assumption",
+      "review_call_site",
+      "review_dependent",
+      "review_recovery",
+      "review_security_purity"
+    ],
+    "semantic_additional_reason_codes": [
+      "dependency_lock_changed",
+      "dependency_manifest_changed",
+      "pytest_config_changed",
+      "pytest_plugin_changed",
+      "proof_config_changed",
+      "policy_changed",
+      "interface_descriptor_changed",
+      "generated_input_changed",
+      "python_toolchain_changed",
+      "semantic_schema_changed",
+      "semantic_compiler_changed",
+      "environment_binding_changed",
+      "unknown_binding_scope",
+      "unmapped_binding_subject",
+      "stale_bound_capsule",
+      "stale_bound_receipt",
+      "full_fallback_required"
+    ],
+    "semantic_remediation": [
+      "stale_bound_receipts",
+      "stale_bound_capsules",
+      "rerun_test",
+      "rerun_proof",
+      "review_policy",
+      "review_adapter",
+      "rebuild_generated",
+      "rebuild_bound_artifacts",
+      "retrieve_raw_source",
+      "full_pytest_fallback",
+      "full_proofs_fallback",
+      "full_fallback"
+    ],
+    "consumer_rule": "A consumer must execute only emitted obligations; it must not invent dependency facts from names or rankings."
+  },
+  "exclusion_and_fallback": {
+    "scanner_ignored_directories": [
+      ".git",
+      ".hg",
+      ".svn",
+      ".venv",
+      "venv",
+      "env",
+      "node_modules",
+      "__pycache__",
+      ".pytest_cache",
+      ".mypy_cache",
+      ".ruff_cache",
+      ".tox",
+      ".nox",
+      ".eggs",
+      "dist",
+      "build",
+      "coverage",
+      "htmlcov",
+      "site-packages",
+      "vendor",
+      "third-party",
+      "third_party",
+      "external",
+      ".semantic-index",
+      ".semantic_index",
+      "semantic-index-state"
+    ],
+    "capsule_admission": {
+      "exact_substitute": "fresh exact capsule may substitute for unchanged dependency source",
+      "conservative_substitute_with_caveats": "fresh conservative capsule only with visible caveats",
+      "raw_source_required": [
+        "heuristic confidence",
+        "opaque confidence",
+        "stale freshness",
+        "unknown freshness",
+        "invalid/corrupt capsule",
+        "schema/compiler/producer mismatch",
+        "binding projection mismatch",
+        "target being edited / surrounding edit context / directly edited tests",
+        "raw_source obligations"
+      ]
+    },
+    "selection_fallback_reasons": [
+      "dynamic_pytest_plugin",
+      "native_or_opaque_reachability",
+      "unknown_test_universe",
+      "insufficient_graph_evidence",
+      "explicit_rule_force_full",
+      "explicit_rule_force_full_pytest",
+      "explicit_rule_force_full_proofs",
+      "full_fallback_obligation",
+      "full_pytest_fallback_obligation",
+      "full_proofs_fallback_obligation",
+      "policy_disallows_fallback",
+      "max_selected_tests_exceeded"
+    ],
+    "selection_policy_fields": {
+      "policy_id": "str",
+      "allow_full_fallback": "bool default true",
+      "include_proofs": "bool default true",
+      "include_fixtures": "bool default true",
+      "max_selected_tests": "int | None",
+      "metadata": "mapping"
+    },
+    "freshness_failure_kinds": [
+      "invalid_capsule",
+      "invalid_state_view",
+      "missing_root",
+      "schema_mismatch",
+      "compiler_mismatch",
+      "producer_mismatch",
+      "capsule_index_missing",
+      "capsule_not_in_index",
+      "capsule_cid_mismatch",
+      "capsule_block_corrupt",
+      "binding_projection_mismatch",
+      "obligation_stale",
+      "raw_source_obligation",
+      "unsafe_confidence",
+      "unknown_state"
+    ]
+  },
+  "durable_records": {
+    "RepositoryState": {
+      "fields": [
+        "repository_id",
+        "symbols",
+        "artifacts",
+        "edges",
+        "extractor_name",
+        "extractor_version",
+        "schema"
+      ],
+      "identity_property": "state_cid"
+    },
+    "RepositoryStateDelta": {
+      "fields": [
+        "previous_state_cid",
+        "current_state_cid",
+        "added_symbol_ids",
+        "deleted_symbol_ids",
+        "modified_symbol_ids",
+        "unchanged_symbol_ids",
+        "rename_candidates",
+        "added_artifact_ids",
+        "deleted_artifact_ids",
+        "modified_artifact_ids",
+        "added_edge_ids",
+        "deleted_edge_ids"
+      ]
+    },
+    "SymbolRecord": {
+      "fields": [
+        "stable_id",
+        "version_cid",
+        "repository_id",
+        "language",
+        "module_path",
+        "qualified_name",
+        "kind",
+        "namespace",
+        "source_cid",
+        "span",
+        "confidence",
+        "signature",
+        "decorators",
+        "annotations",
+        "metadata",
+        "normalized_ast",
+        "extractor_name",
+        "extractor_version",
+        "property_role",
+        "semantic_index_schema"
+      ]
+    },
+    "SemanticStateRoot": {
+      "fields": [
+        "repository_id",
+        "producer",
+        "semantic_state_schema",
+        "merkle_compiler_version",
+        "capsule_schema",
+        "capsule_compiler_version",
+        "symbol_fact_index_cid",
+        "artifact_fact_index_cid",
+        "semantic_link_index_cid",
+        "symbol_node_index_cid",
+        "capsule_index_cid",
+        "environment_binding_set_cid",
+        "analysis_limitation_index_cid"
+      ]
+    },
+    "SemanticCapsule": {
+      "fields": [
+        "stable_symbol_id",
+        "version_cid",
+        "semantic_index_schema",
+        "extractor_version",
+        "capsule_schema",
+        "capsule_compiler_version",
+        "source_slice_path",
+        "source_cid",
+        "symbol_fact_cid",
+        "signature",
+        "annotations",
+        "defaults",
+        "decorators",
+        "contracts",
+        "effects",
+        "exception_behavior",
+        "schema_relations",
+        "serialization_relations",
+        "test_refs",
+        "fixture_refs",
+        "proof_obligation_refs",
+        "dependency_stable_ids",
+        "dependency_version_cids",
+        "dependency_fact_cids",
+        "dependency_link_ids",
+        "confidence",
+        "relevant_binding_projection_cid",
+        "docstring_hint",
+        "metadata"
+      ],
+      "freshness_is_separate": true
+    },
+    "SymbolMerkleNode": {
+      "fields": [
+        "stable_symbol_id",
+        "version_cid",
+        "symbol_fact_cid",
+        "capsule_cid",
+        "incoming_link_cids",
+        "outgoing_link_cids",
+        "confidence",
+        "raw_source_required_reasons"
+      ]
+    },
+    "CapsuleFreshness": {
+      "fields": [
+        "capsule_cid",
+        "root_cid",
+        "capsule_schema",
+        "capsule_compiler_version",
+        "producer_repository_state_cid",
+        "relevant_binding_projection_cid",
+        "freshness",
+        "admission",
+        "applicable_obligation_ids",
+        "caveats"
+      ]
+    },
+    "AnalysisLimitation": {
+      "fields": ["code", "message", "subject_id", "confidence"],
+      "role": "Visible analysis limitation retained as durable evidence on SemanticStateRoot.analysis_limitation_index_cid"
+    },
+    "TestOracleComparison": {
+      "fields": [
+        "selection_cid",
+        "baseline_facts_cid",
+        "selected_facts_cid",
+        "candidate_full_facts_cid",
+        "applicability",
+        "new_regressions",
+        "missed_regressions",
+        "true_positives",
+        "false_negatives",
+        "false_positives",
+        "fixture_recall_bp",
+        "fixture_precision_bp",
+        "selected_count",
+        "full_count",
+        "selection_ratio_bp",
+        "execution_reduction_bp",
+        "fallback_rate_bp",
+        "changed_outcome_node_ids",
+        "regression_recall_bp"
+      ],
+      "metric_units": "basis points (*_bp); empty authored oracle is not_applicable, never fabricated 100%"
+    }
+  },
+  "fixtures": {
+    "incremental_semantic_index": {
+      "path": "ipfs_datasets_py/tests/fixtures/software_contracts/incremental_semantic_index",
+      "cases": [
+        "body_test_impact",
+        "dataclass_schema",
+        "deletion_rename",
+        "dynamic_import",
+        "exception_recovery",
+        "fixture_config",
+        "formatting_identity",
+        "git_snapshot_truth",
+        "git_snapshot_authority_adversarial",
+        "git_snapshot_authority_closure",
+        "identical_roots",
+        "lock_environment",
+        "monkey_patch",
+        "persistence_recovery",
+        "pytest_identity",
+        "python_constructs",
+        "python_relation_closure",
+        "signature_callers",
+        "unrelated_edit"
+      ]
+    },
+    "semantic_state_controlled": {
+      "path": "ipfs_datasets_py/tests/fixtures/software_contracts/semantic_state",
+      "manifest": "ipfs_datasets_py/tests/fixtures/software_contracts/semantic_state/manifest.json",
+      "schema": "ipfs-datasets.software-contracts.semantic-state-controlled-fixture@1",
+      "interface": "SemanticStateControlledFixture@1",
+      "recipe": "ipfs_datasets_py/tests/fixtures/software_contracts/semantic_state/recipe.py",
+      "required_mutation_kinds": [
+        "local_body",
+        "signature",
+        "cross_module",
+        "schema",
+        "exception",
+        "fixture",
+        "config",
+        "plugin",
+        "lock",
+        "policy",
+        "interface",
+        "generated",
+        "dynamic",
+        "monkey",
+        "native",
+        "format",
+        "delete",
+        "rename"
+      ],
+      "constraints": [
+        "no_checked_in_git",
+        "no_state_store",
+        "no_generated_receipt",
+        "no_hand_built_dependency_edge",
+        "no_second_benchmark_corpus",
+        "no_hidden_external_dependency",
+        "scanner_consumes_without_importing_fixture_package"
+      ]
+    },
+    "content_identity_vectors": {
+      "path": "ipfs_datasets_py/tests/fixtures/software_contracts/cid_vectors.json"
+    }
+  },
+  "metrics": {
+    "oracle_metrics": [
+      "true_positives",
+      "false_negatives",
+      "false_positives",
+      "new_regressions",
+      "missed_regressions",
+      "fixture_recall_bp",
+      "fixture_precision_bp",
+      "selection_ratio_bp",
+      "execution_reduction_bp",
+      "fallback_rate_bp",
+      "regression_recall_bp",
+      "selected_count",
+      "full_count",
+      "changed_outcome_node_ids"
+    ],
+    "controlled_acceptance_requirements": [
+      "zero fixture false negatives",
+      "zero missed regressions",
+      "full-suite fallback is measured, not described as precise",
+      "empty authored oracle is not_applicable"
+    ],
+    "reuse_diagnostics": {
+      "isi": "RepositoryScanner.last_reuse_diagnostics / ScanReuseDiagnostics.to_dict — outside durable root identity",
+      "semantic_state": "previous_bundle reuse diagnostics are not root inputs and never write to disk"
+    }
+  },
+  "limitations": {
+    "visibility_rule": "Opaque/dynamic limitations remain visible as confidence, AnalysisLimitation records, raw_source_required_reasons, freshness caveats, and selection fallback_reasons.",
+    "cannot_make_dynamic_python_exact": true,
+    "known_weak_areas": [
+      {
+        "area": "dynamic dispatch",
+        "typical_confidence": ["conservative", "heuristic", "opaque"]
+      },
+      {
+        "area": "decorators (beyond closed safe set)",
+        "typical_confidence": ["conservative", "heuristic", "opaque"]
+      },
+      {
+        "area": "descriptors",
+        "typical_confidence": ["conservative", "heuristic", "opaque"]
+      },
+      {
+        "area": "reflection (getattr/setattr/hasattr/dir/inspect/...)",
+        "typical_confidence": ["opaque"],
+        "opaque_reason_codes": ["reflection"]
+      },
+      {
+        "area": "import hooks / dynamic import",
+        "typical_confidence": ["heuristic", "opaque"],
+        "opaque_reason_codes": ["runtime_code_generation"]
+      },
+      {
+        "area": "metaclasses",
+        "typical_confidence": ["opaque"],
+        "opaque_reason_codes": ["metaclass_mutation"]
+      },
+      {
+        "area": "monkey patching",
+        "typical_confidence": ["opaque"],
+        "opaque_reason_codes": ["monkey_patch"]
+      },
+      {
+        "area": "plugin systems and uncontrolled dynamic pytest collection",
+        "typical_confidence": ["heuristic", "opaque"],
+        "fallback": ["full_pytest", "both"]
+      },
+      {
+        "area": "native extensions / ctypes / cffi / cython boundaries",
+        "typical_confidence": ["opaque"],
+        "opaque_reason_codes": ["native_boundary"],
+        "fallback": ["full_pytest", "full_proofs", "both"]
+      },
+      {
+        "area": "runtime generation (eval/exec/compile/runpy)",
+        "typical_confidence": ["opaque"],
+        "opaque_reason_codes": ["runtime_code_generation", "eval_or_exec"]
+      },
+      {
+        "area": "uncontrolled I/O (open/subprocess/socket/requests)",
+        "typical_confidence": ["conservative", "heuristic", "opaque"]
+      },
+      {
+        "area": "incomplete call graphs",
+        "note": "Symbol graph is not a full runtime call graph; unknown dynamic reachability can force full pytest/proof fallback"
+      },
+      {
+        "area": "generated bindings",
+        "note": "BindingKind.GENERATED_INPUT changes emit environment obligations and rebuild remediations"
+      }
+    ],
+    "analysis_opaque_reason_set": [
+      "constructed_attribute",
+      "runtime_code_generation",
+      "native_boundary",
+      "metaclass_mutation",
+      "monkey_patch",
+      "reflection",
+      "eval_or_exec"
+    ],
+    "docstring_and_llm": {
+      "docstrings": "non-authoritative hints (docstring_hint)",
+      "llm_summaries": "excluded from capsule/root truth; cannot raise confidence, establish behavior, satisfy verification, or discharge obligations"
+    },
+    "test_selection_precision": "Measurable only against an authored controlled oracle. In real repositories, new full-suite regressions measure missed failures but cannot prove every passing test was semantically unaffected."
+  },
+  "focused_tests": {
+    "semantic_index_unit": {
+      "directory": "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_index",
+      "files": [
+        "test_acceptance.py",
+        "test_api.py",
+        "test_delta.py",
+        "test_explain.py",
+        "test_identity_contract.py",
+        "test_import_safety.py",
+        "test_invalidation.py",
+        "test_models.py",
+        "test_persistence.py",
+        "test_public_pipeline_acceptance.py",
+        "test_pytest_analysis.py",
+        "test_python_analysis.py",
+        "test_python_analysis_authority_adversarial.py",
+        "test_python_relation_authority_adversarial.py",
+        "test_python_relation_closure.py",
+        "test_scanner.py",
+        "test_snapshot.py",
+        "test_snapshot_authority_adversarial.py",
+        "test_snapshot_authority_closure.py",
+        "test_symbol_graph.py",
+        "test_watch.py"
+      ]
+    },
+    "semantic_state_unit": {
+      "directory": "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state",
+      "files": [
+        "test_api.py",
+        "test_bindings.py",
+        "test_capsules.py",
+        "test_dependency_seal.py",
+        "test_fixture_contract.py",
+        "test_freshness.py",
+        "test_import_safety.py",
+        "test_invalidation.py",
+        "test_mcp_payload_boundary.py",
+        "test_merkle.py",
+        "test_models.py",
+        "test_oracle.py",
+        "test_payload_schema.py",
+        "test_public_semantic_state_pipeline.py",
+        "test_regressions.py",
+        "test_schema_packaging.py",
+        "test_selection_oracle_acceptance.py",
+        "test_source.py",
+        "test_test_selection.py"
+      ]
+    },
+    "content_and_frontend": [
+      "ipfs_datasets_py/tests/unit/logic/software_contracts/test_content_identity.py",
+      "ipfs_datasets_py/tests/unit/logic/software_contracts/test_python_frontend.py",
+      "ipfs_datasets_py/tests/unit/logic/software_contracts/test_repository_manifest.py",
+      "ipfs_datasets_py/tests/unit/logic/software_contracts/test_resolver.py"
+    ],
+    "cli": [
+      "ipfs_datasets_py/tests/cli/test_semantic_index_cli.py"
+    ],
+    "recommended_validation_command": "python3.12 -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_index ipfs_datasets_py/tests/unit/logic/software_contracts/test_content_identity.py ipfs_datasets_py/tests/unit/logic/software_contracts/test_python_frontend.py ipfs_datasets_py/tests/unit/logic/software_contracts/test_repository_manifest.py ipfs_datasets_py/tests/unit/logic/software_contracts/test_resolver.py ipfs_datasets_py/tests/cli/test_semantic_index_cli.py"
+  },
+  "import_safety": {
+    "opt_outs": [
+      "IPFS_DATASETS_AUTO_INSTALL=0",
+      "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS=0",
+      "IPFS_DATASETS_PY_MINIMAL_IMPORTS=1",
+      "IPFS_KIT_AUTO_INSTALL_DEPS=0",
+      "PYTHONDONTWRITEBYTECODE=1"
+    ],
+    "promise": "Ordinary imports install nothing, open no network, start no process/thread, write no filesystem path, and mutate no environment variables.",
+    "proof_tests": [
+      "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_index/test_import_safety.py",
+      "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_import_safety.py"
+    ]
+  },
+  "handoff_to_accelerate": {
+    "datasets_emits": "SemanticStateBundle (root + finite blocks)",
+    "accelerate_must": [
+      "store blocks through sealed kit durable-root interface",
+      "re-read and reverify through injected get_block",
+      "hold TestSelectionRef / SemanticCapsuleRef rather than recompiling selection or capsules",
+      "map selection into bounded validation/proof commands and fallback without a second graph selector",
+      "publish its own SemanticStateRootManifest with generation-bearing CAS after verification receipts"
+    ],
+    "semantic_capsule_ref_shape": {
+      "fields": [
+        "capsule_cid",
+        "semantic_state_root_cid",
+        "stable_symbol_id",
+        "version_cid",
+        "source_cid",
+        "confidence",
+        "validity_bindings",
+        "raw_source_required"
+      ]
+    }
+  },
+  "acceptance_checklist": {
+    "functional_capsule_compiler_described_precisely": true,
+    "verified_state_view_boundaries_described_precisely": true,
+    "opaque_dynamic_limitations_remain_visible": true,
+    "no_public_SemanticCapsuleCompiler_class_inferred": true,
+    "no_second_scanner_graph_compiler_or_cid_implementation_proposed": true
+  }
+}

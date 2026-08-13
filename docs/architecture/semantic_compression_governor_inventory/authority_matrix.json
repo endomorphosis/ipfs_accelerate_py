@@ -1,0 +1,939 @@
+{
+  "schema": "scg/authority-matrix@1",
+  "evidence_id": "scg/authority-matrix@1",
+  "interface_id": "SemanticGovernorAuthorityMatrix@1",
+  "task_id": "SCG-005",
+  "goal_id": "SCG-G010",
+  "track": "authority-matrix",
+  "board_namespace": "semantic-compression-governor-v1",
+  "bundle": "semantic-governor/authority",
+  "title": "Semantic Compression Governor authority consumption matrix",
+  "inspected_at": "2026-08-13",
+  "status": "complete",
+  "generated_for_program": "semantic-compression-governor-v1",
+  "matrix_kind": "executable_ownership_and_pin_authority",
+  "conflict_policy": {
+    "rule": "Matrix declares one owner per identity, receipt, state, proof, execution, and storage responsibility.",
+    "admission": "fail_closed",
+    "alternate_owner_disposition": "reject",
+    "stale_pin_disposition": "reject",
+    "missing_owner_disposition": "reject",
+    "duplicate_owner_disposition": "reject",
+    "inferred_interface_from_name_alone": false,
+    "new_mcplusplus_profile_allowed": false,
+    "local_generic_envelope_allowed": false,
+    "new_content_identity_allowed": false,
+    "new_receipt_format_allowed": false,
+    "ivp_merkle_commitment_may_substitute_for_sealer": false
+  },
+  "source_inventories": {
+    "accelerate": {
+      "task_id": "SCG-001",
+      "path": "docs/architecture/semantic_compression_governor_inventory/accelerate.json",
+      "schema": "scg/accelerate-inventory@1",
+      "evidence_id": "scg/accelerate-inventory@1"
+    },
+    "datasets": {
+      "task_id": "SCG-002",
+      "path": "docs/architecture/semantic_compression_governor_inventory/datasets.json",
+      "schema": "scg/datasets-inventory@1",
+      "evidence_id": "scg/datasets-inventory@1"
+    },
+    "kit": {
+      "task_id": "SCG-003",
+      "path": "docs/architecture/semantic_compression_governor_inventory/kit.json",
+      "schema": "scg/kit-inventory@1",
+      "evidence_id": "scg/kit-inventory@1"
+    },
+    "interoperability": {
+      "task_id": "SCG-004",
+      "path": "docs/architecture/semantic_compression_governor_inventory/interoperability.json",
+      "schema": "scg/mcplusplus-boundary@1",
+      "evidence_id": "scg/mcplusplus-boundary@1"
+    }
+  },
+  "package_roles": {
+    "ipfs_datasets_py": {
+      "role": "canonical_models_identity_index_state_selection",
+      "owns": [
+        "canonical content identity (CIDv1 profile)",
+        "incremental semantic index",
+        "storage-neutral semantic-state producer and capsules",
+        "SemanticCapsuleCompiler@1 functional implementation",
+        "pure test/proof selection and selected-versus-full oracle metrics",
+        "neutral GovernorRunReceipt and CompressionPolicyPromotionReceipt payload schemas"
+      ],
+      "does_not_own": [
+        "durable block store, WAL, root CAS, recovery",
+        "MCP++ wire envelopes or new execution profiles",
+        "verification receipt cache or model provider execution",
+        "harness patch loop or isolated worktree orchestration"
+      ]
+    },
+    "ipfs_accelerate_py": {
+      "role": "orchestration_verification_provider_execution",
+      "owns": [
+        "SemanticCompressionHarness and context packing",
+        "IncrementalVerificationPlanner and verification execution",
+        "VerificationReceiptCache",
+        "ModelRoutePlanner and provider gate invocation",
+        "ResourceScheduler admission and isolated evaluation worktrees",
+        "governor orchestration that consumes kit storage and datasets identity"
+      ],
+      "does_not_own": [
+        "canonical CID / content-identity implementation",
+        "second semantic index, scanner, or capsule compiler",
+        "DurableCoordinationStore or a second object store",
+        "new MCP++ execution profile or local generic receipt envelope"
+      ]
+    },
+    "ipfs_kit_py": {
+      "role": "durable_storage_cas_recovery",
+      "owns": [
+        "DurableCoordinationStore immutable blocks and rebuildable indexes",
+        "DurableStateRootAdapter / DurableStateRoots CAS and recovery",
+        "thin SemanticGovernorStore domain layer over the durable primitive (planned SCG-010+)",
+        "durable issuance and existing envelope bindings for stored receipts"
+      ],
+      "does_not_own": [
+        "canonical CID computation authority beyond verifying caller-supplied CIDs",
+        "semantic index or capsule compiler",
+        "verification planner, receipt cache, or model providers",
+        "new MCP++ profile definitions"
+      ]
+    },
+    "Mcp-Plus-Plus": {
+      "role": "shared_wire_conformance_and_existing_profiles",
+      "owns": [
+        "shared Profile A/B/F wire schemas and conformance vectors",
+        "existing Profile G risk-scheduling codecs and vectors",
+        "CID-native artifact and event-DAG interop surfaces consumed by SCG"
+      ],
+      "does_not_own": [
+        "SCG application payload schemas beyond existing profile envelopes",
+        "a new SCG execution profile",
+        "semantic index, capsule compiler, or durable governor store"
+      ]
+    }
+  },
+  "authority_pins": {
+    "accelerate_planning": {
+      "authority_id": "accelerate_planning",
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "role": "planning_baseline_controller",
+      "commit": "dfd92b554e662d4312411f2e8e63a52368806f2a",
+      "pin_kind": "planning_authority_revision",
+      "match_mode": "exact_planning_pin",
+      "source": "SEMANTIC_COMPRESSION_GOVERNOR_PLAN.md section 2; accelerate inventory repository.planning_authority_revision",
+      "stale_if": [
+        "commit missing",
+        "commit empty",
+        "commit differs from planning pin",
+        "commit replaced by unrelated tip without matrix revision"
+      ]
+    },
+    "datasets": {
+      "authority_id": "datasets",
+      "repository": "endomorphosis/ipfs_datasets_py",
+      "gitlink_path": "ipfs_datasets_py",
+      "role": "datasets_identity_index_state",
+      "commit": "1330038f626ef92993f03d46f21e1a57719e9c25",
+      "pin_kind": "nested_gitlink",
+      "match_mode": "exact_gitlink_head",
+      "source": "plan section 2; datasets inventory authority.commit; accelerate nested_gitlinks_observed",
+      "stale_if": [
+        "gitlink HEAD differs from pin",
+        "inventory authority.commit differs from pin",
+        "matrix pin rewritten without inventory join"
+      ]
+    },
+    "kit": {
+      "authority_id": "kit",
+      "repository": "endomorphosis/ipfs_kit_py",
+      "gitlink_path": "ipfs_kit_py",
+      "role": "kit_durable_roots_and_cas",
+      "commit": "df2f9cc092456329de9724c45a50c54b410875d1",
+      "pin_kind": "nested_gitlink",
+      "match_mode": "exact_gitlink_head",
+      "source": "plan section 2; kit inventory repository.planning_bound_revision; accelerate nested_gitlinks_observed",
+      "stale_if": [
+        "gitlink HEAD differs from pin",
+        "inventory observed_revision differs from pin"
+      ]
+    },
+    "mcplusplus": {
+      "authority_id": "mcplusplus",
+      "repository": "endomorphosis/Mcp-Plus-Plus",
+      "gitlink_path": "ipfs_accelerate_py/mcplusplus",
+      "role": "shared_wire_conformance_authority",
+      "commit": "dc3164653a48d059ae9812078359daeafb451c07",
+      "pin_kind": "nested_gitlink",
+      "match_mode": "exact_gitlink_head",
+      "source": "plan section 2; interoperability mcplusplus_authorities.shared_wire_and_conformance.commit",
+      "stale_if": [
+        "gitlink HEAD differs from pin",
+        "conformance vector authority_commit differs from pin"
+      ]
+    },
+    "incremental_verification_freeze": {
+      "authority_id": "incremental_verification_freeze",
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "role": "ivp_public_api_freeze",
+      "commit": "8c7800cedc5e1b848367db9952f912428466f8cc",
+      "pin_kind": "historical_api_freeze",
+      "match_mode": "exact_freeze_pin",
+      "package_root": "ipfs_accelerate_py/agent_supervisor/verification",
+      "source": "plan section 2; accelerate inventory incremental_verification_freeze_revision",
+      "stale_if": [
+        "freeze pin omitted",
+        "freeze pin rewritten to a non-freeze tip without matrix revision"
+      ]
+    },
+    "incremental_proof_sealer_program": {
+      "authority_id": "incremental_proof_sealer_program",
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "role": "external_sealer_program_observation_only",
+      "commit": "7dc8f1422cb7e80757077948dc0785c1aaa4fd25",
+      "pin_kind": "external_observation_not_released_api",
+      "match_mode": "observation_only",
+      "is_released_public_api": false,
+      "is_ancestor_of_scg_controller": false,
+      "source": "plan section 2; interoperability proof_sealer_probes.program_status",
+      "stale_if": [
+        "treated as released sealer authority on controller HEAD",
+        "used to claim FullCheckpointSeal or DeltaSeal available without released public API"
+      ],
+      "notes": [
+        "Observation pin only. Not admission authority for seal capability.",
+        "Missing sealer disposition remains typed_unavailable."
+      ]
+    }
+  },
+  "ownership_categories": {
+    "cid": {
+      "category": "cid",
+      "responsibility": "identity",
+      "title": "Canonical content identity and CIDv1 profile",
+      "sole_owner": "ipfs_datasets_py",
+      "owner_module": "ipfs_datasets_py.logic.software_contracts.content",
+      "owner_import_paths": [
+        "ipfs_datasets_py.logic.software_contracts.content"
+      ],
+      "owner_source_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/content.py"
+      ],
+      "profile_id": "software-contract-cid-profile-v1",
+      "interfaces": [
+        "canonical_dag_json_bytes",
+        "cid_for_bytes",
+        "cid_for_structured",
+        "validate_cid",
+        "verify_source_read",
+        "verify_structured_read"
+      ],
+      "authority_pin": "datasets",
+      "forbidden_owners": [
+        "ipfs_accelerate_py",
+        "ipfs_kit_py",
+        "Mcp-Plus-Plus",
+        "scg_local",
+        "semantic_compression_governor"
+      ],
+      "forbidden_claims": [
+        "second_cid_profile",
+        "local_cid_implementation",
+        "kit_computes_canonical_cid_without_datasets_authority",
+        "accelerate_reimplements_content_identity",
+        "new_content_identity_allowed"
+      ],
+      "allowed_consumption": [
+        "Call datasets content identity helpers for all structured/raw block CIDs",
+        "Kit verifies caller-supplied expected CIDs against stored bytes only"
+      ],
+      "source_inventory": "datasets"
+    },
+    "envelope": {
+      "category": "envelope",
+      "responsibility": "receipt",
+      "title": "MCP++ wire envelopes and existing receipt envelope bindings",
+      "sole_owner": "Mcp-Plus-Plus",
+      "owner_module": "ipfs_accelerate_py.mcp_server.mcplusplus",
+      "owner_import_paths": [
+        "ipfs_accelerate_py.mcp_server.mcplusplus",
+        "ipfs_accelerate_py.agent_supervisor.semantic_state.wire"
+      ],
+      "owner_source_paths": [
+        "ipfs_accelerate_py/mcp_server/mcplusplus",
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py"
+      ],
+      "interfaces": [
+        "InterfaceDescriptor",
+        "ExecutionEnvelope",
+        "ExecutionReceipt",
+        "DAGEvent",
+        "SemanticStateWireCodec"
+      ],
+      "authority_pin": "mcplusplus",
+      "payload_schema_owner": "ipfs_datasets_py",
+      "payload_schema_note": "Datasets owns neutral GovernorRunReceipt and CompressionPolicyPromotionReceipt application payload schemas; kit binds them to existing durable envelopes. Neither may invent a second generic receipt hierarchy.",
+      "durable_envelope_binding_owner": "ipfs_kit_py",
+      "forbidden_owners": [
+        "scg_local",
+        "semantic_compression_governor",
+        "local_generic_envelope"
+      ],
+      "forbidden_claims": [
+        "local_generic_envelope_allowed",
+        "new_receipt_format_allowed",
+        "second_receipt_hierarchy",
+        "scg_defines_new_execution_envelope"
+      ],
+      "allowed_consumption": [
+        "Carry SCG payloads inside existing Profile A/B/F/G envelopes",
+        "Use SemanticStateWireCodec as consumer of existing wire authority"
+      ],
+      "source_inventory": "interoperability"
+    },
+    "store": {
+      "category": "store",
+      "responsibility": "storage",
+      "title": "Durable immutable block store, root CAS, and recovery",
+      "sole_owner": "ipfs_kit_py",
+      "owner_module": "ipfs_kit_py.mcp_server.mcplusplus.coordination_storage",
+      "owner_import_paths": [
+        "ipfs_kit_py.mcp_server.mcplusplus.coordination_storage.DurableCoordinationStore",
+        "ipfs_kit_py.mcp_server.mcplusplus.state_root_adapter.DurableStateRootAdapter",
+        "ipfs_kit_py.mcp_server.mcplusplus.state_root_contracts.DurableStateRoots"
+      ],
+      "owner_source_paths": [
+        "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+        "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py",
+        "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py"
+      ],
+      "interfaces": [
+        "DurableCoordinationStore",
+        "DurableStateRootAdapter",
+        "DurableStateRoots",
+        "SemanticGovernorStore"
+      ],
+      "authority_pin": "kit",
+      "planned_domain_layer": {
+        "protocol": "SemanticGovernorStore",
+        "package_path": "ipfs_kit_py/ipfs_kit_py/semantic_governor_store/",
+        "present_in_tree": false,
+        "must_compose": "DurableCoordinationStore",
+        "ownership": "ipfs_kit_py"
+      },
+      "forbidden_owners": [
+        "ipfs_datasets_py",
+        "ipfs_accelerate_py",
+        "Mcp-Plus-Plus",
+        "scg_local",
+        "semantic_compression_governor"
+      ],
+      "forbidden_claims": [
+        "second_object_store",
+        "second_wal_or_journal",
+        "accelerate_opens_parallel_block_store",
+        "datasets_owns_durable_cas",
+        "new_daemon_or_network_store"
+      ],
+      "allowed_consumption": [
+        "Compose DurableCoordinationStore for all durable governor artifacts",
+        "Publish policy/promotion roots through DurableStateRootAdapter CAS"
+      ],
+      "source_inventory": "kit"
+    },
+    "index": {
+      "category": "index",
+      "responsibility": "state",
+      "title": "Incremental semantic index (ISI)",
+      "sole_owner": "ipfs_datasets_py",
+      "owner_module": "ipfs_datasets_py.logic.software_contracts.semantic_index",
+      "owner_import_paths": [
+        "ipfs_datasets_py.logic.software_contracts.semantic_index",
+        "ipfs_datasets_py.logic.software_contracts.semantic_index.IncrementalSemanticIndex"
+      ],
+      "owner_source_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/index.py"
+      ],
+      "interfaces": [
+        "IncrementalSemanticIndex",
+        "scan_repository",
+        "diff_repository_states",
+        "calculate_invalidation",
+        "explain_symbol",
+        "explain_impact",
+        "watch_repository"
+      ],
+      "authority_pin": "datasets",
+      "forbidden_owners": [
+        "ipfs_accelerate_py",
+        "ipfs_kit_py",
+        "Mcp-Plus-Plus",
+        "scg_local",
+        "semantic_compression_governor"
+      ],
+      "forbidden_claims": [
+        "second_scanner",
+        "second_ast_frontend",
+        "second_symbol_identity",
+        "second_call_graph",
+        "accelerate_rescans_as_authority"
+      ],
+      "allowed_consumption": [
+        "Consume IncrementalSemanticIndex outputs and refs without rescanning",
+        "Hold verified RepositoryState / SemanticStateView rather than rebuilding graphs"
+      ],
+      "source_inventory": "datasets",
+      "note": "Kit rebuildable SQLite indexes are storage indexes over immutable blocks, not the semantic ISI; they remain under store ownership."
+    },
+    "compiler": {
+      "category": "compiler",
+      "responsibility": "state",
+      "title": "Semantic capsule compiler",
+      "sole_owner": "ipfs_datasets_py",
+      "owner_module": "ipfs_datasets_py.logic.software_contracts.semantic_state",
+      "owner_import_paths": [
+        "ipfs_datasets_py.logic.software_contracts.semantic_state",
+        "ipfs_datasets_py.logic.software_contracts.semantic_state.compile_semantic_capsule"
+      ],
+      "owner_source_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/api.py"
+      ],
+      "interfaces": [
+        "SemanticCapsuleCompiler@1",
+        "compile_semantic_capsule",
+        "assess_capsule_freshness",
+        "build_semantic_state",
+        "verify_semantic_state_bundle",
+        "open_semantic_state"
+      ],
+      "authority_pin": "datasets",
+      "interface_identifier_not_public_class": true,
+      "forbidden_owners": [
+        "ipfs_accelerate_py",
+        "ipfs_kit_py",
+        "Mcp-Plus-Plus",
+        "scg_local",
+        "semantic_compression_governor"
+      ],
+      "forbidden_claims": [
+        "recreate_SemanticCapsuleCompiler_public_class",
+        "second_capsule_compiler",
+        "accelerate_recompiles_selection_or_capsules",
+        "infer_compiler_class_from_interface_name_alone"
+      ],
+      "allowed_consumption": [
+        "Call compile_semantic_capsule / assess_capsule_freshness through datasets APIs",
+        "Hold SemanticCapsuleRef fields without recompiling"
+      ],
+      "source_inventory": "datasets"
+    },
+    "cache": {
+      "category": "cache",
+      "responsibility": "proof",
+      "title": "Verification receipt cache",
+      "sole_owner": "ipfs_accelerate_py",
+      "owner_module": "ipfs_accelerate_py.agent_supervisor.verification",
+      "owner_import_paths": [
+        "ipfs_accelerate_py.agent_supervisor.verification",
+        "ipfs_accelerate_py.agent_supervisor.verification.receipt_cache.VerificationReceiptCache"
+      ],
+      "owner_source_paths": [
+        "ipfs_accelerate_py/agent_supervisor/verification/receipt_cache.py"
+      ],
+      "interfaces": [
+        "VerificationReceiptCache",
+        "production_eligible"
+      ],
+      "authority_pin": "incremental_verification_freeze",
+      "forbidden_owners": [
+        "ipfs_datasets_py",
+        "ipfs_kit_py",
+        "Mcp-Plus-Plus",
+        "scg_local",
+        "semantic_compression_governor"
+      ],
+      "forbidden_claims": [
+        "second_proof_cache",
+        "datasets_owns_verification_receipt_cache",
+        "kit_owns_verification_receipt_cache",
+        "stale_receipt_is_production_authority"
+      ],
+      "allowed_consumption": [
+        "Reuse VerificationReceiptCache with exact identity binding",
+        "Treat cache hits as non-authoritative without current admitted receipts"
+      ],
+      "source_inventory": "accelerate"
+    },
+    "provider": {
+      "category": "provider",
+      "responsibility": "execution",
+      "title": "Model provider gate and invocation",
+      "sole_owner": "ipfs_accelerate_py",
+      "owner_module": "ipfs_accelerate_py.agent_supervisor.semantic_state",
+      "owner_import_paths": [
+        "ipfs_accelerate_py.agent_supervisor.semantic_state.providers",
+        "ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler"
+      ],
+      "owner_source_paths": [
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/providers.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py"
+      ],
+      "interfaces": [
+        "ProductionProviderGate",
+        "invoke_model",
+        "ResourceScheduler",
+        "ModelRoutePlanner"
+      ],
+      "authority_pin": "accelerate_planning",
+      "forbidden_owners": [
+        "ipfs_datasets_py",
+        "ipfs_kit_py",
+        "Mcp-Plus-Plus",
+        "scg_local",
+        "semantic_compression_governor"
+      ],
+      "forbidden_claims": [
+        "new_model_provider_stack",
+        "provider_claim_is_verification_authority",
+        "model_agreement_is_proof",
+        "datasets_invokes_providers_as_authority",
+        "mock_hardware_or_inference_as_production_authority"
+      ],
+      "allowed_consumption": [
+        "Route through existing ProductionProviderGate and ResourceScheduler",
+        "Treat ModelRoutePlanner capability classes as route selection, not proof"
+      ],
+      "source_inventory": "accelerate"
+    },
+    "profile": {
+      "category": "profile",
+      "responsibility": "execution",
+      "title": "MCP++ execution and scheduling profiles",
+      "sole_owner": "Mcp-Plus-Plus",
+      "owner_module": "ipfs_accelerate_py.mcplusplus",
+      "owner_import_paths": [
+        "ipfs_accelerate_py.mcp_server.mcplusplus",
+        "ipfs_accelerate_py.mcplusplus"
+      ],
+      "owner_source_paths": [
+        "ipfs_accelerate_py/mcplusplus/docs/spec",
+        "ipfs_accelerate_py/mcplusplus/conformance/vectors",
+        "ipfs_accelerate_py/mcplusplus/schemas"
+      ],
+      "interfaces": [
+        "Profile A InterfaceDescriptor",
+        "Profile B CID-native artifacts",
+        "Profile F event-DAG",
+        "Profile G risk scheduling"
+      ],
+      "admitted_profiles": [
+        "profile_a",
+        "profile_b",
+        "profile_f",
+        "profile_g"
+      ],
+      "profile_g_is_existing_authority": true,
+      "profile_g_is_new_scg_profile": false,
+      "new_scg_profile_allowed": false,
+      "authority_pin": "mcplusplus",
+      "forbidden_owners": [
+        "scg_local",
+        "semantic_compression_governor",
+        "ipfs_datasets_py_as_profile_definer",
+        "ipfs_kit_py_as_profile_definer"
+      ],
+      "forbidden_claims": [
+        "new_mcplusplus_profile_allowed",
+        "scg_execution_profile",
+        "profile_h_as_scg_authority",
+        "redefine_profile_g_as_new_scg_profile"
+      ],
+      "allowed_consumption": [
+        "Consume Profile A/B/F wire and Profile G scheduling codecs/vectors",
+        "Host Profile G codecs may live in datasets/accelerate/kit without transferring profile definition ownership"
+      ],
+      "source_inventory": "interoperability"
+    }
+  },
+  "responsibilities": [
+    {
+      "id": "identity_content_cid",
+      "responsibility": "identity",
+      "category": "cid",
+      "owner": "ipfs_datasets_py",
+      "surface": "ipfs_datasets_py.logic.software_contracts.content"
+    },
+    {
+      "id": "state_semantic_index",
+      "responsibility": "state",
+      "category": "index",
+      "owner": "ipfs_datasets_py",
+      "surface": "IncrementalSemanticIndex"
+    },
+    {
+      "id": "state_semantic_capsules",
+      "responsibility": "state",
+      "category": "compiler",
+      "owner": "ipfs_datasets_py",
+      "surface": "SemanticCapsuleCompiler@1 / compile_semantic_capsule"
+    },
+    {
+      "id": "state_semantic_bundle",
+      "responsibility": "state",
+      "category": "compiler",
+      "owner": "ipfs_datasets_py",
+      "surface": "build_semantic_state / SemanticStateView"
+    },
+    {
+      "id": "receipt_payload_schemas",
+      "responsibility": "receipt",
+      "category": "envelope",
+      "owner": "ipfs_datasets_py",
+      "surface": "GovernorRunReceipt and CompressionPolicyPromotionReceipt payload schemas",
+      "note": "Neutral application payloads only; not a second generic envelope hierarchy."
+    },
+    {
+      "id": "receipt_durable_issuance",
+      "responsibility": "receipt",
+      "category": "store",
+      "owner": "ipfs_kit_py",
+      "surface": "DurableCoordinationStore envelope bindings and CAS transitions"
+    },
+    {
+      "id": "receipt_wire_envelope",
+      "responsibility": "receipt",
+      "category": "envelope",
+      "owner": "Mcp-Plus-Plus",
+      "surface": "Existing Profile A/B/F/G wire envelopes"
+    },
+    {
+      "id": "proof_verification_plan",
+      "responsibility": "proof",
+      "category": "cache",
+      "owner": "ipfs_accelerate_py",
+      "surface": "IncrementalVerificationPlanner"
+    },
+    {
+      "id": "proof_receipt_cache",
+      "responsibility": "proof",
+      "category": "cache",
+      "owner": "ipfs_accelerate_py",
+      "surface": "VerificationReceiptCache"
+    },
+    {
+      "id": "proof_sealer_full_and_delta",
+      "responsibility": "proof",
+      "category": "profile",
+      "owner": "typed_unavailable",
+      "surface": "FullCheckpointSeal / DeltaSeal / IncrementalProofSealer",
+      "status": "typed_unavailable",
+      "cannot_be_substituted_by": [
+        "VerificationCommitment",
+        "IVP Merkle commitment",
+        "MCP++ zkp_proof_artifact vectors"
+      ]
+    },
+    {
+      "id": "execution_harness",
+      "responsibility": "execution",
+      "category": "provider",
+      "owner": "ipfs_accelerate_py",
+      "surface": "SemanticCompressionHarness / run_semantic_patch_loop"
+    },
+    {
+      "id": "execution_context_pack",
+      "responsibility": "execution",
+      "category": "provider",
+      "owner": "ipfs_accelerate_py",
+      "surface": "ContextPacker / pack_context"
+    },
+    {
+      "id": "execution_model_route_and_provider",
+      "responsibility": "execution",
+      "category": "provider",
+      "owner": "ipfs_accelerate_py",
+      "surface": "ModelRoutePlanner / ProductionProviderGate"
+    },
+    {
+      "id": "execution_profile_wire",
+      "responsibility": "execution",
+      "category": "profile",
+      "owner": "Mcp-Plus-Plus",
+      "surface": "Existing Profile A/B/F/G only"
+    },
+    {
+      "id": "storage_durable_blocks",
+      "responsibility": "storage",
+      "category": "store",
+      "owner": "ipfs_kit_py",
+      "surface": "DurableCoordinationStore"
+    },
+    {
+      "id": "storage_state_root_cas",
+      "responsibility": "storage",
+      "category": "store",
+      "owner": "ipfs_kit_py",
+      "surface": "DurableStateRootAdapter / DurableStateRoots"
+    },
+    {
+      "id": "storage_governor_domain_layer",
+      "responsibility": "storage",
+      "category": "store",
+      "owner": "ipfs_kit_py",
+      "surface": "SemanticGovernorStore (missing thin layer; must compose DurableCoordinationStore)",
+      "present_in_tree": false
+    }
+  ],
+  "allowed_imports": {
+    "scg_may_import": [
+      "ipfs_datasets_py.logic.software_contracts.content",
+      "ipfs_datasets_py.logic.software_contracts.semantic_index",
+      "ipfs_datasets_py.logic.software_contracts.semantic_state",
+      "ipfs_accelerate_py.agent_supervisor.semantic_state",
+      "ipfs_accelerate_py.agent_supervisor.verification",
+      "ipfs_accelerate_py.agent_supervisor.runtime",
+      "ipfs_accelerate_py.mcp_server.mcplusplus",
+      "ipfs_kit_py.mcp_server.mcplusplus.coordination_storage",
+      "ipfs_kit_py.mcp_server.mcplusplus.state_root_adapter",
+      "ipfs_kit_py.mcp_server.mcplusplus.state_root_contracts"
+    ],
+    "scg_must_not_import_or_recreate": [
+      "a second content-identity module under accelerate or kit",
+      "a second semantic index/scanner under accelerate",
+      "a public SemanticCapsuleCompiler class outside datasets",
+      "a second DurableCoordinationStore or WAL",
+      "a local generic ExecutionEnvelope/receipt hierarchy",
+      "unreleased IncrementalProofSealer private modules as public authority",
+      "a new MCP++ profile package owned by SCG"
+    ]
+  },
+  "forbidden_reimplementations": [
+    {
+      "id": "no_second_cid",
+      "category": "cid",
+      "claim": "Implement another CIDv1 profile or content-identity authority"
+    },
+    {
+      "id": "no_local_generic_envelope",
+      "category": "envelope",
+      "claim": "Define a local generic receipt/execution envelope for SCG"
+    },
+    {
+      "id": "no_second_store",
+      "category": "store",
+      "claim": "Open a second object store, WAL, or daemon for governor artifacts"
+    },
+    {
+      "id": "no_second_index",
+      "category": "index",
+      "claim": "Rescan or reimplement the incremental semantic index"
+    },
+    {
+      "id": "no_second_compiler",
+      "category": "compiler",
+      "claim": "Recreate SemanticCapsuleCompiler as a public class or second compiler"
+    },
+    {
+      "id": "no_second_proof_cache",
+      "category": "cache",
+      "claim": "Implement another verification receipt cache authority"
+    },
+    {
+      "id": "no_new_provider_stack",
+      "category": "provider",
+      "claim": "Introduce a parallel model provider stack outside ProductionProviderGate"
+    },
+    {
+      "id": "no_new_mcplusplus_profile",
+      "category": "profile",
+      "claim": "Create a new MCP++ execution profile for SCG"
+    },
+    {
+      "id": "no_ivp_as_sealer",
+      "category": "cache",
+      "claim": "Substitute VerificationCommitment/IVP Merkle for FullCheckpointSeal or DeltaSeal"
+    }
+  ],
+  "sealer_capability_gating": {
+    "full_checkpoint_seal": {
+      "status": "typed_unavailable",
+      "owner_when_released": "released_public_api_on_consumable_commit",
+      "import_path": null
+    },
+    "delta_or_incremental_seal": {
+      "status": "typed_unavailable",
+      "owner_when_released": "released_public_api_on_consumable_commit",
+      "import_path": null
+    },
+    "missing_disposition": "typed_unavailable",
+    "ivp_merkle_commitment": {
+      "interface_id": "VerificationCommitment@1",
+      "owner": "ipfs_accelerate_py",
+      "is_zero_knowledge_proof": false,
+      "is_proof_sealer": false,
+      "may_substitute_for_sealer": false
+    },
+    "policy": "Until released sealer public APIs land, SCG records seal status as typed_unavailable/inconclusive and must not import unfinished private sealer code."
+  },
+  "alternate_ownership_rejection_table": [
+    {
+      "category": "cid",
+      "claimed_owner": "ipfs_accelerate_py",
+      "disposition": "reject",
+      "reason": "Canonical CID authority is datasets content identity only"
+    },
+    {
+      "category": "cid",
+      "claimed_owner": "ipfs_kit_py",
+      "disposition": "reject",
+      "reason": "Kit verifies caller-supplied CIDs; it does not own canonical identity"
+    },
+    {
+      "category": "envelope",
+      "claimed_owner": "scg_local",
+      "disposition": "reject",
+      "reason": "Local generic envelopes are forbidden; use existing MCP++ profiles"
+    },
+    {
+      "category": "envelope",
+      "claimed_owner": "semantic_compression_governor",
+      "disposition": "reject",
+      "reason": "SCG payloads ride existing envelopes; SCG is not envelope authority"
+    },
+    {
+      "category": "store",
+      "claimed_owner": "ipfs_datasets_py",
+      "disposition": "reject",
+      "reason": "Datasets is storage-neutral; durable CAS is kit"
+    },
+    {
+      "category": "store",
+      "claimed_owner": "ipfs_accelerate_py",
+      "disposition": "reject",
+      "reason": "Accelerate orchestrates storage consumption; it must not open a second store"
+    },
+    {
+      "category": "index",
+      "claimed_owner": "ipfs_accelerate_py",
+      "disposition": "reject",
+      "reason": "Semantic index ownership is datasets only"
+    },
+    {
+      "category": "index",
+      "claimed_owner": "ipfs_kit_py",
+      "disposition": "reject",
+      "reason": "Kit storage indexes are not the semantic ISI"
+    },
+    {
+      "category": "compiler",
+      "claimed_owner": "ipfs_accelerate_py",
+      "disposition": "reject",
+      "reason": "Capsule compiler is datasets SemanticCapsuleCompiler@1 only"
+    },
+    {
+      "category": "compiler",
+      "claimed_owner": "scg_local",
+      "disposition": "reject",
+      "reason": "No second capsule compiler under SCG"
+    },
+    {
+      "category": "cache",
+      "claimed_owner": "ipfs_datasets_py",
+      "disposition": "reject",
+      "reason": "VerificationReceiptCache is accelerate verification authority"
+    },
+    {
+      "category": "cache",
+      "claimed_owner": "ipfs_kit_py",
+      "disposition": "reject",
+      "reason": "Durable storage is not the verification receipt cache"
+    },
+    {
+      "category": "provider",
+      "claimed_owner": "ipfs_datasets_py",
+      "disposition": "reject",
+      "reason": "Provider gate and model invocation are accelerate ownership"
+    },
+    {
+      "category": "provider",
+      "claimed_owner": "Mcp-Plus-Plus",
+      "disposition": "reject",
+      "reason": "MCP++ owns wire profiles, not model provider execution"
+    },
+    {
+      "category": "profile",
+      "claimed_owner": "semantic_compression_governor",
+      "disposition": "reject",
+      "reason": "No new SCG MCP++ execution profile is permitted"
+    },
+    {
+      "category": "profile",
+      "claimed_owner": "scg_local",
+      "disposition": "reject",
+      "reason": "Profile definition authority remains Mcp-Plus-Plus existing profiles"
+    }
+  ],
+  "stale_authority_rejection_examples": [
+    {
+      "authority_id": "datasets",
+      "claimed_commit": "0000000000000000000000000000000000000000",
+      "disposition": "reject",
+      "reason": "Zero commit is not the datasets gitlink pin"
+    },
+    {
+      "authority_id": "kit",
+      "claimed_commit": "05ba937500000000000000000000000000000000",
+      "disposition": "reject",
+      "reason": "Pre-hermetic-vector kit tip is stale relative to df2f9cc0 pin"
+    },
+    {
+      "authority_id": "mcplusplus",
+      "claimed_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "disposition": "reject",
+      "reason": "Unrelated tip is not the shared wire/conformance pin"
+    },
+    {
+      "authority_id": "accelerate_planning",
+      "claimed_commit": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      "disposition": "reject",
+      "reason": "Planning authority pin must remain dfd92b554..."
+    },
+    {
+      "authority_id": "incremental_verification_freeze",
+      "claimed_commit": "1111111111111111111111111111111111111111",
+      "disposition": "reject",
+      "reason": "IVP freeze pin is exact historical authority, not an arbitrary tip"
+    },
+    {
+      "authority_id": "incremental_proof_sealer_program",
+      "claimed_as_released_api": true,
+      "disposition": "reject",
+      "reason": "External sealer observation pin is not released public API authority"
+    }
+  ],
+  "acceptance": {
+    "criterion": "Tests reject alternate CID/envelope/store/index/compiler/cache/provider/profile ownership and stale authority pins.",
+    "required_categories": [
+      "cid",
+      "envelope",
+      "store",
+      "index",
+      "compiler",
+      "cache",
+      "provider",
+      "profile"
+    ],
+    "one_owner_per_category": true,
+    "source_inventories_required": [
+      "SCG-001",
+      "SCG-002",
+      "SCG-003",
+      "SCG-004"
+    ],
+    "validation_command": "PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q test/api/semantic_governor/test_authority_matrix.py"
+  }
+}

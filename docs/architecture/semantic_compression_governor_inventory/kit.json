@@ -1,0 +1,758 @@
+{
+  "schema": "scg/kit-inventory@1",
+  "task_id": "SCG-003",
+  "goal_id": "SCG-G010",
+  "track": "inventory-kit",
+  "title": "Inventory kit immutable blocks, history, recovery, and root CAS",
+  "inventory_date": "2026-08-13",
+  "status": "complete",
+  "acceptance": {
+    "criterion": "Inventory identifies the thin governor domain layer still missing and the primitive that must back it.",
+    "satisfied": true,
+    "thin_governor_domain_layer_missing": {
+      "package_path": "ipfs_kit_py/ipfs_kit_py/semantic_governor_store/",
+      "protocol": "SemanticGovernorStore",
+      "related_interfaces": [
+        "GovernorArtifactKind",
+        "PolicyVersionSnapshot",
+        "PolicyCASResult",
+        "AuditRecoveryReport",
+        "DurableSemanticGovernorStore"
+      ],
+      "planned_modules": [
+        "contracts.py",
+        "artifacts.py",
+        "history.py",
+        "policy.py",
+        "recovery.py"
+      ],
+      "planned_tasks": [
+        "SCG-010",
+        "SCG-019",
+        "SCG-020",
+        "SCG-021",
+        "SCG-022"
+      ],
+      "present_in_tree": false,
+      "description": "Thin typed storage manifests over DurableCoordinationStore for immutable audit cases, calibration and benchmark history, policy versions, promotion state, receipts, recovery, and compare-and-swap publication. Does not create another object store, WAL, or CID implementation.",
+      "ownership": "ipfs_kit_py"
+    },
+    "backing_primitive": {
+      "primary": "DurableCoordinationStore",
+      "import_path": "ipfs_kit_py.mcp_server.mcplusplus.coordination_storage.DurableCoordinationStore",
+      "source_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+      "typed_facade": "DurableStateRootAdapter",
+      "facade_import_path": "ipfs_kit_py.mcp_server.mcplusplus.state_root_adapter.DurableStateRootAdapter",
+      "facade_source_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py",
+      "protocol": "DurableStateRoots",
+      "protocol_import_path": "ipfs_kit_py.mcp_server.mcplusplus.state_root_contracts.DurableStateRoots",
+      "protocol_source_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py",
+      "role": "Authoritative immutable-block store with rebuildable SQLite indexes, operation-id idempotent expected-revision CAS for state roots, and fail-closed recovery. The missing SemanticGovernorStore must compose this primitive rather than reimplement storage, CID, WAL, or daemon logic."
+    }
+  },
+  "repository": {
+    "name": "ipfs_kit_py",
+    "planning_bound_revision": "df2f9cc092456329de9724c45a50c54b410875d1",
+    "observed_revision": "df2f9cc092456329de9724c45a50c54b410875d1",
+    "observed_subject": "fix(ksr): vendor Profile G vectors for hermetic seal tests",
+    "match_planning_baseline": true,
+    "controller_revision_at_inventory": "a0b825d8cfa384c284d0e77fa5341571c40adfa8",
+    "planning_note": "Plan section 2 pins kit df2f9cc0... after hermetic-vector repair; inventory confirms the nested gitlink equals that pin."
+  },
+  "conflict_policy": "Inventory reusable storage/CAS only; do not design another store, WAL, or daemon.",
+  "non_goals": [
+    "No second object store",
+    "No new WAL or journal engine",
+    "No new CID or content-identity implementation",
+    "No new daemon or network service",
+    "No semantic-governor domain schemas in this inventory (owned by datasets contracts and later SCG-010+)",
+    "No reimplementation of Profile G codecs beyond consumption of existing kit/MCP++ authority"
+  ],
+  "public_interfaces": {
+    "DurableCoordinationStore": {
+      "status": "available",
+      "kind": "class",
+      "module": "ipfs_kit_py.mcp_server.mcplusplus.coordination_storage",
+      "source_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+      "line": 284,
+      "package_export": {
+        "from_mcplusplus_package_init": false,
+        "canonical_import": "from ipfs_kit_py.mcp_server.mcplusplus.coordination_storage import DurableCoordinationStore",
+        "note": "Not lazily re-exported by mcplusplus.__init__; tests and adapters import coordination_storage directly."
+      },
+      "db_version": 2,
+      "constructor": {
+        "signature": "DurableCoordinationStore(storage_dir: Optional[os.PathLike[str] | str] = None, *, backend: Optional[BlockBackend | Any] = None, retention: Optional[RetentionPolicy] = None, clock_ms: Optional[Any] = None, crash_injector: Optional[Any] = None) -> None",
+        "default_storage_dir_env": "MCPPLUSPLUS_COORDINATION_DIR",
+        "default_storage_dir_fallback": "~/.local/share/ipfs_kit_py/mcppp_coordination",
+        "layout": {
+          "blocks_dir": "blocks/",
+          "sqlite_index": "coordination.sqlite3",
+          "block_shard": "blocks/<cid[1:3]>/<cid>.json"
+        }
+      },
+      "methods": [
+        {
+          "name": "put",
+          "signature": "put(self, artifact: Mapping[str, Any], *, expected_cid: Optional[str] = None, codec: str = 'dag-json', replicate: bool = True) -> Dict[str, Any]",
+          "line": 503,
+          "returns": {
+            "cid": "str",
+            "kind": "str",
+            "codec": "str",
+            "byte_length": "int",
+            "created": "bool",
+            "replicated": "bool",
+            "durable": "true"
+          },
+          "contract": "Writes immutable local block with fsync before index commit; optional expected_cid fail-closed; optional backend replication after local durability."
+        },
+        {
+          "name": "put_profile_g",
+          "signature": "put_profile_g(self, kind: str, artifact: Mapping[str, Any], *, expected_cid: Optional[str] = None) -> Dict[str, Any]",
+          "line": 546,
+          "contract": "Stores a Profile G artifact and verifies declared kind against schema mapping."
+        },
+        {
+          "name": "get_bytes",
+          "signature": "get_bytes(self, cid: str) -> bytes",
+          "line": 554,
+          "contract": "CID-verified local read; backend load repairs local tree after integrity check."
+        },
+        {
+          "name": "get",
+          "signature": "get(self, cid: str) -> Dict[str, Any]",
+          "line": 576,
+          "contract": "Returns canonical JSON object only when bytes equal re-serialized canonical form."
+        },
+        {
+          "name": "has",
+          "signature": "has(self, cid: str, *, include_backend: bool = False) -> bool",
+          "line": 586
+        },
+        {
+          "name": "current_state_root",
+          "aliases": ["current_root"],
+          "signature": "current_state_root(self, namespace: str) -> Dict[str, Any]",
+          "line": 742,
+          "returns_snapshot_fields": ["namespace", "root_cid", "revision", "transition_cid"],
+          "contract": "Absent namespaces begin at revision 0 with null root_cid and transition_cid. Live reads verify the full indexed transition chain against immutable blocks."
+        },
+        {
+          "name": "compare_and_swap_state_root",
+          "aliases": ["compare_and_swap_root"],
+          "signature": "compare_and_swap_state_root(self, namespace: str, *, expected_revision: int, expected_root_cid: Optional[str], new_root_cid: str, operation_id: str) -> Dict[str, Any]",
+          "line": 772,
+          "contract": "One-writer expected-revision CAS under BEGIN IMMEDIATE. Transition block is immutable evidence; root index mutates only in the same full-synchronous transaction that indexes that block. operation_id is a durable idempotency key per namespace."
+        },
+        {
+          "name": "state_roots",
+          "signature": "state_roots(self) -> list[Dict[str, Any]]",
+          "line": 749
+        },
+        {
+          "name": "root_transitions",
+          "signature": "root_transitions(self, namespace: Optional[str] = None) -> list[Dict[str, Any]]",
+          "line": 758
+        },
+        {
+          "name": "recover",
+          "signature": "recover(self, *, rebuild: bool = True) -> Dict[str, Any]",
+          "line": 1225,
+          "returns": {
+            "verified_blocks": "int",
+            "rebuilt": "bool",
+            "errors": "list"
+          },
+          "contract": "Verifies every local block against its CID. Corrupt blocks fail closed. rebuild=True recreates all derived indexes from verified immutable blocks including root chains and Profile G claim/lease/health indexes. rebuild=False is a verify-only pass used on healthy reopen."
+        },
+        {
+          "name": "root_recovery_metrics",
+          "signature": "root_recovery_metrics(self) -> Dict[str, int]",
+          "line": 455,
+          "counters": [
+            "root_index_verifications",
+            "root_index_rebuild_mutations"
+          ],
+          "contract": "Session-local structural counters, not persisted coordination state and not wall-clock timings."
+        },
+        {
+          "name": "compact_indexes",
+          "signature": "compact_indexes(self, *, at_ms: Optional[int] = None) -> Dict[str, Any]",
+          "line": 1076,
+          "contract": "Archives and prunes stale claim/lease/health index rows only. Artifact blocks are permanently retained."
+        },
+        {
+          "name": "status",
+          "signature": "status(self) -> Dict[str, Any]",
+          "line": 1341
+        },
+        {
+          "name": "claims",
+          "signature": "claims(self, task_cid: str, *, include_terminal: bool = True) -> list[Dict[str, Any]]",
+          "line": 1035
+        },
+        {
+          "name": "active_lease",
+          "signature": "active_lease(self, task_cid: str, *, at_ms: Optional[int] = None) -> Optional[Dict[str, Any]]",
+          "line": 1044
+        },
+        {
+          "name": "daemon_health",
+          "signature": "daemon_health(self, peer_did: Optional[str] = None, *, at_ms: Optional[int] = None) -> list[Dict[str, Any]]",
+          "line": 1065
+        },
+        {
+          "name": "record_daemon_health",
+          "signature": "record_daemon_health(self, record: Mapping[str, Any]) -> Dict[str, Any]",
+          "line": 1011
+        },
+        {
+          "name": "close",
+          "signature": "close(self) -> None",
+          "line": 421
+        }
+      ],
+      "supporting_types": {
+        "BlockBackend": {
+          "kind": "Protocol",
+          "methods": ["store_block(cid, data, codec)", "load_block(cid)"]
+        },
+        "RetentionPolicy": {
+          "fields": {
+            "terminal_claim_ms": 604800000,
+            "expired_lease_ms": 604800000,
+            "expired_health_ms": 86400000
+          },
+          "artifact_blocks": "retain-forever"
+        },
+        "errors": [
+          "CoordinationStorageError",
+          "ArtifactNotFound",
+          "ArtifactIntegrityError"
+        ],
+        "cid_helpers": [
+          "cid_for_bytes",
+          "cid_for_artifact",
+          "validate_transport_cid"
+        ]
+      }
+    },
+    "DurableStateRoots": {
+      "status": "available",
+      "kind": "Protocol",
+      "module": "ipfs_kit_py.mcp_server.mcplusplus.state_root_contracts",
+      "source_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py",
+      "line": 303,
+      "package_export": "lazy via ipfs_kit_py.mcp_server.mcplusplus",
+      "methods": [
+        "put_verified(payload, *, expected_cid, replicate=True) -> ArtifactWriteResult",
+        "get_verified(cid) -> Mapping[str, Any]",
+        "current_root(namespace) -> StateRootSnapshot",
+        "compare_and_swap_root(namespace, *, expected_revision, expected_root_cid, new_root_cid, operation_id) -> StateRootCASResult",
+        "recover_roots() -> StateRootRecoveryReport"
+      ],
+      "contract": "Storage-facing protocol only. Implementations own I/O and publication. Protocol module owns neither store opening nor CID derivation."
+    },
+    "DurableStateRootAdapter": {
+      "status": "available",
+      "kind": "class",
+      "implements": "DurableStateRoots",
+      "module": "ipfs_kit_py.mcp_server.mcplusplus.state_root_adapter",
+      "source_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py",
+      "line": 25,
+      "package_export": "lazy via ipfs_kit_py.mcp_server.mcplusplus",
+      "constructor": "DurableStateRootAdapter(store: DurableCoordinationStore)",
+      "methods": [
+        {
+          "name": "put_verified",
+          "line": 45,
+          "contract": "Requires caller-supplied expected_cid; validates dag-json semantic CID before local put; projects optional replication into closed ProviderStatus without obscuring local durability."
+        },
+        {
+          "name": "get_verified",
+          "line": 100,
+          "contract": "CID-verified get through the injected store after semantic dag-json CID validation."
+        },
+        {
+          "name": "current_root",
+          "line": 106,
+          "contract": "Projects store snapshot to typed StateRootSnapshot and revalidates CID-bearing fields."
+        },
+        {
+          "name": "compare_and_swap_root",
+          "line": 122,
+          "contract": "Semantic-facade CAS: rejects raw CIDs for expected and successor roots; delegates to store.compare_and_swap_state_root; returns typed StateRootCASResult."
+        },
+        {
+          "name": "recover_roots",
+          "line": 158,
+          "contract": "Calls store.recover(rebuild=True) and projects roots; raw or corrupt reconstructed roots become closed corrupt recovery reports rather than leaking exceptions."
+        }
+      ],
+      "identity_boundary": "ipfs_datasets_py owns semantic identity. Callers compute CID; adapter and store only verify. Adapter does not canonicalize, translate, or mint replacement identity."
+    }
+  },
+  "contracts": {
+    "immutable_blocks": {
+      "authority": "Local blocks/ tree is authoritative; SQLite is a rebuildable acceleration index.",
+      "codecs": {
+        "transport_accepted": ["dag-json", "raw"],
+        "default_codec": "dag-json",
+        "cid_profile": "CIDv1/sha2-256 base32 lower-case multibase ('b' prefix)",
+        "semantic_facade_codec": "dag-json only"
+      },
+      "write_path": [
+        "canonical JSON serialization (sort_keys, separators=(',',':'), ensure_ascii=False, allow_nan=False)",
+        "CID computation from bytes and codec",
+        "optional expected_cid equality check",
+        "atomic temp write + fsync + link into shard directory",
+        "directory fsync",
+        "SQLite index transaction",
+        "optional backend store_block after local durability"
+      ],
+      "collision_policy": "Identical bytes are idempotent (created=false). Different bytes for the same CID raise ArtifactIntegrityError.",
+      "retention": "Artifact blocks are permanent. RetentionPolicy and compact_indexes affect derived index rows only; they emit mcp++/coordination-index-archive@1 before pruning rows."
+    },
+    "schemas": {
+      "state_root_transition": "mcp++/coordination/state-root-transition@1",
+      "coordination_archive": "mcp++/coordination-index-archive@1",
+      "daemon_health": "mcp++/coordination/daemon-health@1",
+      "profile_g_prefix": "mcp++/profile-g/",
+      "profile_g_kinds": {
+        "goal": "Goal",
+        "subgoal": "Subgoal",
+        "plan-branch": "PlanBranch",
+        "plan-selection": "PlanSelection",
+        "task": "TaskSpec",
+        "risk-model": "RiskModel",
+        "risk-evidence": "RiskEvidence",
+        "risk-assessment": "RiskAssessment",
+        "neighborhood-record": "NeighborhoodRecord",
+        "neighborhood-attestation": "NeighborhoodAttestation",
+        "schedule-proposal": "ScheduleProposal",
+        "task-claim": "TaskClaim",
+        "claim-resolution": "ClaimResolution",
+        "task-receipt": "TaskReceipt"
+      }
+    },
+    "state_root_transition_wire": {
+      "schema": "mcp++/coordination/state-root-transition@1",
+      "closed_fields": [
+        "schema",
+        "namespace",
+        "operation_id",
+        "expected_root_cid",
+        "expected_revision",
+        "new_root_cid",
+        "new_revision",
+        "created_at_ms"
+      ],
+      "invariants": [
+        "new_revision == expected_revision + 1",
+        "new_root_cid != expected_root_cid",
+        "transition CID must be dag-json",
+        "successor root block must exist before CAS publication and during reconstruction"
+      ]
+    },
+    "namespace": {
+      "max_length": 255,
+      "segment_grammar": "[a-z0-9](?:[a-z0-9._-]{0,61}[a-z0-9])?",
+      "rules": [
+        "non-empty",
+        "no leading/trailing whitespace",
+        "no empty segments or '//'",
+        "segments slash-separated"
+      ],
+      "examples_for_governor_planning": [
+        "semantic-governor/<workspace>/audit",
+        "semantic-governor/<workspace>/policy",
+        "semantic-governor/<workspace>/promotion"
+      ],
+      "note": "Governor namespace layout is not frozen by kit storage; SCG-010 must define closed governor namespaces over this grammar."
+    },
+    "operation_id": {
+      "grammar": "[a-z0-9](?:[a-z0-9._:-]{0,126}[a-z0-9])?",
+      "max_length": 128,
+      "scope": "UNIQUE(namespace, operation_id) in state_root_transitions",
+      "idempotency": {
+        "exact_replay": {
+          "status": "unchanged",
+          "reason_code": "idempotent_replay"
+        },
+        "changed_reuse": {
+          "status": "conflict",
+          "reason_code": "operation_id_reused"
+        }
+      }
+    },
+    "expected_version_cas": {
+      "predecessor_forms": [
+        {
+          "expected_revision": 0,
+          "expected_root_cid": null
+        },
+        {
+          "expected_revision": ">0",
+          "expected_root_cid": "required canonical transport CID"
+        }
+      ],
+      "rejected_forms": [
+        "revision 0 with non-null root CID",
+        "non-zero revision with null root CID",
+        "new_root_cid equal to expected_root_cid"
+      ],
+      "success": {
+        "status": "updated",
+        "reason_code": "updated",
+        "after.revision": "before.revision + 1",
+        "local_durable": true
+      },
+      "stale_expectation": {
+        "status": "conflict",
+        "reason_code": "stale_expectation",
+        "mutation": false
+      },
+      "statuses_store_dict": [
+        "updated",
+        "unchanged",
+        "conflict"
+      ],
+      "statuses_typed_facade": [
+        "updated",
+        "unchanged",
+        "conflict",
+        "unavailable",
+        "corrupt"
+      ],
+      "serialization": "BEGIN IMMEDIATE under store RLock; one winner among concurrent writers",
+      "interruption_points": [
+        "before_transaction",
+        "after_expectation_verification",
+        "after_transition_block_fsync",
+        "after_transition_indexing",
+        "before_sqlite_commit",
+        "after_sqlite_commit"
+      ],
+      "interruption_recovery_rule": "Reopen recovers to the prior root or the sole durable successor reconstructed from immutable transition blocks; never invents promotion or completion."
+    },
+    "typed_results": {
+      "RootUpdateStatus": [
+        "updated",
+        "unchanged",
+        "conflict",
+        "unavailable",
+        "corrupt"
+      ],
+      "ProviderStatus": [
+        "available",
+        "unavailable",
+        "failed",
+        "corrupt",
+        "not_requested"
+      ],
+      "StateRootSnapshot": {
+        "fields": ["namespace", "root_cid", "revision", "transition_cid"],
+        "revision_zero": "root_cid and transition_cid must be null",
+        "non_zero": "root_cid and transition_cid required"
+      },
+      "StateRootCASResult": {
+        "fields": [
+          "status",
+          "before",
+          "after",
+          "transition_cid",
+          "reason_code",
+          "local_durable",
+          "replicated"
+        ]
+      },
+      "ArtifactWriteResult": {
+        "fields": [
+          "cid",
+          "local_durable",
+          "provider_status",
+          "replicated",
+          "reason_code"
+        ],
+        "invariants": [
+          "local_durable must be true for any successful artifact result",
+          "replicated exactly matches provider_status == available"
+        ]
+      },
+      "StateRootRecoveryReport": {
+        "fields": [
+          "verified_blocks",
+          "reconstructed_roots",
+          "ignored_idempotent_transitions",
+          "errors"
+        ],
+        "errors": "closed {code, message} records"
+      }
+    },
+    "corruption": {
+      "local_cid_mismatch": "ArtifactIntegrityError; recovery fails closed",
+      "backend_cid_mismatch": "ArtifactIntegrityError on get; adapter put_verified projects ProviderStatus.CORRUPT without claiming replication success",
+      "non_canonical_json": "ArtifactIntegrityError",
+      "corrupt_sqlite": "Preserved as coordination.sqlite3.corrupt-<ms> and rebuilt from immutable blocks",
+      "tampered_root_index": "current_state_root / CAS verify chain against blocks and refuse mutation",
+      "raw_transition_evidence": "Rejected before rebuild mutates indexes",
+      "ambiguous_successors": "Reconstruction rejects without picking a winner",
+      "semantic_facade_raw_root": "validate_semantic_dag_json_cid rejects raw transport CIDs; generic store may still hold raw coordination artifacts"
+    },
+    "concurrency": {
+      "in_process": "threading.RLock around store operations",
+      "cross_process_cas": "SQLite BEGIN IMMEDIATE serializes writers before expectation is observed as current",
+      "outcome": "Exactly one distinct winner; losers receive typed conflict",
+      "tests": [
+        "test_two_independent_store_connections_have_one_distinct_winner",
+        "test_distinct_concurrent_writers_have_one_winner_and_a_typed_loser"
+      ]
+    },
+    "replay": {
+      "late_exact_operation_replay": "status=unchanged, reason_code=idempotent_replay, revision unchanged",
+      "changed_operation_reuse": "status=conflict, reason_code=operation_id_reused",
+      "block_put_same_bytes": "created=false, no collision",
+      "block_put_different_bytes_same_cid": "ArtifactIntegrityError"
+    },
+    "recovery": {
+      "startup": [
+        "If SQLite unreadable: preserve corrupt file, recreate empty index",
+        "If local blocks exist: recover(rebuild=False) verify pass",
+        "If artifacts index empty or root indexes disagree with immutable chain: recover(rebuild=True)"
+      ],
+      "rebuild_sources": [
+        "All verified local blocks",
+        "Root transition chain reconstruction",
+        "Profile G claim/lease/health reindex",
+        "Coordination archive tombstone application"
+      ],
+      "fail_closed_conditions": [
+        "Any corrupt block in scan",
+        "Missing successor root for a transition",
+        "Duplicate namespace/operation_id",
+        "Broken predecessor chain",
+        "Non-dag-json transition CID"
+      ],
+      "adapter_projection": "recover_roots returns StateRootRecoveryReport; semantic validation failures become errors=[{code: corrupt, message: ...}] with empty reconstructed_roots"
+    },
+    "metrics": {
+      "root_recovery_metrics": {
+        "root_index_verifications": "Incremented on recover verify/rebuild scan",
+        "root_index_rebuild_mutations": "Incremented only for committed root-index DELETE/INSERT work"
+      },
+      "healthy_reopen_property": "When indexes already match immutable transitions, reopen verification leaves root_index_rebuild_mutations at zero.",
+      "status_counts": [
+        "artifacts",
+        "claims",
+        "leases",
+        "daemon_health",
+        "index_archives"
+      ],
+      "note": "No governor-domain audit/calibration/policy metrics exist in kit yet; those belong to the missing semantic_governor_store and accelerate metrics tasks."
+    },
+    "optional_backend": {
+      "styles": [
+        "store_block/load_block",
+        "Helia put/get",
+        "Kubo block/dag client methods"
+      ],
+      "local_first": true,
+      "daemon_required_for_local_durability": false,
+      "import_side_effects": "Package import and adapter construction perform no provider discovery, installation, network service, or daemon startup."
+    }
+  },
+  "missing_governor_domain_layer": {
+    "summary": "The reusable storage/CAS primitive is complete. The thin governor domain layer that must sit on top of it is absent.",
+    "missing_package": "ipfs_kit_py.semantic_governor_store",
+    "missing_protocol": "SemanticGovernorStore",
+    "must_back_on": {
+      "primitive": "DurableCoordinationStore",
+      "typed_root_facade": "DurableStateRootAdapter implementing DurableStateRoots",
+      "required_operations": [
+        "put / put_verified for immutable audit, calibration, benchmark, policy, and receipt payloads with caller-supplied expected CIDs",
+        "get / get_verified for CID-checked reads",
+        "compare_and_swap_state_root / compare_and_swap_root for policy and promotion heads with expected_revision, expected_root_cid, and operation_id",
+        "recover / recover_roots for fail-closed index reconstruction",
+        "root_transitions / history linkage for append-only audit and promotion history"
+      ]
+    },
+    "must_not_reimplement": [
+      "CID computation authority beyond verification of caller-supplied CIDs",
+      "Block storage tree or SQLite WAL engine",
+      "Generic receipt envelope hierarchy",
+      "Network daemon or backend discovery"
+    ],
+    "ownership_split": {
+      "datasets": "Neutral GovernorRunReceipt and CompressionPolicyPromotionReceipt payload schemas; canonical content identity",
+      "kit": "Durable issuance, immutable storage/history, expected-version CAS transitions, existing envelope bindings",
+      "accelerate": "Governor orchestration that consumes the store, not a second store"
+    },
+    "planned_follow_on": {
+      "SCG-010": "Define SemanticGovernorStore protocol and closed namespaces/operations",
+      "SCG-019": "Immutable audit artifact storage composing DurableCoordinationStore",
+      "SCG-020": "Append-only audit, calibration, and benchmark histories",
+      "SCG-021": "Versioned compression-policy and promotion CAS repositories",
+      "SCG-022": "Corruption, interruption, concurrency, privacy, and recovery proofs for the governor store"
+    }
+  },
+  "tests": {
+    "focused_suite": [
+      {
+        "path": "ipfs_kit_py/tests/test_coordination_storage.py",
+        "collected": 7,
+        "covers": [
+          "Profile G hermetic vector CIDs",
+          "restart and index recovery",
+          "backend repair of missing local block",
+          "claim/lease fencing and expiry",
+          "retention archives without deleting blocks",
+          "expected CID and recovery fail-closed corruption",
+          "corrupt SQLite preserve-and-rebuild"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_contracts.py",
+        "collected": 26,
+        "covers": [
+          "closed contract round-trip",
+          "namespace and CID validation",
+          "CAS expectation coherence",
+          "semantic dag-json-only CIDs"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_cas.py",
+        "collected": 13,
+        "covers": [
+          "revisioned publish",
+          "stale CAS and idempotent replay",
+          "concurrent winners",
+          "index rebuild from transitions",
+          "live corruption refusal"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_adapter.py",
+        "collected": 9,
+        "covers": [
+          "caller identity preservation",
+          "provider status projection",
+          "raw CID rejection at semantic facade"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_recovery.py",
+        "collected": 17,
+        "covers": [
+          "all interruption boundaries",
+          "ambiguous successor rejection",
+          "raw transition rejection before rebuild",
+          "recovery races with CAS commit"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_acceptance.py",
+        "collected": 12,
+        "covers": [
+          "public facade acceptance",
+          "namespace isolation",
+          "concurrency and interruption",
+          "raw-root semantic rejection"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_performance.py",
+        "collected": 2,
+        "covers": [
+          "healthy reopen without root-index rebuild mutations",
+          "orphan transition reconstruction"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_import_safety.py",
+        "collected": 1,
+        "covers": [
+          "inert public facade import"
+        ]
+      }
+    ],
+    "collected_total": 87,
+    "planning_baseline_note": "Plan records 72 passed kit coordination/root/CAS/recovery/adapter tests after hermetic-vector pin. Current collect-only on the same focused files yields 87 items (includes expanded contract/recovery parametrization). Inventory does not restate a green run as completion evidence beyond collectability."
+  },
+  "hermetic_vectors": {
+    "profile_g_artifacts": {
+      "path": "ipfs_kit_py/tests/fixtures/mcp_plus_plus/profile_g_artifacts_valid.json",
+      "case_count": 14,
+      "kinds": [
+        "Goal",
+        "Subgoal",
+        "PlanBranch",
+        "PlanSelection",
+        "TaskSpec",
+        "RiskModel",
+        "RiskEvidence",
+        "RiskAssessment",
+        "NeighborhoodRecord",
+        "ScheduleProposal",
+        "TaskClaim",
+        "NeighborhoodAttestation",
+        "ClaimResolution",
+        "TaskReceipt"
+      ],
+      "resolution_order": [
+        "MCP_PLUS_PLUS_PROFILE_G_VECTORS env override",
+        "vendored fixture path above",
+        "monorepo sibling Mcp-Plus-Plus/conformance/vectors/profile_g_artifacts_valid.json"
+      ],
+      "purpose": "Hermetic seal tests without requiring an external MCP++ checkout; introduced by kit pin df2f9cc0."
+    }
+  },
+  "documentation": {
+    "coordination_storage": "ipfs_kit_py/docs/coordination-storage.md",
+    "durable_state_roots": "ipfs_kit_py/docs/durable_state_roots.md",
+    "plan_ownership": "docs/architecture/SEMANTIC_COMPRESSION_GOVERNOR_PLAN.md section 4 ipfs_kit_py"
+  },
+  "dependency_seals": {
+    "accelerate_config": "config/semantic_state_dependencies.seal.json",
+    "contract_name": "DurableStateRoots@1",
+    "selectors_consumed": [
+      "DurableCoordinationStore.put",
+      "DurableCoordinationStore.get",
+      "DurableCoordinationStore.get_bytes",
+      "DurableCoordinationStore.has",
+      "DurableCoordinationStore.current_state_root",
+      "DurableCoordinationStore.compare_and_swap_state_root",
+      "DurableCoordinationStore.recover"
+    ]
+  },
+  "governor_consumption_guidance": {
+    "do": [
+      "Compose DurableCoordinationStore for all durable governor artifacts",
+      "Use DurableStateRootAdapter when publishing semantic dag-json policy/promotion roots",
+      "Require caller-supplied verified CIDs and operation_ids",
+      "Treat CAS conflict/unchanged/corrupt/unavailable as closed outcomes",
+      "Recover only from verified immutable blocks"
+    ],
+    "do_not": [
+      "Open a second block store or WAL",
+      "Trust a supplied CID without recomputing or verifying canonical bytes",
+      "Delete history to roll back; use another authorized CAS",
+      "Infer SemanticGovernorStore APIs from documentation alone before SCG-010",
+      "Treat Profile G claim/lease indexes as governor audit history"
+    ]
+  },
+  "evidence_subset": [
+    "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+    "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py",
+    "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py",
+    "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/__init__.py",
+    "ipfs_kit_py/tests/test_coordination_storage.py",
+    "ipfs_kit_py/tests/test_semantic_state_root_*.py",
+    "ipfs_kit_py/tests/fixtures/mcp_plus_plus/profile_g_artifacts_valid.json",
+    "ipfs_kit_py/docs/coordination-storage.md",
+    "ipfs_kit_py/docs/durable_state_roots.md",
+    "docs/architecture/SEMANTIC_COMPRESSION_GOVERNOR_PLAN.md",
+    "docs/architecture/semantic_compression_governor.todo.md"
+  ]
+}

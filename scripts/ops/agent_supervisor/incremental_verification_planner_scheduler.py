@@ -1527,6 +1527,30 @@ def _terminal_evidence(
     return terminal, lanes
 
 
+def _same_process_identity_after_reparenting(
+    recorded: ProcessIdentity,
+    observed: ProcessIdentity,
+) -> bool:
+    """Match one process instance while allowing Linux parent adoption.
+
+    ``ProcessIdentity.identity_id`` commits to ``parent_pid``.  A detached
+    master can outlive the short-lived launcher and be adopted by init (or a
+    subreaper), so a fresh snapshot has a different parent and therefore a
+    different canonical identity.  Both identities have already validated
+    their canonical IDs.  Comparing every canonical field except the mutable
+    parent and its derived ID preserves the PID-birth, boot, executable,
+    session, lifecycle-marker, fence, and configuration checks.  Any other
+    drift continues to fail closed.
+    """
+
+    recorded_payload = recorded.to_dict()
+    observed_payload = observed.to_dict()
+    for mutable_field in ("parent_pid", "identity_id"):
+        recorded_payload.pop(mutable_field)
+        observed_payload.pop(mutable_field)
+    return recorded_payload == observed_payload
+
+
 def status(
     board: IVPBoard,
     *,
@@ -1597,7 +1621,8 @@ def status(
         if isinstance(identity_payload, Mapping):
             identity = ProcessIdentity.from_dict(identity_payload)
             if not any(
-                item.identity_id == identity.identity_id for item in master_tree.members
+                _same_process_identity_after_reparenting(identity, item)
+                for item in master_tree.members
             ):
                 issues.append("recorded master identity is not live")
 
