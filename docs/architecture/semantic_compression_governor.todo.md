@@ -752,7 +752,7 @@ W28 SCG-048
 
 ## SCG-026 Execute paired compressed and expanded attempts in isolated worktrees
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
