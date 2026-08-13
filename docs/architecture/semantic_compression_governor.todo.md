@@ -806,7 +806,7 @@ W28 SCG-048
 
 ## SCG-028 Bridge verification bundles and minimized counterexamples into audits
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
