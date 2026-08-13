@@ -401,7 +401,7 @@ W28 SCG-048
 
 ## SCG-013 Detect and quarantine instruction-like untrusted task data
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
