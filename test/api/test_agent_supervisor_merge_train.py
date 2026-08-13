@@ -230,6 +230,77 @@ def test_train_rebases_candidate_on_latest_target_and_updates_target(tmp_path: P
     assert queue.get(request.request_id).status == "completed"  # type: ignore[union-attr]
 
 
+def test_existing_commit_validation_uses_identifier_worktree_basename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    commit = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/validation-worktree",
+        task_id="VALIDATION-WORKTREE",
+        commit_sha=commit,
+    )
+    train = MergeTrain(repo, queue)
+    observed: list[Path] = []
+
+    def validate(**kwargs: object) -> dict[str, object]:
+        observed.append(Path(str(kwargs["workspace"])))
+        return {"passed": False, "reason": "fixture_validation_stop"}
+
+    monkeypatch.setattr(train, "_validate_synthesized_tree", validate)
+
+    result = train._validate_existing_integrated_commit(
+        request,
+        commit=commit,
+        candidate_commit=commit,
+    )
+
+    assert result["reason"] == "fixture_validation_stop"
+    assert len(observed) == 1
+    assert observed[0].name.startswith("validation_")
+    assert observed[0].name.isidentifier()
+
+
+def test_rebase_validation_uses_identifier_worktree_basename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    commit = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/candidate-worktree",
+        task_id="CANDIDATE-WORKTREE",
+        commit_sha=commit,
+    )
+    train = MergeTrain(
+        repo,
+        queue,
+        post_merge_validation=lambda *_args, **_kwargs: {"passed": True},
+    )
+    observed: list[Path] = []
+
+    def validate(**kwargs: object) -> dict[str, object]:
+        observed.append(Path(str(kwargs["workspace"])))
+        return {"passed": False, "reason": "fixture_validation_stop"}
+
+    monkeypatch.setattr(train, "_validate_synthesized_tree", validate)
+
+    result = train._rebase_and_integrate(
+        request=request,
+        canonical=request.canonical_identity,
+        candidate=commit,
+        target=commit,
+    )
+
+    assert result["reason"] == "fixture_validation_stop"
+    assert len(observed) == 1
+    assert observed[0].name.startswith("candidate_")
+    assert observed[0].name.isidentifier()
+
+
 def test_train_callback_runs_when_root_candidate_is_already_merged(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     candidate = _git(repo, "rev-parse", "HEAD")

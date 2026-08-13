@@ -54,8 +54,8 @@ assert _objective_validation_repair_evidence_terms() == (
     "objective validation repair",
 )
 from ..runtime.event_log import event_log_sources, read_jsonl_events
-from .lease_coordination import LeaseCoordinator, LeaseError, LeaseGrant
 from ..todo_daemon.core import terminate_pid_tree
+from .lease_coordination import LeaseCoordinator, LeaseError, LeaseGrant
 
 logger = logging.getLogger(__name__)
 
@@ -1051,7 +1051,7 @@ def _capture_spawned_direct_child_start_time(
 ) -> int | None:
     """Capture a direct child's Linux birth time, including zombie children.
 
-    General lifecycle liveness intentionally treats zombies as dead.  Spawn
+    General lifecycle liveness intentionally treats zombies as dead. Spawn
     fencing has a different requirement: the unreaped zombie's ``stat`` record
     is the last authoritative chance to bind a fast child PID to its dedicated
     process group before proving that group empty.

@@ -96,7 +96,11 @@ from .supervisor import (
 )
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
 from .supervisor_runtime import RestartPolicy
-from .worktrees import WORKTREE_POOL_SCHEMA, pid_is_alive
+from .worktrees import (
+    WORKTREE_POOL_SCHEMA,
+    pid_is_alive,
+    python_identifier_worktree_basename,
+)
 
 REPO_ROOT = Path.cwd()
 
@@ -6045,8 +6049,11 @@ class PortalImplementationSupervisor:
                 "implementation/"
                 f"{safe_task_id}-{recovery_key[:12]}-attempt-0-{stamp}"
             )
-            replay_worktree = daemon.worktree_root / (
-                f"replay-{safe_task_id}-{recovery_key[:12]}-{stamp}"
+            replay_worktree = daemon.worktree_root / python_identifier_worktree_basename(
+                "replay",
+                safe_task_id,
+                recovery_key[:12],
+                stamp,
             )
             claim_path = daemon._implementation_task_claim_path(
                 task_id,
@@ -6634,6 +6641,9 @@ class PortalImplementationSupervisor:
             generated_status_paths=self.config.generated_dirty_repair_paths,
             llm_merge_resolver_command=self.config.llm_merge_resolver_command,
             llm_merge_resolver_timeout_seconds=self.config.llm_merge_resolver_timeout_seconds,
+            task_shard_count=self.config.task_shard_count,
+            task_shard_index=self.config.task_shard_index,
+            strict_task_sharding=self.config.strict_task_sharding,
         )
 
     @staticmethod

@@ -173,6 +173,7 @@ class LLMRouterError(RuntimeError):
 GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY = (
     "grok_quota_auth_or_unavailable"
 )
+GROK_QUOTA_ONLY_AGENT_ROUTE_POLICY = "grok_quota_only"
 AGENT_CLI_PROVIDER_ROUTE_SCHEMA = "ipfs_accelerate_py/provider-route@1"
 AGENT_CLI_PROVIDER_FAILURE_SCHEMA = (
     "ipfs_accelerate_py/provider-failure@1"
@@ -207,6 +208,9 @@ GROK_AGENT_ROUTE_ALLOWED_FAILURE_KINDS = frozenset(
         AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE,
         AgentCLIProviderFailureKind.LAUNCH_FAILURE,
     }
+)
+GROK_QUOTA_ONLY_AGENT_ROUTE_ALLOWED_FAILURE_KINDS = frozenset(
+    {AgentCLIProviderFailureKind.GROK_QUOTA_EXHAUSTED}
 )
 
 
@@ -859,7 +863,13 @@ def route_agent_cli_failure(
 ) -> AgentCLIRouteDecision:
     """Decide the fixed agent route without weakening generic router safety."""
 
-    if policy != GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY:
+    if policy == GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY:
+        allowed_failure_kinds = GROK_AGENT_ROUTE_ALLOWED_FAILURE_KINDS
+    elif policy == GROK_QUOTA_ONLY_AGENT_ROUTE_POLICY:
+        allowed_failure_kinds = (
+            GROK_QUOTA_ONLY_AGENT_ROUTE_ALLOWED_FAILURE_KINDS
+        )
+    else:
         raise LLMRouterError(f"unsupported agent CLI route policy: {policy!r}")
     primary_label = safe_agent_cli_provider_label(primary_provider, default="primary")
     fallback_label = safe_agent_cli_provider_label(fallback_provider, default="fallback")
@@ -920,7 +930,7 @@ def route_agent_cli_failure(
         )
         activity = AgentCLIActivityState.UNKNOWN
 
-    if classification.kind not in GROK_AGENT_ROUTE_ALLOWED_FAILURE_KINDS:
+    if classification.kind not in allowed_failure_kinds:
         return AgentCLIRouteDecision(
             False,
             classification,

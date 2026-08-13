@@ -1334,7 +1334,12 @@ def test_new_secret_like_content_remains_rejected() -> None:
 
 @pytest.mark.parametrize(
     "sentinel",
-    ("should-never-appear", "should-not-appear"),
+    (
+        # Exact redaction/documentation sentinel only.  ``should-not-appear`` is
+        # a synthetic secret canary and must still be rejected in production
+        # sources (see test_production_source_still_rejects_synthetic_secret_canary).
+        "should-never-appear",
+    ),
 )
 def test_exact_never_expose_sentinel_is_not_treated_as_a_secret(
     sentinel: str,
