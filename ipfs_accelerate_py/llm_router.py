@@ -158,6 +158,22 @@ from .utils.mistral_vibe import (
 # Goose installer / adapter are imported lazily inside resolution helpers so
 # import of this module never probes PATH, starts a process, or installs.
 
+# Restored agent-implementation / control-plane APIs live in a sibling module
+# so this file stays a router. Callers and tests keep importing the names from
+# ``llm_router``. Existing module attributes are not overwritten.
+from . import agent_implementation_route as _agent_implementation_route
+
+for _agent_implementation_name, _agent_implementation_value in vars(
+    _agent_implementation_route
+).items():
+    if (
+        _agent_implementation_name.startswith("__")
+        or _agent_implementation_name in globals()
+    ):
+        continue
+    globals()[_agent_implementation_name] = _agent_implementation_value
+del _agent_implementation_name, _agent_implementation_value
+
 
 class LLMRouterError(RuntimeError):
     """Errors raised by lightweight router helpers/providers.
