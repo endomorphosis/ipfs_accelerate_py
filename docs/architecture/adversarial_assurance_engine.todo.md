@@ -1011,7 +1011,7 @@ W20 AAE-063
 
 ## AAE-036 Persist benchmark artifacts, Merkle roots, and seal manifests
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
