@@ -1159,7 +1159,7 @@ Global invariants for every task:
 
 ## IPS-036 Implement bounded manifest aggregation and capability-gated recursion
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
