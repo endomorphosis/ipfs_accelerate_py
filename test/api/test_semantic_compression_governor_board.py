@@ -466,3 +466,17 @@ def test_scheduler_requires_explicit_implementation_authority() -> None:
             foreground=False,
             duration_seconds=60,
         )
+
+
+def test_supervised_provider_entry_imports_after_module_aliasing() -> None:
+    entry = REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/provider_fallback_runner.py"
+    completed = subprocess.run(
+        [sys.executable, str(entry), "--help"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "--fallback-policy" in completed.stdout
