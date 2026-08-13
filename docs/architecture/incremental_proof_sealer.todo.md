@@ -1128,7 +1128,7 @@ Global invariants for every task:
 
 ## IPS-035 Execute plans with fresh cache verification and verified admission
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
