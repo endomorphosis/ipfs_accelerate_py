@@ -311,8 +311,10 @@ setup(
             "ipfs-accelerate-agent-llm-merge-resolver-fallback=ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main",
             "ipfs-accelerate-proof-reuse-provision=ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main",
             "ipfs-accelerate-llama-cpp-serve=ipfs_accelerate_py.utils.llama_cpp:main",
+            "semantic-state=ipfs_accelerate_py.agent_supervisor.semantic_state.cli:main",
         ],
         # Proof-reuse plugin is optional; prefer entry-point-free discovery for CI import modes.
 
     },
 )
+
