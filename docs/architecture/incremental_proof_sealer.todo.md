@@ -198,7 +198,7 @@ Global invariants for every task:
 
 ## IPS-005 Define closed proof evidence classes, modes, kinds, and statuses
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
