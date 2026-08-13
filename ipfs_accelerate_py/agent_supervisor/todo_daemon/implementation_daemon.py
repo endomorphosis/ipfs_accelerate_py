@@ -929,6 +929,15 @@ class CrashFenceReconciler:
                 )
                 if trusted and trusted.get("cleared"):
                     return trusted
+                head_clean = (
+                    daemon._auto_clear_shared_checkout_incident_when_head_clean(
+                        incident,
+                        incident_path=incident_path,
+                        active_path=active_path,
+                    )
+                )
+                if head_clean and head_clean.get("cleared"):
+                    return head_clean
         fence_present = False
         try:
             fence_present = incident_path.exists() or active_path.exists()
@@ -7917,6 +7926,117 @@ class PortalImplementationDaemon:
             "task_id": task_id,
             "attempt": attempt,
             **concurrent_update,
+        }
+        self._record_event(
+            "implementation_protected_path_incident_auto_cleared",
+            result,
+        )
+        return result
+
+    def _auto_clear_shared_checkout_incident_when_head_clean(
+        self,
+        incident: Mapping[str, Any],
+        *,
+        incident_path: Path,
+        active_path: Path,
+    ) -> dict[str, Any] | None:
+        """Clear a shared-checkout latch once those paths match HEAD.
+
+        Control-plane commits can land the same protected bytes the fence
+        treated as an uncommitted mutation. When every incident path is a
+        shared-checkout content change and the checkout is clean at HEAD,
+        there is nothing left to restore and the lane can resume.
+        """
+
+        if (
+            incident.get("schema") != "implementation-protected-path-incident-v1"
+            or incident.get("requires_operator_clearance") is not True
+            or incident.get("reason") != "implementation_protected_path_mutated"
+        ):
+            return None
+        mutations = incident.get("mutations")
+        if not isinstance(mutations, list) or not mutations:
+            return None
+        paths: list[str] = []
+        for item in mutations:
+            if not isinstance(item, Mapping):
+                return None
+            if str(item.get("scope") or "") != "shared_checkout":
+                return None
+            change = str(item.get("change") or "")
+            if change not in {"content_changed", "modified"}:
+                return None
+            path = str(item.get("path") or "").strip()
+            if (
+                not path
+                or path.startswith("/")
+                or ".." in Path(path).parts
+            ):
+                return None
+            paths.append(path)
+        if not paths:
+            return None
+        repo_root = self.repo_root.resolve()
+        status = self._run_git(
+            ["status", "--porcelain", "--untracked-files=no", "--", *paths],
+            cwd=repo_root,
+        )
+        if status.returncode != 0 or str(status.stdout or "").strip():
+            return None
+        task_id = str(incident.get("task_id") or "")
+        try:
+            attempt = int(incident.get("attempt") or 0)
+        except (TypeError, ValueError):
+            attempt = 0
+        clearance_payload = {
+            "kind": "shared-checkout-head-clean",
+            "task_id": task_id,
+            "attempt": attempt,
+            "paths": paths,
+            "incident_latched_at": str(incident.get("latched_at") or ""),
+        }
+        clearance_id = "sha256:" + hashlib.sha256(
+            json.dumps(
+                clearance_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        receipt = {
+            "schema": (
+                "implementation-protected-path-head-clean-clearance-v1"
+            ),
+            "clearance_id": clearance_id,
+            "cleared_at": utc_now(),
+            "reason": "shared_checkout_matches_head",
+            **clearance_payload,
+        }
+        receipt_path = (
+            incident_path.parent
+            / (
+                "implementation-protected-path-head-clean-clearance-"
+                f"{clearance_id.removeprefix('sha256:')[:16]}.json"
+            )
+        )
+        write_json_atomic(receipt_path, receipt)
+        try:
+            incident_path.unlink()
+        except FileNotFoundError:
+            pass
+        try:
+            active_path.unlink()
+        except FileNotFoundError:
+            pass
+        result = {
+            "cleared": True,
+            "auto": True,
+            "blocked": False,
+            "reason": receipt["reason"],
+            "clearance_id": clearance_id,
+            "receipt_path": str(receipt_path),
+            "task_id": task_id,
+            "attempt": attempt,
+            "paths": paths,
         }
         self._record_event(
             "implementation_protected_path_incident_auto_cleared",

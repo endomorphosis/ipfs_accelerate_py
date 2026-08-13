@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.merge import merge_queue as merge_queue_module
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MergeQueue,
     MergeQueueFenceError,
@@ -445,3 +446,55 @@ def test_case_distinct_git_targets_have_distinct_deduplication_keys(
     assert lower.target_branch == "feature"
     assert upper_queue.pending_count() == 1
     assert lower_queue.pending_count() == 1
+
+
+def test_constructor_does_not_reinsert_existing_stage_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(queue_path)
+    pending = _enqueue(queue, 0)
+    inserts: list[str] = []
+    original = MergeQueue._insert
+
+    def _tracking_insert(self, connection, request, *, ignore):
+        inserts.append(request.request_id)
+        return original(self, connection, request, ignore=ignore)
+
+    monkeypatch.setattr(MergeQueue, "_insert", _tracking_insert)
+    restarted = MergeQueue(queue_path)
+    stored = restarted.get(pending.request_id)
+    assert stored is not None
+    assert stored.status == "pending"
+    assert inserts == []
+
+
+def test_ignore_insert_skips_duplicate_primary_key_without_or_ignore(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    pending = _enqueue(queue, 0)
+    duplicate = queue.enqueue(
+        branch_name="candidate/duplicate",
+        task_id="TASK-ALIAS",
+        canonical_task_id=pending.canonical_task_id,
+        commit_sha=pending.commit_sha,
+    )
+    assert duplicate.request_id == pending.request_id
+    assert queue.status()["pending"] == 1
+
+
+def test_bloated_store_rebuild_preserves_live_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(queue_path)
+    pending = _enqueue(queue, 0)
+    monkeypatch.setattr(merge_queue_module, "MERGE_QUEUE_BLOAT_REBUILD_BYTES", 1)
+    rebuilt = MergeQueue(queue_path)
+    stored = rebuilt.get(pending.request_id)
+    assert stored is not None
+    assert stored.task_id == pending.task_id
+    assert stored.commit_sha == pending.commit_sha
+    assert stored.status == "pending"
+    assert rebuilt.database_path.stat().st_size < 8 * 1024 * 1024

@@ -3610,6 +3610,56 @@ def test_auto_clear_refuses_shared_checkout_deletions(tmp_path: Path) -> None:
     assert daemon._implementation_protected_incident_path().exists()
 
 
+def test_auto_clears_shared_checkout_content_change_when_head_is_clean(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Fixture")
+    _git(repo, "config", "user.email", "fixture@example.invalid")
+    protected = repo / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("committed\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(repo, "commit", "-m", "protect")
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_root=tmp_path / "worktrees",
+        implement=True,
+        implementation_command="implementation-command-that-must-not-run",
+        implementation_protected_paths=(POLICY_PATH,),
+    )
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-001",
+            "attempt": 2,
+            "workspace_path": str(tmp_path / "worktrees" / "gone"),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "content_changed",
+                    "before": {"sha256": "old"},
+                    "after": {"sha256": "new"},
+                }
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("cleared") is True
+    assert result.get("auto") is True
+    assert result.get("reason") == "shared_checkout_matches_head"
+    assert not daemon._implementation_protected_incident_path().exists()
+
+
 def test_auto_clear_refuses_shared_plan_content_changes(tmp_path: Path) -> None:
     """Shared plan/objectives content edits still require operator clearance."""
 
