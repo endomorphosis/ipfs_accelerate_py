@@ -833,7 +833,7 @@ W28 SCG-048
 
 ## SCG-029 Execute bounded counterexample-guided context expansion before route escalation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
