@@ -849,7 +849,7 @@ Global invariants for every task:
 
 ## IPS-026 Prove kit corruption, concurrency, replay, and seven-phase crash conformance
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
