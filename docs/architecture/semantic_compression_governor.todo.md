@@ -1022,7 +1022,7 @@ W28 SCG-048
 
 ## SCG-036 Compose the required SemanticCompressionGovernor APIs
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
