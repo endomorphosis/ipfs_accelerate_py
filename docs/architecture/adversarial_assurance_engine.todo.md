@@ -1065,7 +1065,7 @@ W20 AAE-063
 
 ## AAE-038 Implement crash recovery, idempotent replay, and concurrency fencing
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
