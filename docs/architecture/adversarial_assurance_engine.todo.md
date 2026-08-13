@@ -144,7 +144,7 @@ W20 AAE-063
 
 ## AAE-004 Inventory MCP++ conformance boundary and proof-sealer release surfaces
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
