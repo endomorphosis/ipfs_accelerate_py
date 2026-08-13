@@ -1,0 +1,4959 @@
+{
+  "adversarial_scenarios": [
+    "hidden_callee_side_effect",
+    "caller_exception_contract",
+    "config_flag",
+    "pytest_fixture",
+    "serializer",
+    "generated_interface",
+    "stale_capsule",
+    "confidence_misclassification",
+    "opaque_dynamic_import",
+    "behavior_only_dependency",
+    "security_invariant",
+    "migration_path",
+    "misleading_comment",
+    "prompt_injection",
+    "selected_pass_full_fail",
+    "test_pass_formal_fail",
+    "raw_correct_compressed_wrong",
+    "both_context_model_failure"
+  ],
+  "base_path_count": 34,
+  "base_paths": [
+    "config/flags.json",
+    "docs/api_reference.md",
+    "interfaces/mcp_client.json",
+    "policy/admission.json",
+    "proofs/core_add.lean",
+    "pyproject.toml",
+    "pytest.ini",
+    "requirements.lock",
+    "requirements.txt",
+    "scg_fixture/__init__.py",
+    "scg_fixture/adapters.py",
+    "scg_fixture/api.py",
+    "scg_fixture/config_loader.py",
+    "scg_fixture/core.py",
+    "scg_fixture/dynamic_loader.py",
+    "scg_fixture/generated/__init__.py",
+    "scg_fixture/generated/bindings.py",
+    "scg_fixture/native_bridge.py",
+    "scg_fixture/plugins/__init__.py",
+    "scg_fixture/plugins/registry.py",
+    "scg_fixture/schema.py",
+    "scg_fixture/security.py",
+    "scg_fixture/state.py",
+    "tests/conftest.py",
+    "tests/test_adapters.py",
+    "tests/test_api.py",
+    "tests/test_config.py",
+    "tests/test_core.py",
+    "tests/test_dynamic.py",
+    "tests/test_generated.py",
+    "tests/test_plugin.py",
+    "tests/test_schema.py",
+    "tests/test_security.py",
+    "tests/test_state.py"
+  ],
+  "base_tree_digest": "sha256:f6eef782f193f3daec6f46e09a82bdd67c5faaabfce3c96fe4f4fb225920fb06",
+  "case_count": 60,
+  "cases": [
+    {
+      "adversarial_scenario": "behavior_only_dependency",
+      "case_id": "adv.behavior_only_dependency",
+      "changed_paths": [
+        "scg_fixture/api.py"
+      ],
+      "description": "Behavior-only dependency switch omitted from pack",
+      "family": "refactor",
+      "mutated_tree_digest": "sha256:69969243e77d83322b8246f085a55298bf8fbd515fbcb6eb2682f4924c72677d",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.api.call_core"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.multiply"
+        ],
+        "critical_omitted_symbols": [
+          "scg_fixture.core.multiply"
+        ],
+        "expansion_targets": [
+          "scg_fixture.core.multiply"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "omission",
+        "expected_outcome": "insufficient_omission",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "behavior_only_dependency_omitted"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_api.py::test_call_core"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/api.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.api.call_core"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.multiply"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.api.call_core",
+        "relation_kinds": [
+          "calls"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "both_context_model_failure",
+      "case_id": "adv.both_context_model_failure",
+      "changed_paths": [
+        "scg_fixture/core.py"
+      ],
+      "description": "Both compressed and expanded contexts still fail model",
+      "family": "local_bug",
+      "mutated_tree_digest": "sha256:8994c266034a6bfc7d0f15645d7dba245b46612ee33ef0f8667c31ed9a7e37d4",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add",
+          "scg_fixture.core.process"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "model_insufficiency",
+        "expected_outcome": "insufficient_model",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.core.add"
+        ],
+        "reason_codes": [
+          "both_context_model_failure"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/core.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.process"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.core.add",
+        "relation_kinds": [
+          "defines"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "caller_exception_contract",
+      "case_id": "adv.caller_exception_contract",
+      "changed_paths": [
+        "scg_fixture/api.py"
+      ],
+      "description": "Caller exception contract omitted from compressed pack",
+      "family": "exception",
+      "mutated_tree_digest": "sha256:fabcbe5d2fe21d636ee11a82ad596c64087cd12db712ab6ab1550ae6b92f8070",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "critical_omitted_symbols": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "expansion_targets": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "omission",
+        "expected_outcome": "insufficient_omission",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "exception_contract_omitted"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_api.py::test_fetch_value"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/api.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.process"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.api.fetch_value",
+        "relation_kinds": [
+          "defines",
+          "raises"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "confidence_misclassification",
+      "case_id": "adv.confidence_misclassification",
+      "changed_paths": [
+        "scg_fixture/native_bridge.py"
+      ],
+      "description": "Opaque native boundary misclassified as exact",
+      "family": "local_bug",
+      "mutated_tree_digest": "sha256:453aef06f246cfb8b2f99694ef03799d4c6c8cc37c3565febf073cdaca1a8b7a",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.native_bridge.native_hash"
+        ],
+        "critical_omitted_symbols": [
+          "scg_fixture.native_bridge.native_hash"
+        ],
+        "expansion_targets": [
+          "scg_fixture.native_bridge.native_hash"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "confidence_error",
+        "expected_outcome": "human_review_required",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "opaque_misclassified_as_exact"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": []
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/native_bridge.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.native_bridge.native_hash"
+        ],
+        "confidence": "opaque",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [
+          "scg_fixture.native_bridge.native_hash"
+        ],
+        "primary_symbol": "scg_fixture.native_bridge.native_hash",
+        "relation_kinds": [
+          "defines",
+          "native"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "config_flag",
+      "case_id": "adv.config_flag",
+      "changed_paths": [
+        "config/flags.json"
+      ],
+      "description": "Configuration flag omitted from compressed pack",
+      "family": "configuration",
+      "mutated_tree_digest": "sha256:ed7f8ba197bc51ad35e510c9e44d69c40f987195eda5a766d617af0edd9dca26",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.config_loader.load_flags"
+        ],
+        "critical_omitted_symbols": [
+          "scg_fixture.config_loader.load_flags"
+        ],
+        "expansion_targets": [
+          "scg_fixture.config_loader.load_flags"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "omission",
+        "expected_outcome": "insufficient_omission",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "config_flag_omitted"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_config.py::test_load_flags"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "config/flags.json"
+        ],
+        "changed_symbols": [
+          "scg_fixture.config_loader.load_flags"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.config_loader.load_flags",
+        "relation_kinds": [
+          "configuration"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "generated_interface",
+      "case_id": "adv.generated_interface",
+      "changed_paths": [
+        "scg_fixture/generated/bindings.py"
+      ],
+      "description": "Generated interface change omitted from compressed pack",
+      "family": "generated",
+      "mutated_tree_digest": "sha256:6484189c27f2376a990de79173f45e328e24269653777058a359db3cfd6b4cb1",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.generated.bindings.generated_constant"
+        ],
+        "critical_omitted_symbols": [
+          "scg_fixture.generated.bindings.generated_constant"
+        ],
+        "expansion_targets": [
+          "scg_fixture.generated.bindings.generated_constant"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "omission",
+        "expected_outcome": "insufficient_omission",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "generated_interface_omitted"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_generated.py::test_generated_constant"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/generated/bindings.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.generated.bindings.generated_constant"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.generated.bindings.generated_constant",
+        "relation_kinds": [
+          "generated"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "hidden_callee_side_effect",
+      "case_id": "adv.hidden_callee_side_effect",
+      "changed_paths": [
+        "scg_fixture/security.py"
+      ],
+      "description": "Hidden callee side-effect change omitted from compressed pack",
+      "family": "local_bug",
+      "mutated_tree_digest": "sha256:1c330d22b2da462c3bd001d766b2b72e59f90922a456f662ae04dd5d026727c0",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "compressed_omits": [
+          "scg_fixture.security.authorize"
+        ],
+        "critical_omitted_symbols": [
+          "scg_fixture.security.authorize"
+        ],
+        "expansion_targets": [
+          "scg_fixture.security.authorize"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "omission",
+        "expected_outcome": "insufficient_omission",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.security.authorize"
+        ],
+        "reason_codes": [
+          "critical_callee_omitted",
+          "side_effect_unrepresented"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_security.py::test_authorize_allows"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/security.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.security.authorize"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.security.authorize",
+        "relation_kinds": [
+          "defines",
+          "effect"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "migration_path",
+      "case_id": "adv.migration_path",
+      "changed_paths": [
+        "scg_fixture/schema.py"
+      ],
+      "description": "Migration path field omitted from compressed pack",
+      "family": "schema_migration",
+      "mutated_tree_digest": "sha256:ecefeeabd3d960fd16273e64f63aa819a252029edba86fea5ce31cc4d2f27ae1",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.schema.UserRecord"
+        ],
+        "critical_omitted_symbols": [
+          "scg_fixture.schema.UserRecord"
+        ],
+        "expansion_targets": [
+          "scg_fixture.schema.UserRecord"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "omission",
+        "expected_outcome": "insufficient_omission",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.schema.UserRecord"
+        ],
+        "reason_codes": [
+          "migration_path_omitted"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/schema.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.schema.UserRecord"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.schema.dump_user"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.schema.UserRecord",
+        "relation_kinds": [
+          "schema"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "misleading_comment",
+      "case_id": "adv.misleading_comment",
+      "changed_paths": [
+        "scg_fixture/core.py"
+      ],
+      "description": "Misleading comment must not alter scanner identity",
+      "family": "documentation",
+      "mutated_tree_digest": "sha256:39bae9ca5f382328edc9d134d5f470c398e108b72c5dcc92caebd69a07368e96",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "comment_not_authority"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/core.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.core.add",
+        "relation_kinds": [
+          "defines"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "opaque_dynamic_import",
+      "case_id": "adv.opaque_dynamic_import",
+      "changed_paths": [
+        "scg_fixture/dynamic_loader.py"
+      ],
+      "description": "Opaque dynamic import path change",
+      "family": "dynamic_import",
+      "mutated_tree_digest": "sha256:e60354e26fabcd0cc7393ab8818a02a85de24d494eb0e1ebebca3696ba573cd9",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "critical_omitted_symbols": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "expansion_targets": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "dynamic_opacity",
+        "expected_outcome": "insufficient_omission",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "opaque_dynamic_import"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_dynamic.py::test_load_plugin_name"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/dynamic_loader.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "confidence": "opaque",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "primary_symbol": "scg_fixture.dynamic_loader.load_plugin",
+        "relation_kinds": [
+          "dynamic_import"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "prompt_injection",
+      "case_id": "adv.prompt_injection",
+      "changed_paths": [
+        "docs/api_reference.md"
+      ],
+      "description": "Prompt injection in docs must not alter trusted config",
+      "family": "documentation",
+      "mutated_tree_digest": "sha256:cb5f8e193ceab53d8b5c362f96f8c289adce8edca47832e0a73d7d811c6a1a9f",
+      "omission": {
+        "compressed_includes": [
+          "docs.api_reference:fetch_value"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "injection",
+        "expected_outcome": "reject_injection",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "prompt_injection_untrusted_source"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": []
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "docs/api_reference.md"
+        ],
+        "changed_symbols": [
+          "docs.api_reference:fetch_value"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "docs.api_reference:fetch_value",
+        "relation_kinds": [
+          "documents"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "pytest_fixture",
+      "case_id": "adv.pytest_fixture",
+      "changed_paths": [
+        "tests/conftest.py"
+      ],
+      "description": "Pytest fixture dependency omitted from compressed pack",
+      "family": "fixture",
+      "mutated_tree_digest": "sha256:8f7ad7b595bf62a1330de600a5f3ec231536f3a4316bdea420ae608e7116bc6b",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.schema.UserRecord"
+        ],
+        "compressed_omits": [
+          "tests.conftest.sample_record"
+        ],
+        "critical_omitted_symbols": [
+          "tests.conftest.sample_record"
+        ],
+        "expansion_targets": [
+          "tests.conftest.sample_record"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "omission",
+        "expected_outcome": "insufficient_omission",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "fixture_omitted"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "tests/conftest.py"
+        ],
+        "changed_symbols": [
+          "tests.conftest.sample_record"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.schema.UserRecord"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "tests.conftest.sample_record",
+        "relation_kinds": [
+          "fixture"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "raw_correct_compressed_wrong",
+      "case_id": "adv.raw_correct_compressed_wrong",
+      "changed_paths": [
+        "scg_fixture/api.py"
+      ],
+      "description": "Raw expanded context correct; compressed wrong via omission",
+      "family": "local_bug",
+      "mutated_tree_digest": "sha256:6b9924a82e3bfe80aef0bbcadd39db1a1d374e8792a71dd09ee27dde95103984",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.process"
+        ],
+        "critical_omitted_symbols": [
+          "scg_fixture.core.process"
+        ],
+        "expansion_targets": [
+          "scg_fixture.core.process"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "omission",
+        "expected_outcome": "insufficient_omission",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "raw_correct_compressed_wrong"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_api.py::test_fetch_value"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/api.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.process"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.api.fetch_value",
+        "relation_kinds": [
+          "calls"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "security_invariant",
+      "case_id": "adv.security_invariant",
+      "changed_paths": [
+        "scg_fixture/security.py"
+      ],
+      "description": "Security invariant weakening requires denial",
+      "family": "local_bug",
+      "mutated_tree_digest": "sha256:ecce2ead218675c50c894b12b254dcf6d95f5fe665b5f5b57471e9c8e4715027",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.security.authorize"
+        ],
+        "critical_omitted_symbols": [
+          "scg_fixture.security.authorize"
+        ],
+        "expansion_targets": [
+          "scg_fixture.security.authorize"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "security",
+        "expected_outcome": "human_review_required",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.security.authorize"
+        ],
+        "reason_codes": [
+          "security_invariant_weakened"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_security.py::test_authorize_allows"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/security.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.security.authorize"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.security.authorize",
+        "relation_kinds": [
+          "effect"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "selected_pass_full_fail",
+      "case_id": "adv.selected_pass_full_fail",
+      "changed_paths": [
+        "scg_fixture/core.py"
+      ],
+      "description": "Selected suite passes while full suite fails",
+      "family": "local_bug",
+      "mutated_tree_digest": "sha256:fc68b076b2e2b038805be7116f349b7aeaa11a2143de701c200763829bd24e4e",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.process"
+        ],
+        "critical_omitted_symbols": [
+          "scg_fixture.core.process"
+        ],
+        "expansion_targets": [
+          "scg_fixture.core.process"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "verification_conflict",
+        "expected_outcome": "verification_conflict",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "selected_pass_full_fail"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/core.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.core.process"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.core.process",
+        "relation_kinds": [
+          "calls"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "serializer",
+      "case_id": "adv.serializer",
+      "changed_paths": [
+        "scg_fixture/schema.py"
+      ],
+      "description": "Serializer shape change omitted from compressed pack",
+      "family": "schema_migration",
+      "mutated_tree_digest": "sha256:481db641fd6164658353251d393a5f7c5e419f8ec03c322f82317f391aabfdc4",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.schema.UserRecord"
+        ],
+        "compressed_omits": [
+          "scg_fixture.schema.dump_user"
+        ],
+        "critical_omitted_symbols": [
+          "scg_fixture.schema.dump_user"
+        ],
+        "expansion_targets": [
+          "scg_fixture.schema.dump_user"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "omission",
+        "expected_outcome": "insufficient_omission",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.schema.UserRecord"
+        ],
+        "reason_codes": [
+          "serializer_omitted"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/schema.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.schema.dump_user"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.schema.UserRecord"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.schema.dump_user",
+        "relation_kinds": [
+          "defines",
+          "serializes"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "stale_capsule",
+      "case_id": "adv.stale_capsule",
+      "changed_paths": [
+        "scg_fixture/core.py"
+      ],
+      "description": "Stale capsule admitted against mutated body",
+      "family": "local_bug",
+      "mutated_tree_digest": "sha256:965ca278385761ca50edffb2ff6112bffecc020d91eb15d1f94ec69f212036f7",
+      "omission": {
+        "compressed_includes": [],
+        "compressed_omits": [
+          "scg_fixture.core.add"
+        ],
+        "critical_omitted_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "expansion_targets": [
+          "scg_fixture.core.add"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "stale_artifact",
+        "expected_outcome": "reject_stale",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.core.add"
+        ],
+        "reason_codes": [
+          "stale_capsule_rejected"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/core.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.core.add",
+        "relation_kinds": [
+          "defines"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": "test_pass_formal_fail",
+      "case_id": "adv.test_pass_formal_fail",
+      "changed_paths": [
+        "proofs/core_add.lean"
+      ],
+      "description": "Tests pass while formal proof fails",
+      "family": "proof",
+      "mutated_tree_digest": "sha256:bb6ef91802d1d9d61d79b42263025975ceb4c67ad35482fd28d586fa5832c187",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "proof.scg_fixture.core.add"
+        ],
+        "critical_omitted_symbols": [
+          "proof.scg_fixture.core.add"
+        ],
+        "expansion_targets": [
+          "proof.scg_fixture.core.add"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "verification_conflict",
+        "expected_outcome": "verification_conflict",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.core.add"
+        ],
+        "reason_codes": [
+          "test_pass_formal_fail"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "proofs/core_add.lean"
+        ],
+        "changed_symbols": [
+          "proof.scg_fixture.core.add"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "proof.scg_fixture.core.add",
+        "relation_kinds": [
+          "proves"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "api_migration.cal",
+      "changed_paths": [
+        "scg_fixture/api.py"
+      ],
+      "description": "calibration public signature migration on fetch_value",
+      "family": "api_migration",
+      "mutated_tree_digest": "sha256:10396992d4be406ebe37934ef70e0ab0e2dc09aac92aa34d4c79d41aae313745",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.adapters.McpClientAdapter",
+          "scg_fixture.api.fetch_value"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "signature_migration_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_fetch_value"
+        ]
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/api.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.adapters.McpClientAdapter"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.api.fetch_value",
+        "relation_kinds": [
+          "defines",
+          "signature"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "api_migration.dev",
+      "changed_paths": [
+        "scg_fixture/api.py"
+      ],
+      "description": "development public signature migration on fetch_value",
+      "family": "api_migration",
+      "mutated_tree_digest": "sha256:20e88120a04db205baec48d67b9f44188c49a035009d0b0e938b9a923251e7f0",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.adapters.McpClientAdapter",
+          "scg_fixture.api.fetch_value"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "signature_migration_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_fetch_value"
+        ]
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/api.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.adapters.McpClientAdapter"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.api.fetch_value",
+        "relation_kinds": [
+          "defines",
+          "signature"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "api_migration.hold",
+      "changed_paths": [
+        "scg_fixture/api.py"
+      ],
+      "description": "held_out public signature migration on fetch_value",
+      "family": "api_migration",
+      "mutated_tree_digest": "sha256:9c940486a34201c5e1890073c5759a24c14d1d16cfb2d74ed0f3155fe0f5be68",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.adapters.McpClientAdapter",
+          "scg_fixture.api.fetch_value"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "signature_migration_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_fetch_value"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/api.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.adapters.McpClientAdapter"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.api.fetch_value",
+        "relation_kinds": [
+          "defines",
+          "signature"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "configuration.cal",
+      "changed_paths": [
+        "config/flags.json"
+      ],
+      "description": "calibration configuration flag flip",
+      "family": "configuration",
+      "mutated_tree_digest": "sha256:809de9590ae911f6196ff51c538394f7475a77068f21d0e6b626d30d01ed9ed2",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.config_loader.load_flags"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "configuration_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_config.py::test_load_flags"
+        ]
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "config/flags.json"
+        ],
+        "changed_symbols": [
+          "scg_fixture.config_loader.load_flags"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.config_loader.load_flags",
+        "relation_kinds": [
+          "configuration"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "configuration.dev",
+      "changed_paths": [
+        "config/flags.json"
+      ],
+      "description": "development configuration flag flip",
+      "family": "configuration",
+      "mutated_tree_digest": "sha256:08f9b5d864253b9d438a3162379f082cb69263f7091c8e39269691569f8865f7",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.config_loader.load_flags"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "configuration_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_config.py::test_load_flags"
+        ]
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "config/flags.json"
+        ],
+        "changed_symbols": [
+          "scg_fixture.config_loader.load_flags"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.config_loader.load_flags",
+        "relation_kinds": [
+          "configuration"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "configuration.hold",
+      "changed_paths": [
+        "config/flags.json"
+      ],
+      "description": "held_out configuration flag flip",
+      "family": "configuration",
+      "mutated_tree_digest": "sha256:0e2d638687c4faabdc8234dc9588f4c6698c0978b7bc2458700b057eff56c924",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.config_loader.load_flags"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "configuration_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_config.py::test_load_flags"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "config/flags.json"
+        ],
+        "changed_symbols": [
+          "scg_fixture.config_loader.load_flags"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.config_loader.load_flags",
+        "relation_kinds": [
+          "configuration"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "documentation.cal",
+      "changed_paths": [
+        "docs/api_reference.md"
+      ],
+      "description": "calibration documentation-only change",
+      "family": "documentation",
+      "mutated_tree_digest": "sha256:7275e4f16bb9c4515e82ce4ee1c88b1e6b2528efc8e3d2010456ab895fd4c7e3",
+      "omission": {
+        "compressed_includes": [
+          "docs.api_reference:fetch_value"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "docs_only_change"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": []
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "docs/api_reference.md"
+        ],
+        "changed_symbols": [
+          "docs.api_reference:fetch_value"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "docs.api_reference:fetch_value",
+        "relation_kinds": [
+          "documents"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "documentation.dev",
+      "changed_paths": [
+        "docs/api_reference.md"
+      ],
+      "description": "development documentation-only change",
+      "family": "documentation",
+      "mutated_tree_digest": "sha256:b430b29cf8250b8aff18007cf0a07de22b41f9aa2b620b6d3238195b634ac901",
+      "omission": {
+        "compressed_includes": [
+          "docs.api_reference:fetch_value"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "docs_only_change"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": []
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "docs/api_reference.md"
+        ],
+        "changed_symbols": [
+          "docs.api_reference:fetch_value"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "docs.api_reference:fetch_value",
+        "relation_kinds": [
+          "documents"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "documentation.hold",
+      "changed_paths": [
+        "docs/api_reference.md"
+      ],
+      "description": "held_out documentation-only change",
+      "family": "documentation",
+      "mutated_tree_digest": "sha256:efc79bc5923d080a9bf42225afad313577deab7dc82772986ef84e793b45c8c6",
+      "omission": {
+        "compressed_includes": [
+          "docs.api_reference:fetch_value"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "docs_only_change"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": []
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "docs/api_reference.md"
+        ],
+        "changed_symbols": [
+          "docs.api_reference:fetch_value"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "docs.api_reference:fetch_value",
+        "relation_kinds": [
+          "documents"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "dynamic_import.cal",
+      "changed_paths": [
+        "scg_fixture/dynamic_loader.py"
+      ],
+      "description": "calibration dynamic import site change",
+      "family": "dynamic_import",
+      "mutated_tree_digest": "sha256:b2f6e3eb575075349d79508808f34c86f3e992b060f6b9a0f1bb4553cc248538",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "compressed_omits": [],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "dynamic_site_declared"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_dynamic.py::test_load_plugin_name"
+        ]
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/dynamic_loader.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "confidence": "heuristic",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "primary_symbol": "scg_fixture.dynamic_loader.load_plugin",
+        "relation_kinds": [
+          "defines",
+          "dynamic_import"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "dynamic_import.dev",
+      "changed_paths": [
+        "scg_fixture/dynamic_loader.py"
+      ],
+      "description": "development dynamic import site change",
+      "family": "dynamic_import",
+      "mutated_tree_digest": "sha256:efa93e582603d4c843fc07868a0e49bb20f11c8a0ed2d7cd7f5899338ecbd783",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "compressed_omits": [],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "dynamic_site_declared"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_dynamic.py::test_load_plugin_name"
+        ]
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/dynamic_loader.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "confidence": "heuristic",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "primary_symbol": "scg_fixture.dynamic_loader.load_plugin",
+        "relation_kinds": [
+          "defines",
+          "dynamic_import"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "dynamic_import.hold",
+      "changed_paths": [
+        "scg_fixture/dynamic_loader.py"
+      ],
+      "description": "held_out dynamic import site change",
+      "family": "dynamic_import",
+      "mutated_tree_digest": "sha256:b56abe6929eb09005397b033b051ff63e1c77cb3263dd94932035941c1ab033a",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "compressed_omits": [],
+        "critical_omitted_symbols": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "expansion_targets": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "intentional_critical": true,
+        "noncritical_omitted_symbols": [],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": false,
+        "expected_diagnosis": "dynamic_opacity",
+        "expected_outcome": "insufficient_omission",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "opaque_dynamic_requires_raw"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_dynamic.py::test_load_plugin_name"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/dynamic_loader.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "confidence": "heuristic",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [
+          "scg_fixture.dynamic_loader.load_plugin"
+        ],
+        "primary_symbol": "scg_fixture.dynamic_loader.load_plugin",
+        "relation_kinds": [
+          "defines",
+          "dynamic_import"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "exception.cal",
+      "changed_paths": [
+        "scg_fixture/api.py"
+      ],
+      "description": "calibration exception contract change on fetch_value",
+      "family": "exception",
+      "mutated_tree_digest": "sha256:03ea6611237e80ccfcfb5aefb8eb64e2fb931e1e759ab409db5d2d755ccd230e",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "exception_surface_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_api.py::test_fetch_value"
+        ]
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/api.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.process"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.api.fetch_value",
+        "relation_kinds": [
+          "calls",
+          "defines",
+          "raises"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "exception.dev",
+      "changed_paths": [
+        "scg_fixture/api.py"
+      ],
+      "description": "development exception contract change on fetch_value",
+      "family": "exception",
+      "mutated_tree_digest": "sha256:13bcab230f76844bdefeb2da72934de1003bd714e74086c32f04ec3e00025e1b",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "exception_surface_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_api.py::test_fetch_value"
+        ]
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/api.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.process"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.api.fetch_value",
+        "relation_kinds": [
+          "calls",
+          "defines",
+          "raises"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "exception.hold",
+      "changed_paths": [
+        "scg_fixture/api.py"
+      ],
+      "description": "held_out exception contract change on fetch_value",
+      "family": "exception",
+      "mutated_tree_digest": "sha256:265b473d73c775c96966f90b0509dc7a6c48029376990e2114c0ece9d227636d",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "exception_surface_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_api.py::test_fetch_value"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/api.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.api.fetch_value"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.process"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.api.fetch_value",
+        "relation_kinds": [
+          "calls",
+          "defines",
+          "raises"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "fixture.cal",
+      "changed_paths": [
+        "tests/conftest.py"
+      ],
+      "description": "calibration pytest fixture value change",
+      "family": "fixture",
+      "mutated_tree_digest": "sha256:6bc13cba1f7bb50ac45dee05de3c3dcafb6ea0c44314fde14019c6b92c105d52",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.schema.UserRecord",
+          "tests.conftest.sample_record"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "fixture_dependency_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ]
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "tests/conftest.py"
+        ],
+        "changed_symbols": [
+          "tests.conftest.sample_record"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.schema.UserRecord"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "tests.conftest.sample_record",
+        "relation_kinds": [
+          "defines",
+          "fixture"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "fixture.dev",
+      "changed_paths": [
+        "tests/conftest.py"
+      ],
+      "description": "development pytest fixture value change",
+      "family": "fixture",
+      "mutated_tree_digest": "sha256:f6388ed6b8f0201d349564fc022040f4bc61f692b46d740155ae8a751bd6af2a",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.schema.UserRecord",
+          "tests.conftest.sample_record"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "fixture_dependency_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ]
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "tests/conftest.py"
+        ],
+        "changed_symbols": [
+          "tests.conftest.sample_record"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.schema.UserRecord"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "tests.conftest.sample_record",
+        "relation_kinds": [
+          "defines",
+          "fixture"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "fixture.hold",
+      "changed_paths": [
+        "tests/conftest.py"
+      ],
+      "description": "held_out pytest fixture value change",
+      "family": "fixture",
+      "mutated_tree_digest": "sha256:7d3130412f259bcaaf6ac045fcd168b1718cd128de059c7c56d21fde2ee3d14e",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.schema.UserRecord",
+          "tests.conftest.sample_record"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "fixture_dependency_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "tests/conftest.py"
+        ],
+        "changed_symbols": [
+          "tests.conftest.sample_record"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.schema.UserRecord"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "tests.conftest.sample_record",
+        "relation_kinds": [
+          "defines",
+          "fixture"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "generated.cal",
+      "changed_paths": [
+        "scg_fixture/generated/bindings.py"
+      ],
+      "description": "calibration generated binding constant change",
+      "family": "generated",
+      "mutated_tree_digest": "sha256:df84b5af8f3a51050cb41c383456ed86e9aeabdf891aefe8a8d751de5becc7f7",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.generated.bindings.generated_constant"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "generated_surface_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_generated.py::test_generated_constant"
+        ]
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/generated/bindings.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.generated.bindings.generated_constant"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.generated.bindings.generated_constant",
+        "relation_kinds": [
+          "defines",
+          "generated"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "generated.dev",
+      "changed_paths": [
+        "scg_fixture/generated/bindings.py"
+      ],
+      "description": "development generated binding constant change",
+      "family": "generated",
+      "mutated_tree_digest": "sha256:35d03c0de23762167a05de348342fea78f53588eb3a203a68cd66d48f3f7d768",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.generated.bindings.generated_constant"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "generated_surface_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_generated.py::test_generated_constant"
+        ]
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/generated/bindings.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.generated.bindings.generated_constant"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.generated.bindings.generated_constant",
+        "relation_kinds": [
+          "defines",
+          "generated"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "generated.hold",
+      "changed_paths": [
+        "scg_fixture/generated/bindings.py"
+      ],
+      "description": "held_out generated binding constant change",
+      "family": "generated",
+      "mutated_tree_digest": "sha256:9d1c409657ce25055c2fe6ea72f2d1b5601dccd0a4ff2d6808b7e225d988a643",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.generated.bindings.generated_constant"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "generated_surface_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_generated.py::test_generated_constant"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/generated/bindings.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.generated.bindings.generated_constant"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.generated.bindings.generated_constant",
+        "relation_kinds": [
+          "defines",
+          "generated"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "local_bug.cal",
+      "changed_paths": [
+        "scg_fixture/core.py"
+      ],
+      "description": "calibration local body change to core.add",
+      "family": "local_bug",
+      "mutated_tree_digest": "sha256:05a391928831b8fa9e6024e64063e6bc9a683cda73184d65829fb517fefdb091",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.core.add"
+        ],
+        "reason_codes": [
+          "local_body_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/core.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.process"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.core.add",
+        "relation_kinds": [
+          "calls",
+          "defines"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "local_bug.dev",
+      "changed_paths": [
+        "scg_fixture/core.py"
+      ],
+      "description": "development local body change to core.add",
+      "family": "local_bug",
+      "mutated_tree_digest": "sha256:1533f254d7885bdb8e695993757c5972cd17cd02d962768dd574df0b855a5d24",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.core.add"
+        ],
+        "reason_codes": [
+          "local_body_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/core.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.process"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.core.add",
+        "relation_kinds": [
+          "calls",
+          "defines"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "local_bug.hold",
+      "changed_paths": [
+        "scg_fixture/core.py"
+      ],
+      "description": "held_out local body change to core.add",
+      "family": "local_bug",
+      "mutated_tree_digest": "sha256:47b7a9c1240c8a2962530c6e7829880dcefb842e89f1ed7820200d590b10c336",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.core.add"
+        ],
+        "reason_codes": [
+          "local_body_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/core.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.process"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.core.add",
+        "relation_kinds": [
+          "calls",
+          "defines"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "monkey_patch.cal",
+      "changed_paths": [
+        "scg_fixture/monkey_patch_cal.py"
+      ],
+      "description": "calibration monkey-patch of core.add",
+      "family": "monkey_patch",
+      "mutated_tree_digest": "sha256:7bdd0e4401fb8b36d9e194eeca72afcc8c92aa2dade75bac1ee5ae6088def0f0",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "monkey_patch_declared"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/monkey_patch_cal.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "confidence": "heuristic",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.core.add",
+        "relation_kinds": [
+          "monkey_patch",
+          "writes_binding"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "monkey_patch.dev",
+      "changed_paths": [
+        "scg_fixture/monkey_patch_dev.py"
+      ],
+      "description": "development monkey-patch of core.add",
+      "family": "monkey_patch",
+      "mutated_tree_digest": "sha256:484dce91ef95a8309624342042475ef444968efd0ac67d0f02239d576448e6e8",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "monkey_patch_declared"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/monkey_patch_dev.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "confidence": "heuristic",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.core.add",
+        "relation_kinds": [
+          "monkey_patch",
+          "writes_binding"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "monkey_patch.hold",
+      "changed_paths": [
+        "scg_fixture/monkey_patch_hold.py"
+      ],
+      "description": "held_out monkey-patch of core.add",
+      "family": "monkey_patch",
+      "mutated_tree_digest": "sha256:e882cd98c57ed713c780db1d8dc4b4b4c7131f15ee78f2421d0593e0b380ff6d",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "monkey_patch_declared"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/monkey_patch_hold.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "confidence": "heuristic",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.core.add",
+        "relation_kinds": [
+          "monkey_patch",
+          "writes_binding"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "plugin.cal",
+      "changed_paths": [
+        "scg_fixture/plugins/registry.py"
+      ],
+      "description": "calibration plugin registry behavior change",
+      "family": "plugin",
+      "mutated_tree_digest": "sha256:28dd5ed74cbea11b6d712a047f2cc87c609c0279eb414e1ea64e105c3fa36356",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.plugins.registry.register"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "plugin_registry_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_plugin.py::test_register"
+        ]
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/plugins/registry.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.plugins.registry.register"
+        ],
+        "confidence": "heuristic",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.plugins.registry.register",
+        "relation_kinds": [
+          "defines",
+          "plugin_registry"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "plugin.dev",
+      "changed_paths": [
+        "scg_fixture/plugins/registry.py"
+      ],
+      "description": "development plugin registry behavior change",
+      "family": "plugin",
+      "mutated_tree_digest": "sha256:22a4899b64cfaf79c8794a58e4fc6de9b020740f48632a9880ae7ac1362beb3c",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.plugins.registry.register"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "plugin_registry_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_plugin.py::test_register"
+        ]
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/plugins/registry.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.plugins.registry.register"
+        ],
+        "confidence": "heuristic",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.plugins.registry.register",
+        "relation_kinds": [
+          "defines",
+          "plugin_registry"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "plugin.hold",
+      "changed_paths": [
+        "scg_fixture/plugins/registry.py"
+      ],
+      "description": "held_out plugin registry behavior change",
+      "family": "plugin",
+      "mutated_tree_digest": "sha256:8560541728f02504aa1578eca8c78ac9a99b84b733c1c61243eb47ba93885689",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.plugins.registry.register"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "plugin_registry_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_plugin.py::test_register"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/plugins/registry.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.plugins.registry.register"
+        ],
+        "confidence": "heuristic",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.plugins.registry.register",
+        "relation_kinds": [
+          "defines",
+          "plugin_registry"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "proof.cal",
+      "changed_paths": [
+        "proofs/core_add.lean"
+      ],
+      "description": "calibration proof obligation change",
+      "family": "proof",
+      "mutated_tree_digest": "sha256:481c062f38dd381dff194f758f3f5021ad55ba1f1aa6f2821e7d392c41483afa",
+      "omission": {
+        "compressed_includes": [
+          "proof.scg_fixture.core.add",
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.core.add"
+        ],
+        "reason_codes": [
+          "proof_obligation_bound"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "proofs/core_add.lean"
+        ],
+        "changed_symbols": [
+          "proof.scg_fixture.core.add"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "proof.scg_fixture.core.add",
+        "relation_kinds": [
+          "proves"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "proof.dev",
+      "changed_paths": [
+        "proofs/core_add.lean"
+      ],
+      "description": "development proof obligation change",
+      "family": "proof",
+      "mutated_tree_digest": "sha256:5c5b134e2aba71044959009a9711758e38f3ccb29fe512e9e98afaa2464ce497",
+      "omission": {
+        "compressed_includes": [
+          "proof.scg_fixture.core.add",
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.core.add"
+        ],
+        "reason_codes": [
+          "proof_obligation_bound"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "proofs/core_add.lean"
+        ],
+        "changed_symbols": [
+          "proof.scg_fixture.core.add"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "proof.scg_fixture.core.add",
+        "relation_kinds": [
+          "proves"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "proof.hold",
+      "changed_paths": [
+        "proofs/core_add.lean"
+      ],
+      "description": "held_out proof obligation change",
+      "family": "proof",
+      "mutated_tree_digest": "sha256:759a32205913cd7935e852c092793acdc28c40306640a9088a44eaf9330c2d05",
+      "omission": {
+        "compressed_includes": [
+          "proof.scg_fixture.core.add",
+          "scg_fixture.core.add"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.core.add"
+        ],
+        "reason_codes": [
+          "proof_obligation_bound"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_core.py::test_add"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "proofs/core_add.lean"
+        ],
+        "changed_symbols": [
+          "proof.scg_fixture.core.add"
+        ],
+        "confidence": "conservative",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.add"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "proof.scg_fixture.core.add",
+        "relation_kinds": [
+          "proves"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "refactor.cal",
+      "changed_paths": [
+        "scg_fixture/api.py"
+      ],
+      "description": "calibration cross-module call refactor",
+      "family": "refactor",
+      "mutated_tree_digest": "sha256:82f8c28a4fc302bd5abcff1b52df1387a7b0762b6f8d644807063c3d2f2176e5",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.api.call_core",
+          "scg_fixture.core.multiply"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "cross_module_refactor_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_api.py::test_call_core"
+        ]
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/api.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.api.call_core"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.multiply"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.api.call_core",
+        "relation_kinds": [
+          "calls",
+          "imports"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "refactor.dev",
+      "changed_paths": [
+        "scg_fixture/api.py"
+      ],
+      "description": "development cross-module call refactor",
+      "family": "refactor",
+      "mutated_tree_digest": "sha256:4a8f7c6b000a6e4e2c123d0da766bbaa72c085076875809e219013693fd5e158",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.api.call_core",
+          "scg_fixture.core.multiply"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "cross_module_refactor_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_api.py::test_call_core"
+        ]
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/api.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.api.call_core"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.multiply"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.api.call_core",
+        "relation_kinds": [
+          "calls",
+          "imports"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "refactor.hold",
+      "changed_paths": [
+        "scg_fixture/api.py"
+      ],
+      "description": "held_out cross-module call refactor",
+      "family": "refactor",
+      "mutated_tree_digest": "sha256:7f737db376416eed236525002c5d48a5fff9e036aa75733a4b5cbb23b3507187",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.api.call_core",
+          "scg_fixture.core.multiply"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "cross_module_refactor_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_api.py::test_call_core"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/api.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.api.call_core"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.core.multiply"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.api.call_core",
+        "relation_kinds": [
+          "calls",
+          "imports"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "schema_migration.cal",
+      "changed_paths": [
+        "scg_fixture/schema.py"
+      ],
+      "description": "calibration UserRecord gains active field",
+      "family": "schema_migration",
+      "mutated_tree_digest": "sha256:4336e6a7d5e289c5824bf252892ba5e717a86ec1b542a4266e079217c51f2198",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.schema.UserRecord",
+          "scg_fixture.schema.dump_user"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.schema.UserRecord"
+        ],
+        "reason_codes": [
+          "schema_migration_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ]
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/schema.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.schema.UserRecord",
+          "scg_fixture.schema.dump_user"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process"
+        ],
+        "dependency_symbols": [
+          "tests.conftest.sample_record"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.schema.UserRecord",
+        "relation_kinds": [
+          "defines",
+          "schema"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "schema_migration.dev",
+      "changed_paths": [
+        "scg_fixture/schema.py"
+      ],
+      "description": "development UserRecord gains enabled field",
+      "family": "schema_migration",
+      "mutated_tree_digest": "sha256:3e4dd5319b09215fa5ac55f3d207e3324ca8cb1b9f031bb880a2e6a983a090aa",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.schema.UserRecord",
+          "scg_fixture.schema.dump_user"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.schema.UserRecord"
+        ],
+        "reason_codes": [
+          "schema_migration_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ]
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/schema.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.schema.UserRecord",
+          "scg_fixture.schema.dump_user"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process"
+        ],
+        "dependency_symbols": [
+          "tests.conftest.sample_record"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.schema.UserRecord",
+        "relation_kinds": [
+          "defines",
+          "schema"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "schema_migration.hold",
+      "changed_paths": [
+        "scg_fixture/schema.py"
+      ],
+      "description": "held_out UserRecord gains visible field",
+      "family": "schema_migration",
+      "mutated_tree_digest": "sha256:e46efb4fced9b1369821ec678c564f0f728eac9330f669b5c85a1f45ccb84af6",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.schema.UserRecord",
+          "scg_fixture.schema.dump_user"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [
+          "proof.scg_fixture.schema.UserRecord"
+        ],
+        "reason_codes": [
+          "schema_migration_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/schema.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.schema.UserRecord",
+          "scg_fixture.schema.dump_user"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process"
+        ],
+        "dependency_symbols": [
+          "tests.conftest.sample_record"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.schema.UserRecord",
+        "relation_kinds": [
+          "defines",
+          "schema"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "state.cal",
+      "changed_paths": [
+        "scg_fixture/state.py"
+      ],
+      "description": "calibration Store.set state write change",
+      "family": "state",
+      "mutated_tree_digest": "sha256:a9f8bcf9956e841700b9317c713f30c71a40242b857461f62e263ed906954f38",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.state.Store.get",
+          "scg_fixture.state.Store.set"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "state_write_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_state.py::test_store_roundtrip"
+        ]
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/state.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.state.Store.set"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.state.Store.get"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.state.Store.set",
+        "relation_kinds": [
+          "defines",
+          "writes_state"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "state.dev",
+      "changed_paths": [
+        "scg_fixture/state.py"
+      ],
+      "description": "development Store.set state write change",
+      "family": "state",
+      "mutated_tree_digest": "sha256:a610845999eec191a97f1c081baa35cfc98bde838ceba316cec62b1062082cc1",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.state.Store.get",
+          "scg_fixture.state.Store.set"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "state_write_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_state.py::test_store_roundtrip"
+        ]
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/state.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.state.Store.set"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.state.Store.get"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.state.Store.set",
+        "relation_kinds": [
+          "defines",
+          "writes_state"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    },
+    {
+      "adversarial_scenario": null,
+      "case_id": "state.hold",
+      "changed_paths": [
+        "scg_fixture/state.py"
+      ],
+      "description": "held_out Store.set state write change",
+      "family": "state",
+      "mutated_tree_digest": "sha256:d0e3cc8140d05fb26ff84ca029b3bdfecf088a3d97121b34097671dbe3f0856a",
+      "omission": {
+        "compressed_includes": [
+          "scg_fixture.state.Store.get",
+          "scg_fixture.state.Store.set"
+        ],
+        "compressed_omits": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "critical_omitted_symbols": [],
+        "expansion_targets": [],
+        "intentional_critical": false,
+        "noncritical_omitted_symbols": [
+          "scg_fixture.core.legacy_helper"
+        ],
+        "schema": "scg/omission-oracle@1"
+      },
+      "outcome": {
+        "automatic_accept_allowed": true,
+        "expected_diagnosis": "none",
+        "expected_outcome": "sufficient",
+        "full_suite_tests": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_config.py::test_load_flags",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_plugin.py::test_register",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows",
+          "tests/test_state.py::test_store_roundtrip"
+        ],
+        "proof_obligations": [],
+        "reason_codes": [
+          "state_write_covered"
+        ],
+        "schema": "scg/outcome-oracle@1",
+        "selected_tests": [
+          "tests/test_state.py::test_store_roundtrip"
+        ]
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "scanner_view": {
+        "changed_paths": [
+          "scg_fixture/state.py"
+        ],
+        "changed_symbols": [
+          "scg_fixture.state.Store.set"
+        ],
+        "confidence": "exact",
+        "context_symbols": [
+          "scg_fixture.api.fetch_value",
+          "scg_fixture.core.add",
+          "scg_fixture.core.legacy_helper",
+          "scg_fixture.core.process",
+          "scg_fixture.schema.UserRecord"
+        ],
+        "dependency_symbols": [
+          "scg_fixture.state.Store.get"
+        ],
+        "opaque_symbols": [],
+        "primary_symbol": "scg_fixture.state.Store.set",
+        "relation_kinds": [
+          "defines",
+          "writes_state"
+        ],
+        "schema": "scg/scanner-view@1"
+      }
+    }
+  ],
+  "corpus_digest": "sha256:3e99353fbbac24203bfd3d82f18a137e82ff3afb3375b75be3c6ad7828e2efc4",
+  "corpus_id": "semantic-governor-partitioned-corpus-v1",
+  "evidence_id": "scg/partitioned-corpus@1",
+  "interface": "SemanticGovernorFixtureCorpus@1",
+  "partition_counts": {
+    "calibration": 14,
+    "development": 14,
+    "held_out": 32
+  },
+  "partition_membership": {
+    "calibration": [
+      "api_migration.cal",
+      "configuration.cal",
+      "documentation.cal",
+      "dynamic_import.cal",
+      "exception.cal",
+      "fixture.cal",
+      "generated.cal",
+      "local_bug.cal",
+      "monkey_patch.cal",
+      "plugin.cal",
+      "proof.cal",
+      "refactor.cal",
+      "schema_migration.cal",
+      "state.cal"
+    ],
+    "development": [
+      "api_migration.dev",
+      "configuration.dev",
+      "documentation.dev",
+      "dynamic_import.dev",
+      "exception.dev",
+      "fixture.dev",
+      "generated.dev",
+      "local_bug.dev",
+      "monkey_patch.dev",
+      "plugin.dev",
+      "proof.dev",
+      "refactor.dev",
+      "schema_migration.dev",
+      "state.dev"
+    ],
+    "held_out": [
+      "adv.behavior_only_dependency",
+      "adv.both_context_model_failure",
+      "adv.caller_exception_contract",
+      "adv.confidence_misclassification",
+      "adv.config_flag",
+      "adv.generated_interface",
+      "adv.hidden_callee_side_effect",
+      "adv.migration_path",
+      "adv.misleading_comment",
+      "adv.opaque_dynamic_import",
+      "adv.prompt_injection",
+      "adv.pytest_fixture",
+      "adv.raw_correct_compressed_wrong",
+      "adv.security_invariant",
+      "adv.selected_pass_full_fail",
+      "adv.serializer",
+      "adv.stale_capsule",
+      "adv.test_pass_formal_fail",
+      "api_migration.hold",
+      "configuration.hold",
+      "documentation.hold",
+      "dynamic_import.hold",
+      "exception.hold",
+      "fixture.hold",
+      "generated.hold",
+      "local_bug.hold",
+      "monkey_patch.hold",
+      "plugin.hold",
+      "proof.hold",
+      "refactor.hold",
+      "schema_migration.hold",
+      "state.hold"
+    ]
+  },
+  "partitions": [
+    "calibration",
+    "development",
+    "held_out"
+  ],
+  "schema": "scg/partitioned-corpus@1",
+  "task_families": [
+    "local_bug",
+    "exception",
+    "api_migration",
+    "schema_migration",
+    "state",
+    "configuration",
+    "fixture",
+    "dynamic_import",
+    "monkey_patch",
+    "generated",
+    "plugin",
+    "refactor",
+    "documentation",
+    "proof"
+  ],
+  "task_id": "SCG-040"
+}
