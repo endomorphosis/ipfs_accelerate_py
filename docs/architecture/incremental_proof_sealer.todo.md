@@ -694,7 +694,7 @@ Global invariants for every task:
 
 ## IPS-021 Implement the exact-key candidate cache index and admission records
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
