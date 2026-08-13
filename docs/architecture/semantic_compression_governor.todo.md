@@ -860,7 +860,7 @@ W28 SCG-048
 
 ## SCG-030 Calibrate model routes separately from context sufficiency
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
