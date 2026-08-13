@@ -632,7 +632,7 @@ Global invariants for every task:
 
 ## IPS-019 Implement the hermetic immutable local proof-object store
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
