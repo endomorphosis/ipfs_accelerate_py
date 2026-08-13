@@ -32,6 +32,7 @@ from types import MappingProxyType as _MappingProxyType
 import importlib as _importlib
 import os as _os
 import sys as _sys
+import types as _types
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -678,14 +679,58 @@ class _LandedModuleAliasFinder:
         except Exception:
             return None
 
+        class _AliasModuleType(_types.ModuleType):
+            """Historical alias that mirrors setattr onto the domain module.
+
+            Method bodies on landed modules resolve free names through the
+            canonical module globals.  Tests still import and monkeypatch the
+            historical flat path; without write-through, those patches never
+            reach the functions that adoption/fencing actually call.
+            """
+
+            _ALIAS_META = frozenset(
+                {
+                    "__name__",
+                    "__loader__",
+                    "__package__",
+                    "__spec__",
+                    "__canonical_module__",
+                    "__dict__",
+                    "__class__",
+                    "__file__",
+                    "__cached__",
+                    "__builtins__",
+                    "__doc__",
+                    "__path__",
+                    "__annotations__",
+                }
+            )
+
+            def __setattr__(self, name: str, value: object) -> None:  # type: ignore[override]
+                super().__setattr__(name, value)
+                if name in self._ALIAS_META:
+                    return
+                canonical = self.__dict__.get("__canonical_module__")
+                if canonical is not None:
+                    setattr(canonical, name, value)
+
+            def __delattr__(self, name: str) -> None:  # type: ignore[override]
+                if name in self.__dict__:
+                    super().__delattr__(name)
+                if name in self._ALIAS_META:
+                    return
+                canonical = self.__dict__.get("__canonical_module__")
+                if canonical is not None and hasattr(canonical, name):
+                    delattr(canonical, name)
+
         class _AliasLoader:
             def create_module(self, spec):  # type: ignore[no-untyped-def]
                 # Returning the canonical module object here lets importlib
                 # overwrite its import metadata with the historical alias.
                 # A later canonical import then executes a second module and
-                # breaks public symbol identity.  Let importlib allocate a
-                # lightweight alias module instead.
-                return None
+                # breaks public symbol identity.  Allocate a lightweight alias
+                # module subclass that write-throughs monkeypatches instead.
+                return _AliasModuleType(spec.name)
 
             def exec_module(self, module_):  # type: ignore[no-untyped-def]
                 # Re-export the canonical objects without copying import
