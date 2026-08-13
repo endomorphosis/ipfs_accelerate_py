@@ -617,7 +617,7 @@ W28 SCG-048
 
 ## SCG-021 Implement versioned compression-policy and promotion CAS repositories
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
