@@ -254,7 +254,7 @@ W20 AAE-063
 
 ## AAE-008 Define operator, target, candidate, policy, and campaign-plan models
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
