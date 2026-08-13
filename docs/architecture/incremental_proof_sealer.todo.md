@@ -291,7 +291,7 @@ Global invariants for every task:
 
 ## IPS-008 Define and test the complete ProofCacheKey
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
