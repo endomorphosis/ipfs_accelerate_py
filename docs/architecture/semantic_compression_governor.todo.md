@@ -374,7 +374,7 @@ W28 SCG-048
 
 ## SCG-012 Implement conservative pre-execution sufficiency evaluation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
