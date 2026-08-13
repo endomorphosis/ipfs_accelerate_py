@@ -570,7 +570,7 @@ Global invariants for every task:
 
 ## IPS-017 Freeze datasets invalidation API and run its conformance matrix
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
