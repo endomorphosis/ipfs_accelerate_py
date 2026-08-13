@@ -725,7 +725,7 @@ Global invariants for every task:
 
 ## IPS-022 Persist deterministic proof forests and update affected branches only
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
