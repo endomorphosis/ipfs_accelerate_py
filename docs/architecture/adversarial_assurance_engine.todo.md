@@ -117,7 +117,7 @@ W20 AAE-063
 
 ## AAE-003 Inventory kit durability, CAS, receipt, campaign-history, and recovery surfaces
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
