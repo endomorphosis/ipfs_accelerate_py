@@ -1035,7 +1035,7 @@ Global invariants for every task:
 
 ## IPS-032 Implement full-versus-incremental planning and reuse explanations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
