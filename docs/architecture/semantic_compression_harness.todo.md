@@ -540,7 +540,7 @@ A9  SCH-018
 
 ## SCH-018 Complete documentation, import safety, and provider regressions
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: release

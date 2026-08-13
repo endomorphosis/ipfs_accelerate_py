@@ -42,7 +42,7 @@ SCH-G000  Complete local Python semantic-compression loop
 
 ## SCH-G000 Complete local Python semantic-compression loop
 
-- Status: active
+- Status: completed
 - Parent:
 - Depends on:
 - Fib priority: 1
@@ -60,7 +60,7 @@ SCH-G000  Complete local Python semantic-compression loop
 
 ## SCH-G010 Pin MCP++ and repository adapters
 
-- Status: active
+- Status: completed
 - Parent: SCH-G000
 - Depends on:
 - Fib priority: 2
@@ -78,7 +78,7 @@ SCH-G000  Complete local Python semantic-compression loop
 
 ## SCH-G020 Scheduling, routing, context, and execution
 
-- Status: active
+- Status: completed
 - Parent: SCH-G000
 - Depends on: SCH-G010
 - Fib priority: 3
@@ -96,7 +96,7 @@ SCH-G000  Complete local Python semantic-compression loop
 
 ## SCH-G030 Isolated patch acceptance, receipts, and root commit
 
-- Status: active
+- Status: completed
 - Parent: SCH-G000
 - Depends on: SCH-G010, SCH-G020
 - Fib priority: 5
@@ -114,7 +114,7 @@ SCH-G000  Complete local Python semantic-compression loop
 
 ## SCH-G040 CLI, incremental sessions, and end-to-end acceptance
 
-- Status: active
+- Status: completed
 - Parent: SCH-G000
 - Depends on: SCH-G030
 - Fib priority: 8
