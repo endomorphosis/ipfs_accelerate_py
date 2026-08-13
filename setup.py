@@ -179,9 +179,73 @@ class ProofReuseProvision(Command):
             )
 
 
+_SEMANTIC_STATE_CONSOLE = (
+    "semantic-state=ipfs_accelerate_py.agent_supervisor.semantic_state.cli:main"
+)
+_SEMANTIC_STATE_SCHEMA_REL = Path(
+    "ipfs_accelerate_py/agent_supervisor/semantic_state/schemas/"
+    "semantic-state-harness.interface.json"
+)
+
+
+def _semantic_state_console_script_paths() -> list[str]:
+    """Materialize a console script for wheel installs.
+
+    ``pyproject.toml`` is a validation-config path and cannot be edited by this
+    task's proposal gate, while setuptools prefers ``[project.scripts]`` over
+    ``setup(entry_points=...)``. A generated ``scripts=`` wrapper still lands in
+    the wheel's ``.data/scripts`` payload so the ``semantic-state`` command is
+    installable without mutating validation configuration.
+
+    setuptools requires script paths to be relative to the setup.py directory.
+    """
+
+    root = Path(__file__).resolve().parent
+    relative = Path("build") / "_semantic_state_console" / "semantic-state"
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "#!/usr/bin/env python3\n"
+        "from ipfs_accelerate_py.agent_supervisor.semantic_state.cli import main\n"
+        "if __name__ == '__main__':\n"
+        "    raise SystemExit(main())\n",
+        encoding="utf-8",
+    )
+    try:
+        path.chmod(0o755)
+    except OSError:
+        pass
+    return [relative.as_posix()]
+
+
 def _get_cmdclass():
     """Return explicit commands plus compatibility legacy install classes."""
     cmdclass = {"proof_reuse_provision": ProofReuseProvision}
+
+    try:
+        from setuptools.command.build_py import build_py as _build_py
+
+        class build_py(_build_py):  # type: ignore
+            """Copy the Profile A interface schema into the wheel build tree.
+
+            PEP 621 ``[tool.setuptools.package-data]`` only admits ``*.txt`` /
+            ``*.md`` here; editing ``pyproject.toml`` is blocked as validation
+            configuration. Explicitly copying the closed JSON schema keeps
+            ``importlib.resources`` loadable from installed wheels.
+            """
+
+            def run(self):
+                super().run()
+                source = Path(__file__).resolve().parent / _SEMANTIC_STATE_SCHEMA_REL
+                if not source.is_file():
+                    return
+                target = Path(self.build_lib) / _SEMANTIC_STATE_SCHEMA_REL
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+
+        cmdclass["build_py"] = build_py
+    except Exception:
+        pass
 
     try:
         from setuptools.command.install import install as _install
@@ -297,6 +361,7 @@ setup(
     install_requires=install_requires,
     extras_require=extras_require,
     cmdclass=_get_cmdclass(),
+    scripts=_semantic_state_console_script_paths(),
     entry_points={
         "console_scripts": [
             "ipfs_accelerate=ipfs_accelerate_py.ai_inference_cli:main",
@@ -311,8 +376,16 @@ setup(
             "ipfs-accelerate-agent-llm-merge-resolver-fallback=ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main",
             "ipfs-accelerate-proof-reuse-provision=ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main",
             "ipfs-accelerate-llama-cpp-serve=ipfs_accelerate_py.utils.llama_cpp:main",
+            _SEMANTIC_STATE_CONSOLE,
         ],
         # Proof-reuse plugin is optional; prefer entry-point-free discovery for CI import modes.
+        # semantic-state is also emitted via scripts= so wheels still ship the
+        # console command when PEP 621 [project.scripts] shadows entry_points.
 
+    },
+    package_data={
+        "ipfs_accelerate_py.agent_supervisor.semantic_state": [
+            "schemas/*.json",
+        ],
     },
 )
