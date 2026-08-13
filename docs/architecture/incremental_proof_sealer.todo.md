@@ -508,7 +508,7 @@ Global invariants for every task:
 
 ## IPS-015 Implement complete repository diff and change classification
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
