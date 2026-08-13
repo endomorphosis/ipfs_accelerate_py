@@ -768,7 +768,7 @@ W20 AAE-063
 
 ## AAE-027 Implement test, ZK, receipt, and seal vacuity analysis
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
