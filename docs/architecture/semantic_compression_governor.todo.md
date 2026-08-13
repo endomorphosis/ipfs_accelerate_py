@@ -671,7 +671,7 @@ W28 SCG-048
 
 ## SCG-023 Adapt canonical datasets, harness, verification, storage, and sealer surfaces
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
