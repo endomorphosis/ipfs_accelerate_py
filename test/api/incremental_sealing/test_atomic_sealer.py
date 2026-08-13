@@ -10,12 +10,22 @@ Acceptance:
 
 from __future__ import annotations
 
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.delta_seal import (
+# Nested kit product lives at <repo>/ipfs_kit_py/ipfs_kit_py.  Prefer that
+# checkout so ``import ipfs_kit_py`` does not resolve an empty gitlink shadow.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_KIT_CHECKOUT = _REPO_ROOT / "ipfs_kit_py"
+if (_KIT_CHECKOUT / "ipfs_kit_py" / "__init__.py").is_file():
+    _kit_text = str(_KIT_CHECKOUT)
+    if _kit_text not in sys.path:
+        sys.path.insert(0, _kit_text)
+
+from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.delta_seal import (  # noqa: E402
     TRANSITION_SCHEMA,
     DeltaSeal,
     DeltaTransitionStatement,
@@ -23,13 +33,13 @@ from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.delta_seal im
     DiffCommitmentView,
     ParentSealView,
 )
-from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.full_checkpoint import (
+from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.full_checkpoint import (  # noqa: E402
     GENESIS_PARENT_SEAL,
     RepositoryStateView,
     RequiredUnitEvidence,
     VerificationPolicyView,
 )
-from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.sealer import (
+from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.sealer import (  # noqa: E402
     EVIDENCE_SUBSET,
     PUBLICATION_PHASES,
     PUBLICATION_RESULT_SCHEMA,
@@ -43,18 +53,18 @@ from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.sealer import
     publish_delta_seal,
     publish_full_checkpoint,
 )
-from ipfs_datasets_py.logic.zkp.incremental_sealing.evidence import (
+from ipfs_datasets_py.logic.zkp.incremental_sealing.evidence import (  # noqa: E402
     ProofMode,
     ProofTerminalStatus,
     SealStatus,
 )
-from ipfs_kit_py.proof_seal_store.contracts import (
+from ipfs_kit_py.proof_seal_store.contracts import (  # noqa: E402
     ArtifactKind,
     ExplicitRootRequiredError,
     SealTransitionPhase,
     SealTransitionState,
 )
-from ipfs_kit_py.proof_seal_store.recovery import (
+from ipfs_kit_py.proof_seal_store.recovery import (  # noqa: E402
     RecoveryDisposition,
     RecoveryReason,
 )
@@ -660,11 +670,13 @@ def test_stale_parent_returns_stale_parent_without_overwrite(tmp_path: Path) -> 
 
 
 def test_stale_cas_after_seal_persistence_does_not_overwrite(tmp_path: Path) -> None:
-    """Two sequential writers: second loses if parent was advanced underneath."""
+    """Pinned superseded parent loses CAS after seal persistence without overwrite."""
 
     sealer = _sealer(tmp_path)
     genesis = _publish_genesis(sealer)
     assert genesis.published
+    genesis_pointer = sealer.get_current_seal("repo/accelerate")
+    assert genesis_pointer is not None
 
     # Advance current via a successful second publish.
     advanced = sealer.publish_full_checkpoint(
@@ -679,15 +691,34 @@ def test_stale_cas_after_seal_persistence_does_not_overwrite(tmp_path: Path) -> 
     assert advanced.published
     live = sealer.get_current_seal("repo/accelerate")
     assert live is not None
-
-    # Manually begin a transition that still expects the genesis parent, then
-    # attempt CAS through a fresh sealer path by publishing with a forged
-    # expected parent via recover-style stale rejection: publishing another
-    # full seal always rebinds to the live parent, so stale is covered by the
-    # concurrent/delta cases.  Here we assert the live pointer is generation 1.
     assert live.generation == 1
     assert live.parent_seal_cid == genesis.seal_cid
     assert live.seal_cid == advanced.seal_cid
+
+    # A writer that still pins the superseded genesis parent must lose CAS
+    # after seal bytes are durable, without moving the live pointer.
+    stale = sealer.publish_full_checkpoint(
+        _state(
+            revision="rev-stale-cas-" + ("c" * 28),
+            source_root_cid=_DIGEST_3,
+            repository_state_cid=_DIGEST_4,
+        ),
+        _policy(),
+        units=_good_units(tag="stale-cas"),
+        transition_id="txn:stale-cas-after-persist",
+        expected_current=genesis_pointer,
+    )
+    assert stale.published is False
+    assert stale.status is SealStatus.STALE_PARENT
+    assert stale.reason is PublicationReason.STALE_PARENT
+    assert stale.phase_reached is SealTransitionPhase.SEAL_PERSISTENCE
+    assert stale.seal_cid.startswith("sha256:")
+    assert sealer.get_current_seal("repo/accelerate") == live
+    assert sealer.get_current_seal("repo/accelerate").seal_cid == advanced.seal_cid  # type: ignore[union-attr]
+
+    wal_rec = sealer.wal.get_transition("txn:stale-cas-after-persist")
+    assert wal_rec is not None
+    assert wal_rec.state is SealTransitionState.ABORTED
     sealer.close()
 
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -27,22 +28,56 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final
 
-from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.delta_seal import (
+
+def _ensure_nested_kit_on_path() -> None:
+    """Prefer the nested ``ipfs_kit_py`` checkout over an empty gitlink shadow.
+
+    The monorepo root is often first on ``sys.path``.  The nested kit product
+    lives at ``<repo>/ipfs_kit_py/ipfs_kit_py``; inserting the outer checkout
+    makes ``import ipfs_kit_py`` resolve the real package.
+    """
+
+    here = Path(__file__).resolve()
+    # .../ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py
+    # parents[4] == repository root when layout is standard.
+    candidates = (
+        here.parents[4] / "ipfs_kit_py",
+        here.parents[5] / "ipfs_kit_py" if len(here.parents) > 5 else None,
+        Path.cwd() / "ipfs_kit_py",
+    )
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        package_init = candidate / "ipfs_kit_py" / "__init__.py"
+        if not package_init.is_file():
+            continue
+        rendered = str(candidate.resolve())
+        if rendered not in sys.path:
+            sys.path.insert(0, rendered)
+        return
+
+
+_ensure_nested_kit_on_path()
+
+from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.delta_seal import (  # noqa: E402
     DeltaSeal,
+    DeltaSealError,
     DeltaTransitionStatement,
     DeltaUnitEvidence,
     ParentSealView,
     build_delta_seal,
 )
-from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.full_checkpoint import (
+from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.full_checkpoint import (  # noqa: E402
+    GENESIS_PARENT_SEAL,
+    FullCheckpointError,
     FullCheckpointSeal,
     RepositoryStateView,
     RequiredUnitEvidence,
     VerificationPolicyView,
     create_full_checkpoint,
 )
-from ipfs_datasets_py.logic.zkp.incremental_sealing.evidence import SealStatus
-from ipfs_kit_py.proof_seal_store.contracts import (
+from ipfs_datasets_py.logic.zkp.incremental_sealing.evidence import SealStatus  # noqa: E402
+from ipfs_kit_py.proof_seal_store.contracts import (  # noqa: E402
     ArtifactKind,
     CurrentSealPointer,
     ExplicitRootRequiredError,
@@ -53,19 +88,20 @@ from ipfs_kit_py.proof_seal_store.contracts import (
     StoreRoot,
     validate_explicit_root_path,
 )
-from ipfs_kit_py.proof_seal_store.local_store import HermeticProofSealStore
-from ipfs_kit_py.proof_seal_store.pointer import (
+from ipfs_kit_py.proof_seal_store.local_store import HermeticProofSealStore  # noqa: E402
+from ipfs_kit_py.proof_seal_store.pointer import (  # noqa: E402
     CurrentSealRepository,
+    PointerCasRejected,
     PointerDisposition,
     PointerReason,
 )
-from ipfs_kit_py.proof_seal_store.recovery import (
+from ipfs_kit_py.proof_seal_store.recovery import (  # noqa: E402
     RecoveryDisposition,
     RecoveryReason,
     RecoveryReport,
     recover_seal_transitions,
 )
-from ipfs_kit_py.proof_seal_store.wal import (
+from ipfs_kit_py.proof_seal_store.wal import (  # noqa: E402
     PHASE_ORDER,
     SealTransitionWal,
     SealTransitionWalCrash,
@@ -659,13 +695,28 @@ class IncrementalProofSealer:
 
             # Construct the seal only after durable intent.
             if publication_kind is PublicationKind.FULL_CHECKPOINT:
+                # Bind the seal content parent to the CAS expected parent when
+                # the caller did not override parent_seal_cid explicitly.
+                resolved_parent_seal = parent_seal_cid
+                if resolved_parent_seal is None and previous_seal_cid:
+                    resolved_parent_seal = previous_seal_cid
+                resolved_fallback = fallback_reasons
+                if (
+                    not resolved_fallback
+                    and not previous_seal_cid
+                    and (
+                        resolved_parent_seal is None
+                        or resolved_parent_seal in {"", GENESIS_PARENT_SEAL}
+                    )
+                ):
+                    resolved_fallback = ("first_state",)
                 full_seal = create_full_checkpoint(
                     repository_state,
                     verification_policy,
                     units=units,
                     expected_unit_ids=expected_unit_ids,
-                    parent_seal_cid=parent_seal_cid,
-                    fallback_reasons=fallback_reasons,
+                    parent_seal_cid=resolved_parent_seal,
+                    fallback_reasons=resolved_fallback,
                     expected_repository_proof_root=expected_repository_proof_root,
                 )
                 if not full_seal.sealed:
@@ -792,31 +843,40 @@ class IncrementalProofSealer:
                 generation=generation,
                 parent_seal_cid=expected_parent_for_cas,
             )
-            cas = self._pointers.compare_and_swap_current_seal_result(
-                current, new_pointer
-            )
-            if cas.disposition is PointerDisposition.STALE or (
-                cas.reason is PointerReason.STALE_PARENT and not cas.swapped
-            ):
-                abort_transition(
-                    self._wal,
-                    tid,
-                    phase=SealTransitionPhase.SEAL_PERSISTENCE,
+            try:
+                cas = self._pointers.compare_and_swap_current_seal_result(
+                    current, new_pointer
                 )
-                live = self._pointers.get_current_seal(repository_id, branch_id)
-                return self._result(
-                    status=SealStatus.STALE_PARENT,
-                    reason=PublicationReason.STALE_PARENT,
-                    published=False,
+            except PointerCasRejected as cas_exc:
+                # Wrong branch/parent/generation chain: treat as stale without
+                # overwrite.  The pointer store never applied the write.
+                return self._stale_parent_after_cas_loss(
+                    tid=tid,
                     publication_kind=publication_kind,
                     repository_id=repository_id,
                     branch_id=branch_id,
-                    transition_id=tid,
                     seal_cid=seal_cid,
                     previous_seal_cid=previous_seal_cid,
                     generation=generation,
-                    phase_reached=SealTransitionPhase.SEAL_PERSISTENCE,
-                    pointer=live,
+                    full_seal=full_seal,
+                    delta_seal=delta_seal,
+                    diagnostics={
+                        "detail": "CAS chain rejected",
+                        "cas_reason": cas_exc.reason.value,
+                        "error": str(cas_exc),
+                    },
+                )
+            if cas.disposition is PointerDisposition.STALE or (
+                cas.reason is PointerReason.STALE_PARENT and not cas.swapped
+            ):
+                return self._stale_parent_after_cas_loss(
+                    tid=tid,
+                    publication_kind=publication_kind,
+                    repository_id=repository_id,
+                    branch_id=branch_id,
+                    seal_cid=seal_cid,
+                    previous_seal_cid=previous_seal_cid,
+                    generation=generation,
                     full_seal=full_seal,
                     delta_seal=delta_seal,
                     diagnostics={
@@ -827,25 +887,47 @@ class IncrementalProofSealer:
                     },
                 )
             if not cas.swapped or cas.pointer is None:
-                abort_transition(
-                    self._wal,
-                    tid,
-                    phase=SealTransitionPhase.SEAL_PERSISTENCE,
-                )
+                # Re-read: if another writer already advanced past our parent,
+                # surface stale_parent rather than a generic CAS error so
+                # concurrent losers share one closed reason code.
                 live = self._pointers.get_current_seal(repository_id, branch_id)
-                return self._result(
-                    status=SealStatus.VERIFICATION_FAILED,
-                    reason=PublicationReason.CAS_ERROR,
-                    published=False,
+                parent_moved = live is not None and (
+                    current is None or live.seal_cid != current.seal_cid
+                )
+                if (
+                    parent_moved
+                    or cas.reason is PointerReason.STALE_PARENT
+                    or cas.disposition is PointerDisposition.STALE
+                ):
+                    return self._stale_parent_after_cas_loss(
+                        tid=tid,
+                        publication_kind=publication_kind,
+                        repository_id=repository_id,
+                        branch_id=branch_id,
+                        seal_cid=seal_cid,
+                        previous_seal_cid=previous_seal_cid,
+                        generation=generation,
+                        full_seal=full_seal,
+                        delta_seal=delta_seal,
+                        diagnostics={
+                            "detail": (
+                                "CAS lost to concurrent writer"
+                                if parent_moved
+                                else "CAS failed closed"
+                            ),
+                            "cas_reason": cas.reason.value,
+                            "cas_disposition": cas.disposition.value,
+                            **dict(cas.diagnostics),
+                        },
+                    )
+                return self._cas_error_result(
+                    tid=tid,
                     publication_kind=publication_kind,
                     repository_id=repository_id,
                     branch_id=branch_id,
-                    transition_id=tid,
                     seal_cid=seal_cid,
                     previous_seal_cid=previous_seal_cid,
                     generation=generation,
-                    phase_reached=SealTransitionPhase.SEAL_PERSISTENCE,
-                    pointer=live,
                     full_seal=full_seal,
                     delta_seal=delta_seal,
                     diagnostics={
@@ -915,6 +997,21 @@ class IncrementalProofSealer:
             return self._fail_closed_after_exception(
                 exc,
                 reason=exc.reason,
+                publication_kind=publication_kind,
+                repository_id=repository_id,
+                branch_id=branch_id,
+                transition_id=tid,
+                seal_cid=seal_cid,
+                previous_seal_cid=previous_seal_cid,
+                generation=generation,
+                phase_reached=phase_reached,
+                full_seal=full_seal,
+                delta_seal=delta_seal,
+            )
+        except (FullCheckpointError, DeltaSealError) as exc:
+            return self._fail_closed_after_exception(
+                exc,
+                reason=PublicationReason.PRE_CAS_FAILURE,
                 publication_kind=publication_kind,
                 repository_id=repository_id,
                 branch_id=branch_id,
@@ -1167,6 +1264,106 @@ class IncrementalProofSealer:
             delta_seal=delta_seal,
             recovery_disposition=recovery_disposition,
             diagnostics={} if diagnostics is None else dict(diagnostics),
+        )
+
+    def _abort_best_effort(
+        self, transition_id: str, *, phase: SealTransitionPhase
+    ) -> str:
+        """Abort an open transition; never reclassify a clean CAS loss."""
+
+        try:
+            open_rec = self._wal.get_transition(transition_id)
+            if open_rec is None or open_rec.state in {
+                SealTransitionState.COMMITTED,
+                SealTransitionState.ABORTED,
+                SealTransitionState.FAILED,
+            }:
+                return ""
+            abort_transition(self._wal, transition_id, phase=phase)
+            return ""
+        except (SealTransitionWalError, ProofSealStoreContractError, OSError) as exc:
+            return f"{type(exc).__name__}: {exc}"
+        except Exception as exc:  # pragma: no cover - defensive
+            return f"{type(exc).__name__}: {exc}"
+
+    def _stale_parent_after_cas_loss(
+        self,
+        *,
+        tid: str,
+        publication_kind: PublicationKind,
+        repository_id: str,
+        branch_id: str,
+        seal_cid: str,
+        previous_seal_cid: str,
+        generation: int,
+        full_seal: FullCheckpointSeal | None,
+        delta_seal: DeltaSeal | None,
+        diagnostics: Mapping[str, Any],
+    ) -> SealPublicationResult:
+        """Abort after durable seal persistence when expected-parent CAS lost."""
+
+        abort_error = self._abort_best_effort(
+            tid, phase=SealTransitionPhase.SEAL_PERSISTENCE
+        )
+        live = self._pointers.get_current_seal(repository_id, branch_id)
+        merged = dict(diagnostics)
+        if abort_error:
+            merged["abort_error"] = abort_error
+        return self._result(
+            status=SealStatus.STALE_PARENT,
+            reason=PublicationReason.STALE_PARENT,
+            published=False,
+            publication_kind=publication_kind,
+            repository_id=repository_id,
+            branch_id=branch_id,
+            transition_id=tid,
+            seal_cid=seal_cid,
+            previous_seal_cid=previous_seal_cid,
+            generation=generation,
+            phase_reached=SealTransitionPhase.SEAL_PERSISTENCE,
+            pointer=live,
+            full_seal=full_seal,
+            delta_seal=delta_seal,
+            diagnostics=merged,
+        )
+
+    def _cas_error_result(
+        self,
+        *,
+        tid: str,
+        publication_kind: PublicationKind,
+        repository_id: str,
+        branch_id: str,
+        seal_cid: str,
+        previous_seal_cid: str,
+        generation: int,
+        full_seal: FullCheckpointSeal | None,
+        delta_seal: DeltaSeal | None,
+        diagnostics: Mapping[str, Any],
+    ) -> SealPublicationResult:
+        abort_error = self._abort_best_effort(
+            tid, phase=SealTransitionPhase.SEAL_PERSISTENCE
+        )
+        live = self._pointers.get_current_seal(repository_id, branch_id)
+        merged = dict(diagnostics)
+        if abort_error:
+            merged["abort_error"] = abort_error
+        return self._result(
+            status=SealStatus.VERIFICATION_FAILED,
+            reason=PublicationReason.CAS_ERROR,
+            published=False,
+            publication_kind=publication_kind,
+            repository_id=repository_id,
+            branch_id=branch_id,
+            transition_id=tid,
+            seal_cid=seal_cid,
+            previous_seal_cid=previous_seal_cid,
+            generation=generation,
+            phase_reached=SealTransitionPhase.SEAL_PERSISTENCE,
+            pointer=live,
+            full_seal=full_seal,
+            delta_seal=delta_seal,
+            diagnostics=merged,
         )
 
     def _fail_closed_after_exception(
