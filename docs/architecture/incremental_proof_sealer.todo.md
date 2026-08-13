@@ -1283,7 +1283,7 @@ Global invariants for every task:
 
 ## IPS-040 Implement atomic WAL-backed seal publication and current-root CAS
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
