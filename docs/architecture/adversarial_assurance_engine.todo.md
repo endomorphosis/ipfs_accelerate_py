@@ -606,7 +606,7 @@ W20 AAE-063
 
 ## AAE-021 Implement claim extraction, mutation targeting, and risk-weighted selection
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
