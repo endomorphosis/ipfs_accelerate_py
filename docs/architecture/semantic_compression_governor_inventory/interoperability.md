@@ -18,8 +18,8 @@ Nested gitlinks observed at inventory time:
 
 | Nested repository | Commit |
 | --- | --- |
-| `ipfs_datasets_py` | `1330038f626ef92993f03d46f21e1a57719e9c25` |
-| `ipfs_kit_py` | `df2f9cc092456329de9724c45a50c54b410875d1` |
+| `ipfs_datasets_py` | `8ffa3152603fe8ae3a463250d91d47109cd48006` |
+| `ipfs_kit_py` | `996ee85f071dff17e4104948d9ca938d2125a447` |
 | `ipfs_accelerate_py/mcplusplus` | `dc3164653a48d059ae9812078359daeafb451c07` |
 
 ---
@@ -165,7 +165,7 @@ create a new Profile G variant or treat G as an SCG execution profile.
 Owner: `ipfs_datasets_py.logic.profile_g`  
 Source: `ipfs_datasets_py/ipfs_datasets_py/logic/profile_g.py`  
 @ `ebe73d4c8179ce7cf0d9850cfe540c4bf3f887b1`  
-Nested gitlink: `1330038f626ef92993f03d46f21e1a57719e9c25`
+Nested gitlink: `8ffa3152603fe8ae3a463250d91d47109cd48006`
 
 Kinds: `Goal`, `Subgoal`, `PlanBranch`, `PlanSelection`, `TaskSpec`,
 `RiskModel`, `RiskEvidence`, `RiskAssessment`, `NeighborhoodRecord`,
@@ -181,7 +181,7 @@ Public helpers include `canonical_profile_g_bytes`, `profile_g_cid`,
 | Owner | Path | Revision |
 | --- | --- | --- |
 | accelerate | `mcp_server/mcplusplus/profile_g_transport.py` | `fd866abbbe114a9bef2f83d28465ff1053abf728` |
-| kit | `ipfs_kit_py/.../mcplusplus/profile_g_transport.py` | `df2f9cc092456329de9724c45a50c54b410875d1` |
+| kit | `ipfs_kit_py/.../mcplusplus/profile_g_transport.py` | `996ee85f071dff17e4104948d9ca938d2125a447` |
 
 Accelerate facade: `PROFILE_G_PROFILE = "mcp++/risk-scheduling"`, 24
 `PROFILE_G_METHODS`, transports `jsonrpc-http` and `mcp+p2p`,

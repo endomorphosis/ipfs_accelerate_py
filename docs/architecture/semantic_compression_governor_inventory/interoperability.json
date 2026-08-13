@@ -33,8 +33,8 @@
     ]
   },
   "nested_gitlinks_observed": {
-    "ipfs_datasets_py": "1330038f626ef92993f03d46f21e1a57719e9c25",
-    "ipfs_kit_py": "df2f9cc092456329de9724c45a50c54b410875d1",
+    "ipfs_datasets_py": "8ffa3152603fe8ae3a463250d91d47109cd48006",
+    "ipfs_kit_py": "996ee85f071dff17e4104948d9ca938d2125a447",
     "ipfs_accelerate_py/mcplusplus": "dc3164653a48d059ae9812078359daeafb451c07"
   },
   "conflict_policy": {
@@ -325,7 +325,7 @@
           ],
           "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/profile_g.py",
           "source_revision": "ebe73d4c8179ce7cf0d9850cfe540c4bf3f887b1",
-          "nested_gitlink_commit": "1330038f626ef92993f03d46f21e1a57719e9c25",
+          "nested_gitlink_commit": "8ffa3152603fe8ae3a463250d91d47109cd48006",
           "constants": {
             "PROFILE_G_VERSION": "1.0",
             "PROFILE_G_CAPABILITY": "mcp++/risk-scheduling"
@@ -366,10 +366,10 @@
           "name": "kit Profile G transport + hermetic vectors",
           "owner": "ipfs_kit_py",
           "source_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/profile_g_transport.py",
-          "source_revision": "df2f9cc092456329de9724c45a50c54b410875d1",
-          "nested_gitlink_commit": "df2f9cc092456329de9724c45a50c54b410875d1",
+          "source_revision": "996ee85f071dff17e4104948d9ca938d2125a447",
+          "nested_gitlink_commit": "996ee85f071dff17e4104948d9ca938d2125a447",
           "hermetic_fixture_path": "ipfs_kit_py/tests/fixtures/mcp_plus_plus/profile_g_artifacts_valid.json",
-          "hermetic_fixture_revision": "df2f9cc092456329de9724c45a50c54b410875d1",
+          "hermetic_fixture_revision": "996ee85f071dff17e4104948d9ca938d2125a447",
           "notes": [
             "Planning baseline required kit pin df2f9cc0... specifically for hermetic MCP++ vector vendoring after older fixture path failures."
           ],
@@ -427,7 +427,7 @@
         {
           "path": "ipfs_kit_py/tests/fixtures/mcp_plus_plus/profile_g_artifacts_valid.json",
           "role": "hermetic kit-vendored copy of the Profile G valid artifact suite",
-          "nested_gitlink_commit": "df2f9cc092456329de9724c45a50c54b410875d1"
+          "nested_gitlink_commit": "996ee85f071dff17e4104948d9ca938d2125a447"
         }
       ]
     },

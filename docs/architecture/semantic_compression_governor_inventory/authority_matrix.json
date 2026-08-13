@@ -137,10 +137,10 @@
       "repository": "endomorphosis/ipfs_datasets_py",
       "gitlink_path": "ipfs_datasets_py",
       "role": "datasets_identity_index_state",
-      "commit": "1330038f626ef92993f03d46f21e1a57719e9c25",
+      "commit": "8ffa3152603fe8ae3a463250d91d47109cd48006",
       "pin_kind": "nested_gitlink",
       "match_mode": "exact_gitlink_head",
-      "source": "plan section 2; datasets inventory authority.commit; accelerate nested_gitlinks_observed",
+      "source": "live gitlink head after SCG-018; datasets inventory authority.commit; accelerate nested_gitlinks_observed (planning baseline was 1330038f626ef92993f03d46f21e1a57719e9c25)",
       "stale_if": [
         "gitlink HEAD differs from pin",
         "inventory authority.commit differs from pin",
@@ -152,10 +152,10 @@
       "repository": "endomorphosis/ipfs_kit_py",
       "gitlink_path": "ipfs_kit_py",
       "role": "kit_durable_roots_and_cas",
-      "commit": "df2f9cc092456329de9724c45a50c54b410875d1",
+      "commit": "996ee85f071dff17e4104948d9ca938d2125a447",
       "pin_kind": "nested_gitlink",
       "match_mode": "exact_gitlink_head",
-      "source": "plan section 2; kit inventory repository.planning_bound_revision; accelerate nested_gitlinks_observed",
+      "source": "live gitlink head after SCG-022; kit inventory repository.planning_bound_revision; accelerate nested_gitlinks_observed (planning baseline was df2f9cc092456329de9724c45a50c54b410875d1)",
       "stale_if": [
         "gitlink HEAD differs from pin",
         "inventory observed_revision differs from pin"

@@ -60,10 +60,13 @@ CANONICAL_OWNERS = {
     "profile": "Mcp-Plus-Plus",
 }
 
+# Active matrix pins must equal live nested gitlink heads on this tree.
+# Planning-baseline provenance remains in inventories/report (1330038f / df2f9cc0);
+# datasets advanced through SCG-018 and kit through SCG-022.
 PLANNING_PINS = {
     "accelerate_planning": "dfd92b554e662d4312411f2e8e63a52368806f2a",
-    "datasets": "1330038f626ef92993f03d46f21e1a57719e9c25",
-    "kit": "df2f9cc092456329de9724c45a50c54b410875d1",
+    "datasets": "8ffa3152603fe8ae3a463250d91d47109cd48006",
+    "kit": "996ee85f071dff17e4104948d9ca938d2125a447",
     "mcplusplus": "dc3164653a48d059ae9812078359daeafb451c07",
     "incremental_verification_freeze": "8c7800cedc5e1b848367db9952f912428466f8cc",
     "incremental_proof_sealer_program": "7dc8f1422cb7e80757077948dc0785c1aaa4fd25",

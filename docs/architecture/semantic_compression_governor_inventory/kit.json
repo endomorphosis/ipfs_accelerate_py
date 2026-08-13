@@ -52,12 +52,13 @@
   },
   "repository": {
     "name": "ipfs_kit_py",
-    "planning_bound_revision": "df2f9cc092456329de9724c45a50c54b410875d1",
-    "observed_revision": "df2f9cc092456329de9724c45a50c54b410875d1",
-    "observed_subject": "fix(ksr): vendor Profile G vectors for hermetic seal tests",
-    "match_planning_baseline": true,
-    "controller_revision_at_inventory": "a0b825d8cfa384c284d0e77fa5341571c40adfa8",
-    "planning_note": "Plan section 2 pins kit df2f9cc0... after hermetic-vector repair; inventory confirms the nested gitlink equals that pin."
+    "planning_bound_revision": "996ee85f071dff17e4104948d9ca938d2125a447",
+    "observed_revision": "996ee85f071dff17e4104948d9ca938d2125a447",
+    "observed_subject": "SCG-022: Prove store corruption, interruption, concurrency, privacy, and recovery",
+    "planning_baseline_revision": "df2f9cc092456329de9724c45a50c54b410875d1",
+    "match_planning_baseline": false,
+    "controller_revision_at_inventory": "79e1a2c39f2252c2335909e4c6bc5418e6cd8a8b",
+    "planning_note": "Plan section 2 pinned kit df2f9cc0...; live nested gitlink advanced through SCG-022 (996ee85f...). Matrix pin and inventory observed_revision track the live head so exact_gitlink_head joins pass on the current tree."
   },
   "conflict_policy": "Inventory reusable storage/CAS only; do not design another store, WAL, or daemon.",
   "non_goals": [

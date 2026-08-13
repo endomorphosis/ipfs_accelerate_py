@@ -7,9 +7,10 @@
   "authority": {
     "repository": "endomorphosis/ipfs_datasets_py",
     "gitlink_path": "ipfs_datasets_py",
-    "commit": "1330038f626ef92993f03d46f21e1a57719e9c25",
-    "commit_short": "1330038f6",
-    "status": "completed incremental semantic index and semantic-state/capsule contracts",
+    "commit": "8ffa3152603fe8ae3a463250d91d47109cd48006",
+    "commit_short": "8ffa31526",
+    "planning_baseline_commit": "1330038f626ef92993f03d46f21e1a57719e9c25",
+    "status": "completed incremental semantic index and semantic-state/capsule contracts; live head advanced through SCG-018 governor API freeze",
     "planning_baseline_tests": {
       "claim": "datasets index/capsule/invalidation/selection/content-identity tests: 67 passed (SCG plan baseline on 2026-08-13)",
       "workspace_collect_only": {

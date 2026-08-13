@@ -11,7 +11,7 @@
 | --- | --- |
 | Repository | `endomorphosis/ipfs_datasets_py` |
 | Gitlink path | `ipfs_datasets_py` |
-| Commit | `1330038f626ef92993f03d46f21e1a57719e9c25` |
+| Commit | `8ffa3152603fe8ae3a463250d91d47109cd48006` |
 | Planning status | Completed incremental semantic index and semantic-state/capsule contracts |
 | Inspected | 2026-08-13 |
 

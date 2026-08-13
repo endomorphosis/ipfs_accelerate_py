@@ -22,8 +22,8 @@ The governor must not invent another object store, WAL, CID system, or daemon. I
 | Field | Value |
 | --- | --- |
 | Repository | `ipfs_kit_py` |
-| Planning-bound revision | `df2f9cc092456329de9724c45a50c54b410875d1` |
-| Observed revision | `df2f9cc092456329de9724c45a50c54b410875d1` |
+| Planning-bound revision | `996ee85f071dff17e4104948d9ca938d2125a447` |
+| Observed revision | `996ee85f071dff17e4104948d9ca938d2125a447` |
 | Observed subject | `fix(ksr): vendor Profile G vectors for hermetic seal tests` |
 | Match | Yes |
 | Controller at inventory | `a0b825d8cfa384c284d0e77fa5341571c40adfa8` |

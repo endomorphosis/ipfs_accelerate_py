@@ -120,75 +120,123 @@ def test_source_tree_cli_help_and_descriptor() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_package_import_is_hermetic_and_lazy(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def _hermetic_package_import_probe() -> subprocess.CompletedProcess[str]:
+    """Run cold package import in an isolated interpreter.
+
+    Must not reload governor modules in the pytest process: doing so dual-loads
+    classes and breaks suite-order identity checks in later tests.
+    """
+    names = list(REQUIRED_PUBLIC_NAMES)
+    script = f"""\
+import importlib
+import json
+import os
+import subprocess
+import sys
+import threading
+
+effects = []
+prefix = {PACKAGE!r}
+governor_module = {GOVERNOR_MODULE!r}
+required = {names!r}
+opt_outs = {dict(_OPT_OUTS)!r}
+
+for key, value in opt_outs.items():
+    os.environ[key] = value
+
+def forbidden(name):
+    def call(*args, **kwargs):
+        effects.append(name)
+        raise AssertionError(f"forbidden import side effect: {{name}}")
+    return call
+
+def guarded_popen(*args, **kwargs):
+    effects.append("subprocess.Popen")
+    raise AssertionError("cold import must not spawn subprocesses")
+
+subprocess.Popen = guarded_popen  # type: ignore[assignment]
+
+real_run = subprocess.run
+
+def guarded_run(*args, **kwargs):
+    cmd = args[0] if args else kwargs.get("args")
+    text = " ".join(str(x) for x in (cmd or ()))
+    if "pip" in text or "install" in text:
+        effects.append("pip_install")
+        raise AssertionError(f"cold import must not install: {{text}}")
+    return real_run(*args, **kwargs)
+
+subprocess.run = guarded_run  # type: ignore[assignment]
+
+import socket as socket_mod
+real_socket = socket_mod.socket
+
+class GuardedSocket(real_socket):  # type: ignore[misc,valid-type]
+    def __init__(self, *args, **kwargs):
+        effects.append("socket")
+        raise AssertionError("cold import must not open sockets")
+
+socket_mod.socket = GuardedSocket  # type: ignore[assignment,misc]
+
+before_threads = {{t.ident for t in threading.enumerate()}}
+started_threads = []
+real_thread_start = threading.Thread.start
+
+def guarded_start(self, *args, **kwargs):
+    started_threads.append(self.name)
+    return real_thread_start(self, *args, **kwargs)
+
+threading.Thread.start = guarded_start  # type: ignore[method-assign]
+
+for name in list(sys.modules):
+    if name == prefix or name.startswith(prefix + "."):
+        del sys.modules[name]
+
+mod = importlib.import_module(prefix)
+assert mod.PUBLIC_API_EVIDENCE == "scg/public-api@1"
+assert mod.PUBLIC_API_INTERFACE == "SemanticCompressionGovernorPublicApi@1"
+assert governor_module not in sys.modules or hasattr(mod, "SemanticCompressionGovernor")
+for name in required:
+    value = getattr(mod, name)
+    assert value is not None
+    assert callable(value) or name == "SemanticCompressionGovernor"
+assert started_threads == []
+after_threads = {{t.ident for t in threading.enumerate()}}
+assert after_threads - before_threads == set()
+assert effects == []
+print(json.dumps({{"ok": True, "effects": effects}}))
+"""
+    environment = dict(os.environ)
+    environment.update(_OPT_OUTS)
+    pythonpath = os.pathsep.join(
+        [
+            str(REPO_ROOT),
+            str(REPO_ROOT / "ipfs_kit_py"),
+            str(REPO_ROOT / "ipfs_datasets_py"),
+            environment.get("PYTHONPATH", ""),
+        ]
+    )
+    environment["PYTHONPATH"] = pythonpath
+    return subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(REPO_ROOT),
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def test_package_import_is_hermetic_and_lazy() -> None:
     """Importing the package root starts no I/O, process, network, or installer."""
 
-    for name in list(sys.modules):
-        if name == PACKAGE or name.startswith(PACKAGE + "."):
-            sys.modules.pop(name, None)
-
-    before_threads = {t.ident for t in threading.enumerate()}
-    started_threads: list[str] = []
-    real_thread_start = threading.Thread.start
-
-    def guarded_start(self: threading.Thread, *args: Any, **kwargs: Any) -> None:
-        started_threads.append(self.name)
-        return real_thread_start(self, *args, **kwargs)
-
-    monkeypatch.setattr(threading.Thread, "start", guarded_start)
-
-    def guarded_popen(*_args: Any, **_kwargs: Any):
-        raise AssertionError("cold import must not spawn subprocesses")
-
-    monkeypatch.setattr(subprocess, "Popen", guarded_popen)
-
-    socket_mod = importlib.import_module("socket")
-    real_socket = socket_mod.socket
-
-    class GuardedSocket(real_socket):  # type: ignore[misc,valid-type]
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            raise AssertionError("cold import must not open sockets")
-
-    monkeypatch.setattr(socket_mod, "socket", GuardedSocket)
-
-    real_run = subprocess.run
-
-    def guarded_run(*args: Any, **kwargs: Any):
-        cmd = args[0] if args else kwargs.get("args")
-        text = " ".join(str(x) for x in (cmd or ()))
-        if "pip" in text or "install" in text:
-            raise AssertionError(f"cold import must not install: {text}")
-        return real_run(*args, **kwargs)
-
-    monkeypatch.setattr(subprocess, "run", guarded_run)
-
-    env_before = {key: os.environ.get(key) for key in _OPT_OUTS}
-    for key, value in _OPT_OUTS.items():
-        os.environ[key] = value
-
-    try:
-        mod = importlib.import_module(PACKAGE)
-        assert mod.PUBLIC_API_EVIDENCE == "scg/public-api@1"
-        assert mod.PUBLIC_API_INTERFACE == "SemanticCompressionGovernorPublicApi@1"
-        # Lazy: governor leaf not loaded until a name is resolved.
-        assert GOVERNOR_MODULE not in sys.modules or hasattr(mod, "SemanticCompressionGovernor")
-        # Resolve required names after cold import.
-        for name in REQUIRED_PUBLIC_NAMES:
-            value = getattr(mod, name)
-            assert value is not None
-            assert callable(value) or name == "SemanticCompressionGovernor"
-        assert started_threads == []
-        after_threads = {t.ident for t in threading.enumerate()}
-        assert after_threads - before_threads == set()
-    finally:
-        for key, prior in env_before.items():
-            if prior is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = prior
-
+    result = _hermetic_package_import_probe()
+    assert result.returncode == 0, (
+        f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
+    )
+    payload = json.loads(result.stdout.splitlines()[-1])
+    assert payload["ok"] is True
+    assert payload["effects"] == []
 
 def test_package_and_governor_sources_have_no_module_level_io() -> None:
     """Static check: package/governor modules perform no top-level I/O."""
