@@ -787,7 +787,7 @@ Global invariants for every task:
 
 ## IPS-024 Implement the WAL-backed seal transition state machine
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
