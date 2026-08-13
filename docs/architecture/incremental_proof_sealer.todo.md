@@ -601,7 +601,7 @@ Global invariants for every task:
 
 ## IPS-018 Define the narrow kit ProofSealStore protocol and closed artifact kinds
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
