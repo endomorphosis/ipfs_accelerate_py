@@ -498,7 +498,7 @@ W20 AAE-063
 
 ## AAE-017 Implement side-effect, error, and retry mutation operators
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
