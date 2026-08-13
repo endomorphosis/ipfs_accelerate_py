@@ -513,7 +513,7 @@ A9  SCH-018
 
 ## SCH-017 Implement benchmark runner and publish measured results
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: benchmark
