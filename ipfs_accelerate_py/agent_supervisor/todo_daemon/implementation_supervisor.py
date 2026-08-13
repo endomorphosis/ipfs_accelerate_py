@@ -3488,10 +3488,22 @@ class PortalImplementationSupervisor:
         author_email: str,
         subject: str,
     ) -> bool:
-        return bool(
+        # Keep this aligned with ImplementationDaemon._trusted_protected_path_commit.
+        # Board completion commits are written by the implementation daemon and
+        # must not pin the generated-dirty-repair lease forever.
+        daemon_owned = (
+            author_email == "implementation-daemon@example.invalid"
+            and (
+                subject.endswith(": mark todo completed")
+                or subject.endswith(": reopen dependency-ready tasks")
+                or subject.endswith(": update generated submodule pointer")
+            )
+        )
+        generated_board_update = (
             author_email == BACKLOG_REFINERY_AUTHOR_EMAIL
             and subject.endswith(GENERATED_PROTECTED_BOARD_COMMIT_MARKER)
         )
+        return bool(daemon_owned or generated_board_update)
 
     def _generated_protected_release_guard(
         self,
