@@ -46,6 +46,9 @@ V8_HISTORY_PATH = (
 V9_HISTORY_PATH = (
     REPO_ROOT / "docs/architecture/self_hosting_qualification.v9_history.todo.md"
 )
+V10_HISTORY_PATH = (
+    REPO_ROOT / "docs/architecture/self_hosting_qualification.v10_history.todo.md"
+)
 
 
 def _goals():
@@ -220,8 +223,8 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
         }
     ) == 3
     assert all(
-        by_id[goal_id].fields["bundle"].endswith("bounded-v10")
-        and by_id[goal_id].fields["parallel_lane"].endswith("bounded-v10")
+        by_id[goal_id].fields["bundle"].endswith("bounded-v11")
+        and by_id[goal_id].fields["parallel_lane"].endswith("bounded-v11")
         for goal_id in local_bootstrap_goal_ids
     )
     assert all(
@@ -240,11 +243,13 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     v7_history = V7_HISTORY_PATH.read_text(encoding="utf-8")
     v8_history = V8_HISTORY_PATH.read_text(encoding="utf-8")
     v9_history = V9_HISTORY_PATH.read_text(encoding="utf-8")
+    v10_history = V10_HISTORY_PATH.read_text(encoding="utf-8")
     normalized_v5_history = " ".join(v5_history.split())
     normalized_v6_history = " ".join(v6_history.split())
     normalized_v7_history = " ".join(v7_history.split())
     normalized_v8_history = " ".join(v8_history.split())
     normalized_v9_history = " ".join(v9_history.split())
+    normalized_v10_history = " ".join(v10_history.split())
     assert "## SHQ-001 " not in active_todo
     assert "## SHQ-001 " in history
     assert "- Status: blocked" in history
@@ -342,19 +347,42 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     assert hashlib.sha256(v9_blocks.encode("utf-8")).hexdigest() == (
         "e731e0446f02cd081f41fe1861a33f83b52ff8e5b639544d07188a57e1a18d1f"
     )
+    assert "SHQ-020: rejected/cancelled retryable after attempt/fence 1/1" in normalized_v10_history
+    assert "SHQ-021: never leased or launched" in normalized_v10_history
+    assert "SHQ-022: never leased or launched" in normalized_v10_history
+    for fact in (
+        "c2d518ac134883464ecd6b3ede204a71f6a139d0",
+        "5f3de0e64d88d3e1b1ee28ac1be98e20872df0cf",
+        "baguqeera7fgjzk37yt732kwxnpmokt5jjx6aat3xh6gmou5whieuvknh7soa",
+        "baguqeeras4x56g22zr37bnw6vukl7g2hyzjblnswcet6nvd4jli26szgpzqa",
+        "baguqeera2365ga6vbzgvl2iab6fjhzwgjvp6bdni6vodrrernqp2ate3p5jq",
+        "baguqeera6hqwn2own6kleytshwnvk34n7lnvpqapuy3b327ioivoig2jcgmq",
+        "baguqeeraizg34olv3qqa3ozbchntwhoyjgkeph3ok4cxhsiztk5epcpivboa",
+        "6e426fe118ad1166a4450359467857a3ac78213e50f810d68d66f071d712da38",
+        "e3b0c44298fc1c149afbf4f8996fb92427ae41e4649b934ca495991b7852b855",
+        "c10dfb9c053a7c4462ef3d74aaf13a7239a370ab022de54a2594485823b36347",
+    ):
+        assert fact in v10_history
+    assert "`$IPFS_ACCELERATE_AGENT_TASK_CHECKPOINT_DIR` with `find`" in normalized_v10_history
+    assert "No output edit, validation, `implementation_finished`, implementation commit, or merge occurred" in normalized_v10_history
+    v10_blocks = v10_history[v10_history.index("## SHQ-020 ") :]
+    assert len(v10_blocks.encode("utf-8")) == 51_699
+    assert hashlib.sha256(v10_blocks.encode("utf-8")).hexdigest() == (
+        "78695c942525e48a8377057ffd7c0ff6c04b7237a6bfe2c7f2599037e90d4aa5"
+    )
     # This test is intentionally valid on both sides of the reviewed tracked
-    # v10 migration. Before migration the v9 active blocks must be exact; after
-    # migration the board is title-only until v10 allocates SHQ-020/021/022.
-    if "## SHQ-017 " in active_todo:
-        assert active_todo[active_todo.index("## SHQ-017 ") :] == v9_blocks
+    # v11 migration. Before migration the v10 active blocks must be exact;
+    # after migration the board is title-only until v11 allocates 023/024/025.
+    if "## SHQ-020 " in active_todo:
+        assert active_todo[active_todo.index("## SHQ-020 ") :] == v10_blocks
     else:
         assert active_todo.strip() == "# Objective Todo" or (
-            "## SHQ-020 " in active_todo
-            and "## SHQ-021 " in active_todo
-            and "## SHQ-022 " in active_todo
-            and "## SHQ-017 " not in active_todo
-            and "## SHQ-018 " not in active_todo
-            and "## SHQ-019 " not in active_todo
+            "## SHQ-023 " in active_todo
+            and "## SHQ-024 " in active_todo
+            and "## SHQ-025 " in active_todo
+            and "## SHQ-020 " not in active_todo
+            and "## SHQ-021 " not in active_todo
+            and "## SHQ-022 " not in active_todo
         )
 
     datasets_goal_ids = {
@@ -392,11 +420,44 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     )
 
 
-def test_v10_observer_contract_reuses_authorities_and_fails_closed() -> None:
+def test_v11_observer_contract_reuses_authorities_and_fails_closed() -> None:
     source = OBJECTIVE_PATH.read_text(encoding="utf-8")
     plan = PLAN_PATH.read_text(encoding="utf-8")
     normalized = " ".join(source.split())
     normalized_plan = " ".join(plan.split())
+
+    checkpoint_lead = (
+        "This bounded task is neither resumable nor long-running; the generic "
+        "durable-checkpoint clause is inapplicable and expressly revoked for the "
+        "implementation agent."
+    )
+    by_id = {goal.goal_id: goal for goal in _goals()}
+    for goal_id in ("SHQ-G005A", "SHQ-G006", "SHQ-G007"):
+        assert by_id[goal_id].fields["acceptance"].startswith(checkpoint_lead)
+        assert by_id[goal_id].fields["refinement"].startswith(checkpoint_lead)
+    assert normalized.count(checkpoint_lead) == 6
+    for checkpoint_invariant in (
+        "No autonomous model-issued shell/file-tool may reference or expand `$IPFS_ACCELERATE_AGENT_TASK_CHECKPOINT_DIR`",
+        "`authority.durable_checkpoint.directory`",
+        "`scope.checkpoint_directory`",
+        "deliberately forward their values as task input or tool arguments",
+        "the named checkpoint directory, any alias, resolution, or descendant of it",
+        "other supervisor/checkpoint/runtime state outside the workspace",
+        "may not use those paths or bytes as discovery, scratch, evidence, completion, or retry input",
+        "The only permitted exceptions to this checkpoint/temp-state prohibition are supervisor/runner-private lifecycle operations outside the implementation agent",
+        "fresh transient temp/stream objects automatically owned by the listed validation/test runner",
+        "including pytest fixture internals",
+        "G006/G007 additionally permit only the required process-runner stream capture and Bubblewrap namespace-private `/tmp`",
+        "None is implementation-agent discovery or scratch, persisted evidence, or prior/private-state input",
+        "separately explicit read/execute authority for actual `/usr/bin/bwrap`",
+        "listed validation interpreter/tools and bwrap argv, or declared gitlinks",
+        "The only predecessor input is clean merged tracked repository content from fresh bounded-v11 SHQ-023",
+        "The only predecessor input is clean merged tracked repository content from fresh bounded-v11 SHQ-024",
+        "no predecessor runtime or checkpoint state may be consumed",
+        "cancelled bounded-v10 SHQ-020",
+        "retired never-launched SHQ-021/SHQ-022 task identities and projection state",
+    ):
+        assert checkpoint_invariant in normalized
 
     assert "PrerequisiteTestReceipt@1" not in source
     assert "PYTEST_VERIFICATION_ADAPTER_SCHEMA" not in source
@@ -440,7 +501,7 @@ def test_v10_observer_contract_reuses_authorities_and_fails_closed() -> None:
         "replace only the leading name with `bubblewrap`",
         "with parallel bubblewrap cases",
         "prohibited non-inputs",
-        "clean bounded-v10 task checkout",
+        "clean bounded-v11 task checkout",
     ):
         assert alias_invariant in normalized
     for literal_banner in (
@@ -510,10 +571,10 @@ def test_v10_observer_contract_reuses_authorities_and_fails_closed() -> None:
         "Generic checkpoint instructions grant no task-input authority",
         "internal ephemeral stream capture and the validation namespace's private `/tmp`",
         "neither is a discovery source nor persisted evidence",
-        "freshly projected bounded-v10 G006 canonical task CID as the sole predecessor identity",
-        "a retired v7, v8, or v9 display ID, alias, canonical key, CID, worktree, log, supervisor/checkpoint/runtime state, receipt, implementation, test, merge, or derived bytes",
-        "The exact fresh predecessor is SHQ-021",
-        "not the compatibility task SHQ-020 or retired SHQ-018/SHQ-017/SHQ-015/SHQ-014/SHQ-012",
+        "freshly projected bounded-v11 G006 canonical task CID as the sole predecessor identity",
+        "a retired v7, v8, v9, or v10 display ID, alias, canonical key, CID, worktree, log, supervisor/checkpoint/runtime state, receipt, implementation, test, merge, or derived bytes",
+        "The exact fresh predecessor is SHQ-024",
+        "not the compatibility task SHQ-023 or retired SHQ-021/SHQ-020/SHQ-018/SHQ-017/SHQ-015/SHQ-014/SHQ-012",
         "O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC",
         "fchmod` 0644",
         "os.link(temp_name, target_name",
@@ -524,17 +585,20 @@ def test_v10_observer_contract_reuses_authorities_and_fails_closed() -> None:
 
     assert "PROCESS_RUNNER_SCHEMA" in plan
     assert "PYTEST_VERIFICATION_ADAPTER_SCHEMA" not in plan
-    assert 'SHQ_PROJECTION="$SHQ_DATA/projections/v10"' in plan
+    assert 'SHQ_PROJECTION="$SHQ_DATA/projections/v11"' in plan
     assert "self_hosting_qualification.v4_history.todo.md" in plan
     assert "self_hosting_qualification.v5_history.todo.md" in plan
     assert "self_hosting_qualification.v6_history.todo.md" in plan
     assert "self_hosting_qualification.v7_history.todo.md" in plan
     assert "self_hosting_qualification.v8_history.todo.md" in plan
     assert "self_hosting_qualification.v9_history.todo.md" in plan
+    assert "self_hosting_qualification.v10_history.todo.md" in plan
     assert plan.count('--protected-output-path "$SHQ_V8_HISTORY_TODO"') == 4
     assert plan.count('--implementation-protected-path "$SHQ_V8_HISTORY_TODO"') == 1
     assert plan.count('--protected-output-path "$SHQ_V9_HISTORY_TODO"') == 4
     assert plan.count('--implementation-protected-path "$SHQ_V9_HISTORY_TODO"') == 1
+    assert plan.count('--protected-output-path "$SHQ_V10_HISTORY_TODO"') == 4
+    assert plan.count('--implementation-protected-path "$SHQ_V10_HISTORY_TODO"') == 1
     plan_lines = plan.splitlines()
     for index, line in enumerate(plan_lines):
         if line.strip().startswith((
@@ -551,7 +615,14 @@ def test_v10_observer_contract_reuses_authorities_and_fails_closed() -> None:
             assert plan_lines[index + 1].strip() == line.strip().replace(
                 "V8_HISTORY", "V9_HISTORY"
             )
-    assert "must allocate SHQ-020, SHQ-021, and SHQ-022" in plan
+        if line.strip().startswith((
+            '--protected-output-path "$SHQ_V9_HISTORY_TODO"',
+            '--implementation-protected-path "$SHQ_V9_HISTORY_TODO"',
+        )):
+            assert plan_lines[index + 1].strip() == line.strip().replace(
+                "V9_HISTORY", "V10_HISTORY"
+            )
+    assert "must allocate SHQ-023, SHQ-024, and SHQ-025" in plan
     assert "leave SHQ_ACTIVE_TODO title-only" in plan
     assert "SHQ_PYTHON=/usr/bin/python3.12" in plan
     assert (
@@ -562,11 +633,27 @@ def test_v10_observer_contract_reuses_authorities_and_fails_closed() -> None:
         '"$SHQ_PYTHON" -m pytest -q '
         "test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py"
     ) not in plan
-    assert "SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v10" in plan
+    assert "SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v11" in plan
     assert "SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v7" not in plan
-    assert "prerequisite-observer-implementation-bounded-v10" in plan
-    assert "prerequisite-observation-snapshot-bounded-v10" in plan
-    assert "verification-banner-alias-compatibility-bounded-v10" in plan
+    assert "prerequisite-observer-implementation-bounded-v11" in plan
+    assert "prerequisite-observation-snapshot-bounded-v11" in plan
+    assert "verification-banner-alias-compatibility-bounded-v11" in plan
+    assert "bounded_v10_runtime.todo.md" not in plan
+    assert plan.count("bounded_v11_runtime.todo.md") == 3
+    for checkpoint_plan_invariant in (
+        checkpoint_lead,
+        "No autonomous model-issued shell/file-tool may reference or expand `$IPFS_ACCELERATE_AGENT_TASK_CHECKPOINT_DIR`",
+        "deliberately forward their values as task input or tool arguments",
+        "the named checkpoint directory, any alias, resolution, or descendant of it",
+        "separately explicit read/execute authority for actual `/usr/bin/bwrap`",
+        "The only permitted exceptions to this checkpoint/temp-state prohibition are supervisor/runner-private lifecycle operations outside the implementation agent",
+        "fresh transient temp/stream objects automatically owned by the listed validation/test runner",
+        "required process-runner stream capture and Bubblewrap namespace-private `/tmp`",
+        "G006 consumes SHQ-023 only as clean merged tracked repository content",
+        "G007 consumes SHQ-024 only as clean merged tracked repository content",
+        "Neither may consume predecessor runtime or checkpoint state",
+    ):
+        assert checkpoint_plan_invariant in normalized_plan
     assert 'tool_version_probe_output_bytes` value only as either' in plan
     assert 'f"bwrap {normalized_tool_version}\\n".encode("ascii")' in plan
     assert 'f"bubblewrap {normalized_tool_version}\\n".encode("ascii")' in plan
