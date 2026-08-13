@@ -509,7 +509,7 @@ W28 SCG-048
 
 ## SCG-017 Generate bounded declarative analyzer, invalidation, packing, and route proposals
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
