@@ -1319,7 +1319,7 @@ W28 SCG-048
 
 ## SCG-047 Qualify released IncrementalProofSealer binding and rollback evidence
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
