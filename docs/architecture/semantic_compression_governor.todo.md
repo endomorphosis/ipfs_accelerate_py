@@ -1292,7 +1292,7 @@ W28 SCG-048
 
 ## SCG-046 Publish trust, privacy, promotion, operation, and limitation documentation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
