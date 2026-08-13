@@ -1346,7 +1346,7 @@ W28 SCG-048
 
 ## SCG-048 Run terminal current-tree qualification and publish the final report
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
