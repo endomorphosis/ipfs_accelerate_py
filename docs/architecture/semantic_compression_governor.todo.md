@@ -266,7 +266,7 @@ W28 SCG-048
 
 ## SCG-008 Define shadow execution and semantic differential contracts
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
