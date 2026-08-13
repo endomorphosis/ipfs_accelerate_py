@@ -1221,7 +1221,7 @@ Global invariants for every task:
 
 ## IPS-038 Implement full checkpoint seal construction
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
