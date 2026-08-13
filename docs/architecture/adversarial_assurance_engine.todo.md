@@ -171,7 +171,7 @@ W20 AAE-063
 
 ## AAE-005 Reconcile authority matrix, manifests, blind spots, and focused baselines
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
