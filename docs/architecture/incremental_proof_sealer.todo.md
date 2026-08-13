@@ -1190,7 +1190,7 @@ Global invariants for every task:
 
 ## IPS-037 Measure proving, aggregation, verification, storage, and savings cost
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
