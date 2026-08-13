@@ -320,7 +320,7 @@ W28 SCG-048
 
 ## SCG-010 Define the narrow durable governor store protocol
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
