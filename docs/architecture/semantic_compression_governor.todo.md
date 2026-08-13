@@ -914,7 +914,7 @@ W28 SCG-048
 
 ## SCG-032 Freeze runtime APIs and prove shadow/expansion resilience
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
