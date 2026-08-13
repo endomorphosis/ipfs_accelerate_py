@@ -539,7 +539,7 @@ Global invariants for every task:
 
 ## IPS-016 Implement invalidation closure, full-fallback rules, and explanations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
