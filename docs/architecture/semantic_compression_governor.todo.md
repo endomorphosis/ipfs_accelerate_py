@@ -1211,7 +1211,7 @@ W28 SCG-048
 
 ## SCG-043 Prove interruption, concurrency, disclosure, simulation, and cost boundaries end to end
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
