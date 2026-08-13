@@ -663,7 +663,7 @@ Global invariants for every task:
 
 ## IPS-020 Implement the optional injected IPFS transport adapter
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
