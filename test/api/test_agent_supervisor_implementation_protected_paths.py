@@ -2330,8 +2330,17 @@ def test_operator_clearance_requires_exact_untrusted_commit_and_writes_receipt(
     assert denied["missing_approved_commits"] == [operator_commit]
     assert daemon._implementation_protected_incident_path().exists()
 
-    cleared = daemon.clear_implementation_protected_path_incident(
+    abbreviated = daemon.clear_implementation_protected_path_incident(
         approved_commits=[operator_commit[:12]],
+        operator_note="Reviewed concurrent policy update.",
+    )
+    assert abbreviated["cleared"] is False
+    assert abbreviated["reason"] == "approved_commit_invalid"
+    assert abbreviated["invalid_approved_commits"] == [operator_commit[:12]]
+    assert daemon._implementation_protected_incident_path().exists()
+
+    cleared = daemon.clear_implementation_protected_path_incident(
+        approved_commits=[operator_commit],
         operator_note="Reviewed concurrent policy update.",
     )
     assert cleared["cleared"] is True
@@ -2429,6 +2438,254 @@ def test_operator_clearance_can_approve_wholly_disposed_ephemeral_workspace(
     proof = receipt["disposed_ephemeral_workspace_proof"]
     assert proof["tracked_path_count"] == proof["deleted_path_count"] == 1
     assert proof["protected_deleted_paths"] == [POLICY_PATH]
+
+
+def test_operator_clearance_accepts_absent_workspace_scope_head_advance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    output = workspace / "src" / "example.py"
+    output.parent.mkdir()
+    output.write_text("VALUE = 1\n", encoding="utf-8")
+    _git(workspace, "add", "src/example.py")
+    _git(
+        workspace,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "implement task output",
+    )
+    implementation_commit = _git(workspace, "rev-parse", "HEAD")
+
+    protected.write_text("reviewed operator update\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Operator",
+        "-c",
+        "user.email=operator@example.invalid",
+        "commit",
+        "-m",
+        "update protected policy",
+    )
+    operator_commit = _git(repo, "rev-parse", "HEAD")
+    after = daemon._implementation_protected_path_snapshot(workspace)
+    violation = daemon._implementation_protected_mutation_payload(
+        task_id=task.task_id,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+        after=after,
+        changed_scope="workspace",
+    )
+    workspace_mutations = [
+        item
+        for item in violation["mutations"]
+        if item["scope"] == "workspace"
+    ]
+    assert workspace_mutations == [
+        {
+            "scope": "workspace",
+            "path": "",
+            "change": "scope_snapshot_changed",
+            "before": {
+                "root": str(workspace),
+                "git_head": before["workspace"]["git_head"],
+            },
+            "after": {
+                "root": str(workspace),
+                "git_head": implementation_commit,
+            },
+        }
+    ]
+    _git(repo, "worktree", "remove", "--force", str(workspace))
+
+    active = json.loads(
+        daemon._implementation_protected_active_snapshot_path().read_text(
+            encoding="utf-8"
+        )
+    )
+    malformed = json.loads(json.dumps(violation["mutations"]))
+    malformed[-1]["after"]["git_head"] = implementation_commit[:12]
+    assert not daemon._disposed_scope_snapshot_workspace_clearance_proof(
+        active=active,
+        mutations=malformed,
+    )
+    real_registration_probe = (
+        daemon._checked_worktree_path_registered_in_repo
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_checked_worktree_path_registered_in_repo",
+        lambda _repo, _workspace: None,
+    )
+    assert not daemon._disposed_scope_snapshot_workspace_clearance_proof(
+        active=active,
+        mutations=violation["mutations"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_checked_worktree_path_registered_in_repo",
+        real_registration_probe,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_checked_process_commands",
+        lambda: None,
+    )
+    assert not daemon._disposed_scope_snapshot_workspace_clearance_proof(
+        active=active,
+        mutations=violation["mutations"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_checked_process_commands",
+        lambda: [f"codex exec --cwd {workspace}"],
+    )
+    assert not daemon._disposed_scope_snapshot_workspace_clearance_proof(
+        active=active,
+        mutations=violation["mutations"],
+    )
+    monkeypatch.setattr(daemon, "_checked_process_commands", lambda: [])
+
+    result = daemon.clear_implementation_protected_path_incident(
+        approved_commits=[operator_commit],
+        operator_note=(
+            "Reviewed the operator commit and the disposed workspace's "
+            "output-only head advance."
+        ),
+        approve_disposed_ephemeral_workspace=True,
+    )
+
+    assert result["cleared"] is True, result
+    assert result["disposed_ephemeral_workspace_approved"] is True
+    receipt = json.loads(
+        Path(result["receipt_path"]).read_text(encoding="utf-8")
+    )
+    proof = receipt["disposed_ephemeral_workspace_proof"]
+    assert proof["schema"] == (
+        "disposed-ephemeral-workspace-scope-snapshot-proof-v1"
+    )
+    assert proof["before_head"] == before["workspace"]["git_head"]
+    assert proof["after_head"] == implementation_commit
+    assert proof["protected_paths"] == [POLICY_PATH]
+    assert len(proof["before_tree"]) == 40
+    assert len(proof["after_tree"]) == 40
+    assert proof["protected_path_objects"] == {
+        POLICY_PATH: _git(repo, "rev-parse", f"{implementation_commit}:{POLICY_PATH}")
+    }
+    assert proof["protected_tree_digest"].startswith("sha256:")
+    assert len(proof["protected_tree_digest"]) == 71
+    assert proof["protected_paths_tree_identical"] is True
+    assert proof["implementation_runner_absent"] is True
+
+
+def test_disposed_scope_head_advance_rejects_changed_protected_tree(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    (workspace / POLICY_PATH).write_text(
+        "implementation mutation\n",
+        encoding="utf-8",
+    )
+    _git(workspace, "add", POLICY_PATH)
+    _git(
+        workspace,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "mutate protected policy",
+    )
+    after_head = _git(workspace, "rev-parse", "HEAD")
+    _git(repo, "worktree", "remove", "--force", str(workspace))
+    active = json.loads(
+        daemon._implementation_protected_active_snapshot_path().read_text(
+            encoding="utf-8"
+        )
+    )
+
+    proof = daemon._disposed_scope_snapshot_workspace_clearance_proof(
+        active=active,
+        mutations=[
+            {
+                "scope": "shared_checkout",
+                "path": POLICY_PATH,
+                "change": "content_changed",
+                "before": before["shared_checkout"]["paths"][POLICY_PATH],
+                "after": before["shared_checkout"]["paths"][POLICY_PATH],
+            },
+            {
+                "scope": "workspace",
+                "path": "",
+                "change": "scope_snapshot_changed",
+                "before": {
+                    "root": str(workspace),
+                    "git_head": before["workspace"]["git_head"],
+                },
+                "after": {
+                    "root": str(workspace),
+                    "git_head": after_head,
+                },
+            }
+        ],
+    )
+
+    assert proof == {}
+
+
+def test_disposed_scope_clearance_probes_preserve_query_failure_as_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+
+    def failed_query(
+        command: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            stdout="",
+            stderr="injected query failure",
+        )
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        failed_query,
+    )
+
+    assert (
+        daemon._checked_worktree_path_registered_in_repo(repo, workspace)
+        is None
+    )
+    assert daemon._checked_process_commands() is None
 
 
 def test_operator_clearance_accepts_disposed_exact_baseline_mirror(

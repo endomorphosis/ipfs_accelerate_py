@@ -2,19 +2,18 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import subprocess
 import threading
 import time
+from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.merge import (
     checkout_lock as checkout_lock_module,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
-    adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease,
+    adopt_inactive_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
     checkout_mutation_lock_path,
@@ -196,6 +195,21 @@ def test_sibling_worktree_preserves_and_cannot_replace_live_checkout_lease(
 
     assert release_checkout_mutation_lease(lease)
     assert not lock_path.exists()
+
+
+def test_live_pid_with_inconclusive_command_line_preserves_checkout_lease(
+    tmp_path: Path,
+) -> None:
+    repo = _seed_git_repository(tmp_path / "repo")
+    metadata = _metadata(repo, operation="live-owner-inconclusive-argv")
+
+    assert checkout_lock_owner_is_active(
+        metadata,
+        expected_kind="implementation-main-merge",
+        expected_repo_root=repo,
+        process_command_line=lambda _pid: "",
+        process_is_running=lambda _pid: True,
+    )
 
 
 def test_atomic_publication_fsyncs_and_captures_identity_before_link(

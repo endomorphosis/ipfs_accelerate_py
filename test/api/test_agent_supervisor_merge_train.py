@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    acquire_checkout_mutation_lease,
+    checkout_lock_metadata,
+    checkout_mutation_lock_path,
     checkout_repository_id,
+    release_checkout_mutation_lease,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue, MergeRequest
 from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
@@ -15,6 +19,9 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     conflict_fingerprint,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
@@ -569,6 +576,37 @@ def test_cross_lane_completion_without_authority_policy_fails_closed(
     assert "- Status: todo" in producer_todo.read_text(encoding="utf-8")
     assert consumer.merge_queue.target_branch == "benchmark/semantic-roundtrip"
 
+    authority_body = {
+        "todo_path": str(producer_todo.resolve(strict=False)),
+        "task_ids": ["REF-039"],
+        "required_task_ids": [],
+        "scheduler_epoch_id": "test-epoch",
+        "revocation_generation": 0,
+    }
+    request.metadata.update(
+        {
+            "manual_completion_authority_task_ids": ["REF-039"],
+            "manual_completion_authority_required_task_ids": [],
+            "manual_completion_authority_epoch_id": "test-epoch",
+            "manual_completion_authority_revocation_generation": 0,
+            "manual_completion_authority_context_id": content_identity(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "manual-completion-authority-context@4"
+                    ),
+                    **authority_body,
+                }
+            ),
+        }
+    )
+    current_schema_result = consumer._merge_train_callback(request)
+    assert current_schema_result["merged"] is False
+    assert current_schema_result["reason"] == (
+        "cross_board_manual_completion_authority_unavailable"
+    )
+    assert "- Status: todo" in producer_todo.read_text(encoding="utf-8")
+
 
 def test_merge_train_rejects_a_mismatched_bound_queue_target(
     tmp_path: Path,
@@ -627,3 +665,47 @@ def test_bound_merge_train_receipts_are_namespaced_by_exact_target(
     assert upper._dedupe_key("canonical-task", "a" * 40) != (
         lower._dedupe_key("canonical-task", "a" * 40)
     )
+
+
+def test_verified_merge_lock_contention_accepts_hardened_worktree_binding(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    train = MergeTrain(repo, MergeQueue(tmp_path / "queue"))
+    metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="TASK-001",
+        branch="implementation/task-001",
+        attempt=1,
+        # The contention check still verifies the live PID. Avoid coupling
+        # this repository-binding regression to pytest's argv spelling.
+        owner_script="",
+    )
+    lease, reason, _owner, _elapsed = acquire_checkout_mutation_lease(
+        checkout_mutation_lock_path(repo),
+        metadata,
+        owner_active=lambda _metadata: True,
+    )
+    assert lease is not None
+    assert reason == "acquired"
+    assert metadata["repo_root"] == ""
+    assert metadata["worktree_root"] == str(repo.resolve())
+    callback = {
+        "attempted": False,
+        "lock_path": str(lease.lock_path),
+        "lock_owner_lease_id": lease.lease_id,
+        "lock_owner_task_id": "TASK-001",
+        "lock_owner_branch": "implementation/task-001",
+    }
+    try:
+        verified = train._verified_merge_lock_contention(
+            callback,
+            reason="lock_exists",
+            lock_owner_pid=os.getpid(),
+        )
+    finally:
+        assert release_checkout_mutation_lease(lease) is True
+
+    assert verified["verified"] is True
+    assert verified["lock_owner_lease_id"] == lease.lease_id

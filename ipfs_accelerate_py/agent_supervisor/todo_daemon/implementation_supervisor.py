@@ -10527,9 +10527,16 @@ class PortalImplementationSupervisor:
     ) -> str:
         if str(metadata.get("kind") or "") != "merge":
             return "kind_mismatch"
+        worktree_root = str(
+            metadata.get("worktree_root")
+            or metadata.get("repo_root")
+            or ""
+        )
         try:
-            if Path(str(metadata.get("repo_root") or "")).resolve() != (
-                self.config.repo_root.resolve()
+            if (
+                not worktree_root
+                or Path(worktree_root).resolve()
+                != self.config.repo_root.resolve()
             ):
                 return "repository_mismatch"
         except (OSError, RuntimeError, ValueError):

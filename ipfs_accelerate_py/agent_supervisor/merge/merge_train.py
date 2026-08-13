@@ -5126,15 +5126,11 @@ class MergeTrain:
         metadata = dict(lease.metadata)
         try:
             metadata_pid = int(metadata.get("pid") or 0)
-            metadata_repo_root = Path(
-                str(metadata.get("repo_root") or "")
-            ).resolve(strict=False)
         except (OSError, RuntimeError, TypeError, ValueError):
             return {}
         if (
             str(metadata.get("kind") or "") != "merge"
             or metadata_pid != lock_owner_pid
-            or metadata_repo_root != self.repo_root
         ):
             return {}
         callback_bindings = (
