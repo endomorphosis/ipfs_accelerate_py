@@ -31,9 +31,9 @@ LAUNCHER_REL = "scripts/ops/agent_supervisor/adversarial_assurance_engine_schedu
 BOARD_NAMESPACE = "adversarial-assurance-engine-v1"
 BRANCH = "agent/adversarial-assurance-engine-v1"
 BASE_REVISION = "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda"
-DATASETS_REVISION = "fbd1ba9f70803de157622bb20e22595ef09d606f"
-KIT_REVISION = "c7e5feeb24582ab68c1f5ca626366b665a82ad61"
-MCP_REVISION = "dc3164653a48d059ae9812078359daeafb451c07"
+DATASETS_REVISION = "3af23d9d20e671d2e5260c3509623dba6dc29486"
+KIT_REVISION = "523fc9b3d6f1014751428c4a90be4cfc3c871adf"
+MCP_REVISION = "96238cc9a86e69d224ab7b52d211a79ecf27b382"
 OPERATOR_AUTHORITY_DID = "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy"
 PREREQUISITE_EVIDENCE_PREFIX = (
     "docs/architecture/adversarial_assurance_inventory/prerequisite_evidence"
