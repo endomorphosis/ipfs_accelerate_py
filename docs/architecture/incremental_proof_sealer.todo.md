@@ -384,7 +384,7 @@ Global invariants for every task:
 
 ## IPS-011 Implement the deterministic proof-forest commitment codec and vectors
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
