@@ -1004,7 +1004,7 @@ Global invariants for every task:
 
 ## IPS-031 Implement bounded hermetic prover and verifier adapters
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
