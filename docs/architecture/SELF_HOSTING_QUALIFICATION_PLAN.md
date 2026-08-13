@@ -618,7 +618,7 @@ submit to a task queue.
 ```bash
 SHQ_REPO=/home/barberb/lift_coding/.worktrees/ipfs-accelerate-self-hosting-qualification
 SHQ_DATA=data/agent_supervisor/self_hosting_qualification
-SHQ_PROJECTION="$SHQ_DATA/projections/v6"
+SHQ_PROJECTION="$SHQ_DATA/projections/v7"
 SHQ_PYTHON=/usr/bin/python3.12
 SHQ_ACTIVE_TODO=docs/architecture/self_hosting_qualification.todo.md
 SHQ_V1_HISTORY_TODO=docs/architecture/self_hosting_qualification.v1_history.todo.md
@@ -626,8 +626,9 @@ SHQ_V2_HISTORY_TODO=docs/architecture/self_hosting_qualification.v2_history.todo
 SHQ_V3_HISTORY_TODO=docs/architecture/self_hosting_qualification.v3_history.todo.md
 SHQ_V4_HISTORY_TODO=docs/architecture/self_hosting_qualification.v4_history.todo.md
 SHQ_V5_HISTORY_TODO=docs/architecture/self_hosting_qualification.v5_history.todo.md
-SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v6
-# Read-only input from the already-live provider monitor. All mutable v6
+SHQ_V6_HISTORY_TODO=docs/architecture/self_hosting_qualification.v6_history.todo.md
+SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v7
+# Read-only input from the already-live provider monitor. All mutable v7
 # coordination, state, worktrees, logs, manifests, metrics, gates and keys use
 # SHQ_RUN above; never reopen or alias the retired v1 supervisor namespace.
 SHQ_CAPACITY_PATH=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v1/provider-capacity/capacity.json
@@ -635,8 +636,8 @@ SHQ_GATE="$SHQ_RUN/operator/objective_completion_gate.json"
 SHQ_EXTERNAL_AUTHORITY="$SHQ_RUN/operator/external_completion_authority.json"
 SHQ_SIGNING_KEY="$SHQ_RUN/operator/signing.key"
 SHQ_IMPLEMENTATION_COMMAND="/usr/local/bin/codex exec --ephemeral --ignore-user-config --strict-config --dangerously-bypass-approvals-and-sandbox --color never -m gpt-5.6-terra -c model_context_window=49152 -c 'model_reasoning_effort=\"high\"' -c agents.max_threads=1 -c agents.max_depth=0 -"
-SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-implementation-bounded-v6/state/agent_agent_supervisor_self_hosting_prerequisite_observer_implementation_bounded_v6_runtime.todo.md"
-SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v6/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_bounded_v6_runtime.todo.md"
+SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-implementation-bounded-v7/state/agent_agent_supervisor_self_hosting_prerequisite_observer_implementation_bounded_v7_runtime.todo.md"
+SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v7/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_bounded_v7_runtime.todo.md"
 
 # Reviewed migrations: retain SHQ-001 in the v1 history board. Move cancelled
 # SHQ-002 and its never-launched dependent SHQ-003 into the v2 history board,
@@ -647,15 +648,19 @@ SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite
 # critical review, and dependent SHQ-007 never launched. Archive the current
 # SHQ-008/009 canonical blocks byte-for-byte in the v5 history board: neither
 # was launched because prelaunch review corrected the direct-runner receipt
-# schema and retained-stream binding before submission. Apply that reviewed
+# schema and retained-stream binding before submission. Archive SHQ-010/011
+# byte-for-byte in the v6 history board: SHQ-010 attempt 1 was rejected after
+# materializing authorized git-show output outside its checkout, and dependent
+# SHQ-011 never launched. Apply that reviewed
 # tracked migration before this command, leave SHQ_ACTIVE_TODO title-only, and
-# retain all nine discovery files so display IDs SHQ-001 through SHQ-009 stay
-# reserved. The v6 generation must allocate SHQ-010 and SHQ-011.
+# retain all eleven discovery files so display IDs SHQ-001 through SHQ-011 stay
+# reserved. The v7 generation must allocate SHQ-012 and SHQ-013.
 test -f "$SHQ_REPO/$SHQ_V1_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V2_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V3_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V4_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V5_HISTORY_TODO"
+test -f "$SHQ_REPO/$SHQ_V6_HISTORY_TODO"
 test -x "$SHQ_PYTHON"
 test "$("$SHQ_PYTHON" --version 2>&1)" = 'Python 3.12.3'
 ! rg -q '^## SHQ-' "$SHQ_REPO/$SHQ_ACTIVE_TODO"
@@ -700,6 +705,7 @@ test ! -e "$SHQ_RUN"
   --protected-output-path "$SHQ_V3_HISTORY_TODO" \
   --protected-output-path "$SHQ_V4_HISTORY_TODO" \
   --protected-output-path "$SHQ_V5_HISTORY_TODO" \
+  --protected-output-path "$SHQ_V6_HISTORY_TODO" \
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
@@ -717,16 +723,19 @@ cancelled/retryable v4 observer task after independent critical review found
 fail-closed contract gaps; its dependent SHQ-007 never launched. SHQ-008 and
 SHQ-009 are never-launched v5 cards retired by a prelaunch correction: G006's
 direct process-runner path must bind `PROCESS_RUNNER_SCHEMA` and exact retained
-stream bytes, not the pytest adapter schema or unchecked previews. Every v4 and
-v5 canonical task block is preserved byte-for-byte in its history board, and
+stream bytes, not the pytest adapter schema or unchecked previews. SHQ-010 is a
+rejected/cancelled retryable v6 attempt because it redirected the authorized
+rescue commit's `git show` output into `/tmp` and read it outside the checkout;
+its dependent SHQ-011 never launched. Every v4, v5, and v6 canonical task block
+is preserved byte-for-byte in its history board, and
 only each preamble records disposition. Historical cards are never completion
 evidence or scheduler sources. Their discovery records stay
-in `$SHQ_DATA/discovery`, reserving `SHQ-001` through `SHQ-009`; the clean active
-board therefore receives exactly `SHQ-010` and `SHQ-011`. New graph, dataset and
+in `$SHQ_DATA/discovery`, reserving `SHQ-001` through `SHQ-011`; the clean active
+board therefore receives exactly `SHQ-012` and `SHQ-013`. New graph, dataset and
 bundle projections live under `$SHQ_PROJECTION`; no scheduler may read a v1,
-v2, v3, v4, or v5 bundle index.
+v2, v3, v4, v5, or v6 bundle index.
 
-Review the portable v6 Markdown and JSON projections and add those exact files
+Review the portable v7 Markdown and JSON projections and add those exact files
 with `git add -f`; do not add DuckDB databases, lock files, runtime state or
 provider logs. The archived v1 board and both objective-control documents are
 exact protected paths for every subsequent implementation lane.
@@ -741,11 +750,29 @@ would create a different, incomplete completion identity.
 ### Local `SHQ-G006` implementation and `SHQ-G007` snapshot
 
 G006 owns only `.gitignore`, the observer and its tests; G007 owns only the JSON
-snapshot. Their bounded-v6 bundle keys prevent either task from inheriting stale
-state from retired projections. They are projected as SHQ-010 and SHQ-011 in
-the v6 index while retaining stable goal identities G006 and G007. The G006
-task may inspect only the exact rescue commit named in its content-addressed
-refinement; all reads and searches remain within its disposable worktree. The
+snapshot. Their bounded-v7 bundle keys prevent either task from inheriting stale
+state from retired projections. They are projected as SHQ-012 and SHQ-013 in
+the v7 index while retaining stable goal identities G006 and G007. Prior
+attempt 1 was hard-rejected for redirecting permitted `git show` stdout to host
+`/tmp` and rereading it. Any outside-checkout redirect, tee, copy, save, cache,
+checkpoint, materialization, or read is an immediate hard rejection; stop
+before validation. G006 may inspect only the two named blobs at commit
+`63ea88e41227d4d2d424f41051b9e9390c1a1c32` using the exact authorized two-path
+diff command, or exact `git show 63ea88e41227d4d2d424f41051b9e9390c1a1c32:<authorized-path>`
+for one of those same paths. It may consume stdout directly or write a blob
+only to its matching declared output path inside the checkout, then audit and
+repair that seed. Those two outputs are the sole persistence targets for code
+derived from the bounded input; no intermediate or scratch copy is evidence or
+authority, and every other revision or path is prohibited. The implementation
+agent must not use any host path outside the
+disposable checkout as a discovery source or scratch sink: in particular, it
+must not materialize authorized bytes into or read them from host `/tmp`,
+supervisor/checkpoint/state directories, or sibling worktrees, including
+material left by prior attempts. Generic checkpoint instructions grant no task
+input authority. This does not prohibit the required process runner's internal
+ephemeral stream capture or the validation namespace's private `/tmp`; those
+are execution internals, not discovery inputs or persisted evidence. All other
+reads and searches remain within that checkout and its declared submodules. The
 generated task dependency prevents the scheduler
 from creating the G007 worktree until G006 has merged, so G007 observes the
 clean merged implementation identity. Do not pause for objective reconciliation
@@ -861,6 +888,7 @@ SHQ_RECONCILE_G006=(
   --protected-output-path "$SHQ_V3_HISTORY_TODO"
   --protected-output-path "$SHQ_V4_HISTORY_TODO"
   --protected-output-path "$SHQ_V5_HISTORY_TODO"
+  --protected-output-path "$SHQ_V6_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
@@ -926,6 +954,7 @@ SHQ_RECONCILE_G007=(
   --protected-output-path "$SHQ_V3_HISTORY_TODO"
   --protected-output-path "$SHQ_V4_HISTORY_TODO"
   --protected-output-path "$SHQ_V5_HISTORY_TODO"
+  --protected-output-path "$SHQ_V6_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
@@ -1014,6 +1043,7 @@ SHQ_RECONCILE_G010=(
   --protected-output-path "$SHQ_V3_HISTORY_TODO"
   --protected-output-path "$SHQ_V4_HISTORY_TODO"
   --protected-output-path "$SHQ_V5_HISTORY_TODO"
+  --protected-output-path "$SHQ_V6_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json
@@ -1100,6 +1130,7 @@ jq -e '.providers.codex_cli.healthy == true and
   --implementation-protected-path "$SHQ_V3_HISTORY_TODO" \
   --implementation-protected-path "$SHQ_V4_HISTORY_TODO" \
   --implementation-protected-path "$SHQ_V5_HISTORY_TODO" \
+  --implementation-protected-path "$SHQ_V6_HISTORY_TODO" \
   --implementation-protected-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
@@ -1163,7 +1194,7 @@ worktree, made no model call, incurred no model billing and produced no task
 completion evidence; coordination released attempt/fence 1/1 as
 `cancelled:retryable` before this corrected retry.
 
-The current SHQ-010/011 planning records do not declare a provider route or a
+The current SHQ-012/013 planning records do not declare a provider route or a
 nonzero provider resource estimate, so bundle admission does not bind the
 explicit Codex command to that telemetry. For this bootstrap, the `jq` check
 above and the live `implementation_started.command` comparison are operator

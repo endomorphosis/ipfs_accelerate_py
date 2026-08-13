@@ -34,6 +34,9 @@ V4_HISTORY_PATH = (
 V5_HISTORY_PATH = (
     REPO_ROOT / "docs/architecture/self_hosting_qualification.v5_history.todo.md"
 )
+V6_HISTORY_PATH = (
+    REPO_ROOT / "docs/architecture/self_hosting_qualification.v6_history.todo.md"
+)
 
 
 def _goals():
@@ -190,10 +193,10 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     assert by_id["SHQ-G007"].dependencies == ["SHQ-G006"]
     assert by_id["SHQ-G010"].dependencies == ["SHQ-G007"]
     assert by_id["SHQ-G006"].fields["bundle"] != by_id["SHQ-G007"].fields["bundle"]
-    assert by_id["SHQ-G006"].fields["bundle"].endswith("bounded-v6")
-    assert by_id["SHQ-G007"].fields["bundle"].endswith("bounded-v6")
-    assert by_id["SHQ-G006"].fields["parallel_lane"].endswith("bounded-v6")
-    assert by_id["SHQ-G007"].fields["parallel_lane"].endswith("bounded-v6")
+    assert by_id["SHQ-G006"].fields["bundle"].endswith("bounded-v7")
+    assert by_id["SHQ-G007"].fields["bundle"].endswith("bounded-v7")
+    assert by_id["SHQ-G006"].fields["parallel_lane"].endswith("bounded-v7")
+    assert by_id["SHQ-G007"].fields["parallel_lane"].endswith("bounded-v7")
     assert all(
         command.startswith("python3 ")
         for goal_id in ("SHQ-G006", "SHQ-G007")
@@ -206,7 +209,9 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     v3_history = V3_HISTORY_PATH.read_text(encoding="utf-8")
     v4_history = V4_HISTORY_PATH.read_text(encoding="utf-8")
     v5_history = V5_HISTORY_PATH.read_text(encoding="utf-8")
+    v6_history = V6_HISTORY_PATH.read_text(encoding="utf-8")
     normalized_v5_history = " ".join(v5_history.split())
+    normalized_v6_history = " ".join(v6_history.split())
     assert "## SHQ-001 " not in active_todo
     assert "## SHQ-001 " in history
     assert "- Status: blocked" in history
@@ -245,17 +250,27 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     assert hashlib.sha256(v5_blocks.encode("utf-8")).hexdigest() == (
         "0fea2882a697e3fb809a3f80f8e194a4978f6b4c07dc95535b71c1fe28d2b2f4"
     )
+    assert "SHQ-010: rejected/cancelled retryable after attempt 1" in normalized_v6_history
+    assert "SHQ-011: never launched" in normalized_v6_history
+    assert "redirected the authorized rescue commit's `git show` output" in normalized_v6_history
+    assert "`/tmp/prior_observer.py` and `/tmp/prior_test.py`" in normalized_v6_history
+    assert "superseded by the bounded-v7 G006 projection" in normalized_v6_history
+    assert "superseded by the bounded-v7 G007 projection" in normalized_v6_history
+    v6_blocks = v6_history[v6_history.index("## SHQ-010 ") :]
+    assert hashlib.sha256(v6_blocks.encode("utf-8")).hexdigest() == (
+        "adb335bd3cb4361fdd0bc6476f2c1c519c0df944119206fb4c80ebb54943880d"
+    )
     # This test is intentionally valid on both sides of the reviewed tracked
-    # v6 migration. Before migration the v5 active blocks must be exact; after
-    # migration the board is title-only until v6 allocates SHQ-010/011.
-    if "## SHQ-008 " in active_todo:
-        assert active_todo[active_todo.index("## SHQ-008 ") :] == v5_blocks
+    # v7 migration. Before migration the v6 active blocks must be exact; after
+    # migration the board is title-only until v7 allocates SHQ-012/013.
+    if "## SHQ-010 " in active_todo:
+        assert active_todo[active_todo.index("## SHQ-010 ") :] == v6_blocks
     else:
         assert active_todo.strip() == "# Objective Todo" or (
-            "## SHQ-010 " in active_todo
-            and "## SHQ-011 " in active_todo
-            and "## SHQ-008 " not in active_todo
-            and "## SHQ-009 " not in active_todo
+            "## SHQ-012 " in active_todo
+            and "## SHQ-013 " in active_todo
+            and "## SHQ-010 " not in active_todo
+            and "## SHQ-011 " not in active_todo
         )
 
     datasets_goal_ids = {
@@ -293,10 +308,11 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     )
 
 
-def test_v6_observer_contract_reuses_authorities_and_fails_closed() -> None:
+def test_v7_observer_contract_reuses_authorities_and_fails_closed() -> None:
     source = OBJECTIVE_PATH.read_text(encoding="utf-8")
     plan = PLAN_PATH.read_text(encoding="utf-8")
     normalized = " ".join(source.split())
+    normalized_plan = " ".join(plan.split())
 
     assert "PrerequisiteTestReceipt@1" not in source
     assert "PYTEST_VERIFICATION_ADAPTER_SCHEMA" not in source
@@ -314,6 +330,12 @@ def test_v6_observer_contract_reuses_authorities_and_fails_closed() -> None:
     ):
         assert authority in source
     for invariant in (
+        "Prior attempt 1 was hard-rejected for redirecting permitted `git show` stdout to host `/tmp` and rereading it",
+        "outside-checkout redirect, tee, copy, save, cache, checkpoint, materialization, or read is an immediate hard rejection",
+        "stop before validation",
+        "exact authorized seed written straight to its matching declared output path",
+        "inspect only the two named blobs at commit `63ea88e41227d4d2d424f41051b9e9390c1a1c32`",
+        "Do not access any other revision or path",
         "exact non-empty ordered list of ten unique requested systems",
         "absolute root or `..` component",
         "existing parent and symlink",
@@ -337,15 +359,24 @@ def test_v6_observer_contract_reuses_authorities_and_fails_closed() -> None:
         "final whole-snapshot two-phase revalidation counterexamples",
         "same-directory exclusive temporary file",
         "No incomplete, stale, partially validated, or source-raced artifact",
+        "two named blobs at commit `63ea88e41227d4d2d424f41051b9e9390c1a1c32`",
+        "two declared outputs are the sole persistence targets",
+        "No intermediate or scratch copy is evidence or authority",
+        "host path outside the disposable checkout as a discovery source or scratch sink",
+        "host `/tmp`, supervisor/checkpoint/state directories, or sibling worktrees",
+        "Generic checkpoint instructions grant no task-input authority",
+        "internal ephemeral stream capture and the validation namespace's private `/tmp`",
+        "neither is a discovery source nor persisted evidence",
     ):
         assert invariant in normalized
 
     assert "PROCESS_RUNNER_SCHEMA" in plan
     assert "PYTEST_VERIFICATION_ADAPTER_SCHEMA" not in plan
-    assert 'SHQ_PROJECTION="$SHQ_DATA/projections/v6"' in plan
+    assert 'SHQ_PROJECTION="$SHQ_DATA/projections/v7"' in plan
     assert "self_hosting_qualification.v4_history.todo.md" in plan
     assert "self_hosting_qualification.v5_history.todo.md" in plan
-    assert "must allocate SHQ-010 and SHQ-011" in plan
+    assert "self_hosting_qualification.v6_history.todo.md" in plan
+    assert "must allocate SHQ-012 and SHQ-013" in plan
     assert "leave SHQ_ACTIVE_TODO title-only" in plan
     assert "SHQ_PYTHON=/usr/bin/python3.12" in plan
     assert (
@@ -356,13 +387,23 @@ def test_v6_observer_contract_reuses_authorities_and_fails_closed() -> None:
         '"$SHQ_PYTHON" -m pytest -q '
         "test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py"
     ) not in plan
-    assert "SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v6" in plan
-    assert "SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v5" not in plan
-    assert "prerequisite-observer-implementation-bounded-v6" in plan
-    assert "prerequisite-observation-snapshot-bounded-v6" in plan
+    assert "SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v7" in plan
+    assert "SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v6" not in plan
+    assert "prerequisite-observer-implementation-bounded-v7" in plan
+    assert "prerequisite-observation-snapshot-bounded-v7" in plan
+    assert "Prior attempt 1 was hard-rejected" in normalized_plan
+    assert "outside-checkout redirect, tee, copy, save, cache" in normalized_plan
+    assert "immediate hard rejection; stop" in normalized_plan
+    assert "matching declared output path inside the checkout" in normalized_plan
+    assert "sole persistence targets for code" in normalized_plan
+    assert "every other revision or path is prohibited" in normalized_plan
+    assert "host path outside the disposable checkout as a discovery source or scratch sink" in normalized_plan
+    assert "Generic checkpoint instructions grant no task input authority" in normalized_plan
+    assert "does not prohibit the required process runner's internal" in normalized_plan
     assert 'test ! -e "$SHQ_RUN"' in plan
     assert '--provider-capacity-path "$SHQ_CAPACITY_PATH"' in plan
     assert '--state-root "$SHQ_RUN/state"' in plan
     assert '--coordination-path "$SHQ_RUN/state/coordination.duckdb"' in plan
     assert "bounded-v4/state" not in plan
     assert "bounded-v5/state" not in plan
+    assert "bounded-v6/state" not in plan
