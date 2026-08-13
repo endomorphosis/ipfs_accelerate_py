@@ -2801,6 +2801,7 @@ def implementation_supervisor_command(
     generated_dirty_repair_stale_lock_seconds: float | None = None,
     generated_dirty_repair_paths: Sequence[Path | str] = (),
     worktree_submodule_paths: Sequence[str] = (),
+    implementation_protected_paths: Sequence[str] = (),
     assumed_completed_task_ids: Sequence[str] = (),
     execution_slice_task_ids: Sequence[str] = (),
     execution_slice_task_cids: Sequence[str] = (),
@@ -2853,6 +2854,11 @@ def implementation_supervisor_command(
     for relative in dict.fromkeys(str(path).strip().strip("/") for path in worktree_submodule_paths):
         if relative:
             command.extend(["--worktree-submodule-path", relative])
+    for relative in dict.fromkeys(
+        str(path).strip().strip("/") for path in implementation_protected_paths
+    ):
+        if relative:
+            command.extend(["--implementation-protected-path", relative])
     command.append("--implement" if implement else "--no-implement")
     if implementation_command:
         command.extend(["--implementation-command", implementation_command])
@@ -3203,6 +3209,7 @@ def plan_bundle_lanes(
     generated_dirty_repair_stale_lock_seconds: float | None = None,
     generated_dirty_repair_paths: Sequence[Path | str] = (),
     worktree_submodule_paths: Sequence[str] = (),
+    implementation_protected_paths: Sequence[str] = (),
     log_level: str = "INFO",
     max_lanes: int | None = None,
     completion_receipts: Mapping[str, Any] | None = None,
@@ -3245,11 +3252,15 @@ def plan_bundle_lanes(
         bundle_payloads = build_bundle_task_payloads(
             bundle_index_path,
             merge_receipts=planning_completion_receipts,
+            max_attempts=max_task_attempts,
         )
     else:
         # Keep the legacy single-argument call path for integrations which
         # inject a planner and have no durable receipt overlay to apply.
-        bundle_payloads = build_bundle_task_payloads(bundle_index_path)
+        bundle_payloads = build_bundle_task_payloads(
+            bundle_index_path,
+            max_attempts=max_task_attempts,
+        )
     if legacy_review_policy is not None and legacy_review_policy.enabled:
         bundle_payloads = _legacy_adoption_barrier_payloads(
             bundle_payloads,
@@ -3403,6 +3414,7 @@ def plan_bundle_lanes(
             generated_dirty_repair_stale_lock_seconds=generated_dirty_repair_stale_lock_seconds,
             generated_dirty_repair_paths=generated_dirty_repair_paths,
             worktree_submodule_paths=worktree_submodule_paths,
+            implementation_protected_paths=implementation_protected_paths,
             assumed_completed_task_ids=assumed_completed_task_ids,
             execution_slice_task_ids=task_ids,
             execution_slice_task_cids=task_cids,
@@ -6479,6 +6491,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=[],
         help="Repeatable nested submodule path to prepare, commit, merge, and clean in every lane.",
     )
+    parser.add_argument(
+        "--implementation-protected-path",
+        action="append",
+        default=[],
+        help=(
+            "Exact repo-relative file or directory that every generated lane "
+            "must keep read-only. May be repeated."
+        ),
+    )
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument("--coordination-path", type=Path, default=None)
     parser.add_argument("--claimant-did", default="did:web:ipfs-accelerate.local")
@@ -6649,6 +6670,9 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         generated_dirty_repair_stale_lock_seconds=args.generated_dirty_stale_lock_seconds,
         generated_dirty_repair_paths=tuple(args.generated_dirty_path or ()),
         worktree_submodule_paths=tuple(args.worktree_submodule_path or ()),
+        implementation_protected_paths=tuple(
+            args.implementation_protected_path or ()
+        ),
         log_level=args.log_level,
     )
     if args.start:

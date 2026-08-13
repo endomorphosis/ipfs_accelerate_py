@@ -1,0 +1,1227 @@
+# Self-Hosting Qualification Objective Heap (SHQ)
+
+Machine-ingestible goal hierarchy for the bounded
+`SelfHostingQualificationHarness` capstone and its narrow
+`GovernedCodingAgentRuntime` facade. The executable projection is
+`self_hosting_qualification.todo.md` with task prefix `SHQ-`.
+
+This heap is fail-closed. `SHQ-G010` is an externally governed release-admission
+gate. Until it has typed, current-tree completion receipts for every prerequisite
+system, the objective daemon must not project any descendant implementation work.
+
+## North star
+
+Determine, with reproducible and signed evidence, whether one bounded Python
+package can safely maintain part of itself with less model context, less frontier
+inference, exact incremental verification reuse, omission detection, interruption
+recovery, independent evaluation, and controlled human escalation.
+
+## Bounded target
+
+The planned target is `endomorphosis/ipfs_kit_py:ipfs_kit_py/core/wal` at the
+eventual frozen qualification revision. `core.operation_contracts` is a read-only
+dependency. The target can change only through an operator-reviewed amendment to
+this protected heap before corpus construction.
+
+## Goal tree
+
+```text
+SHQ-G000  Bounded self-hosting qualification and truthful release decision
+├── SHQ-G005  Prerequisite observation
+│   └── SHQ-G006  Install the dependency-state observer and bind current facts
+├── SHQ-G010  Externally admit all ten prerequisite releases
+├── SHQ-G020  Reproducible baseline and environment freeze
+│   ├── SHQ-G021  Inventory exact revisions, versions, schemas, routes and proofs
+│   ├── SHQ-G022  Run subsystem tests and import-safety probes
+│   └── SHQ-G023  Prove the WAL target green and freeze the environment
+├── SHQ-G030  Shared wire contracts and task corpus
+│   ├── SHQ-G031  Add narrow MCP++ shared schemas and canonical vectors
+│   ├── SHQ-G032  Define datasets-owned task, split and result contracts
+│   ├── SHQ-G033  Build history-firewalled replay tasks
+│   ├── SHQ-G034  Build controlled synthetic tasks
+│   ├── SHQ-G035  Adapt bounded adversarial-assurance tasks
+│   ├── SHQ-G036  Implement independent semantic outcome evaluation
+│   ├── SHQ-G037  Build, stratify, split and persist at least 50 tasks
+│   └── SHQ-G038  Bind datasets semantic state and ContextPack construction
+├── SHQ-G040  Immutable evidence, CAS recovery and release storage
+│   ├── SHQ-G041  Bind immutable artifacts and content identities
+│   ├── SHQ-G042  Persist typed task, model, test, proof and manifest receipts
+│   ├── SHQ-G043  Implement fenced CAS and ambiguous-outcome recovery
+│   └── SHQ-G044  Sign, verify and roll back qualification releases
+├── SHQ-G050  Governed execution and five-configuration harness
+│   ├── SHQ-G051  Implement provider-neutral tier dispatch and accounting
+│   ├── SHQ-G052  Compose the stage-resumable GovernedCodingAgentRuntime
+│   ├── SHQ-G053  Implement the SelfHostingQualificationHarness plan
+│   ├── SHQ-G054  Execute configurations A and B
+│   ├── SHQ-G055  Execute configuration C
+│   ├── SHQ-G056  Execute configuration D
+│   ├── SHQ-G057  Execute configuration E
+│   └── SHQ-G058  Expose the required CLI and resume/status operations
+├── SHQ-G060  Independent analysis, crash safety and qualification policy
+│   ├── SHQ-G061  Compare outcomes and evaluate preregistered noninferiority
+│   ├── SHQ-G062  Compute economics and the model-substitution matrix
+│   ├── SHQ-G063  Qualify all twelve crash and recovery boundaries
+│   ├── SHQ-G064  Control a bounded disposable longitudinal pilot
+│   ├── SHQ-G065  Determine the qualification level and project the manifest
+│   ├── SHQ-G066  Enforce fail-closed CI and current-release verification
+│   ├── SHQ-G068  Implement preregistration and complete metric schemas
+│   └── SHQ-G067  Implement the integrated release-candidate freeze
+└── SHQ-G070  Execute the evidence program
+    ├── SHQ-G071  Freeze the release candidate, then run development and calibration tasks
+    └── SHQ-G072  Externally freeze margins, policies, prices, routes and seeds
+        └── SHQ-G073  Run held-out configurations A through E
+            └── SHQ-G074  Analyze held-out, assurance and recovery evidence
+                └── SHQ-G075  Run or truthfully decline the longitudinal pilot
+                    └── SHQ-G076  Emit the final report and conditionally signed release
+```
+
+## SHQ-G000 Bounded self-hosting qualification and truthful release decision
+
+- Status: active
+- Parent:
+- Depends on:
+- Fib priority: 100
+- Track: self-hosting-qualification
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/root
+- Parallel lane: release
+- Resource class: cpu-medium
+- Token class: medium
+- Goal: Qualify exactly one bounded target through five comparable configurations and emit a truthful evidence-bound decision without expanding the portfolio architecture.
+- Evidence:
+- Outputs:
+- Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_plan.py
+- Acceptance: Every mandatory child reaches a typed terminal state; failed gates become explicit negative evidence; no partial or simulated run is published as qualification success.
+- Refinement: Children own disjoint repository authorities and evidence stages; the root owns no aggregate implementation edit.
+- Conflict policy: Do not create another agent framework, semantic analyzer, capsule format, proof system, provider, transport, backend, GUI, dataset, or MCP++ profile.
+
+## SHQ-G005 Observe prerequisite release convergence
+
+- Status: active
+- Parent: SHQ-G000
+- Depends on:
+- Fib priority: 100
+- Track: prerequisite-observation
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/prerequisite-observer
+- Parallel lane: prerequisite-observer
+- Resource class: cpu-small
+- Token class: small
+- Goal: Maintain a non-authoritative, current observation of all named prerequisite systems while their owning supervisors finish.
+- Evidence:
+- Outputs:
+- Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
+- Acceptance: The observer reports exact repositories, revisions, public symbols, focused tests, board states and limitations without upgrading in-flight work to released status.
+- Refinement: Observation is not completion authority and is safe to execute before the release gate.
+- Conflict policy: Read other supervisors and repositories only; never edit their boards, worktrees, receipts, branches, state databases, keys, or policies.
+
+## SHQ-G006 Install the prerequisite-state observer and bind current facts
+
+- Status: active
+- Parent: SHQ-G005
+- Depends on:
+- Fib priority: 100
+- Track: prerequisite-observation
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/prerequisite-observer
+- Parallel lane: prerequisite-observer
+- Resource class: cpu-small
+- Token class: medium
+- Goal: Implement a deterministic observer that records current commit/API/test/board evidence for the ten prerequisites and distinguishes released, in-flight, missing, mismatched-name and unverifiable states.
+- Evidence: scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py, artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Outputs: scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py, artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Predicted files: scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py, test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py, artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+- Interfaces: observe_prerequisite_releases, PrerequisiteObservation
+- Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
+- Acceptance: Ordinary observation succeeds even when an upstream system is incomplete; require-terminal mode fails closed; every row binds repository, commit, API mapping, test selector, board state and evidence time; no row claims release from prompt text or branch name alone.
+- Gap task: Implement and run the read-only prerequisite observer, preserving an honest in-flight snapshot.
+- Refinement: Recognize versioned functional interfaces such as ContextPacker only through an explicit compatibility map; do not manufacture missing facade classes.
+- Embedding query: self hosting qualification prerequisite completion release board commit API focused tests observer
+- AST query: IncrementalSemanticIndex SemanticCapsuleCompiler ContextPacker ContextPackBuilder VerificationReceiptCache IncrementalVerificationPlanner ModelRoutePlanner VerifiedGuiOptimizer IncrementalProofSealer SemanticCompressionGovernor AdversarialAssuranceEngine
+- Conflict policy: Never modify prerequisite implementation or completion evidence from this task.
+
+## SHQ-G010 Externally admit all ten prerequisite releases
+
+- Status: active
+- Parent: SHQ-G000
+- Depends on: SHQ-G006
+- Fib priority: 100
+- Track: prerequisite-admission
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/prerequisite-admission
+- Parallel lane: operator-gate
+- Resource class: operator-review
+- Token class: small
+- Completion authority: external
+- External completion required: true
+- Goal: Admit exact released commits and compatible public interfaces for every named prerequisite only after current focused tests and terminal owner evidence verify.
+- Evidence: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json
+- Outputs: artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json
+- Validation: python scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode require-terminal --output artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json
+- Acceptance: All ten rows are terminal and current; exact commit and interface bindings are explicit; the clean capstone integration branch and all three gitlinks are converged to those admitted revisions; focused tests are current and green; simulated or historical-only evidence is rejected; any missing, in-flight, dirty, unmerged or mismatched subsystem keeps this goal open.
+- Gap task: Operator admission only; local implementation receipts cannot complete this goal.
+- Refinement: This external gate fences every descendant goal. Rerun the objective daemon only after a typed external completion receipt has been independently validated.
+- Embedding query: externally governed terminal prerequisite release admission current tree receipt
+- AST query: ExternalCompletionReceipt CompletionEvidence prerequisite_release_admission
+- Conflict policy: No agent may edit this goal, its admission receipt, trusted keys, or the prerequisite owners' completion state.
+
+## SHQ-G020 Reproducible baseline and environment freeze
+
+- Status: active
+- Parents: SHQ-G000, SHQ-G010
+- Depends on:
+- Fib priority: 100
+- Track: baseline
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/baseline
+- Parallel lane: baseline
+- Resource class: cpu-large
+- Token class: medium
+- Goal: Establish a clean, exact and reproducibly green four-repository baseline before any qualification implementation or corpus construction.
+- Evidence:
+- Outputs:
+- Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_baseline.py
+- Acceptance: Exact immutable roots, current tests, import safety, target proof checkpoint and frozen environment all pass; otherwise downstream work remains ineligible.
+- Refinement: Three serial children prevent implementation from racing an unproven baseline.
+- Conflict policy: Do not repair prerequisite failures in the capstone branch; return them to the owning subsystem.
+
+## SHQ-G021 Inventory exact revisions, versions, schemas, routes and proofs
+
+- Status: active
+- Parent: SHQ-G020
+- Depends on:
+- Fib priority: 100
+- Track: baseline-inventory
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/baseline
+- Parallel lane: baseline
+- Resource class: cpu-small
+- Token class: medium
+- Goal: Record exact four-repository commits, package versions, canonical schema/CID/canonicalization versions, model routes, proof systems, test selectors, seal formats and known limitations.
+- Evidence: artifacts/agent_supervisor/self_hosting_qualification/baseline_inventory.json, docs/architecture/SELF_HOSTING_QUALIFICATION_BASELINE.md
+- Outputs: artifacts/agent_supervisor/self_hosting_qualification/baseline_inventory.json, docs/architecture/SELF_HOSTING_QUALIFICATION_BASELINE.md, test/api/test_agent_supervisor_self_hosting_baseline.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/baseline.py, artifacts/agent_supervisor/self_hosting_qualification/baseline_inventory.json, docs/architecture/SELF_HOSTING_QUALIFICATION_BASELINE.md, test/api/test_agent_supervisor_self_hosting_baseline.py
+- Interfaces: create_baseline_inventory, BaselineInventory
+- Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_baseline.py -k inventory
+- Acceptance: Every identity is exact and immutable; dirty or detached-unbound inputs fail; missing versions are unknown rather than guessed; limitations identify name/API adapters and unavailable capabilities.
+- Gap task: Implement the immutable inventory projection and bind all current baseline facts.
+- Refinement: This task records facts but does not yet assert that tests or imports are green.
+- Embedding query: exact repository commits versions schema CID canonicalization model routes proofs selectors seals limitations
+- AST query: version schema_version cid_version canonicalization model route proof seal
+- Conflict policy: Inventory existing authorities; never fork their version or identity schemes.
+
+## SHQ-G022 Run subsystem tests and import-safety probes
+
+- Status: active
+- Parent: SHQ-G020
+- Depends on: SHQ-G021
+- Fib priority: 100
+- Track: baseline-validation
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/baseline
+- Parallel lane: baseline
+- Resource class: cpu-large
+- Token class: medium
+- Goal: Run current focused tests for every admitted prerequisite and prove ordinary imports do not install, access the network, alter the environment or report simulated success.
+- Evidence: artifacts/agent_supervisor/self_hosting_qualification/subsystem_test_receipts.json, artifacts/agent_supervisor/self_hosting_qualification/import_safety_receipts.json
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/import_safety.py, test/api/test_agent_supervisor_self_hosting_import_safety.py, artifacts/agent_supervisor/self_hosting_qualification/subsystem_test_receipts.json, artifacts/agent_supervisor/self_hosting_qualification/import_safety_receipts.json
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/import_safety.py, test/api/test_agent_supervisor_self_hosting_import_safety.py, artifacts/agent_supervisor/self_hosting_qualification/subsystem_test_receipts.json, artifacts/agent_supervisor/self_hosting_qualification/import_safety_receipts.json
+- Interfaces: run_import_safety_probe, run_focused_subsystem_checks
+- Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_import_safety.py
+- Acceptance: Each selector runs at the bound commit; import probes fence package installation, sockets, subprocess package managers and environment mutation; unavailable and simulated remain non-pass; receipts contain argv, environment CID, timing, exit status and output CID.
+- Gap task: Implement hermetic probes and execute the admitted focused subsystem matrix.
+- Refinement: A historical green report is context only and cannot satisfy this goal.
+- Embedding query: focused prerequisite tests hermetic imports no network install environment mutation simulated success
+- AST query: import safety socket pip install subprocess environ simulated live receipt
+- Conflict policy: Do not add dependencies or loosen required selectors to make the baseline green.
+
+## SHQ-G023 Prove the WAL target green and freeze the environment
+
+- Status: active
+- Parent: SHQ-G020
+- Depends on: SHQ-G022
+- Fib priority: 100
+- Track: target-freeze
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/baseline
+- Parallel lane: baseline
+- Resource class: cpu-proof-solver
+- Token class: large
+- Goal: Verify `ipfs_kit_py/core/wal` at the selected revision, create a full initial proof checkpoint and freeze locks, SBOM, container, toolchain, seeds and environment identity before corpus execution.
+- Evidence: artifacts/agent_supervisor/self_hosting_qualification/target_baseline_receipt.json, artifacts/agent_supervisor/self_hosting_qualification/initial_proof_checkpoint.json, artifacts/agent_supervisor/self_hosting_qualification/environment_manifest.json
+- Outputs: artifacts/agent_supervisor/self_hosting_qualification/target_baseline_receipt.json, artifacts/agent_supervisor/self_hosting_qualification/initial_proof_checkpoint.json, artifacts/agent_supervisor/self_hosting_qualification/environment_manifest.json, test/api/test_agent_supervisor_self_hosting_environment_freeze.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/environment.py, test/api/test_agent_supervisor_self_hosting_environment_freeze.py, artifacts/agent_supervisor/self_hosting_qualification/target_baseline_receipt.json, artifacts/agent_supervisor/self_hosting_qualification/initial_proof_checkpoint.json, artifacts/agent_supervisor/self_hosting_qualification/environment_manifest.json
+- Interfaces: freeze_qualification_environment, TargetBaselineReceipt
+- Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_environment_freeze.py
+- Acceptance: All focused WAL tests and declared static/integration/proof checks are green; checkpoint binds exact source and proof-system roots; locks, SBOM and container digest are immutable; target failure terminates qualification at Level 0 rather than spawning repair work.
+- Gap task: Run the selected-target baseline and construct deterministic freeze artifacts, failing closed on any required check.
+- Refinement: The target is eight bounded WAL modules; `core.operation_contracts` and qualification infrastructure remain read-only.
+- Embedding query: ipfs kit core wal green proof checkpoint environment lock SBOM container digest seed freeze
+- AST query: core.wal kit-modern-wal checkpoint environment manifest dependency lock SBOM
+- Conflict policy: Never alter the WAL target while establishing its baseline.
+
+## SHQ-G030 Shared wire contracts and task corpus
+
+- Status: active
+- Parents: SHQ-G000, SHQ-G010
+- Depends on:
+- Fib priority: 90
+- Track: corpus
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/corpus-root
+- Parallel lane: corpus
+- Resource class: cpu-medium
+- Token class: medium
+- Goal: Define only the shared wire surface and datasets-owned benchmark semantics needed to build a sealed, separated and history-firewalled corpus.
+- Evidence:
+- Outputs:
+- Validation: python -m pytest -q test/api/test_agent_supervisor_self_hosting_corpus_adapter.py
+- Acceptance: MCP++ remains a narrow wire authority and datasets owns task semantics; at least 50 stratified tasks are sealed before experimental execution.
+- Refinement: Schema, source builders and evaluator use disjoint files so eligible work can proceed in parallel.
+- Conflict policy: No new MCP++ profile, general dataset, agent framework or duplicated storage authority.
+
+## SHQ-G031 Add narrow MCP++ shared schemas and canonical vectors
+
+- Status: active
+- Parent: SHQ-G030
+- Depends on: SHQ-G023
+- Fib priority: 90
+- Track: shared-contracts
+- Priority: P0
+- Bundle: mcplusplus/self-hosting/schemas
+- Parallel lane: mcplusplus-contracts
+- Resource class: cpu-small
+- Token class: medium
+- Submodules: ipfs_accelerate_py/mcplusplus
+- Goal: Add provider-neutral invocation, receipt, qualification and narrow runtime-interface schemas with canonical valid/invalid vectors, without defining a new MCP++ profile.
+- Evidence: ipfs_accelerate_py/mcplusplus/schemas/self-hosting-qualification/1.0/qualification.schema.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/self_hosting_qualification_valid.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/self_hosting_qualification_invalid.json
+- Outputs: ipfs_accelerate_py/mcplusplus/schemas/self-hosting-qualification/1.0, ipfs_accelerate_py/mcplusplus/conformance/vectors/self_hosting_qualification_valid.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/self_hosting_qualification_invalid.json, ipfs_accelerate_py/mcplusplus/tests-py/test_self_hosting_qualification_schemas.py
+- Predicted files: ipfs_accelerate_py/mcplusplus/schemas/self-hosting-qualification/1.0/qualification.schema.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/self_hosting_qualification_valid.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/self_hosting_qualification_invalid.json, ipfs_accelerate_py/mcplusplus/tests-py/test_self_hosting_qualification_schemas.py
+- Interfaces: ModelInvocationReceipt@1, QualificationManifest@1, QualificationRuntimePort@1
+- Validation: python -m pytest -q ipfs_accelerate_py/mcplusplus/tests-py/test_self_hosting_qualification_schemas.py
+- Acceptance: Canonical vectors cover all tier, token, price, retry, CID, live/replay, seal and decision fields; unknown statuses reject; provider identity remains data; schemas do not authorize execution, storage or self-approval.
+- Gap task: Implement only shared wire schemas, validators and vectors required by the capstone.
+- Refinement: Reuse existing canonical JSON and Profile-G invocation primitives through references where compatible.
+- Embedding query: MCP++ shared self hosting invocation receipt qualification manifest canonical vectors runtime port
+- AST query: ModelInvocationReceipt QualificationManifest QualificationRuntimePort canonical JSON schema
+- Conflict policy: No new profile, transport, provider, execution policy or semantic authority in MCP++.
+
+## SHQ-G032 Define datasets-owned task, split and result contracts
+
+- Status: active
+- Parent: SHQ-G030
+- Depends on: SHQ-G031
+- Fib priority: 100
+- Track: corpus-contracts
+- Priority: P0
+- Bundle: datasets/self-hosting/corpus
+- Parallel lane: datasets-contracts
+- Resource class: cpu-small
+- Token class: medium
+- Submodules: ipfs_datasets_py
+- Goal: Define immutable `SelfHostingTaskCorpus`, task constraints, source kind, classification, split, expected behavior, configuration result and comparison-input schemas under datasets authority.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/contracts.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/metrics.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/contracts.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/metrics.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_contracts.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_metrics.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/contracts.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/metrics.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_contracts.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_metrics.py
+- Interfaces: SelfHostingTaskCorpus, SelfHostingTask, PatchConstraint, ExpectedEffectClass, CorpusSplit, ExpectedBehavior, BenchmarkTaskResult, QualificationMetrics
+- Validation: python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_contracts.py ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_metrics.py
+- Acceptance: Every task declares allowed symbols/files/lines/effects/interfaces/tests/proofs/review and hidden evaluator references; effect class is closed over code_patch, no_patch_reject, context_expand, verification_broaden, route_escalate and human_review; split membership is immutable; hidden artifacts cannot serialize into model-visible views; canonical identity changes with every authority field; the aggregate schema explicitly contains every named context, route, quality, verification, compression-safety, assurance, economics and performance metric.
+- Gap task: Implement the datasets-owned immutable contracts without copying MCP++ wire or kit storage models.
+- Refinement: Keep package imports lazy and free of network, installation and environment mutation.
+- Embedding query: SelfHostingTaskCorpus task constraints classification split expected behavior result schema hidden evaluator
+- AST query: SelfHostingTaskCorpus SelfHostingTask PatchConstraint CorpusSplit ExpectedBehavior BenchmarkTaskResult
+- Conflict policy: Datasets owns task meaning, not execution, provider dispatch, artifact persistence or signing.
+
+## SHQ-G033 Build history-firewalled replay tasks
+
+- Status: active
+- Parent: SHQ-G030
+- Depends on: SHQ-G023, SHQ-G032
+- Fib priority: 90
+- Track: historical-corpus
+- Priority: P0
+- Bundle: datasets/self-hosting/corpus
+- Parallel lane: datasets-historical
+- Resource class: io-medium
+- Token class: large
+- Submodules: ipfs_datasets_py
+- Context paths: ipfs_kit_py/ipfs_kit_py/core/wal
+- Goal: Derive real WAL maintenance tasks from parent revisions, requirements and failures while making future patches and later history evaluator-only and inaccessible to proposing models.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/historical.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/historical.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_historical.py, ipfs_datasets_py/tests/fixtures/self_hosting/historical_manifest.json
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/historical.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_historical.py, ipfs_datasets_py/tests/fixtures/self_hosting/historical_manifest.json
+- Interfaces: build_historical_replay_tasks, HistoricalReplayFirewall
+- Validation: python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_historical.py
+- Acceptance: Every replay starts at the real parent, derives visible requirements from contemporaneous evidence, hides the future patch and later refs, blocks public-issue/provider browsing, retains evaluator evidence separately and scores semantic outcome rather than textual similarity; isolation tests cover refs, reflogs, alternates, remotes, unreachable objects, cat-file batch/all-object enumeration and build artifacts.
+- Gap task: Build deterministic historical replay fixtures from qualifying WAL commits and taskboard requirements.
+- Refinement: Use all qualifying real history; do not fabricate commits merely to hit a category count.
+- Embedding query: historical replay parent commit hidden future patch history firewall semantic outcome WAL
+- AST query: build_historical_replay_tasks HistoricalReplayFirewall expected_patch evaluator_only
+- Conflict policy: Hidden patches, later Git objects and evaluator metadata never enter a ContextPack or model worktree.
+
+## SHQ-G034 Build controlled synthetic tasks
+
+- Status: active
+- Parent: SHQ-G030
+- Depends on: SHQ-G023, SHQ-G032
+- Fib priority: 90
+- Track: synthetic-corpus
+- Priority: P0
+- Bundle: datasets/self-hosting/corpus
+- Parallel lane: datasets-synthetic
+- Resource class: cpu-medium
+- Token class: large
+- Submodules: ipfs_datasets_py
+- Context paths: ipfs_kit_py/ipfs_kit_py/core/wal
+- Goal: Build controlled WAL-centered fixtures covering all eighteen required bug, test, type, schema, contract, refactor, performance, invalidation, proof, context, dynamic, selection and recovery classes.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/synthetic.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/synthetic.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_synthetic.py, ipfs_datasets_py/tests/fixtures/self_hosting/synthetic_manifest.json
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/synthetic.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_synthetic.py, ipfs_datasets_py/tests/fixtures/self_hosting/synthetic_manifest.json
+- Interfaces: build_controlled_synthetic_tasks
+- Validation: python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_synthetic.py
+- Acceptance: Each required class has deterministic setup and hidden checks; stale capsule/receipt, insufficient context, selection and proof-cache cases declare the correct no-patch rejection, context expansion, verification broadening or escalation effect instead of editing control-plane code; no fixture changes qualification infrastructure or weakens its own oracle; performance and recovery thresholds are explicit; opaque-dependency tasks preserve uncertainty.
+- Gap task: Implement the full controlled synthetic factory with bounded patches and independently testable oracles.
+- Refinement: Prefer multiple risk/dependency-cone strata where total corpus capacity permits.
+- Embedding query: synthetic self hosting bug unit integration type schema exception adapter refactor performance stale invalidation proof context recovery
+- AST query: build_controlled_synthetic_tasks SyntheticTaskFactory hidden tests
+- Conflict policy: Fixtures may mutate only disposable target copies, never the frozen source or benchmark policy.
+
+## SHQ-G035 Adapt bounded adversarial-assurance tasks
+
+- Status: active
+- Parent: SHQ-G030
+- Depends on: SHQ-G023, SHQ-G032
+- Fib priority: 90
+- Track: adversarial-corpus
+- Priority: P0
+- Bundle: datasets/self-hosting/corpus
+- Parallel lane: datasets-adversarial
+- Resource class: cpu-medium
+- Token class: large
+- Submodules: ipfs_datasets_py
+- Goal: Adapt the admitted `AdversarialAssuranceEngine` to generate bounded tasks for every required authority, stale-evidence, false-success, timeout, fencing, CAS, omission, assertion, vacuity and seal-manifest failure.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/adversarial.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/adversarial.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_adversarial.py, ipfs_datasets_py/tests/fixtures/self_hosting/adversarial_manifest.json
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/adversarial.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_adversarial.py, ipfs_datasets_py/tests/fixtures/self_hosting/adversarial_manifest.json
+- Interfaces: build_adversarial_assurance_tasks, AdversarialAssuranceTaskAdapter
+- Validation: python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_adversarial.py
+- Acceptance: All thirteen required assurance classes appear; mutants carry expected kill conditions and risk; no new mutation engine is introduced; unavailable engine capability fails closed rather than substituting hand-waved success.
+- Gap task: Implement a narrow task adapter over the released assurance engine and deterministic bounded fixtures.
+- Refinement: Mutation generation belongs to the existing engine; datasets owns task projection and expected behavior.
+- Embedding query: adversarial assurance authorization stale proof missing test false success timeout simulation fence CAS omission weak assertion vacuity seal
+- AST query: AdversarialAssuranceEngine AdversarialAssuranceTaskAdapter mutant kill condition
+- Conflict policy: Do not rebuild the assurance engine or allow a proposing model to define its own oracle.
+
+## SHQ-G036 Implement independent semantic outcome evaluation
+
+- Status: active
+- Parent: SHQ-G030
+- Depends on: SHQ-G032
+- Fib priority: 100
+- Track: semantic-evaluation
+- Priority: P0
+- Bundle: datasets/self-hosting/corpus
+- Parallel lane: datasets-evaluator
+- Resource class: cpu-medium
+- Token class: large
+- Submodules: ipfs_datasets_py
+- Goal: Independently compare declared behavior, semantic diffs, hidden tests, static/type/proof/performance/assurance results and patch scope without using the proposing model as sole evaluator.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/evaluator.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/evaluator.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_evaluator.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/evaluator.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_evaluator.py
+- Interfaces: compare_semantic_outcome, compare_task_outcomes, IndependentSemanticOutcomeEvaluator, TaskComparisonReport
+- Validation: python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_evaluator.py
+- Acceptance: Textually different correct patches can pass; patch-applied alone cannot; all ten acceptance conditions are recomputed from independent evidence; stale, simulated, missing, self-approved and out-of-scope evidence fail.
+- Gap task: Implement the pure independent evaluator and adversarial fixtures for every acceptance gate.
+- Refinement: Evaluation consumes typed results but does not execute models, tests or storage operations.
+- Embedding query: independent semantic outcome evaluator hidden tests accepted patch proof assurance performance scope
+- AST query: compare_semantic_outcome IndependentSemanticOutcomeEvaluator AcceptedPatchDecision
+- Conflict policy: The proposing model cannot author, modify, select or approve hidden evaluation evidence.
+
+## SHQ-G037 Build, stratify, split and persist at least 50 tasks
+
+- Status: active
+- Parent: SHQ-G030
+- Depends on: SHQ-G033, SHQ-G034, SHQ-G035, SHQ-G036, SHQ-G041
+- Fib priority: 100
+- Track: corpus-release
+- Priority: P0
+- Bundle: datasets/self-hosting/corpus
+- Parallel lane: datasets-release
+- Resource class: cpu-medium
+- Token class: medium
+- Submodules: ipfs_datasets_py
+- Goal: Create and version a minimum 50-task initial corpus, stratify all required dimensions, separate development/calibration/held-out outcomes and persist immutable model-visible, evaluator-only and longitudinal-eligibility views through the kit artifact port.
+- Evidence: artifacts/agent_supervisor/self_hosting_qualification/task_corpus_manifest.json, artifacts/agent_supervisor/self_hosting_qualification/task_split_manifest.json, artifacts/agent_supervisor/self_hosting_qualification/longitudinal_eligibility_manifest.json
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/corpus.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_corpus.py, artifacts/agent_supervisor/self_hosting_qualification/task_corpus_manifest.json, artifacts/agent_supervisor/self_hosting_qualification/task_split_manifest.json, artifacts/agent_supervisor/self_hosting_qualification/longitudinal_eligibility_manifest.json
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/corpus.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_corpus.py, artifacts/agent_supervisor/self_hosting_qualification/task_corpus_manifest.json, artifacts/agent_supervisor/self_hosting_qualification/task_split_manifest.json, artifacts/agent_supervisor/self_hosting_qualification/longitudinal_eligibility_manifest.json
+- Interfaces: create_task_corpus, persist_task_corpus
+- Validation: python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_corpus.py
+- Acceptance: Total tasks are at least 50; all source and class floors hold; each task has risk/cone/context/dynamic/tier/verification strata; split is deterministic and kit-CID-bound; held-out outcome access is denied until policy freeze; model views cannot resolve hidden patches or public links; longitudinal candidates declare composition order, preconditions, rebase semantics and stop conditions without assuming later acceptance.
+- Gap task: Assemble the versioned corpus and immutable split from the three independently tested builders.
+- Refinement: A stronger release may use at least 100 tasks; the report must qualify inference limits for smaller samples.
+- Embedding query: corpus build stratify split development calibration held out CID hidden firewall fifty tasks
+- AST query: create_task_corpus seal_task_corpus SelfHostingTaskCorpus CorpusSplit
+- Conflict policy: Datasets creates canonical corpus meaning while kit alone persists immutable bytes; do not tune policies from held-out outcomes or count duplicate semantic tasks as independent merely to reach the floor.
+
+## SHQ-G038 Bind datasets semantic state and ContextPack construction
+
+- Status: active
+- Parent: SHQ-G030
+- Depends on: SHQ-G032
+- Fib priority: 100
+- Track: context-pack
+- Priority: P0
+- Bundle: datasets/self-hosting/corpus
+- Parallel lane: datasets-corpus
+- Resource class: cpu-medium
+- Token class: large
+- Submodules: ipfs_datasets_py
+- Goal: Expose the datasets-owned semantic-state and ContextPack construction boundary for qualification tasks while adapting the admitted capsule/compiler/packer implementation instead of inventing another representation.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/context_pack.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/context_pack.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_context_pack.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/self_hosting/context_pack.py, ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_context_pack.py
+- Interfaces: SelfHostingContextPackPort, build_self_hosting_context_pack
+- Validation: python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/self_hosting/test_context_pack.py
+- Acceptance: The port binds task/source/semantic/capsule/policy roots, records raw cone, packed/expanded tokens, sufficiency and fallback, rejects stale/heuristic capsules, preserves opaque dependencies and delegates actual capsule/pack construction to the admitted versioned API.
+- Gap task: Implement the qualification-specific datasets port and compatibility adapter for the released ContextPack implementation.
+- Refinement: The port owns benchmark semantics and expected fields; it does not create a new capsule or packing algorithm.
+- Embedding query: datasets self hosting semantic state ContextPack construction capsule sufficiency fallback tokens
+- AST query: SelfHostingContextPackPort build_self_hosting_context_pack SemanticCapsuleCompiler ContextPacker ContextPackBuilder
+- Conflict policy: Reuse the admitted semantic state and packer; no duplicated semantic index, compressor or context format.
+
+## SHQ-G040 Immutable evidence, CAS recovery and release storage
+
+- Status: active
+- Parents: SHQ-G000, SHQ-G010
+- Depends on:
+- Fib priority: 90
+- Track: durable-evidence
+- Priority: P0
+- Bundle: kit/self-hosting/evidence-root
+- Parallel lane: kit-evidence
+- Resource class: io-medium
+- Token class: medium
+- Goal: Use ipfs_kit_py as the sole authority for immutable benchmark artifacts, worktree state, receipts, manifests, fencing, release evidence and rollback.
+- Evidence:
+- Outputs:
+- Validation: python -m pytest -q ipfs_kit_py/tests/test_self_hosting_qualification_store.py
+- Acceptance: Bytes and roots are exact; CAS is fenced and recoverable; signatures and release verification fail closed; no parallel storage authority appears elsewhere.
+- Refinement: Artifact, receipt, recovery and signing children build serially where authority overlaps.
+- Conflict policy: Reuse kit CID, canonicalization, WAL and immutable-store primitives; do not fork them.
+
+## SHQ-G041 Bind immutable artifacts and content identities
+
+- Status: active
+- Parent: SHQ-G040
+- Depends on: SHQ-G023
+- Fib priority: 90
+- Track: immutable-artifacts
+- Priority: P0
+- Bundle: kit/self-hosting/artifacts
+- Parallel lane: kit-artifacts
+- Resource class: io-medium
+- Token class: medium
+- Submodules: ipfs_kit_py
+- Goal: Provide a narrow immutable artifact/CID port for tasks, worktrees, model responses, test/proof evidence and qualification files using existing kit canonicalization.
+- Evidence: ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/artifacts.py
+- Outputs: ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/artifacts.py, ipfs_kit_py/tests/test_self_hosting_qualification_artifacts.py
+- Predicted files: ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/artifacts.py, ipfs_kit_py/tests/test_self_hosting_qualification_artifacts.py
+- Interfaces: QualificationArtifactStore, put_immutable, get_verified
+- Validation: python -m pytest -q ipfs_kit_py/tests/test_self_hosting_qualification_artifacts.py
+- Acceptance: Stored bytes are immutable and CID-verified on every read; canonicalization versions are bound; corrupt/missing data is typed failure; arbitrary remote paths and network fallback are rejected.
+- Gap task: Implement a narrow adapter over existing kit artifact and canonicalization primitives.
+- Refinement: This port stores bytes and identities, not benchmark semantics or orchestration policy.
+- Embedding query: ipfs kit immutable qualification artifact CID canonical bytes verified read
+- AST query: QualificationArtifactStore put_immutable get_verified CID canonicalization
+- Conflict policy: No new backend, mutable overwrite, simulated storage or duplicate CID algorithm.
+
+## SHQ-G042 Persist typed task, model, test, proof and manifest receipts
+
+- Status: active
+- Parent: SHQ-G040
+- Depends on: SHQ-G031, SHQ-G041
+- Fib priority: 100
+- Track: qualification-receipts
+- Priority: P0
+- Bundle: kit/self-hosting/receipts
+- Parallel lane: kit-receipts
+- Resource class: io-medium
+- Token class: large
+- Submodules: ipfs_kit_py
+- Goal: Persist canonical model-call, task-execution, test, proof, comparison, pilot and qualification-manifest receipts with exact live/replay and evidence provenance.
+- Evidence: ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/receipts.py
+- Outputs: ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/receipts.py, ipfs_kit_py/tests/test_self_hosting_qualification_receipts.py
+- Predicted files: ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/receipts.py, ipfs_kit_py/tests/test_self_hosting_qualification_receipts.py
+- Interfaces: TaskExecutionReceiptStore, ModelCallReceipt, QualificationManifestStore
+- Validation: python -m pytest -q ipfs_kit_py/tests/test_self_hosting_qualification_receipts.py
+- Acceptance: Every requested model accounting field is required; replayed output is distinguishable and excluded from live evidence; stale/simulated/missing proof cannot serialize as accepted; receipt CIDs bind policy, environment, roots and artifacts.
+- Gap task: Implement typed persistence against the shared schemas and immutable artifact port.
+- Refinement: Reuse existing VerificationReceiptCache and proof receipt schemas through adapters, not copies.
+- Embedding query: task model test proof qualification receipt store live replay tokens latency price cost CID
+- AST query: TaskExecutionReceiptStore ModelCallReceipt QualificationManifestStore VerificationReceipt
+- Conflict policy: Storage never upgrades evaluator status and never treats existence as validity.
+
+## SHQ-G043 Implement fenced CAS and ambiguous-outcome recovery
+
+- Status: active
+- Parent: SHQ-G040
+- Depends on: SHQ-G042
+- Fib priority: 100
+- Track: qualification-recovery
+- Priority: P0
+- Bundle: kit/self-hosting/recovery
+- Parallel lane: kit-recovery
+- Resource class: io-medium
+- Token class: large
+- Submodules: ipfs_kit_py
+- Goal: Maintain compare-and-swap qualification roots with generation/fencing tokens, idempotent stage recovery, immutable completion discovery and explicit unknown-outcome repair.
+- Evidence: ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/state.py, ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/recovery.py
+- Outputs: ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/state.py, ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/recovery.py, ipfs_kit_py/tests/test_self_hosting_qualification_recovery.py
+- Predicted files: ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/state.py, ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/recovery.py, ipfs_kit_py/tests/test_self_hosting_qualification_recovery.py
+- Interfaces: QualificationStateStore, resume_qualification_stage, recover_ambiguous_outcome
+- Validation: python -m pytest -q ipfs_kit_py/tests/test_self_hosting_qualification_recovery.py
+- Acceptance: Stale fences and lost-update races fail; repeated recovery causes no duplicate effects; immutable completed artifacts are reused; uncertain model billing or effect outcome requires repair; partial tasks cannot count as accepted.
+- Gap task: Implement WAL-backed fenced CAS and explicit recovery decisions over existing kit contracts.
+- Refinement: Recovery identifies evidence; it does not guess that an interrupted operation succeeded.
+- Embedding query: qualification CAS generation fencing token WAL recovery idempotent ambiguous outcome
+- AST query: QualificationStateStore compare_and_swap fence generation recovery WAL
+- Conflict policy: Do not weaken WAL, current-root or durability contracts and do not introduce a second state authority.
+
+## SHQ-G044 Sign, verify and roll back qualification releases
+
+- Status: active
+- Parent: SHQ-G040
+- Depends on: SHQ-G042, SHQ-G043
+- Fib priority: 100
+- Track: qualification-release
+- Priority: P0
+- Bundle: kit/self-hosting/release
+- Parallel lane: kit-release
+- Resource class: cpu-crypto
+- Token class: large
+- Submodules: ipfs_kit_py
+- Goal: Build and verify a signed, content-addressed qualification release with explicit classification, verification instructions, known limitations, blockers and rollback.
+- Evidence: ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/release.py
+- Outputs: ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/release.py, ipfs_kit_py/tests/test_self_hosting_qualification_release.py
+- Predicted files: ipfs_kit_py/ipfs_kit_py/self_hosting_qualification/release.py, ipfs_kit_py/tests/test_self_hosting_qualification_release.py
+- Interfaces: OperatorSigningPort, create_qualification_manifest, verify_qualification_release, build_rollback_manifest
+- Validation: python -m pytest -q ipfs_kit_py/tests/test_self_hosting_qualification_release.py
+- Acceptance: Signature binds every required artifact and exact revision; an injected operator-controlled signing port may sign only an already gated manifest and never exposes private key bytes to a worktree or model; untrusted/stale/missing keys, denied signing, or missing artifacts fail; partial failure forbids publication; rollback is complete; research/alpha/pilot labels cannot exceed the decision evidence.
+- Gap task: Implement release assembly, signing-port invocation, verification and rollback without modifying trusted keys.
+- Refinement: Tests use ephemeral fixture keys; production-admissible trusted identities remain operator managed.
+- Embedding query: signed content addressed qualification release manifest verify trusted keys rollback classification
+- AST query: OperatorSigningPort create_qualification_manifest verify_qualification_release build_rollback_manifest
+- Conflict policy: Agents cannot modify trusted keys, approve their own patch or publish after a failed gate.
+
+## SHQ-G050 Governed execution and five-configuration harness
+
+- Status: active
+- Parents: SHQ-G000, SHQ-G010
+- Depends on:
+- Fib priority: 100
+- Track: governed-execution
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/runtime-root
+- Parallel lane: runtime
+- Resource class: cpu-large
+- Token class: large
+- Goal: Compose existing authorities into one stage-resumable runtime and run an identical eligible task set through configurations A through E.
+- Evidence:
+- Outputs:
+- Validation: python -m pytest -q test/api/self_hosting
+- Acceptance: Every canonical lifecycle stage is explicit and resumable; configurations isolate only their declared variables; provider resolution remains downstream of capability routing.
+- Refinement: Runtime, plan and configurations use dedicated modules; no child becomes another agent framework.
+- Conflict policy: Integrate admitted systems through dependency-injected ports and do not duplicate their semantic, routing, verification, assurance, proof or storage authority.
+
+## SHQ-G051 Implement provider-neutral tier dispatch and accounting
+
+- Status: active
+- Parent: SHQ-G050
+- Depends on: SHQ-G031, SHQ-G042
+- Fib priority: 90
+- Track: model-dispatch
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/model-runner
+- Parallel lane: model-runner
+- Resource class: model-provider
+- Token class: large
+- Goal: Resolve deterministic, small-local, medium, frontier and human-review capability tiers through injected providers and persist complete call/cost/latency/retry/live-or-replay accounting.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/model_runner.py, ipfs_accelerate_py/agent_supervisor/self_hosting/context_authorization.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/model_runner.py, ipfs_accelerate_py/agent_supervisor/self_hosting/context_authorization.py, test/api/self_hosting/test_model_runner.py, test/api/self_hosting/test_context_authorization.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/model_runner.py, ipfs_accelerate_py/agent_supervisor/self_hosting/context_authorization.py, test/api/self_hosting/test_model_runner.py, test/api/self_hosting/test_context_authorization.py
+- Interfaces: ProviderNeutralModelRunner, ProviderContextAuthorizationReceipt, authorize_provider_context, invoke_model_tier
+- Validation: python -m pytest -q test/api/self_hosting/test_model_runner.py test/api/self_hosting/test_context_authorization.py
+- Acceptance: Route class never hardcodes a provider; all requested invocation fields persist; pricing is frozen configuration data; replay is excluded from live quality/cost; a mandatory pre-invocation receipt proves secret scan/redaction, approved-source allowlist, hidden-store exclusion, disabled browsing/tools, and approved endpoint; unknown or failed authorization rejects/escalates; missing required tier triggers escalation or human review, never silent downgrade.
+- Gap task: Implement the provider-neutral dispatch port and deterministic fixture providers.
+- Refinement: This is a runner interface, not a new model provider or routing planner.
+- Embedding query: provider neutral deterministic small local medium frontier human model runner accounting price tokens retry replay
+- AST query: ProviderNeutralModelRunner invoke_model_tier ModelRoutePlanner ModelCallReceipt
+- Conflict policy: Do not add provider SDKs, credentials, network defaults or provider-specific policy.
+
+## SHQ-G052 Compose the stage-resumable GovernedCodingAgentRuntime
+
+- Status: active
+- Parent: SHQ-G050
+- Depends on: SHQ-G036, SHQ-G038, SHQ-G043, SHQ-G051
+- Fib priority: 100
+- Track: governed-runtime
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/runtime
+- Parallel lane: runtime
+- Resource class: cpu-large
+- Token class: xlarge
+- Goal: Implement a narrow dependency-injected `GovernedCodingAgentRuntime` that executes every canonical lifecycle stage, checkpoints after durable boundaries and delegates all authority to released components.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/runtime.py, ipfs_accelerate_py/agent_supervisor/self_hosting/integrations.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/runtime.py, ipfs_accelerate_py/agent_supervisor/self_hosting/integrations.py, test/api/self_hosting/test_runtime.py, test/api/self_hosting/test_runtime_lifecycle.py, test/api/self_hosting/test_prerequisite_integrations.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/runtime.py, ipfs_accelerate_py/agent_supervisor/self_hosting/integrations.py, test/api/self_hosting/test_runtime.py, test/api/self_hosting/test_runtime_lifecycle.py, test/api/self_hosting/test_prerequisite_integrations.py
+- Interfaces: GovernedCodingAgentRuntime, execute_task_configuration
+- Validation: python -m pytest -q test/api/self_hosting/test_runtime.py test/api/self_hosting/test_runtime_lifecycle.py
+- Acceptance: Every user-declared lifecycle stage plus mandatory provider-context authorization appears and no stage silently disables in qualification mode; all ten admitted prerequisites are bound and invoked when applicable; the non-GUI WAL target receives a typed evidence-bound `VerifiedGuiOptimizer` not-applicable decision rather than silent omission; scope is validated before apply; context insufficiency expands or escalates; acceptance is independently recomputed; cancellation and restart resume safely; hidden patches and policies are inaccessible.
+- Gap task: Compose the admitted scanner, capsule/context governor, route planner, worktree executor, incremental verifier, assurance engine, proof sealer, human gate and kit stores through narrow ports.
+- Refinement: The facade parses no competing semantic graph, chooses no tests independently and owns no provider or persistent-store implementation.
+- Embedding query: GovernedCodingAgentRuntime stage resumable canonical lifecycle semantic capsule context routing verification assurance proof human
+- AST query: GovernedCodingAgentRuntime execute_task_configuration IncrementalSemanticIndex SemanticCapsuleCompiler ContextPacker SemanticCompressionGovernor ModelRoutePlanner IncrementalVerificationPlanner VerifiedGuiOptimizer AdversarialAssuranceEngine IncrementalProofSealer
+- Conflict policy: Extend no existing prerequisite internals; adapters fail typed-unavailable when an admitted capability is absent or incompatible.
+
+## SHQ-G053 Implement the SelfHostingQualificationHarness plan
+
+- Status: active
+- Parent: SHQ-G050
+- Depends on: SHQ-G037, SHQ-G052
+- Fib priority: 100
+- Track: experiment-plan
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/harness
+- Parallel lane: harness
+- Resource class: cpu-medium
+- Token class: large
+- Goal: Implement `SelfHostingQualificationHarness` and a deterministic experiment plan that binds the same eligible tasks, randomization, policies, environment and independent evaluation across A through E.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/harness.py, ipfs_accelerate_py/agent_supervisor/self_hosting/experiment.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/harness.py, ipfs_accelerate_py/agent_supervisor/self_hosting/experiment.py, test/api/self_hosting/test_harness.py, test/api/self_hosting/test_experiment_plan.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/harness.py, ipfs_accelerate_py/agent_supervisor/self_hosting/experiment.py, test/api/self_hosting/test_harness.py, test/api/self_hosting/test_experiment_plan.py
+- Interfaces: SelfHostingQualificationHarness, create_experiment_plan
+- Validation: python -m pytest -q test/api/self_hosting/test_harness.py test/api/self_hosting/test_experiment_plan.py
+- Acceptance: Plan identity binds corpus/split/environment/model/price/policy/seeds; eligibility is identical; order is reproducible and balanced; configuration isolation tests reject leaked capsules, routing or reuse; replay development cannot count as live evaluation.
+- Gap task: Implement the capstone harness and immutable five-arm experiment plan.
+- Refinement: The harness orchestrates existing systems and does not become another coding-agent framework.
+- Embedding query: SelfHostingQualificationHarness experiment plan configurations A B C D E randomization isolation
+- AST query: SelfHostingQualificationHarness create_experiment_plan SelfHostingExperimentPlan
+- Conflict policy: No arm may change its task set, hidden evaluator, environment or acceptance criteria.
+
+## SHQ-G054 Execute configurations A and B
+
+- Status: active
+- Parent: SHQ-G050
+- Depends on: SHQ-G053
+- Fib priority: 90
+- Track: baseline-configurations
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/config-ab
+- Parallel lane: config-ab
+- Resource class: model-frontier
+- Token class: large
+- Goal: Implement frontier ordinary-retrieval configuration A and frontier stateful-retrieval configuration B with full/normal verification and no semantic-capsule substitution.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/configurations/baselines.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/configurations/baselines.py, test/api/self_hosting/test_configurations_ab.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/configurations/baselines.py, test/api/self_hosting/test_configurations_ab.py
+- Interfaces: FrontierBaselineConfiguration, StatefulRetrievalConfiguration
+- Validation: python -m pytest -q test/api/self_hosting/test_configurations_ab.py
+- Acceptance: A uses ordinary retrieval, frontier only, full required tests and no proof reuse; B adds only persistent task state and ordinary lexical/semantic retrieval; isolation tests fail on capsule or smaller-tier use.
+- Gap task: Implement the two baseline strategy adapters over the common runtime.
+- Refinement: A is the principal cost/quality baseline and B isolates state persistence.
+- Embedding query: frontier baseline ordinary retrieval stateful retrieval full tests no semantic capsules
+- AST query: FrontierBaselineConfiguration StatefulRetrievalConfiguration
+- Conflict policy: Do not optimize baseline context, reuse incremental proofs or route to smaller models.
+
+## SHQ-G055 Execute configuration C
+
+- Status: active
+- Parent: SHQ-G050
+- Depends on: SHQ-G053
+- Fib priority: 90
+- Track: compression-configuration
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/config-c
+- Parallel lane: config-c
+- Resource class: model-frontier
+- Token class: medium
+- Goal: Implement frontier semantic-compression configuration C using admitted capsules and ContextPack construction with normal verification and no smaller-tier routing.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/configurations/compression.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/configurations/compression.py, test/api/self_hosting/test_configuration_c.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/configurations/compression.py, test/api/self_hosting/test_configuration_c.py
+- Interfaces: SemanticCompressionConfiguration
+- Validation: python -m pytest -q test/api/self_hosting/test_configuration_c.py
+- Acceptance: C changes only context construction; model stays frontier; normal verification runs; context tokens, fallback, expansion and insufficiency are recorded; stale capsules reject.
+- Gap task: Implement the semantic-compression-only strategy and isolation tests.
+- Refinement: This arm isolates compression from routing and incremental verification savings.
+- Embedding query: configuration C semantic compression ContextPack frontier normal verification no routing
+- AST query: SemanticCompressionConfiguration ContextPacker SemanticCapsuleCompiler
+- Conflict policy: Do not enable smaller models or incremental proof reuse in C.
+
+## SHQ-G056 Execute configuration D
+
+- Status: active
+- Parent: SHQ-G050
+- Depends on: SHQ-G053
+- Fib priority: 90
+- Track: routing-configuration
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/config-d
+- Parallel lane: config-d
+- Resource class: model-mixed
+- Token class: medium
+- Goal: Implement configuration D with semantic compression, provider-neutral model routing, incremental test/proof reuse and required frontier escalation.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/configurations/routed.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/configurations/routed.py, test/api/self_hosting/test_configuration_d.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/configurations/routed.py, test/api/self_hosting/test_configuration_d.py
+- Interfaces: RoutedIncrementalConfiguration
+- Validation: python -m pytest -q test/api/self_hosting/test_configuration_d.py
+- Acceptance: D records every route and exact reused receipt; stale/uncovered/opaque impact broadens verification or escalates; missing tier cannot downgrade; no assurance sampling or governed release claim leaks from E.
+- Gap task: Implement the compression-plus-routing strategy and exact reuse guards.
+- Refinement: This arm measures direct inference savings without complete governed-system assurance.
+- Embedding query: configuration D compression routing small medium frontier escalation incremental verification reuse
+- AST query: RoutedIncrementalConfiguration ModelRoutePlanner IncrementalVerificationPlanner VerificationReceiptCache
+- Conflict policy: Reuse only exact admitted receipts and never convert unavailable verification to pass.
+
+## SHQ-G057 Execute configuration E
+
+- Status: active
+- Parent: SHQ-G050
+- Depends on: SHQ-G044, SHQ-G053
+- Fib priority: 100
+- Track: governed-configuration
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/config-e
+- Parallel lane: config-e
+- Resource class: model-mixed-proof
+- Token class: xlarge
+- Goal: Implement the complete governed configuration E with compression auditing, context sufficiency expansion, routing, incremental verification, assurance sampling, proof sealing, shadow evaluation, human escalation and signed receipts.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/configurations/governed.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/configurations/governed.py, test/api/self_hosting/test_configuration_e.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/configurations/governed.py, test/api/self_hosting/test_configuration_e.py
+- Interfaces: CompleteGovernedConfiguration
+- Validation: python -m pytest -q test/api/self_hosting/test_configuration_e.py
+- Acceptance: All admitted systems participate through executable or typed applicability receipts, including the WAL-specific VerifiedGuiOptimizer decision; critical omission, stale capsule/proof, surviving blocker, ambiguous recovery or incomplete human approval rejects; shadow samples are bounded; incremental seal verifies before acceptance; complete signed task receipt persists.
+- Gap task: Compose the full governed strategy from existing components and exercise every fail-closed boundary.
+- Refinement: The strategy contains policy wiring only and does not reimplement any prerequisite.
+- Embedding query: configuration E governed compression audit assurance sampling proof sealing shadow human signed receipt
+- AST query: CompleteGovernedConfiguration SemanticCompressionGovernor AdversarialAssuranceEngine IncrementalProofSealer
+- Conflict policy: No simulated proof, self-approval, optional lifecycle step or silent policy bypass.
+
+## SHQ-G058 Expose the required CLI and resume/status operations
+
+- Status: active
+- Parent: SHQ-G050
+- Depends on: SHQ-G044, SHQ-G054, SHQ-G055, SHQ-G056, SHQ-G057, SHQ-G062, SHQ-G064, SHQ-G065
+- Fib priority: 80
+- Track: qualification-cli
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/cli
+- Parallel lane: cli
+- Resource class: cpu-small
+- Token class: large
+- Goal: Expose corpus, benchmark, economics, pilot, qualify, verify-release and report commands as thin projections of the required APIs with safe resume and stop semantics.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/cli.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/cli.py, test/api/self_hosting/test_cli.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/cli.py, test/api/self_hosting/test_cli.py, pyproject.toml
+- Interfaces: self-hosting corpus build, self-hosting benchmark run, self-hosting benchmark resume, self-hosting qualify, self-hosting verify-release
+- Validation: python -m pytest -q test/api/self_hosting/test_cli.py
+- Acceptance: All requested commands exist; dry inspection is read-only; run/resume preserve exact bindings; stop cancels through typed control; verify-release performs current validation; nonzero exits enforce failed gates; CLI owns no duplicated business logic.
+- Gap task: Add the thin command tree and test every required command and failure exit.
+- Refinement: Existing interfaces can consume machine reports later; no GUI is added.
+- Embedding query: self hosting CLI corpus inspect benchmark plan run resume compare economics pilot qualify verify release report
+- AST query: cli corpus benchmark pilot qualify verify_release report
+- Conflict policy: Do not hide failures with continue-on-error, warning exits or simulated provider success.
+
+## SHQ-G060 Independent analysis, crash safety and qualification policy
+
+- Status: active
+- Parents: SHQ-G000, SHQ-G010
+- Depends on:
+- Fib priority: 100
+- Track: qualification-analysis
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/analysis-root
+- Parallel lane: analysis
+- Resource class: cpu-large
+- Token class: large
+- Goal: Independently compare quality, context, routing, verification, safety, economics and longitudinal behavior and map evidence to a bounded qualification level.
+- Evidence:
+- Outputs:
+- Validation: python -m pytest -q test/api/self_hosting/test_qualification_analysis.py
+- Acceptance: Noninferiority is preregistered, uncertainty is reported, crashes recover or fail safely, economics separate observation from projection and level cannot exceed evidence.
+- Refinement: Analysis, recovery, pilot and release gates remain independently testable.
+- Conflict policy: No observed/hypothetical conflation, small-sample equivalence claim or level inflation.
+
+## SHQ-G061 Consume outcome comparisons and evaluate preregistered noninferiority
+
+- Status: active
+- Parent: SHQ-G060
+- Depends on: SHQ-G036, SHQ-G054, SHQ-G055, SHQ-G056, SHQ-G057
+- Fib priority: 100
+- Track: noninferiority
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/noninferiority
+- Parallel lane: noninferiority
+- Resource class: cpu-medium
+- Token class: large
+- Goal: Consume datasets-owned `TaskComparisonReport` records across A through E and evaluate E versus A using a margin frozen before held-out access, paired estimates, confidence intervals and zero-tolerance safety gates.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/analysis/noninferiority.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/analysis/noninferiority.py, test/api/self_hosting/test_noninferiority.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/analysis/noninferiority.py, test/api/self_hosting/test_noninferiority.py
+- Interfaces: evaluate_noninferiority
+- Validation: python -m pytest -q test/api/self_hosting/test_noninferiority.py
+- Acceptance: The lower confidence bound for paired accepted-patch difference is compared with the frozen 2–5 point margin; critical regressions/security failures/stale evidence are zero-tolerance; hidden tests and reviewer outcomes are explicit; insufficient power returns inconclusive, never equivalent.
+- Gap task: Implement deterministic noninferiority aggregation over independently produced datasets comparison reports with preregistration enforcement.
+- Refinement: Default initial margin is five percentage points, but SHQ-G072 must freeze the exact value before held-out evaluation.
+- Embedding query: accepted patch paired noninferiority margin confidence interval frontier governed hidden tests regression
+- AST query: compare_task_outcomes evaluate_noninferiority NoninferiorityReport
+- Conflict policy: Do not select the margin after viewing held-out outcomes or suppress unfavorable strata.
+
+## SHQ-G062 Compute economics and the model-substitution matrix
+
+- Status: active
+- Parent: SHQ-G060
+- Depends on: SHQ-G061
+- Fib priority: 90
+- Track: economics
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/economics
+- Parallel lane: economics
+- Resource class: cpu-small
+- Token class: large
+- Goal: Compute complete observed cost per task/accepted patch and task-class substitution evidence, then separately project five deployment scenarios at four annual volumes using explicit assumptions.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/analysis/economics.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/analysis/economics.py, test/api/self_hosting/test_economics.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/analysis/economics.py, test/api/self_hosting/test_economics.py
+- Interfaces: calculate_cost_per_accepted_patch, create_model_substitution_matrix
+- Validation: python -m pytest -q test/api/self_hosting/test_economics.py
+- Acceptance: Model, verification, proof, shadow, human and failed-attempt costs are included; cached/local compute prices are explicit; API-only/local+API/enterprise/high-context/moderate-context scenarios cover 10k/100k/500k/1m tasks; projected values are labeled non-observed; matrix includes every required per-class field.
+- Gap task: Implement exact aggregation, uncertainty and projection without fabricating savings.
+- Refinement: Division by zero, missing prices and replay-only evidence produce typed insufficient-data outcomes.
+- Embedding query: economics cost accepted patch model verification proof shadow human failed attempt annual volume substitution matrix
+- AST query: calculate_cost_per_accepted_patch create_model_substitution_matrix EconomicAnalysis
+- Conflict policy: Do not exclude failed attempts or verification cost to improve the savings claim.
+
+## SHQ-G063 Implement and fixture-test all twelve crash boundaries
+
+- Status: active
+- Parent: SHQ-G060
+- Depends on: SHQ-G043, SHQ-G052, SHQ-G057
+- Fib priority: 100
+- Track: crash-recovery
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/recovery-matrix
+- Parallel lane: recovery-matrix
+- Resource class: cpu-large
+- Token class: xlarge
+- Goal: Implement deterministic fault injection at repository scan, ContextPack persistence, model invocation, patch apply, state rescan, tests, proofs, receipt persistence, proof forest, seal, root CAS and result persistence and fixture-test exact recovery semantics without claiming a live qualification report.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/faults.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/faults.py, test/api/self_hosting/test_crash_recovery.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/faults.py, test/api/self_hosting/test_crash_recovery.py
+- Interfaces: CrashRecoveryQualification, inject_stage_failure
+- Validation: python -m pytest -q test/api/self_hosting/test_crash_recovery.py
+- Acceptance: Fixtures cover every declared injection and prove recovery or typed repair; completed immutable artifacts are discovered; duplicate billing/effects are avoided where knowable; ambiguity never becomes success; partial tasks never count accepted; no fixture report is admissible as a current live qualification run.
+- Gap task: Implement deterministic stage fault injection and exhaustive recovery fixtures; defer the current-tree live matrix to SHQ-G074.
+- Refinement: Infrastructure failures may retry within bounds; benchmark task rejection is terminal evidence, not a retry trigger.
+- Embedding query: crash recovery repository scan context persistence model patch tests proof receipt forest seal CAS result
+- AST query: CrashRecoveryQualification inject_stage_failure resume_qualification_stage
+- Conflict policy: Do not kill unrelated processes, edit state manually or convert unknown outcomes into pass.
+
+## SHQ-G064 Implement a bounded disposable longitudinal pilot controller
+
+- Status: active
+- Parent: SHQ-G060
+- Depends on: SHQ-G057, SHQ-G061, SHQ-G063
+- Fib priority: 90
+- Track: longitudinal-pilot
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/pilot
+- Parallel lane: pilot
+- Resource class: cpu-large
+- Token class: xlarge
+- Goal: Implement and fixture-test a controller for at most 20–50 accepted WAL maintenance changes on a disposable integration branch; perform no live pilot in this implementation goal.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/pilot.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/pilot.py, test/api/self_hosting/test_pilot.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/pilot.py, test/api/self_hosting/test_pilot.py
+- Interfaces: run_longitudinal_pilot, start_pilot, stop_pilot, pilot_status
+- Validation: python -m pytest -q test/api/self_hosting/test_pilot.py
+- Acceptance: No protected-branch merge or production effect is possible; task/commit limit is exact; only sealed longitudinal-eligible accepted tasks enter; preconditions and rebase semantics are checked before each change; fewer than 20 composable tasks yields not-eligible; schema/circuit/key/canonicalization changes force full checkpoints; critical invariant stops; semantic/proof/cache/capsule/context/policy/chain/cost growth metrics persist; rollback verifies.
+- Gap task: Implement the bounded pilot controller, composition queue and disposable-branch safety fixtures without starting a live pilot.
+- Refinement: If initial held-out gates fail, pilot returns a terminal not-eligible report instead of blocking overall diagnosis.
+- Embedding query: longitudinal self hosting pilot disposable branch checkpoint stop rollback 20 50 changes
+- AST query: run_longitudinal_pilot LongitudinalPilotReport start_pilot stop_pilot
+- Conflict policy: Zero automatic merges to protected branches, production deployment, sensitive data or unrestricted network effects.
+
+## SHQ-G065 Determine the qualification level and project manifest inputs
+
+- Status: active
+- Parent: SHQ-G060
+- Depends on: SHQ-G044, SHQ-G061, SHQ-G062, SHQ-G063, SHQ-G064
+- Fib priority: 100
+- Track: qualification-decision
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/decision
+- Parallel lane: decision
+- Resource class: cpu-small
+- Token class: large
+- Goal: Map exact evidence to Level 0–5, cap unsupported claims, project complete decision inputs for kit-owned manifest creation and issue explicit go/no-go recommendations for research, internal, external supervised and production stages.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/qualification.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/qualification.py, test/api/self_hosting/test_qualification_decision.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/qualification.py, test/api/self_hosting/test_qualification_decision.py
+- Interfaces: determine_qualification_level, project_qualification_manifest_inputs
+- Validation: python -m pytest -q test/api/self_hosting/test_qualification_decision.py
+- Acceptance: Baseline/safety/reproducibility failures yield Level 0; small/inconclusive evidence caps at research; Levels 3–5 require every declared prerequisite; Level 4 requires independent review/reproduction/licensing/isolation/access; Level 5 cannot result from this one-package run.
+- Gap task: Implement the deterministic decision table, required artifact inventory and recommendation projection; kit remains the sole manifest creator.
+- Refinement: The decision applies only to exact target, release, tasks, configurations and policy.
+- Embedding query: qualification level decision manifest research alpha internal pilot external supervised production candidate
+- AST query: determine_qualification_level create_qualification_manifest QualificationDecision
+- Conflict policy: Never infer readiness from component implementation alone or omit blockers from the manifest.
+
+## SHQ-G066 Enforce fail-closed CI and current-release verification
+
+- Status: active
+- Parent: SHQ-G060
+- Depends on: SHQ-G058, SHQ-G065
+- Fib priority: 100
+- Track: qualification-ci
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/ci
+- Parallel lane: ci
+- Resource class: cpu-large
+- Token class: large
+- Goal: Add qualification CI and verifier gates that reject skipped/failed/currentness-incomplete evidence and never publish after partial failure.
+- Evidence: .github/workflows/self-hosting-qualification.yml, scripts/verify_self_hosting_qualification_release.py
+- Outputs: .github/workflows/self-hosting-qualification.yml, scripts/verify_self_hosting_qualification_release.py, test/api/self_hosting/test_release_ci.py
+- Predicted files: .github/workflows/self-hosting-qualification.yml, scripts/verify_self_hosting_qualification_release.py, test/api/self_hosting/test_release_ci.py
+- Interfaces: verify_qualification_release
+- Validation: python -m pytest -q test/api/self_hosting/test_release_ci.py
+- Acceptance: Required jobs fail on any gate; dependencies are immutable; no continue-on-error, ignored exit, skipped check, historical current evidence, simulation, missing proof or setup warning is accepted; incomplete artifacts prevent release publication.
+- Gap task: Implement a fail-closed workflow and current-tree release verifier with adversarial workflow tests.
+- Refinement: CI may generate a failure report but never a signed success release after partial failure.
+- Embedding query: fail closed CI qualification release verify current evidence no continue error skipped simulated proof
+- AST query: verify_qualification_release workflow release gate
+- Conflict policy: Models cannot modify qualification policy or trusted keys in benchmark worktrees.
+
+## SHQ-G068 Implement preregistration and complete metric schemas
+
+- Status: active
+- Parent: SHQ-G060
+- Depends on: SHQ-G032, SHQ-G062, SHQ-G063, SHQ-G064, SHQ-G065
+- Fib priority: 100
+- Track: preregistration-contracts
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/preregistration
+- Parallel lane: preregistration
+- Resource class: cpu-small
+- Token class: large
+- Goal: Implement canonical calibration-only policy proposals, external-freeze verification and complete aggregate metric validation without granting model workers authority to write the final preregistered policy.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/preregistration.py, ipfs_accelerate_py/agent_supervisor/self_hosting/metrics.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/preregistration.py, ipfs_accelerate_py/agent_supervisor/self_hosting/metrics.py, test/api/self_hosting/test_preregistration.py, test/api/self_hosting/test_qualification_metrics.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/preregistration.py, ipfs_accelerate_py/agent_supervisor/self_hosting/metrics.py, test/api/self_hosting/test_preregistration.py, test/api/self_hosting/test_qualification_metrics.py
+- Interfaces: prepare_qualification_policy_proposal, verify_frozen_qualification_policy, validate_aggregate_metrics
+- Validation: python -m pytest -q test/api/self_hosting/test_preregistration.py test/api/self_hosting/test_qualification_metrics.py
+- Acceptance: Proposals consume development/calibration only and contain every margin, CI, compression, routing, assurance, shadow, human, model, price, resource and seed field; held-out access is impossible; frozen-policy verification requires authenticated external completion and exact source/environment/corpus bindings; aggregate validation enumerates every required metric and rejects missing strata.
+- Gap task: Implement policy-proposal and metric-validation code while leaving the final protected policy exclusively operator controlled.
+- Refinement: A model may propose bounded values from calibration; only the external SHQ-G072 authority freezes them.
+- Embedding query: qualification preregistration proposal external freeze aggregate metrics complete schema calibration only
+- AST query: prepare_qualification_policy_proposal verify_frozen_qualification_policy validate_aggregate_metrics
+- Conflict policy: Never write the protected final policy, read held-out outcomes or redefine datasets metric semantics.
+
+## SHQ-G067 Implement the integrated release-candidate freeze
+
+- Status: active
+- Parent: SHQ-G060
+- Depends on: SHQ-G037, SHQ-G066, SHQ-G068
+- Fib priority: 100
+- Track: release-candidate-freeze
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/release-candidate-freeze
+- Parallel lane: release-candidate-freeze
+- Resource class: cpu-proof-solver
+- Token class: large
+- Goal: After every harness, corpus, storage, CLI, analysis and CI implementation lands, provide the operation that can bind a clean committed four-repository source projection, rerun current focused and WAL proof checks, and freeze the exact release-candidate environment without a self-referential manifest.
+- Evidence: ipfs_accelerate_py/agent_supervisor/self_hosting/release_candidate.py, test/api/self_hosting/test_release_candidate_freeze.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_hosting/release_candidate.py, test/api/self_hosting/test_release_candidate_freeze.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_hosting/release_candidate.py, test/api/self_hosting/test_release_candidate_freeze.py
+- Interfaces: freeze_release_candidate, ReleaseCandidateFreeze
+- Validation: python -m pytest -q test/api/self_hosting/test_release_candidate_freeze.py
+- Acceptance: Tests prove that the operation rejects dirty or mutable inputs, binds outer commit and recursive gitlinks, checks current harness/corpus/runtime/schema/store/CLI/CI versions, reruns focused prerequisite and target checks, requires unchanged WAL source or a new full checkpoint, regenerates lock/SBOM/container/toolchain/environment roots, and writes authoritative bytes only through kit ports; it cannot include its own evidence projection in the source identity.
+- Gap task: Implement and fixture-test the post-integration release-candidate freeze operation; do not run the evidence program or manufacture final freeze artifacts in this implementation task.
+- Refinement: SHQ-G071 invokes this committed implementation as its first operation, freezes the executable source before any experiment, then runs only detached worktrees from that root. Later evidence projections live on a distinct evidence branch and never redefine the qualified source commit.
+- Embedding query: integrated release candidate exact commits gitlinks harness corpus runtime current tests WAL proof environment freeze
+- AST query: freeze_release_candidate ReleaseCandidateFreeze environment manifest proof checkpoint source roots
+- Conflict policy: Do not reuse the pre-implementation environment manifest as current evidence and do not repair target or prerequisite failures here.
+
+## SHQ-G070 Execute the evidence program
+
+- Status: active
+- Parents: SHQ-G000, SHQ-G010
+- Depends on:
+- Fib priority: 100
+- Track: qualification-execution
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/evidence-program
+- Parallel lane: evidence-program
+- Resource class: model-mixed-proof
+- Token class: xlarge
+- Goal: Execute development, calibration, held-out, crash and longitudinal stages in strict order and publish only the terminal evidence permitted by policy.
+- Evidence:
+- Outputs:
+- Validation: python scripts/verify_self_hosting_qualification_release.py --check-current
+- Acceptance: Held-out remains sealed until freeze; all eligible tasks run A–E; negative outcomes persist honestly; a release is signed only if publication gates pass.
+- Refinement: Evidence execution is serial after parallel implementation converges.
+- Conflict policy: No policy tuning from held-out data, cherry-picked task removal or partial-run success claim.
+
+## SHQ-G071 Freeze the release candidate, then run development and calibration tasks
+
+- Status: active
+- Parent: SHQ-G070
+- Depends on: SHQ-G067
+- Fib priority: 90
+- Track: development-calibration
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/evidence-program
+- Parallel lane: evidence-program
+- Resource class: model-mixed-proof
+- Token class: xlarge
+- Goal: First freeze the committed executable source and environment, then execute development and calibration splits through all five arms, validate instrumentation, tune only permitted compression/routing/assurance policies and emit a non-authoritative policy proposal for operator review.
+- Evidence: artifacts/agent_supervisor/self_hosting_qualification/release_candidate_source.json, artifacts/agent_supervisor/self_hosting_qualification/release_candidate_environment.json, artifacts/agent_supervisor/self_hosting_qualification/release_candidate_proof_checkpoint.json, artifacts/agent_supervisor/self_hosting_qualification/development_results.json, artifacts/agent_supervisor/self_hosting_qualification/calibration_results.json, artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy_proposal.json
+- Outputs: artifacts/agent_supervisor/self_hosting_qualification/release_candidate_source.json, artifacts/agent_supervisor/self_hosting_qualification/release_candidate_environment.json, artifacts/agent_supervisor/self_hosting_qualification/release_candidate_proof_checkpoint.json, artifacts/agent_supervisor/self_hosting_qualification/development_results.json, artifacts/agent_supervisor/self_hosting_qualification/calibration_results.json, artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy_proposal.json
+- Predicted files: artifacts/agent_supervisor/self_hosting_qualification/release_candidate_source.json, artifacts/agent_supervisor/self_hosting_qualification/release_candidate_environment.json, artifacts/agent_supervisor/self_hosting_qualification/release_candidate_proof_checkpoint.json, artifacts/agent_supervisor/self_hosting_qualification/development_results.json, artifacts/agent_supervisor/self_hosting_qualification/calibration_results.json, artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy_proposal.json
+- Interfaces: freeze_release_candidate, benchmark run development, benchmark run calibration
+- Validation: python -m ipfs_accelerate_py.agent_supervisor.self_hosting.cli benchmark compare --split calibration
+- Acceptance: Before any task runs, a kit-persisted freeze binds a clean executable commit, recursive gitlinks, current toolchain/environment and full WAL checkpoint; every experiment uses a detached worktree at that frozen root; every eligible task has A–E receipts or explicit terminal infrastructure exclusion; replay results are labeled; instrumentation captures all required metric fields; no held-out outcome is read; the proposal is calibration-derived, non-authoritative and cannot overwrite the protected final policy.
+- Gap task: Run the development/calibration experiment and persist complete current receipts.
+- Refinement: Kit ports own authoritative immutable bytes and receipts. Listed repository artifacts are CID-verified projections on an evidence branch distinct from the frozen source; only calibration evidence may inform the next policy freeze.
+- Embedding query: development calibration A E benchmark instrumentation policy tuning no held out
+- AST query: benchmark calibration TaskExecutionReceipt
+- Conflict policy: Benchmark rejection is an outcome, not a reason to retry until accepted.
+
+## SHQ-G072 Freeze margins, policies, prices, routes and seeds
+
+- Status: active
+- Parent: SHQ-G070
+- Depends on: SHQ-G071
+- Fib priority: 100
+- Track: preregistration
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/evidence-program
+- Parallel lane: evidence-program
+- Resource class: operator-review
+- Token class: medium
+- Completion authority: external
+- External completion required: true
+- Goal: Preregister the exact accepted-patch noninferiority margin, confidence method, compression/routing/assurance/shadow/human policies, model revisions, prices, resource rates and random seeds before held-out access.
+- Evidence: artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json
+- Outputs: artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json
+- Predicted files: artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json
+- Interfaces: freeze_qualification_policy
+- Validation: python -m ipfs_accelerate_py.agent_supervisor.self_hosting.cli benchmark plan --verify-frozen
+- Acceptance: A typed external receipt proves the policy CID predates held-out access; margin is 2–5 points and exact; models/prices/seeds/resources are immutable; subsequent drift invalidates results; authenticated human approval is recorded.
+- Gap task: Operator admission only; local task receipts cannot create or complete the preregistration.
+- Refinement: This task requires controlled human approval but does not expose held-out outcomes. The operator admits policy bytes through the kit artifact port; the listed file is only a protected CID-verified evidence-branch projection.
+- Embedding query: preregister noninferiority margin freeze policy model prices seed held out
+- AST query: freeze_qualification_policy PreregisteredQualificationPolicy
+- Conflict policy: Never amend the frozen policy after held-out access; a new policy requires a new qualification run.
+
+## SHQ-G073 Run held-out configurations A through E
+
+- Status: active
+- Parents: SHQ-G070, SHQ-G072
+- Depends on: SHQ-G072
+- Fib priority: 100
+- Track: held-out-execution
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/evidence-program
+- Parallel lane: evidence-program
+- Resource class: model-mixed-proof
+- Token class: xlarge
+- Goal: Execute every eligible held-out task through A–E under the frozen plan, retaining raw immutable receipts, failures, costs, latencies, context, verification and assurance evidence.
+- Evidence: artifacts/agent_supervisor/self_hosting_qualification/held_out_results.json
+- Outputs: artifacts/agent_supervisor/self_hosting_qualification/held_out_results.json
+- Predicted files: artifacts/agent_supervisor/self_hosting_qualification/held_out_results.json
+- Interfaces: benchmark run held-out
+- Validation: python -m ipfs_accelerate_py.agent_supervisor.self_hosting.cli benchmark compare --split held-out --verify-complete
+- Acceptance: Same eligible set runs in every arm; no hidden-task omission; live versus replay is exact; cancellations/retries follow frozen policy; missing required evidence makes the run incomplete; all negative outcomes remain.
+- Gap task: Run the sealed held-out experiment without policy mutation.
+- Refinement: Kit ports own authoritative immutable bytes and receipts; the listed file is a CID-verified evidence-branch projection. Model-provider access may be required, but unavailable access produces an incomplete qualification rather than replayed success.
+- Embedding query: held out benchmark configurations A B C D E frozen complete receipts
+- AST query: benchmark held-out TaskExecutionReceipt
+- Conflict policy: Do not replace live model-quality evidence with replay or remove expensive/failed tasks.
+
+## SHQ-G074 Analyze held-out, assurance and recovery evidence
+
+- Status: active
+- Parents: SHQ-G070, SHQ-G073
+- Depends on: SHQ-G062, SHQ-G063, SHQ-G073
+- Fib priority: 100
+- Track: held-out-analysis
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/evidence-program
+- Parallel lane: evidence-program
+- Resource class: cpu-large
+- Token class: xlarge
+- Goal: Produce results by configuration and task class, noninferiority, all required metrics/economics, substitution matrix and assurance findings, and execute the live twelve-boundary crash matrix on the frozen current tree.
+- Evidence: artifacts/agent_supervisor/self_hosting_qualification/aggregate_metrics.json, artifacts/agent_supervisor/self_hosting_qualification/noninferiority_report.json, artifacts/agent_supervisor/self_hosting_qualification/economic_analysis.json, artifacts/agent_supervisor/self_hosting_qualification/model_substitution_matrix.json, artifacts/agent_supervisor/self_hosting_qualification/assurance_report.json, artifacts/agent_supervisor/self_hosting_qualification/crash_recovery_report.json
+- Outputs: artifacts/agent_supervisor/self_hosting_qualification/aggregate_metrics.json, artifacts/agent_supervisor/self_hosting_qualification/noninferiority_report.json, artifacts/agent_supervisor/self_hosting_qualification/economic_analysis.json, artifacts/agent_supervisor/self_hosting_qualification/model_substitution_matrix.json, artifacts/agent_supervisor/self_hosting_qualification/assurance_report.json, artifacts/agent_supervisor/self_hosting_qualification/crash_recovery_report.json
+- Predicted files: artifacts/agent_supervisor/self_hosting_qualification/aggregate_metrics.json, artifacts/agent_supervisor/self_hosting_qualification/noninferiority_report.json, artifacts/agent_supervisor/self_hosting_qualification/economic_analysis.json, artifacts/agent_supervisor/self_hosting_qualification/model_substitution_matrix.json, artifacts/agent_supervisor/self_hosting_qualification/assurance_report.json, artifacts/agent_supervisor/self_hosting_qualification/crash_recovery_report.json
+- Interfaces: benchmark compare, benchmark economics
+- Validation: python -m ipfs_accelerate_py.agent_supervisor.self_hosting.cli benchmark compare --split held-out --verify-all-metrics
+- Acceptance: Context/routing/quality/verification/compression/assurance/economics/performance metric families are schema-complete; CIs and task counts accompany claims; target misses are reported; the current-tree crash report covers all twelve boundaries and no fixture report substitutes for it; stale/simulated/critical omissions accepted remain zero or force failure.
+- Gap task: Analyze the immutable held-out and recovery receipts and persist complete aggregate evidence.
+- Refinement: Kit ports own authoritative immutable bytes and receipts; listed files are CID-verified evidence-branch projections. Hypothetical annual projections remain separate from observed costs.
+- Embedding query: aggregate held out metrics noninferiority economics substitution assurance crash recovery
+- AST query: AggregateQualificationMetrics NoninferiorityReport EconomicAnalysis AssuranceReport
+- Conflict policy: Do not suppress strata, outliers, failures or uncertainty to meet initial targets.
+
+## SHQ-G075 Run or truthfully decline the longitudinal pilot
+
+- Status: active
+- Parents: SHQ-G070, SHQ-G074
+- Depends on: SHQ-G064, SHQ-G074
+- Fib priority: 90
+- Track: pilot-execution
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/evidence-program
+- Parallel lane: evidence-program
+- Resource class: model-mixed-proof
+- Token class: xlarge
+- Goal: If and only if initial gates pass, execute 20–50 accepted sequential maintenance changes; otherwise emit a terminal not-eligible report with the exact failed gates.
+- Evidence: artifacts/agent_supervisor/self_hosting_qualification/longitudinal_pilot_report.json
+- Outputs: artifacts/agent_supervisor/self_hosting_qualification/longitudinal_pilot_report.json
+- Predicted files: artifacts/agent_supervisor/self_hosting_qualification/longitudinal_pilot_report.json
+- Interfaces: pilot start, pilot status, pilot stop
+- Validation: python -m ipfs_accelerate_py.agent_supervisor.self_hosting.cli pilot status --verify-terminal
+- Acceptance: Eligible pilot selects 20–50 composable tasks from the sealed longitudinal-eligible set that also passed acceptance, rechecks preconditions/rebases before each change and satisfies branch, route, count, checkpoint, review, invariant and rollback policy; fewer than 20 composable accepted tasks or any failed gate produces ineligible with no model/repository effects; neither case remains an infinite retry loop.
+- Gap task: Evaluate pilot eligibility and either execute the bounded pilot or persist a truthful not-eligible outcome.
+- Refinement: Kit ports own the authoritative pilot receipt; the listed file is a CID-verified evidence-branch projection. A negative benchmark result is valid qualification evidence and should terminate this task diagnostically.
+- Embedding query: longitudinal pilot eligibility execute not eligible terminal evidence rollback
+- AST query: LongitudinalPilotReport PilotEligibilityDecision
+- Conflict policy: Never bypass failed held-out or crash gates merely to obtain pilot data.
+
+## SHQ-G076 Emit the final report and conditionally signed release
+
+- Status: active
+- Parents: SHQ-G070, SHQ-G075
+- Depends on: SHQ-G065, SHQ-G066, SHQ-G074, SHQ-G075
+- Fib priority: 100
+- Track: final-release
+- Priority: P0
+- Bundle: agent-supervisor/self-hosting/evidence-program
+- Parallel lane: evidence-program
+- Resource class: cpu-crypto
+- Token class: xlarge
+- Goal: Emit the complete machine-readable evidence, human-readable report, qualification decision and exact go/no-go recommendations; publish a signed release only when every publication gate passes.
+- Evidence: docs/architecture/SELF_HOSTING_QUALIFICATION_REPORT.md, artifacts/agent_supervisor/self_hosting_qualification/qualification_decision.json
+- Outputs: docs/architecture/SELF_HOSTING_QUALIFICATION_REPORT.md, artifacts/agent_supervisor/self_hosting_qualification/qualification_decision.json, artifacts/agent_supervisor/self_hosting_qualification/release
+- Predicted files: docs/architecture/SELF_HOSTING_QUALIFICATION_REPORT.md, artifacts/agent_supervisor/self_hosting_qualification/qualification_decision.json, artifacts/agent_supervisor/self_hosting_qualification/release
+- Interfaces: OperatorSigningPort, self-hosting qualify, self-hosting report, self-hosting verify-release
+- Validation: python scripts/verify_self_hosting_qualification_release.py --check-current
+- Acceptance: Report contains every requested final field, actual misses and limitations; decision applies only to exact release/task/model/policy; a complete valid run may request an operator signature and publish a signed research/alpha/negative qualification release even when targets miss; the model lane never receives private key bytes and denial is not bypassed; incomplete, stale, simulated, unverified or partially failed evidence yields a diagnostic report but no published release; every published release verifies from operator-admitted public keys.
+- Gap task: Generate the terminal report and decision, then conditionally assemble/sign/verify the release without claiming beyond evidence.
+- Refinement: Kit ports own authoritative decision/release bytes; listed files are CID-verified evidence-branch projections. This capstone cannot assign Level 5; Level 4 additionally requires independent review and reproduction outside this run.
+- Embedding query: final qualification report signed release go no go research internal external production evidence
+- AST query: QualificationDecision QualificationManifest verify_qualification_release
+- Conflict policy: Do not publish incomplete artifacts, hide blockers or claim production readiness from implemented components.

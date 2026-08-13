@@ -1,0 +1,4 @@
+# Ephemeral objective-analysis caches and coordination indexes are regenerated.
+datasets/
+bundles/*.duckdb
+bundles/*.lock

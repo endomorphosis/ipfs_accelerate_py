@@ -9,6 +9,7 @@ from ipfs_datasets_py.logic.profile_g import validate_profile_g_artifact
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     build_arg_parser as build_bundle_arg_parser,
     implementation_supervisor_command,
+    plan_bundle_lanes,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     LeaseCoordinator,
@@ -461,6 +462,65 @@ def test_max_task_attempts_threads_from_bundle_to_daemon_command(tmp_path) -> No
     ).max_task_attempts == 1
 
 
+def test_bundle_supervisor_threads_implementation_protected_paths(tmp_path) -> None:
+    bundle_args = build_bundle_arg_parser().parse_args(
+        [
+            "--bundle-index-path",
+            str(tmp_path / "bundles.json"),
+            "--implementation-protected-path",
+            "docs/architecture/objectives.md",
+            "--implementation-protected-path",
+            "artifacts/trusted_keys",
+        ]
+    )
+    assert bundle_args.implementation_protected_path == [
+        "docs/architecture/objectives.md",
+        "artifacts/trusted_keys",
+    ]
+
+    supervisor_command = implementation_supervisor_command(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_dir=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        state_prefix="task",
+        task_prefix="## TASK-",
+        implement=True,
+        daemon_interval=1.0,
+        stale_seconds=2.0,
+        check_interval=3.0,
+        watchdog_startup_grace_seconds=None,
+        max_restarts=0,
+        implementation_timeout=4.0,
+        implementation_protected_paths=(
+            bundle_args.implementation_protected_path
+        ),
+    )
+    protected = [
+        supervisor_command[index + 1]
+        for index, value in enumerate(supervisor_command)
+        if value == "--implementation-protected-path"
+    ]
+    assert protected == [
+        "docs/architecture/objectives.md",
+        "artifacts/trusted_keys",
+    ]
+
+    supervisor_args = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(tmp_path / "tasks.todo.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            *(item for path in protected for item in (
+                "--implementation-protected-path",
+                path,
+            )),
+        ]
+    )
+    config = supervisor_config_from_args(supervisor_args, repo_root=tmp_path)
+    assert config.implementation_protected_paths == tuple(protected)
+
+
 def test_max_task_attempts_defaults_to_unlimited() -> None:
     assert build_bundle_arg_parser().parse_args(
         ["--bundle-index-path", "bundles.json"]
@@ -583,6 +643,70 @@ def test_default_planned_lane_is_unlimited_in_worker_and_coordinator(
         assert recovered.attempt == 6
     finally:
         task_queue.close()
+
+
+@pytest.mark.parametrize(
+    "completion_receipts",
+    [
+        {},
+        {
+            "unrelated-task-cid": {
+                "status": "succeeded",
+                "receipt_cid": "test-receipt:unrelated",
+            }
+        },
+    ],
+)
+def test_finite_planned_lane_binds_worker_queue_and_profile_g_attempt_limit(
+    tmp_path,
+    completion_receipts,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    bundle_dir = repo / "bundles"
+    bundle_dir.mkdir()
+    shard_path = bundle_dir / "runtime.todo.md"
+    shard_path.write_text(
+        """## TASK-001 Finite-attempt task
+
+- Status: todo
+""",
+        encoding="utf-8",
+    )
+    index_path = bundle_dir / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "source_todo": "docs/tasks.todo.md",
+                "bundles": {
+                    "objective/runtime": {
+                        "shard_path": "runtime.todo.md",
+                        "parallel_lane": "objective/runtime",
+                        "tasks": [{"task_id": "TASK-001"}],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    [lane] = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="TASK-",
+        max_task_attempts=3,
+        completion_receipts=completion_receipts,
+        optimize_bundles=False,
+    )
+
+    worker_flag = lane.command.index("--max-task-attempts")
+    assert lane.command[worker_flag + 1] == "3"
+    assert lane.queue_payload["max_attempts"] == 3
+    profile_g = lane.queue_payload["profile_g"]
+    assert profile_g["task"]["max_attempts"] == 3
 
 
 def test_merge_target_branch_threads_from_bundle_to_daemon_command(tmp_path) -> None:
