@@ -200,6 +200,9 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     assert by_id["SHQ-G006"].dependencies == ["SHQ-G005A"]
     assert by_id["SHQ-G007"].dependencies == ["SHQ-G006"]
     assert by_id["SHQ-G010"].dependencies == ["SHQ-G007"]
+    assert by_id["SHQ-G005A"].fields["fib_priority"] == "89"
+    assert by_id["SHQ-G006"].fields["fib_priority"] == "144"
+    assert by_id["SHQ-G007"].fields["fib_priority"] == "233"
     local_bootstrap_goal_ids = ("SHQ-G005A", "SHQ-G006", "SHQ-G007")
     assert len(
         {by_id[goal_id].fields["bundle"] for goal_id in local_bootstrap_goal_ids}

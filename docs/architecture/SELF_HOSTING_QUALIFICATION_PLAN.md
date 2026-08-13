@@ -820,7 +820,12 @@ owns only the JSON snapshot. Their bounded-v8 bundle keys prevent any task from
 inheriting stale state from retired projections. They are projected serially as
 SHQ-014, SHQ-015, and SHQ-016 in the v8 index while retaining stable goal
 identities G005A, G006, and G007. G006 begins only after the clean G005A merge;
-G007 begins only after the clean G006 merge. Prior
+G007 begins only after the clean G006 merge.
+Their Fibonacci priorities are deliberately `89`, `144`, and `233`, because
+the native objective heap assigns display IDs in ascending heap order before
+it resolves goal dependencies to newly materialized task IDs. The generated
+mapping must therefore be G005A=`SHQ-014`, G006=`SHQ-015`, and
+G007=`SHQ-016`; any other mapping is rejected before commit or launch. Prior
 attempt 1 was hard-rejected for redirecting permitted `git show` stdout to host
 `/tmp` and rereading it. Any outside-checkout redirect, tee, copy, save, cache,
 checkpoint, materialization, or read is an immediate hard rejection; stop

@@ -128,7 +128,7 @@ SHQ-G000  Bounded self-hosting qualification and truthful release decision
 - Status: active
 - Parent: SHQ-G005
 - Depends on:
-- Fib priority: 100
+- Fib priority: 89
 - Track: prerequisite-compatibility
 - Priority: P0
 - Bundle: agent-supervisor/self-hosting/verification-banner-alias-compatibility-bounded-v8
@@ -153,7 +153,7 @@ SHQ-G000  Bounded self-hosting qualification and truthful release decision
 - Status: active
 - Parent: SHQ-G005
 - Depends on: SHQ-G005A
-- Fib priority: 100
+- Fib priority: 144
 - Track: prerequisite-observation
 - Priority: P0
 - Bundle: agent-supervisor/self-hosting/prerequisite-observer-implementation-bounded-v8
@@ -179,7 +179,7 @@ SHQ-G000  Bounded self-hosting qualification and truthful release decision
 - Status: active
 - Parent: SHQ-G005
 - Depends on: SHQ-G006
-- Fib priority: 100
+- Fib priority: 233
 - Track: prerequisite-observation
 - Priority: P0
 - Bundle: agent-supervisor/self-hosting/prerequisite-observation-snapshot-bounded-v8
