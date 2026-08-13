@@ -185,7 +185,7 @@ W28 SCG-048
 
 ## SCG-005 Synthesize and test the authority consumption matrix
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
