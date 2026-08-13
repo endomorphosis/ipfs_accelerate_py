@@ -7,6 +7,7 @@ include docs/guides/TEST_PROOF_REUSE_DEPENDENCY_PROVISIONING.md
 include WEBGPU_WEBNN_MIGRATION_PLAN.md
 
 recursive-include ipfs_accelerate_py *.py
+include ipfs_accelerate_py/agent_supervisor/semantic_state/schemas/*.json
 include scripts/__init__.py
 recursive-include scripts/shared *.py
 recursive-include mcp *.py
