@@ -779,7 +779,7 @@ W28 SCG-048
 
 ## SCG-027 Compare semantic patch outcomes beyond text
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
