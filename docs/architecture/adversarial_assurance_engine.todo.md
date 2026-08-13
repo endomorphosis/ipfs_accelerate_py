@@ -281,7 +281,7 @@ W20 AAE-063
 
 ## AAE-009 Define expected-detection, execution, receipt, outcome, and equivalence models
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
