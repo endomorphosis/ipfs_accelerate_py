@@ -1,0 +1,66 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/adversarial-assurance-prerequisite-receipt@1",
+  "task_id": "AAE-006",
+  "status": "blocked",
+    "observed_at": "2026-08-13T06:57:04Z",
+  "controller": {
+    "repository": "endomorphosis/ipfs_accelerate_py",
+    "branch": "agent/adversarial-assurance-engine-v1",
+    "required_ancestor": "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda",
+    "planning_gitlinks": {
+      "ipfs_datasets_py": "fbd1ba9f70803de157622bb20e22595ef09d606f",
+      "ipfs_kit_py": "c7e5feeb24582ab68c1f5ca626366b665a82ad61",
+      "ipfs_accelerate_py/mcplusplus": "dc3164653a48d059ae9812078359daeafb451c07"
+    }
+  },
+  "semantic_compression_governor": {
+        "observed_commit": "0c834a0b5bfd0efcd8a0b9f652093f12a3eda830",
+        "observed_datasets_commit": "f45e38b0362633d18972f722e1fd1ae6492f2478",
+        "observed_completed_tasks": 22,
+    "terminal_receipt_valid": false,
+    "disposition": "live_incomplete"
+  },
+  "incremental_proof_sealer": {
+        "observed_commit": "3ea4b36059e3758190665c08fef72e0783d067f5",
+        "observed_datasets_commit": "72f9093d04b1d72e0aefe4e57e445d05705f8955",
+        "observed_kit_commit": "866ae2cd0a1a94a794ff9316a9a4f67a10245957",
+        "observed_completed_tasks": 18,
+        "observed_blocked_tasks": 2,
+    "public_full_checkpoint_api_available": false,
+    "public_delta_seal_api_available": false,
+    "terminal_receipt_valid": false,
+    "disposition": "typed_unavailable"
+  },
+  "baseline": {
+    "datasets": {
+      "passed": 152,
+      "failed": 0
+    },
+    "accelerate": {
+      "passed": 283,
+      "failed": 1,
+      "known_failure": "semantic-governor authority matrix expected datasets 1330038f but planning gitlink is fbd1ba9f"
+    },
+    "ipfs_kit_py": {
+      "passed": 196,
+      "failed": 0
+    },
+    "mcp_plus_plus": {
+      "passed": 58,
+      "failed": 0
+    }
+  },
+  "completion_requirements": [
+    "genuine SCG lifecycle completed with valid terminal receipt and dead process trees",
+    "released and pinned full-checkpoint and delta IncrementalProofSealer public APIs",
+    "fresh clean recursive repository forest whose gitlinks equal nested HEADs",
+    "fresh focused baselines at those exact revisions",
+    "operator review and canonical receipt identity"
+  ],
+    "worker_may_complete": false,
+    "runtime_and_sealing_authorized": false,
+    "observation_identity_scope": "entire blocked observation excluding observation_identity",
+    "observation_identity": "baguqeeraddfvy3yxj2srsznybr2puipctbjc2p44q5hpbhfix6kmopya6hfq",
+    "canonical_identity": null,
+  "provenance": "operator inspection; this blocked record is not release evidence"
+}

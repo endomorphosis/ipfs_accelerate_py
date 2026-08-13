@@ -230,4 +230,12 @@ state/**/*.out
 !config/semantic_compression_governor_scheduler.json
 !docs/architecture/semantic_compression_governor_inventory/*.json
 !artifacts/agent_supervisor/semantic_compression_governor/*.json
+
+# Adversarial Assurance Engine operator controls and generated runtime state.
+/data/agent_supervisor/adversarial_assurance_engine/
+!config/adversarial_assurance_engine_scheduler.json
+!config/adversarial_assurance_prerequisites.json
+!docs/architecture/adversarial_assurance_inventory/*.json
+!test/fixtures/adversarial_assurance/manifest.json
+!artifacts/agent_supervisor/adversarial_assurance/*.json
 !test/fixtures/semantic_governor/**/*.json
