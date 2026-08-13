@@ -20,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.implementation_auto_rescue i
     AutoRescueAction,
     build_inline_provider_rescue_prompt,
     derive_materialize_commands,
+    is_undeclared_helper_path,
     plan_automatic_implementation_rescue,
 )
 
@@ -263,6 +264,85 @@ def test_plan_provider_rescue_after_stage_for_residual_incomplete() -> None:
     )
     assert plan.action is AutoRescueAction.INLINE_PROVIDER_RESCUE
     assert "residual" in plan.reason or "incomplete" in plan.reason
+
+
+def test_is_undeclared_helper_path_recognizes_scratch_files() -> None:
+    expected = ("swissknife/src/services/gui-optimizer/cli.ts",)
+    assert is_undeclared_helper_path("tmp-vgo-062-write-evidence.mts", expected)
+    assert is_undeclared_helper_path("swissknife/_run_registry.py", expected)
+    assert is_undeclared_helper_path("DELETE_ME_helper.py", expected)
+    assert is_undeclared_helper_path("scripts/vgo060-selfcheck.py", expected)
+    assert not is_undeclared_helper_path(
+        "swissknife/src/services/gui-optimizer/cli.ts",
+        expected,
+    )
+    assert not is_undeclared_helper_path(
+        "swissknife/src/services/gui-optimizer/targets/agent-supervisor.ts",
+        expected,
+    )
+
+
+def test_plan_strips_helper_only_scope_denials_when_outputs_exist() -> None:
+    plan = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "reason": "scope_adjudication_failed",
+            "failure_review": {
+                "decision": "reject",
+                "reason_codes": ["scope_expansion_denied"],
+                "finding_codes": ["path_outside_scope"],
+                "denied_paths": [
+                    "tmp-vgo-062-write-evidence.mts",
+                    "swissknife/_run_selfcheck.py",
+                ],
+            },
+        },
+        expected_outputs=(
+            "swissknife/src/services/gui-optimizer/targets/agent-supervisor.ts",
+            "swissknife/test/unit/services/gui-optimizer/agent-supervisor-baseline.test.ts",
+        ),
+        expected_outputs_present_on_disk=True,
+    )
+    assert plan.action is AutoRescueAction.STRIP_DENIED_HELPERS
+    assert plan.reason == "strip_undeclared_helper_paths"
+    assert plan.denied_helper_paths == (
+        "swissknife/_run_selfcheck.py",
+        "tmp-vgo-062-write-evidence.mts",
+    )
+
+    mixed = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "failure_review": {
+                "decision": "reject",
+                "reason_codes": ["scope_expansion_denied"],
+                "finding_codes": ["path_outside_scope"],
+                "denied_paths": [
+                    "tmp-vgo-060-helper.py",
+                    "swissknife/src/unrelated/secret.ts",
+                ],
+            },
+        },
+        expected_outputs=("scripts/gui-opt",),
+        expected_outputs_present_on_disk=True,
+    )
+    assert mixed.action is AutoRescueAction.NONE
+    assert mixed.reason in {"hard_deny_or_reject", "hard_deny_reason_codes"}
+
+    after_strip = plan_automatic_implementation_rescue(
+        validation_result={
+            "passed": False,
+            "failure_review": {
+                "decision": "reject",
+                "reason_codes": ["scope_expansion_denied"],
+                "denied_paths": ["tmp-vgo-062-write-evidence.mts"],
+            },
+        },
+        expected_outputs=("scripts/gui-opt",),
+        expected_outputs_present_on_disk=True,
+        strip_helpers_used=True,
+    )
+    assert after_strip.action is AutoRescueAction.NONE
 
 
 def test_plan_refuses_hard_deny_and_exhausted_budget() -> None:

@@ -42578,6 +42578,39 @@ class PortalImplementationDaemon:
                 dirty.append(path)
         return tuple(sorted(dirty))
 
+    def _unlink_undeclared_helper_paths(
+        self,
+        workspace_path: Path,
+        helper_paths: Sequence[str],
+    ) -> tuple[str, ...]:
+        """Delete undeclared helper files inside the managed worktree only."""
+
+        from ..validation.implementation_auto_rescue import (
+            is_undeclared_helper_path,
+        )
+
+        root = Path(workspace_path).resolve()
+        removed: list[str] = []
+        for raw in helper_paths:
+            relative = str(raw or "").replace("\\", "/").lstrip("./")
+            if not relative or not is_undeclared_helper_path(relative):
+                continue
+            if not self._repo_relative_path_safe(relative):
+                continue
+            candidate = (root / relative).resolve()
+            try:
+                candidate.relative_to(root)
+            except ValueError:
+                continue
+            if not candidate.is_file():
+                continue
+            try:
+                candidate.unlink()
+            except OSError:
+                continue
+            removed.append(relative)
+        return tuple(removed)
+
     def _stage_declared_candidate_outputs(
         self,
         workspace_path: Path,
@@ -42809,6 +42842,7 @@ class PortalImplementationDaemon:
 
         stage_used = False
         materialize_used = False
+        strip_helpers_used = False
         provider_passes = 0
         steps: list[dict[str, Any]] = []
         expected = task_declared_output_paths(task)
@@ -42824,7 +42858,7 @@ class PortalImplementationDaemon:
                 # be converted into an unsealed invocation with a new prompt.
                 protected_provider_command = True
 
-        for _step in range(3):
+        for _step in range(4):
             present = self._expected_outputs_present_on_disk(
                 workspace_path,
                 task,
@@ -42849,6 +42883,7 @@ class PortalImplementationDaemon:
                 provider_rescue_passes_used=provider_passes,
                 stage_rescue_used=stage_used,
                 materialize_rescue_used=materialize_used,
+                strip_helpers_used=strip_helpers_used,
                 allow_provider_rescue=bool(
                     allow_provider_rescue
                     and command
@@ -42930,6 +42965,77 @@ class PortalImplementationDaemon:
                     result["reason"] = (
                         result.get("reason")
                         or "auto_rescue_materialize_and_stage_passed"
+                    )
+                    return result
+                continue
+
+            if plan.action is AutoRescueAction.STRIP_DENIED_HELPERS:
+                strip_helpers_used = True
+                removed_paths = self._unlink_undeclared_helper_paths(
+                    workspace_path,
+                    plan.denied_helper_paths,
+                )
+                staged_paths = self._stage_declared_candidate_outputs(
+                    workspace_path,
+                    task,
+                )
+                self._record_event(
+                    "implementation_auto_rescue_strip_denied_helpers",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "removed_paths": list(removed_paths),
+                        "staged_paths": list(staged_paths),
+                        "plan": plan.to_record(),
+                    },
+                )
+                with _open_private_implementation_log(log_path, "a") as log_fh:
+                    log_fh.write(
+                        "\n[auto-rescue] strip_denied_helpers "
+                        f"removed={list(removed_paths)} "
+                        f"staged={list(staged_paths)}\n"
+                    )
+                result.pop("failure_review", None)
+                result.pop("next_attempt_prompt_addendum", None)
+                result.pop("rescue_guidance_markdown", None)
+                revalidated = self._run_validation_with_candidate_binding(
+                    workspace_path,
+                    task,
+                    log_path,
+                    state=state,
+                    baseline_ref=baseline_ref,
+                    proposal_validation=None,
+                    replayable_consumed_proposal_ids=tuple(
+                        replayable_consumed_proposal_ids
+                    ),
+                )
+                proposal_validation = revalidated.get("proposal_validation")
+                revalidated = self._apply_implementation_failure_review(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    validation_result=revalidated,
+                    log_path=log_path,
+                    proposal_validation=proposal_validation,
+                    baseline_ref=baseline_ref,
+                    state=state,
+                )
+                revalidated = dict(revalidated)
+                revalidated["auto_rescue"] = {
+                    "steps": list(steps),
+                    "stage_used": stage_used,
+                    "materialize_used": materialize_used,
+                    "strip_helpers_used": strip_helpers_used,
+                    "provider_passes": provider_passes,
+                    "last_action": plan.action.value,
+                    "removed_paths": list(removed_paths),
+                }
+                result = revalidated
+                if result.get("passed", False):
+                    result["auto_rescue_terminal"] = True
+                    result["reason"] = (
+                        result.get("reason")
+                        or "auto_rescue_strip_denied_helpers_passed"
                     )
                     return result
                 continue
