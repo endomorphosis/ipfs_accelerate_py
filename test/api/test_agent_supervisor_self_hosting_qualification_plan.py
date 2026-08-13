@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor import goal_graph, parse_goal_heap
@@ -26,6 +27,9 @@ V2_HISTORY_PATH = (
 )
 V3_HISTORY_PATH = (
     REPO_ROOT / "docs/architecture/self_hosting_qualification.v3_history.todo.md"
+)
+V4_HISTORY_PATH = (
+    REPO_ROOT / "docs/architecture/self_hosting_qualification.v4_history.todo.md"
 )
 
 
@@ -183,11 +187,21 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     assert by_id["SHQ-G007"].dependencies == ["SHQ-G006"]
     assert by_id["SHQ-G010"].dependencies == ["SHQ-G007"]
     assert by_id["SHQ-G006"].fields["bundle"] != by_id["SHQ-G007"].fields["bundle"]
+    assert by_id["SHQ-G006"].fields["bundle"].endswith("bounded-v5")
+    assert by_id["SHQ-G007"].fields["bundle"].endswith("bounded-v5")
+    assert by_id["SHQ-G006"].fields["parallel_lane"].endswith("bounded-v5")
+    assert by_id["SHQ-G007"].fields["parallel_lane"].endswith("bounded-v5")
+    assert all(
+        command.startswith("/usr/bin/python3.12 ")
+        for goal_id in ("SHQ-G006", "SHQ-G007")
+        for command in by_id[goal_id].validation_commands
+    )
 
     active_todo = ACTIVE_TODO_PATH.read_text(encoding="utf-8")
     history = V1_HISTORY_PATH.read_text(encoding="utf-8")
     v2_history = V2_HISTORY_PATH.read_text(encoding="utf-8")
     v3_history = V3_HISTORY_PATH.read_text(encoding="utf-8")
+    v4_history = V4_HISTORY_PATH.read_text(encoding="utf-8")
     assert "## SHQ-001 " not in active_todo
     assert "## SHQ-001 " in history
     assert "- Status: blocked" in history
@@ -208,6 +222,26 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     assert "SHQ-004: never launched" in v3_history
     assert "SHQ-005: never launched" in v3_history
     assert "Neither task was submitted to coordination" in v3_history
+    assert "SHQ-006: rejected/cancelled retryable" in v4_history
+    assert "SHQ-007: never launched" in v4_history
+    assert "superseded by the bounded-v5 G006 projection" in v4_history
+    assert "superseded by the bounded-v5 G007 projection" in v4_history
+    v4_blocks = v4_history[v4_history.index("## SHQ-006 ") :]
+    assert hashlib.sha256(v4_blocks.encode("utf-8")).hexdigest() == (
+        "7c4027e329873364a3742276d5e4582d3a997826c9b1f12a3cffd04ddb783f50"
+    )
+    # This test is intentionally valid on both sides of the reviewed tracked
+    # migration. Before migration the legacy active blocks must be exact; after
+    # migration the board is title-only until v5 allocates SHQ-008/009.
+    if "## SHQ-006 " in active_todo:
+        assert active_todo[active_todo.index("## SHQ-006 ") :] == v4_blocks
+    else:
+        assert active_todo.strip() == "# Objective Todo" or (
+            "## SHQ-008 " in active_todo
+            and "## SHQ-009 " in active_todo
+            and "## SHQ-006 " not in active_todo
+            and "## SHQ-007 " not in active_todo
+        )
 
     datasets_goal_ids = {
         "SHQ-G032",
@@ -242,3 +276,49 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
         for goal_id in kit_goal_ids
         for output in by_id[goal_id].predicted_files
     )
+
+
+def test_v5_observer_contract_reuses_authorities_and_fails_closed() -> None:
+    source = OBJECTIVE_PATH.read_text(encoding="utf-8")
+    plan = PLAN_PATH.read_text(encoding="utf-8")
+    normalized = " ".join(source.split())
+
+    assert "PrerequisiteTestReceipt@1" not in source
+    for authority in (
+        "verification.contracts.VerificationIdentityCompiler",
+        "verification.process_runner.VerificationProcessRunner",
+        "verification.process_runner.VerificationCommand",
+        "verification.contracts.TestReceipt@1",
+        "verification.contracts.DirectExecutionObservation@1",
+        "verification.receipt_cache.VerificationReceiptCache",
+    ):
+        assert authority in source
+    for invariant in (
+        "exact non-empty ordered list of ten unique requested systems",
+        "absolute root or `..` component",
+        "existing parent and symlink",
+        "exact module-level definition or assignment",
+        "exact package export",
+        "trusted in-process construction",
+        "injected phase report",
+        "present real run result",
+        "stdout/stderr CID",
+        "outer/tree/gitlink/submodule/tracked-content source identity",
+        "canonical repository-relative values",
+        "final whole-snapshot two-phase revalidation counterexamples",
+        "same-directory exclusive temporary file",
+        "No incomplete, stale, partially validated, or source-raced artifact",
+    ):
+        assert invariant in normalized
+
+    assert 'SHQ_PROJECTION="$SHQ_DATA/projections/v5"' in plan
+    assert "self_hosting_qualification.v4_history.todo.md" in plan
+    assert "must allocate SHQ-008 and SHQ-009" in plan
+    assert "leave SHQ_ACTIVE_TODO title-only" in plan
+    assert "SHQ_PYTHON=/usr/bin/python3.12" in plan
+    assert "self-hosting-qualification-v5" in plan
+    assert 'test ! -e "$SHQ_RUN"' in plan
+    assert '--provider-capacity-path "$SHQ_CAPACITY_PATH"' in plan
+    assert '--state-root "$SHQ_RUN/state"' in plan
+    assert '--coordination-path "$SHQ_RUN/state/coordination.duckdb"' in plan
+    assert "bounded-v4/state" not in plan
