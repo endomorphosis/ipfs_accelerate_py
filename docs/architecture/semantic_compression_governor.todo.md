@@ -644,7 +644,7 @@ W28 SCG-048
 
 ## SCG-022 Prove store corruption, interruption, concurrency, privacy, and recovery
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
