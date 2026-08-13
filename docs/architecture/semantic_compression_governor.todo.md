@@ -428,7 +428,7 @@ W28 SCG-048
 
 ## SCG-014 Diagnose and rank omission versus reasoning hypotheses
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
