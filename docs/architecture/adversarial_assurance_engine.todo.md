@@ -552,7 +552,7 @@ W20 AAE-063
 
 ## AAE-019 Implement state-machine, distributed-system, storage, and durability operators
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
