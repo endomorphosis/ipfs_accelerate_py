@@ -795,7 +795,7 @@ W20 AAE-063
 
 ## AAE-028 Compare predicted and observed detectors and classify assurance gaps
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
