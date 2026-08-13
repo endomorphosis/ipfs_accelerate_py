@@ -229,7 +229,7 @@ Global invariants for every task:
 
 ## IPS-006 Implement the closed versioned ProofUnit schema
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
