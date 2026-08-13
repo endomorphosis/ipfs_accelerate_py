@@ -633,7 +633,7 @@ W20 AAE-063
 
 ## AAE-022 Implement deterministic bounded semantic mutation generation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
