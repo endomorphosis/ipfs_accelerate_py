@@ -260,7 +260,7 @@ Global invariants for every task:
 
 ## IPS-007 Implement deterministic repository, source, symbol, test, property, and artifact identities
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
