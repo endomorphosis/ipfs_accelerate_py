@@ -353,7 +353,7 @@ Global invariants for every task:
 
 ## IPS-010 Implement canonical proof statements and public/private input declarations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
