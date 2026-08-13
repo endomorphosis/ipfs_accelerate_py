@@ -1725,6 +1725,8 @@ def _validate_taskboard_status_transition(
             continue
         if _is_operational_residual_status_commit(parent, commit):
             continue
+        if _is_operational_residual_refresh_commit(parent, commit):
+            continue
         if _is_operator_inventory_reopen_commit(parent, commit):
             continue
         _validate_taskboard_status_commit(parent, commit, errors)
@@ -2780,6 +2782,8 @@ def _task_completion_in_history(
             continue
         if _is_operational_residual_status_commit(parents[0], revision):
             continue
+        if _is_operational_residual_refresh_commit(parents[0], revision):
+            continue
         if _is_operator_inventory_reopen_commit(parents[0], revision):
             continue
         probe: list[str] = []
@@ -2912,6 +2916,8 @@ def _reject_side_branch_taskboard_commits(
         if _is_operational_residual_board_appendix(parents[0], commit):
             continue
         if _is_operational_residual_status_commit(parents[0], commit):
+            continue
+        if _is_operational_residual_refresh_commit(parents[0], commit):
             continue
         if _is_operator_inventory_reopen_commit(parents[0], commit):
             continue
