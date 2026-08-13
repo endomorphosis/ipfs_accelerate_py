@@ -1184,7 +1184,7 @@ W28 SCG-048
 
 ## SCG-042 Prove dynamic, prompt-injection, selected/full, proof, and model-capability cases
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
