@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -653,6 +654,55 @@ def test_control_transition_admits_sibling_inventory_second_parent(
     assert candidate in set(
         _git(root, "rev-list", f"{control_captured}..{completion}").splitlines()
     )
+
+
+def test_control_transition_admits_residual_refresh_and_control_plane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    taskboard = "docs/architecture/incremental_proof_sealer.todo.md"
+    root = tmp_path / "post-capture-unstuck"
+    captured, _ = _init_repository(
+        root,
+        {
+            taskboard: _taskboard_text_with_inventory_todos(),
+            "source.py": "captured\n",
+        },
+    )
+    text = (root / taskboard).read_text(encoding="utf-8")
+    residual_id = None
+    for match in reversed(list(re.finditer(r"^## (IPS-\d{3}) ", text, re.M))):
+        task_id = match.group(1)
+        if int(task_id.split("-")[1]) >= 57:
+            residual_id = task_id
+            break
+    assert residual_id is not None
+    start = text.index(f"## {residual_id} ")
+    end = text.find("\n## ", start + 1)
+    if end < 0:
+        end = len(text)
+    block = text[start:end]
+    refreshed = block.replace("Fingerprint: ", "Fingerprint: refreshed-", 1)
+    if refreshed == block:
+        refreshed = block + "\n- Fingerprint: refreshed-test\n"
+    (root / taskboard).write_text(text[:start] + refreshed + text[end:], encoding="utf-8")
+    refresh, _ = _commit(root, "Agent: record reconciliation guardrail outputs")
+    daemon = root / "ipfs_accelerate_py" / "agent_supervisor" / "todo_daemon"
+    daemon.mkdir(parents=True)
+    (daemon / "implementation_daemon.py").write_text("# unstuck\n", encoding="utf-8")
+    control, _ = _commit(root, "fix(ips): auto-unstuck inventory lanes")
+    monkeypatch.setattr(gate, "REPO_ROOT", root)
+    assert gate._is_operational_residual_refresh_commit(captured, refresh) is True
+    assert gate._is_supervisor_control_plane_commit(refresh, control) is True
+    errors: list[str] = []
+    gate._validate_accelerate_control_transition(
+        task_id="IPS-001",
+        captured_revision=captured,
+        current_revision=control,
+        configured_receipts={},
+        errors=errors,
+    )
+    assert errors == [], errors
 
 
 def test_control_transition_skips_dead_competing_nested_inventory_tip(

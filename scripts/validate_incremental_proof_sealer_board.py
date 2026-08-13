@@ -1066,6 +1066,7 @@ def _is_explicit_irrelevant_ignored_root(repository: str, relative: str) -> bool
         "data/agent_supervisor",
         f"{BASELINE_RECEIPT_ROOT}/work",
         RELEASE_WORK_ROOT,
+        ".agent_git",
     }:
         return True
     return repository == "datasets" and relative == "workspace/test-logs"
@@ -2101,6 +2102,121 @@ def _is_operational_residual_status_commit(
     return True
 
 
+SUPERVISOR_CONTROL_PLANE_PATH_PREFIXES = (
+    "ipfs_accelerate_py/agent_supervisor/",
+)
+SUPERVISOR_CONTROL_PLANE_EXACT_PATHS = frozenset(
+    {
+        "scripts/validate_incremental_proof_sealer_board.py",
+        "test/api/test_implementation_daemon_stale_quarantined_merge.py",
+        "test/api/test_incremental_proof_sealer_inventory_gate.py",
+    }
+)
+
+
+def _is_operational_residual_refresh_commit(
+    parent_revision: str,
+    current_revision: str,
+) -> bool:
+    """True when a board commit only refreshes residual appendix task bodies.
+
+    Guardrail residuals rewrite fingerprint, discovery, title, and status
+    without touching sealed IPS-000..056 blocks. Those refreshes are not
+    Implementation Daemon status envelopes and must not fail inventory
+    check-artifact after capture.
+    """
+
+    relative = "docs/architecture/incremental_proof_sealer.todo.md"
+    parents = _commit_parent_tokens(REPO_ROOT, current_revision)
+    if len(parents) != 1 or parents[0] != parent_revision:
+        return False
+    if _commit_changed_paths(REPO_ROOT, parent_revision, current_revision) != {
+        relative
+    }:
+        return False
+    before = _git("show", f"{parent_revision}:{relative}", cwd=REPO_ROOT)
+    after = _git("show", f"{current_revision}:{relative}", cwd=REPO_ROOT)
+    if before.returncode != 0 or after.returncode != 0:
+        return False
+    before_text, after_text = before.stdout, after.stdout
+    before_order = re.findall(r"^## (IPS-\d{3})\s+", before_text, re.MULTILINE)
+    after_order = re.findall(r"^## (IPS-\d{3})\s+", after_text, re.MULTILINE)
+    sealed = list(SEALED_TASK_IDS)
+    if (
+        before_order[: len(sealed)] != sealed
+        or after_order[: len(sealed)] != sealed
+    ):
+        return False
+    if before_text == after_text:
+        return False
+    for task_id in SEALED_TASK_IDS:
+        b_start = before_text.find(f"## {task_id} ")
+        a_start = after_text.find(f"## {task_id} ")
+        if b_start < 0 or a_start < 0:
+            return False
+        b_end = before_text.find("\n## ", b_start + 1)
+        a_end = after_text.find("\n## ", a_start + 1)
+        if b_end < 0:
+            b_end = len(before_text)
+        if a_end < 0:
+            a_end = len(after_text)
+        if before_text[b_start:b_end] != after_text[a_start:a_end]:
+            return False
+    residual_ids = [task_id for task_id in after_order if task_id not in set(SEALED_TASK_IDS)]
+    if not residual_ids:
+        return False
+    changed_residual = False
+    for task_id in residual_ids:
+        a_start = after_text.find(f"## {task_id} ")
+        if a_start < 0:
+            return False
+        a_end = after_text.find("\n## ", a_start + 1)
+        if a_end < 0:
+            a_end = len(after_text)
+        a_block = after_text[a_start:a_end]
+        if not _residual_block_is_admitted(a_block):
+            return False
+        b_start = before_text.find(f"## {task_id} ")
+        if b_start < 0:
+            changed_residual = True
+            continue
+        b_end = before_text.find("\n## ", b_start + 1)
+        if b_end < 0:
+            b_end = len(before_text)
+        if before_text[b_start:b_end] != a_block:
+            changed_residual = True
+    return changed_residual
+
+
+def _is_supervisor_control_plane_commit(
+    parent_revision: str,
+    current_revision: str,
+) -> bool:
+    """True when a commit only touches supervisor unstuck/control-plane code.
+
+    These commits do not change inventory outputs, operator receipts, or the
+    scheduler pin. Inventory check-artifact must keep working after the
+    supervisor repairs its own merge/attempt latches.
+    """
+
+    parents = _commit_parent_tokens(REPO_ROOT, current_revision)
+    if len(parents) != 1 or parents[0] != parent_revision:
+        return False
+    changed = _commit_changed_paths(REPO_ROOT, parent_revision, current_revision)
+    if not changed:
+        return False
+    for path in changed:
+        if path in SUPERVISOR_CONTROL_PLANE_EXACT_PATHS:
+            continue
+        if any(
+            path.startswith(prefix)
+            for prefix in SUPERVISOR_CONTROL_PLANE_PATH_PREFIXES
+        ):
+            continue
+        return False
+    return True
+
+
 def _is_inventory_output_only_commit(
     repository: Path,
     commit: str,
@@ -2439,9 +2555,13 @@ def _validate_accelerate_control_transition(
                 continue
             if _is_operational_residual_status_commit(first_parent, commit):
                 continue
+            if _is_operational_residual_refresh_commit(first_parent, commit):
+                continue
             if _is_operator_inventory_reopen_commit(first_parent, commit):
                 continue
             _validate_taskboard_status_commit(first_parent, commit, errors)
+            continue
+        if _is_supervisor_control_plane_commit(first_parent, commit):
             continue
         if len(changed_paths) == 1 and changed_paths <= nested_paths:
             submodule = next(iter(changed_paths))
