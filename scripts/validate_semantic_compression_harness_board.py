@@ -26,6 +26,16 @@ TODO_PATH = REPO_ROOT / "docs/architecture/semantic_compression_harness.todo.md"
 SCHEDULER_PATH = (
     REPO_ROOT / "config/agent_supervisor_semantic_compression_harness_scheduler.json"
 )
+SEAL_PATH = REPO_ROOT / "config/semantic_state_dependencies.seal.json"
+OPS_LAUNCHER = (
+    REPO_ROOT / "scripts/ops/agent_supervisor/semantic_compression_harness_scheduler.py"
+)
+SEALED_PINS = {
+    "kit": "df2f9cc092456329de9724c45a50c54b410875d1",
+    "datasets": "1330038f626ef92993f03d46f21e1a57719e9c25",
+    "accelerate": "271e331af802f37d759c000666282631a99f7aab",
+    "mcp": "dc3164653a48d059ae9812078359daeafb451c07",
+}
 BOARD_NAMESPACE = "semantic-compression-harness-v1"
 TASK_PREFIX = "## SCH-"
 TASK_IDS = tuple(f"SCH-{index:03d}" for index in range(19))
@@ -166,6 +176,36 @@ def validate_board() -> list[str]:
     if not isinstance(payload, dict):
         return ["scheduler root must be an object"]
     errors.extend(validate_scheduler_document(payload))
+    if not OPS_LAUNCHER.is_file():
+        errors.append("omitted SCH supervisor launcher is missing")
+    try:
+        seal = json.loads(SEAL_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        errors.append(f"dependency seal unreadable: {exc}")
+        return errors
+    authorities = {
+        str(item.get("role")): str(item.get("commit"))
+        for item in seal.get("authorities", [])
+        if isinstance(item, dict)
+    }
+    if authorities.get("kit_state_roots") != SEALED_PINS["kit"]:
+        errors.append("scheduler/seal kit pin drift")
+    if authorities.get("semantic_state_contracts") != SEALED_PINS["datasets"]:
+        errors.append("scheduler/seal datasets pin drift")
+    if authorities.get("accelerate_harness") != SEALED_PINS["accelerate"]:
+        errors.append("scheduler/seal accelerate pin drift")
+    binding = payload.get("source_binding")
+    if isinstance(binding, dict):
+        if binding.get("ipfs_kit_planning_revision") != authorities.get("kit_state_roots"):
+            errors.append("source_binding kit pin does not match SCH-000 seal")
+        if binding.get("ipfs_datasets_planning_revision") != authorities.get(
+            "semantic_state_contracts"
+        ):
+            errors.append("source_binding datasets pin does not match SCH-000 seal")
+        if binding.get("accelerator_required_ancestor") != authorities.get(
+            "accelerate_harness"
+        ):
+            errors.append("source_binding accelerate pin does not match SCH-000 seal")
     return errors
 
 

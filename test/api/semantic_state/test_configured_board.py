@@ -17,6 +17,9 @@ CONFIG_PATH = (
 TODO_PATH = REPO_ROOT / "docs/architecture/semantic_compression_harness.todo.md"
 VALIDATOR = REPO_ROOT / "scripts/validate_semantic_compression_harness_board.py"
 OPS_ENTRY = REPO_ROOT / "scripts/ops/agent_supervisor/configured_board_scheduler.py"
+SCH_LAUNCHER = (
+    REPO_ROOT / "scripts/ops/agent_supervisor/semantic_compression_harness_scheduler.py"
+)
 
 
 def test_supervisor_parses_completed_sch_taskboard() -> None:
@@ -49,6 +52,13 @@ def test_scheduler_document_is_configured_board_schema() -> None:
         in payload["protected_paths"]
     )
     assert OPS_ENTRY.is_file()
+    assert SCH_LAUNCHER.is_file()
+    assert payload["source_binding"]["ipfs_kit_planning_revision"] == (
+        "df2f9cc092456329de9724c45a50c54b410875d1"
+    )
+    assert payload["source_binding"]["accelerator_required_ancestor"] == (
+        "271e331af802f37d759c000666282631a99f7aab"
+    )
 
 
 def test_board_validator_accepts_completed_supervisor_board() -> None:
@@ -63,3 +73,29 @@ def test_board_validator_accepts_completed_supervisor_board() -> None:
     payload = json.loads(completed.stdout)
     assert payload["valid"] is True
     assert payload["tasks"] == 19
+
+
+def test_sch_supervisor_launcher_preflight_and_dry_run() -> None:
+    preflight = subprocess.run(
+        ["python3.12", str(SCH_LAUNCHER), "preflight"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert preflight.returncode == 0, preflight.stderr
+    admitted = json.loads(preflight.stdout)
+    assert admitted["valid"] is True
+    assert admitted["terminal_task_id"] == "SCH-018"
+    dry = subprocess.run(
+        ["python3.12", str(SCH_LAUNCHER), "launch", "--dry-run", "--implement"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert dry.returncode == 0, dry.stderr
+    plan = json.loads(dry.stdout)
+    assert "implementation_supervisor_entry.py" in " ".join(plan["argv"])
+    assert "--task-prefix" in plan["argv"]
+    assert "## SCH-" in plan["argv"]

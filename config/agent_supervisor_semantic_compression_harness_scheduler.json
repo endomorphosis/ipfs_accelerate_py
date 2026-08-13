@@ -9,11 +9,11 @@
   "board_namespace": "semantic-compression-harness-v1",
   "merge_target_branch": "main",
   "source_binding": {
-    "accelerator_required_ancestor": "dfd92b554e662d4312411f2e8e63a52368806f2a",
+    "accelerator_required_ancestor": "271e331af802f37d759c000666282631a99f7aab",
     "accelerator_required_branch": "main",
     "bootstrap_task_source": "legacy-markdown",
     "ipfs_kit_submodule_path": "ipfs_kit_py",
-    "ipfs_kit_planning_revision": "05ba9375923cd5fb52e2c9c18b98b530d57d077f",
+    "ipfs_kit_planning_revision": "df2f9cc092456329de9724c45a50c54b410875d1",
     "ipfs_datasets_submodule_path": "ipfs_datasets_py",
     "ipfs_datasets_planning_revision": "1330038f626ef92993f03d46f21e1a57719e9c25",
     "require_initialized_gitlinks": true,
@@ -82,6 +82,7 @@
     "config/agent_supervisor_semantic_compression_harness_scheduler.json",
     "scripts/validate_semantic_state_dependencies.py",
     "scripts/validate_semantic_compression_harness_board.py",
+    "scripts/ops/agent_supervisor/semantic_compression_harness_scheduler.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py"
   ],
   "runtime_paths": {
