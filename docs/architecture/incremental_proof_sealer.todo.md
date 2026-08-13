@@ -446,7 +446,7 @@ Global invariants for every task:
 
 ## IPS-013 Implement the reason-labeled ProofDependencyGraph
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
