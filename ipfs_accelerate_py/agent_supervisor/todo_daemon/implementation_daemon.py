@@ -2437,7 +2437,7 @@ STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION = (
     "ipfs_accelerate_py.agent_supervisor.ordinary-stale-proposal-replay-rearm@1"
 )
 VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION = (
-    "ipfs_accelerate_py.agent_supervisor.validation-obsolescence-rearm@1"
+    "ipfs_accelerate_py.agent_supervisor.validation-obsolescence-rearm@2"
 )
 RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS = (
     "todo_daemon/implementation_daemon.py",
@@ -10331,8 +10331,16 @@ class PortalImplementationDaemon:
         self,
         task: PortalTask,
     ) -> bool:
-        """True when durable diagnostics show the last failure was validation."""
+        """True when durable diagnostics show the last failure can be retried.
 
+        Inventory and ordinary tasks often burn the attempt budget on proposal
+        gates or artifact validation.  Those are still supervisor-recoverable
+        once the recovery revision advances; do not require the narrower
+        ``validation_command_failed`` token.
+        """
+
+        if self._latest_implementation_failure_is_rearmable(task):
+            return True
         logs_dir = Path(self.state_path).parent / "implementation_logs"
         task_slug = str(task.task_id or "").strip().lower()
         if not task_slug or not logs_dir.is_dir():
@@ -10350,24 +10358,87 @@ class PortalImplementationDaemon:
             failure = payload.get("failure")
             if not isinstance(failure, Mapping):
                 continue
-            review = failure.get("failure_review")
-            if not isinstance(review, Mapping):
-                continue
-            reasons = review.get("reasons") or []
-            if isinstance(reasons, (list, tuple)) and any(
-                "validation" in str(item).casefold() for item in reasons
-            ):
-                return True
-            addendum = str(review.get("next_attempt_prompt_addendum") or "")
-            if "validation_command_failed" in addendum:
-                return True
-            failed_commands = review.get("failed_commands") or []
-            if isinstance(failed_commands, (list, tuple)) and any(
-                "validate_" in str(item) or "--check-artifact" in str(item)
-                for item in failed_commands
-            ):
+            if self._failure_payload_is_rearmable(failure):
                 return True
         return False
+
+    @staticmethod
+    def _failure_payload_is_rearmable(failure: Mapping[str, Any]) -> bool:
+        review = failure.get("failure_review")
+        review = review if isinstance(review, Mapping) else {}
+        reason_tokens = " ".join(
+            [
+                str(item)
+                for item in (
+                    *(review.get("reasons") or ()),
+                    *(review.get("reason_codes") or ()),
+                    review.get("reason") or "",
+                    failure.get("reason") or "",
+                )
+                if item
+            ]
+        ).casefold()
+        if any(
+            token in reason_tokens
+            for token in (
+                "validation",
+                "proposal_gate",
+                "proposal_validation",
+            )
+        ):
+            return True
+        addendum = str(
+            review.get("next_attempt_prompt_addendum")
+            or failure.get("next_attempt_prompt_addendum")
+            or ""
+        )
+        if "validation_command_failed" in addendum or "proposal_gate_failed" in addendum:
+            return True
+        failed_commands = review.get("failed_commands") or []
+        if isinstance(failed_commands, (list, tuple)) and any(
+            "validate_" in str(item) or "--check-artifact" in str(item)
+            for item in failed_commands
+        ):
+            return True
+        nested_validation = failure.get("validation")
+        if isinstance(nested_validation, Mapping) and nested_validation.get("passed") is False:
+            return True
+        try:
+            returncode = int(failure.get("returncode") or 0)
+        except (TypeError, ValueError):
+            returncode = 0
+        return returncode != 0
+
+    def _latest_implementation_failure_is_rearmable(self, task: PortalTask) -> bool:
+        latest = self._latest_implementation_finished_by_task().get(
+            str(task.task_id or "")
+        )
+        if not isinstance(latest, Mapping):
+            return False
+        merge_result = latest.get("merge_result") or {}
+        if isinstance(merge_result, Mapping) and (
+            merge_result.get("merged") or merge_result.get("already_merged")
+        ):
+            return False
+        validation = latest.get("validation_result") or {}
+        if isinstance(validation, Mapping):
+            reason = str(validation.get("reason") or "").casefold()
+            if validation.get("attempted") and validation.get("passed") is False:
+                return True
+            if any(
+                token in reason
+                for token in (
+                    "validation",
+                    "proposal_gate",
+                    "proposal_validation",
+                )
+            ):
+                return True
+        try:
+            returncode = int(latest.get("returncode") or 0)
+        except (TypeError, ValueError):
+            returncode = 0
+        return returncode != 0
 
     def _rearm_attempt_limited_obsoleted_validation_tasks(
         self,
@@ -14745,14 +14816,23 @@ class PortalImplementationDaemon:
         selection_scope = self._selection_scope(selectable_tasks, resolved_statuses, strategy)
         if selected is None and attempt_limit_idle_reason:
             selection_scope["selection_idle_reason"] = attempt_limit_idle_reason
-        elif selected is None and any(
-            resolved_statuses.get(task.task_id) == "ready"
-            and task.task_id in resource_reserved_task_ids
-            for task in execution_tasks
-        ):
-            selection_scope["selection_idle_reason"] = (
-                "all_selectable_ready_tasks_deferred_by_resource_claim"
-            )
+        elif selected is None:
+            shard_ready = [
+                task
+                for task in execution_tasks
+                if (
+                    resolved_statuses.get(task.task_id) == "ready"
+                    and self._task_belongs_to_shard(task.task_id)
+                )
+            ]
+            if shard_ready and all(
+                task.task_id in resource_reserved_task_ids
+                or task.task_id in active_task_claims
+                for task in shard_ready
+            ):
+                selection_scope["selection_idle_reason"] = (
+                    "all_selectable_ready_tasks_deferred_by_resource_claim"
+                )
         state = PortalTaskState.load(self.state_path)
         state.heartbeat_at = previous.heartbeat_at
         if newly_completed or not state.last_progress_at:
@@ -51091,6 +51171,36 @@ class PortalImplementationDaemon:
             str(latest.get("implementation_commit") or ""),
         )
 
+    def _queued_merge_candidates(self) -> list[dict[str, Any]]:
+        """Return queued implementation_finished rows, last write wins per request."""
+
+        by_request: dict[str, dict[str, Any]] = {}
+        fallback: list[dict[str, Any]] = []
+        for event in self._iter_events():
+            if str(event.get("type") or "") != "implementation_finished":
+                continue
+            merge_result = event.get("merge_result") or {}
+            if not isinstance(merge_result, dict) or not merge_result.get("queued"):
+                continue
+            implementation_commit = str(event.get("implementation_commit") or "")
+            task_id = str(event.get("task_id") or "")
+            if not implementation_commit or not task_id:
+                continue
+            request_id = str(merge_result.get("request_id") or "")
+            payload = {
+                "task_id": task_id,
+                "attempt": int(event.get("attempt") or 0),
+                "branch": str(event.get("branch") or merge_result.get("branch") or ""),
+                "implementation_commit": implementation_commit,
+                "request_id": request_id,
+                "merge_result": merge_result,
+            }
+            if request_id:
+                by_request[request_id] = payload
+            else:
+                fallback.append(payload)
+        return [*by_request.values(), *fallback]
+
     def _task_has_blocking_pending_merge(self, task: PortalTask) -> bool:
         """True when the shared queue still owns a live, unresolved merge."""
 
@@ -51102,12 +51212,39 @@ class PortalImplementationDaemon:
             or has_pending(task.task_id)
         ):
             return False
-        latest = self._latest_implementation_finished_by_task().get(task.task_id) or {}
-        implementation_commit = str(latest.get("implementation_commit") or "")
-        if self._implementation_commit_was_reconciled(
-            task.task_id,
-            implementation_commit,
-        ):
+        queued_commits = {
+            str(item.get("implementation_commit") or "")
+            for item in self._queued_merge_candidates()
+            if str(item.get("task_id") or "") == task.task_id
+            and str(item.get("implementation_commit") or "")
+        }
+        if not queued_commits:
+            latest = self._latest_implementation_finished_by_task().get(task.task_id) or {}
+            implementation_commit = str(latest.get("implementation_commit") or "")
+            if implementation_commit and self._implementation_commit_was_reconciled(
+                task.task_id,
+                implementation_commit,
+            ):
+                return False
+            return True
+        return any(
+            not self._implementation_commit_was_reconciled(task.task_id, commit)
+            for commit in queued_commits
+        )
+
+    def _cancel_reconciled_merge_request(
+        self,
+        request_id: str,
+        request_status: str,
+    ) -> bool:
+        if not request_id or request_status != "pending":
+            return False
+        cancel = getattr(self.merge_queue, "cancel", None)
+        if not callable(cancel):
+            return False
+        try:
+            cancel(request_id, reason="stale_quarantined_merge")
+        except Exception:
             return False
         return True
 
@@ -51117,28 +51254,40 @@ class PortalImplementationDaemon:
         A quarantined or still-active inventory merge whose commit is off the
         target first-parent history, or that fails the published artifact gate
         after a recapture epoch, must not latch the source task as blocked.
+        Leftover pending rows for already-reconciled commits are cancelled so
+        they cannot keep ``has_pending_for_task`` true after a later failed
+        implementation.
         """
 
         if not hasattr(self.merge_queue, "get"):
             return []
         results: list[dict[str, Any]] = []
         target_branch = self._main_branch_name()
-        for task_id, event in self._latest_implementation_finished_by_task().items():
-            merge_result = event.get("merge_result") or {}
-            if not isinstance(merge_result, dict) or not merge_result.get("queued"):
-                continue
+        for event in self._queued_merge_candidates():
+            task_id = str(event.get("task_id") or "")
             implementation_commit = str(event.get("implementation_commit") or "")
-            if not implementation_commit:
-                continue
+            merge_result = event.get("merge_result") or {}
+            request_id = str(event.get("request_id") or "")
+            request = self.merge_queue.get(request_id) if request_id else None
+            request_status = str(getattr(request, "status", "") or "")
+            failure_reason = str(getattr(request, "failure_reason", "") or "")
             if self._implementation_commit_was_reconciled(
                 task_id,
                 implementation_commit,
             ):
+                if self._cancel_reconciled_merge_request(request_id, request_status):
+                    results.append(
+                        {
+                            "task_id": task_id,
+                            "implementation_commit": implementation_commit,
+                            "request_id": request_id,
+                            "request_status": "cancelled",
+                            "resolved": True,
+                            "reason": "stale_quarantined_merge",
+                            "cancelled_reconciled_pending": True,
+                        }
+                    )
                 continue
-            request_id = str(merge_result.get("request_id") or "")
-            request = self.merge_queue.get(request_id) if request_id else None
-            request_status = str(getattr(request, "status", "") or "")
-            failure_reason = str(getattr(request, "failure_reason", "") or "")
             if request_status not in {"quarantined", "pending", "processing"}:
                 continue
             not_ancestor = not self._git_ref_is_ancestor(

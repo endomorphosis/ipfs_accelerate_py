@@ -97,7 +97,16 @@ def test_implementation_daemon_releases_stale_quarantined_inventory_merge(tmp_pa
             )()
 
     daemon.merge_queue = _Queue()
-    daemon._latest_implementation_finished_by_task = lambda: finished  # type: ignore[method-assign]
+    daemon._queued_merge_candidates = lambda: [  # type: ignore[method-assign]
+        {
+            "task_id": "IPS-003",
+            "attempt": 3,
+            "branch": "implementation/ips-003-stale",
+            "implementation_commit": "1d13a5582e167a0a77844ec66b32941a94aecbbf",
+            "request_id": "req-ips-003",
+            "merge_result": finished["IPS-003"]["merge_result"],
+        }
+    ]
     daemon._implementation_commit_was_reconciled = (  # type: ignore[method-assign]
         lambda task_id, commit: False
     )
@@ -152,7 +161,16 @@ def test_release_skips_ancestor_inventory_merge_waiting_on_status_commit(tmp_pat
             )()
 
     daemon.merge_queue = _Queue()
-    daemon._latest_implementation_finished_by_task = lambda: finished  # type: ignore[method-assign]
+    daemon._queued_merge_candidates = lambda: [  # type: ignore[method-assign]
+        {
+            "task_id": "IPS-002",
+            "attempt": 4,
+            "branch": "implementation/ips-002-landed",
+            "implementation_commit": "531ce91c0323deadbeefdeadbeefdeadbeefde",
+            "request_id": "req-ips-002",
+            "merge_result": finished["IPS-002"]["merge_result"],
+        }
+    ]
     daemon._implementation_commit_was_reconciled = (  # type: ignore[method-assign]
         lambda task_id, commit: False
     )
@@ -208,12 +226,12 @@ def test_select_next_task_ignores_pending_merge_after_reconcile(tmp_path):
             return True
 
     daemon.merge_queue = _Queue()
-    daemon._latest_implementation_finished_by_task = lambda: {  # type: ignore[method-assign]
-        "IPS-002": {
+    daemon._queued_merge_candidates = lambda: [  # type: ignore[method-assign]
+        {
             "task_id": "IPS-002",
-            "implementation_commit": "3e59f5cd43380265cb0feee54162307f685391fe",
+            "implementation_commit": "531ce91c0323deadbeefdeadbeefdeadbeefde",
         }
-    }
+    ]
     daemon._implementation_commit_was_reconciled = (  # type: ignore[method-assign]
         lambda task_id, commit: True
     )
@@ -226,3 +244,138 @@ def test_select_next_task_ignores_pending_merge_after_reconcile(tmp_path):
         {},
     )
     assert selected is task
+
+
+def test_pending_merge_ignores_reconciled_commit_after_later_failed_finish(
+    tmp_path,
+):
+    daemon = _daemon(tmp_path)
+    task = PortalTask(
+        task_id="IPS-002",
+        title="Inventory datasets",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="inventory",
+    )
+
+    class _Queue:
+        def has_pending_for_task(self, task_id, commit_sha=None):
+            return True
+
+    daemon.merge_queue = _Queue()
+    daemon._queued_merge_candidates = lambda: [  # type: ignore[method-assign]
+        {
+            "task_id": "IPS-002",
+            "implementation_commit": "531ce91c0323deadbeefdeadbeefdeadbeefde",
+            "request_id": "req-ips-002",
+        }
+    ]
+    daemon._latest_implementation_finished_by_task = lambda: {  # type: ignore[method-assign]
+        "IPS-002": {
+            "task_id": "IPS-002",
+            "implementation_commit": "2357f2d06ae7deadbeefdeadbeefdeadbeef",
+            "merge_result": {"reason": "not_attempted"},
+            "returncode": 78,
+        }
+    }
+    daemon._implementation_commit_was_reconciled = (  # type: ignore[method-assign]
+        lambda task_id, commit: commit.startswith("531ce91c")
+    )
+    daemon._canonical_ref = lambda item: "cid-ips-002"  # type: ignore[method-assign]
+    assert daemon._task_has_blocking_pending_merge(task) is False
+
+
+def test_release_cancels_pending_request_for_reconciled_commit(tmp_path):
+    daemon = _daemon(tmp_path)
+    cancelled: list[str] = []
+
+    class _Queue:
+        def get(self, request_id):
+            return type("Request", (), {"status": "pending", "failure_reason": ""})()
+
+        def cancel(self, request_id, reason="cancelled"):
+            cancelled.append(f"{request_id}:{reason}")
+            return type("Request", (), {"status": "cancelled"})()
+
+    daemon.merge_queue = _Queue()
+    daemon._queued_merge_candidates = lambda: [  # type: ignore[method-assign]
+        {
+            "task_id": "IPS-002",
+            "attempt": 4,
+            "branch": "implementation/ips-002",
+            "implementation_commit": "531ce91c0323deadbeefdeadbeefdeadbeefde",
+            "request_id": "req-ips-002",
+            "merge_result": {"queued": True, "request_id": "req-ips-002"},
+        }
+    ]
+    daemon._implementation_commit_was_reconciled = (  # type: ignore[method-assign]
+        lambda task_id, commit: True
+    )
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+
+    result = daemon._release_stale_quarantined_merges()
+
+    assert cancelled == ["req-ips-002:stale_quarantined_merge"]
+    assert result[0]["cancelled_reconciled_pending"] is True
+    assert result[0]["task_id"] == "IPS-002"
+
+
+def test_proposal_gate_failure_is_rearmable_evidence(tmp_path):
+    daemon = _daemon(tmp_path)
+    task = PortalTask(
+        task_id="IPS-001",
+        title="Inventory accelerate",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="inventory",
+    )
+    daemon._latest_implementation_finished_by_task = lambda: {  # type: ignore[method-assign]
+        "IPS-001": {
+            "task_id": "IPS-001",
+            "implementation_commit": "6c5c3f1d7240deadbeef",
+            "returncode": 78,
+            "validation_result": {
+                "attempted": False,
+                "passed": False,
+                "reason": "proposal_gate_failed",
+            },
+            "merge_result": {"merged": False, "reason": "not_attempted"},
+        }
+    }
+    assert daemon._task_has_validation_command_failure_evidence(task) is True
+
+
+def test_rearm_clears_exhausted_inventory_attempts_after_proposal_gate(
+    tmp_path,
+):
+    daemon = _daemon(tmp_path)
+    daemon.max_task_attempts = 5
+    task = PortalTask(
+        task_id="IPS-001",
+        title="Inventory accelerate",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="inventory",
+    )
+    identity = daemon._identity_for_task(task)
+    state = TodoTaskState(
+        implementation_attempts={"IPS-001": 5},
+        implementation_attempts_by_cid={identity.canonical_task_cid: 5},
+    )
+    daemon._latest_implementation_failure_is_rearmable = (  # type: ignore[method-assign]
+        lambda item: True
+    )
+    daemon.task_queue.reset_retry_state = lambda cid: False  # type: ignore[method-assign]
+    rearmed = daemon._rearm_attempt_limited_obsoleted_validation_tasks(
+        state,
+        [task],
+        {"IPS-001": "ready"},
+        recovery_revision="rev-unstuck",
+    )
+    assert len(rearmed) == 1
+    assert rearmed[0]["task_id"] == "IPS-001"
+    assert "IPS-001" not in state.implementation_attempts
+    assert identity.canonical_task_cid not in state.implementation_attempts_by_cid
