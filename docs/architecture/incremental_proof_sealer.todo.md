@@ -942,7 +942,7 @@ Global invariants for every task:
 
 ## IPS-029 Probe backend capabilities and admit recursion only when demonstrated
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
