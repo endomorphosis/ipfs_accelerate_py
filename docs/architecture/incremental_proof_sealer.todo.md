@@ -1066,7 +1066,7 @@ Global invariants for every task:
 
 ## IPS-033 Integrate proof work with modern scheduling and resource admission
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
