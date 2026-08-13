@@ -995,7 +995,7 @@ W28 SCG-048
 
 ## SCG-035 Gate promotion on release qualification and bind incremental seals without overclaiming
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
