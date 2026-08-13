@@ -968,7 +968,7 @@ W28 SCG-048
 
 ## SCG-034 Implement authorized compare-and-swap promotion and rollback
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
