@@ -698,7 +698,7 @@ W28 SCG-048
 
 ## SCG-024 Enforce source disclosure, redaction, provider, and worktree policy
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
