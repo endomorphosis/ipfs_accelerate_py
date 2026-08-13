@@ -67,8 +67,19 @@ capstone integration branch and all gitlinks to those exact revisions; no local
 agent receipt can substitute for that merge/pin authority. `SHQ-G021` then
 freezes the admitted baseline.
 
+`SHQ-G005A` first makes one narrow, reviewed compatibility repair in the
+existing verification identity compiler: a private immutable closed
+`frozenset({("bwrap", "bubblewrap")})` is consulted only by the banner-name
+token predicate after every existing executable, selector, probe, reviewed
+tool, byte, CID and version binding. The keyed tool and executable basename
+remain exact `bwrap`; the implementation must consume the actual raw
+`/usr/bin/bwrap --version` bytes `b"bubblewrap 0.9.0\n"`, not a wrapper,
+rewritten banner or synthetic probe. Ordinary pytest, mypy and exact-name
+behavior is unchanged.
+
 The `SHQ-G006` observer implementation is deliberately stricter than a
-file-presence scan; `SHQ-G007` runs it only after G006 is merged and clean.
+file-presence scan and begins only after G005A is merged and clean;
+`SHQ-G007` runs it only after G006 is merged and clean.
 The prerequisite catalog is the exact non-empty ordered list of ten unique
 requested systems; omission, addition, duplication, or reordering fails closed.
 For each row the observer binds the clean outer repository `HEAD` and tree,
@@ -90,18 +101,29 @@ Every task block must have exactly one recognized status.
 
 Focused tests are not admitted through a new observer-owned receipt format.
 The narrow current-test path is the existing `VerificationIdentityCompiler`
-and `VerificationProcessRunner`: compile the exact TEST key with the pytest
-adapter schema, run an actual `VerificationCommand`, construct the
-`DirectExecutionObservation` and `TestReceipt` in the trusted process, round
-trip the canonical record, then admit and exact-key lookup through
-`VerificationReceiptCache` with production eligibility required. A deserialized
+and `VerificationProcessRunner`. Deterministically bind the inner logical
+`(sealed_python, '-m', 'pytest', '-q', *selectors)` command, actual isolated
+Python/pytest version-probe bytes, runtime command text/argv, selectors,
+toolchain, locks and configuration inputs, then cross-check it as the exact
+`--` suffix of the outer Bubblewrap argv. Run exactly one actual same-process
+`VerificationCommand` over that outer argv. Only after the run, compile the
+exact TEST key whose selector is the same outer Bubblewrap argv, whose resolved
+tool and `selector_argv[0]` are exact bwrap, whose probe is the actual bwrap
+version output, and whose adapter is `PROCESS_RUNNER_SCHEMA`. Construct the
+matching `DirectExecutionObservation` and `TestReceipt` in the trusted process,
+require `TestReceipt.from_dict(receipt.to_record()).to_record() == receipt.to_record()`,
+then admit and exact-key lookup through `VerificationReceiptCache` with
+production eligibility required. A deserialized
 observation or receipt supplied from disk/cache is structural data, not proof
 that execution occurred. An injected pytest phase report is categorically
 forbidden. Admission requires a present real run result, process-started and
 completed disposition, zero exit, `ok` and publication allowed, exact observed
 argv/selectors/tool version, no timeout/cancel/unavailable/simulation/replay,
 stdout and stderr CIDs, freshness, and identical clean pre/post repository
-forests matching the complete source identity. Existing proof test receipts or
+forests matching the complete source identity. Both retained streams must be
+non-truncated and satisfy
+`captured_byte_count == byte_count == len(preview.encode("utf-8"))`; rehash the
+exact preview bytes to both digest and CID. Existing proof test receipts or
 semantic compiled receipts may corroborate this evidence but are never
 sufficient without the current direct run. Self-asserted/ignored JSON, stale
 evidence, an absent output identity, or a structurally valid receipt without
@@ -111,6 +133,15 @@ unreadable/malformed inputs and unknown, missing, or duplicate board status.
 The observation is versioned despite the repository-wide JSON ignore rule:
 `.gitignore` must contain exactly the narrow exception
 `!artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json`.
+Its position after the final applicable ignore rule is proved by parsing that
+last rule, exact
+`git check-ignore -q --no-index -- artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json`
+return code 1, and an isolated repository showing exactly the corresponding
+`??` path. The unpredictable same-directory publication temp must still match
+the final `*.json` ignore rule while not matching the exact target exception,
+for example `.prerequisite_observation.<nonce>.json`; the same check-ignore
+probe returns 0 for it, recursive porcelain omits it while its owned fd is
+open, and S1 remains identical. A nonignored or exception-matching temp fails.
 Serialized paths and roots are deterministic canonical repository-relative
 values with no host-absolute prefix. It uses explicit two-phase identity rather than an impossible self-reference.
 G006 commits the observer, tests and ignore exception and makes that tree clean;
@@ -119,14 +150,35 @@ commit/tree, including recursive gitlinks and matching submodule heads and
 excluding only the observation artifact. Committing the artifact creates an
 evidence projection; it does not change what the JSON claims to have observed.
 Native validation and completion receipts independently bind the clean
-post-artifact tree. Immediately before publication both modes recompute and
-compare the entire in-memory observation, outer `HEAD`/tree, recursive
+post-artifact tree. The full clean/complete S0-to-live-run-to-receipt/cache
+pipeline is a terminal-admission branch only. The current and future task
+worktree may have incomplete committed recursive gitlink closure; ordinary
+`observe` records the exact typed degraded reasons, skips the terminal runner,
+compiler, receipt and cache steps, and returns rc0 with a structurally complete
+ten-row `terminal:false` observation. It must not initialize omitted submodules,
+access the network, or manufacture closure. `require-terminal` instead returns
+rc1 and writes nothing unless that terminal branch and all rows succeed.
+
+The complete positive pipeline is tested in a self-contained clean temporary
+Git fixture with complete zero/controlled gitlink closure and a concrete runner
+spy/result. Its repository, environment and forest identity—and therefore its
+key—are distinct from the current checkout. Its receipt may structurally admit
+and exact-key lookup through an isolated, nonpersisted cache solely to test the
+existing contracts; it is never serialized, injected, or substituted as current
+checkout evidence, and creates no production injection seam. Immediately before
+publication both modes recompute and compare the entire in-memory observation,
+outer `HEAD`/tree, recursive
 gitlinks/submodule identities, tracked-content digests, and every configured
-evidence input. `observe` may record non-terminal rows but may publish only a
-structurally complete ten-row snapshot; `require-terminal` additionally
-requires every row terminal. Publication uses a same-directory exclusive
-temporary plus durable atomic no-clobber operation, refuses an existing target,
-and cleans up on every failure. No partial, stale, raced, new, or replaced
+evidence input and require stable observation-level `S1 == S0`, including
+identical degraded-closure reasons. Publication opens the validated parent by
+dirfd, fully writes and fsyncs an unpredictable same-directory `O_EXCL`/
+`O_NOFOLLOW` temporary whose basename is ignored by the final `*.json` rule but
+not the exact target exception, proves the temp remains absent from recursive
+porcelain and `S1 == S0` while its fd is open, publishes by no-overwrite `os.link`,
+fsyncs/unlinks/fsyncs, and requires nofollow canonical readback. It refuses an
+existing target or symlink, forbids `os.replace` and direct target writes, and
+durably cleans both temp and any post-link target on failure. No partial, stale,
+raced, new, or replaced
 admission artifact is evidence.
 
 ## 3. Why `ipfs_kit_py/core/wal` is representative
@@ -240,13 +292,14 @@ part of the already frozen executable-source identity.
 
 ## 6. Goal, subgoal and task projection
 
-The objective heap defines 38 autonomous work goals and
+The objective heap defines 39 autonomous work goals and
 two external gates. The objective daemon generates their task IDs in a
 deterministic scan and assigns content IDs after checking repository evidence.
 
 | Goal | Planned work item | Owner | Depends on |
 |---|---|---|---|
-| `SHQ-G006` | Prerequisite observer implementation, tests and exact ignore exception | accelerate | — |
+| `SHQ-G005A` | Exact private bwrap→bubblewrap banner-token compatibility in the existing identity compiler | accelerate | — |
+| `SHQ-G006` | Prerequisite observer implementation, tests and exact ignore exception | accelerate | G005A |
 | `SHQ-G007` | Clean post-merge current-fact observation snapshot | accelerate | G006 |
 | `SHQ-G010` | External terminal release admission | operator/upstream owners | G007 |
 | `SHQ-G021` | Exact revision/version/schema/route/proof inventory | accelerate | external gate |
@@ -290,8 +343,9 @@ deterministic scan and assigns content IDs after checking repository evidence.
 ### Parallel waves
 
 ```text
-W0a  G006
-W0b  G007
+W0a  G005A
+W0b  G006
+W0c  G007
 WG   G010 external admission
 W1   G021 → G022 → G023
 W2   G031 | G041
@@ -618,7 +672,7 @@ submit to a task queue.
 ```bash
 SHQ_REPO=/home/barberb/lift_coding/.worktrees/ipfs-accelerate-self-hosting-qualification
 SHQ_DATA=data/agent_supervisor/self_hosting_qualification
-SHQ_PROJECTION="$SHQ_DATA/projections/v7"
+SHQ_PROJECTION="$SHQ_DATA/projections/v8"
 SHQ_PYTHON=/usr/bin/python3.12
 SHQ_ACTIVE_TODO=docs/architecture/self_hosting_qualification.todo.md
 SHQ_V1_HISTORY_TODO=docs/architecture/self_hosting_qualification.v1_history.todo.md
@@ -627,8 +681,9 @@ SHQ_V3_HISTORY_TODO=docs/architecture/self_hosting_qualification.v3_history.todo
 SHQ_V4_HISTORY_TODO=docs/architecture/self_hosting_qualification.v4_history.todo.md
 SHQ_V5_HISTORY_TODO=docs/architecture/self_hosting_qualification.v5_history.todo.md
 SHQ_V6_HISTORY_TODO=docs/architecture/self_hosting_qualification.v6_history.todo.md
-SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v7
-# Read-only input from the already-live provider monitor. All mutable v7
+SHQ_V7_HISTORY_TODO=docs/architecture/self_hosting_qualification.v7_history.todo.md
+SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v8
+# Read-only input from the already-live provider monitor. All mutable v8
 # coordination, state, worktrees, logs, manifests, metrics, gates and keys use
 # SHQ_RUN above; never reopen or alias the retired v1 supervisor namespace.
 SHQ_CAPACITY_PATH=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v1/provider-capacity/capacity.json
@@ -636,8 +691,9 @@ SHQ_GATE="$SHQ_RUN/operator/objective_completion_gate.json"
 SHQ_EXTERNAL_AUTHORITY="$SHQ_RUN/operator/external_completion_authority.json"
 SHQ_SIGNING_KEY="$SHQ_RUN/operator/signing.key"
 SHQ_IMPLEMENTATION_COMMAND="/usr/local/bin/codex exec --ephemeral --ignore-user-config --strict-config --dangerously-bypass-approvals-and-sandbox --color never -m gpt-5.6-terra -c model_context_window=49152 -c 'model_reasoning_effort=\"high\"' -c agents.max_threads=1 -c agents.max_depth=0 -"
-SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-implementation-bounded-v7/state/agent_agent_supervisor_self_hosting_prerequisite_observer_implementation_bounded_v7_runtime.todo.md"
-SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v7/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_bounded_v7_runtime.todo.md"
+SHQ_G005A_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-verification-banner-alias-compatibility-bounded-v8/state/agent_agent_supervisor_self_hosting_verification_banner_alias_compatibility_bounded_v8_runtime.todo.md"
+SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-implementation-bounded-v8/state/agent_agent_supervisor_self_hosting_prerequisite_observer_implementation_bounded_v8_runtime.todo.md"
+SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v8/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_bounded_v8_runtime.todo.md"
 
 # Reviewed migrations: retain SHQ-001 in the v1 history board. Move cancelled
 # SHQ-002 and its never-launched dependent SHQ-003 into the v2 history board,
@@ -651,16 +707,19 @@ SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite
 # schema and retained-stream binding before submission. Archive SHQ-010/011
 # byte-for-byte in the v6 history board: SHQ-010 attempt 1 was rejected after
 # materializing authorized git-show output outside its checkout, and dependent
-# SHQ-011 never launched. Apply that reviewed
+# SHQ-011 never launched. Archive SHQ-012/013 byte-for-byte in the v7 history
+# board: SHQ-012 attempt 1 was rejected/cancelled retryable after independent
+# contract review, and dependent SHQ-013 was never leased or launched. Apply that reviewed
 # tracked migration before this command, leave SHQ_ACTIVE_TODO title-only, and
-# retain all eleven discovery files so display IDs SHQ-001 through SHQ-011 stay
-# reserved. The v7 generation must allocate SHQ-012 and SHQ-013.
+# retain all thirteen discovery files so display IDs SHQ-001 through SHQ-013 stay
+# reserved. The v8 generation must allocate SHQ-014, SHQ-015, and SHQ-016.
 test -f "$SHQ_REPO/$SHQ_V1_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V2_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V3_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V4_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V5_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V6_HISTORY_TODO"
+test -f "$SHQ_REPO/$SHQ_V7_HISTORY_TODO"
 test -x "$SHQ_PYTHON"
 test "$("$SHQ_PYTHON" --version 2>&1)" = 'Python 3.12.3'
 ! rg -q '^## SHQ-' "$SHQ_REPO/$SHQ_ACTIVE_TODO"
@@ -679,9 +738,11 @@ test ! -e "$SHQ_RUN"
   --plan-evaluation-path "$SHQ_PROJECTION/plan_evaluations.json" \
   --todo-vector-index-path "$SHQ_PROJECTION/bundles/todo_vector_index.json" \
   --task-prefix SHQ- \
-  --max-findings 2 \
+  --max-findings 3 \
+  --scope-goal-id SHQ-G005A \
   --scope-goal-id SHQ-G006 \
   --scope-goal-id SHQ-G007 \
+  --force-goal-id SHQ-G005A \
   --force-goal-id SHQ-G006 \
   --force-goal-id SHQ-G007 \
   --surplus-findings-per-goal 1 \
@@ -706,6 +767,7 @@ test ! -e "$SHQ_RUN"
   --protected-output-path "$SHQ_V4_HISTORY_TODO" \
   --protected-output-path "$SHQ_V5_HISTORY_TODO" \
   --protected-output-path "$SHQ_V6_HISTORY_TODO" \
+  --protected-output-path "$SHQ_V7_HISTORY_TODO" \
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
@@ -726,33 +788,39 @@ direct process-runner path must bind `PROCESS_RUNNER_SCHEMA` and exact retained
 stream bytes, not the pytest adapter schema or unchecked previews. SHQ-010 is a
 rejected/cancelled retryable v6 attempt because it redirected the authorized
 rescue commit's `git show` output into `/tmp` and read it outside the checkout;
-its dependent SHQ-011 never launched. Every v4, v5, and v6 canonical task block
+its dependent SHQ-011 never launched. SHQ-012 is a rejected/cancelled retryable
+v7 attempt after independent contract review; its clean stop released a null
+output with no implementation-finished event, implementation commit, or merge,
+and dependent SHQ-013 was never leased or launched. Every v4, v5, v6, and v7 canonical task block
 is preserved byte-for-byte in its history board, and
 only each preamble records disposition. Historical cards are never completion
 evidence or scheduler sources. Their discovery records stay
-in `$SHQ_DATA/discovery`, reserving `SHQ-001` through `SHQ-011`; the clean active
-board therefore receives exactly `SHQ-012` and `SHQ-013`. New graph, dataset and
+in `$SHQ_DATA/discovery`, reserving `SHQ-001` through `SHQ-013`; the clean active
+board therefore receives exactly `SHQ-014`, `SHQ-015`, and `SHQ-016`. New graph, dataset and
 bundle projections live under `$SHQ_PROJECTION`; no scheduler may read a v1,
-v2, v3, v4, v5, or v6 bundle index.
+v2, v3, v4, v5, v6, or v7 bundle index.
 
-Review the portable v7 Markdown and JSON projections and add those exact files
+Review the portable v8 Markdown and JSON projections and add those exact files
 with `git add -f`; do not add DuckDB databases, lock files, runtime state or
 provider logs. The archived v1 board and both objective-control documents are
 exact protected paths for every subsequent implementation lane.
 
 The `--scan-exclude-path` arguments above are bounded bootstrap-generation
 inputs only: they prevent the initial evidence-gap scan from rediscovering the
-entire product while it projects `SHQ-G006` and `SHQ-G007`. They must not appear in a goal
+entire product while it projects `SHQ-G005A`, `SHQ-G006`, and `SHQ-G007`. They must not appear in a goal
 completion reconciliation. Completion must compute its tree identity over all
 source and recursive gitlinks; carrying these exclusions into reconciliation
 would create a different, incomplete completion identity.
 
-### Local `SHQ-G006` implementation and `SHQ-G007` snapshot
+### Local `SHQ-G005A` compatibility, `SHQ-G006` implementation, and `SHQ-G007` snapshot
 
-G006 owns only `.gitignore`, the observer and its tests; G007 owns only the JSON
-snapshot. Their bounded-v7 bundle keys prevent either task from inheriting stale
-state from retired projections. They are projected as SHQ-012 and SHQ-013 in
-the v7 index while retaining stable goal identities G006 and G007. Prior
+G005A owns only the existing verification contracts authority and its full
+contracts test; G006 owns only `.gitignore`, the observer and its tests; G007
+owns only the JSON snapshot. Their bounded-v8 bundle keys prevent any task from
+inheriting stale state from retired projections. They are projected serially as
+SHQ-014, SHQ-015, and SHQ-016 in the v8 index while retaining stable goal
+identities G005A, G006, and G007. G006 begins only after the clean G005A merge;
+G007 begins only after the clean G006 merge. Prior
 attempt 1 was hard-rejected for redirecting permitted `git show` stdout to host
 `/tmp` and rereading it. Any outside-checkout redirect, tee, copy, save, cache,
 checkpoint, materialization, or read is an immediate hard rejection; stop
@@ -776,11 +844,11 @@ reads and searches remain within that checkout and its declared submodules. The
 generated task dependency prevents the scheduler
 from creating the G007 worktree until G006 has merged, so G007 observes the
 clean merged implementation identity. G007 additionally binds the freshly
-projected bounded-v7 G006 canonical task CID as its sole predecessor; no retired
+projected bounded-v8 G006 task SHQ-015 canonical CID as its sole predecessor; no retired
 display ID, alias, canonical key, CID, worktree, receipt, or merge can satisfy
 that dependency. Do not pause for objective reconciliation
-between the task commits. Once both runtime todos are terminal, both commits
-are merged and the target branch is clean, run the focused suite and no-output
+between the task commits. Once all three runtime todos are terminal, all three
+commits are merged and the target branch is clean, run the focused suite and no-output
 CLI probes.
 
 G006 admits focused-test evidence through the existing direct process-runner
@@ -801,11 +869,36 @@ and cache admission do not authenticate execution origin. That authority comes
 only from the live in-process isolated runner call. A `deny_all` or sandbox
 identity label is not enforcement. Missing Bubblewrap, namespace denial,
 isolation startup failure, changed isolation argv, or unisolated fallback is
-`unverifiable`, never a degraded success. This host currently rejects both
+`unverifiable`, never a degraded success in terminal admission. When the
+actual S0 has incomplete recursive gitlink closure, ordinary observe instead
+records exact typed degraded reasons, skips the terminal execution/receipt
+branch, returns rc0, and may publish only a stable structurally complete
+ten-row `terminal:false` snapshot; require-terminal returns rc1 and writes
+nothing. It never initializes omitted submodules, reaches the network, or
+manufactures closure. This host currently rejects both
 Bubblewrap and `unshare -n` network namespaces with `Operation not permitted`;
 that is an observed qualification limitation, so focused-test rows must remain
 unverifiable here unless a later independently verified environment provides
 the required existing isolation runtime.
+
+The positive terminal pipeline is exercised in a self-contained clean
+temporary Git fixture with complete zero/controlled gitlink closure and one
+concrete runner spy/result. That fixture has a distinct repository,
+environment, forest, and compiled key. Its receipt may structurally admit and
+exact-key lookup in an isolated nonpersisted cache to test the existing
+contracts, but it is never serialized or accepted as current-checkout evidence
+and does not add a production injection seam. Both real and degraded branches
+recapture the observation manifest and require `S1 == S0`, including identical
+degraded reasons, before any serialization.
+
+The same publication proof applies in G007: its unpredictable temp basename
+matches the final `*.json` ignore rule but not the exact target exception (for
+example `.prerequisite_observation.<nonce>.json`). Last-rule parsing and exact
+`git check-ignore -q --no-index --` results prove only the target is unignored;
+recursive porcelain and S1 remain unchanged while the owned temp fd is open.
+Positive tests exercise that identity-preserving temp, and negative tests reject
+a nonignored or target-exception-matching temp rather than broadly excluding
+untracked files.
 
 Before structural projection, compare the live result's executable, cwd,
 environment, sandbox, network policy, timeout, disposition, command argv,
@@ -836,13 +929,13 @@ tracked bundle shards and paired successful merge events, but it has not yet
 been independently qualified against the authoritative Profile-G TaskReceipt,
 coordination lease, fencing token, and state-database lineage. Until that
 narrow authority binding is implemented, reviewed, and named here by an exact
-commit, G006 and G007 remain implementation evidence rather than formally
+commit, G005A, G006 and G007 remain implementation evidence rather than formally
 completed goals. This limitation is off the bootstrap path because generation
 uses `--no-reconcile-goal-completion`, and it cannot open external gate G010.
 
 The following blocks are retained as a **non-executable future protocol**. Once
 the missing authority binding is qualified, create current tree-bound local
-gates and formally reconcile G006 followed by G007, without external receipts
+gates and formally reconcile G005A, then G006, then G007, without external receipts
 or scan exclusions:
 
 ```bash
@@ -892,6 +985,7 @@ SHQ_RECONCILE_G006=(
   --protected-output-path "$SHQ_V4_HISTORY_TODO"
   --protected-output-path "$SHQ_V5_HISTORY_TODO"
   --protected-output-path "$SHQ_V6_HISTORY_TODO"
+  --protected-output-path "$SHQ_V7_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
@@ -958,6 +1052,7 @@ SHQ_RECONCILE_G007=(
   --protected-output-path "$SHQ_V4_HISTORY_TODO"
   --protected-output-path "$SHQ_V5_HISTORY_TODO"
   --protected-output-path "$SHQ_V6_HISTORY_TODO"
+  --protected-output-path "$SHQ_V7_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
@@ -1047,6 +1142,7 @@ SHQ_RECONCILE_G010=(
   --protected-output-path "$SHQ_V4_HISTORY_TODO"
   --protected-output-path "$SHQ_V5_HISTORY_TODO"
   --protected-output-path "$SHQ_V6_HISTORY_TODO"
+  --protected-output-path "$SHQ_V7_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json
@@ -1134,6 +1230,7 @@ jq -e '.providers.codex_cli.healthy == true and
   --implementation-protected-path "$SHQ_V4_HISTORY_TODO" \
   --implementation-protected-path "$SHQ_V5_HISTORY_TODO" \
   --implementation-protected-path "$SHQ_V6_HISTORY_TODO" \
+  --implementation-protected-path "$SHQ_V7_HISTORY_TODO" \
   --implementation-protected-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
@@ -1197,7 +1294,7 @@ worktree, made no model call, incurred no model billing and produced no task
 completion evidence; coordination released attempt/fence 1/1 as
 `cancelled:retryable` before this corrected retry.
 
-The current SHQ-012/013 planning records do not declare a provider route or a
+The current SHQ-014/015/016 planning records do not declare a provider route or a
 nonzero provider resource estimate, so bundle admission does not bind the
 explicit Codex command to that telemetry. For this bootstrap, the `jq` check
 above and the live `implementation_started.command` comparison are operator
@@ -1221,8 +1318,9 @@ Do not pass `--allow-missing-provider-telemetry`. Missing or stale telemetry is
 valid backpressure. Do not enable objective refinement, codebase refill or a
 second one-shot supervisor against a live lane.
 
-The scoped bootstrap scan intentionally produces only `SHQ-G006` and
-`SHQ-G007`, in distinct bundle keys with G007 dependent on G006. After a
+The scoped bootstrap scan intentionally produces only `SHQ-G005A`, `SHQ-G006`,
+and `SHQ-G007`, in distinct bundle keys with G006 dependent on G005A and G007
+dependent on G006. After a
 validated external receipt admits `SHQ-G010`, rerun the daemon without
 `--scope-goal-id` and with `--surplus-findings-per-goal 1`; retain targeted
 source exclusions only for genuinely unrelated/vendored trees. This preserves
