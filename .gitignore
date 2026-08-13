@@ -236,6 +236,7 @@ state/**/*.out
 !config/adversarial_assurance_engine_scheduler.json
 !config/adversarial_assurance_prerequisites.json
 !docs/architecture/adversarial_assurance_inventory/*.json
+!docs/architecture/adversarial_assurance_inventory/**/*.json
 !test/fixtures/adversarial_assurance/manifest.json
 !artifacts/agent_supervisor/adversarial_assurance/*.json
 !test/fixtures/semantic_governor/**/*.json

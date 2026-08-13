@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
-"""Fail-closed, stdlib-only validator for the AAE supervisor controls."""
+"""Fail-closed validator for AAE controls and canonical release evidence.
+
+Board parsing is stdlib-only.  Release completion deliberately calls the
+existing datasets CID and accelerate did:key verification authorities rather
+than implementing either identity mechanism here.
+"""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import importlib
 import json
 import re
 import subprocess
+import sys
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path, PurePosixPath
-from typing import Iterable, Mapping, Sequence
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLAN_REL = "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
@@ -26,6 +34,20 @@ BASE_REVISION = "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda"
 DATASETS_REVISION = "fbd1ba9f70803de157622bb20e22595ef09d606f"
 KIT_REVISION = "c7e5feeb24582ab68c1f5ca626366b665a82ad61"
 MCP_REVISION = "dc3164653a48d059ae9812078359daeafb451c07"
+OPERATOR_AUTHORITY_DID = "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy"
+PREREQUISITE_EVIDENCE_PREFIX = (
+    "docs/architecture/adversarial_assurance_inventory/prerequisite_evidence"
+)
+SEALER_RELEASE_RECEIPT_REL = (
+    "artifacts/agent_supervisor/incremental_proof_sealer/release_validation.json"
+)
+FOCUSED_BASELINE_RUNNER = (
+    "python3",
+    "docs/architecture/adversarial_assurance_inventory/run_focused_baselines.py",
+    "--verify-bundle",
+    "--output-dir",
+    PREREQUISITE_EVIDENCE_PREFIX,
+)
 
 TASK_IDS = tuple(f"AAE-{index:03d}" for index in range(64))
 GOAL_IDS = ("AAE-G000",) + tuple(f"AAE-G{index:03d}" for index in range(10, 100, 10))
@@ -284,6 +306,8 @@ REQUIRED_PLAN_TERMS = (
     "signed assurance evidence", "signer/key identity", "signature verification",
     "no production deployment", "no general autonomous code repair", "no GUI implementation",
     "no legal advice", "no payment processing", "no automatic lowering of assurance requirements",
+    "monotonic pin generation", "configured `did:key` signature", "explicit no-change outcome",
+    "strictly increasing, single-use launch generation", "exact controller HEAD",
 )
 FINAL_CLAIM = """The system used semantically targeted counterfactual mutations to test whether
 declared tests, proofs, policies, semantic summaries, and incremental seals
@@ -459,10 +483,6 @@ def _task_owner_prefixes(task_id: str) -> tuple[str, ...]:
             "ipfs_accelerate_py/mcplusplus/docs/architecture",
             "ipfs_accelerate_py/mcplusplus/schemas",
             "ipfs_accelerate_py/mcplusplus/conformance/vectors",
-            "ipfs_accelerate_py/mcplusplus/tests-py/integration",
-            "ipfs_accelerate_py/mcplusplus/tests-go",
-            "ipfs_accelerate_py/mcplusplus/tests-rs/tests",
-            "ipfs_accelerate_py/mcplusplus/tests-ts/src/__tests__",
         )
     if number == 24:
         return ("ipfs_accelerate_py/agent_supervisor/adversarial_assurance", "test/api/adversarial_assurance")
@@ -724,9 +744,34 @@ def _validate_tasks(
             if fields.get("validation") != "python3 scripts/validate_adversarial_assurance_engine_board.py --check-prerequisites":
                 errors.append("AAE-006 must use the prerequisite validator")
             doctrine = _normalized(fields.get("acceptance", "") + " " + fields.get("conflict policy", ""))
-            for term in ("only an operator", "workers cannot", "released checkpoint and delta sealer apis"):
+            for term in (
+                "only the configured operator did:key",
+                "workers cannot",
+                "released checkpoint/delta sealer api bindings",
+                "every copied evidence cid",
+                "verifies the signature",
+            ):
                 if _normalized(term) not in doctrine:
                     errors.append(f"AAE-006 operator doctrine omits {term!r}")
+        if record.record_id == "AAE-013":
+            doctrine = _normalized(
+                fields.get("acceptance", "")
+                + " "
+                + fields.get("conflict policy", "")
+                + " "
+                + fields.get("output policy", "")
+            )
+            for term in (
+                "conditional",
+                "no mcp++ change",
+                "existing python, go, rust, and typescript harnesses",
+            ):
+                if _normalized(term) not in doctrine:
+                    errors.append(f"AAE-013 scoped MCP++ doctrine omits {term!r}")
+        if record.record_id in {"AAE-034", "AAE-035", "AAE-036", "AAE-062"}:
+            doctrine = _normalized(fields.get("acceptance", ""))
+            if _normalized("before persistence") not in doctrine:
+                errors.append(f"{record.record_id} signature doctrine does not reject before persistence")
         for field in REQUIRED_TASK_FIELDS:
             if field != "depends on" and field in fields and not fields[field].strip():
                 errors.append(f"{record.record_id} has empty {field}")
@@ -804,6 +849,7 @@ def _validate_tasks(
 def _validate_scheduler(
     scheduler: Mapping[str, object],
     *,
+    prerequisite: Mapping[str, object],
     repo_root: Path,
     check_repository: bool,
     errors: list[str],
@@ -829,6 +875,8 @@ def _validate_scheduler(
             errors.append(f"scheduler {field} differs: expected {expected!r}, got {scheduler.get(field)!r}")
     source = scheduler.get("source_binding")
     expected_source = {
+        "pin_state": "bootstrap_blocked",
+        "pin_generation": 0,
         "accelerator_required_ancestor": BASE_REVISION,
         "accelerator_required_branch": BRANCH,
         "bootstrap_task_source": "legacy-markdown",
@@ -845,8 +893,36 @@ def _validate_scheduler(
         "changed_revision_requires_fresh_inventory_and_baseline": True,
         "planning_revision_is_runtime_completion_evidence": False,
     }
-    if source != expected_source:
-        errors.append("scheduler source_binding differs from the reviewed source pins")
+    if scheduler.get("bootstrap_source_binding") != expected_source:
+        errors.append("scheduler immutable bootstrap_source_binding differs")
+    if not isinstance(source, Mapping):
+        errors.append("scheduler source_binding is absent")
+    elif prerequisite.get("status") == "blocked":
+        if source != expected_source:
+            errors.append("blocked scheduler source_binding differs from bootstrap pins")
+    else:
+        immutable_source = dict(expected_source)
+        for mutable in (
+            "pin_state", "pin_generation", "ipfs_datasets_planning_revision",
+            "ipfs_kit_planning_revision", "mcp_plus_plus_planning_revision",
+        ):
+            immutable_source.pop(mutable)
+        for field, expected in immutable_source.items():
+            if source.get(field) != expected:
+                errors.append(f"released scheduler source_binding {field} differs")
+        if source.get("pin_state") != "operator_released":
+            errors.append("released scheduler source_binding is not operator_released")
+        _positive_int(
+            source.get("pin_generation"),
+            noun="released scheduler pin_generation",
+            errors=errors,
+        )
+        for field in (
+            "ipfs_datasets_planning_revision", "ipfs_kit_planning_revision",
+            "mcp_plus_plus_planning_revision",
+        ):
+            if not _is_full_hex(source.get(field)):
+                errors.append(f"released scheduler {field} is not exact 40-hex")
     if scheduler.get("worktree_submodule_paths") != ["ipfs_datasets_py", "ipfs_kit_py", "ipfs_accelerate_py/mcplusplus"]:
         errors.append("scheduler worktree submodule population/order differs")
     protected = scheduler.get("protected_paths")
@@ -926,18 +1002,41 @@ def _validate_scheduler(
         "task_id": OPERATOR_GATE,
         "initial_status": "blocked",
         "operator_only": True,
+        "operator_authority_did": OPERATOR_AUTHORITY_DID,
         "runtime_tasks": ["AAE-039", "AAE-043", "AAE-053", "AAE-062"],
         "required_evidence": [
             "genuine terminal SemanticCompressionGovernor receipt and final commit",
             "released full-checkpoint and delta IncrementalProofSealer APIs",
             "clean exact recursive repository forest",
             "fresh focused baselines at the released pins",
+            "recomputed canonical identities for copied upstream and baseline evidence",
+            "verified operator did:key signature over the release receipt identity",
+            "single-use signed exact-HEAD launch admission after gate completion",
         ],
         "missing_capability_disposition": "typed_unavailable",
         "worker_may_complete": False,
     }
     if gate != expected_gate:
         errors.append("scheduler prerequisite gate differs")
+    expected_launch_admission = {
+        "required_after_prerequisite_completion": True,
+        "admission_schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "adversarial-assurance-launch-admission@1"
+        ),
+        "external_path_environment": "IPFS_ACCELERATE_AAE_LAUNCH_ADMISSION_PATH",
+        "must_be_outside_repository": True,
+        "bind_exact_controller_head": True,
+        "bind_prerequisite_receipt_and_gitlinks": True,
+        "strictly_increasing_single_use_generation": True,
+        "chained_ledger_scope": (
+            "git-common-dir/agent-supervisor/adversarial-assurance-engine-v1"
+        ),
+        "consume_under_lifecycle_lock_before_spawn": True,
+        "dry_run_consumes": False,
+    }
+    if scheduler.get("launch_admission_policy") != expected_launch_admission:
+        errors.append("scheduler launch admission policy differs")
     for runtime_task in expected_gate["runtime_tasks"]:
         if OPERATOR_GATE not in EXPECTED_DEPENDENCIES[runtime_task]:
             errors.append(f"runtime task {runtime_task} lacks direct operator-gate dependency")
@@ -986,7 +1085,8 @@ def _validate_repository_pins(repo_root: Path, scheduler: Mapping[str, object], 
         errors.append(f"controller branch differs: expected {BRANCH}, got {branch}")
     _run_git(repo_root, ("merge-base", "--is-ancestor", BASE_REVISION, "HEAD"), errors)
     source = scheduler.get("source_binding")
-    if not isinstance(source, Mapping):
+    bootstrap = scheduler.get("bootstrap_source_binding")
+    if not isinstance(source, Mapping) or not isinstance(bootstrap, Mapping):
         return
     bindings = (
         ("ipfs_datasets_py", "ipfs_datasets_planning_revision"),
@@ -995,12 +1095,19 @@ def _validate_repository_pins(repo_root: Path, scheduler: Mapping[str, object], 
     )
     for path, revision_field in bindings:
         expected = str(source.get(revision_field) or "")
+        bootstrap_revision = str(bootstrap.get(revision_field) or "")
         gitlink = _run_git(repo_root, ("rev-parse", f"HEAD:{path}"), errors)
         nested_head = _run_git(repo_root / path, ("rev-parse", "HEAD"), errors)
         if gitlink and nested_head and gitlink != nested_head:
             errors.append(f"{path} gitlink differs from nested HEAD")
         if expected and nested_head:
             _run_git(repo_root / path, ("merge-base", "--is-ancestor", expected, nested_head), errors)
+        if bootstrap_revision and expected:
+            _run_git(
+                repo_root / path,
+                ("merge-base", "--is-ancestor", bootstrap_revision, expected),
+                errors,
+            )
         status = _run_git(repo_root / path, ("status", "--porcelain"), errors)
         if status:
             errors.append(f"{path} nested worktree is not clean")
@@ -1010,10 +1117,308 @@ def _is_full_hex(value: object) -> bool:
     return re.fullmatch(r"[0-9a-f]{40}", str(value or "")) is not None
 
 
+def _canonical_cid(
+    repo_root: Path,
+    value: object,
+    *,
+    noun: str,
+    errors: list[str],
+) -> str:
+    """Use the pinned datasets CID authority without copying its profile."""
+
+    module_root = repo_root / "ipfs_datasets_py"
+    inserted = False
+    try:
+        if not module_root.is_dir():
+            raise FileNotFoundError(module_root)
+        module_text = str(module_root)
+        if module_text not in sys.path:
+            sys.path.insert(0, module_text)
+            inserted = True
+        module = importlib.import_module(
+            "ipfs_datasets_py.logic.software_contracts.content"
+        )
+        authority_path = Path(str(module.__file__ or "")).resolve()
+        if module_root.resolve() not in authority_path.parents:
+            raise RuntimeError("content authority was imported from another tree")
+        return str(module.cid_for_obj(value))
+    except Exception as exc:  # fail closed across optional dependency failures
+        errors.append(f"{noun} canonical identity could not be recomputed: {type(exc).__name__}")
+        return ""
+    finally:
+        if inserted:
+            try:
+                sys.path.remove(str(module_root))
+            except ValueError:
+                pass
+
+
+def _verify_operator_signature(
+    repo_root: Path,
+    *,
+    identity_did: str,
+    payload: Mapping[str, object],
+    signature: str,
+    errors: list[str],
+) -> None:
+    """Use the existing supervisor did:key verifier and configured authority."""
+
+    inserted = False
+    root_text = str(repo_root)
+    try:
+        if root_text not in sys.path:
+            sys.path.insert(0, root_text)
+            inserted = True
+        module = importlib.import_module(
+            "ipfs_accelerate_py.agent_supervisor.control.profile_authority"
+        )
+        authority_path = Path(str(module.__file__ or "")).resolve()
+        if repo_root.resolve() not in authority_path.parents:
+            raise RuntimeError("signature authority was imported from another tree")
+        module.verify_did_key_signature(
+            identity_did=identity_did,
+            payload=payload,
+            signature=signature,
+        )
+    except Exception as exc:  # includes malformed/invalid signatures
+        errors.append(f"operator release signature verification failed: {type(exc).__name__}")
+    finally:
+        if inserted:
+            try:
+                sys.path.remove(root_text)
+            except ValueError:
+                pass
+
+
+def _bound_json_artifact(
+    repo_root: Path,
+    specification: object,
+    *,
+    noun: str,
+    allowed_paths: Sequence[str] = (PREREQUISITE_EVIDENCE_PREFIX,),
+    errors: list[str],
+) -> dict[str, object]:
+    if not isinstance(specification, Mapping):
+        errors.append(f"{noun} evidence binding is absent")
+        return {}
+    if set(specification) != {"path", "canonical_identity"}:
+        errors.append(f"{noun} evidence binding fields differ")
+    relative = str(specification.get("path") or "")
+    identity = str(specification.get("canonical_identity") or "")
+    path_errors: list[str] = []
+    _safe_paths((relative,), noun=f"{noun} evidence path", errors=path_errors)
+    if path_errors or not _path_in_prefixes(relative, allowed_paths):
+        errors.extend(path_errors or [f"{noun} evidence path leaves the prerequisite evidence root"])
+        return {}
+    candidate = repo_root / PurePosixPath(relative)
+    cursor = repo_root
+    try:
+        for component in PurePosixPath(relative).parts:
+            cursor /= component
+            if cursor.is_symlink():
+                raise ValueError("symlink component")
+        if not candidate.is_file() or candidate.stat().st_size > 1024 * 1024:
+            raise ValueError("missing, non-file, or oversized artifact")
+    except OSError as exc:
+        errors.append(f"{noun} evidence artifact is unavailable: {type(exc).__name__}")
+        return {}
+    except ValueError as exc:
+        errors.append(f"{noun} evidence artifact is invalid: {exc}")
+        return {}
+    payload = _load_json(candidate, errors)
+    recomputed = _canonical_cid(repo_root, payload, noun=noun, errors=errors)
+    if not identity or recomputed != identity:
+        errors.append(f"{noun} evidence canonical identity differs")
+    return payload
+
+
+def _validate_scg_terminal_evidence(
+    lifecycle: Mapping[str, object],
+    terminal: Mapping[str, object],
+    governor: Mapping[str, object],
+    errors: list[str],
+) -> None:
+    if lifecycle.get("schema") != "ipfs_accelerate_py/agent-supervisor/semantic-compression-governor-lifecycle@1":
+        errors.append("SCG lifecycle evidence schema differs")
+    if terminal.get("schema") != "ipfs_accelerate_py/agent-supervisor/semantic-compression-governor-terminal@1":
+        errors.append("SCG terminal evidence schema differs")
+    plan = lifecycle.get("plan")
+    profile = lifecycle.get("profile")
+    if not isinstance(plan, Mapping) or not isinstance(profile, Mapping):
+        errors.append("SCG lifecycle plan/profile binding is absent")
+        return
+    if plan.get("source_head") != governor.get("terminal_launch_commit"):
+        errors.append("SCG terminal source head differs from its launch commit")
+    if plan.get("expected_task_count") != 49 or terminal.get("expected_task_count") != 49:
+        errors.append("SCG terminal task population differs")
+    for field in ("run_id", "profile_id", "configuration_root"):
+        if terminal.get(field) != profile.get(field):
+            errors.append(f"SCG terminal {field} differs from lifecycle profile")
+    if plan.get("configuration_root") != profile.get("configuration_root"):
+        errors.append("SCG lifecycle plan/profile configuration roots differ")
+    if terminal.get("drained") is not True:
+        errors.append("SCG terminal receipt is not drained")
+    lanes = terminal.get("lane_evidence")
+    if not isinstance(lanes, list) or len(lanes) != 3:
+        errors.append("SCG terminal lane population differs")
+        return
+    for lane in lanes:
+        if not isinstance(lane, Mapping):
+            errors.append("SCG terminal lane evidence is malformed")
+            continue
+        if (
+            lane.get("terminal") is not True
+            or lane.get("completed_count") != 49
+            or lane.get("blocked_count") != 0
+            or lane.get("ready_count") != 0
+            or lane.get("waiting_count") != 0
+            or lane.get("active_task_id") not in {None, ""}
+        ):
+            errors.append("SCG terminal lane does not prove a drained 49/49 board")
+
+
+def _validate_baseline_receipt(
+    name: str,
+    payload: Mapping[str, object],
+    expected_state: str,
+    errors: list[str],
+) -> None:
+    expected_keys = {
+        "schema", "runner_id", "repository", "repository_state_root",
+        "started_at", "finished_at", "duration_ns", "command_argv",
+        "returncode", "terminal_status", "passed", "failed", "skipped",
+        "environment_identity", "dependency_lock_identity",
+        "bounded_log_digest", "network_access", "production_credentials_available",
+    }
+    if set(payload) != expected_keys:
+        errors.append(f"{name} baseline fields differ")
+    if payload.get("schema") != "ipfs_accelerate_py/adversarial-assurance/focused-baseline-receipt@1":
+        errors.append(f"{name} baseline schema differs")
+    if payload.get("runner_id") != "protected-aae-focused-baseline-runner@1":
+        errors.append(f"{name} baseline runner differs")
+    if payload.get("repository") != name:
+        errors.append(f"{name} baseline repository identity differs")
+    if payload.get("repository_state_root") != expected_state:
+        errors.append(f"{name} baseline repository-state root differs")
+    timestamps: list[datetime] = []
+    for field in ("started_at", "finished_at"):
+        raw = str(payload.get(field) or "")
+        try:
+            parsed = datetime.strptime(raw, "%Y-%m-%dT%H:%M:%SZ")
+        except ValueError:
+            errors.append(f"{name} baseline {field} is not canonical UTC")
+        else:
+            timestamps.append(parsed)
+    if len(timestamps) == 2 and timestamps[1] < timestamps[0]:
+        errors.append(f"{name} baseline time interval is reversed")
+    if not isinstance(payload.get("duration_ns"), int) or int(payload.get("duration_ns") or 0) <= 0:
+        errors.append(f"{name} baseline duration is not positive")
+    argv = payload.get("command_argv")
+    if not isinstance(argv, list) or not argv or any(not isinstance(item, str) or not item for item in argv):
+        errors.append(f"{name} baseline argv is absent or malformed")
+    if payload.get("returncode") != 0 or payload.get("terminal_status") != "passed":
+        errors.append(f"{name} baseline is not terminal passed")
+    if not isinstance(payload.get("passed"), int) or int(payload.get("passed") or 0) <= 0:
+        errors.append(f"{name} baseline has no positive pass count")
+    if payload.get("failed") != 0:
+        errors.append(f"{name} baseline is not green")
+    if not isinstance(payload.get("skipped"), int) or int(payload.get("skipped") or 0) < 0:
+        errors.append(f"{name} baseline skipped count is invalid")
+    for field in ("environment_identity", "dependency_lock_identity"):
+        if re.fullmatch(r"b[a-z2-7]{20,}", str(payload.get(field) or "")) is None:
+            errors.append(f"{name} baseline {field} is not canonical")
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", str(payload.get("bounded_log_digest") or "")) is None:
+        errors.append(f"{name} baseline log digest is invalid")
+    if payload.get("network_access") != "disabled":
+        errors.append(f"{name} baseline network policy is not disabled")
+    if payload.get("production_credentials_available") is not False:
+        errors.append(f"{name} baseline exposed production credentials")
+
+
+def _probe_sealer_api_bindings(
+    repo_root: Path,
+    bindings: object,
+    errors: list[str],
+) -> None:
+    required = {
+        "IncrementalProofSealer", "FullCheckpointSeal", "DeltaSeal",
+        "create_full_checkpoint", "publish_full_checkpoint",
+        "build_delta_seal", "publish_delta_seal",
+    }
+    if not isinstance(bindings, Mapping) or set(bindings) != required:
+        errors.append("IncrementalProofSealer public API binding population differs")
+        return
+    inserted = False
+    root_text = str(repo_root)
+    try:
+        if root_text not in sys.path:
+            sys.path.insert(0, root_text)
+            inserted = True
+        for symbol in sorted(required):
+            module_name = str(bindings.get(symbol) or "")
+            if not module_name.startswith("ipfs_accelerate_py.agent_supervisor."):
+                errors.append(f"IncrementalProofSealer {symbol} module leaves canonical package")
+                continue
+            try:
+                module = importlib.import_module(module_name)
+                value = getattr(module, symbol)
+            except Exception as exc:
+                errors.append(f"IncrementalProofSealer {symbol} import failed: {type(exc).__name__}")
+                continue
+            module_path = Path(str(module.__file__ or "")).resolve()
+            if repo_root.resolve() not in module_path.parents or not callable(value):
+                errors.append(f"IncrementalProofSealer {symbol} is not a current-tree callable")
+    finally:
+        if inserted:
+            try:
+                sys.path.remove(root_text)
+            except ValueError:
+                pass
+
+
+def _run_release_probe(
+    repo_root: Path,
+    argv: object,
+    *,
+    expected: Sequence[str],
+    noun: str,
+    errors: list[str],
+) -> dict[str, object]:
+    if argv != list(expected):
+        errors.append(f"{noun} release probe argv differs")
+        return {}
+    try:
+        result = subprocess.run(
+            list(expected), cwd=repo_root, text=True, capture_output=True,
+            check=False, timeout=3600.0,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        errors.append(f"{noun} release probe failed: {type(exc).__name__}")
+        return {}
+    if result.returncode != 0:
+        errors.append(f"{noun} release probe rejected: {result.returncode}")
+        return {}
+    if len(result.stdout.encode("utf-8")) > 1024 * 1024:
+        errors.append(f"{noun} release probe output exceeds one MiB")
+        return {}
+    try:
+        report = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        errors.append(f"{noun} release probe did not emit one JSON report")
+        return {}
+    if not isinstance(report, dict):
+        errors.append(f"{noun} release probe report is not an object")
+        return {}
+    if report.get("valid") is not True or report.get("errors") != []:
+        errors.append(f"{noun} release probe report is not valid")
+    return report
+
+
 def _prerequisite_release_report(
     repo_root: Path,
     *,
     check_repository: bool,
+    execute_release_probes: bool = False,
 ) -> dict[str, object]:
     errors: list[str] = []
     scheduler = _load_json(repo_root / SCHEDULER_REL, errors)
@@ -1034,6 +1439,16 @@ def _prerequisite_release_report(
     task_by_id = {record.record_id: record for record in records}
     if receipt.get("schema") != "ipfs_accelerate_py/agent-supervisor/adversarial-assurance-prerequisite-receipt@1":
         errors.append("prerequisite receipt schema differs")
+    expected_receipt_fields = {
+        "schema", "task_id", "status", "observed_at", "controller",
+        "semantic_compression_governor", "incremental_proof_sealer",
+        "evidence_artifacts", "completion_requirements", "worker_may_complete",
+        "runtime_and_sealing_authorized", "canonical_identity_scope",
+        "canonical_identity", "authorization", "provenance",
+        "baseline_qualification_argv",
+    }
+    if receipt.get("status") == "completed" and set(receipt) != expected_receipt_fields:
+        errors.append("completed prerequisite receipt fields differ")
     if receipt.get("task_id") != OPERATOR_GATE:
         errors.append("prerequisite receipt task identity differs")
     if receipt.get("status") != "completed":
@@ -1048,58 +1463,205 @@ def _prerequisite_release_report(
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", observed_at) is None:
         errors.append("prerequisite receipt observed_at is not a canonical UTC timestamp")
     source = scheduler.get("source_binding")
+    gate = scheduler.get("prerequisite_gate")
     controller = receipt.get("controller")
+    release_commit = ""
+    release_gitlinks: dict[str, object] = {}
+    pin_generation = -1
     if not isinstance(source, Mapping) or not isinstance(controller, Mapping):
         errors.append("prerequisite controller/source binding is absent")
     else:
+        release_commit = str(controller.get("release_commit") or "")
+        release_gitlinks = {
+            "ipfs_datasets_py": source.get("ipfs_datasets_planning_revision"),
+            "ipfs_kit_py": source.get("ipfs_kit_planning_revision"),
+            "ipfs_accelerate_py/mcplusplus": source.get("mcp_plus_plus_planning_revision"),
+        }
+        try:
+            pin_generation = int(source.get("pin_generation"))
+        except (TypeError, ValueError):
+            pin_generation = -1
         expected_controller = {
             "repository": "endomorphosis/ipfs_accelerate_py",
             "branch": source.get("accelerator_required_branch"),
             "required_ancestor": source.get("accelerator_required_ancestor"),
-            "planning_gitlinks": {
-                "ipfs_datasets_py": source.get("ipfs_datasets_planning_revision"),
-                "ipfs_kit_py": source.get("ipfs_kit_planning_revision"),
-                "ipfs_accelerate_py/mcplusplus": source.get("mcp_plus_plus_planning_revision"),
-            },
+            "pin_generation": pin_generation,
+            "release_commit": release_commit,
+            "release_gitlinks": release_gitlinks,
         }
         if controller != expected_controller:
-            errors.append("prerequisite controller binding differs from scheduler source pins")
+            errors.append("prerequisite controller binding differs from active release pins")
+        if source.get("pin_state") != "operator_released" or pin_generation <= 0:
+            errors.append("prerequisite source pins were not operator-released")
+        if not _is_full_hex(release_commit):
+            errors.append("prerequisite release commit is not exact 40-hex")
+
+    sealer_probe_report: dict[str, object] = {}
+    baseline_probe_report: dict[str, object] = {}
+    if execute_release_probes and check_repository and receipt.get("status") == "completed":
+        raw_sealer = receipt.get("incremental_proof_sealer")
+        sealer_argv = raw_sealer.get("qualification_argv") if isinstance(raw_sealer, Mapping) else None
+        sealer_probe_report = _run_release_probe(
+            repo_root,
+            sealer_argv,
+            expected=("python3", "scripts/validate_incremental_proof_sealer_board.py", "--run-release-validation"),
+            noun="IncrementalProofSealer",
+            errors=errors,
+        )
+        baseline_probe_report = _run_release_probe(
+            repo_root,
+            receipt.get("baseline_qualification_argv"),
+            expected=FOCUSED_BASELINE_RUNNER,
+            noun="focused baseline",
+            errors=errors,
+        )
+
+    evidence_specs = receipt.get("evidence_artifacts")
+    evidence_keys = {
+        "scg_lifecycle", "scg_terminal", "incremental_proof_sealer_release",
+        "datasets_baseline", "accelerate_baseline", "ipfs_kit_py_baseline",
+        "mcp_plus_plus_baseline",
+    }
+    evidence: dict[str, dict[str, object]] = {}
+    if not isinstance(evidence_specs, Mapping) or set(evidence_specs) != evidence_keys:
+        errors.append("prerequisite evidence artifact population differs")
+    else:
+        for name in sorted(evidence_keys):
+            allowed_paths = (
+                (SEALER_RELEASE_RECEIPT_REL,)
+                if name == "incremental_proof_sealer_release"
+                else (PREREQUISITE_EVIDENCE_PREFIX,)
+            )
+            evidence[name] = _bound_json_artifact(
+                repo_root,
+                evidence_specs.get(name),
+                noun=name,
+                allowed_paths=allowed_paths,
+                errors=errors,
+            )
+            if (
+                name == "incremental_proof_sealer_release"
+                and isinstance(evidence_specs.get(name), Mapping)
+                and evidence_specs[name].get("path") != SEALER_RELEASE_RECEIPT_REL
+            ):
+                errors.append("IncrementalProofSealer evidence does not use its canonical release receipt")
+
+    if sealer_probe_report and sealer_probe_report.get("runner") != "release":
+        errors.append("IncrementalProofSealer release probe runner differs")
+    if baseline_probe_report:
+        expected_probe_fields = {
+            "schema", "valid", "runner", "source_head", "receipt_bindings", "errors",
+        }
+        if set(baseline_probe_report) != expected_probe_fields:
+            errors.append("focused baseline verification report fields differ")
+        if (
+            baseline_probe_report.get("schema")
+            != "ipfs_accelerate_py/adversarial-assurance/focused-baseline-verification@1"
+            or baseline_probe_report.get("runner") != "protected-aae-focused-baseline-runner@1"
+            or baseline_probe_report.get("source_head") != release_commit
+        ):
+            errors.append("focused baseline verification report binding differs")
+        expected_bindings = {
+            name: evidence_specs.get(name)
+            for name in (
+                "datasets_baseline", "accelerate_baseline",
+                "ipfs_kit_py_baseline", "mcp_plus_plus_baseline",
+            )
+        } if isinstance(evidence_specs, Mapping) else {}
+        if baseline_probe_report.get("receipt_bindings") != expected_bindings:
+            errors.append("focused baseline probe output differs from signed evidence bindings")
+
     governor = receipt.get("semantic_compression_governor")
     if not isinstance(governor, Mapping):
         errors.append("SCG release evidence is absent")
+        governor = {}
     else:
-        if not _is_full_hex(governor.get("observed_commit")) or not _is_full_hex(governor.get("observed_datasets_commit")):
-            errors.append("SCG release commits are not exact 40-hex identities")
-        if governor.get("terminal_receipt_valid") is not True:
-            errors.append("SCG terminal receipt is not valid")
+        if set(governor) != {
+            "observed_commit", "terminal_launch_commit",
+            "observed_datasets_commit", "disposition",
+        }:
+            errors.append("SCG release evidence fields differ")
+        for field in ("observed_commit", "terminal_launch_commit", "observed_datasets_commit"):
+            if not _is_full_hex(governor.get(field)):
+                errors.append(f"SCG {field} is not exact 40-hex")
         if governor.get("disposition") not in {"released", "verified_complete", "terminal_completed"}:
             errors.append("SCG disposition is not terminal/released")
+    _validate_scg_terminal_evidence(
+        evidence.get("scg_lifecycle", {}),
+        evidence.get("scg_terminal", {}),
+        governor,
+        errors,
+    )
+
     sealer = receipt.get("incremental_proof_sealer")
     if not isinstance(sealer, Mapping):
         errors.append("IncrementalProofSealer release evidence is absent")
+        sealer = {}
     else:
+        if set(sealer) != {"observed_commit", "disposition", "api_bindings", "qualification_argv"}:
+            errors.append("IncrementalProofSealer release evidence fields differ")
         if not _is_full_hex(sealer.get("observed_commit")):
-            errors.append("IncrementalProofSealer commit is not an exact 40-hex identity")
-        for field in ("public_full_checkpoint_api_available", "public_delta_seal_api_available", "terminal_receipt_valid"):
-            if sealer.get(field) is not True:
-                errors.append(f"IncrementalProofSealer {field} is not true")
+            errors.append("IncrementalProofSealer commit is not exact 40-hex")
         if sealer.get("disposition") not in {"released", "verified_complete", "terminal_completed"}:
             errors.append("IncrementalProofSealer disposition is not terminal/released")
-    baseline = receipt.get("baseline")
-    if not isinstance(baseline, Mapping) or set(baseline) != {"datasets", "accelerate", "ipfs_kit_py", "mcp_plus_plus"}:
-        errors.append("prerequisite focused baseline population differs")
-    else:
-        for name in ("datasets", "accelerate", "ipfs_kit_py", "mcp_plus_plus"):
-            entry = baseline.get(name)
-            if not isinstance(entry, Mapping):
-                errors.append(f"{name} baseline is absent")
-                continue
-            if not isinstance(entry.get("passed"), int) or int(entry.get("passed") or 0) <= 0:
-                errors.append(f"{name} baseline has no positive pass count")
-            if entry.get("failed") != 0:
-                errors.append(f"{name} focused baseline is not green")
-            if entry.get("known_failure"):
-                errors.append(f"{name} baseline still carries a known failure")
+        if sealer.get("qualification_argv") != [
+            "python3", "scripts/validate_incremental_proof_sealer_board.py",
+            "--run-release-validation",
+        ]:
+            errors.append("IncrementalProofSealer qualification argv differs")
+    if receipt.get("baseline_qualification_argv") != list(FOCUSED_BASELINE_RUNNER):
+        errors.append("focused baseline qualification argv differs")
+    sealer_release = evidence.get("incremental_proof_sealer_release", {})
+    if sealer_release.get("schema_version") != "incremental-proof-sealer-release-validation@2":
+        errors.append("IncrementalProofSealer release evidence schema differs")
+    if sealer_release.get("runner_id") != "protected-board-release-validation-runner@1":
+        errors.append("IncrementalProofSealer release runner differs")
+    terminal_gate = sealer_release.get("terminal_gate")
+    if not isinstance(terminal_gate, Mapping) or (
+        terminal_gate.get("id") != "terminal-board-gate"
+        or terminal_gate.get("capture_status") != "completed"
+        or terminal_gate.get("exit_code") != 0
+    ):
+        errors.append("IncrementalProofSealer canonical terminal gate is not passed")
+    if not _is_full_hex(sealer_release.get("validation_worktree_parent_revision")):
+        errors.append("IncrementalProofSealer release parent revision is invalid")
+    source_revisions = sealer_release.get("source_revisions")
+    if not isinstance(source_revisions, Mapping) or set(source_revisions) != {"accelerate", "datasets", "kit"}:
+        errors.append("IncrementalProofSealer release source revision population differs")
+    elif any(not _is_full_hex(value) for value in source_revisions.values()):
+        errors.append("IncrementalProofSealer release source revisions are invalid")
+    declared_sealer_digest = str(sealer_release.get("receipt_digest") or "")
+    sealer_body = dict(sealer_release)
+    sealer_body.pop("receipt_digest", None)
+    try:
+        expected_sealer_digest = "sha256:" + hashlib.sha256(
+            json.dumps(
+                sealer_body,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+    except (TypeError, ValueError):
+        expected_sealer_digest = ""
+    if declared_sealer_digest != expected_sealer_digest:
+        errors.append("IncrementalProofSealer release digest is invalid")
+    _probe_sealer_api_bindings(repo_root, sealer.get("api_bindings"), errors)
+
+    baseline_states = {
+        "datasets": str(release_gitlinks.get("ipfs_datasets_py") or ""),
+        "accelerate": release_commit,
+        "ipfs_kit_py": str(release_gitlinks.get("ipfs_kit_py") or ""),
+        "mcp_plus_plus": str(release_gitlinks.get("ipfs_accelerate_py/mcplusplus") or ""),
+    }
+    for name, state_root in baseline_states.items():
+        _validate_baseline_receipt(
+            name,
+            evidence.get(f"{name}_baseline", {}),
+            state_root,
+            errors,
+        )
     requirements = receipt.get("completion_requirements")
     if not isinstance(requirements, list) or len(requirements) < 5:
         errors.append("prerequisite completion requirements are incomplete")
@@ -1112,14 +1674,90 @@ def _prerequisite_release_report(
         errors.append("workers may not complete the prerequisite receipt")
     if receipt.get("runtime_and_sealing_authorized") is not True:
         errors.append("runtime and sealing are not authorized")
-    identity = receipt.get("canonical_identity")
-    if not isinstance(identity, str) or re.fullmatch(r"b[a-z2-7]{20,}", identity) is None:
-        errors.append("prerequisite receipt lacks a strict non-pseudo canonical identity")
+    identity = str(receipt.get("canonical_identity") or "")
+    if receipt.get("canonical_identity_scope") != "entire completed receipt excluding canonical_identity and authorization":
+        errors.append("prerequisite receipt canonical identity scope differs")
+    unsigned_receipt = dict(receipt)
+    unsigned_receipt.pop("canonical_identity", None)
+    unsigned_receipt.pop("authorization", None)
+    recomputed_identity = _canonical_cid(
+        repo_root, unsigned_receipt, noun="prerequisite receipt", errors=errors
+    )
+    if not identity or identity != recomputed_identity:
+        errors.append("prerequisite receipt canonical identity differs")
+
+    authorization = receipt.get("authorization")
+    expected_authority = gate.get("operator_authority_did") if isinstance(gate, Mapping) else None
+    if not isinstance(authorization, Mapping):
+        errors.append("prerequisite operator authorization is absent")
+    else:
+        expected_authorization_fields = {
+            "schema", "identity_did", "audience", "action", "receipt_cid",
+            "pin_generation", "release_commit", "release_gitlinks", "signature",
+        }
+        if set(authorization) != expected_authorization_fields:
+            errors.append("prerequisite operator authorization fields differ")
+        if (
+            expected_authority != OPERATOR_AUTHORITY_DID
+            or authorization.get("identity_did") != expected_authority
+            or authorization.get("schema") != "ipfs_accelerate_py/agent-supervisor/adversarial-assurance-prerequisite-authorization@1"
+            or authorization.get("audience") != BOARD_NAMESPACE
+            or authorization.get("action") != "complete:AAE-006"
+            or authorization.get("receipt_cid") != identity
+            or authorization.get("pin_generation") != pin_generation
+            or authorization.get("release_commit") != release_commit
+            or authorization.get("release_gitlinks") != release_gitlinks
+        ):
+            errors.append("prerequisite operator authorization bindings differ")
+        signature_payload = dict(authorization)
+        signature = str(signature_payload.pop("signature", ""))
+        _verify_operator_signature(
+            repo_root,
+            identity_did=str(authorization.get("identity_did") or ""),
+            payload=signature_payload,
+            signature=signature,
+            errors=errors,
+        )
     provenance = _normalized(str(receipt.get("provenance") or ""))
     if "operator" not in provenance or "not release evidence" in provenance:
         errors.append("prerequisite provenance is not affirmative operator release evidence")
     if check_repository and isinstance(source, Mapping):
         _validate_repository_pins(repo_root, scheduler, errors)
+        for noun, revision in (
+            ("controller release", release_commit),
+            ("SCG release", str(governor.get("observed_commit") or "")),
+            ("IncrementalProofSealer release", str(sealer.get("observed_commit") or "")),
+        ):
+            if _is_full_hex(revision):
+                before = len(errors)
+                _run_git(repo_root, ("merge-base", "--is-ancestor", revision, "HEAD"), errors)
+                if len(errors) > before:
+                    errors.append(f"{noun} commit is not integrated into the AAE controller")
+        launch_commit = str(governor.get("terminal_launch_commit") or "")
+        final_scg_commit = str(governor.get("observed_commit") or "")
+        if _is_full_hex(launch_commit) and _is_full_hex(final_scg_commit):
+            _run_git(repo_root, ("merge-base", "--is-ancestor", launch_commit, final_scg_commit), errors)
+        scg_datasets_commit = str(governor.get("observed_datasets_commit") or "")
+        active_datasets_commit = str(release_gitlinks.get("ipfs_datasets_py") or "")
+        if _is_full_hex(scg_datasets_commit) and _is_full_hex(active_datasets_commit):
+            _run_git(
+                repo_root / "ipfs_datasets_py",
+                ("merge-base", "--is-ancestor", scg_datasets_commit, active_datasets_commit),
+                errors,
+            )
+        if isinstance(source_revisions, Mapping):
+            sealer_targets = {
+                "accelerate": str(sealer.get("observed_commit") or ""),
+                "datasets": str(release_gitlinks.get("ipfs_datasets_py") or ""),
+                "kit": str(release_gitlinks.get("ipfs_kit_py") or ""),
+            }
+            for repository, target in sealer_targets.items():
+                revision = str(source_revisions.get(repository) or "")
+                git_root = repo_root if repository == "accelerate" else repo_root / (
+                    "ipfs_datasets_py" if repository == "datasets" else "ipfs_kit_py"
+                )
+                if _is_full_hex(revision) and _is_full_hex(target):
+                    _run_git(git_root, ("merge-base", "--is-ancestor", revision, target), errors)
     return {
         "schema": "ipfs_accelerate_py/agent-supervisor/adversarial-assurance-prerequisite-validation@1",
         "valid": not errors,
@@ -1133,6 +1771,8 @@ def _prerequisite_release_report(
 def _validate_blocked_prerequisite_state(
     prerequisite: Mapping[str, object],
     *,
+    repo_root: Path,
+    check_repository: bool,
     release_report: Mapping[str, object],
     errors: list[str],
 ) -> None:
@@ -1154,6 +1794,17 @@ def _validate_blocked_prerequisite_state(
     observation_identity = prerequisite.get("observation_identity")
     if not isinstance(observation_identity, str) or re.fullmatch(r"b[a-z2-7]{20,}", observation_identity) is None:
         errors.append("blocked prerequisite observation lacks a strict non-pseudo content identity")
+    if check_repository:
+        observation = dict(prerequisite)
+        observation.pop("observation_identity", None)
+        recomputed = _canonical_cid(
+            repo_root,
+            observation,
+            noun="blocked prerequisite observation",
+            errors=errors,
+        )
+        if observation_identity != recomputed:
+            errors.append("blocked prerequisite observation identity differs")
     governor = prerequisite.get("semantic_compression_governor")
     sealer = prerequisite.get("incremental_proof_sealer")
     if not isinstance(governor, Mapping) or governor.get("terminal_receipt_valid") is not False:
@@ -1197,10 +1848,22 @@ def validate(
     prerequisite = _load_json(root / PREREQUISITES_REL, errors)
     _validate_plan(plan_text, todo_text, errors)
     _validate_goals(objectives_text, errors)
-    _validate_scheduler(scheduler, repo_root=root, check_repository=check_repository, errors=errors)
+    _validate_scheduler(
+        scheduler,
+        prerequisite=prerequisite,
+        repo_root=root,
+        check_repository=check_repository,
+        errors=errors,
+    )
     _validate_tasks(todo_text, scheduler, prerequisite, errors)
     release_report = _prerequisite_release_report(root, check_repository=check_repository)
-    _validate_blocked_prerequisite_state(prerequisite, release_report=release_report, errors=errors)
+    _validate_blocked_prerequisite_state(
+        prerequisite,
+        repo_root=root,
+        check_repository=check_repository,
+        release_report=release_report,
+        errors=errors,
+    )
     if check_repository:
         _validate_repository_pins(root, scheduler, errors)
     errors = list(dict.fromkeys(errors))
@@ -1233,7 +1896,11 @@ def validate_prerequisites(
 ) -> dict[str, object]:
     """Validate genuine operator completion of the upstream release gate."""
 
-    return _prerequisite_release_report(Path(repo_root).resolve(), check_repository=check_repository)
+    return _prerequisite_release_report(
+        Path(repo_root).resolve(),
+        check_repository=check_repository,
+        execute_release_probes=True,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

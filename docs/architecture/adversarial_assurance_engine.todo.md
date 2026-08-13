@@ -194,7 +194,7 @@ W20 AAE-063
 - Effects: Creates the reviewed reuse/non-reimplementation and baseline authority join.
 - Evidence subset: AAE-001 through AAE-004 plus exact process receipts
 - Symbolic first: true
-- Acceptance: Matrix records the exact scoped repository forest, interfaces, status vocabularies, test/proof manifests, known RED/stale/unavailable evidence, and green or explicitly failed focused commands before product implementation; baseline receipts bind exact argv, exit codes, bounded log digests, environment and dependency-lock identities, timing, and canonical identity.
+- Acceptance: Matrix records the exact scoped repository forest, interfaces, status vocabularies, test/proof manifests, known RED/stale/unavailable evidence, and green or explicitly failed focused commands before product implementation. The protected runner supports only `--current-tree` execution and `--verify-bundle` read-only verification with one of the two reviewed output roots; it emits a closed JSON verification report whose exact receipt path/CID bindings are rederived. Each closed baseline receipt binds repository/revision, exact argv, exit code, actual counts, bounded log digest, canonical UTC interval and duration, environment and dependency-lock identities, disabled network, absent production credentials, and canonical identity.
 
 ## AAE-006 Operator gate: pin terminal SCG and released IncrementalProofSealer authorities
 
@@ -207,7 +207,7 @@ W20 AAE-063
 - Track: prerequisite-release
 - Depends on: AAE-005
 - Goal id: AAE-G060
-- Outputs: config/adversarial_assurance_prerequisites.json, docs/architecture/adversarial_assurance_inventory/prerequisite_release.md
+- Outputs: config/adversarial_assurance_prerequisites.json, docs/architecture/adversarial_assurance_inventory/prerequisite_release.md, docs/architecture/adversarial_assurance_inventory/prerequisite_evidence
 - Validation: python3 scripts/validate_adversarial_assurance_engine_board.py --check-prerequisites
 - Board namespace: adversarial-assurance-engine-v1
 - Bundle: adversarial-assurance/prerequisite-release
@@ -216,14 +216,14 @@ W20 AAE-063
 - Implementation timeout seconds: 1800
 - Provider role: operator-only
 - LLM context budget bytes: 1
-- Predicted files: config/adversarial_assurance_prerequisites.json, docs/architecture/adversarial_assurance_inventory/prerequisite_release.md
+- Predicted files: config/adversarial_assurance_prerequisites.json, docs/architecture/adversarial_assurance_inventory/prerequisite_release.md, docs/architecture/adversarial_assurance_inventory/prerequisite_evidence
 - Interfaces: AssurancePrerequisiteReceipt@1
 - Conflict policy: Operator-only release authority. Workers cannot edit this task, prerequisite receipt, source binding, protected controls, or substitute local implementations.
 - Preconditions: AAE-005 is complete; operator independently verifies terminal upstream receipts and exact released interfaces.
-- Effects: When and only when evidence is valid, repins source/gitlinks and authorizes runtime/seal tasks; never emulates upstream functionality.
+- Effects: When and only when evidence is valid, advances pin_generation, repins source/gitlinks, records copied content-addressed upstream/baseline evidence, and permits a separate signed, exact-HEAD, single-use launch admission; never emulates upstream functionality.
 - Evidence subset: terminal SCG receipt, released sealer capability receipt, recursive forest, clean status, focused baseline receipts
 - Symbolic first: true
-- Acceptance: Only an operator may complete this task after a genuine SCG terminal receipt, released checkpoint and delta sealer APIs, fresh exact pins, clean gitlinks, and rerun focused baselines; otherwise the typed blocker remains.
+- Acceptance: Only the configured operator did:key may complete this task. Validation recomputes the receipt and every copied evidence CID, verifies the signature over audience/action/receipt/pin bindings, cross-checks the genuine drained SCG lifecycle and terminal receipts, imports the released checkpoint/delta sealer API bindings, executes and parses the upstream sealer's canonical release qualification without hard-coded residual-task counts, verifies the baseline bundle report reproduces the signed receipt bindings, and rejects any self-asserted boolean/string substitute. Because the committed gate cannot self-bind its containing commit, post-gate preflight separately requires a chained operator signature over exact controller HEAD, receipt CID, pin generation, gitlinks, and a strictly increasing single-use launch generation; otherwise the typed blocker remains.
 
 ## AAE-007 Define common artifact headers, versions, identities, provenance, and closed vocabularies
 
@@ -387,7 +387,7 @@ W20 AAE-063
 - Symbolic first: true
 - Acceptance: Receipts bind complete campaign/promotion inputs, authorization, expected-old revision, held-out result, seal scope, terminal status, signer/key/audience/action identities, signature bytes, signature-verification status, and canonical identity; signed and content-addressed evidence reuses the existing receipt/signature authority and defines no new envelope or cryptography.
 
-## AAE-013 Qualify shared schema/vector boundary and cross-language conformance
+## AAE-013 Decide and conditionally qualify the shared schema/vector boundary
 
 - Status: todo
 - Completion: auto
@@ -397,7 +397,7 @@ W20 AAE-063
 - Track: conformance
 - Depends on: AAE-008, AAE-009, AAE-010, AAE-011, AAE-012
 - Goal id: AAE-G020
-- Outputs: ipfs_accelerate_py/mcplusplus/docs/architecture/adversarial_assurance_conformance.md, ipfs_accelerate_py/mcplusplus/schemas/adversarial_assurance_campaign.schema.json, ipfs_accelerate_py/mcplusplus/schemas/adversarial_assurance_receipt.schema.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/adversarial_assurance_campaign_valid.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/adversarial_assurance_campaign_invalid.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/adversarial_assurance_receipt_valid.json, ipfs_accelerate_py/mcplusplus/tests-py/integration/test_conformance_vectors.py, ipfs_accelerate_py/mcplusplus/tests-go/conformance_vectors_test.go, ipfs_accelerate_py/mcplusplus/tests-rs/tests/conformance_vectors_test.rs, ipfs_accelerate_py/mcplusplus/tests-ts/src/__tests__/conformance-vectors.test.ts
+- Outputs: ipfs_accelerate_py/mcplusplus/docs/architecture/adversarial_assurance_conformance.md, ipfs_accelerate_py/mcplusplus/schemas/adversarial_assurance_campaign.schema.json, ipfs_accelerate_py/mcplusplus/schemas/adversarial_assurance_receipt.schema.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/adversarial_assurance_campaign_valid.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/adversarial_assurance_campaign_invalid.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/adversarial_assurance_receipt_valid.json
 - Validation: python3 -m pytest -q ipfs_accelerate_py/mcplusplus/tests-py/integration/test_conformance_vectors.py && (cd ipfs_accelerate_py/mcplusplus/tests-go && go test ./...) && cargo test --manifest-path ipfs_accelerate_py/mcplusplus/tests-rs/Cargo.toml && (cd ipfs_accelerate_py/mcplusplus/tests-ts && npm test)
 - Board namespace: adversarial-assurance-engine-v1
 - Bundle: adversarial-assurance/conformance
@@ -405,14 +405,15 @@ W20 AAE-063
 - Resource class: cpu-medium
 - Implementation timeout seconds: 7200
 - LLM context budget bytes: 131072
-- Predicted files: ipfs_accelerate_py/mcplusplus/docs/architecture/adversarial_assurance_conformance.md, ipfs_accelerate_py/mcplusplus/schemas/adversarial_assurance_campaign.schema.json, ipfs_accelerate_py/mcplusplus/schemas/adversarial_assurance_receipt.schema.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/adversarial_assurance_campaign_valid.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/adversarial_assurance_campaign_invalid.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/adversarial_assurance_receipt_valid.json, ipfs_accelerate_py/mcplusplus/tests-py/integration/test_conformance_vectors.py, ipfs_accelerate_py/mcplusplus/tests-go/conformance_vectors_test.go, ipfs_accelerate_py/mcplusplus/tests-rs/tests/conformance_vectors_test.rs, ipfs_accelerate_py/mcplusplus/tests-ts/src/__tests__/conformance-vectors.test.ts
+- Predicted files: ipfs_accelerate_py/mcplusplus/docs/architecture/adversarial_assurance_conformance.md, ipfs_accelerate_py/mcplusplus/schemas/adversarial_assurance_campaign.schema.json, ipfs_accelerate_py/mcplusplus/schemas/adversarial_assurance_receipt.schema.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/adversarial_assurance_campaign_valid.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/adversarial_assurance_campaign_invalid.json, ipfs_accelerate_py/mcplusplus/conformance/vectors/adversarial_assurance_receipt_valid.json
+- Output policy: The decision document is mandatory; schema/vector paths are a conditional permission envelope and remain absent when no genuine cross-language contract is demonstrated. Existing flat-vector harnesses are consumed, not rewritten.
 - Interfaces: AdversarialAssuranceConformanceDecision@1
 - Conflict policy: Own only MCP++ shared schema, flat discoverable vector, conformance-harness, and decision-document files. Consume the frozen datasets contracts; do not edit profiles, runtimes, CID authority, application orchestration, or unrelated conformance data.
 - Preconditions: AAE-008, AAE-009, AAE-010, AAE-011, AAE-012 are complete.
-- Effects: Produces AdversarialAssuranceConformanceDecision@1 with bounded current-tree evidence and no production policy change.
+- Effects: Produces AdversarialAssuranceConformanceDecision@1 and, only when that decision demonstrates a shared requirement, the minimal shared schemas and flat vectors; the explicit no-shared-requirement branch changes no schema/vector/profile.
 - Evidence subset: aae-013 current-tree source, focused tests, and negative cases
 - Symbolic first: true
-- Acceptance: Decision proves a genuine cross-language requirement; shared schemas and flat canonical vectors are discovered and reproduced by Python, Go, Rust, and TypeScript harnesses; unknown fields/enums fail closed; no MCP++ profile is created or changed.
+- Acceptance: The decision may conclude no MCP++ change is justified. If and only if it proves a genuine cross-language requirement, minimal shared schemas and flat canonical vectors are added and reproduced by the existing Python, Go, Rust, and TypeScript harnesses; unknown fields/enums fail closed; no MCP++ profile, runtime, or application payload is created or changed.
 
 ## AAE-014 Implement deterministic operator registry and rollback contracts
 
@@ -964,7 +965,7 @@ W20 AAE-063
 - Track: storage-artifacts
 - Depends on: AAE-007, AAE-008, AAE-009, AAE-010, AAE-011, AAE-012
 - Goal id: AAE-G050
-- Outputs: ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/__init__.py, ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/contracts.py, ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/artifacts.py, ipfs_kit_py/tests/adversarial_assurance_store/test_contracts.py, ipfs_kit_py/tests/adversarial_assurance_store/test_artifacts.py
+- Outputs: ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/contracts.py, ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/artifacts.py, ipfs_kit_py/tests/adversarial_assurance_store/test_contracts.py, ipfs_kit_py/tests/adversarial_assurance_store/test_artifacts.py
 - Validation: python3 -m pytest -q ipfs_kit_py/tests/adversarial_assurance_store/test_contracts.py ipfs_kit_py/tests/adversarial_assurance_store/test_artifacts.py
 - Board namespace: adversarial-assurance-engine-v1
 - Bundle: adversarial-assurance/storage-artifacts
@@ -972,14 +973,14 @@ W20 AAE-063
 - Resource class: io-medium
 - Implementation timeout seconds: 7200
 - LLM context budget bytes: 131072
-- Predicted files: ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/__init__.py, ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/contracts.py, ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/artifacts.py, ipfs_kit_py/tests/adversarial_assurance_store/test_contracts.py, ipfs_kit_py/tests/adversarial_assurance_store/test_artifacts.py
-- Interfaces: AssuranceArtifactStore@1, ipfs_kit_py.adversarial_assurance_store
-- Conflict policy: This is the sole kit task allowed to freeze adversarial_assurance_store projections and package exports. Reuse datasets contracts plus the existing DurableCoordinationStore, content identity, receipt signer, and key-identity authorities; define no alternate envelope, CID, signature, or storage authority.
+- Predicted files: ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/contracts.py, ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/artifacts.py, ipfs_kit_py/tests/adversarial_assurance_store/test_contracts.py, ipfs_kit_py/tests/adversarial_assurance_store/test_artifacts.py
+- Interfaces: AssuranceArtifactStore@1
+- Conflict policy: Own artifact projections and storage only; AAE-038 is the sole final package-export owner. Reuse datasets contracts plus the existing DurableCoordinationStore, content identity, receipt signer, and key-identity authorities; define no alternate envelope, CID, signature, or storage authority.
 - Preconditions: AAE-007, AAE-008, AAE-009, AAE-010, AAE-011, AAE-012 are complete.
 - Effects: Produces AssuranceArtifactStore@1 with bounded current-tree evidence and no production policy change.
 - Evidence subset: aae-034 current-tree source, focused tests, and negative cases
 - Symbolic first: true
-- Acceptance: Typed projections consume the datasets schemas without redefining them; canonical objects and signed receipts are immutable, content-addressed, size bounded, rederived and signature-verified on read, namespace isolated, exported through the package API, and stored through the existing durable and signer authorities.
+- Acceptance: Typed projections consume the datasets schemas without redefining them; canonical objects and signed receipts are size bounded and signature-verified before persistence, including before the first durable write, content addressing, Merkle inclusion, or seal eligibility, then rederived and signature-verified again on read through the existing durable and signer authorities.
 
 ## AAE-035 Persist campaign state, receipts, gaps, and append-only histories
 
@@ -1006,7 +1007,7 @@ W20 AAE-063
 - Effects: Produces MutationCampaignRepository@1, AssuranceGapRepository@1 with bounded current-tree evidence and no production policy change.
 - Evidence subset: aae-035 current-tree source, focused tests, and negative cases
 - Symbolic first: true
-- Acceptance: Operation-id replay is deterministic; transitions are closed; completed artifacts survive restart; partial and ambiguous execution claims cannot become terminal success.
+- Acceptance: Operation-id replay is deterministic; transitions are closed; invalid, unknown-key, wrong-audience/action, or unverified signed receipts are rejected before persistence; completed artifacts survive restart; partial and ambiguous execution claims cannot become terminal success.
 
 ## AAE-036 Persist benchmark artifacts, Merkle roots, and seal manifests
 
@@ -1033,7 +1034,7 @@ W20 AAE-063
 - Effects: Produces AssuranceCampaignMerkleRepository@1 with bounded current-tree evidence and no production policy change.
 - Evidence subset: aae-036 current-tree source, focused tests, and negative cases
 - Symbolic first: true
-- Acceptance: Deterministic roots commit operator/policy/admitted/detection/outcome/survivor/vacuity/held-out sets with required-set completeness and explicit seal availability/status.
+- Acceptance: Deterministic roots commit operator/policy/admitted/detection/outcome/survivor/vacuity/held-out sets with required-set completeness and explicit seal availability/status; signature verification occurs before persistence, Merkle inclusion, or seal input, so no invalid or not-yet-verified signed receipt can enter a manifest.
 
 ## AAE-037 Implement assurance-policy revision and promotion compare-and-swap
 
@@ -1072,22 +1073,22 @@ W20 AAE-063
 - Track: storage-recovery
 - Depends on: AAE-034, AAE-035, AAE-036, AAE-037
 - Goal id: AAE-G050
-- Outputs: ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/recovery.py, ipfs_kit_py/tests/adversarial_assurance_store/test_recovery.py
-- Validation: python3 -m pytest -q ipfs_kit_py/tests/adversarial_assurance_store/test_recovery.py
+- Outputs: ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/recovery.py, ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/__init__.py, ipfs_kit_py/tests/adversarial_assurance_store/test_recovery.py, ipfs_kit_py/tests/adversarial_assurance_store/test_public_api.py
+- Validation: python3 -m pytest -q ipfs_kit_py/tests/adversarial_assurance_store/test_recovery.py ipfs_kit_py/tests/adversarial_assurance_store/test_public_api.py
 - Board namespace: adversarial-assurance-engine-v1
 - Bundle: adversarial-assurance/storage-recovery
 - Parallel lane: kit
 - Resource class: io-large
 - Implementation timeout seconds: 14400
 - LLM context budget bytes: 131072
-- Predicted files: ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/recovery.py, ipfs_kit_py/tests/adversarial_assurance_store/test_recovery.py
-- Interfaces: recover_assurance_campaigns, AssuranceRecoveryReport@1
-- Conflict policy: Own only the listed files and tests; do not edit protected controls or shared package exports. Reuse canonical authorities and fail closed on missing capability.
+- Predicted files: ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/recovery.py, ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/__init__.py, ipfs_kit_py/tests/adversarial_assurance_store/test_recovery.py, ipfs_kit_py/tests/adversarial_assurance_store/test_public_api.py
+- Interfaces: recover_assurance_campaigns, AssuranceRecoveryReport@1, ipfs_kit_py.adversarial_assurance_store
+- Conflict policy: This is the sole final kit package-export owner after AAE-034 through AAE-037 exist. Reuse canonical authorities and export their public contracts without redefining identity, receipt, signature, CAS, or storage behavior.
 - Preconditions: AAE-034, AAE-035, AAE-036, AAE-037 are complete.
 - Effects: Produces recover_assurance_campaigns, AssuranceRecoveryReport@1 with bounded current-tree evidence and no production policy change.
 - Evidence subset: aae-038 current-tree source, focused tests, and negative cases
 - Symbolic first: true
-- Acceptance: Injected interruptions at every required persistence/CAS boundary resume safely, preserve immutable completions, reject ambiguity, avoid partial promotion, and prevent stale writers.
+- Acceptance: Injected interruptions at every required persistence/CAS boundary resume safely, preserve immutable completions, reject ambiguity, avoid partial promotion, and prevent stale writers; the final package exports artifact, campaign, Merkle, policy-CAS, and recovery interfaces with import and negative tests.
 
 ## AAE-039 Bind released canonical authorities and create assurance manifests
 
@@ -1735,7 +1736,7 @@ W20 AAE-063
 - Effects: Produces AssuranceBenchmarkReport@1, AssuranceCampaignSeal@1 with bounded current-tree evidence and no production policy change.
 - Evidence subset: aae-062 current-tree source, focused tests, and negative cases
 - Symbolic first: true
-- Acceptance: Benchmark reports actual counts, detector rates, cache reuse, full/incremental cost and savings, model economics, gap/remediation cost; the released signer authority signs the content-addressed campaign receipt and signature verification is tested; the seal commits every declared artifact and SCG evidence is non-authoritative.
+- Acceptance: Benchmark reports actual counts, detector rates, cache reuse, full/incremental cost and savings, model economics, gap/remediation cost; the released signer authority signs the content-addressed campaign receipt, invalid/unverified signatures are rejected before persistence or seal input, and signature verification is tested; the seal commits every declared artifact and SCG evidence is non-authoritative.
 
 ## AAE-063 Publish trust model, limitations, current-tree qualification, and final report
 

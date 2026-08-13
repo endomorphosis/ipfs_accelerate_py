@@ -9,6 +9,27 @@
   "board_namespace": "adversarial-assurance-engine-v1",
   "merge_target_branch": "agent/adversarial-assurance-engine-v1",
   "source_binding": {
+    "pin_state": "bootstrap_blocked",
+    "pin_generation": 0,
+    "accelerator_required_ancestor": "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda",
+    "accelerator_required_branch": "agent/adversarial-assurance-engine-v1",
+    "bootstrap_task_source": "legacy-markdown",
+    "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+    "ipfs_datasets_planning_revision": "fbd1ba9f70803de157622bb20e22595ef09d606f",
+    "ipfs_kit_submodule_path": "ipfs_kit_py",
+    "ipfs_kit_planning_revision": "c7e5feeb24582ab68c1f5ca626366b665a82ad61",
+    "mcp_plus_plus_submodule_path": "ipfs_accelerate_py/mcplusplus",
+    "mcp_plus_plus_planning_revision": "dc3164653a48d059ae9812078359daeafb451c07",
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "bootstrap_source_binding": {
+    "pin_state": "bootstrap_blocked",
+    "pin_generation": 0,
     "accelerator_required_ancestor": "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda",
     "accelerator_required_branch": "agent/adversarial-assurance-engine-v1",
     "bootstrap_task_source": "legacy-markdown",
@@ -29,6 +50,7 @@
     "task_id": "AAE-006",
     "initial_status": "blocked",
     "operator_only": true,
+    "operator_authority_did": "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
     "runtime_tasks": [
       "AAE-039",
       "AAE-043",
@@ -39,10 +61,25 @@
       "genuine terminal SemanticCompressionGovernor receipt and final commit",
       "released full-checkpoint and delta IncrementalProofSealer APIs",
       "clean exact recursive repository forest",
-      "fresh focused baselines at the released pins"
+      "fresh focused baselines at the released pins",
+      "recomputed canonical identities for copied upstream and baseline evidence",
+      "verified operator did:key signature over the release receipt identity",
+      "single-use signed exact-HEAD launch admission after gate completion"
     ],
     "missing_capability_disposition": "typed_unavailable",
     "worker_may_complete": false
+  },
+  "launch_admission_policy": {
+    "required_after_prerequisite_completion": true,
+    "admission_schema": "ipfs_accelerate_py/agent-supervisor/adversarial-assurance-launch-admission@1",
+    "external_path_environment": "IPFS_ACCELERATE_AAE_LAUNCH_ADMISSION_PATH",
+    "must_be_outside_repository": true,
+    "bind_exact_controller_head": true,
+    "bind_prerequisite_receipt_and_gitlinks": true,
+    "strictly_increasing_single_use_generation": true,
+    "chained_ledger_scope": "git-common-dir/agent-supervisor/adversarial-assurance-engine-v1",
+    "consume_under_lifecycle_lock_before_spawn": true,
+    "dry_run_consumes": false
   },
   "initial_projection": {
     "task_count": 64,
@@ -138,12 +175,12 @@
     "AAE-G000": [
       "AAE-000"
     ],
-        "AAE-G010": [
-            "AAE-001",
-            "AAE-002",
-            "AAE-003",
-            "AAE-004",
-            "AAE-005"
+    "AAE-G010": [
+      "AAE-001",
+      "AAE-002",
+      "AAE-003",
+      "AAE-004",
+      "AAE-005"
     ],
     "AAE-G020": [
       "AAE-007",
@@ -185,9 +222,9 @@
       "AAE-037",
       "AAE-038"
     ],
-        "AAE-G060": [
-            "AAE-006",
-            "AAE-039",
+    "AAE-G060": [
+      "AAE-006",
+      "AAE-039",
       "AAE-040",
       "AAE-041",
       "AAE-042",
@@ -234,7 +271,7 @@
   "authority_policy": {
     "canonical_identity_authority": "ipfs_datasets_py.logic.software_contracts.content",
     "canonical_semantic_authority": "IncrementalSemanticIndex and SemanticCapsuleCompiler@1",
-        "canonical_context_authority": "ipfs_accelerate_py.agent_supervisor.semantic_state.context_pack.ContextPacker",
+    "canonical_context_authority": "ipfs_accelerate_py.agent_supervisor.semantic_state.context_pack.ContextPacker",
     "canonical_verification_authority": "ipfs_accelerate_py.agent_supervisor.verification",
     "canonical_storage_authority": "ipfs_kit_py DurableCoordinationStore and DurableStateRootAdapter",
     "canonical_sealing_authority": "released IncrementalProofSealer only",
@@ -264,14 +301,14 @@
     "process_tree_termination_required": true,
     "bounded_stdout_and_stderr_required": true,
     "isolated_disposable_worktree_required": true,
-        "arbitrary_external_repository_mutation_allowed": false,
-        "production_policy_change_during_fixture_campaign_allowed": false,
-        "production_deployment_allowed": false,
-        "general_autonomous_repair_allowed": false,
-        "gui_implementation_allowed": false,
-        "legal_advice_allowed": false,
-        "payment_processing_allowed": false,
-        "automatic_assurance_lowering_allowed": false
+    "arbitrary_external_repository_mutation_allowed": false,
+    "production_policy_change_during_fixture_campaign_allowed": false,
+    "production_deployment_allowed": false,
+    "general_autonomous_repair_allowed": false,
+    "gui_implementation_allowed": false,
+    "legal_advice_allowed": false,
+    "payment_processing_allowed": false,
+    "automatic_assurance_lowering_allowed": false
   },
   "completion_policy": {
     "terminal_task_id": "AAE-063",

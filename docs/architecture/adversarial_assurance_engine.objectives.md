@@ -80,12 +80,12 @@ Durable goal heap for board namespace `adversarial-assurance-engine-v1`. Task co
 - Evidence: aae/common-contracts@1, aae/mutation-contracts@1, aae/execution-contracts@1, aae/assurance-contracts@1, aae/remediation-contracts@1, aae/receipt-contracts@1, aae/conformance-decision@1
 - Evidence requirements JSON: ["aae/common-contracts@1","aae/mutation-contracts@1","aae/execution-contracts@1","aae/assurance-contracts@1","aae/remediation-contracts@1","aae/receipt-contracts@1","aae/conformance-decision@1"]
 - Evidence criteria: {"results_honest":true,"canonical_identity_required":true,"held_out_required":false,"unauthorized_policy_changes":0,"proof_scope_bounded":true}
-- Outputs: datasets contracts, schemas, signed receipt models, and package exports plus MCP++ shared schemas and flat canonical vectors
+- Outputs: datasets contracts, schemas, signed receipt models, and package exports plus a mandatory MCP++ conformance decision and only conditionally justified shared schemas/flat vectors
 - Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/adversarial_assurance, ipfs_datasets_py/tests/unit/logic/software_contracts/adversarial_assurance, ipfs_accelerate_py/mcplusplus/schemas, ipfs_accelerate_py/mcplusplus/conformance/vectors
 - Predicted files JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/adversarial_assurance","ipfs_datasets_py/tests/unit/logic/software_contracts/adversarial_assurance","ipfs_accelerate_py/mcplusplus/schemas","ipfs_accelerate_py/mcplusplus/conformance/vectors"]
 - Interfaces: AdversarialAssuranceArtifacts@1, AssuranceCampaignReceipt, AssurancePolicyPromotionReceipt
 - Validation: python3 scripts/validate_adversarial_assurance_engine_board.py --check-all
-- Acceptance: Every required model, binding, enum, identity, provenance field, and fail-closed decoder is tested with canonical round trips and negative vectors.
+- Acceptance: Every required model, binding, enum, identity, provenance field, and fail-closed decoder is tested with canonical round trips and negative vectors; MCP++ may remain unchanged when no shared cross-language requirement is demonstrated.
 - Gap task: AAE-013
 - Refinement: Datasets owns neutral semantic artifacts; accelerate and kit use narrow typed projections; MCP++ changes only for demonstrated cross-language needs.
 - Embedding query: closed versioned mutation campaign detection outcome gap remediation receipt canonical identity
@@ -175,7 +175,7 @@ Durable goal heap for board namespace `adversarial-assurance-engine-v1`. Task co
 - Predicted files JSON: ["ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store","ipfs_kit_py/tests/adversarial_assurance_store"]
 - Interfaces: AdversarialAssuranceStore@1, AssurancePolicyRepository@1
 - Validation: python3 scripts/validate_adversarial_assurance_engine_board.py --check-all
-- Acceptance: Artifacts and signed receipts are immutable, content-addressed, and signature-verified through existing authorities; histories replay deterministically; stale writers fail; partial campaigns never promote.
+- Acceptance: Artifacts and signed receipts are immutable and signature-verified through existing authorities before first persistence, Merkle inclusion, or sealing; final package exports cover artifacts, campaigns, roots, policy CAS, and recovery; histories replay deterministically; stale writers fail; partial campaigns never promote.
 - Gap task: AAE-038
 - Refinement: Separate immutable blocks, campaign history, Merkle/seal manifests, policy CAS, and recovery/concurrency for bounded conflict domains.
 - Embedding query: immutable mutant campaign receipt assurance gap benchmark Merkle CAS promotion recovery
@@ -207,7 +207,7 @@ Durable goal heap for board namespace `adversarial-assurance-engine-v1`. Task co
 - Validation: python3 scripts/validate_adversarial_assurance_engine_board.py --check-all
 - Acceptance: Only disposable worktrees execute; network and credentials are absent; verification is incremental and fully keyed; the canonical seal/policy remains untouched without authority.
 - Gap task: AAE-048
-- Refinement: A manual prerequisite gate precedes adapters; planning, worktrees, workers, incremental verification, classification, diagnosis, remediation, promotion, and API composition remain bounded.
+- Refinement: A manual prerequisite gate precedes adapters; its canonical upstream/baseline evidence is independently revalidated, and post-gate launch uses a chained, single-use operator admission bound to exact controller HEAD. Planning, worktrees, workers, incremental verification, classification, diagnosis, remediation, promotion, and API composition remain bounded.
 - Embedding query: isolated mutation worktree resource worker incremental verification proof cache temporary forest remediation promotion
 - AST query: Reuse WorktreeLifecycleStore, ResourceScheduler, ValidationScheduler, ProofScheduler, VerificationExecutor/cache, CounterexampleMinimizer, and released sealer.
 - Conflict policy: Reuse canonical identity, indexing, context, verification, scheduling, persistence, proof, and receipt authorities; fail closed on missing capability; never create a new MCP++ profile or lower assurance.

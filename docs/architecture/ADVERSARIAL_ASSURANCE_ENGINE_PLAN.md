@@ -181,7 +181,10 @@ idempotent replay, and crash recovery. Canonical package:
 Owns only a demonstrably shared mutation-campaign schema, assurance-receipt
 schema, canonical vector, or cross-language conformance datum. Application
 payloads remain inside existing profiles. A new AAE or MCP++ profile is
-forbidden.
+forbidden. The conformance decision has an explicit no-change outcome: schemas
+or flat vectors are added only after a genuine shared cross-language contract
+is demonstrated; the task's optional paths are a permission envelope, not a
+requirement to invent interoperability work.
 
 ## 5. Closed, versioned artifact vocabulary
 
@@ -380,7 +383,8 @@ authorization, expected-old policy revision CAS, and a new incremental seal.
 Stale writers lose. Generated tests/proofs cannot authorize themselves, and
 production policy never changes during a fixture campaign. Promotion and
 campaign receipts are signed by the released existing signer authority and
-must pass signature verification before storage, sealing, or authorization.
+must pass signature verification before their first durable write, content
+addressing, Merkle inclusion, sealing, or authorization.
 
 ## 11. Required fixture campaigns
 
@@ -510,6 +514,33 @@ independently. `AAE-006` is an operator-controlled,
 unschedulable release gate requiring a final SCG receipt, released proof-sealer
 surfaces, fresh exact pins, and focused baselines. Runtime/seal tasks depend on
 that gate; workers may not emulate missing dependencies.
+
+The bootstrap source tuple remains immutable. At release, the configured
+operator advances the monotonic pin generation from zero and replaces only the active
+launch pins with exact released descendants. The gate recomputes canonical
+identities for copied lifecycle, terminal, release, and baseline receipts;
+cross-checks the drained SCG run; imports the named proof-sealer checkpoint and
+delta APIs from the integrated tree; executes the upstream sealer's own
+released qualification without hard-coding its operational-residual task
+count; and verifies a configured `did:key` signature over the audience, action,
+receipt identity, and exact pin tuple. The protected focused-baseline runner
+has separate execution and read-only bundle-verification modes. Its verification
+report must reproduce the exact signed path/CID bindings, schemas, source
+revisions, timestamps, argv, environment/lock identities, and bounded log
+digests rather than trusting declared pass counts.
+
+The gate receipt is committed, so it cannot self-reference the commit that
+contains it. A separate host-local launch admission solves that cycle: it is
+signed after the commit exists and binds the exact controller HEAD, gate-receipt
+CID, pin generation, gitlink tuple, board namespace, and previous admission
+CID. Preflight requires that exact HEAD and a strictly increasing, single-use
+launch generation. Real launch appends the admission under the lifecycle lock
+to a chained ledger in the Git common directory before process creation; dry
+run does not consume it. A completed-gate admission cannot be replayed on a
+descendant commit. During a live run launch pins may become ancestors as owned
+tasks advance. Any post-gate restart requires a fenced stop and a newly signed
+exact-HEAD launch admission; a pin change additionally requires fresh
+baselines, a higher pin generation, and a newly signed gate receipt.
 
 The scheduler is a thin source specialization of the existing fail-closed IVP
 multi-supervisor. It uses strict sharding, isolated worktrees, bounded attempts,
