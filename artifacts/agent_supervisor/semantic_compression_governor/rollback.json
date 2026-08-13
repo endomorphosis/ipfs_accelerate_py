@@ -1,0 +1,262 @@
+{
+  "acceptance": {
+    "history_preserved_on_rollback": true,
+    "mismatched_evaluation_fails": true,
+    "rollback_is_forward_cas_not_history_deletion": true,
+    "rollback_reproducible": true,
+    "stale_candidate_fails": true
+  },
+  "authoritative": false,
+  "content_id": "sha256:c7a62ed48dcbb81697a234c57c62dcd201c0884c7577449bba4f1d9213afe463",
+  "current_tree": true,
+  "evidence": "scg/rollback@1",
+  "goal_id": "SCG-G090",
+  "history_preserved": true,
+  "interface_id": "SemanticGovernorRollbackQualification@1",
+  "namespace": "hermetic_durable_coordination_store",
+  "notes": "Rollback is another authorized expected-generation CAS. History grows with each transition; prior policy CIDs remain in the transition log. Stale and mismatched candidates leave the live head unchanged.",
+  "operations": [
+    {
+      "head_mutated": true,
+      "kind": "promote",
+      "operation_id": "scg047-promo-1",
+      "previous_policy_cid": "baguqeerai3u5xppkvtvohcvgeyebxrcrv6pidmigpiwr3q47opecdnmgj2vq",
+      "promoted_policy_cid": "baguqeeraahobmws2tozvtb5s4akzlx4f5n5ubfazdfalzw64ga33yefwr52a",
+      "status": "promoted",
+      "structural_outcome_cid": "baguqeerafzgdaqdzycj3v7zwemohgpp5ceqpypvkp56inwggc5wqfkjkzrmq"
+    },
+    {
+      "head_mutated": true,
+      "kind": "rollback",
+      "operation_id": "scg047-rollback-1",
+      "receipt": {
+        "authorization_cid": "baguqeeraopqqujlvliwcmvsd2gk3oiswkrauhu5kiiyhs2uzx5r7opfw5kba",
+        "candidate_cid": "baguqeerat3nygmql6hiphdwqbtis5rc2mokqmic6lrtrtuv42yxho7i7oguq",
+        "cas_expected_version": "1.1.0",
+        "evaluation_report_cid": "baguqeeralknzbehanxonyx6ggmr4nu6zn5lomkslci6jxnvqv7mhmoawim2q",
+        "header": {
+          "artifact_kind": "compression_policy_promotion_receipt",
+          "assumptions": [
+            {
+              "assumption_cid": "baguqeerab7qkomzi6b4tx3tytcwu7rygjziojbk63ut6kf7m2wyrmrz3k4iq",
+              "assumption_id": "expected_version_cas",
+              "kind": "verification",
+              "schema": "ipfs-datasets.software-contracts.semantic-governor-assumption@1",
+              "statement": "Promotion publishes one policy version only when expected generation and policy CID match the live head",
+              "supporting_cids": [
+                "baguqeeraahobmws2tozvtb5s4akzlx4f5n5ubfazdfalzw64ga33yefwr52a"
+              ]
+            },
+            {
+              "assumption_cid": "baguqeerakcuftv6ga6xgjqgkzldj426rkattpc3pgtukcnnqa2cb6dykkv5q",
+              "assumption_id": "no_self_promotion",
+              "kind": "other",
+              "schema": "ipfs-datasets.software-contracts.semantic-governor-assumption@1",
+              "statement": "Authorization is a distinct external CID; candidate, evaluation, proposal, and policy cannot self-authorize",
+              "supporting_cids": [
+                "baguqeeraopqqujlvliwcmvsd2gk3oiswkrauhu5kiiyhs2uzx5r7opfw5kba"
+              ]
+            }
+          ],
+          "context_pack_cid": "baguqeerat3nygmql6hiphdwqbtis5rc2mokqmic6lrtrtuv42yxho7i7oguq",
+          "generator": {
+            "generator_cid": "baguqeerabombo55zxhyw36x7axuso4rc6f4qgurllxik2o4a4wabmgee6plq",
+            "generator_id": "policy_promoter",
+            "generator_version": "1.0.0",
+            "interface_id": "promote_compression_policy@1",
+            "schema": "ipfs-datasets.software-contracts.semantic-governor-generator@1"
+          },
+          "header_cid": "baguqeeravgxqbhhldcx7n6e3qna7gg7e43qowdrlxxe5jjfaeljqw6xc7qnq",
+          "interface_id": "GovernorArtifactHeader@1",
+          "metadata": {
+            "evidence": "scg/authorized-promotion@1"
+          },
+          "provenance": {
+            "authority_source": "deterministic",
+            "execution_mode": "live",
+            "input_cids": [
+              "baguqeeraahobmws2tozvtb5s4akzlx4f5n5ubfazdfalzw64ga33yefwr52a",
+              "baguqeerai3u5xppkvtvohcvgeyebxrcrv6pidmigpiwr3q47opecdnmgj2vq",
+              "baguqeeralknzbehanxonyx6ggmr4nu6zn5lomkslci6jxnvqv7mhmoawim2q",
+              "baguqeeraopqqujlvliwcmvsd2gk3oiswkrauhu5kiiyhs2uzx5r7opfw5kba",
+              "baguqeerat3nygmql6hiphdwqbtis5rc2mokqmic6lrtrtuv42yxho7i7oguq"
+            ],
+            "notes": null,
+            "policy_cid": "baguqeeraahobmws2tozvtb5s4akzlx4f5n5ubfazdfalzw64ga33yefwr52a",
+            "producer_id": "semantic_governor",
+            "producer_version": "1",
+            "provenance_cid": "baguqeera7vefq32yl6zeqrvac4ruavxu2mey6qvlwxwbowbr6eoouo4roqga",
+            "schema": "ipfs-datasets.software-contracts.semantic-governor-provenance@1",
+            "tool_ids": [
+              "promotion.v1"
+            ]
+          },
+          "repository_state_cid": "baguqeeraahobmws2tozvtb5s4akzlx4f5n5ubfazdfalzw64ga33yefwr52a",
+          "schema": "ipfs-datasets.software-contracts.semantic-governor-artifact-header@1",
+          "terminal_status": "complete",
+          "verification_bundle_cid": "baguqeeralknzbehanxonyx6ggmr4nu6zn5lomkslci6jxnvqv7mhmoawim2q"
+        },
+        "interface_id": "CompressionPolicyPromotionReceipt@1",
+        "metadata": {
+          "evidence": "scg/authorized-promotion@1",
+          "expected_generation": 2,
+          "kind": "rollback",
+          "operation_id": "scg047-rollback-1"
+        },
+        "notes": null,
+        "previous_policy_cid": "baguqeeraahobmws2tozvtb5s4akzlx4f5n5ubfazdfalzw64ga33yefwr52a",
+        "previous_policy_version": "1.1.0",
+        "promoted_policy_cid": "baguqeerai3u5xppkvtvohcvgeyebxrcrv6pidmigpiwr3q47opecdnmgj2vq",
+        "promoted_policy_version": "1.0.0",
+        "proposal_cid": "baguqeerawq6hglxhco3o6g27ubf7ep6aqoq2f7fumv4izbkuxssodhdtc33q",
+        "receipt_cid": "baguqeeraljk5jbgyuaajiwtqutjmvhjvik5aa4imcgskuifbsgzaotitn6ja",
+        "receipt_id": "rollback_stmsvhvel3hzo34sgsr3hmqq",
+        "rollback_policy_cid": "baguqeerai3u5xppkvtvohcvgeyebxrcrv6pidmigpiwr3q47opecdnmgj2vq",
+        "schema": "ipfs-datasets.software-contracts.semantic-governor-compression-policy-promotion-receipt@1"
+      },
+      "status": "rolled_back",
+      "structural_outcome_cid": "baguqeeracbz5ujpcizsxw7fk6bsg5wh4scijh3w4gwaa3s42ls4zeaymeuxa",
+      "target_policy_cid": "baguqeerai3u5xppkvtvohcvgeyebxrcrv6pidmigpiwr3q47opecdnmgj2vq"
+    },
+    {
+      "head_mutated": true,
+      "kind": "promote",
+      "operation_id": "scg047-promo-2",
+      "promoted_policy_cid": "baguqeeraahobmws2tozvtb5s4akzlx4f5n5ubfazdfalzw64ga33yefwr52a",
+      "status": "promoted",
+      "structural_outcome_cid": "baguqeerainxhhkx3duvefpgnhuomqekby2mz7xrlihhcgbfnnzuf7kitrx7a"
+    },
+    {
+      "head_mutated": true,
+      "kind": "rollback",
+      "operation_id": "scg047-rollback-2",
+      "receipt": {
+        "authorization_cid": "baguqeeraopqqujlvliwcmvsd2gk3oiswkrauhu5kiiyhs2uzx5r7opfw5kba",
+        "candidate_cid": "baguqeerat3nygmql6hiphdwqbtis5rc2mokqmic6lrtrtuv42yxho7i7oguq",
+        "cas_expected_version": "1.1.0",
+        "evaluation_report_cid": "baguqeeralknzbehanxonyx6ggmr4nu6zn5lomkslci6jxnvqv7mhmoawim2q",
+        "header": {
+          "artifact_kind": "compression_policy_promotion_receipt",
+          "assumptions": [
+            {
+              "assumption_cid": "baguqeerab7qkomzi6b4tx3tytcwu7rygjziojbk63ut6kf7m2wyrmrz3k4iq",
+              "assumption_id": "expected_version_cas",
+              "kind": "verification",
+              "schema": "ipfs-datasets.software-contracts.semantic-governor-assumption@1",
+              "statement": "Promotion publishes one policy version only when expected generation and policy CID match the live head",
+              "supporting_cids": [
+                "baguqeeraahobmws2tozvtb5s4akzlx4f5n5ubfazdfalzw64ga33yefwr52a"
+              ]
+            },
+            {
+              "assumption_cid": "baguqeerakcuftv6ga6xgjqgkzldj426rkattpc3pgtukcnnqa2cb6dykkv5q",
+              "assumption_id": "no_self_promotion",
+              "kind": "other",
+              "schema": "ipfs-datasets.software-contracts.semantic-governor-assumption@1",
+              "statement": "Authorization is a distinct external CID; candidate, evaluation, proposal, and policy cannot self-authorize",
+              "supporting_cids": [
+                "baguqeeraopqqujlvliwcmvsd2gk3oiswkrauhu5kiiyhs2uzx5r7opfw5kba"
+              ]
+            }
+          ],
+          "context_pack_cid": "baguqeerat3nygmql6hiphdwqbtis5rc2mokqmic6lrtrtuv42yxho7i7oguq",
+          "generator": {
+            "generator_cid": "baguqeerabombo55zxhyw36x7axuso4rc6f4qgurllxik2o4a4wabmgee6plq",
+            "generator_id": "policy_promoter",
+            "generator_version": "1.0.0",
+            "interface_id": "promote_compression_policy@1",
+            "schema": "ipfs-datasets.software-contracts.semantic-governor-generator@1"
+          },
+          "header_cid": "baguqeeravgxqbhhldcx7n6e3qna7gg7e43qowdrlxxe5jjfaeljqw6xc7qnq",
+          "interface_id": "GovernorArtifactHeader@1",
+          "metadata": {
+            "evidence": "scg/authorized-promotion@1"
+          },
+          "provenance": {
+            "authority_source": "deterministic",
+            "execution_mode": "live",
+            "input_cids": [
+              "baguqeeraahobmws2tozvtb5s4akzlx4f5n5ubfazdfalzw64ga33yefwr52a",
+              "baguqeerai3u5xppkvtvohcvgeyebxrcrv6pidmigpiwr3q47opecdnmgj2vq",
+              "baguqeeralknzbehanxonyx6ggmr4nu6zn5lomkslci6jxnvqv7mhmoawim2q",
+              "baguqeeraopqqujlvliwcmvsd2gk3oiswkrauhu5kiiyhs2uzx5r7opfw5kba",
+              "baguqeerat3nygmql6hiphdwqbtis5rc2mokqmic6lrtrtuv42yxho7i7oguq"
+            ],
+            "notes": null,
+            "policy_cid": "baguqeeraahobmws2tozvtb5s4akzlx4f5n5ubfazdfalzw64ga33yefwr52a",
+            "producer_id": "semantic_governor",
+            "producer_version": "1",
+            "provenance_cid": "baguqeera7vefq32yl6zeqrvac4ruavxu2mey6qvlwxwbowbr6eoouo4roqga",
+            "schema": "ipfs-datasets.software-contracts.semantic-governor-provenance@1",
+            "tool_ids": [
+              "promotion.v1"
+            ]
+          },
+          "repository_state_cid": "baguqeeraahobmws2tozvtb5s4akzlx4f5n5ubfazdfalzw64ga33yefwr52a",
+          "schema": "ipfs-datasets.software-contracts.semantic-governor-artifact-header@1",
+          "terminal_status": "complete",
+          "verification_bundle_cid": "baguqeeralknzbehanxonyx6ggmr4nu6zn5lomkslci6jxnvqv7mhmoawim2q"
+        },
+        "interface_id": "CompressionPolicyPromotionReceipt@1",
+        "metadata": {
+          "evidence": "scg/authorized-promotion@1",
+          "expected_generation": 4,
+          "kind": "rollback",
+          "operation_id": "scg047-rollback-2"
+        },
+        "notes": null,
+        "previous_policy_cid": "baguqeeraahobmws2tozvtb5s4akzlx4f5n5ubfazdfalzw64ga33yefwr52a",
+        "previous_policy_version": "1.1.0",
+        "promoted_policy_cid": "baguqeerai3u5xppkvtvohcvgeyebxrcrv6pidmigpiwr3q47opecdnmgj2vq",
+        "promoted_policy_version": "1.0.0",
+        "proposal_cid": "baguqeeraevhnholtyil2z64e2556mgtr4n55txom4xfxodxl6ija4wx7ipfa",
+        "receipt_cid": "baguqeeramul7foboodl6waiuqwbdg3ywupqhh6yo5fltaxsrdavcb3yn6kfq",
+        "receipt_id": "rollback_dbzfy6jfzrrhkksbvaacqj4q",
+        "rollback_policy_cid": "baguqeerai3u5xppkvtvohcvgeyebxrcrv6pidmigpiwr3q47opecdnmgj2vq",
+        "schema": "ipfs-datasets.software-contracts.semantic-governor-compression-policy-promotion-receipt@1"
+      },
+      "status": "rolled_back",
+      "structural_outcome_cid": "baguqeera4ktsn4f4poj4bjdjh7isf5ucmkkaz5lsnm22ahniaz55kkd2uoga",
+      "target_policy_cid": "baguqeerai3u5xppkvtvohcvgeyebxrcrv6pidmigpiwr3q47opecdnmgj2vq"
+    },
+    {
+      "blocking_reasons": [
+        "stale_candidate",
+        "policy_head_expectation_mismatch"
+      ],
+      "head_mutated": false,
+      "kind": "promote_stale_candidate",
+      "operation_id": "scg047-promo-stale",
+      "status": "rejected",
+      "structural_outcome_cid": "baguqeerav4xqrfpirmgjozwshenx7f4bp7a2bn2riig3yq7dol4i6d6sf76a"
+    },
+    {
+      "blocking_reasons": [
+        "mismatched_evaluation",
+        "qualification_identity_mismatch",
+        "stale_candidate"
+      ],
+      "head_mutated": false,
+      "kind": "promote_mismatched_evaluation",
+      "operation_id": "scg047-promo-mismatch",
+      "status": "rejected",
+      "structural_outcome_cid": "baguqeeraena72im6hc2366c4fmq47an2el7nix2kb274ukrix4xa3fwe2gya"
+    }
+  ],
+  "policy_head": {
+    "final_generation": 7,
+    "final_policy_cid": "baguqeeradots34kgeo7nnnb5ibvc6kzx5jy2sxcdxngwy3tfbvtqxfil7mfq",
+    "published_policy_cids": [
+      "baguqeeraahobmws2tozvtb5s4akzlx4f5n5ubfazdfalzw64ga33yefwr52a",
+      "baguqeeradots34kgeo7nnnb5ibvc6kzx5jy2sxcdxngwy3tfbvtqxfil7mfq",
+      "baguqeerai3u5xppkvtvohcvgeyebxrcrv6pidmigpiwr3q47opecdnmgj2vq"
+    ],
+    "transition_count": 7
+  },
+  "reproducible": true,
+  "rollback_tested": true,
+  "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/rollback-qualification@1",
+  "status": "qualified",
+  "task_id": "SCG-047",
+  "workspace": "scg047-release-seal"
+}
