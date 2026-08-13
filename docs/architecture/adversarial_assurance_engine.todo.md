@@ -227,7 +227,7 @@ W20 AAE-063
 
 ## AAE-007 Define common artifact headers, versions, identities, provenance, and closed vocabularies
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
