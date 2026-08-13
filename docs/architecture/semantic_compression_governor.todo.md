@@ -887,7 +887,7 @@ W28 SCG-048
 
 ## SCG-031 Implement active audit scheduling by expected information value
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
