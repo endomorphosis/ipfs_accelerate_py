@@ -362,7 +362,7 @@ W20 AAE-063
 
 ## AAE-012 Define signed campaign/promotion receipts, canonical schemas, and datasets exports
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
