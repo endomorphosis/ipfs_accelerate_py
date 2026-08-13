@@ -417,7 +417,7 @@ W20 AAE-063
 
 ## AAE-014 Implement deterministic operator registry and rollback contracts
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
