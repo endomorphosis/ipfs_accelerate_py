@@ -880,7 +880,7 @@ Global invariants for every task:
 
 ## IPS-027 Freeze the kit adapter, migrate proof transport, and document storage nonclaims
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
