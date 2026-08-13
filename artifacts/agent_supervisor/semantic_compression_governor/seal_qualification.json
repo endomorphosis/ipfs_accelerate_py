@@ -1,0 +1,265 @@
+{
+  "acceptance": {
+    "ivp_commitment_never_satisfies_sealer": true,
+    "proof_backed_promotion_not_claimed_on_unavailable_sealer": true,
+    "seal_scope_precise": true,
+    "stale_corrupt_mismatched_candidate_fails": true,
+    "unavailable_sealer_never_stalls_unrelated_qualification": true
+  },
+  "authoritative": false,
+  "cases": [
+    {
+      "case_id": "live_sealer_probe",
+      "path": "blocked",
+      "promotion_allowed_without_independent_auth": false,
+      "seal_status": "unavailable",
+      "sealer_available": false
+    },
+    {
+      "case_id": "authorized_release_qualification_while_sealer_unavailable",
+      "claims": [
+        "exact_artifacts_evaluated",
+        "required_evaluations_completed",
+        "declared_thresholds_applied",
+        "no_blocking_status_omitted",
+        "promoted_policy_equals_evaluated_candidate"
+      ],
+      "path": "authorized_release_qualification",
+      "promotion_allowed": true,
+      "qualification_cid": "baguqeerap4bymnyf6jxpo4radimgmoq5fjgingxwosz2gtzbrxaxazaywihq",
+      "seal_status": "unavailable",
+      "sealer_available": false
+    },
+    {
+      "case_id": "injected_released_incremental_sealer",
+      "incremental_seal_cid": "baguqeerajbpsqfe56tijnqmwaq4a3kqgm3wqdep2ubysbvfp5xubvwcqnuta",
+      "note": "Injected released surface for binding verification only; live tree remains typed unavailable",
+      "path": "incremental_seal",
+      "promotion_allowed": true,
+      "seal_status": "available",
+      "sealer_available": true
+    },
+    {
+      "bound_artifact_cids": [
+        "baguqeera3crgykbppugzs6m3suric2stjjumtlpdekj2d3xicvzsjfio4v2q",
+        "baguqeera5dmhbjfv3p3qfzc7mszwid6gyhmkwuqjugff6t7psivsvuszvpkq",
+        "baguqeera6bnxbtkhgt3r3flx5lfknbvlzhvrtmhvd5x6ozosccjzmfqyytva",
+        "baguqeerai3qvrzd2xji7k7bgwieqzg53dxml57frq4w6di7u46a6mpxam2xa",
+        "baguqeeralcva4uyn3g23zp6r4tigddft32b4roeusmdgf6olov6puaqfsy7a",
+        "baguqeeralvpol33ycpfhciefwnc7rkr26lzgc2firlckomw3lhm4dvsdtwwa",
+        "baguqeeramqq2gluupbpz7oqatt745wrgljz2w4wgf67gbkyrsz27sxw772xq",
+        "baguqeeranwkwpg4yohtcpq73pdg5l34fp7q7euicsubs2xcnymf4xkfcopyq",
+        "baguqeeraql5udwm5dwkjsux34dx44gu7ewgudqagyt5winuqvizgtkg7ohba"
+      ],
+      "bound_roles": [
+        "benchmark",
+        "calibration_profile",
+        "candidate",
+        "context_pack",
+        "differential_report",
+        "evaluation_report",
+        "policy",
+        "promotion_decision",
+        "verification_bundle"
+      ],
+      "case_id": "precise_seal_scope_binding",
+      "claims": [
+        "exact_artifacts_evaluated",
+        "required_evaluations_completed",
+        "declared_thresholds_applied",
+        "no_blocking_status_omitted",
+        "promoted_policy_equals_evaluated_candidate"
+      ],
+      "is_zk": false,
+      "non_claims": [
+        "execution_proof",
+        "full_suite_implied",
+        "ivp_commitment_is_sealer",
+        "model_agreement_is_equivalence",
+        "proof_of_test_execution",
+        "semantic_sufficiency",
+        "universal_semantic_completeness",
+        "zero_knowledge_proof",
+        "zk_proof"
+      ],
+      "qualification_path": "authorized_release_qualification",
+      "seal_cid": "baguqeera3mxukdztvqjsz7tjlbslwf43o243q3dh4v23g4ncqrhmeeivaa2a",
+      "seal_status": "unavailable"
+    },
+    {
+      "case": "mismatched_qualification_identity",
+      "outcome": "fail_closed",
+      "reason_codes": [
+        "policy_or_evaluation_identity_mismatch"
+      ]
+    },
+    {
+      "case": "tampered_seal_cid",
+      "outcome": "fail_closed",
+      "reason_codes": [
+        "stale_or_tampered_seal"
+      ]
+    },
+    {
+      "case": "ivp_commitment_as_seal_evidence",
+      "outcome": "fail_closed",
+      "promotion_allowed": false,
+      "reason_codes": [
+        "ivp_commitment_not_sealer",
+        "promotion_blocked"
+      ]
+    },
+    {
+      "case": "binding_policy_mismatch",
+      "outcome": "fail_closed",
+      "reason_codes": [
+        "artifact_binding_mismatch"
+      ]
+    },
+    {
+      "case": "overclaim_semantic_sufficiency",
+      "outcome": "fail_closed",
+      "reason_codes": [
+        "seal_overclaim_rejected",
+        "unauthorized_claim_kind"
+      ]
+    }
+  ],
+  "content_id": "sha256:886e3243701af7e147e87bdb98ed6ddb8ddf1fd6915c7c2a0c6bda35a1a4fd7a",
+  "current_tree": true,
+  "evidence": "scg/incremental-seal-qualification@1",
+  "goal_id": "SCG-G090",
+  "interface_id": "SemanticGovernorSealQualification@1",
+  "missing_evidence": [
+    "released_IncrementalProofSealer_public_api",
+    "zk_seal_scope",
+    "live_delta_or_full_checkpoint_seal"
+  ],
+  "notes": "Live tree probe records typed sealer unavailability. Injected released-sealer cases verify binding contracts without claiming that IncrementalProofSealer is present on this tree. Authorized VerificationBundle release qualification remains the non-proof promotion gate while the sealer is unavailable.",
+  "proof_scope_precise": true,
+  "qualification_paths": {
+    "authorized_release_qualification": {
+      "authorization_cid": "baguqeera65ibherxqxidebgk5egsr3chyhagsvnghrb4wg3pdldqtnwhshwq",
+      "path_token": "authorized_release_qualification",
+      "promotion_allowed": true,
+      "qualification_cid": "baguqeerap4bymnyf6jxpo4radimgmoq5fjgingxwosz2gtzbrxaxazaywihq",
+      "seal_status_remains": "unavailable",
+      "verification_bundle_cid": "baguqeeramqq2gluupbpz7oqatt745wrgljz2w4wgf67gbkyrsz27sxw772xq"
+    },
+    "blocked_without_independent_auth": {
+      "blocking_reasons": [
+        "missing_release_qualification_authorization",
+        "missing_release_qualification_verification_bundle",
+        "missing_release_qualification",
+        "missing_exports",
+        "promotion_blocked"
+      ],
+      "path_token": "blocked",
+      "promotion_allowed": false
+    },
+    "incremental_seal": {
+      "available_on_live_tree": false,
+      "injected_surface_qualifies": true,
+      "path_token": "incremental_seal"
+    }
+  },
+  "related_evidence": [
+    "scg/release-qualification@1",
+    "scg/seal-binding@1"
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/seal-qualification@1",
+  "seal_scope": {
+    "baseline_policy_cid": "baguqeeralcva4uyn3g23zp6r4tigddft32b4roeusmdgf6olov6puaqfsy7a",
+    "bound_artifact_cids": [
+      "baguqeera3crgykbppugzs6m3suric2stjjumtlpdekj2d3xicvzsjfio4v2q",
+      "baguqeera5dmhbjfv3p3qfzc7mszwid6gyhmkwuqjugff6t7psivsvuszvpkq",
+      "baguqeera6bnxbtkhgt3r3flx5lfknbvlzhvrtmhvd5x6ozosccjzmfqyytva",
+      "baguqeerai3qvrzd2xji7k7bgwieqzg53dxml57frq4w6di7u46a6mpxam2xa",
+      "baguqeeralcva4uyn3g23zp6r4tigddft32b4roeusmdgf6olov6puaqfsy7a",
+      "baguqeeralvpol33ycpfhciefwnc7rkr26lzgc2firlckomw3lhm4dvsdtwwa",
+      "baguqeeramqq2gluupbpz7oqatt745wrgljz2w4wgf67gbkyrsz27sxw772xq",
+      "baguqeeranwkwpg4yohtcpq73pdg5l34fp7q7euicsubs2xcnymf4xkfcopyq",
+      "baguqeeraql5udwm5dwkjsux34dx44gu7ewgudqagyt5winuqvizgtkg7ohba"
+    ],
+    "bound_roles": [
+      "benchmark",
+      "calibration_profile",
+      "candidate",
+      "context_pack",
+      "differential_report",
+      "evaluation_report",
+      "policy",
+      "promotion_decision",
+      "verification_bundle"
+    ],
+    "bounded_claims": [
+      "exact_artifacts_evaluated",
+      "required_evaluations_completed",
+      "declared_thresholds_applied",
+      "no_blocking_status_omitted",
+      "promoted_policy_equals_evaluated_candidate"
+    ],
+    "candidate_cid": "baguqeera6bnxbtkhgt3r3flx5lfknbvlzhvrtmhvd5x6ozosccjzmfqyytva",
+    "claims_encoded": [
+      "exact_artifacts_evaluated",
+      "required_evaluations_completed",
+      "declared_thresholds_applied",
+      "no_blocking_status_omitted",
+      "promoted_policy_equals_evaluated_candidate"
+    ],
+    "evaluation_report_cid": "baguqeerai3qvrzd2xji7k7bgwieqzg53dxml57frq4w6di7u46a6mpxam2xa",
+    "forbidden_claim_kinds": [
+      "execution_proof",
+      "full_suite_implied",
+      "ivp_commitment_is_sealer",
+      "model_agreement_is_equivalence",
+      "proof_of_test_execution",
+      "semantic_sufficiency",
+      "universal_semantic_completeness",
+      "zero_knowledge_proof",
+      "zk_proof"
+    ],
+    "governor_seal_interface_id": "GovernorSeal@1",
+    "is_zk": false,
+    "non_claims": [
+      "execution_proof",
+      "full_suite_implied",
+      "ivp_commitment_is_sealer",
+      "model_agreement_is_equivalence",
+      "proof_of_test_execution",
+      "semantic_sufficiency",
+      "universal_semantic_completeness",
+      "zero_knowledge_proof",
+      "zk_proof"
+    ],
+    "qualification_cid": "baguqeerap4bymnyf6jxpo4radimgmoq5fjgingxwosz2gtzbrxaxazaywihq",
+    "qualification_path": "authorized_release_qualification",
+    "release_qualification_interface_id": "ReleaseQualification@1",
+    "seal_cid": "baguqeera3mxukdztvqjsz7tjlbslwf43o243q3dh4v23g4ncqrhmeeivaa2a",
+    "sealer_available": false,
+    "sealer_interface_id": "BoundedSealClaimSet@1",
+    "status": "unavailable",
+    "unavailable": true
+  },
+  "sealer": {
+    "adapter_id": "scg-incremental-sealer-capability@1",
+    "available": false,
+    "can_be_satisfied_by_ivp_commitment": false,
+    "diagnostic": "released IncrementalProofSealer / FullCheckpointSeal / DeltaSeal public API is not present on this tree",
+    "fingerprints": {
+      "candidates": "ipfs_accelerate_py.agent_supervisor.proof_sealer,ipfs_accelerate_py.agent_supervisor.incremental_proof_sealer,ipfs_kit_py.proof_sealer,ipfs_kit_py.incremental_proof_sealer",
+      "ivp_commitment_may_substitute": "false"
+    },
+    "interface_id": "IncrementalSealerCapability@1",
+    "is_full_or_delta_seal": false,
+    "is_zk": false,
+    "live_adapter_available": false,
+    "operations": [],
+    "public_module": null,
+    "reason_code": "sealer_unavailable",
+    "seal_status": "unavailable",
+    "status": "unavailable"
+  },
+  "status": "qualified_unavailable",
+  "task_id": "SCG-047"
+}

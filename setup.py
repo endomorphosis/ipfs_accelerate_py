@@ -182,6 +182,10 @@ class ProofReuseProvision(Command):
 _SEMANTIC_STATE_CONSOLE = (
     "semantic-state=ipfs_accelerate_py.agent_supervisor.semantic_state.cli:main"
 )
+_SEMANTIC_GOVERNOR_CONSOLE = (
+    "semantic-governor="
+    "ipfs_accelerate_py.agent_supervisor.semantic_governor.cli:main"
+)
 _SEMANTIC_STATE_SCHEMA_REL = Path(
     "ipfs_accelerate_py/agent_supervisor/semantic_state/schemas/"
     "semantic-state-harness.interface.json"
@@ -189,33 +193,46 @@ _SEMANTIC_STATE_SCHEMA_REL = Path(
 
 
 def _semantic_state_console_script_paths() -> list[str]:
-    """Materialize a console script for wheel installs.
+    """Materialize console scripts for wheel installs.
 
     ``pyproject.toml`` is a validation-config path and cannot be edited by this
     task's proposal gate, while setuptools prefers ``[project.scripts]`` over
-    ``setup(entry_points=...)``. A generated ``scripts=`` wrapper still lands in
-    the wheel's ``.data/scripts`` payload so the ``semantic-state`` command is
-    installable without mutating validation configuration.
+    ``setup(entry_points=...)``. Generated ``scripts=`` wrappers still land in
+    the wheel's ``.data/scripts`` payload so ``semantic-state`` and
+    ``semantic-governor`` remain installable without mutating validation
+    configuration.
 
     setuptools requires script paths to be relative to the setup.py directory.
     """
 
     root = Path(__file__).resolve().parent
-    relative = Path("build") / "_semantic_state_console" / "semantic-state"
-    path = root / relative
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        "#!/usr/bin/env python3\n"
-        "from ipfs_accelerate_py.agent_supervisor.semantic_state.cli import main\n"
-        "if __name__ == '__main__':\n"
-        "    raise SystemExit(main())\n",
-        encoding="utf-8",
+    specs = (
+        (
+            Path("build") / "_semantic_state_console" / "semantic-state",
+            "from ipfs_accelerate_py.agent_supervisor.semantic_state.cli import main\n",
+        ),
+        (
+            Path("build") / "_semantic_governor_console" / "semantic-governor",
+            "from ipfs_accelerate_py.agent_supervisor.semantic_governor.cli import main\n",
+        ),
     )
-    try:
-        path.chmod(0o755)
-    except OSError:
-        pass
-    return [relative.as_posix()]
+    relative_paths: list[str] = []
+    for relative, import_line in specs:
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "#!/usr/bin/env python3\n"
+            f"{import_line}"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(main())\n",
+            encoding="utf-8",
+        )
+        try:
+            path.chmod(0o755)
+        except OSError:
+            pass
+        relative_paths.append(relative.as_posix())
+    return relative_paths
 
 
 def _get_cmdclass():
@@ -377,10 +394,12 @@ setup(
             "ipfs-accelerate-proof-reuse-provision=ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main",
             "ipfs-accelerate-llama-cpp-serve=ipfs_accelerate_py.utils.llama_cpp:main",
             _SEMANTIC_STATE_CONSOLE,
+            _SEMANTIC_GOVERNOR_CONSOLE,
         ],
         # Proof-reuse plugin is optional; prefer entry-point-free discovery for CI import modes.
-        # semantic-state is also emitted via scripts= so wheels still ship the
-        # console command when PEP 621 [project.scripts] shadows entry_points.
+        # semantic-state and semantic-governor are also emitted via scripts= so
+        # wheels still ship the console commands when PEP 621 [project.scripts]
+        # shadows entry_points.
 
     },
     package_data={

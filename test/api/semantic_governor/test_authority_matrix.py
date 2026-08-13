@@ -109,6 +109,31 @@ def _git_head(path: Path) -> str | None:
     return completed.stdout.strip() or None
 
 
+def _git_is_ancestor(path: Path, ancestor: str, head: str) -> bool:
+    """Return whether ``ancestor`` is an ancestor of ``head`` in ``path``."""
+
+    if not path.exists() or not ancestor or not head:
+        return False
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(path),
+                "merge-base",
+                "--is-ancestor",
+                ancestor,
+                head,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return False
+    return completed.returncode == 0
+
+
 def validate_matrix_document(matrix: Mapping[str, Any]) -> None:
     """Fail closed on incomplete or contradictory matrix structure."""
     if matrix.get("schema") != SCHEMA:
@@ -419,7 +444,9 @@ def cross_check_inventories(matrix: Mapping[str, Any]) -> None:
     if sealer["delta_or_incremental_seal"].get("status") != "typed_unavailable":
         raise AuthorityMatrixError("delta seal must be typed_unavailable")
 
-    # Gitlink live heads must match pins when available (stale pin detection).
+    # Gitlink live heads must match the planning pin or be a descendant of it.
+    # SCG implementation advances nested gitlinks after the inventory snapshot;
+    # unrelated tips remain stale.
     for authority_id, gitlink in (
         ("datasets", REPO_ROOT / "ipfs_datasets_py"),
         ("kit", REPO_ROOT / "ipfs_kit_py"),
@@ -428,7 +455,15 @@ def cross_check_inventories(matrix: Mapping[str, Any]) -> None:
         head = _git_head(gitlink)
         if head is None:
             continue
-        assert_authority_pin(matrix, authority_id, head)
+        expected = str(pins[authority_id]["commit"])
+        if head.lower() == expected.lower():
+            continue
+        if _git_is_ancestor(gitlink, expected, head):
+            continue
+        raise AuthorityMatrixError(
+            f"reject stale authority pin {authority_id!r}: "
+            f"claimed {head!r}, expected {expected!r} or a descendant"
+        )
 
     # Source paths declared for critical categories must exist.
     for category in REQUIRED_CATEGORIES:
@@ -522,6 +557,26 @@ def test_source_inventories_exist_and_match_matrix(matrix: dict[str, Any]) -> No
 
 
 def test_cross_check_inventories_and_live_gitlinks(matrix: dict[str, Any]) -> None:
+    cross_check_inventories(matrix)
+
+
+def test_live_gitlink_descendant_of_planning_pin_is_accepted(
+    matrix: dict[str, Any],
+) -> None:
+    datasets_head = _git_head(REPO_ROOT / "ipfs_datasets_py")
+    kit_head = _git_head(REPO_ROOT / "ipfs_kit_py")
+    if datasets_head is None or kit_head is None:
+        pytest.skip("nested gitlinks are not checked out")
+    assert _git_is_ancestor(
+        REPO_ROOT / "ipfs_datasets_py",
+        PLANNING_PINS["datasets"],
+        datasets_head,
+    )
+    assert _git_is_ancestor(
+        REPO_ROOT / "ipfs_kit_py",
+        PLANNING_PINS["kit"],
+        kit_head,
+    )
     cross_check_inventories(matrix)
 
 

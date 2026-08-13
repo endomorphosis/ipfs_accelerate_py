@@ -4555,3 +4555,29 @@ def test_successful_agent_runner_quiesces_daemonized_descendants(
                 )
             except OSError:
                 pass
+
+
+def test_supervisor_trusts_daemon_owned_board_completion_commits():
+    trusted = (
+        PortalImplementationSupervisor._trusted_generated_protected_commit
+    )
+    assert trusted(
+        "implementation-daemon@example.invalid",
+        "SCG-015: mark todo completed",
+    )
+    assert trusted(
+        "implementation-daemon@example.invalid",
+        "SCG-018: reopen dependency-ready tasks",
+    )
+    assert trusted(
+        BACKLOG_REFINERY_AUTHOR_EMAIL,
+        generated_protected_board_commit_subject("generated board update"),
+    )
+    assert not trusted(
+        "implementation-daemon@example.invalid",
+        "SCG-015: rewrite protected scheduler",
+    )
+    assert not trusted(
+        "untrusted@example.invalid",
+        "SCG-015: mark todo completed",
+    )

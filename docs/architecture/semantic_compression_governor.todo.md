@@ -374,7 +374,7 @@ W28 SCG-048
 
 ## SCG-012 Implement conservative pre-execution sufficiency evaluation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -401,7 +401,7 @@ W28 SCG-048
 
 ## SCG-013 Detect and quarantine instruction-like untrusted task data
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -428,7 +428,7 @@ W28 SCG-048
 
 ## SCG-014 Diagnose and rank omission versus reasoning hypotheses
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -455,7 +455,7 @@ W28 SCG-048
 
 ## SCG-015 Plan the smallest bounded context expansion
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -482,7 +482,7 @@ W28 SCG-048
 
 ## SCG-016 Implement empirical capsule, analyzer, task, and route calibration
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -509,7 +509,7 @@ W28 SCG-048
 
 ## SCG-017 Generate bounded declarative analyzer, invalidation, packing, and route proposals
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -536,7 +536,7 @@ W28 SCG-048
 
 ## SCG-018 Freeze datasets public governor API and conformance matrix
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -644,7 +644,7 @@ W28 SCG-048
 
 ## SCG-022 Prove store corruption, interruption, concurrency, privacy, and recovery
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -671,7 +671,7 @@ W28 SCG-048
 
 ## SCG-023 Adapt canonical datasets, harness, verification, storage, and sealer surfaces
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -698,7 +698,7 @@ W28 SCG-048
 
 ## SCG-024 Enforce source disclosure, redaction, provider, and worktree policy
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -725,7 +725,7 @@ W28 SCG-048
 
 ## SCG-025 Implement risk- and information-value-aware shadow planning
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -752,7 +752,7 @@ W28 SCG-048
 
 ## SCG-026 Execute paired compressed and expanded attempts in isolated worktrees
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -779,7 +779,7 @@ W28 SCG-048
 
 ## SCG-027 Compare semantic patch outcomes beyond text
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -806,7 +806,7 @@ W28 SCG-048
 
 ## SCG-028 Bridge verification bundles and minimized counterexamples into audits
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -833,7 +833,7 @@ W28 SCG-048
 
 ## SCG-029 Execute bounded counterexample-guided context expansion before route escalation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -860,7 +860,7 @@ W28 SCG-048
 
 ## SCG-030 Calibrate model routes separately from context sufficiency
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -887,7 +887,7 @@ W28 SCG-048
 
 ## SCG-031 Implement active audit scheduling by expected information value
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -914,7 +914,7 @@ W28 SCG-048
 
 ## SCG-032 Freeze runtime APIs and prove shadow/expansion resilience
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -941,7 +941,7 @@ W28 SCG-048
 
 ## SCG-033 Evaluate rule candidates only on disjoint held-out evidence
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -968,7 +968,7 @@ W28 SCG-048
 
 ## SCG-034 Implement authorized compare-and-swap promotion and rollback
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -995,7 +995,7 @@ W28 SCG-048
 
 ## SCG-035 Gate promotion on release qualification and bind incremental seals without overclaiming
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1022,7 +1022,7 @@ W28 SCG-048
 
 ## SCG-036 Compose the required SemanticCompressionGovernor APIs
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1049,7 +1049,7 @@ W28 SCG-048
 
 ## SCG-037 Add the narrowly scoped semantic-governor CLI
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1076,7 +1076,7 @@ W28 SCG-048
 
 ## SCG-038 Implement complete compression, quality, omission, routing, economic, and calibration metrics
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1103,7 +1103,7 @@ W28 SCG-048
 
 ## SCG-039 Implement privacy-filtered report and dashboard-data projections
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1157,7 +1157,7 @@ W28 SCG-048
 
 ## SCG-041 Prove structural omission, stale-artifact, policy, and bounded-expansion cases
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1184,7 +1184,7 @@ W28 SCG-048
 
 ## SCG-042 Prove dynamic, prompt-injection, selected/full, proof, and model-capability cases
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1211,7 +1211,7 @@ W28 SCG-048
 
 ## SCG-043 Prove interruption, concurrency, disclosure, simulation, and cost boundaries end to end
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1238,7 +1238,7 @@ W28 SCG-048
 
 ## SCG-044 Prove the complete API, CLI, policy, rollback, and audit loop
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1265,7 +1265,7 @@ W28 SCG-048
 
 ## SCG-045 Run the benchmark and persist honest measured evidence
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1292,7 +1292,7 @@ W28 SCG-048
 
 ## SCG-046 Publish trust, privacy, promotion, operation, and limitation documentation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1319,7 +1319,7 @@ W28 SCG-048
 
 ## SCG-047 Qualify released IncrementalProofSealer binding and rollback evidence
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1346,7 +1346,7 @@ W28 SCG-048
 
 ## SCG-048 Run terminal current-tree qualification and publish the final report
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
