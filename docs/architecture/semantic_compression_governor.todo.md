@@ -941,7 +941,7 @@ W28 SCG-048
 
 ## SCG-033 Evaluate rule candidates only on disjoint held-out evidence
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
