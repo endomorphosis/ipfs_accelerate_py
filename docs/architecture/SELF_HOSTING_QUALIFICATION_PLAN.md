@@ -775,7 +775,10 @@ are execution internals, not discovery inputs or persisted evidence. All other
 reads and searches remain within that checkout and its declared submodules. The
 generated task dependency prevents the scheduler
 from creating the G007 worktree until G006 has merged, so G007 observes the
-clean merged implementation identity. Do not pause for objective reconciliation
+clean merged implementation identity. G007 additionally binds the freshly
+projected bounded-v7 G006 canonical task CID as its sole predecessor; no retired
+display ID, alias, canonical key, CID, worktree, receipt, or merge can satisfy
+that dependency. Do not pause for objective reconciliation
 between the task commits. Once both runtime todos are terminal, both commits
 are merged and the target branch is clean, run the focused suite and no-output
 CLI probes.

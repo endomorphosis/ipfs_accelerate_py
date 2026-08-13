@@ -367,6 +367,8 @@ def test_v7_observer_contract_reuses_authorities_and_fails_closed() -> None:
         "Generic checkpoint instructions grant no task-input authority",
         "internal ephemeral stream capture and the validation namespace's private `/tmp`",
         "neither is a discovery source nor persisted evidence",
+        "freshly projected bounded-v7 G006 canonical task CID as the sole predecessor identity",
+        "retired display ID, alias, canonical key, CID, worktree, receipt, or merge",
     ):
         assert invariant in normalized
 
