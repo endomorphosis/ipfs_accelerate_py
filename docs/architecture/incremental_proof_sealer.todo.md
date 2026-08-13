@@ -1314,7 +1314,7 @@ Global invariants for every task:
 
 ## IPS-041 Implement seal verification, explanations, and cost comparison APIs
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
