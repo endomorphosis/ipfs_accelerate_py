@@ -212,7 +212,7 @@ W28 SCG-048
 
 ## SCG-006 Define canonical artifact base, statuses, provenance, and identity
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
