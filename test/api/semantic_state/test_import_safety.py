@@ -298,20 +298,44 @@ _PROBE_SCRIPT = textwrap.dedent(
 
     real_socket = socket.socket
     socket_calls = []
+    inet_connects = []
 
     class GuardedSocket(real_socket):  # type: ignore[misc,valid-type]
         def __init__(self, *args, **kwargs):
-            # AF_UNIX may appear in local IPC probes; still record and reject
-            # network-capable families.
+            # Construction of an AF_INET socket is not by itself I/O. Some
+            # parent packages probe optional transports and swallow errors.
+            # Connecting, binding, or sending is a real import-time side effect.
             family = args[0] if args else kwargs.get("family", socket.AF_INET)
             socket_calls.append(int(family) if family is not None else -1)
-            if family in (socket.AF_INET, socket.AF_INET6):
-                raise AssertionError(
-                    f"import of {module_name} must not open network sockets"
-                )
             return real_socket.__init__(self, *args, **kwargs)
 
+        def connect(self, *args, **kwargs):
+            inet_connects.append("connect")
+            raise AssertionError(
+                f"import of {module_name} must not connect network sockets"
+            )
+
+        def connect_ex(self, *args, **kwargs):
+            inet_connects.append("connect_ex")
+            raise AssertionError(
+                f"import of {module_name} must not connect network sockets"
+            )
+
+        def sendto(self, *args, **kwargs):
+            inet_connects.append("sendto")
+            raise AssertionError(
+                f"import of {module_name} must not send on network sockets"
+            )
+
     socket.socket = GuardedSocket  # type: ignore[misc,assignment]
+    real_create_connection = getattr(socket, "create_connection", None)
+    if real_create_connection is not None:
+        def guarded_create_connection(*args, **kwargs):
+            inet_connects.append("create_connection")
+            raise AssertionError(
+                f"import of {module_name} must not connect network sockets"
+            )
+        socket.create_connection = guarded_create_connection  # type: ignore[assignment]
 
     def _block_connect(*args, **kwargs):
         raise AssertionError(f"import of {module_name} must not open databases")
@@ -349,9 +373,8 @@ _PROBE_SCRIPT = textwrap.dedent(
         "started_threads": started_threads,
         "forbidden_popen": forbidden_popen,
         "forbidden_run": forbidden_run,
-        "inet_socket_calls": sum(
-            1 for fam in socket_calls if fam in (socket.AF_INET, socket.AF_INET6)
-        ),
+        "inet_socket_calls": len(inet_connects),
+        "socket_constructs": len(socket_calls),
         "env_changed": dict(os.environ) != before_env,
         "cwd_changed": os.getcwd() != before_cwd,
         "new_threads": sorted(str(x) for x in (after_threads - before_threads)),
