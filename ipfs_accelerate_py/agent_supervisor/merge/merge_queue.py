@@ -429,6 +429,14 @@ class MergeQueue:
             ("cancelled", self.cancelled_dir),
         )
         with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT COUNT(*) FROM merge_requests"
+            ).fetchone()
+            if existing is not None and int(existing[0] or 0) > 0:
+                # The durable index is already populated. Re-reading every
+                # stage receipt on constructor start pins the whole table
+                # again and OOMs a 256MB-capped DuckDB on a large queue.
+                return
             connection.execute("BEGIN IMMEDIATE")
             try:
                 for status, directory in stage_dirs:
