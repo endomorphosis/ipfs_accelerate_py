@@ -223,3 +223,10 @@ state/**/*.out
 !docs/architecture/formal_verification_post_remediation_delta.json
 !docs/architecture/formal_verification_production_authorization_replacement_receipt.json
 !docs/architecture/formal_verification_g213_terminal_evidence.json
+
+# Semantic Compression Governor reviewed control and immutable evidence.
+/data/agent_supervisor/semantic_compression_governor/
+!config/semantic_compression_governor_scheduler.json
+!docs/architecture/semantic_compression_governor_inventory/*.json
+!artifacts/agent_supervisor/semantic_compression_governor/*.json
+!test/fixtures/semantic_governor/**/*.json
