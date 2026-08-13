@@ -756,7 +756,7 @@ Global invariants for every task:
 
 ## IPS-023 Implement repository/branch current-seal compare-and-swap
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
