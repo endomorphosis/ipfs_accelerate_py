@@ -77,6 +77,7 @@ state/cache/*
 # Generated LAN mDNS two-machine demo state
 state/lan_mdns_two_machine*/
 *.duckdb.wal
+*.duckdb.lock
 # Refactored screenshot/test output directories in data folder
 data/test_screenshots/
 data/screenshots/
