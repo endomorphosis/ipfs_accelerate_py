@@ -202,6 +202,11 @@ semantic-state apply-patch /path/to/repo ./candidate.patch --mode production
 
 # Replay the sealed 40-task benchmark and check deterministic digests
 python3.12 benchmarks/semantic_state/run_benchmark.py --check
+
+# Admit the completed SCH board into the agent supervisor
+python3.12 scripts/validate_semantic_compression_harness_board.py --check-all
+python3.12 scripts/ops/agent_supervisor/semantic_compression_harness_scheduler.py preflight
+python3.12 scripts/ops/agent_supervisor/semantic_compression_harness_scheduler.py launch --dry-run
 ```
 
 Typed unavailability (missing optional provider/prover) returns a stable JSON
@@ -457,6 +462,9 @@ Production dispositions that **must** remain nonzero and never verified:
 | `docs/architecture/semantic_compression_harness.todo.md` | Taskboard (protected) |
 | `config/semantic_state_dependencies.seal.json` | Five-role pin seal (protected) |
 | `scripts/validate_semantic_state_dependencies.py` | Seal validator (protected) |
+| `config/agent_supervisor_semantic_compression_harness_scheduler.json` | Supervisor scheduler document |
+| `scripts/validate_semantic_compression_harness_board.py` | Supervisor board validator |
+| `scripts/ops/agent_supervisor/semantic_compression_harness_scheduler.py` | SCH supervisor launcher |
 | `docs/benchmarks/semantic_compression_harness_results.json` | Benchmark machine receipt |
 | `docs/benchmarks/semantic_compression_harness_results.md` | Benchmark human summary |
 | `test/api/semantic_state/test_import_safety.py` | Import safety regressions |

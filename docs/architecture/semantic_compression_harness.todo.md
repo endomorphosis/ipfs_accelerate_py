@@ -8,7 +8,10 @@ Protected companion artifacts:
 - `docs/architecture/semantic_compression_harness.objectives.md`
 - `docs/architecture/semantic_compression_harness.todo.md`
 - `config/semantic_state_dependencies.seal.json`
+- `config/agent_supervisor_semantic_compression_harness_scheduler.json`
 - `scripts/validate_semantic_state_dependencies.py`
+- `scripts/validate_semantic_compression_harness_board.py`
+- `scripts/ops/agent_supervisor/semantic_compression_harness_scheduler.py`
 - `test/api/semantic_state/test_dependency_seal.py`
 
 These control documents are reviewed inputs and may be changed only by the
