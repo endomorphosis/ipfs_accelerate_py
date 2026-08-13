@@ -525,7 +525,7 @@ W20 AAE-063
 
 ## AAE-018 Implement authorization and policy mutation operators
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
