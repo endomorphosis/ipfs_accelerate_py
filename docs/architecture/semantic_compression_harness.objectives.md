@@ -132,7 +132,7 @@ SCH-G000  Complete local Python semantic-compression loop
 
 ## SCH-G050 Exactly-40-task benchmark and release evidence
 
-- Status: active
+- Status: completed
 - Parent: SCH-G000
 - Depends on: SCH-G040
 - Fib priority: 13
