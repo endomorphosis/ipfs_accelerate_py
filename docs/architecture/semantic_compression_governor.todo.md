@@ -1076,7 +1076,7 @@ W28 SCG-048
 
 ## SCG-038 Implement complete compression, quality, omission, routing, economic, and calibration metrics
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
