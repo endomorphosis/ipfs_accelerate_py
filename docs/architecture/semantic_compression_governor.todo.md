@@ -131,7 +131,7 @@ W28 SCG-048
 
 ## SCG-003 Inventory kit immutable blocks, history, recovery, and root CAS
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
