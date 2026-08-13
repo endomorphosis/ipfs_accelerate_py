@@ -239,7 +239,7 @@ W28 SCG-048
 
 ## SCG-007 Define coverage, audit, omission, expansion, and decision contracts
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
