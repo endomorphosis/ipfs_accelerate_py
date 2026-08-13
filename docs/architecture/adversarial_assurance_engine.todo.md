@@ -579,7 +579,7 @@ W20 AAE-063
 
 ## AAE-020 Implement test, proof, semantic-compression, and conditional GUI operators
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
