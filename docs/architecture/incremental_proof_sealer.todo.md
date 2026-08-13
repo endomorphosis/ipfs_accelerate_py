@@ -477,7 +477,7 @@ Global invariants for every task:
 
 ## IPS-014 Implement deterministic requirement discovery and test/property selection
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
