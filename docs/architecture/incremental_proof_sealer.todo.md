@@ -322,7 +322,7 @@ Global invariants for every task:
 
 ## IPS-009 Implement VerificationPolicy and VerificationRequirementManifest schemas
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
