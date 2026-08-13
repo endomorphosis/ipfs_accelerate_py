@@ -7,14 +7,20 @@ Protected companion artifacts:
 - `docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md`
 - `docs/architecture/semantic_compression_harness.objectives.md`
 - `docs/architecture/semantic_compression_harness.todo.md`
+- `config/semantic_state_dependencies.seal.json`
+- `scripts/validate_semantic_state_dependencies.py`
+- `test/api/semantic_state/test_dependency_seal.py`
 
 These control documents are reviewed inputs and may be changed only by the
 operator while sealing `SCH-000`; implementation workers must not edit them.
-`SCH-000` is deliberately open. Do not launch implementation lanes until both
-explicit datasets placeholders have been replaced by the exact final repaired
-incremental-index and semantic-state/Merkle/capsule commits, the already-pinned
-`ipfs_kit_py` durable-root commit is validated, the deterministic seal validator
-passes, and the task is manually marked complete.
+`SCH-000` is sealed. Implementation lanes may launch against the pinned
+five-role authority. Workers must not edit protected control files or change
+pins.
+The final audited accelerator authority is `271e331af802f37d759c000666282631a99f7aab`
+(tree `5859208bdab59338eab67a5cd0102c193ca6c388`); it resolves the five findings
+against parent `8a1136d…`. Its hardened ten-file sealed producer command includes
+the runtime-authority vector and passed 355/355. The 334/334 legacy command and
+97/97 focused audit are supporting evidence only.
 
 Implementation is focused in
 `ipfs_accelerate_py.agent_supervisor.semantic_state`. Workers consume the pinned
@@ -48,14 +54,14 @@ A9  SCH-018
 
 ## SCH-000 Pin and validate phase-two contract authorities
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: control
 - Depends on:
 - Goal id: SCH-G010
 - Outputs: docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md, docs/architecture/semantic_compression_harness.objectives.md, docs/architecture/semantic_compression_harness.todo.md, config/semantic_state_dependencies.seal.json, scripts/validate_semantic_state_dependencies.py, test/api/semantic_state/test_dependency_seal.py
-- Validation: python3.12 scripts/validate_semantic_state_dependencies.py --check config/semantic_state_dependencies.seal.json && python3.12 -m pytest -q test/api/semantic_state/test_dependency_seal.py
+- Validation: ${SCH_PYTHON312} scripts/validate_semantic_state_dependencies.py --check config/semantic_state_dependencies.seal.json --python ${SCH_PYTHON312} --receipt-dir ${SCH_FRESH_RECEIPT_DIR} --repo accelerate_harness=${SCH_ACCELERATE_CHECKOUT} --repo incremental_semantic_index=${SCH_ISI_CHECKOUT} --repo semantic_state_contracts=${SCH_DSS_CHECKOUT} --repo kit_state_roots=${SCH_KIT_CHECKOUT} --repo mcp_plus_plus=${SCH_MCP_PLUS_PLUS_CHECKOUT} --run-tests && ${SCH_PYTHON312} -m pytest -q test/api/semantic_state/test_dependency_seal.py
 - Board namespace: semantic-compression-harness-v1
 - Bundle: sch/control
 - Parallel lane: sch-control
@@ -68,14 +74,14 @@ A9  SCH-018
 - Predicted files: docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md, docs/architecture/semantic_compression_harness.objectives.md, docs/architecture/semantic_compression_harness.todo.md, config/semantic_state_dependencies.seal.json, scripts/validate_semantic_state_dependencies.py, test/api/semantic_state/test_dependency_seal.py
 - Predicted symbols: SemanticStateDependencySeal
 - Interfaces: SemanticStateDependencySeal@1
-- Conflict policy: Operator-only launch gate. No implementation worker may infer, update, merge, or bypass dependency pins or edit the protected control files.
-- Preconditions: Accelerate baseline is `ea11293bb996f052d620eae989f5377a956764b1`; MCP++ authority is `dc3164653a48d059ae9812078359daeafb451c07`; final kit generation-bearing durable-root authority is `05ba9375923cd5fb52e2c9c18b98b530d57d077f`; the exact final repaired datasets incremental-semantic-index and semantic-state/Merkle/capsule commits have not yet both been supplied. Until those separate closeouts arrive, `IPFS_DATASETS_INCREMENTAL_SEMANTIC_INDEX_COMMIT = UNRESOLVED_FINAL_REPAIRED_COMMIT` and `IPFS_DATASETS_SEMANTIC_STATE_COMMIT = UNRESOLVED_FINAL_REPAIRED_COMMIT` remain fail-closed; workers must not infer either value from ancestry or a mutable branch.
-- Effects: Replaces only the two unresolved datasets placeholders with their exact reachable 40-hex commits, retains and validates the exact kit commit, and records all four repository origins and all five commit authorities, interface and schema fingerprints, Python 3.12/toolchain, and producer test commands; rejects ambient editable/PYTHONPATH substitution; runs real producer contract tests and seals their outputs for every downstream worker.
-- Acceptance: The validator rejects unresolved, mutable, unreachable, dirty, origin-mismatched, fingerprint-incompatible, non-Python-3.12, or failing dependencies. Datasets separately proves the real Git-tree scan -> resolved graph -> delta -> invalidation path and the storage-neutral semantic-state bundle/view -> symbol-node Merkle DAG -> capsule/source -> previous/current selection path without injected edges. Kit exposes direct lazy `DurableCoordinationStore` plus generation-bearing read-root/expected-token-CAS/recover. The board is acyclic and only then is SCH-000 marked complete.
+- Conflict policy: Operator-only launch gate. No implementation worker may infer, update, merge, complete, or bypass dependency pins or edit any protected control file. The phase-one and phase-two datasets authorities require separate canonical clean worktree roots; neither may be inferred from the other's ancestry or from this harness checkout.
+- Preconditions: The accelerator runtime commit is `271e331af802f37d759c000666282631a99f7aab`, tree `5859208bdab59338eab67a5cd0102c193ca6c388`; it prevents live-owner/no-heartbeat split brain and propagates lost fences, locks/rechecks task-index publication against newer active owners, fails closed on empty/unavailable process snapshots, validates whitespace through an isolated index or equivalent materialized proposal including dirty/clean untracked and child-submodule outputs, and cleans up fast-zombie birth-capture leases, including direct-child terminal paths. MCP++ is `dc3164653a48d059ae9812078359daeafb451c07`; kit is `df2f9cc092456329de9724c45a50c54b410875d1`; datasets ISI and semantic-state are `1330038f626ef92993f03d46f21e1a57719e9c25` (tree `c1686dfce8e14ebd32327a0214c0f62ff6a5c7d6`). Separate `${SCH_ACCELERATE_CHECKOUT}`, `${SCH_ISI_CHECKOUT}`, `${SCH_DSS_CHECKOUT}`, `${SCH_KIT_CHECKOUT}`, and `${SCH_MCP_PLUS_PLUS_CHECKOUT}` roots, a fresh nonexistent absolute `${SCH_FRESH_RECEIPT_DIR}`, and an operator-supplied absolute `${SCH_PYTHON312}` whose binary/pytest/environment projection exactly matches the v2 seal are required.
+- Effects: Binds the audited accelerator, datasets ISI/semantic-state, kit, and MCP++ commit/tree/API/blob/fingerprint projections; validates the policy-owned five-role order, exact clean HEADs, origins, full tracked working bytes, hidden index flags, required path sets, tree-wide dependency closure, mandatory argv tuples, timeouts, source/schema-extracted APIs, and complete fingerprints. It runs each command in a fresh private safe Git-object projection and captured process group, permits at most 100 ms of monotonic natural drain after the leader exits, revalidates all five roots before and after each command, and fences persistent descendants. Source commit/tree/blob identity stays exact; every Git symlink becomes an empty inert non-executable regular record at its source path, and receipt v2 separately binds path/mode/blob OID/source-target digest/empty-materialized digest/kind plus observed natural drain. It writes a SHA-256-addressed closed producer receipt only after zero exit, no timeout or persistent leak, and a clean all-role postcheck. It AST-rejects aliases, dynamic imports, canonicalizers/CID implementations, generic envelopes, reflection, and forged provider bodies in the current harness tree.
+- Acceptance: The validator rejects duplicate keys, non-JSON recursive values, NaN/Infinity, placeholders, unknown fields, wrong pins/origins, dirty/wrong-HEAD/non-root/shared checkouts, `assume-unchanged`/`skip-worktree`, missing or mismatched working/Git/materialized bytes, archive traversal/collisions, executable or non-inert symlink projections, source/schema extraction drift, weakened closure/argv, missing or substituted Python/pytest/environment bindings, skipped/timed-out/descendant-leaking tests (including inherited-pipe holders past the leader-bound deadline), unavailable process inspection or reused group identity, mutation of any of the five roots, malformed/tampered/incomplete/failure receipts, or local duplicate authorities. `exact_clean_head` makes no remote-ref reachability claim. The pinned accelerator source-extracts `canonicalize_artifact`/`cid_for_bytes`; its ten-file sealed command includes the real-CID/process/runtime-authority vector, binds regressions for all five accelerator audit findings, and passed 355/355. The exact `SemanticCapsuleRef`, `TestSelectionRef`, datasets-owned `SemanticStateView/get_block`, kit artifact vector layout, and actual MCP++ Profile A/B/F field authorities are then sealed. Datasets separately proves both public pipelines, kit proves its durable root port, the task/goal DAGs are acyclic, and only then is SCH-000 manually marked complete.
 
 ## SCH-001 Implement MCP++ wire codec and interface descriptor
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: wire-contracts
@@ -102,7 +108,7 @@ A9  SCH-018
 
 ## SCH-002 Implement the pinned datasets semantic-state adapter
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: datasets-adapter
@@ -129,7 +135,7 @@ A9  SCH-018
 
 ## SCH-003 Implement the narrow kit durable-root adapter
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: durable-state
@@ -156,7 +162,7 @@ A9  SCH-018
 
 ## SCH-004 Define scheduling and execution contracts
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: scheduling-contracts
@@ -183,7 +189,7 @@ A9  SCH-018
 
 ## SCH-005 Implement the existing-supervisor scheduling adapter
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: scheduling
@@ -210,7 +216,7 @@ A9  SCH-018
 
 ## SCH-006 Admit capsules and compile assurance-aware ContextPacks
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: context
@@ -237,7 +243,7 @@ A9  SCH-018
 
 ## SCH-007 Implement model routing and real-provider adapters
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: model-routing
@@ -264,7 +270,7 @@ A9  SCH-018
 
 ## SCH-008 Adapt the sealed selection and execute checks, tests, and provers
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: verification
@@ -291,7 +297,7 @@ A9  SCH-018
 
 ## SCH-009 Emit MCP++ receipts and enforce freshness admission
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: receipts
@@ -318,7 +324,7 @@ A9  SCH-018
 
 ## SCH-010 Implement safe fenced worktree and patch validation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: worktree
@@ -345,7 +351,7 @@ A9  SCH-018
 
 ## SCH-011 Implement the complete 14-step harness loop
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: harness-loop
@@ -372,7 +378,7 @@ A9  SCH-018
 
 ## SCH-012 Implement incremental session, watch, restart, and replay
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: session
@@ -399,7 +405,7 @@ A9  SCH-018
 
 ## SCH-013 Add semantic-state CLI and console entrypoint
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: cli
@@ -426,7 +432,7 @@ A9  SCH-018
 
 ## SCH-014 Create the controlled Python fixture repository
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: fixtures
@@ -453,7 +459,7 @@ A9  SCH-018
 
 ## SCH-015 Prove the end-to-end acceptance matrix
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: acceptance
@@ -480,7 +486,7 @@ A9  SCH-018
 
 ## SCH-016 Create the exactly-40-task benchmark corpus
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: benchmark-corpus
@@ -507,7 +513,7 @@ A9  SCH-018
 
 ## SCH-017 Implement benchmark runner and publish measured results
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: benchmark
@@ -534,7 +540,7 @@ A9  SCH-018
 
 ## SCH-018 Complete documentation, import safety, and provider regressions
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: release

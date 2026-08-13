@@ -80,6 +80,10 @@ LaneDisposition = Literal[
 ]
 
 
+class ProcessFenceError(RuntimeError):
+    """The lane cannot prove that its spawned process group is quiescent."""
+
+
 @dataclass(frozen=True)
 class LeasedLaneResult:
     """Scheduler-facing terminal state for one leased command execution."""
@@ -104,13 +108,14 @@ class LeasedLaneResult:
 
         # A fenced result is reusable as well: the old process has been
         # terminated and authority belongs to another accepted fencing token.
-        return self.disposition in {
+        if self.disposition == "fenced":
+            return True
+        return self.lease_released and self.disposition in {
             "completed",
             "pending_acceptance",
             "blocked",
             "failed",
             "cancelled",
-            "fenced",
             "start_failed",
         }
 
@@ -1021,7 +1026,7 @@ def _terminate_child(
             expected_root_start_time_ticks=expected_start_time,
         )
         if not fenced:
-            raise RuntimeError(
+            raise ProcessFenceError(
                 f"could not prove process tree {process.pid} fully fenced"
             )
     elif process.poll() is not None:
@@ -1198,8 +1203,30 @@ def run_leased_lane_result(
                     int(process.pid),
                     expected_parent_pid=os.getpid(),
                 )
-                if start_time_ticks is not None:
-                    process._supervisor_start_time_ticks = start_time_ticks
+                if start_time_ticks is None:
+                    try:
+                        _terminate_child(process, fence_descendants=True)
+                    except ProcessFenceError as fence_exc:
+                        return LeasedLaneResult(
+                            task_cid=grant.task_cid,
+                            claim_cid=grant.claim_cid,
+                            claimant_did=grant.claimant_did,
+                            fencing_token=grant.fencing_token,
+                            disposition="start_failed",
+                            exit_code=START_FAILED_EXIT_CODE,
+                            child_exit_code=process.returncode,
+                            started_at_ms=started_at_ms,
+                            finished_at_ms=_now_ms(),
+                            lease_released=False,
+                            error=(
+                                "spawned child birth identity unavailable; "
+                                f"{fence_exc}"
+                            ),
+                        )
+                    raise RuntimeError(
+                        "spawned child birth identity unavailable"
+                    )
+                process._supervisor_start_time_ticks = start_time_ticks  # type: ignore[attr-defined]
         except Exception as exc:
             logger.error("Could not start leased lane %s: %s", grant.task_cid, exc)
             try:
@@ -1709,6 +1736,28 @@ def run_leased_lane_result(
                 ),
                 lease_released=True,
                 error=execution_scope_error,
+            )
+        except ProcessFenceError as exc:
+            # Never close/release the accepted lease when process quiescence
+            # could not be proved.  Expiry remains the recovery boundary and
+            # callers receive a typed terminal result instead of an exception.
+            logger.error(
+                "Could not prove leased lane %s process fence: %s",
+                grant.task_cid,
+                exc,
+            )
+            return LeasedLaneResult(
+                task_cid=grant.task_cid,
+                claim_cid=grant.claim_cid,
+                claimant_did=grant.claimant_did,
+                fencing_token=grant.fencing_token,
+                disposition="failed",
+                exit_code=START_FAILED_EXIT_CODE,
+                child_exit_code=process.returncode,
+                started_at_ms=started_at_ms,
+                finished_at_ms=_now_ms(),
+                lease_released=False,
+                error=f"process_fence_unproven: {exc}",
             )
         finally:
             if handlers_installed:

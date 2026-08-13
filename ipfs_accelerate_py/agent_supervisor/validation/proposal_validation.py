@@ -3122,6 +3122,7 @@ def _is_concrete_secret_value(
     raw_value: str,
     *,
     allow_test_sentinel: bool = False,
+    allow_never_expose_sentinel: bool = False,
 ) -> bool:
     value = raw_value.strip()
     quoted = _QUOTED_SECRET_VALUE_RE.fullmatch(value)
@@ -3146,7 +3147,10 @@ def _is_concrete_secret_value(
     # material is rejected or redacted. Only accept an exact "never expose"
     # sentinel so a concrete credential containing those words still fails
     # closed.
-    if _NEVER_EXPOSE_SENTINEL_RE.fullmatch(value):
+    if (
+        allow_never_expose_sentinel
+        and _NEVER_EXPOSE_SENTINEL_RE.fullmatch(value)
+    ):
         return False
     # A focused security fixture uses this exact value to exercise rejection
     # of secret-bearing fields.  Admit it only in test files and only as the
@@ -3179,12 +3183,21 @@ def _entry_introduces_secret(
         return False
     if _PRIVATE_KEY_CONTENT_RE.search(introduced):
         return True
-    allow_test_sentinel = _is_test_path(entry.new_path or entry.old_path)
+    path = entry.new_path or entry.old_path
+    allow_test_sentinel = _is_test_path(path)
+    # The proposal gate must be able to define and maintain its own closed
+    # never-expose sentinel vocabulary.  Outside that authority module the
+    # same credential-shaped literals remain test-only canaries.
+    allow_never_expose_sentinel = (
+        allow_test_sentinel
+        or path.endswith("/proposal_validation.py")
+    )
     for match in _SECRET_ASSIGNMENT_RE.finditer(introduced):
         value = match.group("value")
         if not _is_concrete_secret_value(
             value,
             allow_test_sentinel=allow_test_sentinel,
+            allow_never_expose_sentinel=allow_never_expose_sentinel,
         ):
             continue
         if (

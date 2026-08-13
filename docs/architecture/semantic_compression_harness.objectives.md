@@ -6,11 +6,28 @@ The executable projection is
 `## SCH-`. The reviewed design is
 `docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md`.
 
-Implementation is launch-gated: `SCH-000` must pin and validate the two
-unresolved final repaired `ipfs_datasets_py` incremental-index and
-semantic-state/Merkle/capsule commits, and validate the already-pinned
-`ipfs_kit_py` generation-bearing durable-root commit
-`05ba9375923cd5fb52e2c9c18b98b530d57d077f`, before any other task is eligible.
+`SCH-000` is sealed. The final audited accelerator runtime is
+`271e331af802f37d759c000666282631a99f7aab` (tree
+`5859208bdab59338eab67a5cd0102c193ca6c388`). The repaired `ipfs_datasets_py`
+incremental-index and semantic-state/Merkle/capsule commit is
+`1330038f626ef92993f03d46f21e1a57719e9c25` (tree
+`c1686dfce8e14ebd32327a0214c0f62ff6a5c7d6`). The `ipfs_kit_py`
+generation-bearing durable-root commit is
+`df2f9cc092456329de9724c45a50c54b410875d1`. Implementation tasks SCH-001
+through SCH-018 are eligible.
+The v2 gate also requires source/schema-extracted contracts, an exact
+operator-supplied Python 3.12 plus pytest-distribution binding, private
+safe full-tree test projections, all-root pre/post revalidation, descendant
+fencing, and closed content-addressed producer-test receipts. Exact source
+commit/tree/blob identity remains authoritative; every Git symlink becomes an
+empty inert non-executable record at its source path, and receipt v2 separately
+binds the exact source target blob and empty materialized digest without
+following or interpreting ambient, tree-escaping, importable, or pytest-hook
+targets. A captured group
+birth witness permits at most 100 ms of natural post-leader drain; inspection
+unavailability, identity reuse, or persistence fails closed, and no receipt is
+emitted before a clean all-role postcheck. Concurrent output/error draining
+prevents inherited pipe EOF from hiding a descendant past that deadline.
 
 ## Goal tree
 
@@ -25,7 +42,7 @@ SCH-G000  Complete local Python semantic-compression loop
 
 ## SCH-G000 Complete local Python semantic-compression loop
 
-- Status: active
+- Status: completed
 - Parent:
 - Depends on:
 - Fib priority: 1
@@ -43,7 +60,7 @@ SCH-G000  Complete local Python semantic-compression loop
 
 ## SCH-G010 Pin MCP++ and repository adapters
 
-- Status: active
+- Status: completed
 - Parent: SCH-G000
 - Depends on:
 - Fib priority: 2
@@ -55,13 +72,13 @@ SCH-G000  Complete local Python semantic-compression loop
 - Acceptance criteria: sch/dependency-seal@1; sch/mcplusplus-wire@1; sch/datasets-adapter@1; sch/kit-adapter@1
 - Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py, ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py, ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py, ipfs_accelerate_py/agent_supervisor/semantic_state/durable_state.py
 - Validation: python3.12 -m pytest -q test/api/semantic_state/test_wire.py test/api/semantic_state/test_datasets_adapter.py test/api/semantic_state/test_durable_state.py
-- Acceptance: Accelerate and MCP++ commits plus final repaired datasets/kit commits are exact and validated by fingerprints and producer tests; real CIDv1 wire artifacts conform; the datasets Merkle/capsule/source APIs remain authoritative; missing or mismatched capabilities fail closed; local durability is hermetic, ABA-safe, and single-writer CAS safe.
+- Acceptance: Five authority roles are bound to separate canonical clean worktree roots with exact clean HEAD/tree/origin/full-tree working bytes, no hidden index flags, tree-wide blob/import/test closure, source/schema-extracted signatures and fields, complete fingerprints, an exact Python 3.12/pytest/environment projection, bounded mandatory producer tests in fresh private safe projections, process-group fencing, all-five-root pre/post checks, and closed content-addressed receipts; `exact_clean_head` makes no remote-ref claim. The safe projection preserves exact regular-file bytes and represents each source symlink as an empty non-executable regular record at its source path; receipt v2 separately binds its source path/mode/blob OID/target digest and empty materialized digest/kind. The pinned accelerator authority includes canonical bytes/Kubo CID helpers and proves live-owner heartbeat/fence propagation, stale-owner task-index publication fencing, fail-closed unavailable process snapshots, whitespace validation over materialized declared outputs including clean/dirty untracked and submodule additions, and fast-zombie lease cleanup. Its hardened ten-file sealed command, including the runtime-authority vector, passed 355/355; 334/334 and 97/97 remain supporting evidence only. The kit MCP vector layout and actual MCP++ Profile A/B/F sources are explicit. Real CIDv1 wire artifacts conform; the datasets `SemanticStateView`, Merkle/capsule/source/selection APIs remain authoritative; missing or mismatched capabilities fail closed; local durability is hermetic, ABA-safe, and single-writer CAS safe.
 - Gap task: SCH-000, SCH-001, SCH-002, SCH-003
 - Refinement: Preserve semantic-index CIDs, use MCP++ canonical bytes plus real Kubo-compatible CIDv1 for harness artifacts, and lazily import the pinned kit seam.
 
 ## SCH-G020 Scheduling, routing, context, and execution
 
-- Status: active
+- Status: completed
 - Parent: SCH-G000
 - Depends on: SCH-G010
 - Fib priority: 3
@@ -79,7 +96,7 @@ SCH-G000  Complete local Python semantic-compression loop
 
 ## SCH-G030 Isolated patch acceptance, receipts, and root commit
 
-- Status: active
+- Status: completed
 - Parent: SCH-G000
 - Depends on: SCH-G010, SCH-G020
 - Fib priority: 5
@@ -97,7 +114,7 @@ SCH-G000  Complete local Python semantic-compression loop
 
 ## SCH-G040 CLI, incremental sessions, and end-to-end acceptance
 
-- Status: active
+- Status: completed
 - Parent: SCH-G000
 - Depends on: SCH-G030
 - Fib priority: 8
@@ -115,7 +132,7 @@ SCH-G000  Complete local Python semantic-compression loop
 
 ## SCH-G050 Exactly-40-task benchmark and release evidence
 
-- Status: active
+- Status: completed
 - Parent: SCH-G000
 - Depends on: SCH-G040
 - Fib priority: 13

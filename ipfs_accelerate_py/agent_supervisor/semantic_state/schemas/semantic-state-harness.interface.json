@@ -1,0 +1,42 @@
+{
+  "name": "semantic-state-harness",
+  "namespace": "ipfs-accelerate.agent-supervisor",
+  "version": "1.0.0",
+  "methods": [
+    {
+      "name": "open_semantic_state",
+      "input": "root_cid+get_block",
+      "output": "SemanticStateView"
+    },
+    {
+      "name": "encode_root_manifest",
+      "input": "SemanticStateRootManifest",
+      "output": "ExecutionEnvelope"
+    },
+    {
+      "name": "decode_root_manifest",
+      "input": "ExecutionEnvelope",
+      "output": "SemanticStateRootManifest"
+    }
+  ],
+  "errors": [
+    {
+      "name": "HarnessError",
+      "retryable": false
+    },
+    {
+      "name": "UnavailableResult",
+      "retryable": true
+    }
+  ],
+  "requires": [
+    "mcp++/profile-a/interface-description",
+    "mcp++/profile-b/cid-native-artifacts",
+    "mcp++/profile-f/event-dag-ordering"
+  ],
+  "compatibility": {
+    "board_namespace": "semantic-compression-harness-v1",
+    "harness_contracts": "semantic-state-harness@1",
+    "wire_boundary": "mcp-plus-plus-profiles-a-b-f"
+  }
+}

@@ -24,6 +24,27 @@ from ..runtime.event_log import unique_backup_path
 
 
 JsonDict = Dict[str, Any]
+ProcessIdentityRecord = Tuple[str, int, int, int, str]
+
+
+@dataclass(frozen=True)
+class ProcessIdentitySnapshot:
+    """Typed result of one authoritative Linux process-table observation."""
+
+    available: bool
+    processes: Mapping[int, ProcessIdentityRecord] = field(default_factory=dict)
+    error: str = ""
+
+    @classmethod
+    def observed(
+        cls,
+        processes: Mapping[int, ProcessIdentityRecord],
+    ) -> "ProcessIdentitySnapshot":
+        return cls(available=True, processes=dict(processes))
+
+    @classmethod
+    def unavailable(cls, error: str) -> "ProcessIdentitySnapshot":
+        return cls(available=False, processes={}, error=str(error or "unavailable"))
 
 
 @dataclass(frozen=True)
@@ -457,21 +478,25 @@ def _process_relationship_snapshot() -> Dict[int, Tuple[int, int]]:
     return relationships
 
 
-def _process_identity_snapshot() -> Dict[int, Tuple[str, int, int, int, str]]:
-    """Return ``pid -> (state, ppid, pgrp, session, starttime)`` on Linux."""
+def _process_identity_snapshot() -> ProcessIdentitySnapshot:
+    """Observe Linux process identities without conflating failure and empty."""
 
-    processes: Dict[int, Tuple[str, int, int, int, str]] = {}
+    processes: Dict[int, ProcessIdentityRecord] = {}
     proc_root = Path("/proc")
     try:
         entries = tuple(proc_root.iterdir())
-    except OSError:
-        return processes
+    except OSError as exc:
+        return ProcessIdentitySnapshot.unavailable(
+            f"{type(exc).__name__}: {exc}"
+        )
     for entry in entries:
         if not entry.name.isdigit():
             continue
         try:
             stat = (entry / "stat").read_text(encoding="utf-8")
             closing_parenthesis = stat.rfind(")")
+            if closing_parenthesis < 0:
+                raise ValueError("malformed /proc stat record")
             fields = stat[closing_parenthesis + 2 :].split()
             processes[int(entry.name)] = (
                 fields[0],
@@ -480,9 +505,14 @@ def _process_identity_snapshot() -> Dict[int, Tuple[str, int, int, int, str]]:
                 int(fields[3]),
                 fields[19],
             )
-        except (OSError, UnicodeError, ValueError, IndexError):
+        except FileNotFoundError:
+            # The PID exited between directory enumeration and the stat read.
             continue
-    return processes
+        except (OSError, UnicodeError, ValueError, IndexError) as exc:
+            return ProcessIdentitySnapshot.unavailable(
+                f"{entry.name}: {type(exc).__name__}: {exc}"
+            )
+    return ProcessIdentitySnapshot.observed(processes)
 
 
 def _strictly_fence_pid_tree(
@@ -510,7 +540,10 @@ def _strictly_fence_pid_tree(
         own_group = 0
     tracked: Dict[int, Tuple[str, int]] = {}
     tracked_groups: set[int] = {own_group} if own_group > 1 else set()
-    initial_table = _process_identity_snapshot()
+    initial_snapshot = _process_identity_snapshot()
+    if not initial_snapshot.available:
+        return False
+    initial_table = dict(initial_snapshot.processes)
     initial_root = initial_table.get(pid)
     expected_start = ""
     if expected_root_start_time_ticks is not None:
@@ -583,7 +616,10 @@ def _strictly_fence_pid_tree(
     freeze_deadline = time.monotonic() + max(0.2, float(grace_seconds))
     stable_scans = 0
     while stable_scans < 2:
-        table = _process_identity_snapshot()
+        snapshot = _process_identity_snapshot()
+        if not snapshot.available:
+            return False
+        table = dict(snapshot.processes)
         selected = closure(table)
         new_member = False
         for process_id in selected:
@@ -615,7 +651,10 @@ def _strictly_fence_pid_tree(
                 pass
 
         time.sleep(0.01)
-        verification = _process_identity_snapshot()
+        verification_snapshot = _process_identity_snapshot()
+        if not verification_snapshot.available:
+            return False
+        verification = dict(verification_snapshot.processes)
         verification_members = closure(verification)
         all_stopped = all(
             record[0] in {"T", "t", "Z"}
@@ -637,7 +676,10 @@ def _strictly_fence_pid_tree(
     # Once frozen, TERM handlers must not run: they are precisely where a
     # supervised process can fork a replacement after an ordinary snapshot.
     while True:
-        table = _process_identity_snapshot()
+        snapshot = _process_identity_snapshot()
+        if not snapshot.available:
+            return False
+        table = dict(snapshot.processes)
         for process_id in closure(table):
             state, _parent, process_group, _session, starttime = table[process_id]
             existing = tracked.get(process_id)
