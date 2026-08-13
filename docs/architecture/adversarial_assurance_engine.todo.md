@@ -741,7 +741,7 @@ W20 AAE-063
 
 ## AAE-026 Implement formal-proof and policy vacuity analysis
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
