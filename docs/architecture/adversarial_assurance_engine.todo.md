@@ -335,7 +335,7 @@ W20 AAE-063
 
 ## AAE-011 Define candidate remediation and evaluation models
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
