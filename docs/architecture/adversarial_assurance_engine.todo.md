@@ -822,7 +822,7 @@ W20 AAE-063
 
 ## AAE-029 Build test, proof, policy, and capsule adequacy profiles
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
