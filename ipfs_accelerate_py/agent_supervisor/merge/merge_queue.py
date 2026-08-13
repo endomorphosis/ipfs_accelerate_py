@@ -610,8 +610,27 @@ class MergeQueue:
                     raise MergeQueueFullError(
                         f"merge queue capacity {self.max_queue_size} has been reached"
                     )
-                self._insert(connection, request, ignore=False)
+                # INSERT OR IGNORE: a concurrent peer can win the same
+                # dedupe_key between our SELECT and INSERT. A hard INSERT
+                # then FATAL-crashes DuckDB on unique-index revert (killing
+                # the lane). Ignore and return the durable winner instead.
+                self._insert(connection, request, ignore=True)
+                stored = connection.execute(
+                    "SELECT * FROM merge_requests WHERE request_id = ?",
+                    (request.request_id,),
+                ).fetchone()
+                if stored is None and request.dedupe_key:
+                    stored = connection.execute(
+                        "SELECT * FROM merge_requests WHERE dedupe_key = ?",
+                        (request.dedupe_key,),
+                    ).fetchone()
+                if stored is None:
+                    connection.rollback()
+                    raise RuntimeError(
+                        "merge queue insert was ignored without an existing row"
+                    )
                 connection.commit()
+                request = self._request_from_row(stored)
             except Exception:
                 connection.rollback()
                 if not request.dedupe_key:
