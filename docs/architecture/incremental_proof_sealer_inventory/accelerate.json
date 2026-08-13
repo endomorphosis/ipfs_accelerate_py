@@ -4,10 +4,10 @@
   "repository": "accelerate",
   "evidence_subset": "ips/accelerate-inventory@2",
   "planning_revision": "8881344bb2162f3f8d82f22d8348bc0ac7536f95",
-  "inventory_worktree_parent_revision": "c725756bbe4cd27101e4b259eb1e9a776f52d96a",
+  "inventory_worktree_parent_revision": "4af00cb2e1889b72459ee4df2d08389f20c30d33",
   "baseline_evidence": {
     "path": "artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/accelerate.json",
-    "receipt_digest": "sha256:d761d5b7684961c415138cad8a431bfb10095bec41e3ab10ff164ff575554f58",
+    "receipt_digest": "sha256:a85bc27f70dabbbea49d26200fee27e43dbf61102beb6a9789df7a15f367474e",
     "required_command_ids": [
       "accelerate-proof-focused-core-15",
       "accelerate-proof-focused-wide-36",
@@ -665,6 +665,231 @@
       "classification_method": "static source inventory",
       "surfaces_found": 1,
       "notes": "Accelerator bootstrap and entry-point module in operator reuse-cross-repo suite."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_test_execution_identity.py",
+      "family": "focused_tests",
+      "role": "test_execution_identity_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Test-execution identity module in operator wide suite. Static inventory reports surfaces_found only."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_test_execution_identity_vectors.py",
+      "family": "focused_tests",
+      "role": "test_execution_identity_vector_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Test-execution identity vector module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_agent_supervisor_test_proof_reuse_doctrine.py",
+      "family": "focused_tests",
+      "role": "test_proof_reuse_doctrine_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Test proof-reuse doctrine module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_activation_contracts.py",
+      "family": "focused_tests",
+      "role": "activation_contract_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Activation contract module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_receipt.py",
+      "family": "focused_tests",
+      "role": "proof_reuse_receipt_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Proof-reuse receipt collector module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_runtime_activation_report.py",
+      "family": "focused_tests",
+      "role": "runtime_activation_report_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Runtime activation report module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_controller_issuance.py",
+      "family": "focused_tests",
+      "role": "controller_issuance_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Controller issuance module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_candidate_publication_context.py",
+      "family": "focused_tests",
+      "role": "candidate_publication_context_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Candidate publication context module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_locator_first_collection.py",
+      "family": "focused_tests",
+      "role": "locator_first_collection_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Locator-first collection module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_two_stage_warm_lookup.py",
+      "family": "focused_tests",
+      "role": "two_stage_warm_lookup_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Two-stage warm lookup module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_runtime_revalidation.py",
+      "family": "focused_tests",
+      "role": "runtime_revalidation_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Runtime revalidation module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_degradation_matrix.py",
+      "family": "focused_tests",
+      "role": "degradation_matrix_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Degradation matrix module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_cold_pass_publication.py",
+      "family": "focused_tests",
+      "role": "cold_publication_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Cold publication module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_default_identity_services.py",
+      "family": "focused_tests",
+      "role": "default_identity_services_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Default identity services module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_default_runtime_services.py",
+      "family": "focused_tests",
+      "role": "default_runtime_services_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Default runtime services module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_security_concurrency.py",
+      "family": "focused_tests",
+      "role": "security_concurrency_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Security and concurrency module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_invalidation_mutations.py",
+      "family": "focused_tests",
+      "role": "invalidation_mutation_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Invalidation mutation module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_issued_material_retention.py",
+      "family": "focused_tests",
+      "role": "issued_material_retention_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Issued material retention module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_setup_provisioning.py",
+      "family": "focused_tests",
+      "role": "setup_provisioning_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Setup provisioning module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_service_injection.py",
+      "family": "focused_tests",
+      "role": "service_injection_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Service injection module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_lazy_provisioning.py",
+      "family": "focused_tests",
+      "role": "lazy_provisioning_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Lazy provisioning module in operator wide suite."
+    },
+    {
+      "surface": "test/api/test_proof_reuse_runtime_composition.py",
+      "family": "focused_tests",
+      "role": "runtime_composition_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Runtime composition module in operator reuse-migration suite."
+    },
+    {
+      "surface": "test/api/test_pytest_proof_reuse_item_identity.py",
+      "family": "focused_tests",
+      "role": "pytest_item_identity_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Pytest item-identity module in operator reuse-migration suite."
+    },
+    {
+      "surface": "test/api/test_pytest_proof_reuse_lookup.py",
+      "family": "focused_tests",
+      "role": "pytest_lookup_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Pytest warm-lookup module in operator reuse-migration suite."
+    },
+    {
+      "surface": "test/api/test_pytest_proof_reuse_receipt.py",
+      "family": "focused_tests",
+      "role": "pytest_receipt_tests",
+      "classification": "focused_test_surface",
+      "classification_method": "static source inventory",
+      "surfaces_found": 1,
+      "notes": "Pytest receipt module in operator reuse-migration suite."
     }
   ]
 }

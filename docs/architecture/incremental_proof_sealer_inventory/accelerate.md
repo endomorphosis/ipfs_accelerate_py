@@ -10,7 +10,7 @@ the receipt-tested control lineage. This document is a companion to
 | Field | Value |
 | --- | --- |
 | `planning_revision` | `8881344bb2162f3f8d82f22d8348bc0ac7536f95` |
-| `inventory_worktree_parent_revision` | `c725756bbe4cd27101e4b259eb1e9a776f52d96a` |
+| `inventory_worktree_parent_revision` | `4af00cb2e1889b72459ee4df2d08389f20c30d33` |
 
 `inventory_worktree_parent_revision` is immutable and equals the accelerate
 task-start parent during candidate validation. Final task commits come from
@@ -24,7 +24,7 @@ command lines, outcome tallies, logs, or execution claims.
 | Field | Value |
 | --- | --- |
 | path | `artifacts/agent_supervisor/incremental_proof_sealer/baseline_receipts/accelerate.json` |
-| receipt_digest | `sha256:d761d5b7684961c415138cad8a431bfb10095bec41e3ab10ff164ff575554f58` |
+| receipt_digest | `sha256:a85bc27f70dabbbea49d26200fee27e43dbf61102beb6a9789df7a15f367474e` |
 | required_command_ids | `accelerate-proof-focused-core-15`, `accelerate-proof-focused-wide-36`, `accelerate-proof-reuse-migration`, `accelerate-proof-reuse-cross-repo` |
 | evidence_origin | `operator_capture` |
 | assurance | `process_observed_only` |
@@ -185,6 +185,31 @@ Static inventory only; operator receipt above owns process observation.
 | `test/api/test_pytest_proof_reuse_xdist.py` | xdist publication | focused_test_surface |
 | `test/api/test_proof_reuse_cross_repository_e2e.py` | cross-repository e2e | focused_test_surface |
 | `test/api/test_proof_reuse_accelerator_bootstrap.py` | accelerator bootstrap | focused_test_surface |
+| `test/api/test_agent_supervisor_test_execution_identity.py` | test-execution identity | focused_test_surface |
+| `test/api/test_agent_supervisor_test_execution_identity_vectors.py` | test-execution identity vectors | focused_test_surface |
+| `test/api/test_agent_supervisor_test_proof_reuse_doctrine.py` | test proof-reuse doctrine | focused_test_surface |
+| `test/api/test_proof_reuse_activation_contracts.py` | activation contracts | focused_test_surface |
+| `test/api/test_proof_reuse_receipt.py` | proof-reuse receipt | focused_test_surface |
+| `test/api/test_proof_reuse_runtime_activation_report.py` | runtime activation report | focused_test_surface |
+| `test/api/test_proof_reuse_controller_issuance.py` | controller issuance | focused_test_surface |
+| `test/api/test_proof_reuse_candidate_publication_context.py` | candidate publication context | focused_test_surface |
+| `test/api/test_proof_reuse_locator_first_collection.py` | locator-first collection | focused_test_surface |
+| `test/api/test_proof_reuse_two_stage_warm_lookup.py` | two-stage warm lookup | focused_test_surface |
+| `test/api/test_proof_reuse_runtime_revalidation.py` | runtime revalidation | focused_test_surface |
+| `test/api/test_proof_reuse_degradation_matrix.py` | degradation matrix | focused_test_surface |
+| `test/api/test_proof_reuse_cold_pass_publication.py` | cold publication | focused_test_surface |
+| `test/api/test_proof_reuse_default_identity_services.py` | default identity services | focused_test_surface |
+| `test/api/test_proof_reuse_default_runtime_services.py` | default runtime services | focused_test_surface |
+| `test/api/test_proof_reuse_security_concurrency.py` | security concurrency | focused_test_surface |
+| `test/api/test_proof_reuse_invalidation_mutations.py` | invalidation mutations | focused_test_surface |
+| `test/api/test_proof_reuse_issued_material_retention.py` | issued material retention | focused_test_surface |
+| `test/api/test_proof_reuse_setup_provisioning.py` | setup provisioning | focused_test_surface |
+| `test/api/test_proof_reuse_service_injection.py` | service injection | focused_test_surface |
+| `test/api/test_proof_reuse_lazy_provisioning.py` | lazy provisioning | focused_test_surface |
+| `test/api/test_proof_reuse_runtime_composition.py` | runtime composition | focused_test_surface |
+| `test/api/test_pytest_proof_reuse_item_identity.py` | pytest item identity | focused_test_surface |
+| `test/api/test_pytest_proof_reuse_lookup.py` | pytest lookup | focused_test_surface |
+| `test/api/test_pytest_proof_reuse_receipt.py` | pytest receipt | focused_test_surface |
 
 ## Ownership proposal
 
