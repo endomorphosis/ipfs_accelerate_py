@@ -389,7 +389,7 @@ W20 AAE-063
 
 ## AAE-013 Decide and conditionally qualify the shared schema/vector boundary
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
