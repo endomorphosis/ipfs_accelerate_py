@@ -984,7 +984,7 @@ W20 AAE-063
 
 ## AAE-035 Persist campaign state, receipts, gaps, and append-only histories
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
