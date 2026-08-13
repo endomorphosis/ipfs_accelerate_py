@@ -1383,7 +1383,7 @@ RUNTIME_WAKE_KINDS = frozenset(
         "observation_window",
     }
 )
-DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS = 3600.0
+DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS = 45.0
 
 
 def normalize_llm_merge_resolver_command(value: Any) -> str:
@@ -14828,7 +14828,6 @@ class PortalImplementationDaemon:
         ]
         if (
             self.task_shard_count > 1
-            and not self.strict_task_sharding
             and not any(
                 resolved_statuses.get(task.task_id) == "ready"
                 for task in selectable_tasks
