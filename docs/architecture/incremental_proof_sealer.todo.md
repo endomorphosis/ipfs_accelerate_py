@@ -1851,7 +1851,7 @@ Global invariants for every task:
 
 ## IPS-059 Resolve 1 dirty backlogged worktrees blocked by content_not_in_target
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
@@ -1878,7 +1878,7 @@ Global invariants for every task:
 
 ## IPS-060 Resolve 3 preflight-conflicting backlogged worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
