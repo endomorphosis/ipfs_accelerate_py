@@ -405,7 +405,7 @@ A9  SCH-018
 
 ## SCH-013 Add semantic-state CLI and console entrypoint
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: cli
