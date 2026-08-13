@@ -818,7 +818,7 @@ Global invariants for every task:
 
 ## IPS-025 Implement deterministic transition recovery and ambiguous-outcome policy
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
