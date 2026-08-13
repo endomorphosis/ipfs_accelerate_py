@@ -444,7 +444,7 @@ W20 AAE-063
 
 ## AAE-015 Implement control-flow mutation operators
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
