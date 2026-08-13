@@ -1130,7 +1130,7 @@ W28 SCG-048
 
 ## SCG-040 Build deterministic partitioned fixture repositories and manifests
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
