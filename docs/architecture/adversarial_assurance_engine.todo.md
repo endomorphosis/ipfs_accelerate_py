@@ -1038,7 +1038,7 @@ W20 AAE-063
 
 ## AAE-037 Implement assurance-policy revision and promotion compare-and-swap
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
