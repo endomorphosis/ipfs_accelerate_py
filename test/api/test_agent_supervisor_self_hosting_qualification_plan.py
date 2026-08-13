@@ -31,6 +31,9 @@ V3_HISTORY_PATH = (
 V4_HISTORY_PATH = (
     REPO_ROOT / "docs/architecture/self_hosting_qualification.v4_history.todo.md"
 )
+V5_HISTORY_PATH = (
+    REPO_ROOT / "docs/architecture/self_hosting_qualification.v5_history.todo.md"
+)
 
 
 def _goals():
@@ -187,12 +190,12 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     assert by_id["SHQ-G007"].dependencies == ["SHQ-G006"]
     assert by_id["SHQ-G010"].dependencies == ["SHQ-G007"]
     assert by_id["SHQ-G006"].fields["bundle"] != by_id["SHQ-G007"].fields["bundle"]
-    assert by_id["SHQ-G006"].fields["bundle"].endswith("bounded-v5")
-    assert by_id["SHQ-G007"].fields["bundle"].endswith("bounded-v5")
-    assert by_id["SHQ-G006"].fields["parallel_lane"].endswith("bounded-v5")
-    assert by_id["SHQ-G007"].fields["parallel_lane"].endswith("bounded-v5")
+    assert by_id["SHQ-G006"].fields["bundle"].endswith("bounded-v6")
+    assert by_id["SHQ-G007"].fields["bundle"].endswith("bounded-v6")
+    assert by_id["SHQ-G006"].fields["parallel_lane"].endswith("bounded-v6")
+    assert by_id["SHQ-G007"].fields["parallel_lane"].endswith("bounded-v6")
     assert all(
-        command.startswith("/usr/bin/python3.12 ")
+        command.startswith("python3 ")
         for goal_id in ("SHQ-G006", "SHQ-G007")
         for command in by_id[goal_id].validation_commands
     )
@@ -202,6 +205,8 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     v2_history = V2_HISTORY_PATH.read_text(encoding="utf-8")
     v3_history = V3_HISTORY_PATH.read_text(encoding="utf-8")
     v4_history = V4_HISTORY_PATH.read_text(encoding="utf-8")
+    v5_history = V5_HISTORY_PATH.read_text(encoding="utf-8")
+    normalized_v5_history = " ".join(v5_history.split())
     assert "## SHQ-001 " not in active_todo
     assert "## SHQ-001 " in history
     assert "- Status: blocked" in history
@@ -230,17 +235,27 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     assert hashlib.sha256(v4_blocks.encode("utf-8")).hexdigest() == (
         "7c4027e329873364a3742276d5e4582d3a997826c9b1f12a3cffd04ddb783f50"
     )
+    assert "SHQ-008: never launched" in normalized_v5_history
+    assert "SHQ-009: never launched" in normalized_v5_history
+    assert "prelaunch receipt-schema correction" in normalized_v5_history
+    assert "superseded by the bounded-v6 G006 projection" in normalized_v5_history
+    assert "superseded by the bounded-v6 G007 projection" in normalized_v5_history
+    assert "Neither task was submitted to coordination" in normalized_v5_history
+    v5_blocks = v5_history[v5_history.index("## SHQ-008 ") :]
+    assert hashlib.sha256(v5_blocks.encode("utf-8")).hexdigest() == (
+        "0fea2882a697e3fb809a3f80f8e194a4978f6b4c07dc95535b71c1fe28d2b2f4"
+    )
     # This test is intentionally valid on both sides of the reviewed tracked
-    # migration. Before migration the legacy active blocks must be exact; after
-    # migration the board is title-only until v5 allocates SHQ-008/009.
-    if "## SHQ-006 " in active_todo:
-        assert active_todo[active_todo.index("## SHQ-006 ") :] == v4_blocks
+    # v6 migration. Before migration the v5 active blocks must be exact; after
+    # migration the board is title-only until v6 allocates SHQ-010/011.
+    if "## SHQ-008 " in active_todo:
+        assert active_todo[active_todo.index("## SHQ-008 ") :] == v5_blocks
     else:
         assert active_todo.strip() == "# Objective Todo" or (
-            "## SHQ-008 " in active_todo
-            and "## SHQ-009 " in active_todo
-            and "## SHQ-006 " not in active_todo
-            and "## SHQ-007 " not in active_todo
+            "## SHQ-010 " in active_todo
+            and "## SHQ-011 " in active_todo
+            and "## SHQ-008 " not in active_todo
+            and "## SHQ-009 " not in active_todo
         )
 
     datasets_goal_ids = {
@@ -278,16 +293,21 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
     )
 
 
-def test_v5_observer_contract_reuses_authorities_and_fails_closed() -> None:
+def test_v6_observer_contract_reuses_authorities_and_fails_closed() -> None:
     source = OBJECTIVE_PATH.read_text(encoding="utf-8")
     plan = PLAN_PATH.read_text(encoding="utf-8")
     normalized = " ".join(source.split())
 
     assert "PrerequisiteTestReceipt@1" not in source
+    assert "PYTEST_VERIFICATION_ADAPTER_SCHEMA" not in source
     for authority in (
         "verification.contracts.VerificationIdentityCompiler",
+        "verification.process_runner.PROCESS_RUNNER_SCHEMA",
         "verification.process_runner.VerificationProcessRunner",
         "verification.process_runner.VerificationCommand",
+        "verification.process_runner.VerificationStreamArtifact",
+        "validation.validation_runtime.build_hermetic_validation_runtime",
+        "validation.validation_runtime.hermetic_validation_command",
         "verification.contracts.TestReceipt@1",
         "verification.contracts.DirectExecutionObservation@1",
         "verification.receipt_cache.VerificationReceiptCache",
@@ -299,10 +319,19 @@ def test_v5_observer_contract_reuses_authorities_and_fails_closed() -> None:
         "existing parent and symlink",
         "exact module-level definition or assignment",
         "exact package export",
-        "trusted in-process construction",
+        "same-process `VerificationProcessRunner.run(VerificationCommand)`",
+        "authority comes only from the observer's live in-process isolated runner call",
+        "Missing Bubblewrap, namespace denial, isolation startup failure",
+        "unisolated fallback makes the test evidence unverifiable",
+        "live result's executable, cwd, environment, sandbox, network policy, timeout, disposition",
+        "observation's stdout/stderr CIDs to equal the live result",
         "injected phase report",
         "present real run result",
-        "stdout/stderr CID",
+        'captured_byte_count == byte_count == len(preview.encode("utf-8"))',
+        "rehash the exact preview bytes",
+        "do not claim the discarded runner temporary bytes were persisted",
+        "digest-mismatched, or CID-mismatched",
+        "optional corroboration and insufficient",
         "outer/tree/gitlink/submodule/tracked-content source identity",
         "canonical repository-relative values",
         "final whole-snapshot two-phase revalidation counterexamples",
@@ -311,14 +340,29 @@ def test_v5_observer_contract_reuses_authorities_and_fails_closed() -> None:
     ):
         assert invariant in normalized
 
-    assert 'SHQ_PROJECTION="$SHQ_DATA/projections/v5"' in plan
+    assert "PROCESS_RUNNER_SCHEMA" in plan
+    assert "PYTEST_VERIFICATION_ADAPTER_SCHEMA" not in plan
+    assert 'SHQ_PROJECTION="$SHQ_DATA/projections/v6"' in plan
     assert "self_hosting_qualification.v4_history.todo.md" in plan
-    assert "must allocate SHQ-008 and SHQ-009" in plan
+    assert "self_hosting_qualification.v5_history.todo.md" in plan
+    assert "must allocate SHQ-010 and SHQ-011" in plan
     assert "leave SHQ_ACTIVE_TODO title-only" in plan
     assert "SHQ_PYTHON=/usr/bin/python3.12" in plan
-    assert "self-hosting-qualification-v5" in plan
+    assert (
+        "python3 -m pytest -q "
+        "test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py"
+    ) in plan
+    assert (
+        '"$SHQ_PYTHON" -m pytest -q '
+        "test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py"
+    ) not in plan
+    assert "SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v6" in plan
+    assert "SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v5" not in plan
+    assert "prerequisite-observer-implementation-bounded-v6" in plan
+    assert "prerequisite-observation-snapshot-bounded-v6" in plan
     assert 'test ! -e "$SHQ_RUN"' in plan
     assert '--provider-capacity-path "$SHQ_CAPACITY_PATH"' in plan
     assert '--state-root "$SHQ_RUN/state"' in plan
     assert '--coordination-path "$SHQ_RUN/state/coordination.duckdb"' in plan
     assert "bounded-v4/state" not in plan
+    assert "bounded-v5/state" not in plan
