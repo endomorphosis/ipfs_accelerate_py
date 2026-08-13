@@ -45,6 +45,7 @@ ipfs-accelerate-agent-merge-resolver = "ipfs_accelerate_py.agent_supervisor.merg
 ipfs-accelerate-agent-llm-merge-resolver-fallback = "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main"
 ipfs-accelerate-proof-reuse-provision = "ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main"
 ipfs-accelerate-llama-cpp-serve = "ipfs_accelerate_py.utils.llama_cpp:main"
+semantic-governor = "ipfs_accelerate_py.agent_supervisor.semantic_governor.cli:main"
 
 
 [tool.setuptools]
