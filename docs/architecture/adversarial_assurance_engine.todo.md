@@ -308,7 +308,7 @@ W20 AAE-063
 
 ## AAE-010 Define survivor, gap, vacuity, detection-failure, and adequacy models
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
