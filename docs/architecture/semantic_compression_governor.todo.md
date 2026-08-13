@@ -725,7 +725,7 @@ W28 SCG-048
 
 ## SCG-025 Implement risk- and information-value-aware shadow planning
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
