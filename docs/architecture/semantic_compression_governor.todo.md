@@ -293,7 +293,7 @@ W28 SCG-048
 
 ## SCG-009 Define calibration profiles and bounded declarative rule DSL
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
