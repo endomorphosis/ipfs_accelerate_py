@@ -1265,7 +1265,7 @@ W28 SCG-048
 
 ## SCG-045 Run the benchmark and persist honest measured evidence
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
