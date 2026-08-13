@@ -1097,7 +1097,7 @@ Global invariants for every task:
 
 ## IPS-034 Implement cancellation, timeout, and process-tree termination fencing
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
