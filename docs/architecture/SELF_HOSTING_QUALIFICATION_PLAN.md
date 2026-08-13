@@ -72,14 +72,21 @@ existing verification identity compiler: a private immutable closed
 `frozenset({("bwrap", "bubblewrap")})` is consulted only by the banner-name
 predicate after every existing executable, selector, probe, reviewed tool,
 byte, CID and version binding. The keyed tool and executable basename remain
-exact `bwrap`. Ordinary exact tool-name behavior is unchanged. The exceptional
-`bubblewrap` alias is accepted for exact bwrap only when the unmodified raw
-probe output is exactly one canonical banner line formed as the lower-case
-alias, one ASCII space, the independently token-bound claimed version, and one
-terminal LF. The actual positive is exactly `b"bubblewrap 0.9.0\n"`. Paths,
+exact `bwrap`. For exact bound bwrap, both the ordinary `bwrap` name and the
+reviewed `bubblewrap` alias are accepted only when the unmodified raw probe
+output is exactly one canonical banner line formed as that lower-case name,
+one ASCII space, the independently token-bound claimed ASCII version, and one
+terminal LF. The actual host positive is exactly `b"bubblewrap 0.9.0\n"`, and
+must use those actually observed raw bytes without rewrite or synthesis. Exact
+`b"bwrap 0.9.0\n"` is the other sole form only in a bounded pure-compiler
+fixture that still binds the actual executable bytes and SHA-256; that fixture
+is not live execution evidence or authority. Paths,
 help/usage/error/diagnostic prose, cross-line name/version separation, extra
 lines or text, prefixes/suffixes, CR, tabs, doubled spaces, missing/final extra
 whitespace, wrappers, rewritten banners and synthetic probes are rejected.
+Only non-bwrap legacy exact-name behavior is unchanged. Rebinding the private
+module-global constant to a caller extension or superset cannot expand the
+hard-coded canonical pair or two-value raw-byte set and remains rejected.
 
 The `SHQ-G006` observer implementation is deliberately stricter than a
 file-presence scan and begins only after G005A is merged and clean;
@@ -676,7 +683,7 @@ submit to a task queue.
 ```bash
 SHQ_REPO=/home/barberb/lift_coding/.worktrees/ipfs-accelerate-self-hosting-qualification
 SHQ_DATA=data/agent_supervisor/self_hosting_qualification
-SHQ_PROJECTION="$SHQ_DATA/projections/v9"
+SHQ_PROJECTION="$SHQ_DATA/projections/v10"
 SHQ_PYTHON=/usr/bin/python3.12
 SHQ_ACTIVE_TODO=docs/architecture/self_hosting_qualification.todo.md
 SHQ_V1_HISTORY_TODO=docs/architecture/self_hosting_qualification.v1_history.todo.md
@@ -687,8 +694,9 @@ SHQ_V5_HISTORY_TODO=docs/architecture/self_hosting_qualification.v5_history.todo
 SHQ_V6_HISTORY_TODO=docs/architecture/self_hosting_qualification.v6_history.todo.md
 SHQ_V7_HISTORY_TODO=docs/architecture/self_hosting_qualification.v7_history.todo.md
 SHQ_V8_HISTORY_TODO=docs/architecture/self_hosting_qualification.v8_history.todo.md
-SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v9
-# Read-only input from the already-live provider monitor. All mutable v9
+SHQ_V9_HISTORY_TODO=docs/architecture/self_hosting_qualification.v9_history.todo.md
+SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v10
+# Read-only input from the already-live provider monitor. All mutable v10
 # coordination, state, worktrees, logs, manifests, metrics, gates and keys use
 # SHQ_RUN above; never reopen or alias the retired v1 supervisor namespace.
 SHQ_CAPACITY_PATH=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v1/provider-capacity/capacity.json
@@ -696,9 +704,9 @@ SHQ_GATE="$SHQ_RUN/operator/objective_completion_gate.json"
 SHQ_EXTERNAL_AUTHORITY="$SHQ_RUN/operator/external_completion_authority.json"
 SHQ_SIGNING_KEY="$SHQ_RUN/operator/signing.key"
 SHQ_IMPLEMENTATION_COMMAND="/usr/local/bin/codex exec --ephemeral --ignore-user-config --strict-config --dangerously-bypass-approvals-and-sandbox --color never -m gpt-5.6-terra -c model_context_window=49152 -c 'model_reasoning_effort=\"high\"' -c agents.max_threads=1 -c agents.max_depth=0 -"
-SHQ_G005A_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-verification-banner-alias-compatibility-bounded-v9/state/agent_agent_supervisor_self_hosting_verification_banner_alias_compatibility_bounded_v9_runtime.todo.md"
-SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-implementation-bounded-v9/state/agent_agent_supervisor_self_hosting_prerequisite_observer_implementation_bounded_v9_runtime.todo.md"
-SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v9/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_bounded_v9_runtime.todo.md"
+SHQ_G005A_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-verification-banner-alias-compatibility-bounded-v10/state/agent_agent_supervisor_self_hosting_verification_banner_alias_compatibility_bounded_v10_runtime.todo.md"
+SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-implementation-bounded-v10/state/agent_agent_supervisor_self_hosting_prerequisite_observer_implementation_bounded_v10_runtime.todo.md"
+SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v10/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_bounded_v10_runtime.todo.md"
 
 # Reviewed migrations: retain SHQ-001 in the v1 history board. Move cancelled
 # SHQ-002 and its never-launched dependent SHQ-003 into the v2 history board,
@@ -716,10 +724,12 @@ SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite
 # board: SHQ-012 attempt 1 was rejected/cancelled retryable after independent
 # contract review, and dependent SHQ-013 was never leased or launched. Archive
 # SHQ-014/015/016 byte-for-byte in the v8 history board: SHQ-014 attempt 1 was
-# rejected/cancelled retryable and SHQ-015/016 never launched. Apply that reviewed
+# rejected/cancelled retryable and SHQ-015/016 never launched. Archive
+# SHQ-017/018/019 byte-for-byte in the v9 history board: SHQ-017 attempt 1 was
+# rejected/cancelled retryable and SHQ-018/019 never launched. Apply that reviewed
 # tracked migration before this command, leave SHQ_ACTIVE_TODO title-only, and
-# retain all sixteen discovery files so display IDs SHQ-001 through SHQ-016 stay
-# reserved. The v9 generation must allocate SHQ-017, SHQ-018, and SHQ-019.
+# retain all nineteen discovery files so display IDs SHQ-001 through SHQ-019 stay
+# reserved. The v10 generation must allocate SHQ-020, SHQ-021, and SHQ-022.
 test -f "$SHQ_REPO/$SHQ_V1_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V2_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V3_HISTORY_TODO"
@@ -728,6 +738,7 @@ test -f "$SHQ_REPO/$SHQ_V5_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V6_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V7_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V8_HISTORY_TODO"
+test -f "$SHQ_REPO/$SHQ_V9_HISTORY_TODO"
 test -x "$SHQ_PYTHON"
 test "$("$SHQ_PYTHON" --version 2>&1)" = 'Python 3.12.3'
 ! rg -q '^## SHQ-' "$SHQ_REPO/$SHQ_ACTIVE_TODO"
@@ -777,6 +788,7 @@ test ! -e "$SHQ_RUN"
   --protected-output-path "$SHQ_V6_HISTORY_TODO" \
   --protected-output-path "$SHQ_V7_HISTORY_TODO" \
   --protected-output-path "$SHQ_V8_HISTORY_TODO" \
+  --protected-output-path "$SHQ_V9_HISTORY_TODO" \
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
@@ -800,16 +812,16 @@ rescue commit's `git show` output into `/tmp` and read it outside the checkout;
 its dependent SHQ-011 never launched. SHQ-012 is a rejected/cancelled retryable
 v7 attempt after independent contract review; its clean stop released a null
 output with no implementation-finished event, implementation commit, or merge,
-and dependent SHQ-013 was never leased or launched. SHQ-014 is a rejected/cancelled retryable v8 attempt whose alias accepted noncanonical prose and whose positive used synthetic executable bytes; SHQ-015 and SHQ-016 never launched. Every v4, v5, v6, v7, and v8 canonical task block
+and dependent SHQ-013 was never leased or launched. SHQ-014 is a rejected/cancelled retryable v8 attempt whose alias accepted noncanonical prose and whose positive used synthetic executable bytes; SHQ-015 and SHQ-016 never launched. SHQ-017 is a rejected/cancelled retryable v9 attempt because its exact-bwrap branch retained permissive legacy banner parsing; SHQ-018 and SHQ-019 never launched. Every v4, v5, v6, v7, v8, and v9 canonical task block
 is preserved byte-for-byte in its history board, and
 only each preamble records disposition. Historical cards are never completion
 evidence or scheduler sources. Their discovery records stay
-in `$SHQ_DATA/discovery`, reserving `SHQ-001` through `SHQ-016`; the clean active
-board therefore receives exactly `SHQ-017`, `SHQ-018`, and `SHQ-019`. New graph, dataset and
+in `$SHQ_DATA/discovery`, reserving `SHQ-001` through `SHQ-019`; the clean active
+board therefore receives exactly `SHQ-020`, `SHQ-021`, and `SHQ-022`. New graph, dataset and
 bundle projections live under `$SHQ_PROJECTION`; no scheduler may read a v1,
-v2, v3, v4, v5, v6, v7, or v8 bundle index.
+v2, v3, v4, v5, v6, v7, v8, or v9 bundle index.
 
-Review the portable v9 Markdown and JSON projections and add those exact files
+Review the portable v10 Markdown and JSON projections and add those exact files
 with `git add -f`; do not add DuckDB databases, lock files, runtime state or
 provider logs. The archived v1 board and both objective-control documents are
 exact protected paths for every subsequent implementation lane.
@@ -825,32 +837,44 @@ would create a different, incomplete completion identity.
 
 G005A owns only the existing verification contracts authority and its full
 contracts test; G006 owns only `.gitignore`, the observer and its tests; G007
-owns only the JSON snapshot. Their bounded-v9 bundle keys prevent any task from
+owns only the JSON snapshot. Their bounded-v10 bundle keys prevent any task from
 inheriting stale state from retired projections. They are projected serially as
-SHQ-017, SHQ-018, and SHQ-019 in the v9 index while retaining stable goal
+SHQ-020, SHQ-021, and SHQ-022 in the v10 index while retaining stable goal
 identities G005A, G006, and G007. G006 begins only after the clean G005A merge;
 G007 begins only after the clean G006 merge.
 Their Fibonacci priorities are deliberately `89`, `144`, and `233`, because
 the native objective heap assigns display IDs in ascending heap order before
 it resolves goal dependencies to newly materialized task IDs. The generated
-mapping must therefore be G005A=`SHQ-017`, G006=`SHQ-018`, and
-G007=`SHQ-019`; any other mapping is rejected before commit or launch. Prior
+mapping must therefore be G005A=`SHQ-020`, G006=`SHQ-021`, and
+G007=`SHQ-022`; any other mapping is rejected before commit or launch. Prior
 attempt 1 was hard-rejected for redirecting permitted `git show` stdout to host
-`/tmp` and rereading it. Separately, the bounded-v8 SHQ-014 attempt is a hard
+`/tmp` and rereading it. Separately, the bounded-v9 SHQ-017 attempt is a hard
 rejection and non-input: its dirty worktree, proposed code/tests, log,
 supervisor/checkpoint/runtime state, receipts and derived bytes cannot seed or
-satisfy G005A, G006 or G007. G005A starts only in the clean bounded-v9 checkout.
+satisfy G005A, G006 or G007. G005A starts only in the clean bounded-v10 checkout.
 Its canonical positive resolves and reads the actual `/usr/bin/bwrap` bytes,
 binds their SHA-256 and reviewed `ToolIdentity`, and binds the exact raw
-`tool_version_probe_output_bytes` value dynamically as
+`tool_version_probe_output_bytes` value only as either
+`f"bwrap {normalized_tool_version}\n".encode("ascii")` or
 `f"bubblewrap {normalized_tool_version}\n".encode("ascii")` after proving the
 version is one nonempty ASCII `[A-Za-z0-9._+\-]+` token. It rejects synthetic
 executable bytes, helper locators, paths, help/usage/error/diagnostic prose,
 cross-line or extra-line banners, prefixes/suffixes, case variants, CR/CRLF,
 tabs, doubled/leading/trailing spaces, missing/extra LF, and embedded whitespace
-or non-ASCII version claims. Ordinary exact-name behavior for bwrap and all
-non-bwrap tools remains unchanged. These are the actual raw
-`/usr/bin/bwrap --version` bytes, not normalized or reconstructed evidence. Any
+or non-ASCII version claims. The exact-bwrap negative matrix literally includes
+`b"bwrap\n0.9.0\n"`, `b"bwrap  0.9.0\n"`,
+`b"bwrap 0.9.0 extra\n"`, and `b"bwrap 0.9.0"`; replacing only the
+leading name with `bubblewrap` must produce the same four rejections. Path,
+help/error, and extra-line examples include `b"/usr/bin/bwrap 0.9.0\n"`,
+`b"bwrap 0.9.0\nUsage: bwrap ...\n"`, `b"error: bwrap 0.9.0\n"`, and
+`b"bwrap 0.9.0\nextra\n"`, with parallel bubblewrap cases. Fake or changed
+executable bytes, including `b"reviewed-launcher:bwrap"`, remain rejected. The
+exact-bwrap branch rejects every malformed form; legacy behavior remains unchanged only for non-bwrap tools. Rebinding the module-global alias constant, including to a caller-extension or superset, cannot expand the hard-coded closed canonical pair or raw-byte set and must still reject. The live alias positive uses only the actually observed raw
+`/usr/bin/bwrap --version` bytes `b"bubblewrap 0.9.0\n"`, not normalized,
+reconstructed, rewritten, or synthesized evidence. The canonical
+`b"bwrap 0.9.0\n"` positive is confined to a bounded pure-compiler fixture
+that binds the same actual executable bytes and SHA-256, and it is not live
+execution evidence or authority. Any
 outside-checkout redirect, tee, copy, save, cache,
 checkpoint, materialization, or read is an immediate hard rejection; stop
 before validation. G006 may inspect only the two named blobs at commit
@@ -873,7 +897,7 @@ reads and searches remain within that checkout and its declared submodules. The
 generated task dependency prevents the scheduler
 from creating the G007 worktree until G006 has merged, so G007 observes the
 clean merged implementation identity. G007 additionally binds the freshly
-projected bounded-v9 G006 task SHQ-018 canonical CID as its sole predecessor; no retired
+projected bounded-v10 G006 task SHQ-021 canonical CID as its sole predecessor; no retired
 display ID, alias, canonical key, CID, worktree, receipt, or merge can satisfy
 that dependency. Do not pause for objective reconciliation
 between the task commits. Once all three runtime todos are terminal, all three
@@ -1016,6 +1040,7 @@ SHQ_RECONCILE_G006=(
   --protected-output-path "$SHQ_V6_HISTORY_TODO"
   --protected-output-path "$SHQ_V7_HISTORY_TODO"
   --protected-output-path "$SHQ_V8_HISTORY_TODO"
+  --protected-output-path "$SHQ_V9_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
@@ -1084,6 +1109,7 @@ SHQ_RECONCILE_G007=(
   --protected-output-path "$SHQ_V6_HISTORY_TODO"
   --protected-output-path "$SHQ_V7_HISTORY_TODO"
   --protected-output-path "$SHQ_V8_HISTORY_TODO"
+  --protected-output-path "$SHQ_V9_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
@@ -1175,6 +1201,7 @@ SHQ_RECONCILE_G010=(
   --protected-output-path "$SHQ_V6_HISTORY_TODO"
   --protected-output-path "$SHQ_V7_HISTORY_TODO"
   --protected-output-path "$SHQ_V8_HISTORY_TODO"
+  --protected-output-path "$SHQ_V9_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json
@@ -1264,6 +1291,7 @@ jq -e '.providers.codex_cli.healthy == true and
   --implementation-protected-path "$SHQ_V6_HISTORY_TODO" \
   --implementation-protected-path "$SHQ_V7_HISTORY_TODO" \
   --implementation-protected-path "$SHQ_V8_HISTORY_TODO" \
+  --implementation-protected-path "$SHQ_V9_HISTORY_TODO" \
   --implementation-protected-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
@@ -1327,7 +1355,7 @@ worktree, made no model call, incurred no model billing and produced no task
 completion evidence; coordination released attempt/fence 1/1 as
 `cancelled:retryable` before this corrected retry.
 
-The current SHQ-017/018/019 planning records do not declare a provider route or a
+The current SHQ-020/021/022 planning records do not declare a provider route or a
 nonzero provider resource estimate, so bundle admission does not bind the
 explicit Codex command to that telemetry. For this bootstrap, the `jq` check
 above and the live `implementation_started.command` comparison are operator
