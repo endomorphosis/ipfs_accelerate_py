@@ -595,7 +595,7 @@ SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification
 SHQ_GATE="$SHQ_RUN/operator/objective_completion_gate.json"
 SHQ_EXTERNAL_AUTHORITY="$SHQ_RUN/operator/external_completion_authority.json"
 SHQ_SIGNING_KEY="$SHQ_RUN/operator/signing.key"
-SHQ_IMPLEMENTATION_COMMAND="/usr/local/bin/codex exec --ephemeral --ignore-user-config --strict-config --dangerously-bypass-approvals-and-sandbox --color never -m gpt-5.6-terra -c model_context_window=24576 -c 'model_reasoning_effort=\"high\"' -c agents.max_threads=1 -c agents.max_depth=0 -"
+SHQ_IMPLEMENTATION_COMMAND="/usr/local/bin/codex exec --ephemeral --ignore-user-config --strict-config --dangerously-bypass-approvals-and-sandbox --color never -m gpt-5.6-terra -c model_context_window=49152 -c 'model_reasoning_effort=\"high\"' -c agents.max_threads=1 -c agents.max_depth=0 -"
 SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-implementation-bounded-v4/state/agent_agent_supervisor_self_hosting_prerequisite_observer_implementation_bounded_v4_runtime.todo.md"
 SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v4/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_bounded_v4_runtime.todo.md"
 
@@ -957,6 +957,11 @@ test "$(sha256sum /usr/local/lib/node_modules/@openai/codex/bin/codex.js | cut -
 test "$(sha256sum /usr/bin/node | cut -d' ' -f1)" = \
   2b0f6efd95c31c5538cc0a9042d5d13b7328cffcfdcc409f2e2ef336c4402086
 test -z "${IPFS_PROOF_REUSE_STATE_ROOT:-}"
+jq -e '.providers.codex_cli.healthy == true and
+       .providers.codex_cli.context_window_tokens == 49152 and
+       .providers.codex_cli.quota_remaining > 0 and
+       .providers.codex_cli.token_budget_remaining > 0' \
+  "$SHQ_RUN/provider-capacity/capacity.json"
 
 python -m ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor \
   --bundle-index-path "$SHQ_REPO/$SHQ_PROJECTION/bundles/index.json" \
@@ -1018,7 +1023,7 @@ plus:
 Launch and dry-plan with an explicitly cleared provider environment and these
 positive bindings: `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=codex`,
 `IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra`,
-`IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW=24576`,
+`IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW=49152`,
 `IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT=high`,
 `IPFS_ACCELERATE_AGENT_CODEX_MAX_THREADS=1`,
 `IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH=0`, and
@@ -1028,6 +1033,30 @@ positive bindings: `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=codex`,
 route authority: it bypasses auto discovery and the Codex-to-Copilot fallback.
 Parse it with `shlex.split` during preflight and require the exact direct Codex
 argv, no `copilot`, `grok`, `goose` or shell wrapper, and a final stdin marker.
+
+The context-window value is the total provider envelope, not an input-token
+budget. The implementation compiler reserves 16,384 output tokens and 8,192
+tool tokens. A 49,152-token provider window therefore leaves an exact 24,576
+token input allowance. The direct Codex argv, daemon-visible environment and
+fresh provider-capacity snapshot must all report the same 49,152-token window;
+the snapshot's response-token admission budget remains a separate ceiling.
+Fail preflight when any of those values differ. An initial v4 start incorrectly
+pinned the total window to 24,576 and consequently failed closed in context
+compilation with zero usable input tokens. It created no implementation
+worktree, made no model call, incurred no model billing and produced no task
+completion evidence; coordination released attempt/fence 1/1 as
+`cancelled:retryable` before this corrected retry.
+
+The current SHQ-006/007 planning records do not declare a provider route or a
+nonzero provider resource estimate, so bundle admission does not bind the
+explicit Codex command to that telemetry. For this bootstrap, the `jq` check
+above and the live `implementation_started.command` comparison are operator
+preflight/detective controls, not scheduler-enforced route evidence. The
+capacity producer must be restarted with `--context-budget-tokens 49152`
+before the retry. The implemented capstone must close this gap by emitting
+provider-neutral, nonempty route/resource requirements that the resource
+scheduler can enforce; none of this bootstrap telemetry counts as
+qualification model-route evidence.
 
 The current supervisor constrains edits, not reads: its native Landlock policy
 does not prevent a provider from reading other host paths. The content-addressed

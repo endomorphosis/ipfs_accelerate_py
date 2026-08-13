@@ -11,6 +11,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+PLAN_PATH = REPO_ROOT / "docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md"
 OBJECTIVE_PATH = (
     REPO_ROOT / "docs/architecture/self_hosting_qualification.objectives.md"
 )
@@ -43,6 +44,19 @@ def _descendant_closure(goals, seed_goal_ids: set[str]) -> set[str]:
         if expanded == closure:
             return closure
         closure = expanded
+
+
+def test_bootstrap_context_envelope_preserves_the_input_allowance() -> None:
+    plan = PLAN_PATH.read_text(encoding="utf-8")
+    normalized_plan = " ".join(plan.split())
+
+    assert "model_context_window=49152" in plan
+    assert "IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW=49152" in plan
+    assert "--context-budget-tokens 49152" in plan
+    assert "model_context_window=24576" not in plan
+    assert "IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW=24576" not in plan
+    assert 49_152 - 16_384 - 8_192 == 24_576
+    assert "operator preflight/detective controls" in normalized_plan
 
 
 def test_plan_has_one_closed_combined_goal_dag() -> None:
