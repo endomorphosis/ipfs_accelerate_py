@@ -911,7 +911,7 @@ Global invariants for every task:
 
 ## IPS-028 Implement evidence-class verification and cache-admission decisions
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
