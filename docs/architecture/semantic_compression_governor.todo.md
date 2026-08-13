@@ -455,7 +455,7 @@ W28 SCG-048
 
 ## SCG-015 Plan the smallest bounded context expansion
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
