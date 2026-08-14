@@ -15075,6 +15075,89 @@ def test_grok_readiness_accepts_supervisor_binary_override(
     assert command[command.index("--grok-bin") + 1] == str(grok_bin)
 
 
+def test_quota_grok_command_authorizes_canonical_legacy_preflight(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
+
+    grok_bin = tmp_path / "grok"
+    grok_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    grok_bin.chmod(0o755)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: str(grok_bin),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/usr/local/bin/codex",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+
+    command = implementation_daemon_module._grok_cli_command(
+        workspace_path=tmp_path,
+    )
+
+    assert "--codex-fallback-command-json" in command
+    assert "--canonical-legacy-preflight-route" in command
+
+    nonce_bound = implementation_daemon_module._grok_cli_command(
+        workspace_path=tmp_path,
+        failure_receipt_nonce="ab" * 32,
+    )
+    assert "--canonical-legacy-preflight-route" not in nonce_bound
+
+
+def test_incomplete_quota_route_defaults_medium_reasoning_effort(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        "primary_quota_exhausted",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_MODEL_ENV,
+        "grok-4.5",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        "gpt-5.6-terra",
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+        raising=False,
+    )
+
+    plan = implementation_daemon_module._configured_agent_implementation_route_plan(
+        tmp_path
+    )
+
+    assert plan is not None
+    assert plan.fallback_trigger == "primary_quota_exhausted"
+    assert plan.fallback_reasoning_effort == "medium"
+    assert plan.permits_authentication_unavailable is False
+
+
 @pytest.mark.parametrize(
     "retry_line",
     (

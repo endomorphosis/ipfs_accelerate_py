@@ -1938,6 +1938,14 @@ def _grok_cli_command(
         max_turns=int(max_turns) if str(max_turns).isdigit() else 100_000,
         fallback_reasoning_effort=fallback_reasoning_effort,
         enable_codex_fallback=enable_codex_fallback,
+        # Quota-only Grok launches attach Codex argv but still need the
+        # runner-owned legacy preflight flag. Without it a 402 is a
+        # "direct no-nonce" failure and Terra never starts.
+        enable_internal_legacy_preflight=(
+            bool(enable_codex_fallback)
+            and not str(failure_receipt_nonce or "").strip()
+            and route_plan is None
+        ),
         accepted_runner_path=(
             sealed_runner_path
             if route_plan is not None
@@ -2057,6 +2065,13 @@ def _configured_agent_implementation_route_plan(
     authorization_attempted = any(authorization_values.values())
     if not sealed_tuple_attempted and not authorization_attempted:
         return None
+    if not route_values["fallback_reasoning_effort"]:
+        # Older scheduler launches exported the five ordered route fields
+        # but omitted reasoning effort. Fill the reviewed medium default
+        # so a quota-only board does not fail closed before Grok starts.
+        route_values["fallback_reasoning_effort"] = (
+            DEFAULT_CODEX_REASONING_EFFORT
+        )
     authorization = None
     if any(authorization_values.values()):
         if not all(authorization_values.values()):

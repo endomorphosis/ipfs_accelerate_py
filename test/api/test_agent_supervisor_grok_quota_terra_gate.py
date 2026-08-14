@@ -2100,3 +2100,59 @@ def test_build_grok_quota_routed_agent_command_embeds_terra_shape(
     assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
     assert 'model_reasoning_effort="medium"' in fallback
     assert "--ephemeral" in fallback
+
+
+def test_quota_grok_command_authorizes_canonical_legacy_preflight(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_binary",
+        lambda: "/usr/bin/grok",
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/usr/local/bin/codex",
+    )
+    command = implementation_daemon._grok_cli_command(workspace_path=tmp_path)
+    assert "--codex-fallback-command-json" in command
+    assert "--canonical-legacy-preflight-route" in command
+
+    nonce_bound = implementation_daemon._grok_cli_command(
+        workspace_path=tmp_path,
+        failure_receipt_nonce="ab" * 32,
+    )
+    assert "--canonical-legacy-preflight-route" not in nonce_bound
+
+
+def test_incomplete_quota_route_defaults_medium_reasoning_effort(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv(
+        implementation_daemon.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    monkeypatch.setenv(
+        implementation_daemon.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        "primary_quota_exhausted",
+    )
+    monkeypatch.setenv(implementation_daemon._GROK_MODEL_ENV, "grok-4.5")
+    monkeypatch.setenv(implementation_daemon._CODEX_MODEL_ENV, "gpt-5.6-terra")
+    monkeypatch.delenv(
+        implementation_daemon._CODEX_REASONING_EFFORT_ENV,
+        raising=False,
+    )
+
+    plan = implementation_daemon._configured_agent_implementation_route_plan(
+        tmp_path
+    )
+
+    assert plan is not None
+    assert plan.fallback_trigger == "primary_quota_exhausted"
+    assert plan.fallback_reasoning_effort == "medium"
+    assert plan.permits_authentication_unavailable is False
