@@ -1856,7 +1856,7 @@ def normalize_status(value: str) -> str:
         return "blocked"
     if lowered in {"active", "in_progress"}:
         return "in_progress"
-    if lowered in {"ready", "todo", "queued", ""}:
+    if lowered in {"pending", "ready", "todo", "queued", ""}:
         return "todo"
     return lowered
 
@@ -48406,8 +48406,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
 
         selected = sorted(ready, key=sort_key)[0]
-        # Record selection in persistent queue
+        # Selection changes the durable fairness/attempt history.  Persist it
+        # before returning so a process exit between selection and execution
+        # cannot replay the same queue state or lose the attempt accounting.
         self.task_queue.record_selection(self._canonical_ref(selected))
+        self.task_queue.save()
         return selected
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
