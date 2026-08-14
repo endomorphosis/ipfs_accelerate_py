@@ -419,6 +419,8 @@ def test_planner_structural_repairs_block_claims_without_resolved_dependency_cid
 
 
 def test_goal_bundle_adapter_emits_immutable_linked_profile_g_artifacts() -> None:
+    from ipfs_datasets_py.logic.profile_g import validate_profile_g_artifact
+
     adapted = adapt_goal_bundle(_bundle(), created_at_ms=1_783_872_000_000)
 
     assert adapted["goal"]["schema"] == "mcp++/profile-g/goal@1"
@@ -427,8 +429,119 @@ def test_goal_bundle_adapter_emits_immutable_linked_profile_g_artifacts() -> Non
     assert adapted["task"]["subgoal_cid"] == adapted["subgoal_cid"]
     assert adapted["task"]["selection_cid"] == adapted["selection_cid"]
     assert adapted["task"]["tool"] == "codex.todo_bundle"
-    for name in ("goal", "subgoal", "plan_branch", "selection", "task"):
+    assert "canonical_task_key" not in adapted["task"]
+    assert "canonical_task_cid" not in adapted["task"]
+    assert adapted["canonical_task_key"]
+    assert adapted["canonical_task_cid"]
+    for name, kind in (
+        ("goal", "Goal"),
+        ("subgoal", "Subgoal"),
+        ("plan_branch", "PlanBranch"),
+        ("selection", "PlanSelection"),
+        ("task", "TaskSpec"),
+    ):
         assert profile_g_cid(adapted[name]) in adapted["artifacts"]
+        assert validate_profile_g_artifact(kind, adapted[name]) == profile_g_cid(
+            adapted[name]
+        )
+
+
+@pytest.mark.parametrize(
+    ("supervisor_limit", "task_spec_limit"),
+    ((0, lease_coordination_module.PROFILE_G_MAX_TASK_ATTEMPTS), (3, 3)),
+)
+def test_goal_bundle_adapter_translates_supervisor_attempt_policy_into_profile_g(
+    supervisor_limit: int,
+    task_spec_limit: int,
+) -> None:
+    from ipfs_datasets_py.logic.profile_g import validate_profile_g_artifact
+
+    bundle = {**_bundle(), "max_attempts": supervisor_limit}
+    adapted = adapt_goal_bundle(bundle, created_at_ms=1_783_872_000_000)
+
+    assert bundle["max_attempts"] == supervisor_limit
+    assert adapted["task"]["max_attempts"] == task_spec_limit
+    assert validate_profile_g_artifact("TaskSpec", adapted["task"]) == adapted[
+        "task_spec_cid"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("supervisor_limit", "successful_claims", "exhausted"),
+    ((0, 4, False), (3, 3, True)),
+)
+def test_lease_coordinator_honors_unlimited_and_finite_attempt_policies(
+    supervisor_limit: int,
+    successful_claims: int,
+    exhausted: bool,
+    tmp_path: Path,
+) -> None:
+    bundle = {**_bundle(), "max_attempts": supervisor_limit}
+
+    with LeaseCoordinator(tmp_path / "leases.duckdb") as coordinator:
+        registered = coordinator.register_bundle(bundle, created_at_ms=1)
+        for expected_attempt in range(1, successful_claims + 1):
+            grant = coordinator.claim(
+                registered["task_cid"],
+                "did:web:attempt-policy.example",
+            )
+            assert grant.attempt == expected_attempt
+            coordinator.release(grant, reason="retry")
+
+        projection = coordinator.task_state(registered["task_cid"])
+        assert projection is not None
+        assert projection["max_attempts"] == supervisor_limit
+        if exhausted:
+            assert projection["state"] == "blocked"
+            with pytest.raises(LeaseConflictError, match="attempt budget is exhausted"):
+                coordinator.claim(
+                    registered["task_cid"],
+                    "did:web:attempt-policy.example",
+                )
+        else:
+            assert projection["state"] == "ready"
+            assert coordinator.claim(
+                registered["task_cid"],
+                "did:web:attempt-policy.example",
+            ).attempt == successful_claims + 1
+
+
+@pytest.mark.parametrize(
+    "completion_receipts",
+    ({}, {"task-cid": {"status": "succeeded"}}),
+)
+def test_bundle_lane_planner_forwards_finite_attempt_policy(
+    completion_receipts: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: list[dict[str, object]] = []
+
+    def build_payloads(_path: Path, **kwargs: object) -> list[dict[str, object]]:
+        captured.append(kwargs)
+        return []
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
+        build_payloads,
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "bundle-index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        max_task_attempts=3,
+        completion_receipts=completion_receipts,
+    )
+
+    assert lanes == []
+    assert captured[0]["max_attempts"] == 3
+    if completion_receipts:
+        assert captured[0]["merge_receipts"] is completion_receipts
+    else:
+        assert "merge_receipts" not in captured[0]
 
 
 def test_regenerated_bundle_keeps_one_canonical_lease_identity(tmp_path: Path) -> None:
@@ -437,7 +550,7 @@ def test_regenerated_bundle_keeps_one_canonical_lease_identity(tmp_path: Path) -
 
     assert first["task_spec_cid"] != second["task_spec_cid"]
     assert first["canonical_task_cid"] == second["canonical_task_cid"]
-    assert first["task"]["canonical_task_cid"] == first["canonical_task_cid"]
+    assert "canonical_task_cid" not in first["task"]
 
     with LeaseCoordinator(tmp_path / "leases.sqlite3") as coordinator:
         registered_first = coordinator.register_bundle(_bundle(), created_at_ms=1_783_872_000_000)

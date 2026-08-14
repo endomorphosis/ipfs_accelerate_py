@@ -1125,15 +1125,12 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "tool": "codex.todo_bundle",
         "dependency_task_cids": dependency_task_cids,
         "idempotency_key": canonical_identity.semantic_fingerprint[:32],
-        "canonical_task_key": canonical_identity.canonical_task_key,
-        "canonical_task_cid": canonical_identity.canonical_task_cid,
         "resource_class": str(bundle.get("resource_class") or "cpu-small"),
         "deadline_ms": int(bundle.get("deadline_ms") or now + 86_400_000),
         "expected_value_millionths": int(bundle.get("expected_value_millionths") or 500_000),
         "max_attempts": _profile_g_task_spec_attempt_limit(
             bundle.get("max_attempts"),
         ),
-        "max_attempts": int(bundle.get("max_attempts") or 3),
         "execution_mode": "idempotent",
     }
     task_spec_cid = profile_g_cid(task)
@@ -2085,7 +2082,10 @@ class LeaseCoordinator:
                 if row is None:
                     connection.commit()
                     return False
-                exhausted = int(row["attempt"] or 0) >= self._max_attempts(row)
+                exhausted = self._attempt_budget_exhausted(
+                    row,
+                    int(row["attempt"] or 0),
+                )
                 release_reason = str(row["release_reason"] or "")
                 blocked_receipt = release_reason.startswith("receipt:") and release_reason.endswith(
                     ":blocked"
@@ -2367,7 +2367,19 @@ class LeaseCoordinator:
     @staticmethod
     def _max_attempts(task: _DuckRow | Mapping[str, Any]) -> int:
         bundle = json.loads(task["bundle_json"])
-        return max(1, int(bundle.get("max_attempts") or 3))
+        return profile_g_task_attempt_limit(
+            bundle.get("max_attempts"),
+            default=3,
+        )
+
+    @classmethod
+    def _attempt_budget_exhausted(
+        cls,
+        task: _DuckRow | Mapping[str, Any],
+        attempt: int,
+    ) -> bool:
+        limit = cls._max_attempts(task)
+        return limit > 0 and int(attempt) >= limit
 
     @staticmethod
     def _execution_scope(task: _DuckRow) -> str:
@@ -2418,7 +2430,7 @@ class LeaseCoordinator:
             state = "accepted"
         elif lease_state == "completed":
             state = "completed"
-        elif attempt >= max_attempts or retry_not_before > now:
+        elif self._attempt_budget_exhausted(task, attempt) or retry_not_before > now:
             state = "blocked"
         else:
             state = "ready"
@@ -2737,7 +2749,10 @@ class LeaseCoordinator:
                     lease = connection.execute(
                         "SELECT attempt FROM leases WHERE task_cid=?", (task["task_cid"],)
                     ).fetchone()
-                    if lease is not None and int(lease["attempt"]) >= self._max_attempts(task):
+                    if lease is not None and self._attempt_budget_exhausted(
+                        task,
+                        int(lease["attempt"]),
+                    ):
                         continue
                     if self._active_execution_scope_conflict(
                         connection, task, now=now
@@ -2837,7 +2852,10 @@ class LeaseCoordinator:
         ).fetchone()
         if prior is not None and prior["state"] == "completed":
             raise LeaseConflictError("task already has a successful terminal receipt")
-        if prior is not None and int(prior["attempt"] or 0) >= self._max_attempts(task):
+        if prior is not None and self._attempt_budget_exhausted(
+            task,
+            int(prior["attempt"] or 0),
+        ):
             raise LeaseConflictError("task attempt budget is exhausted")
         retry_not_before = int(prior["retry_not_before_ms"] or 0) if prior is not None else 0
         if retry_not_before > now:

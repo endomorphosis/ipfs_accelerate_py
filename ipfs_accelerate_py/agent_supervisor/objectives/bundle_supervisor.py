@@ -3245,6 +3245,15 @@ def plan_bundle_lanes(
         bundle_payloads = build_bundle_task_payloads(
             bundle_index_path,
             merge_receipts=planning_completion_receipts,
+            max_attempts=max_task_attempts,
+        )
+    elif max_task_attempts:
+        # Preserve the legacy single-argument injection point for the default
+        # unlimited policy while forwarding every finite supervisor ceiling
+        # into the immutable Profile-G TaskSpec.
+        bundle_payloads = build_bundle_task_payloads(
+            bundle_index_path,
+            max_attempts=max_task_attempts,
         )
     else:
         # Keep the legacy single-argument call path for integrations which
