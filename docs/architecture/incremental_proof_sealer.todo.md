@@ -1624,7 +1624,7 @@ Global invariants for every task:
 
 ## IPS-051 Run the joined adversarial seal and concurrent-writer matrix
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
