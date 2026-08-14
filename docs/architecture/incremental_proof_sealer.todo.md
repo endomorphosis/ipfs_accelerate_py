@@ -1593,7 +1593,7 @@ Global invariants for every task:
 
 ## IPS-050 Inject all seven joined seal-transition crash boundaries
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
