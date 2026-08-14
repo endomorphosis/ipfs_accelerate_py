@@ -1407,7 +1407,7 @@ Global invariants for every task:
 
 ## IPS-044 Add hermetic bootstrap and truthful legacy proof-receipt migration
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
