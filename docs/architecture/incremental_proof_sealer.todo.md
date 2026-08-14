@@ -1718,7 +1718,7 @@ Global invariants for every task:
 
 ## IPS-054 Analyze actual reuse, compute, latency, size, and storage results
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
