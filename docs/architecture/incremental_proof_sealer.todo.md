@@ -1469,7 +1469,7 @@ Global invariants for every task:
 
 ## IPS-046 Cover the complete positive invalidation and reuse matrix
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
