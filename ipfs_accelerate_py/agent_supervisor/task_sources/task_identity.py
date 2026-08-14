@@ -48,6 +48,32 @@ def canonical_content_cid(value: Any) -> str:
     return "b" + base64.b32encode(raw).decode("ascii").rstrip("=").lower()
 
 
+def canonical_task_identity_claim_is_consistent(
+    canonical_task_key: Any,
+    canonical_task_cid: Any,
+) -> bool:
+    """Return whether one native task key/CID pair binds the same digest.
+
+    Native task identities use the SHA-256 digest as both the final key
+    segment and the multihash payload of a canonical CIDv1.  Checking that
+    relationship prevents a caller from pairing a valid-looking key with a
+    different task CID when the daemon reuses parser- or planner-supplied
+    identity fields.
+    """
+
+    key = str(canonical_task_key or "").strip()
+    cid = str(canonical_task_cid or "").strip()
+    match = re.fullmatch(r"task/v1/([0-9a-f]{64})", key)
+    if match is None:
+        return False
+    digest = bytes.fromhex(match.group(1))
+    raw = b"\x01\xa9\x02\x12\x20" + digest
+    expected_cid = (
+        "b" + base64.b32encode(raw).decode("ascii").rstrip("=").lower()
+    )
+    return cid == expected_cid
+
+
 def normalize_identity_text(value: Any) -> str:
     """Normalize semantic prose without making it path or display-id dependent."""
 
@@ -189,6 +215,18 @@ def canonical_task_identity(
         or _mapping_value(metadata, "canonical task cid")
         or ""
     ).strip()
+    if (
+        provided_key
+        and provided_cid
+        and provided_key.startswith("task/v1/")
+        and not canonical_task_identity_claim_is_consistent(
+            provided_key,
+            provided_cid,
+        )
+    ):
+        raise ValueError(
+            "native canonical task identity key/CID claim is inconsistent"
+        )
     allowed_paths = normalize_exact_authorized_paths(
         _mapping_value(source, "allowed paths")
         or _mapping_value(metadata, "allowed paths")

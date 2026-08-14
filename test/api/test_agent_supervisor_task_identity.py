@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
+
+import pytest
 
 from ipfs_accelerate_py.agent_supervisor.task_sources import (
     persistent_task_queue as queue_module,
@@ -26,6 +29,103 @@ def _task(task_id: str) -> dict[str, object]:
         "acceptance": "Retries and receipts retain canonical identity.",
         "metadata": {"goal id": "G9.S1"},
     }
+
+
+def _write_allowed_path_board(path) -> None:
+    path.write_text(
+        """# Tasks
+
+## REF-001 Add a durable task ledger
+
+- Status: todo
+- Priority: P0
+- Track: agent
+- Outputs: src/ledger.py, tests/test_ledger.py
+- Allowed paths: src/ledger.py, tests/test_ledger.py
+- Acceptance: Retries and receipts retain canonical identity.
+- Goal id: G9.S1
+""",
+        encoding="utf-8",
+    )
+
+
+def _identity_daemon(todo_path, tmp_path) -> PortalImplementationDaemon:
+    return PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## REF-",
+    )
+
+
+def test_parser_identity_is_daemon_idempotent_with_allowed_paths(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_allowed_path_board(todo_path)
+    [task] = parse_task_file(todo_path, "## REF-")
+    daemon = _identity_daemon(todo_path, tmp_path)
+
+    runtime_identity = daemon._identity_for_task(task)
+
+    assert runtime_identity.canonical_task_key == task.canonical_task_key
+    assert runtime_identity.canonical_task_cid == task.canonical_task_cid
+
+
+def test_allowed_path_authority_change_readdresses_runtime_identity(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_allowed_path_board(todo_path)
+    [task] = parse_task_file(todo_path, "## REF-")
+    daemon = _identity_daemon(todo_path, tmp_path)
+    widened = replace(
+        task,
+        metadata={
+            **task.metadata,
+            "allowed paths": (
+                "src/ledger.py, tests/test_ledger.py, src/new-authority.py"
+            ),
+        },
+    )
+
+    widened_identity = daemon._identity_for_task(widened)
+
+    assert widened_identity.canonical_task_key != task.canonical_task_key
+    assert widened_identity.canonical_task_cid != task.canonical_task_cid
+
+
+def test_daemon_rejects_forged_native_provided_identity(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_allowed_path_board(todo_path)
+    [task] = parse_task_file(todo_path, "## REF-")
+    daemon = _identity_daemon(todo_path, tmp_path)
+    other = canonical_task_identity(
+        {
+            "task_id": "REF-999",
+            "title": "Different task",
+            "outputs": ["src/different.py"],
+        }
+    )
+    forged = replace(task, canonical_task_cid=other.canonical_task_cid)
+
+    with pytest.raises(ValueError, match="key/CID claim is inconsistent"):
+        daemon._identity_for_task(forged)
+
+
+def test_canonical_identity_rejects_forged_native_key_cid_pair() -> None:
+    first = canonical_task_identity(_task("REF-001"))
+    second_task = _task("REF-002")
+    second_task["title"] = "Different task"
+    second = canonical_task_identity(second_task)
+
+    with pytest.raises(ValueError, match="key/CID claim is inconsistent"):
+        canonical_task_identity(
+            {
+                **_task("REF-FORGED"),
+                "canonical_task_key": first.canonical_task_key,
+                "canonical_task_cid": second.canonical_task_cid,
+                "metadata": {"allowed paths": "src/ledger.py"},
+            }
+        )
 
 
 def test_task_identity_is_independent_of_display_id_and_board_path() -> None:

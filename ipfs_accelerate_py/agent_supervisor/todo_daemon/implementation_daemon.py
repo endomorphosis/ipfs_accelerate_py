@@ -125,6 +125,7 @@ from ..task_sources.task_identity import (
     TaskIdentity,
     canonical_content_cid,
     canonical_task_identity,
+    canonical_task_identity_claim_is_consistent,
 )
 from ..task_sources.task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,
@@ -7914,6 +7915,38 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
     def _identity_for_task(self, task: PortalTask) -> TaskIdentity:
         metadata = dict(task.metadata)
+        derived_identity = canonical_task_identity(
+            {
+                "task_id": task.task_id,
+                "title": task.title,
+                "outputs": task_declared_output_paths(task),
+                "acceptance": task.acceptance,
+                "metadata": metadata,
+            },
+            board_namespace=task.board_namespace or self.todo_path.name,
+            source_path=self.todo_path,
+        )
+        provided_key = str(task.canonical_task_key or "").strip()
+        provided_cid = str(task.canonical_task_cid or "").strip()
+        if provided_key and provided_cid:
+            if provided_key.startswith("task/v1/") and not (
+                canonical_task_identity_claim_is_consistent(
+                    provided_key,
+                    provided_cid,
+                )
+            ):
+                raise ValueError(
+                    "native canonical task identity key/CID claim is inconsistent"
+                )
+            if (
+                provided_key == derived_identity.canonical_task_key
+                and provided_cid == derived_identity.canonical_task_cid
+            ):
+                # The parser and configured-board planner already included
+                # every semantic field and Allowed paths in this identity.
+                # Returning it directly avoids treating the same authority as
+                # a second widening operation at daemon runtime.
+                return derived_identity
         if task.canonical_task_key:
             metadata["canonical task key"] = task.canonical_task_key
         if task.canonical_task_cid:

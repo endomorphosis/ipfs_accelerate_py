@@ -33,6 +33,8 @@ from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import HostR
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     TASK_ATTEMPT_LIMIT_IDLE_REASON,
+    PortalImplementationDaemon,
+    parse_task_file,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.legacy_landed_review import (
     EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE,
@@ -3279,6 +3281,104 @@ def test_terminal_blocked_pass_rejects_readdressed_or_future_evidence(
     )
 
     assert evidence is not None
+    assert evidence["terminal_event_id"] == accepted["event_id"]
+
+
+def test_attempt_limited_lane_settles_only_exact_allowed_path_identity(
+    tmp_path: Path,
+) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    todo_path.write_text(
+        """# Tasks
+
+## TASK-001 Inventory runtime authority
+
+- Status: todo
+- Priority: P0
+- Track: inventory
+- Outputs: artifacts/inventory.json
+- Allowed paths: artifacts/inventory.json
+- Acceptance: Inventory evidence is retained.
+""",
+        encoding="utf-8",
+    )
+    [task] = parse_task_file(todo_path, "## TASK-")
+    daemon = PortalImplementationDaemon.__new__(PortalImplementationDaemon)
+    daemon.todo_path = todo_path
+    runtime_identity = daemon._identity_for_task(task)
+    assert runtime_identity.canonical_task_cid == task.canonical_task_cid
+
+    phase_state = tmp_path / "phase-state.json"
+    events_path = tmp_path / "events.jsonl"
+    heartbeat = datetime.now(timezone.utc)
+    started_at_ms = int(heartbeat.timestamp() * 1000) - 1
+    phase_state.write_text(
+        json.dumps(
+            {
+                "heartbeat_at": heartbeat.isoformat(),
+                "active_task_id": "",
+                "implementation_in_progress": False,
+                "completed_count": 0,
+                "ready_count": 1,
+                "waiting_count": 0,
+                "blocked_count": 0,
+                "selectable_ready_count": 0,
+                "selection_idle_reason": TASK_ATTEMPT_LIMIT_IDLE_REASON,
+                "task_statuses": {task.task_id: "ready"},
+                "task_identities": {
+                    task.task_id: {
+                        "canonical_task_cid": runtime_identity.canonical_task_cid,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    common_event = {
+        "active_task_id": "",
+        "completed_count": 0,
+        "ready_count": 1,
+        "waiting_count": 0,
+        "blocked_count": 0,
+        "selectable_ready_count": 0,
+        "selection_idle_reason": TASK_ATTEMPT_LIMIT_IDLE_REASON,
+        "attempt_limited_task_ids": [task.task_id],
+        "execution_slice_task_statuses": {task.task_id: "ready"},
+    }
+    wrong_cid = profile_g_cid({"wrong-member": task.task_id})
+    append_jsonl_event(
+        events_path,
+        "daemon_pass",
+        {
+            **common_event,
+            "execution_slice_task_cids_by_id": {task.task_id: wrong_cid},
+        },
+    )
+    expected = {task.task_id: task.canonical_task_cid}
+    assert leased_lane_module._fresh_blocked_execution_slice(
+        phase_state,
+        expected,
+        started_at_ms=started_at_ms,
+        completion_events_path=events_path,
+    ) is None
+
+    accepted = append_jsonl_event(
+        events_path,
+        "daemon_pass",
+        {
+            **common_event,
+            "execution_slice_task_cids_by_id": expected,
+        },
+    )
+    evidence = leased_lane_module._fresh_blocked_execution_slice(
+        phase_state,
+        expected,
+        started_at_ms=started_at_ms,
+        completion_events_path=events_path,
+    )
+
+    assert evidence is not None
+    assert evidence["terminal_reason"] == "task_attempt_limit"
     assert evidence["terminal_event_id"] == accepted["event_id"]
 
 
