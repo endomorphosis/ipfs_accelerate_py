@@ -798,12 +798,27 @@ class IncrementalProofSealer:
             if cas.disposition is PointerDisposition.STALE or (
                 cas.reason is PointerReason.STALE_PARENT and not cas.swapped
             ):
-                abort_transition(
-                    self._wal,
-                    tid,
-                    phase=SealTransitionPhase.SEAL_PERSISTENCE,
-                )
+                # Best-effort abort: CAS already rejected the writer, so the
+                # published outcome must remain stale_parent even if WAL abort
+                # races under concurrent same-parent writers.
+                abort_detail = ""
+                try:
+                    abort_transition(
+                        self._wal,
+                        tid,
+                        phase=SealTransitionPhase.SEAL_PERSISTENCE,
+                    )
+                except SealTransitionWalError as abort_exc:
+                    abort_detail = str(abort_exc)
                 live = self._pointers.get_current_seal(repository_id, branch_id)
+                diagnostics: dict[str, Any] = {
+                    "detail": "expected parent no longer current",
+                    "cas_reason": cas.reason.value,
+                    "cas_disposition": cas.disposition.value,
+                    **dict(cas.diagnostics),
+                }
+                if abort_detail:
+                    diagnostics["abort_error"] = abort_detail
                 return self._result(
                     status=SealStatus.STALE_PARENT,
                     reason=PublicationReason.STALE_PARENT,
@@ -819,20 +834,27 @@ class IncrementalProofSealer:
                     pointer=live,
                     full_seal=full_seal,
                     delta_seal=delta_seal,
-                    diagnostics={
-                        "detail": "expected parent no longer current",
-                        "cas_reason": cas.reason.value,
-                        "cas_disposition": cas.disposition.value,
-                        **dict(cas.diagnostics),
-                    },
+                    diagnostics=diagnostics,
                 )
             if not cas.swapped or cas.pointer is None:
-                abort_transition(
-                    self._wal,
-                    tid,
-                    phase=SealTransitionPhase.SEAL_PERSISTENCE,
-                )
+                abort_detail = ""
+                try:
+                    abort_transition(
+                        self._wal,
+                        tid,
+                        phase=SealTransitionPhase.SEAL_PERSISTENCE,
+                    )
+                except SealTransitionWalError as abort_exc:
+                    abort_detail = str(abort_exc)
                 live = self._pointers.get_current_seal(repository_id, branch_id)
+                diagnostics = {
+                    "detail": "CAS failed closed",
+                    "cas_reason": cas.reason.value,
+                    "cas_disposition": cas.disposition.value,
+                    **dict(cas.diagnostics),
+                }
+                if abort_detail:
+                    diagnostics["abort_error"] = abort_detail
                 return self._result(
                     status=SealStatus.VERIFICATION_FAILED,
                     reason=PublicationReason.CAS_ERROR,
@@ -848,12 +870,7 @@ class IncrementalProofSealer:
                     pointer=live,
                     full_seal=full_seal,
                     delta_seal=delta_seal,
-                    diagnostics={
-                        "detail": "CAS failed closed",
-                        "cas_reason": cas.reason.value,
-                        "cas_disposition": cas.disposition.value,
-                        **dict(cas.diagnostics),
-                    },
+                    diagnostics=diagnostics,
                 )
 
             record_phase(

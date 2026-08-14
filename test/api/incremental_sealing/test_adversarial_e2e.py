@@ -630,10 +630,12 @@ def test_joined_bad_cache_candidate_blocks_seal_pipeline(
         assert seal.reason is DeltaSealReason.STALE_REUSE
         _assert_not_sealed_status(seal.seal_status)
     else:
-        # Poison/corrupt candidates are blocked at execution; a clean delta
-        # construction from different evidence is orthogonal.  The pipeline
-        # must never aggregate the rejected execution result.
+        # Poison/corrupt candidates are blocked at execution before any
+        # aggregation or seal construction may consume their digests.
         assert execution.may_aggregate is False
+        assert execution.outcome is ExecutionOutcome.REJECTED
+        # A production pipeline must not treat the rejected unit as covered.
+        assert "unit/reuse" in execution.rejected_unit_ids
 
 
 def test_joined_mismatched_candidate_blocks_aggregation() -> None:
@@ -1188,11 +1190,15 @@ def test_joined_exactly_one_current_root_writer_wins(tmp_path: Path) -> None:
     assert len(losers) == workers - 1
     assert all(item.status is SealStatus.STALE_PARENT for item in losers)
     assert all(item.reason is PublicationReason.STALE_PARENT for item in losers)
+    assert all(item.generation == 1 for item in results)
     assert all(item.previous_seal_cid == parent.seal_cid for item in results)
+    assert winners[0].status is SealStatus.SEALED_FULL
+    assert not any(item.published for item in losers)
 
     current = sealer.get_current_seal(_REPO)
     assert current is not None
     assert current == winners[0].pointer
+    assert current.generation == 1
     assert current.parent_seal_cid == parent.seal_cid
 
     # Prior accepted seal remains recoverable after the race.
@@ -1201,6 +1207,9 @@ def test_joined_exactly_one_current_root_writer_wins(tmp_path: Path) -> None:
         == prior_body
     )
     assert sealer.store.get_verified_bytes(current.as_artifact_reference())
+    # Exactly one current-root writer; no loser seal_cid became current.
+    for loser in losers:
+        assert loser.seal_cid != current.seal_cid or not loser.published
     sealer.close()
 
 
@@ -1260,17 +1269,24 @@ def test_joined_concurrent_delta_writers_exactly_one_wins(tmp_path: Path) -> Non
     ]
     assert len(losers) == workers - 1
     assert all(item.status is SealStatus.STALE_PARENT for item in losers)
+    assert all(item.reason is PublicationReason.STALE_PARENT for item in losers)
+    assert all(item.generation == 1 for item in results)
     assert winners[0].status is SealStatus.SEALED_INCREMENTAL
     assert winners[0].previous_seal_cid == genesis.seal_cid
+    assert not any(item.published for item in losers)
 
     current = sealer.get_current_seal(_REPO)
     assert current is not None
     assert current.seal_cid == winners[0].seal_cid
+    assert current == winners[0].pointer
+    assert current.generation == 1
     assert current.seal_kind is ArtifactKind.DELTA_SEAL
+    assert current.parent_seal_cid == genesis.seal_cid
     assert (
         sealer.store.get_verified_bytes(parent_pointer.as_artifact_reference())
         == prior_body
     )
+    assert sealer.store.get_verified_bytes(current.as_artifact_reference())
     sealer.close()
 
 
@@ -1601,9 +1617,17 @@ def test_acceptance_matrix_joined_adversarial_axes(tmp_path: Path) -> None:
             race_results.append(future.result())
     winners = [item for item in race_results if item.published]
     losers = [item for item in race_results if not item.published]
-    assert len(winners) == 1
+    assert len(winners) == 1, [
+        (item.transition_id, item.status, item.reason, item.published)
+        for item in race_results
+    ]
     assert len(losers) == workers - 1
     assert all(item.status is SealStatus.STALE_PARENT for item in losers)
+    assert all(item.reason is PublicationReason.STALE_PARENT for item in losers)
+    assert winners[0].status is SealStatus.SEALED_FULL
+    assert not any(item.published for item in losers)
+    # Record the race axis as fail-closed for the losing writers (exactly one
+    # current-root writer wins; losers never seal over the tip).
     record("racing_writers", sealed=False, reason="stale_parent_losers")
 
     # Final integrity: every attack axis observed; prior genesis recoverable;
@@ -1618,6 +1642,7 @@ def test_acceptance_matrix_joined_adversarial_axes(tmp_path: Path) -> None:
     assert final is not None
     assert final == winners[0].pointer
     assert final.seal_cid == winners[0].seal_cid
+    assert final.parent_seal_cid == race_parent.seal_cid
     # No loser may have become current.
     for loser in losers:
         assert loser.seal_cid != final.seal_cid or not loser.published
