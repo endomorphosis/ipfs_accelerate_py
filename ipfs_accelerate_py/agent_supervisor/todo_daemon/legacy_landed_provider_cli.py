@@ -215,7 +215,6 @@ def _grok_stream_failure_kind(payload: Mapping[str, Any]) -> str:
             set(payload) == {"message", "type"}
             and str(payload.get("message") or "").strip()
             == _GROK_BALANCE_EXHAUSTED_MESSAGE
-            or _grok_json_error_is_exact_quota(payload)
         ):
             return "verified_quota"
         return "other_failure"
@@ -287,7 +286,7 @@ def _stdout_is_exact_grok_quota_failure(
             payload = _strict_json_object(raw)
         except RuntimeError:
             return False
-        return _grok_stream_failure_kind(payload) == "verified_quota"
+        return _grok_json_error_is_exact_quota(payload)
     if output_format != "streaming-json":
         return False
     verified_quota = False

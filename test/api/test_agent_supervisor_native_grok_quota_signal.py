@@ -72,6 +72,39 @@ def test_native_cli_failure_classifies_exact_json_mode_402_envelope() -> None:
 
 
 @pytest.mark.parametrize(
+    ("output_format", "stdout"),
+    [
+        pytest.param(
+            "json",
+            (
+                b'{"type":"error","message":"API error (status 402 Payment '
+                b'Required): Grok Build usage balance exhausted"}\n'
+            ),
+            id="json-rejects-streaming-envelope",
+        ),
+        pytest.param(
+            "streaming-json",
+            _json_mode_error(),
+            id="streaming-rejects-json-envelope",
+        ),
+    ],
+)
+def test_quota_classifier_rejects_cross_format_envelopes(
+    output_format: str,
+    stdout: bytes,
+) -> None:
+    err = _native_cli_failure(
+        ["grok", "--output-format", output_format],
+        return_code=1,
+        stdout=bytearray(stdout),
+        stderr=bytearray(),
+    )
+
+    assert type(err) is RuntimeError
+    assert str(err) == "legacy native provider command failed"
+
+
+@pytest.mark.parametrize(
     "stdout",
     [
         pytest.param(
