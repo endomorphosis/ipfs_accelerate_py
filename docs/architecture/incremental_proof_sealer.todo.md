@@ -1749,7 +1749,7 @@ Global invariants for every task:
 
 ## IPS-055 Document the precise trust model and migration guidance
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
