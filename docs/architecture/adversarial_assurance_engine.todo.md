@@ -687,7 +687,7 @@ W20 AAE-063
 
 ## AAE-024 Implement isolated mutant rescan and semantic admission guardrails
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
