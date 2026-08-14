@@ -186,6 +186,80 @@ def _active_task_ids(manifest: dict[str, Any]) -> set[str]:
     }
 
 
+def test_dynamic_live_plan_preserves_all_implementation_protected_paths(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    _write_index(index, "T-1")
+    protected_paths = tuple(
+        f"operator/protected-{index}.json" for index in range(18)
+    )
+    scheduler = _scheduler(
+        tmp_path,
+        index,
+        launcher,
+        implementation_protected_paths=protected_paths,
+    )
+
+    lane = scheduler._plan()[0]
+
+    observed = [
+        lane.command[index + 1]
+        for index, token in enumerate(lane.command[:-1])
+        if token == "--implementation-protected-path"
+    ]
+    assert observed == list(protected_paths)
+    assert launcher.starts == []
+
+
+def test_dynamic_live_plan_fails_closed_on_protected_path_omission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    _write_index(index, "T-1")
+    protected_paths = (
+        "operator/primary-policy.json",
+        "operator/qualification-history.todo.md",
+    )
+    real_plan = bundle_supervisor_module.plan_bundle_lanes
+
+    def drop_one_protected_path(**kwargs: Any) -> list[Any]:
+        kwargs["implementation_protected_paths"] = protected_paths
+        lanes = real_plan(**kwargs)
+        corrupted: list[Any] = []
+        for lane in lanes:
+            command = list(lane.command)
+            index = command.index("--implementation-protected-path")
+            del command[index : index + 2]
+            corrupted.append(replace(lane, command=command))
+        return corrupted
+
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "plan_bundle_lanes",
+        drop_one_protected_path,
+    )
+    scheduler = _scheduler(
+        tmp_path,
+        index,
+        launcher,
+        implementation_protected_paths=protected_paths,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="protected-path propagation mismatch: expected 2, observed 1",
+    ):
+        scheduler._plan()
+
+    assert launcher.starts == []
+
+
 def _legacy_adoption_index(
     path: Path,
 ) -> tuple[Any, dict[str, str]]:

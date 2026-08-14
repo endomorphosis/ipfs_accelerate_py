@@ -2854,11 +2854,10 @@ def implementation_supervisor_command(
     for relative in dict.fromkeys(str(path).strip().strip("/") for path in worktree_submodule_paths):
         if relative:
             command.extend(["--worktree-submodule-path", relative])
-    for relative in dict.fromkeys(
-        str(path).strip().strip("/") for path in implementation_protected_paths
+    for relative in _normalized_implementation_protected_paths(
+        implementation_protected_paths
     ):
-        if relative:
-            command.extend(["--implementation-protected-path", relative])
+        command.extend(["--implementation-protected-path", relative])
     command.append("--implement" if implement else "--no-implement")
     if implementation_command:
         command.extend(["--implementation-command", implementation_command])
@@ -2937,6 +2936,54 @@ def implementation_supervisor_command(
         if task_cid:
             command.extend(["--execution-slice-task-cid", task_cid])
     return command
+
+
+def _normalized_implementation_protected_paths(
+    paths: Sequence[Path | str],
+) -> tuple[str, ...]:
+    """Return the exact de-duplicated protected paths emitted to each lane."""
+
+    normalized: list[str] = []
+    for path in paths:
+        relative = str(path).strip().strip("/")
+        if relative and relative not in normalized:
+            normalized.append(relative)
+    return tuple(normalized)
+
+
+def _command_option_values(
+    command: Sequence[str],
+    option: str,
+) -> tuple[str, ...]:
+    """Read repeatable two-token options from an internally generated command."""
+
+    values: list[str] = []
+    for index, token in enumerate(command):
+        if token != option:
+            continue
+        if index + 1 >= len(command):
+            raise ValueError(f"generated lane command has no value for {option}")
+        values.append(str(command[index + 1]))
+    return tuple(values)
+
+
+def _require_implementation_protected_path_propagation(
+    lanes: Sequence[BundleLaneSpec],
+    configured_paths: Sequence[Path | str],
+) -> None:
+    """Refuse a live plan that weakens its operator protected-path fence."""
+
+    expected = _normalized_implementation_protected_paths(configured_paths)
+    if not expected:
+        return
+    option = "--implementation-protected-path"
+    for lane in lanes:
+        observed = _command_option_values(lane.command, option)
+        if observed != expected:
+            raise ValueError(
+                f"bundle lane {lane.bundle_key!r} protected-path propagation "
+                f"mismatch: expected {len(expected)}, observed {len(observed)}"
+            )
 
 
 def optimize_bundle_payloads(
@@ -4519,7 +4566,8 @@ class DynamicBundleScheduler:
                 "generated_dirty_repair_include_submodule_gitlinks",
                 "generated_dirty_repair_max_paths", "generated_dirty_repair_stale_lock_seconds",
                 "generated_dirty_repair_paths",
-                "worktree_submodule_paths", "log_level",
+                "worktree_submodule_paths", "implementation_protected_paths",
+                "log_level",
                 "optimize_bundles", "bundle_optimization_policy",
             }
             options = {key: value for key, value in self.lane_options.items() if key in allowed}
@@ -4570,6 +4618,11 @@ class DynamicBundleScheduler:
                 receipt_revision,
                 tuple(base_lanes),
             )
+
+        _require_implementation_protected_path_propagation(
+            base_lanes,
+            self.lane_options.get("implementation_protected_paths") or (),
+        )
 
         external_active_task_ids = self._external_active_task_ids()
         if not external_active_task_ids:
