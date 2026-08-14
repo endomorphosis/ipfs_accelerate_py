@@ -67,8 +67,8 @@ capstone integration branch and all gitlinks to those exact revisions; no local
 agent receipt can substitute for that merge/pin authority. `SHQ-G021` then
 freezes the admitted baseline.
 
-`SHQ-G005A` first makes one narrow, reviewed compatibility repair in the
-existing verification identity compiler: a private immutable closed
+The reviewed v11 `SHQ-G005A` merge already supplies one narrow compatibility
+repair in the existing verification identity compiler: a private immutable closed
 `frozenset({("bwrap", "bubblewrap")})` is consulted only by the banner-name
 predicate after every existing executable, selector, probe, reviewed tool,
 byte, CID and version binding. The keyed tool and executable basename remain
@@ -107,16 +107,18 @@ checkpoint/temp-state prohibition are supervisor/runner-private lifecycle
 operations outside the implementation agent and fresh transient temp/stream
 objects automatically owned by the listed validation/test runner, including
 pytest fixture internals;
-G006/G007 additionally permit only the required process-runner stream capture
+G006A/G006B/G006/G007 additionally permit only the required process-runner stream capture
 and Bubblewrap namespace-private `/tmp`. None is implementation-agent discovery
 or scratch, persisted evidence, or prior/private-state input. This revocation
-is repeated for G006 and G007 and each task's own injected checkpoint paths;
+is repeated for G006A, G006B, G006 and G007 and each task's own injected checkpoint paths;
 each task may consume its predecessor only as clean merged tracked repository
 content, never through predecessor runtime or checkpoint state.
 
-The `SHQ-G006` observer implementation is deliberately stricter than a
-file-presence scan and begins only after G005A is merged and clean;
-`SHQ-G007` runs it only after G006 is merged and clean.
+The bounded-v12 observer is deliberately stricter than a file-presence scan.
+G006A begins from the clean migration/projection descendant carrying the
+reviewed G005A bytes; G006B begins only after G006A is merged and clean; G006
+begins only after G006B is merged and clean; G007 runs only after G006 is
+merged and clean.
 The prerequisite catalog is the exact non-empty ordered list of ten unique
 requested systems; omission, addition, duplication, or reordering fails closed.
 For each row the observer binds the clean outer repository `HEAD` and tree,
@@ -126,6 +128,102 @@ the decision. Every configured module, package-export, release-manifest,
 owner-board, and receipt path must be non-empty and repository-relative, contain
 neither an absolute root nor `..`, and remain beneath its one declared
 checkout/submodule root after existing-parent and symlink resolution.
+
+Board parsing is self-contained and closed. A task heading matches only
+`^##[ \t]+(?P<task_id>[A-Z][A-Z0-9_]*-[0-9]+)(?:[ \t]+.*)?$`; its block ends
+only at the next `^##(?:[ \t]|$)` or EOF. A status matches only
+`^[ \t]*-[ \t]+Status:[ \t]*(?P<value>[^\r\n]*)[ \t]*$`. Each board must
+contain nonzero unique task headings and exactly one status per block;
+the closed status tokens are `completed`, `todo`, `blocked`, `in_progress`,
+`review`, and `cancelled`, and a board is terminal iff every status is
+`completed`. Prose and deeper headings never count as tasks or statuses.
+
+The G006A catalog is normative and ordered. A configured present-path field is
+never guessed or inferred; rows explicitly marked `expected_absent` may carry
+null path/interface/receipt fields and are necessarily nonterminal.
+
+| # | Requested owner | Exact clean-tree mapping |
+|---|---|---|
+| 1 | `IncrementalSemanticIndex` | root `ipfs_datasets_py`; module `ipfs_datasets_py/logic/software_contracts/semantic_index/index.py`; public export `ipfs_datasets_py/logic/software_contracts/semantic_index/__init__.py`; API class plus `scan_repository`, `diff_repository_states`, `calculate_invalidation`, `explain_symbol`, `explain_impact`, `watch_repository`; release `docs/software_contracts/INCREMENTAL_SEMANTIC_INDEX.md`; board `docs/architecture/incremental_semantic_index.todo.md`; selector `tests/unit/logic/software_contracts/semantic_index/test_api.py` |
+| 2 | `SemanticCapsuleCompiler` | root `ipfs_datasets_py`; module `ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py`; exact `SEMANTIC_CAPSULE_COMPILER_INTERFACE == "SemanticCapsuleCompiler@1"`; module API `compile_semantic_capsule`, `compile_semantic_capsules`, `verify_capsule_compile_result`; package `ipfs_datasets_py/logic/software_contracts/semantic_state/__init__.py` exports only singular `compile_semantic_capsule`, so constant/plural/verify are module-public only; release `docs/software_contracts/SEMANTIC_STATE_CONTRACT.md`; board `docs/architecture/semantic_state_contract.todo.md`; selector `tests/unit/logic/software_contracts/semantic_state/test_capsules.py` |
+| 3 | `ContextPackBuilder` | compatibility label only, root `.`; module-public surface `ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py`; parent package exports `ContextPack` only, while builder operations remain module-public and there is no `ContextPackBuilder` facade; interface `ContextPack@1`; release `docs/semantic_state/SEMANTIC_COMPRESSION_HARNESS.md`; dependency seal `config/semantic_state_dependencies.seal.json` schema `ipfs-accelerate.agent-supervisor.semantic-state-dependency-seal@2`; board `docs/architecture/semantic_compression_harness.todo.md`; selector `test/api/semantic_state/test_context_pack.py`; benchmark `docs/benchmarks/semantic_compression_harness_results.json` schema `ipfs_accelerate_py/semantic-state/benchmark-report@1` is corroboration only |
+| 4 | `VerificationReceiptCache` | root `.`; module `ipfs_accelerate_py/agent_supervisor/verification/receipt_cache.py`; exact lazy package export from `ipfs_accelerate_py/agent_supervisor/verification/__init__.py`; interface `VerificationReceiptCache@1`; release `docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md` schema `ipfs_accelerate_py/agent-supervisor/incremental-verification-release-report-binding@2`; board `docs/architecture/incremental_verification_planner.todo.md`; selector `test/api/test_agent_supervisor_verification_receipt_cache.py` |
+| 5 | `IncrementalVerificationPlanner` | root `.`; module `ipfs_accelerate_py/agent_supervisor/verification/planner.py`; exact lazy package export from `ipfs_accelerate_py/agent_supervisor/verification/__init__.py`; interface `IncrementalVerificationPlanner@1`; release `docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md` schema `ipfs_accelerate_py/agent-supervisor/incremental-verification-release-report-binding@2`; board `docs/architecture/incremental_verification_planner.todo.md`; selector `test/api/test_agent_supervisor_incremental_verification_planner.py` |
+| 6 | `ModelRoutePlanner` | root `.`; module `ipfs_accelerate_py/agent_supervisor/verification/model_route.py`; exact lazy package export from `ipfs_accelerate_py/agent_supervisor/verification/__init__.py`; interface `ModelRoutePlanner@1`; release `docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md` schema `ipfs_accelerate_py/agent-supervisor/incremental-verification-release-report-binding@2`; board `docs/architecture/incremental_verification_planner.todo.md`; selector `test/api/test_agent_supervisor_verification_model_route.py` |
+| 7 | `VerifiedGuiOptimizer` | exact `expected_absent`: module/export/release/board/selector/receipt paths are null; no guessed facade or owner path; always nonterminal |
+| 8 | `IncrementalProofSealer` | exact `expected_absent`: module/export/release/board/selector/receipt paths are null and the interoperability inventory reports typed unavailable; always nonterminal |
+| 9 | `SemanticCompressionGovernor` | root `.` and present board `docs/architecture/semantic_compression_governor.todo.md`; expected future module `ipfs_accelerate_py/agent_supervisor/semantic_governor/governor.py`, export `ipfs_accelerate_py/agent_supervisor/semantic_governor/__init__.py`, selector `test/api/semantic_governor/test_public_api.py`, and release `artifacts/agent_supervisor/semantic_compression_governor/release.json` are all absent and non-executable metadata; `interface` and `receipt_path` are null; exact state `expected_absent_pending_owner`, always nonterminal |
+| 10 | `AdversarialAssuranceEngine` | exact `expected_absent`: module/export/release/board/selector/receipt paths are null; no guessed facade or owner path; always nonterminal |
+
+Rows 4–6 may bind the corroborating
+`artifacts/agent_supervisor/incremental_verification/benchmark.json` only when
+its schema is exactly
+`ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@2`.
+For every present row, authoritative current test evidence maps only to the
+live in-memory `DirectExecutionObservation@1` → `TestReceipt@1` chain with
+`PROCESS_RUNNER_SCHEMA`; reports, manifests, seals and benchmarks are
+corroboration, never receipt authority. Expected-absent rows have no receipt
+authority.
+
+No row has an authoritative filesystem `receipt_path`. The global declarations
+are `receipt_interface="TestReceipt@1"`,
+`receipt_schema="ipfs_accelerate_py/agent-supervisor/verification-test-receipt@1"`,
+`observation_interface="DirectExecutionObservation@1"`,
+`observation_schema="ipfs_accelerate_py/agent-supervisor/direct-verification-observation@1"`,
+and runner schema
+`ipfs_accelerate_py/agent-supervisor/verification-process-runner@1`. G006A sets
+`receipt_id`, `key_id`, and `observation_content_id` to null with typed reason
+`terminal_chain_not_run`; reports/manifests/benchmarks appear only under
+`corroboration_paths`. G006B may populate those IDs only from the trusted
+same-process live result after canonical round-trip, production cache admission
+and exact lookup: `TestReceipt.receipt_id`,
+`VerificationReceiptKey.key_id`, and
+`DirectExecutionObservation.content_id`. Expected-absent rows keep all three
+IDs null, no selector, and exact limitation
+`owner_contract_not_declared_on_launch_tree`. Every non-null configured path is
+confined and validated; null is the only path representation for an undeclared
+owner contract. The ten requested names and order are invariant, while absent
+metadata can change only through a later reviewed protected-catalog amendment
+when an owner contract lands.
+
+`ContextPackBuilder` is never a class or facade. Construction maps exactly to
+`ContextPacker(budget=ContextBudget(), policy=ContextCoveragePolicy(),
+estimator_version=TOKEN_ESTIMATOR_VERSION)`; build maps both to
+`ContextPacker.pack(...)` and module function `pack_context(...)`; projection
+maps to `project_admission_to_reference(CapsuleAdmission, token_count=0)`.
+Common keyword-only inputs are exactly `objective`, `target_source_cid`,
+`surrounding_source_cid`, `test_source_cid`, `dependency_admissions=()`,
+`obligation_cids=()`, `counterexample_cids=()`, `delta_cid`,
+`interface_cids=()`, `assumptions=()`, `exclusions=None`,
+`raw_source_regions=()`, `production_slice=None`, and
+`production_slice_builder=None`; the functional entry also accepts
+`budget=None`, `policy=None`, and
+`estimator_version=TOKEN_ESTIMATOR_VERSION`. Output is exact
+`ContextPackResult` with schema `ipfs-accelerate.context-pack-result@1`,
+interface `ContextPack@1`, and in-memory fields `pack`, `pack_cid`,
+`references`, `token_estimate`, `coverage_satisfied`, `production_slice`,
+`production_slice_cid`, `budget_exceeded`, and `decisions`; policy schema is
+`ipfs-accelerate.context-coverage-policy@1` and estimator is
+`context-compiler-calibrated_utf8@1`. The embedded `ContextPack` fields are
+exactly `objective`, `target_source_cid`, `surrounding_source_cid`,
+`test_source_cid`, `dependency_capsule_cids`, `obligation_cids`,
+`counterexample_cids`, `delta_cid`, `interface_cids`, `assumptions`,
+`exclusions`, `token_totals`, `estimator_version`, `risk`, `route`, and
+`escalation_recommendation`. `ContextPackResult.to_dict()` serializes exactly
+`schema` and `interface` plus `pack`, `pack_cid`, `references`,
+`token_estimate`, `coverage_satisfied`, `production_slice_cid`,
+`budget_exceeded`, and `decisions`; it never serializes the optional
+`production_slice` object itself. The target/surrounding/test source are exact
+required `INVARIANT` references and never compressed. Capsule substitution is
+allowed only when both `allow_capsule_substitution` and
+`capsule_may_substitute`; otherwise bind raw source and an explained exclusion.
+Explicit raw regions remain raw, obligations/delta are required evidence,
+exclusions require explanations, ordering/CID construction is deterministic,
+and budget or coverage failure never truncates required coverage but instead
+sets coverage false and escalates to human review. Heuristic/model summaries
+never establish coverage or raise confidence; capsule facts remain
+datasets-owned; an optional production slice binds its `manifest_cid` or
+canonical payload CID.
 
 An interface is present only when exact AST inspection proves its module-level
 definition or assignment and, when public, its exact package export. A renamed
@@ -217,6 +315,28 @@ existing target or symlink, forbids `os.replace` and direct target writes, and
 durably cleans both temp and any post-link target on failure. No partial, stale,
 raced, new, or replaced
 admission artifact is evidence.
+
+G006 also provides a strictly read-only verifier, invoked as
+`--mode verify-existing --artifact <path>`. By default it nofollow-opens only
+the canonical observation target, strictly decodes `PrerequisiteObservation@1`,
+requires byte-exact canonical reserialization and the closed ten-row policy,
+rederives every forest/content identity, and requires current `HEAD`/tree to be
+the claimed observed source. It performs no runner/compiler/cache call and no
+write or temp creation; before/after artifact bytes, stat and repository state
+must be identical. G007 precommit validation uses only this default form before
+and after a no-output `require-terminal` rc1 probe; it never invokes ordinary
+`observe` a second time.
+
+Post-merge review may add `--allow-exact-evidence-projection-child`. That flag
+accepts no general descendant: either the clean current commit has one parent
+equal to the claimed source and changes only the regular observation blob/mode,
+or it is the exact native two-parent supervisor merge whose first parent is the
+claim, whose second parent has the claim as its sole parent, whose two relevant
+diffs both change only that same regular artifact to identical blob/mode, and
+whose merge tree equals the implementation-child tree. Any other parent count,
+order, ancestry, diff, mode/type/symlink change, dirt or recursive identity
+change fails closed. The projection-child flag is forbidden during the G007
+task's precommit validation.
 
 ## 3. Why `ipfs_kit_py/core/wal` is representative
 
@@ -329,14 +449,17 @@ part of the already frozen executable-source identity.
 
 ## 6. Goal, subgoal and task projection
 
-The objective heap defines 39 autonomous work goals and
-two external gates. The objective daemon generates their task IDs in a
+The objective heap defines 41 locally governed work goals, including the
+blocked review-only G005A source anchor, and two external gates. The objective
+daemon generates their task IDs in a
 deterministic scan and assigns content IDs after checking repository evidence.
 
 | Goal | Planned work item | Owner | Depends on |
 |---|---|---|---|
-| `SHQ-G005A` | Exact private bwrap→bubblewrap banner-token compatibility in the existing identity compiler | accelerate | — |
-| `SHQ-G006` | Prerequisite observer implementation, tests and exact ignore exception | accelerate | G005A |
+| `SHQ-G005A` | Reviewed v11 bwrap→bubblewrap compatibility source anchor; outside v12 projection | accelerate | — |
+| `SHQ-G006A` | Exact catalog/path/API/board/recursive-forest core and nonterminal rows | accelerate | reviewed clean tracked source precondition |
+| `SHQ-G006B` | Isolated runner/compiler/direct-observation/receipt-cache terminal chain | accelerate | G006A |
+| `SHQ-G006` | Exact ignore exception, durable publisher and complete integration matrix | accelerate | G006B |
 | `SHQ-G007` | Clean post-merge current-fact observation snapshot | accelerate | G006 |
 | `SHQ-G010` | External terminal release admission | operator/upstream owners | G007 |
 | `SHQ-G021` | Exact revision/version/schema/route/proof inventory | accelerate | external gate |
@@ -707,9 +830,10 @@ The initial scan intentionally does not refine the heap, repeat existing work or
 submit to a task queue.
 
 ```bash
+set -euo pipefail
 SHQ_REPO=/home/barberb/lift_coding/.worktrees/ipfs-accelerate-self-hosting-qualification
 SHQ_DATA=data/agent_supervisor/self_hosting_qualification
-SHQ_PROJECTION="$SHQ_DATA/projections/v11"
+SHQ_PROJECTION="$SHQ_DATA/projections/v12"
 SHQ_PYTHON=/usr/bin/python3.12
 SHQ_ACTIVE_TODO=docs/architecture/self_hosting_qualification.todo.md
 SHQ_V1_HISTORY_TODO=docs/architecture/self_hosting_qualification.v1_history.todo.md
@@ -722,8 +846,10 @@ SHQ_V7_HISTORY_TODO=docs/architecture/self_hosting_qualification.v7_history.todo
 SHQ_V8_HISTORY_TODO=docs/architecture/self_hosting_qualification.v8_history.todo.md
 SHQ_V9_HISTORY_TODO=docs/architecture/self_hosting_qualification.v9_history.todo.md
 SHQ_V10_HISTORY_TODO=docs/architecture/self_hosting_qualification.v10_history.todo.md
-SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v11
-# Read-only input from the already-live provider monitor. All mutable v11
+SHQ_V11_HISTORY_TODO=docs/architecture/self_hosting_qualification.v11_history.todo.md
+SHQ_RUN=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v12
+SHQ_FROZEN_V11_HEAD=17e19a8e5db327a18dc9437a8de2be299599ecf2
+# Read-only input from the already-live provider monitor. All mutable v12
 # coordination, state, worktrees, logs, manifests, metrics, gates and keys use
 # SHQ_RUN above; never reopen or alias the retired v1 supervisor namespace.
 SHQ_CAPACITY_PATH=/home/barberb/.local/state/ipfs_accelerate_py/self-hosting-qualification-v1/provider-capacity/capacity.json
@@ -731,9 +857,41 @@ SHQ_GATE="$SHQ_RUN/operator/objective_completion_gate.json"
 SHQ_EXTERNAL_AUTHORITY="$SHQ_RUN/operator/external_completion_authority.json"
 SHQ_SIGNING_KEY="$SHQ_RUN/operator/signing.key"
 SHQ_IMPLEMENTATION_COMMAND="/usr/local/bin/codex exec --ephemeral --ignore-user-config --strict-config --dangerously-bypass-approvals-and-sandbox --color never -m gpt-5.6-terra -c model_context_window=49152 -c 'model_reasoning_effort=\"high\"' -c agents.max_threads=1 -c agents.max_depth=0 -"
-SHQ_G005A_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-verification-banner-alias-compatibility-bounded-v11/state/agent_agent_supervisor_self_hosting_verification_banner_alias_compatibility_bounded_v11_runtime.todo.md"
-SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-implementation-bounded-v11/state/agent_agent_supervisor_self_hosting_prerequisite_observer_implementation_bounded_v11_runtime.todo.md"
-SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v11/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_bounded_v11_runtime.todo.md"
+SHQ_PROVIDER_ENV=(
+  env
+  -u PYTHONOPTIMIZE
+  -u IMPLEMENTATION_DAEMON_COMMAND
+  -u IPFS_PROOF_REUSE_STATE_ROOT
+  -u IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER
+  -u IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER
+  -u IPFS_ACCELERATE_AGENT_PROVIDER_FALLBACK_POLICY
+  -u IPFS_ACCELERATE_AGENT_COPILOT_MODEL
+  -u IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER
+  -u IPFS_ACCELERATE_AGENT_COPILOT_EFFORT
+  -u IPFS_ACCELERATE_AGENT_COPILOT_MAX_CONTINUES
+  -u IPFS_ACCELERATE_AGENT_GROK_BIN
+  -u IPFS_ACCELERATE_AGENT_GROK_MODEL
+  -u IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS
+  -u IPFS_ACCELERATE_AGENT_GOOSE_BIN
+  -u IPFS_ACCELERATE_AGENT_GOOSE_MODEL
+  -u IPFS_ACCELERATE_AGENT_GOOSE_MAX_TOKENS
+  -u IPFS_ACCELERATE_AGENT_GOOSE_MAX_TURNS
+  -u GITHUB_TOKEN
+  -u GH_TOKEN
+  -u COPILOT_GITHUB_TOKEN
+  -u GROK_API_KEY
+  IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=codex
+  IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra
+  IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW=49152
+  IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT=high
+  IPFS_ACCELERATE_AGENT_CODEX_MAX_THREADS=1
+  IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH=0
+  IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS=1
+)
+SHQ_G006A_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-catalog-bounded-v12/state/agent_agent_supervisor_self_hosting_prerequisite_observer_catalog_bounded_v12_runtime.todo.md"
+SHQ_G006B_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-terminal-chain-bounded-v12/state/agent_agent_supervisor_self_hosting_prerequisite_observer_terminal_chain_bounded_v12_runtime.todo.md"
+SHQ_G006_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observer-integration-bounded-v12/state/agent_agent_supervisor_self_hosting_prerequisite_observer_integration_bounded_v12_runtime.todo.md"
+SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite-observation-snapshot-bounded-v12/state/agent_agent_supervisor_self_hosting_prerequisite_observation_snapshot_bounded_v12_runtime.todo.md"
 
 # Reviewed migrations: retain SHQ-001 in the v1 history board. Move cancelled
 # SHQ-002 and its never-launched dependent SHQ-003 into the v2 history board,
@@ -756,10 +914,20 @@ SHQ_G007_RUNTIME_TODO="$SHQ_RUN/state/agent-supervisor-self-hosting-prerequisite
 # rejected/cancelled retryable and SHQ-018/019 never launched. Archive
 # SHQ-020/021/022 byte-for-byte in the v10 history board: SHQ-020 attempt 1 was
 # rejected/cancelled retryable for inspecting its injected external checkpoint
-# directory, and SHQ-021/022 never launched. Apply that reviewed
-# tracked migration before this command, leave SHQ_ACTIVE_TODO title-only, and
-# retain all twenty-two discovery files so display IDs SHQ-001 through SHQ-022 stay
-# reserved. The v11 generation must allocate SHQ-023, SHQ-024, and SHQ-025.
+# directory, and SHQ-021/022 never launched.
+# Archive SHQ-023/024/025 byte-for-byte in the v11 history board: SHQ-023 is
+# retained only as the explicit reviewed clean merge/settlement source anchor;
+# all four SHQ-024 attempts were cancelled and independently rejected, and
+# SHQ-025 was registered but never leased or launched. Every v11 attempt log,
+# worktree, runtime/checkpoint/coordination record, receipt, quarantine bundle
+# and derived byte is prohibited task input. Apply that reviewed tracked
+# migration before this command, leave SHQ_ACTIVE_TODO title-only, and retain
+# all twenty-five discovery files so display IDs SHQ-001 through SHQ-025 stay
+# reserved. The v12 generation must allocate SHQ-026, SHQ-027, SHQ-028, and SHQ-029,
+# in that order, to G006A, G006B, G006, and G007. G005A remains blocked
+# but is deliberately outside this scoped projection; no fresh G005A task or
+# dependency edge is materialized and no G005A/SHQ-023
+# --assume-completed-task-id flag is used.
 test -f "$SHQ_REPO/$SHQ_V1_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V2_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V3_HISTORY_TODO"
@@ -770,11 +938,69 @@ test -f "$SHQ_REPO/$SHQ_V7_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V8_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V9_HISTORY_TODO"
 test -f "$SHQ_REPO/$SHQ_V10_HISTORY_TODO"
+test -f "$SHQ_REPO/$SHQ_V11_HISTORY_TODO"
 test -x "$SHQ_PYTHON"
 test "$("$SHQ_PYTHON" --version 2>&1)" = 'Python 3.12.3'
+test "$(git -C "$SHQ_REPO" symbolic-ref --short HEAD)" = \
+  agent/self-hosting-qualification-v1
+test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
+git -C "$SHQ_REPO" submodule foreach --recursive \
+  'test -z "$(git status --porcelain=v1 --untracked-files=all)"'
+SHQ_V12_MIGRATION_HEAD=$(git -C "$SHQ_REPO" rev-parse --verify 'HEAD^{commit}')
+SHQ_V12_MIGRATION_TREE=$(git -C "$SHQ_REPO" rev-parse --verify 'HEAD^{tree}')
+test "$SHQ_V12_MIGRATION_HEAD" != "$SHQ_FROZEN_V11_HEAD"
+test "$(git -C "$SHQ_REPO" rev-parse --verify 'HEAD^1')" = "$SHQ_FROZEN_V11_HEAD"
+git -C "$SHQ_REPO" merge-base --is-ancestor \
+  "$SHQ_FROZEN_V11_HEAD" "$SHQ_V12_MIGRATION_HEAD"
+( cd "$SHQ_REPO" && "$SHQ_PYTHON" - \
+    "$SHQ_FROZEN_V11_HEAD" "$SHQ_V12_MIGRATION_HEAD" "$SHQ_V12_MIGRATION_TREE" <<'PY'
+import json
+import subprocess
+import sys
+
+frozen, head, tree = sys.argv[1:]
+expected_paths = [
+    "docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md",
+    "docs/architecture/self_hosting_qualification.objectives.md",
+    "docs/architecture/self_hosting_qualification.todo.md",
+    "docs/architecture/self_hosting_qualification.v11_history.todo.md",
+    "test/api/test_agent_supervisor_self_hosting_qualification_plan.py",
+]
+changed = subprocess.run(
+    ["git", "diff", "--name-only", "-z", frozen, head],
+    check=True,
+    capture_output=True,
+).stdout.decode("utf-8").rstrip("\0").split("\0")
+assert changed == expected_paths, (changed, expected_paths)
+assert subprocess.run(
+    ["git", "rev-parse", "--verify", f"{head}^{{tree}}"],
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.strip() == tree
+print(json.dumps({"migration_head": head, "migration_tree": tree}, sort_keys=True))
+PY
+)
 ! rg -q '^## SHQ-' "$SHQ_REPO/$SHQ_ACTIVE_TODO"
 test ! -e "$SHQ_REPO/$SHQ_PROJECTION"
+test ! -L "$SHQ_REPO/$SHQ_PROJECTION"
 test ! -e "$SHQ_RUN"
+test ! -L "$SHQ_RUN"
+
+( cd "$SHQ_REPO" && "$SHQ_PYTHON" - "$SHQ_DATA/discovery" "$SHQ_ACTIVE_TODO" <<'PY'
+from pathlib import Path
+import sys
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import task_ids_from_todo
+from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import task_ids_from_artifact_names
+
+discovery = Path(sys.argv[1])
+todo = Path(sys.argv[2])
+expected = {f"SHQ-{number:03d}" for number in range(1, 26)}
+actual = task_ids_from_artifact_names(discovery, task_prefix="SHQ-")
+assert actual == expected, (sorted(actual), sorted(expected))
+assert task_ids_from_todo(todo.read_text(encoding="utf-8"), task_prefix="SHQ-") == []
+PY
+)
 
 ( cd "$SHQ_REPO" && "$SHQ_PYTHON" -m ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon \
   --repo-root "$SHQ_REPO" \
@@ -788,11 +1014,13 @@ test ! -e "$SHQ_RUN"
   --plan-evaluation-path "$SHQ_PROJECTION/plan_evaluations.json" \
   --todo-vector-index-path "$SHQ_PROJECTION/bundles/todo_vector_index.json" \
   --task-prefix SHQ- \
-  --max-findings 3 \
-  --scope-goal-id SHQ-G005A \
+  --max-findings 4 \
+  --scope-goal-id SHQ-G006A \
+  --scope-goal-id SHQ-G006B \
   --scope-goal-id SHQ-G006 \
   --scope-goal-id SHQ-G007 \
-  --force-goal-id SHQ-G005A \
+  --force-goal-id SHQ-G006A \
+  --force-goal-id SHQ-G006B \
   --force-goal-id SHQ-G006 \
   --force-goal-id SHQ-G007 \
   --surplus-findings-per-goal 1 \
@@ -809,7 +1037,6 @@ test ! -e "$SHQ_RUN"
   --scan-exclude-path test \
   --scan-exclude-path tests \
   --protected-output-path docs/architecture/self_hosting_qualification.objectives.md \
-  --protected-output-path docs/architecture/self_hosting_qualification.todo.md \
   --protected-output-path "$SHQ_ACTIVE_TODO" \
   --protected-output-path "$SHQ_V1_HISTORY_TODO" \
   --protected-output-path "$SHQ_V2_HISTORY_TODO" \
@@ -821,12 +1048,37 @@ test ! -e "$SHQ_RUN"
   --protected-output-path "$SHQ_V8_HISTORY_TODO" \
   --protected-output-path "$SHQ_V9_HISTORY_TODO" \
   --protected-output-path "$SHQ_V10_HISTORY_TODO" \
+  --protected-output-path "$SHQ_V11_HISTORY_TODO" \
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/hidden_evaluator_manifest.json \
   --protected-output-path config/self_hosting_qualification_policy.json \
   --protected-output-path config/self_hosting_qualification_trusted_keys.json
+)
+
+( cd "$SHQ_REPO" && "$SHQ_PYTHON" - "$SHQ_ACTIVE_TODO" <<'PY'
+from pathlib import Path
+import sys
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import parse_task_file
+
+tasks = parse_task_file(Path(sys.argv[1]), "SHQ-")
+actual = [
+    (task.task_id, task.metadata.get("goal id", ""), tuple(task.depends_on), task.metadata.get("bundle", ""))
+    for task in tasks
+]
+expected = [
+    ("SHQ-026", "SHQ-G006A", (), "agent-supervisor/self-hosting/prerequisite-observer-catalog-bounded-v12"),
+    ("SHQ-027", "SHQ-G006B", ("SHQ-026",), "agent-supervisor/self-hosting/prerequisite-observer-terminal-chain-bounded-v12"),
+    ("SHQ-028", "SHQ-G006", ("SHQ-027",), "agent-supervisor/self-hosting/prerequisite-observer-integration-bounded-v12"),
+    ("SHQ-029", "SHQ-G007", ("SHQ-028",), "agent-supervisor/self-hosting/prerequisite-observation-snapshot-bounded-v12"),
+]
+assert actual == expected, (actual, expected)
+assert all(task.metadata.get("status") == "todo" for task in tasks)
+assert all(task.metadata.get("is schedulable") == "true" for task in tasks)
+assert all(task.metadata.get("review only") == "false" for task in tasks)
+assert all("SHQ-023" not in task.depends_on for task in tasks)
+PY
 )
 ```
 
@@ -844,112 +1096,159 @@ rescue commit's `git show` output into `/tmp` and read it outside the checkout;
 its dependent SHQ-011 never launched. SHQ-012 is a rejected/cancelled retryable
 v7 attempt after independent contract review; its clean stop released a null
 output with no implementation-finished event, implementation commit, or merge,
-and dependent SHQ-013 was never leased or launched. SHQ-014 is a rejected/cancelled retryable v8 attempt whose alias accepted noncanonical prose and whose positive used synthetic executable bytes; SHQ-015 and SHQ-016 never launched. SHQ-017 is a rejected/cancelled retryable v9 attempt because its exact-bwrap branch retained permissive legacy banner parsing; SHQ-018 and SHQ-019 never launched. SHQ-020 is a rejected/cancelled retryable v10 attempt because it inspected the external injected checkpoint directory under generic checkpoint prompt policy before any edit or validation; SHQ-021 and SHQ-022 never launched. Every v4, v5, v6, v7, v8, v9, and v10 canonical task block
+and dependent SHQ-013 was never leased or launched. SHQ-014 is a rejected/cancelled retryable v8 attempt whose alias accepted noncanonical prose and whose positive used synthetic executable bytes; SHQ-015 and SHQ-016 never launched. SHQ-017 is a rejected/cancelled retryable v9 attempt because its exact-bwrap branch retained permissive legacy banner parsing; SHQ-018 and SHQ-019 never launched. SHQ-020 is a rejected/cancelled retryable v10 attempt because it inspected the external injected checkpoint directory under generic checkpoint prompt policy before any edit or validation; SHQ-021 and SHQ-022 never launched. SHQ-023 is the reviewed clean v11 merge/settlement source anchor, SHQ-024 attempts 1 through 4 are rejected/cancelled, and SHQ-025 was never leased or launched. Every v4, v5, v6, v7, v8, v9, v10 and v11 canonical task block
 is preserved byte-for-byte in its history board, and
 only each preamble records disposition. Historical cards are never completion
 evidence or scheduler sources. Their discovery records stay
-in `$SHQ_DATA/discovery`, reserving `SHQ-001` through `SHQ-022`; the clean active
-board therefore receives exactly `SHQ-023`, `SHQ-024`, and `SHQ-025`. New graph, dataset and
+in `$SHQ_DATA/discovery`, reserving `SHQ-001` through `SHQ-025`; the clean active
+board therefore receives exactly `SHQ-026`, `SHQ-027`, `SHQ-028`, and `SHQ-029`. New graph, dataset and
 bundle projections live under `$SHQ_PROJECTION`; no scheduler may read a v1,
-v2, v3, v4, v5, v6, v7, v8, v9, or v10 bundle index.
+v2, v3, v4, v5, v6, v7, v8, v9, v10, or v11 bundle index.
 
-Review the portable v11 Markdown and JSON projections and add those exact files
+Review the portable v12 Markdown and JSON projections and add those exact files
 with `git add -f`; do not add DuckDB databases, lock files, runtime state or
 provider logs. The archived v1 board and both objective-control documents are
-exact protected paths for every subsequent implementation lane.
+exact protected paths for every subsequent implementation lane. Commit the
+reviewed portable projection and regenerated active board before entering the
+dry-plan block. That clean projection commit is the first
+`SHQ_STAGE_HEAD`/`SHQ_STAGE_TREE`; every successor merge supplies the next pair.
+The migration commit remains its ancestor, and neither a dirty projection nor
+uncommitted generated bytes may be planned or launched.
 
 The `--scan-exclude-path` arguments above are bounded bootstrap-generation
 inputs only: they prevent the initial evidence-gap scan from rediscovering the
-entire product while it projects `SHQ-G005A`, `SHQ-G006`, and `SHQ-G007`. They must not appear in a goal
+entire product while it projects `SHQ-G006A`, `SHQ-G006B`, `SHQ-G006`, and `SHQ-G007`. They must not appear in a goal
 completion reconciliation. Completion must compute its tree identity over all
 source and recursive gitlinks; carrying these exclusions into reconciliation
 would create a different, incomplete completion identity.
 
-### Local `SHQ-G005A` compatibility, `SHQ-G006` implementation, and `SHQ-G007` snapshot
+### Local bounded-v12 prerequisite-observer stages
 
-G005A owns only the existing verification contracts authority and its full
-contracts test; G006 owns only `.gitignore`, the observer and its tests; G007
-owns only the JSON snapshot. Their bounded-v11 bundle keys prevent any task from
-inheriting stale state from retired projections. They are projected serially as
-SHQ-023, SHQ-024, and SHQ-025 in the v11 index while retaining stable goal
-identities G005A, G006, and G007. G006 begins only after the clean G005A merge;
-G007 begins only after the clean G006 merge.
-Their Fibonacci priorities are deliberately `89`, `144`, and `233`, because
-the native objective heap assigns display IDs in ascending heap order before
-it resolves goal dependencies to newly materialized task IDs. The generated
-mapping must therefore be G005A=`SHQ-023`, G006=`SHQ-024`, and
-G007=`SHQ-025`; any other mapping is rejected before commit or launch. Prior
-attempt 1 was hard-rejected for redirecting permitted `git show` stdout to host
-`/tmp` and rereading it. Separately, the cancelled bounded-v10 SHQ-020 attempt
-and bounded-v9 SHQ-017 attempt are hard rejections and non-inputs: their
-worktrees, proposed code/tests, logs, generic checkpoint instructions,
-supervisor/checkpoint/runtime state, coordination state, claims, leases,
-receipts and derived bytes cannot seed or
-satisfy G005A, G006 or G007. G005A starts only in the clean bounded-v11 checkout.
-Its canonical positive resolves and reads the actual `/usr/bin/bwrap` bytes,
-binds their SHA-256 and reviewed `ToolIdentity`, and binds the exact raw
-`tool_version_probe_output_bytes` value only as either
-`f"bwrap {normalized_tool_version}\n".encode("ascii")` or
-`f"bubblewrap {normalized_tool_version}\n".encode("ascii")` after proving the
-version is one nonempty ASCII `[A-Za-z0-9._+\-]+` token. It rejects synthetic
-executable bytes, helper locators, paths, help/usage/error/diagnostic prose,
-cross-line or extra-line banners, prefixes/suffixes, case variants, CR/CRLF,
-tabs, doubled/leading/trailing spaces, missing/extra LF, and embedded whitespace
-or non-ASCII version claims. The exact-bwrap negative matrix literally includes
-`b"bwrap\n0.9.0\n"`, `b"bwrap  0.9.0\n"`,
-`b"bwrap 0.9.0 extra\n"`, and `b"bwrap 0.9.0"`; replacing only the
-leading name with `bubblewrap` must produce the same four rejections. Path,
-help/error, and extra-line examples include `b"/usr/bin/bwrap 0.9.0\n"`,
-`b"bwrap 0.9.0\nUsage: bwrap ...\n"`, `b"error: bwrap 0.9.0\n"`, and
-`b"bwrap 0.9.0\nextra\n"`, with parallel bubblewrap cases. Fake or changed
-executable bytes, including `b"reviewed-launcher:bwrap"`, remain rejected. The
-exact-bwrap branch rejects every malformed form; legacy behavior remains unchanged only for non-bwrap tools. Rebinding the module-global alias constant, including to a caller-extension or superset, cannot expand the hard-coded closed canonical pair or raw-byte set and must still reject. The live alias positive uses only the actually observed raw
-`/usr/bin/bwrap --version` bytes `b"bubblewrap 0.9.0\n"`, not normalized,
-reconstructed, rewritten, or synthesized evidence. The canonical
-`b"bwrap 0.9.0\n"` positive is confined to a bounded pure-compiler fixture
-that binds the same actual executable bytes and SHA-256, and it is not live
-execution evidence or authority. Any
-outside-checkout redirect, tee, copy, save, cache,
-checkpoint, materialization, or read is an immediate hard rejection; stop
-before validation. The task-specific checkpoint revocation above supersedes
-the injected generic checkpoint prompt and durable-checkpoint fields for G005A,
-G006, and G007. In particular, no autonomous model-issued shell/file-tool may
-reference or expand the task's checkpoint fields, deliberately forward their
-values as task input or tool arguments, or use them to print, list, stat,
-resolve, hash, read, write, inspect, test, enumerate, copy, source, execute,
-create, modify, redirect, tee, save, cache, checkpoint, materialize, or reread
-the named checkpoint directory, any alias, resolution, or descendant of it, or
-other external supervisor/checkpoint/runtime state. The separately explicit
-actual `/usr/bin/bwrap`, validation interpreter/tool and declared-gitlink
-authorities remain available. G006 consumes SHQ-023 only as clean merged tracked repository content;
-G007 consumes SHQ-024 only as clean merged tracked repository content. Neither
-may consume predecessor runtime or checkpoint state. G006 may inspect only the two named blobs at commit
-`63ea88e41227d4d2d424f41051b9e9390c1a1c32` using the exact authorized two-path
-diff command, or exact `git show 63ea88e41227d4d2d424f41051b9e9390c1a1c32:<authorized-path>`
-for one of those same paths. It may consume stdout directly or write a blob
-only to its matching declared output path inside the checkout, then audit and
-repair that seed. Those two outputs are the sole persistence targets for code
-derived from the bounded input; no intermediate or scratch copy is evidence or
-authority, and every other revision or path is prohibited. The implementation
-agent must not use any host path outside the
-disposable checkout as a discovery source or scratch sink: in particular, it
-must not materialize authorized bytes into or read them from host `/tmp`,
-supervisor/checkpoint/state directories, or sibling worktrees, including
-material left by prior attempts. Generic checkpoint instructions grant no task
-input authority. This does not prohibit the required process runner's internal
-ephemeral stream capture or the validation namespace's private `/tmp`; those
-are execution internals, not discovery inputs or persisted evidence. All other
-reads and searches remain within that checkout and its declared submodules. The
-generated task dependency prevents the scheduler
-from creating the G007 worktree until G006 has merged, so G007 observes the
-clean merged implementation identity. G007 additionally binds the freshly
-projected bounded-v11 G006 task SHQ-024 canonical CID as its sole predecessor; no retired
-display ID, alias, canonical key, CID, worktree, receipt, or merge can satisfy
-that dependency. Do not pause for objective reconciliation
-between the task commits. Once all three runtime todos are terminal, all three
-commits are merged and the target branch is clean, run the focused suite and no-output
-CLI probes.
+The reviewed v11 G005A implementation is not reprojected. G005A is explicitly
+blocked/review-only because `external_goal_completion_authoritative=false` and
+formal objective reconciliation is absent; its sole retained role is a
+source-baseline precondition: canonical task CID
+`baguqeerag67a4omevn536zn5wbdtzrvpipp7yym7uptusjxe4vroojgx5bea`,
+coordination task CID
+`baguqeera5o6wzpnwezcacp5oiwycvzk5uhvrvadr7e6m6x3qdzh65ff5nktq`,
+attempt/fence/token `3/3/3`, succeeded receipt
+`baguqeerayifbixgmh227xewfgwza77itadvtynj5oaavccihrdxh5ftkbuoq`,
+output CID
+`baguqeerahs3er2kphhbtexrifryshplgoxyzprzgy5bdk2qfdfezrfzh62ma`,
+reviewed implementation merge
+`0200be041e1c154660ade9c44a552df97b84dec1`, merge tree
+`aea528d467450cf6a70efa36d5ab6f34b4947fc7`, follow-up test commit
+`bbf8039a67bf2f4dafdd19ef289638d023825e22`, follow-up tree
+`00c76524f2f9e1273b89816103a27130a551de85`, and frozen functional
+anchor `17e19a8e5db327a18dc9437a8de2be299599ecf2`, tree
+`389048a0ee4d39b24dc68289e21a78da9ca1c4c9`. The v12 migration and
+projection commits carry those reviewed tracked bytes forward. Each task
+starts only from the freshly committed clean v12 launch HEAD/tree recorded by
+operator preflight; the implementation agent must not reopen the anchor with
+`git show`, a sibling checkout, a ref, or any runtime material. No fresh G005A
+task, dependency edge, or G005A/SHQ-023 `--assume-completed-task-id` authority
+is emitted.
 
+Every bounded-v11 SHQ-024 attempt 1 through 4 and the SHQ-025 registration is
+sealed. Their display IDs, keys and CIDs cannot satisfy a v12 dependency.
+Every v11 implementation log, worktree, task/ref, checkpoint, supervisor,
+runtime or coordination record, claim, lease, receipt as bytes, rejected
+code/test proposal, rescue/quarantine ref, operator quarantine bundle, scratch,
+cache and derived byte is a prohibited non-input. Future tasks must not inspect,
+enumerate, restore, copy, seed, cite, validate or retry from any of it. Only the
+clean tracked bytes carried into the current v12 checkout are readable input.
+
+The observer is split into four serial, merge-gated tasks with disjoint semantic
+responsibilities and fresh bounded-v12 bundle identities:
+
+| Goal | Display ID | Bundle suffix | Executable dependency | Scope |
+|---|---|---|---|---|
+| `SHQ-G006A` | `SHQ-026` | `prerequisite-observer-catalog-bounded-v12` | — | exact catalog/path/API/board/recursive-forest core and deterministic nonterminal rows |
+| `SHQ-G006B` | `SHQ-027` | `prerequisite-observer-terminal-chain-bounded-v12` | `SHQ-026` | isolated live runner→compiler→direct observation→`TestReceipt`/cache chain |
+| `SHQ-G006` | `SHQ-028` | `prerequisite-observer-integration-bounded-v12` | `SHQ-027` | exact ignore exception, durable no-clobber publisher and complete integration/negative matrix |
+| `SHQ-G007` | `SHQ-029` | `prerequisite-observation-snapshot-bounded-v12` | `SHQ-028` | publish only the current deterministic non-authoritative snapshot |
+
+Priorities `144`, `233`, `377` and `610` force that display mapping.
+All four remain children of G005; seriality comes only from the explicit
+dependency chain. G006A intentionally has no executable dependency on G005A.
+The generated index must contain exactly the four mappings above or the
+operator rejects it before commit or launch.
+
+The scoped v12 actor decision is explicit and unchanged across all four stages.
+Implementation uses only direct Codex `gpt-5.6-terra`, total context window
+49152, high reasoning, one thread, depth zero and disabled subagents through the
+exact `SHQ_IMPLEMENTATION_COMMAND`. No fallback provider, wrapper, actor
+substitution, prompt expansion or operator-authored implementation seal is
+authorized. Independent validation is the declared deterministic focused/full
+test and CLI matrix plus operator boundary audit; model output never validates
+itself. Each task receives one semantic implementation attempt. The initial
+dry plan and start use `--max-task-attempts 1`, so no failed first
+attempt can be autonomously reselected. A conditional operator rerun with
+`--max-task-attempts 2` permits attempt 2 only after exact changed typed
+transient setup, provider transport, resource-admission or process evidence and
+an operator pre-invocation gate proving the prior receipt is typed transient
+with null output, coordination is inactive/released, no active
+claim/lease/process/worktree/ref/lock exists, the attempt counter is exactly 1,
+`implementation_attempts_by_cid[<exact canonical task CID>] == 1`,
+`selection_idle_reason == all_selectable_ready_tasks_reached_max_task_attempts`,
+no `implementation_retry_deferred:*` state or retry-budget-repair receipt
+exists, and the fresh v12 launch HEAD/tree/route/protected envelope matches
+preflight.
+Semantic/contract rejection freezes the task and
+requires another reviewed migration; it never triggers a retry, actor switch,
+counter reset, auto-reopen, repair-loop continuation or later manual rerun.
+The implementation daemon's default three-round repair ceiling is not extra
+authority because the
+stricter initial one-attempt task ceiling governs; the conditional two-attempt
+ceiling is exposed only by the operator-gated rerun described above.
+
+The task-specific checkpoint revocation in every G006A/G006B/G006/G007
+Acceptance and Refinement supersedes injected generic checkpoint instructions.
+No autonomous model-issued tool may reference, expand, forward, print, list,
+stat, resolve, hash, read, write, inspect, test, enumerate, copy, source,
+execute, create, modify, redirect, tee, save, cache, checkpoint, materialize or
+reread the named checkpoint directory, any alias/descendant, or other external
+supervisor/runtime state. Separately declared `/usr/bin/bwrap`, validation
+tools, declared gitlinks, runner-private streams, pytest fixture temps and the
+Bubblewrap namespace-private `/tmp` remain bounded execution authorities, not
+discovery or persisted evidence.
+
+G006A edits only the observer and focused test. G006B consumes only G006A's
+clean merged tracked task predecessor and edits only those same two files.
+G006 consumes only G006B's clean merged tracked task predecessor and may add
+`.gitignore`; it performs the full integrated negative matrix but creates no
+real observation artifact. G007 consumes only G006's clean merged tracked task
+predecessor and changes only
+`artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json`.
+No later task consumes predecessor runtime, receipts, logs, caches or worktrees.
+Every outer supervisor launch uses `--start --once`. The initial one-shot may
+claim only G006A/SHQ-026. Because `--once` returns after one reconciliation
+cycle while the detached child continues, the operator waits for and fences
+that child before another dry plan. After each stage has an exact durable
+succeeded member receipt, a clean reviewed merge, no active
+claim/lease/process/worktree/ref/lock, and a dry manifest showing the predecessor
+execution slice empty/nonclaimable and exactly one newly claimable direct
+successor, the operator may run one new one-shot to admit G006B/SHQ-027, then
+G006/SHQ-028, then G007/SHQ-029. Successor dry plans pass the exact predecessor
+`operator-stage-binding@1` path as `SHQ_STAGE_PREDECESSOR_BINDING`; the helper
+revalidates that binding id, the predecessor member/TaskSpec/coordination
+identities, the succeeded predecessor receipt, git ancestry from the
+predecessor launch HEAD, the `task_dependencies` row, and the empty
+predecessor execution slice. A dash is valid only for G006A/SHQ-026.
+Those later invocations are successor
+admissions, not retries of the completed predecessor, and each successor resets
+to `--max-task-attempts 1` even if its predecessor needed an authorized
+attempt-2 rerun. Every normal cycle must report `started_count == 1` and
+`launched_task_cids` equal to the singleton exact Profile-G coordination CID
+for its expected stage while the lane's member map retains the exact member
+canonical CID and TaskSpec CID; any other launch set fails closed. A repeated invocation
+whose next ready canonical task is unchanged is forbidden; the sole exception
+is the exact typed-transient gated attempt-2 procedure below. A persistent
+outer scheduler and a one-shot while a predecessor is unsettled are forbidden
+because board auto-reopen can reset counters.
+Do not pause for formal objective reconciliation between task commits. After
+all four runtime todos are terminal, all four commits are merged and the target
+branch is clean, run the focused suite and no-output CLI probes.
 G006 admits focused-test evidence through the existing direct process-runner
 path, not through the pytest adapter and not through a new receipt schema. It
 must compile the exact test key with `receipt_kind=TEST` and
@@ -990,7 +1289,10 @@ and does not add a production injection seam. Both real and degraded branches
 recapture the observation manifest and require `S1 == S0`, including identical
 degraded reasons, before any serialization.
 
-The same publication proof applies in G007: its unpredictable temp basename
+G007's sole mutating action is exactly
+`python3 scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py --repo-root . --mode observe --quiet`;
+its default canonical target must equal the sole declared G007 output. The same
+publication proof applies in G007: its unpredictable temp basename
 matches the final `*.json` ignore rule but not the exact target exception (for
 example `.prerequisite_observation.<nonce>.json`). Last-rule parsing and exact
 `git check-ignore -q --no-index --` results prove only the target is unignored;
@@ -1028,24 +1330,35 @@ tracked bundle shards and paired successful merge events, but it has not yet
 been independently qualified against the authoritative Profile-G TaskReceipt,
 coordination lease, fencing token, and state-database lineage. Until that
 narrow authority binding is implemented, reviewed, and named here by an exact
-commit, G005A, G006 and G007 remain implementation evidence rather than formally
+commit, G006A, G006B, G006 and G007 remain implementation evidence rather than formally
 completed goals. This limitation is off the bootstrap path because generation
 uses `--no-reconcile-goal-completion`, and it cannot open external gate G010.
 
 The following blocks are retained as a **non-executable future protocol**. Once
 the missing authority binding is qualified, create current tree-bound local
-gates and formally reconcile G005A, then G006, then G007, without external receipts
-or scan exclusions:
+gates and formally reconcile G006A, then G006B, then G006, then G007, without
+external receipts or scan exclusions. The command fragments below cover only
+the latter two historical reconciliation shapes and are deliberately
+incomplete; they must not be enabled until analogous exact G006A/G006B
+member-receipt/state-lineage transitions are added and independently qualified:
 
 ```bash
-test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
-git -C "$SHQ_REPO" submodule status --recursive
-python3 -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py
-python3 scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py \
-  --repo-root "$SHQ_REPO" --mode observe --quiet
-python3 scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py \
-  --repo-root "$SHQ_REPO" --mode require-terminal --quiet && exit 99 || test "$?" -eq 1
-test -f "$SHQ_REPO/artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json"
+( cd "$SHQ_REPO" &&
+  test -z "$(git status --porcelain=v1 --untracked-files=all)" &&
+  git submodule status --recursive &&
+  "$SHQ_PYTHON" -m pytest -q test/api/test_agent_supervisor_self_hosting_qualification_prerequisites.py &&
+  "$SHQ_PYTHON" scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py \
+    --repo-root . --mode verify-existing \
+    --artifact artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json \
+    --allow-exact-evidence-projection-child --quiet &&
+  { "$SHQ_PYTHON" scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py \
+      --repo-root . --mode require-terminal --quiet && exit 99 || test "$?" -eq 1; } &&
+  "$SHQ_PYTHON" scripts/ops/agent_supervisor/self_hosting_qualification_prerequisites.py \
+    --repo-root . --mode verify-existing \
+    --artifact artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json \
+    --allow-exact-evidence-projection-child --quiet &&
+  test -f artifacts/agent_supervisor/self_hosting_qualification/prerequisite_observation.json
+)
 ```
 
 ```bash
@@ -1076,7 +1389,6 @@ SHQ_RECONCILE_G006=(
   --objective-goal-completion-bundle-index-path "$SHQ_PROJECTION/bundles/index.json"
   --objective-goal-completion-gate-path "$SHQ_GATE"
   --protected-output-path docs/architecture/self_hosting_qualification.objectives.md
-  --protected-output-path docs/architecture/self_hosting_qualification.todo.md
   --protected-output-path "$SHQ_ACTIVE_TODO"
   --protected-output-path "$SHQ_V1_HISTORY_TODO"
   --protected-output-path "$SHQ_V2_HISTORY_TODO"
@@ -1088,6 +1400,7 @@ SHQ_RECONCILE_G006=(
   --protected-output-path "$SHQ_V8_HISTORY_TODO"
   --protected-output-path "$SHQ_V9_HISTORY_TODO"
   --protected-output-path "$SHQ_V10_HISTORY_TODO"
+  --protected-output-path "$SHQ_V11_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
@@ -1146,7 +1459,6 @@ SHQ_RECONCILE_G007=(
   --objective-goal-completion-bundle-index-path "$SHQ_PROJECTION/bundles/index.json"
   --objective-goal-completion-gate-path "$SHQ_GATE"
   --protected-output-path docs/architecture/self_hosting_qualification.objectives.md
-  --protected-output-path docs/architecture/self_hosting_qualification.todo.md
   --protected-output-path "$SHQ_ACTIVE_TODO"
   --protected-output-path "$SHQ_V1_HISTORY_TODO"
   --protected-output-path "$SHQ_V2_HISTORY_TODO"
@@ -1158,6 +1470,7 @@ SHQ_RECONCILE_G007=(
   --protected-output-path "$SHQ_V8_HISTORY_TODO"
   --protected-output-path "$SHQ_V9_HISTORY_TODO"
   --protected-output-path "$SHQ_V10_HISTORY_TODO"
+  --protected-output-path "$SHQ_V11_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
 )
 
@@ -1181,8 +1494,8 @@ admits a prerequisite release or can satisfy `SHQ-G010`.
 ### External `SHQ-G010` admission and two-phase reconciliation
 
 Opening the prerequisite gate is an operator workflow, not an implementation
-task. It begins only after the `SHQ-G006` implementation and `SHQ-G007`
-snapshot tasks are independently merged, validated and reconciled complete.
+task. It begins only after `SHQ-G006A`, `SHQ-G006B`, `SHQ-G006`, and
+`SHQ-G007` are independently merged, validated and reconciled complete.
 First converge the capstone branch and all three gitlinks
 to the ten terminal releases, run the terminal observer, review and commit its
 admission artifact, and require a completely clean recursive source:
@@ -1239,7 +1552,6 @@ SHQ_RECONCILE_G010=(
   --objective-goal-completion-gate-path "$SHQ_GATE"
   --objective-external-completion-receipt-path "$SHQ_EXTERNAL_AUTHORITY"
   --protected-output-path docs/architecture/self_hosting_qualification.objectives.md
-  --protected-output-path docs/architecture/self_hosting_qualification.todo.md
   --protected-output-path "$SHQ_ACTIVE_TODO"
   --protected-output-path "$SHQ_V1_HISTORY_TODO"
   --protected-output-path "$SHQ_V2_HISTORY_TODO"
@@ -1251,6 +1563,7 @@ SHQ_RECONCILE_G010=(
   --protected-output-path "$SHQ_V8_HISTORY_TODO"
   --protected-output-path "$SHQ_V9_HISTORY_TODO"
   --protected-output-path "$SHQ_V10_HISTORY_TODO"
+  --protected-output-path "$SHQ_V11_HISTORY_TODO"
   --protected-output-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json
   --protected-output-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json
@@ -1300,6 +1613,822 @@ an authoritative JSON artifact immutable or versioned.
 Dry-plan before starting:
 
 ```bash
+SHQ_STAGE_GOAL_ID=SHQ-G006A
+SHQ_STAGE_TASK_ID=SHQ-026
+SHQ_STAGE_PREDECESSOR_BINDING=-
+SHQ_STAGE_HEAD=$(git -C "$SHQ_REPO" rev-parse --verify 'HEAD^{commit}')
+SHQ_STAGE_TREE=$(git -C "$SHQ_REPO" rev-parse --verify 'HEAD^{tree}')
+test "$SHQ_STAGE_HEAD" != "$SHQ_V12_MIGRATION_HEAD"
+git -C "$SHQ_REPO" merge-base --is-ancestor \
+  "$SHQ_V12_MIGRATION_HEAD" "$SHQ_STAGE_HEAD"
+test "$(git -C "$SHQ_REPO" symbolic-ref --short HEAD)" = \
+  agent/self-hosting-qualification-v1
+test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
+git -C "$SHQ_REPO" submodule foreach --recursive \
+  'test -z "$(git status --porcelain=v1 --untracked-files=all)"'
+
+# This owner-only record closes the native bundle-manifest HEAD/tree gap only
+# as operator detective/preflight evidence. It is never task completion,
+# verification, release, proof, successor-launch or external authority.
+shq_stage_binding() {
+  ( cd "$SHQ_REPO" && "${SHQ_PROVIDER_ENV[@]}" "$SHQ_PYTHON" - "$@" <<'PY'
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import secrets
+import shlex
+import stat
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+import duckdb
+
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    parse_task_file,
+)
+
+(
+    mode,
+    repo_text,
+    run_text,
+    projection_text,
+    stage_goal_id,
+    stage_task_id,
+    expected_head,
+    expected_tree,
+    migration_head,
+    predecessor_binding_text,
+    expected_implementation_command,
+    expected_max_task_attempts,
+    retry_authorization_text,
+    binding_text,
+) = sys.argv[1:]
+assert mode in {"write", "verify"}
+assert expected_max_task_attempts in {"1", "2"}
+assert sys.flags.optimize == 0
+repo = Path(repo_text).resolve()
+run_root = Path(run_text).resolve()
+projection = (repo / projection_text).resolve()
+manifest_path = run_root / "bundle_lanes.json"
+bundle_index_path = projection / "bundles/index.json"
+operator_dir = run_root / "operator"
+
+protected_paths = [
+    "docs/architecture/self_hosting_qualification.objectives.md",
+    "docs/architecture/self_hosting_qualification.todo.md",
+    "docs/architecture/self_hosting_qualification.v1_history.todo.md",
+    "docs/architecture/self_hosting_qualification.v2_history.todo.md",
+    "docs/architecture/self_hosting_qualification.v3_history.todo.md",
+    "docs/architecture/self_hosting_qualification.v4_history.todo.md",
+    "docs/architecture/self_hosting_qualification.v5_history.todo.md",
+    "docs/architecture/self_hosting_qualification.v6_history.todo.md",
+    "docs/architecture/self_hosting_qualification.v7_history.todo.md",
+    "docs/architecture/self_hosting_qualification.v8_history.todo.md",
+    "docs/architecture/self_hosting_qualification.v9_history.todo.md",
+    "docs/architecture/self_hosting_qualification.v10_history.todo.md",
+    "docs/architecture/self_hosting_qualification.v11_history.todo.md",
+    "docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md",
+    "artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json",
+    "artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json",
+    "artifacts/agent_supervisor/self_hosting_qualification/hidden_evaluator_manifest.json",
+    "config/self_hosting_qualification_policy.json",
+    "config/self_hosting_qualification_trusted_keys.json",
+]
+expected_implementation_argv = [
+    "/usr/local/bin/codex",
+    "exec",
+    "--ephemeral",
+    "--ignore-user-config",
+    "--strict-config",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--color",
+    "never",
+    "-m",
+    "gpt-5.6-terra",
+    "-c",
+    "model_context_window=49152",
+    "-c",
+    'model_reasoning_effort="high"',
+    "-c",
+    "agents.max_threads=1",
+    "-c",
+    "agents.max_depth=0",
+    "-",
+]
+expected_provider_environment = {
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "codex",
+    "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+    "IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW": "49152",
+    "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "high",
+    "IPFS_ACCELERATE_AGENT_CODEX_MAX_THREADS": "1",
+    "IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH": "0",
+    "IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS": "1",
+}
+required_unset_environment = [
+    "PYTHONOPTIMIZE",
+    "IMPLEMENTATION_DAEMON_COMMAND",
+    "IPFS_PROOF_REUSE_STATE_ROOT",
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER",
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER",
+    "IPFS_ACCELERATE_AGENT_PROVIDER_FALLBACK_POLICY",
+    "IPFS_ACCELERATE_AGENT_COPILOT_MODEL",
+    "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER",
+    "IPFS_ACCELERATE_AGENT_COPILOT_EFFORT",
+    "IPFS_ACCELERATE_AGENT_COPILOT_MAX_CONTINUES",
+    "IPFS_ACCELERATE_AGENT_GROK_BIN",
+    "IPFS_ACCELERATE_AGENT_GROK_MODEL",
+    "IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS",
+    "IPFS_ACCELERATE_AGENT_GOOSE_BIN",
+    "IPFS_ACCELERATE_AGENT_GOOSE_MODEL",
+    "IPFS_ACCELERATE_AGENT_GOOSE_MAX_TOKENS",
+    "IPFS_ACCELERATE_AGENT_GOOSE_MAX_TURNS",
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "COPILOT_GITHUB_TOKEN",
+    "GROK_API_KEY",
+]
+assert shlex.split(expected_implementation_command) == expected_implementation_argv
+assert {key: os.environ.get(key) for key in expected_provider_environment} == (
+    expected_provider_environment
+)
+assert all(key not in os.environ for key in required_unset_environment)
+
+def run(*argv: str, check: bool = True) -> subprocess.CompletedProcess[bytes]:
+    result = subprocess.run(argv, cwd=repo, check=False, capture_output=True)
+    if check and result.returncode != 0:
+        raise RuntimeError((argv, result.returncode, result.stdout, result.stderr))
+    return result
+
+def canonical(value: object) -> bytes:
+    return (
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        + "\n"
+    ).encode("utf-8")
+
+def file_evidence(path: Path) -> tuple[bytes, dict[str, object]]:
+    raw = path.read_bytes()
+    parsed = json.loads(raw)
+    return raw, {
+        "path": str(path),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "content_cid": content_identity(parsed),
+    }
+
+def flag_values(command: list[str], flag: str) -> list[str]:
+    values: list[str] = []
+    for index, token in enumerate(command):
+        if token == flag:
+            assert index + 1 < len(command), (flag, command)
+            values.append(command[index + 1])
+    return values
+
+def exact_one(command: list[str], flag: str) -> str:
+    values = flag_values(command, flag)
+    assert len(values) == 1, (flag, values)
+    return values[0]
+
+def ancestor_pids() -> set[int]:
+    observed: set[int] = set()
+    current = os.getpid()
+    while current > 1 and current not in observed:
+        observed.add(current)
+        fields = Path(f"/proc/{current}/stat").read_text(encoding="utf-8").split()
+        current = int(fields[3])
+    return observed
+
+def live_scheduler_pids() -> list[int]:
+    ignored = ancestor_pids()
+    scheduler_tokens = {
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor",
+        "ipfs_accelerate_py.agent_supervisor.merge.leased_lane",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+        "implementation_supervisor_entry.py",
+        "adversarial_assurance_engine_scheduler.py",
+        "multi_supervisor_runner.py",
+    }
+    roots = (
+        str(run_root),
+        str(repo.parents[1]),
+        "ipfs-accelerate-adversarial-assurance-engine",
+        "incremental-proof-sealer",
+        "semantic-compression-governor",
+    )
+    live: list[int] = []
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdigit() or int(proc.name) in ignored:
+            continue
+        try:
+            argv = [
+                item.decode("utf-8", "replace")
+                for item in (proc / "cmdline").read_bytes().split(b"\0")
+                if item
+            ]
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            continue
+        if not argv or not any(root in token for root in roots for token in argv):
+            continue
+        if any(
+            token in scheduler_tokens or Path(token).name in scheduler_tokens
+            for token in argv
+        ):
+            live.append(int(proc.name))
+    return sorted(live)
+
+def common_mutation_locks() -> list[str]:
+    raw = run("git", "rev-parse", "--git-common-dir").stdout.decode().strip()
+    common = Path(raw)
+    if not common.is_absolute():
+        common = (repo / common).resolve()
+    candidates = [
+        common / "implementation-main-merge.lock",
+        common / "agent-checkout-mutation.lock",
+        common / "index.lock",
+        common / "HEAD.lock",
+        common / "config.lock",
+        common / "packed-refs.lock",
+        common / "shallow.lock",
+    ]
+    candidates.extend((common / "refs").rglob("*.lock"))
+    candidates.extend((common / "worktrees").rglob("index.lock"))
+    candidates.extend((common / "worktrees").rglob("HEAD.lock"))
+    return sorted(str(path) for path in set(candidates) if path.exists() or path.is_symlink())
+
+def service_state(unit: str) -> dict[str, object]:
+    result = subprocess.run(
+        [
+            "systemctl",
+            "--user",
+            "show",
+            unit,
+            "--property=LoadState,ActiveState,SubState,UnitFileState,MainPID,ConditionResult",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0 and not result.stderr.strip()
+    values = dict(
+        line.split("=", 1)
+        for line in result.stdout.splitlines()
+        if "=" in line
+    )
+    assert values == {
+        "LoadState": "loaded",
+        "ActiveState": "inactive",
+        "SubState": "dead",
+        "UnitFileState": "disabled",
+        "MainPID": "0",
+        "ConditionResult": "no",
+    }
+    return {"returncode": result.returncode, **values}
+
+def observe(captured_at: str) -> tuple[dict[str, object], bytes]:
+    assert run("git", "symbolic-ref", "--short", "HEAD").stdout.decode().strip() == (
+        "agent/self-hosting-qualification-v1"
+    )
+    assert run("git", "status", "--porcelain=v1", "--untracked-files=all").stdout == b""
+    run(
+        "git",
+        "submodule",
+        "foreach",
+        "--recursive",
+        "--quiet",
+        'test -z "$(git status --porcelain=v1 --untracked-files=all)"',
+    )
+    head = run("git", "rev-parse", "--verify", "HEAD^{commit}").stdout.decode().strip()
+    tree = run("git", "rev-parse", "--verify", "HEAD^{tree}").stdout.decode().strip()
+    assert (head, tree) == (expected_head, expected_tree), ((head, tree), (expected_head, expected_tree))
+
+    recursive_status = run("git", "submodule", "status", "--recursive").stdout
+    recursive_lines = recursive_status.decode("utf-8").splitlines()
+    assert recursive_lines and all(line and line[0] in {" ", "-"} for line in recursive_lines)
+    index_raw, index_evidence = file_evidence(bundle_index_path)
+    manifest_raw, manifest_evidence = file_evidence(manifest_path)
+    manifest = json.loads(manifest_raw)
+    assert manifest.get("started_count") == 0
+    claimable = [lane for lane in manifest.get("lanes", []) if lane.get("claimable") is True]
+    assert len(claimable) == 1, claimable
+    lane = claimable[0]
+    assert lane.get("task_ids") == [stage_task_id], lane.get("task_ids")
+    expected_by_id = lane.get("expected_task_cids_by_id") or {}
+    member_task_cid = str(expected_by_id.get(stage_task_id) or "")
+    task_spec_cid = str(lane.get("task_cid") or "")
+    queue_payload = lane.get("queue_payload") or {}
+    profile_g = queue_payload.get("profile_g") or {}
+    coordination_task_cid = str(profile_g.get("canonical_task_cid") or "")
+    assert member_task_cid.startswith("baguqeera")
+    assert task_spec_cid.startswith("baguqeera")
+    assert coordination_task_cid.startswith("baguqeera")
+    assert str(profile_g.get("task_cid") or "") == task_spec_cid
+    assert str(profile_g.get("task_spec_cid") or "") == task_spec_cid
+    assert str(queue_payload.get("canonical_task_cid") or "") == coordination_task_cid
+
+    tasks = parse_task_file(
+        repo / "docs/architecture/self_hosting_qualification.todo.md",
+        "SHQ-",
+    )
+    selected = [task for task in tasks if task.task_id == stage_task_id]
+    assert len(selected) == 1
+    assert selected[0].metadata.get("goal id") == stage_goal_id
+    assert selected[0].canonical_task_cid == member_task_cid
+
+    expected_predecessor_by_stage = {
+        ("SHQ-G006A", "SHQ-026"): None,
+        ("SHQ-G006B", "SHQ-027"): ("SHQ-G006A", "SHQ-026"),
+        ("SHQ-G006", "SHQ-028"): ("SHQ-G006B", "SHQ-027"),
+        ("SHQ-G007", "SHQ-029"): ("SHQ-G006", "SHQ-028"),
+    }
+    assert (stage_goal_id, stage_task_id) in expected_predecessor_by_stage
+    expected_predecessor = expected_predecessor_by_stage[(stage_goal_id, stage_task_id)]
+    predecessor_claimable = [
+        item
+        for item in manifest.get("lanes", [])
+        if item.get("claimable") is True
+        and expected_predecessor is not None
+        and expected_predecessor[1] in (item.get("task_ids") or [])
+    ]
+    assert predecessor_claimable == []
+    if expected_predecessor is None:
+        assert predecessor_binding_text == "-"
+        assert tuple(selected[0].depends_on) == ()
+        predecessor_lineage: dict[str, object] | None = None
+    else:
+        assert predecessor_binding_text != "-"
+        predecessor_binding_raw_path = Path(predecessor_binding_text)
+        assert not predecessor_binding_raw_path.is_symlink()
+        predecessor_binding_path = predecessor_binding_raw_path.resolve()
+        assert predecessor_binding_path.parent == operator_dir
+        assert predecessor_binding_path.is_file() and not predecessor_binding_path.is_symlink()
+        predecessor_stat = predecessor_binding_path.stat()
+        assert stat.S_IMODE(predecessor_stat.st_mode) == 0o600
+        assert predecessor_stat.st_uid == os.getuid()
+        predecessor_raw = predecessor_binding_path.read_bytes()
+        predecessor_record = json.loads(predecessor_raw)
+        assert canonical(predecessor_record) == predecessor_raw
+        assert predecessor_record.get("schema") == (
+            "ipfs_accelerate_py/agent-supervisor/operator-stage-binding@1"
+        )
+        predecessor_body = dict(predecessor_record)
+        predecessor_binding_id = str(predecessor_body.pop("binding_id"))
+        assert content_identity(predecessor_body) == predecessor_binding_id
+        predecessor_stage = predecessor_record.get("stage") or {}
+        assert predecessor_stage.get("goal_id") == expected_predecessor[0]
+        assert predecessor_stage.get("display_task_id") == expected_predecessor[1]
+        predecessor_member_cid = str(predecessor_stage.get("canonical_task_cid") or "")
+        predecessor_spec_cid = str(predecessor_stage.get("task_spec_cid") or "")
+        predecessor_coordination_cid = str(
+            predecessor_stage.get("coordination_task_cid") or ""
+        )
+        assert predecessor_member_cid.startswith("baguqeera")
+        assert predecessor_spec_cid.startswith("baguqeera")
+        assert predecessor_coordination_cid.startswith("baguqeera")
+        assert predecessor_member_cid != member_task_cid
+        assert predecessor_spec_cid != task_spec_cid
+        assert predecessor_coordination_cid != coordination_task_cid
+        assert tuple(selected[0].depends_on) == (expected_predecessor[1],)
+        predecessor_target = predecessor_record.get("target") or {}
+        predecessor_head = str(predecessor_target.get("head") or "")
+        predecessor_tree = str(predecessor_target.get("tree") or "")
+        assert re.fullmatch(r"[0-9a-f]{40}", predecessor_head)
+        assert re.fullmatch(r"[0-9a-f]{40}", predecessor_tree)
+        assert predecessor_head != head
+        assert predecessor_tree != tree
+        assert run(
+            "git", "merge-base", "--is-ancestor", predecessor_head, head, check=False
+        ).returncode == 0
+        assert run(
+            "git", "merge-base", "--is-ancestor", migration_head, predecessor_head,
+            check=False,
+        ).returncode == 0
+        predecessor_lanes = [
+            item
+            for item in manifest.get("lanes", [])
+            if (item.get("expected_task_cids_by_id") or {}).get(expected_predecessor[1])
+            == predecessor_member_cid
+            or item.get("task_cid") in {predecessor_spec_cid, predecessor_coordination_cid}
+        ]
+        assert predecessor_lanes
+        assert all(item.get("claimable") is not True for item in predecessor_lanes)
+        coordination_path = run_root / "state" / "coordination.duckdb"
+        assert coordination_path.is_file() and not coordination_path.is_symlink()
+        connection = duckdb.connect(str(coordination_path), read_only=True)
+        try:
+            lease_row = connection.execute(
+                "SELECT claim_cid,resolution_cid,attempt,state,release_reason "
+                "FROM leases WHERE task_cid=?",
+                [predecessor_coordination_cid],
+            ).fetchone()
+            receipt_rows = connection.execute(
+                "SELECT receipt_cid,payload_json FROM receipts "
+                "WHERE task_cid=? ORDER BY rowid",
+                [predecessor_coordination_cid],
+            ).fetchall()
+            dependency_rows = connection.execute(
+                "SELECT dependency_task_cid FROM task_dependencies WHERE task_cid=?",
+                [coordination_task_cid],
+            ).fetchall()
+        finally:
+            connection.close()
+        assert lease_row is not None
+        claim_cid, resolution_cid, coordination_attempt, lease_state, release_reason = (
+            lease_row
+        )
+        assert lease_state == "completed"
+        assert release_reason is None
+        assert coordination_attempt >= 1
+        assert len(receipt_rows) >= 1
+        receipt_cid, receipt_json = receipt_rows[-1]
+        receipt = json.loads(receipt_json)
+        assert receipt.get("status") == "succeeded"
+        assert receipt.get("failure_class") == "none"
+        assert receipt.get("output_cid")
+        assert receipt.get("task_cid") == predecessor_coordination_cid
+        assert receipt.get("claim_cid") == claim_cid
+        assert receipt.get("resolution_cid") == resolution_cid
+        assert {row[0] for row in dependency_rows} == {predecessor_coordination_cid}
+        predecessor_lineage = {
+            "binding_path": str(predecessor_binding_path),
+            "binding_id": predecessor_binding_id,
+            "sha256": hashlib.sha256(predecessor_raw).hexdigest(),
+            "content_cid": content_identity(predecessor_record),
+            "stage": {
+                "goal_id": expected_predecessor[0],
+                "display_task_id": expected_predecessor[1],
+                "canonical_task_cid": predecessor_member_cid,
+                "task_spec_cid": predecessor_spec_cid,
+                "coordination_task_cid": predecessor_coordination_cid,
+            },
+            "target": {
+                "head": predecessor_head,
+                "tree": predecessor_tree,
+            },
+            "receipt": {
+                "receipt_cid": receipt_cid,
+                "claim_cid": claim_cid,
+                "resolution_cid": resolution_cid,
+                "attempt": coordination_attempt,
+                "status": "succeeded",
+                "output_cid": receipt.get("output_cid"),
+            },
+            "dependency_task_cids": [predecessor_coordination_cid],
+        }
+
+    command = [str(item) for item in lane.get("command") or []]
+    assert flag_values(command, "--implementation-protected-path") == protected_paths
+    assert exact_one(command, "--implementation-command") == expected_implementation_command
+    assert exact_one(command, "--merge-target-branch") == "agent/self-hosting-qualification-v1"
+    assert exact_one(command, "--max-task-attempts") == expected_max_task_attempts
+    assert flag_values(command, "--worktree-submodule-path") == [
+        "ipfs_datasets_py",
+        "ipfs_kit_py",
+        "ipfs_accelerate_py/mcplusplus",
+    ]
+    worktree_root_raw = Path(exact_one(command, "--worktree-root"))
+    worktree_root = worktree_root_raw.resolve()
+    lane_worktree_raw = Path(str(lane.get("worktree_root") or ""))
+    if not lane_worktree_raw.is_absolute():
+        lane_worktree_raw = repo / lane_worktree_raw
+    assert lane_worktree_raw.resolve() == worktree_root
+    assert worktree_root.is_relative_to(run_root / "worktrees")
+    state_dir = Path(str(lane.get("state_dir") or ""))
+    if not state_dir.is_absolute():
+        state_dir = (repo / state_dir).resolve()
+    state_prefix = str(lane.get("state_prefix") or "")
+    assert state_prefix and state_dir.is_relative_to(run_root)
+    state_path = state_dir / f"{state_prefix}_task_state.json"
+    retry_authorization: dict[str, object] | None = None
+    if expected_max_task_attempts == "1":
+        assert retry_authorization_text == "-"
+        assert not state_path.exists() and not state_path.is_symlink()
+        attempt_policy = {
+            "max_task_attempts": 1,
+            "expected_prior_attempt_count": 0,
+            "expected_next_attempt": 1,
+            "expected_repair_round": 0,
+            "state_path": str(state_path),
+            "state_sha256": None,
+            "typed_transient_retry_authorization": None,
+        }
+    else:
+        retry_authorization_raw_path = Path(retry_authorization_text)
+        assert not retry_authorization_raw_path.is_symlink()
+        retry_authorization_path = retry_authorization_raw_path.resolve()
+        assert retry_authorization_path.parent == operator_dir
+        assert retry_authorization_path.is_file() and not retry_authorization_path.is_symlink()
+        retry_stat = retry_authorization_path.stat()
+        assert stat.S_IMODE(retry_stat.st_mode) == 0o600 and retry_stat.st_uid == os.getuid()
+        retry_raw = retry_authorization_path.read_bytes()
+        retry_authorization = json.loads(retry_raw)
+        assert canonical(retry_authorization) == retry_raw
+        assert retry_authorization.get("schema") == (
+            "ipfs_accelerate_py/agent-supervisor/typed-transient-retry-authorization@1"
+        )
+        assert retry_authorization.get("stage") == {
+            "goal_id": stage_goal_id,
+            "display_task_id": stage_task_id,
+            "canonical_task_cid": member_task_cid,
+            "task_spec_cid": task_spec_cid,
+            "coordination_task_cid": coordination_task_cid,
+        }
+        trigger = retry_authorization.get("trigger") or {}
+        assert set(trigger) == {
+            "kind",
+            "before_evidence",
+            "after_evidence",
+            "failure_evidence",
+            "semantic_or_contract_rejection",
+        }
+        assert trigger.get("kind") in {"setup", "provider", "resource", "process"}
+        assert trigger.get("semantic_or_contract_rejection") is False
+        evidence_records: dict[str, dict[str, object]] = {}
+        for evidence_name in ("before_evidence", "after_evidence", "failure_evidence"):
+            evidence_ref = trigger.get(evidence_name) or {}
+            assert set(evidence_ref) == {"path", "sha256", "content_cid"}
+            evidence_path = Path(str(evidence_ref["path"])).resolve()
+            assert evidence_path.is_relative_to(operator_dir)
+            assert evidence_path.is_file() and not evidence_path.is_symlink()
+            evidence_stat = evidence_path.stat()
+            assert stat.S_IMODE(evidence_stat.st_mode) == 0o600
+            assert evidence_stat.st_uid == os.getuid()
+            evidence_raw = evidence_path.read_bytes()
+            evidence_body = json.loads(evidence_raw)
+            assert canonical(evidence_body) == evidence_raw
+            assert re.fullmatch(r"[0-9a-f]{64}", str(evidence_ref["sha256"]))
+            assert hashlib.sha256(evidence_raw).hexdigest() == evidence_ref["sha256"]
+            assert content_identity(evidence_body) == evidence_ref["content_cid"]
+            evidence_records[evidence_name] = evidence_body
+        assert trigger["before_evidence"]["content_cid"] != trigger["after_evidence"]["content_cid"]
+        assert evidence_records["failure_evidence"].get("trigger_kind") == trigger["kind"]
+        assert evidence_records["failure_evidence"].get("semantic_or_contract_rejection") is False
+        assert retry_authorization.get("authority") == {
+            "attempt_2": True,
+            "task_completion": False,
+            "verification": False,
+            "release": False,
+            "proof": False,
+            "successor_launch": False,
+            "external": False,
+        }
+        assert state_path.is_file() and not state_path.is_symlink()
+        state_raw = state_path.read_bytes()
+        state = json.loads(state_raw)
+        assert state.get("implementation_attempts_by_cid") == {member_task_cid: 1}
+        assert state.get("selection_idle_reason") == (
+            "all_selectable_ready_tasks_reached_max_task_attempts"
+        )
+        assert not str(state.get("selection_idle_reason") or "").startswith(
+            "implementation_retry_deferred:"
+        )
+        assert not (state.get("retry_budget_repair_receipts") or {})
+        assert state.get("implementation_in_progress") is False
+        assert not str(state.get("active_task_id") or "")
+        last_worktree_text = str(state.get("last_implementation_worktree_path") or "")
+        last_worktree_raw = Path(last_worktree_text) if last_worktree_text else None
+        if last_worktree_raw is not None:
+            assert not last_worktree_raw.is_symlink()
+        last_worktree = last_worktree_raw.resolve() if last_worktree_raw is not None else None
+        if last_worktree is not None:
+            assert not last_worktree.exists() and not last_worktree.is_symlink()
+        last_branch = str(state.get("last_implementation_branch") or "")
+        common_raw = run("git", "rev-parse", "--git-common-dir").stdout.decode().strip()
+        common_dir = Path(common_raw)
+        if not common_dir.is_absolute():
+            common_dir = (repo / common_dir).resolve()
+        if last_worktree_text:
+            assert not any(
+                last_worktree_text.encode("utf-8") in path.read_bytes()
+                for path in common_dir.rglob("gitdir")
+                if path.is_file()
+            )
+        if last_branch:
+            assert run(
+                "git", "show-ref", "--verify", "--quiet", f"refs/heads/{last_branch}", check=False
+            ).returncode == 1
+            branch_needle = f"refs/heads/{last_branch}".encode("utf-8")
+            assert not any(
+                branch_needle in path.read_bytes()
+                for path in common_dir.rglob("packed-refs")
+                if path.is_file()
+            )
+        lane_worktree_root = worktree_root
+        assert not any(lane_worktree_root.glob("workspace_*"))
+        assert not any((lane_worktree_root / ".pool-state").glob("*.json"))
+        coordination_path = run_root / "state" / "coordination.duckdb"
+        assert coordination_path.is_file() and not coordination_path.is_symlink()
+        connection = duckdb.connect(str(coordination_path), read_only=True)
+        try:
+            lease_row = connection.execute(
+                "SELECT claim_cid,resolution_cid,attempt,state,release_reason "
+                "FROM leases WHERE task_cid=?",
+                [coordination_task_cid],
+            ).fetchone()
+            receipt_rows = connection.execute(
+                "SELECT receipt_cid,payload_json FROM receipts "
+                "WHERE task_cid=? ORDER BY rowid",
+                [coordination_task_cid],
+            ).fetchall()
+        finally:
+            connection.close()
+        assert lease_row is not None
+        claim_cid, resolution_cid, coordination_attempt, lease_state, release_reason = lease_row
+        assert lease_state == "released" and coordination_attempt == 1
+        assert len(receipt_rows) == 1
+        receipt_cid, receipt_json = receipt_rows[0]
+        receipt = json.loads(receipt_json)
+        prior = retry_authorization.get("prior_coordination") or {}
+        assert prior == {
+            "task_cid": coordination_task_cid,
+            "receipt_cid": receipt_cid,
+            "claim_cid": claim_cid,
+            "resolution_cid": resolution_cid,
+            "attempt": 1,
+            "status": receipt.get("status"),
+            "failure_class": receipt.get("failure_class"),
+            "output_cid": receipt.get("output_cid"),
+        }
+        assert prior["status"] in {"cancelled", "failed"}
+        assert prior["failure_class"] == "retryable" and prior["output_cid"] is None
+        assert release_reason == f"receipt:{prior['status']}:retryable"
+        attempt_policy = {
+            "max_task_attempts": 2,
+            "expected_prior_attempt_count": 1,
+            "expected_next_attempt": 2,
+            "expected_repair_round": 1,
+            "state_path": str(state_path),
+            "state_sha256": hashlib.sha256(state_raw).hexdigest(),
+            "typed_transient_retry_authorization": {
+                "path": str(retry_authorization_path),
+                "sha256": hashlib.sha256(retry_raw).hexdigest(),
+                "content_cid": content_identity(retry_authorization),
+            },
+            "cleanup": {
+                "last_worktree_path": last_worktree_text,
+                "last_branch": last_branch,
+                "workspace_entries": [],
+                "active_pool_records": [],
+                "gitdir_registrations": [],
+                "managed_branch_refs": [],
+            },
+        }
+    envelope = {
+        "implementation_command": expected_implementation_command,
+        "lane_command": command,
+        "max_task_attempts": int(expected_max_task_attempts),
+        "protected_paths": protected_paths,
+    }
+    envelope_bytes = canonical(envelope)
+
+    stop_path = Path("/home/barberb/.local/lib/aae-supervisor-keep/OPERATOR_STOP")
+    stop_stat = stop_path.stat()
+    services = {
+        "service": service_state("aae-adversarial-assurance-engine.service"),
+        "timer": service_state("aae-adversarial-assurance-engine.timer"),
+    }
+    live = live_scheduler_pids()
+    locks = common_mutation_locks()
+    assert stat.S_IMODE(stop_stat.st_mode) == 0o600 and stop_stat.st_uid == os.getuid()
+    assert live == [] and locks == []
+
+    dry_snapshot = operator_dir / f"dry-manifest-{manifest_evidence['sha256']}.json"
+    body: dict[str, object] = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/operator-stage-binding@1",
+        "version": 1,
+        "captured_at": captured_at,
+        "stage": {
+            "goal_id": stage_goal_id,
+            "display_task_id": stage_task_id,
+            "canonical_task_cid": member_task_cid,
+            "task_spec_cid": task_spec_cid,
+            "coordination_task_cid": coordination_task_cid,
+        },
+        "target": {
+            "branch": "agent/self-hosting-qualification-v1",
+            "head": head,
+            "tree": tree,
+        },
+        "recursive_gitlink_status": {
+            "sha256": hashlib.sha256(recursive_status).hexdigest(),
+            "byte_count": len(recursive_status),
+            "uninitialized_paths": [
+                line[42:]
+                for line in recursive_status.decode("utf-8").splitlines()
+                if line.startswith("-")
+            ],
+        },
+        "bundle_index": {**index_evidence, "byte_count": len(index_raw)},
+        "dry_manifest": {
+            **manifest_evidence,
+            "byte_count": len(manifest_raw),
+            "snapshot_path": str(dry_snapshot),
+        },
+        "implementation_envelope": {
+            "sha256": hashlib.sha256(envelope_bytes).hexdigest(),
+            "content_cid": content_identity(envelope),
+            "implementation_command": expected_implementation_command,
+            "implementation_argv": expected_implementation_argv,
+            "lane_command_sha256": hashlib.sha256(canonical(command)).hexdigest(),
+            "lane_command_cid": content_identity(command),
+            "max_task_attempts": int(expected_max_task_attempts),
+            "protected_path_count": len(protected_paths),
+            "worktree_root": str(worktree_root),
+        },
+        "provider_environment": {
+            "required": expected_provider_environment,
+            "unset": required_unset_environment,
+        },
+        "attempt_policy": attempt_policy,
+        "predecessor_lineage": predecessor_lineage,
+        "quiescence": {
+            "repository_clean": True,
+            "recursive_submodules_clean": True,
+            "scheduler_process_pids": live,
+            "common_mutation_locks": locks,
+            "aae_operator_stop_mode": "0600",
+            "aae_units": services,
+        },
+        "authority": {
+            "task_completion": False,
+            "verification": False,
+            "release": False,
+            "proof": False,
+            "successor_launch": False,
+            "external": False,
+        },
+    }
+    return body, manifest_raw
+
+def persist_no_clobber(path: Path, data: bytes, *, allow_identical: bool = False) -> None:
+    if path.exists() or path.is_symlink():
+        assert allow_identical and path.is_file() and path.read_bytes() == data
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600 and path.stat().st_uid == os.getuid()
+        return
+    temp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
+    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
+    try:
+        offset = 0
+        while offset < len(data):
+            written = os.write(fd, data[offset:])
+            assert written > 0
+            offset += written
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    try:
+        os.link(temp, path, follow_symlinks=False)
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        temp.unlink(missing_ok=True)
+
+if mode == "write":
+    operator_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    assert operator_dir.is_dir() and not operator_dir.is_symlink()
+    os.chmod(operator_dir, 0o700)
+    captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    body, dry_manifest_raw = observe(captured_at)
+    dry_snapshot = Path(str(body["dry_manifest"]["snapshot_path"]))
+    persist_no_clobber(dry_snapshot, dry_manifest_raw, allow_identical=True)
+    record = {**body, "binding_id": content_identity(body)}
+    data = canonical(record)
+    binding_path = operator_dir / (
+        f"stage-{stage_task_id}-{body['dry_manifest']['sha256'][:16]}.json"
+    )
+    persist_no_clobber(binding_path, data)
+    assert canonical(json.loads(binding_path.read_bytes())) == data
+    print(binding_path)
+else:
+    binding_raw_path = Path(binding_text)
+    assert not binding_raw_path.is_symlink()
+    binding_path = binding_raw_path.resolve()
+    assert binding_path.parent == operator_dir and binding_path.is_file()
+    assert stat.S_IMODE(binding_path.stat().st_mode) == 0o600 and binding_path.stat().st_uid == os.getuid()
+    raw = binding_path.read_bytes()
+    record = json.loads(raw)
+    assert canonical(record) == raw
+    binding_id = str(record.pop("binding_id"))
+    assert content_identity(record) == binding_id
+    observed, current_manifest_raw = observe(str(record["captured_at"]))
+    assert observed == record
+    snapshot = Path(str(record["dry_manifest"]["snapshot_path"]))
+    assert snapshot.is_file() and not snapshot.is_symlink()
+    assert snapshot.read_bytes() == current_manifest_raw
+    assert hashlib.sha256(current_manifest_raw).hexdigest() == record["dry_manifest"]["sha256"]
+    print(record["stage"]["coordination_task_cid"])
+PY
+  )
+}
+
 test "$(/usr/local/bin/codex --version)" = 'codex-cli 0.147.0'
 test "$(sha256sum /usr/local/lib/node_modules/@openai/codex/bin/codex.js | cut -d' ' -f1)" = \
   134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477
@@ -1312,7 +2441,9 @@ jq -e '.providers.codex_cli.healthy == true and
        .providers.codex_cli.token_budget_remaining > 0' \
   "$SHQ_CAPACITY_PATH"
 
-"$SHQ_PYTHON" -m ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor \
+SHQ_MAX_TASK_ATTEMPTS=1
+SHQ_RETRY_AUTHORIZATION_PATH=-
+SHQ_BUNDLE_ARGS=( \
   --bundle-index-path "$SHQ_REPO/$SHQ_PROJECTION/bundles/index.json" \
   --repo-root "$SHQ_REPO" \
   --state-root "$SHQ_RUN/state" \
@@ -1327,10 +2458,16 @@ jq -e '.providers.codex_cli.healthy == true and
   --implement \
   --implementation-command "$SHQ_IMPLEMENTATION_COMMAND" \
   --max-lanes 1 \
-  --max-task-attempts 5 \
+  --max-task-attempts "$SHQ_MAX_TASK_ATTEMPTS" \
+  --poll-interval 5 \
+  --check-interval 30 \
+  --daemon-interval 45 \
+  --stale-seconds 1200 \
+  --watchdog-startup-grace-seconds 300 \
+  --implementation-timeout 14400 \
+  --max-restarts 8 \
   --merge-target-branch agent/self-hosting-qualification-v1 \
   --implementation-protected-path docs/architecture/self_hosting_qualification.objectives.md \
-  --implementation-protected-path docs/architecture/self_hosting_qualification.todo.md \
   --implementation-protected-path "$SHQ_ACTIVE_TODO" \
   --implementation-protected-path "$SHQ_V1_HISTORY_TODO" \
   --implementation-protected-path "$SHQ_V2_HISTORY_TODO" \
@@ -1342,6 +2479,7 @@ jq -e '.providers.codex_cli.healthy == true and
   --implementation-protected-path "$SHQ_V8_HISTORY_TODO" \
   --implementation-protected-path "$SHQ_V9_HISTORY_TODO" \
   --implementation-protected-path "$SHQ_V10_HISTORY_TODO" \
+  --implementation-protected-path "$SHQ_V11_HISTORY_TODO" \
   --implementation-protected-path docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/prerequisite_release_admission.json \
   --implementation-protected-path artifacts/agent_supervisor/self_hosting_qualification/preregistered_policy.json \
@@ -1350,7 +2488,28 @@ jq -e '.providers.codex_cli.healthy == true and
   --implementation-protected-path config/self_hosting_qualification_trusted_keys.json \
   --worktree-submodule-path ipfs_datasets_py \
   --worktree-submodule-path ipfs_kit_py \
-  --worktree-submodule-path ipfs_accelerate_py/mcplusplus
+  --worktree-submodule-path ipfs_accelerate_py/mcplusplus \
+)
+
+"${SHQ_PROVIDER_ENV[@]}" "$SHQ_PYTHON" -m \
+  ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor \
+  "${SHQ_BUNDLE_ARGS[@]}"
+
+SHQ_STAGE_BINDING_PATH=$(shq_stage_binding write \
+  "$SHQ_REPO" "$SHQ_RUN" "$SHQ_PROJECTION" \
+  "$SHQ_STAGE_GOAL_ID" "$SHQ_STAGE_TASK_ID" \
+  "$SHQ_STAGE_HEAD" "$SHQ_STAGE_TREE" \
+  "$SHQ_V12_MIGRATION_HEAD" "$SHQ_STAGE_PREDECESSOR_BINDING" \
+  "$SHQ_IMPLEMENTATION_COMMAND" "$SHQ_MAX_TASK_ATTEMPTS" \
+  "$SHQ_RETRY_AUTHORIZATION_PATH" -)
+test "$(stat -c '%a' "$SHQ_STAGE_BINDING_PATH")" = 600
+SHQ_STAGE_COORDINATION_TASK_CID=$(shq_stage_binding verify \
+  "$SHQ_REPO" "$SHQ_RUN" "$SHQ_PROJECTION" \
+  "$SHQ_STAGE_GOAL_ID" "$SHQ_STAGE_TASK_ID" \
+  "$SHQ_STAGE_HEAD" "$SHQ_STAGE_TREE" \
+  "$SHQ_V12_MIGRATION_HEAD" "$SHQ_STAGE_PREDECESSOR_BINDING" \
+  "$SHQ_IMPLEMENTATION_COMMAND" "$SHQ_MAX_TASK_ATTEMPTS" \
+  "$SHQ_RETRY_AUTHORIZATION_PATH" "$SHQ_STAGE_BINDING_PATH")
 ```
 
 Protected-path matching is exact, not recursive. The commands therefore name
@@ -1360,21 +2519,651 @@ repository and the implementation command; the operator provisions it with
 mode `0600` only for the final kit signing port.
 
 `--implement` compiles the exact lane command during this dry plan; the absence
-of `--start` guarantees that no process is launched. After inspecting the
-manifest, conflicts, exact merge target, protected arguments, finite attempt
-limit, provider telemetry and resource claims, start with the same bindings
-plus:
+of `--start` guarantees that no process is launched. The lane-affecting timing,
+watchdog, implementation-timeout and restart arguments are already in
+`SHQ_BUNDLE_ARGS`, so the dry and live lane commands are byte-for-byte equal.
+Only `--start --once` changes at admission. Run the bootstrap, projection,
+dry-plan, binding, launch and post-start checks in this same strict
+`set -euo pipefail` shell. Immediately before the live command, rederive every
+binding from the still-clean checkout and unchanged dry manifest; then launch
+exactly one reconciliation cycle:
 
-```text
---start
---poll-interval 5
---check-interval 30
---daemon-interval 45
---stale-seconds 1200
---watchdog-startup-grace-seconds 300
---implementation-timeout 14400
---max-restarts 8
+```bash
+test -z "$(git -C "$SHQ_REPO" status --porcelain=v1 --untracked-files=all)"
+test "$(git -C "$SHQ_REPO" rev-parse --verify 'HEAD^{commit}')" = \
+  "$SHQ_STAGE_HEAD"
+test "$(git -C "$SHQ_REPO" rev-parse --verify 'HEAD^{tree}')" = \
+  "$SHQ_STAGE_TREE"
+SHQ_STAGE_COORDINATION_TASK_CID=$(shq_stage_binding verify \
+  "$SHQ_REPO" "$SHQ_RUN" "$SHQ_PROJECTION" \
+  "$SHQ_STAGE_GOAL_ID" "$SHQ_STAGE_TASK_ID" \
+  "$SHQ_STAGE_HEAD" "$SHQ_STAGE_TREE" \
+  "$SHQ_V12_MIGRATION_HEAD" "$SHQ_STAGE_PREDECESSOR_BINDING" \
+  "$SHQ_IMPLEMENTATION_COMMAND" "$SHQ_MAX_TASK_ATTEMPTS" \
+  "$SHQ_RETRY_AUTHORIZATION_PATH" "$SHQ_STAGE_BINDING_PATH")
+
+"${SHQ_PROVIDER_ENV[@]}" "$SHQ_PYTHON" -m \
+  ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor \
+  "${SHQ_BUNDLE_ARGS[@]}" --start --once
 ```
+
+The dynamic manifest's `launched_task_cids` names the Profile-G coordination
+identity, not the immutable TaskSpec CID or the member task CID. Verify all
+three identities and the native worktree-pool `base_commit` before allowing
+the implementation to continue into validation or merge:
+
+```bash
+shq_verify_started_stage() {
+  ( cd "$SHQ_REPO" && "${SHQ_PROVIDER_ENV[@]}" "$SHQ_PYTHON" - "$@" <<'PY'
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import secrets
+import shlex
+import stat
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
+
+repo = Path(sys.argv[1]).resolve()
+run_root = Path(sys.argv[2]).resolve()
+binding_raw_path = Path(sys.argv[3])
+assert not binding_raw_path.is_symlink()
+binding_path = binding_raw_path.resolve()
+expected_coordination_cid = sys.argv[4]
+assert sys.flags.optimize == 0
+
+def canonical(value: object) -> bytes:
+    return (
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        + "\n"
+    ).encode("utf-8")
+
+def persist_no_clobber(path: Path, data: bytes) -> None:
+    assert not path.exists() and not path.is_symlink()
+    temp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
+    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
+    try:
+        offset = 0
+        while offset < len(data):
+            written = os.write(fd, data[offset:])
+            assert written > 0
+            offset += written
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    try:
+        os.link(temp, path, follow_symlinks=False)
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        temp.unlink(missing_ok=True)
+
+def load_regular_json(path: Path) -> tuple[bytes, dict[str, object]]:
+    assert path.is_file() and not path.is_symlink()
+    raw = path.read_bytes()
+    value = json.loads(raw)
+    assert isinstance(value, dict)
+    return raw, value
+
+def process_identity(pid: int) -> dict[str, object]:
+    stat_raw = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    fields = stat_raw.rsplit(")", 1)[1].split()
+    argv = [
+        item.decode("utf-8", "replace")
+        for item in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+        if item
+    ]
+    return {
+        "pid": pid,
+        "ppid": int(fields[1]),
+        "start_time_ticks": int(fields[19]),
+        "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip(),
+        "argv": argv,
+    }
+
+def ancestor_pids(pid: int) -> set[int]:
+    observed: set[int] = set()
+    while pid > 1 and pid not in observed and Path(f"/proc/{pid}/stat").is_file():
+        observed.add(pid)
+        pid = int(process_identity(pid)["ppid"])
+    return observed
+
+binding_raw, binding = load_regular_json(binding_path)
+assert canonical(binding) == binding_raw
+binding_body = dict(binding)
+binding_id = str(binding_body.pop("binding_id"))
+assert content_identity(binding_body) == binding_id
+stage = binding["stage"]
+assert expected_coordination_cid == stage["coordination_task_cid"]
+
+manifest_path = run_root / "bundle_lanes.json"
+manifest_raw, manifest = load_regular_json(manifest_path)
+assert manifest.get("schema") == "ipfs_accelerate_py.agent_supervisor.dynamic_bundle_scheduler@1"
+assert manifest.get("authoritative") is True
+assert manifest.get("started_count") == 1
+assert manifest.get("running_count") == 1
+assert (manifest.get("counts") or {}).get("active") == 1
+assert manifest.get("launched_task_cids") == [expected_coordination_cid]
+assert len(manifest.get("lanes", [])) == 1
+lanes = [
+    lane
+    for lane in manifest.get("lanes", [])
+    if lane.get("task_cid") == expected_coordination_cid
+]
+assert len(lanes) == 1
+lane = lanes[0]
+assert lane.get("state") == "running"
+lane_pid = int(lane.get("pid") or 0)
+assert lane_pid > 1 and Path(f"/proc/{lane_pid}").is_dir()
+lane_process = process_identity(lane_pid)
+assert "ipfs_accelerate_py.agent_supervisor.merge.leased_lane" in lane_process["argv"]
+assert str(run_root / "state" / "coordination.duckdb") in lane_process["argv"]
+assert expected_coordination_cid in "\0".join(lane_process["argv"])
+lane_environment = dict(
+    item.decode("utf-8", "replace").split("=", 1)
+    for item in Path(f"/proc/{lane_pid}/environ").read_bytes().split(b"\0")
+    if b"=" in item
+)
+assert {
+    key: lane_environment.get(key)
+    for key in binding["provider_environment"]["required"]
+} == binding["provider_environment"]["required"]
+assert all(
+    key not in lane_environment for key in binding["provider_environment"]["unset"]
+)
+assert lane.get("task_ids") == [stage["display_task_id"]]
+assert lane.get("expected_task_cids_by_id") == {
+    stage["display_task_id"]: stage["canonical_task_cid"]
+}
+
+dry_snapshot = Path(binding["dry_manifest"]["snapshot_path"])
+dry_raw, dry = load_regular_json(dry_snapshot)
+assert hashlib.sha256(dry_raw).hexdigest() == binding["dry_manifest"]["sha256"]
+dry_lanes = [
+    item
+    for item in dry.get("lanes", [])
+    if item.get("expected_task_cids_by_id")
+    == {stage["display_task_id"]: stage["canonical_task_cid"]}
+]
+assert len(dry_lanes) == 1
+dry_lane = dry_lanes[0]
+assert dry_lane.get("task_cid") == stage["task_spec_cid"]
+assert lane.get("command") == dry_lane.get("command")
+assert hashlib.sha256(canonical(lane["command"])).hexdigest() == (
+    binding["implementation_envelope"]["lane_command_sha256"]
+)
+assert content_identity(lane["command"]) == (
+    binding["implementation_envelope"]["lane_command_cid"]
+)
+
+worktree_root = Path(binding["implementation_envelope"]["worktree_root"]).resolve()
+state_dir = Path(str(lane.get("state_dir") or ""))
+if not state_dir.is_absolute():
+    state_dir = (repo / state_dir).resolve()
+state_prefix = str(lane.get("state_prefix") or "")
+portal_state_path = state_dir / f"{state_prefix}_task_state.json"
+events_path = state_dir / f"{state_prefix}_events.jsonl"
+deadline = time.monotonic() + 300.0
+while True:
+    pool_records: list[tuple[Path, bytes, dict[str, object]]] = []
+    for path in sorted((worktree_root / ".pool-state").glob("*.json")):
+        raw, value = load_regular_json(path)
+        if value.get("state") in {"initializing", "leased"}:
+            pool_records.append((path, raw, value))
+    matching_events: list[dict[str, object]] = []
+    events_raw = b""
+    if events_path.is_file() and not events_path.is_symlink():
+        try:
+            events_raw = events_path.read_bytes()
+            events = [json.loads(line) for line in events_raw.splitlines() if line.strip()]
+            matching_events = [
+                event
+                for event in events
+                if event.get("type") == "implementation_started"
+                and event.get("task_id") == stage["display_task_id"]
+                and event.get("attempt") == binding["attempt_policy"]["expected_next_attempt"]
+            ]
+        except json.JSONDecodeError:
+            matching_events = []
+    if len(pool_records) == 1 and portal_state_path.is_file() and len(matching_events) == 1:
+        portal_raw, portal = load_regular_json(portal_state_path)
+        if (
+            pool_records[0][2].get("state") == "leased"
+            and portal.get("implementation_in_progress") is True
+            and portal.get("active_task_id") == stage["display_task_id"]
+        ):
+            break
+    if time.monotonic() >= deadline:
+        raise RuntimeError("timed out before exact stage worktree/base binding")
+    time.sleep(1.0)
+
+pool_path, pool_raw, pool = pool_records[0]
+implementation_started = matching_events[0]
+assert pool.get("schema") == "agent-supervisor-worktree-pool-v1"
+assert pool.get("lease_token") == pool_path.stem
+assert (pool_path.with_suffix(".lock")).is_file()
+assert not (pool_path.with_suffix(".lock")).is_symlink()
+assert pool.get("base_commit") == binding["target"]["head"]
+assert pool.get("repo_root") == str(repo)
+lease_pid = int(pool.get("lease_pid") or 0)
+assert lease_pid > 1 and Path(f"/proc/{lease_pid}").is_dir()
+lease_process = process_identity(lease_pid)
+assert lane_pid in ancestor_pids(lease_pid)
+lease_argv = [
+    item.decode("utf-8", "replace")
+    for item in Path(f"/proc/{lease_pid}/cmdline").read_bytes().split(b"\0")
+    if item
+]
+assert "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon" in lease_argv
+assert str(state_dir) in lease_argv
+
+workspace_raw = Path(str(pool.get("path") or ""))
+assert not workspace_raw.is_symlink()
+workspace = workspace_raw.resolve()
+assert workspace.is_dir()
+assert workspace.is_relative_to(worktree_root)
+assert workspace.parent == worktree_root
+assert portal.get("active_task_cid") == stage["canonical_task_cid"]
+assert portal.get("active_attempt") == binding["attempt_policy"]["expected_next_attempt"]
+assert Path(str(portal.get("active_worktree_path") or "")).resolve() == workspace
+assert portal.get("active_branch") == pool.get("branch")
+assert implementation_started.get("command") == shlex.split(
+    binding["implementation_envelope"]["implementation_command"]
+)
+assert implementation_started.get("worktree_path") == str(workspace)
+assert implementation_started.get("branch") == pool.get("branch")
+assert implementation_started.get("baseline_ref") == binding["target"]["head"]
+assert (implementation_started.get("workspace_setup") or {}).get("base_commit") == (
+    binding["target"]["head"]
+)
+assert str(implementation_started.get("event_id") or "").startswith("baguqeera")
+assert subprocess.run(
+    ["git", "-C", str(workspace), "rev-parse", "--verify", "HEAD^{commit}"],
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.strip()
+assert subprocess.run(
+    ["git", "-C", str(workspace), "rev-parse", "--verify", f"{pool['base_commit']}^{{tree}}"],
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.strip() == binding["target"]["tree"]
+assert subprocess.run(
+    ["git", "-C", str(workspace), "merge-base", "--is-ancestor", pool["base_commit"], "HEAD"],
+    check=False,
+).returncode == 0
+assert subprocess.run(
+    ["git", "-C", str(repo), "rev-parse", "--verify", "HEAD^{commit}"],
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.strip() == binding["target"]["head"]
+
+body = {
+    "schema": "ipfs_accelerate_py/agent-supervisor/operator-stage-start-verification@1",
+    "binding_id": binding_id,
+    "stage": stage,
+    "target": binding["target"],
+    "live_manifest": {
+        "path": str(manifest_path),
+        "sha256": hashlib.sha256(manifest_raw).hexdigest(),
+        "content_cid": content_identity(manifest),
+        "lane_process": lane_process,
+    },
+    "pool_state": {
+        "path": str(pool_path),
+        "sha256": hashlib.sha256(pool_raw).hexdigest(),
+        "base_commit": pool["base_commit"],
+        "lease_pid": lease_pid,
+        "lease_process": lease_process,
+        "workspace": str(workspace),
+    },
+    "portal_state": {
+        "path": str(portal_state_path),
+        "sha256": hashlib.sha256(portal_raw).hexdigest(),
+        "active_attempt": portal["active_attempt"],
+        "canonical_task_cid": portal["active_task_cid"],
+    },
+    "implementation_started": {
+        "events_path": str(events_path),
+        "events_sha256": hashlib.sha256(events_raw).hexdigest(),
+        "event_id": implementation_started["event_id"],
+        "command": implementation_started["command"],
+        "baseline_ref": implementation_started["baseline_ref"],
+        "worktree_path": implementation_started["worktree_path"],
+        "branch": implementation_started["branch"],
+        "workspace_setup_base_commit": implementation_started["workspace_setup"][
+            "base_commit"
+        ],
+    },
+    "authority": {
+        "task_completion": False,
+        "verification": False,
+        "release": False,
+        "proof": False,
+        "successor_launch": False,
+        "external": False,
+    },
+}
+record = {**body, "verification_id": content_identity(body)}
+data = canonical(record)
+receipt_path = binding_path.parent / (
+    f"stage-start-{stage['display_task_id']}-{hashlib.sha256(binding_id.encode()).hexdigest()[:16]}.json"
+)
+persist_no_clobber(receipt_path, data)
+assert stat.S_IMODE(receipt_path.stat().st_mode) == 0o600
+assert receipt_path.stat().st_uid == os.getuid()
+assert canonical(json.loads(receipt_path.read_bytes())) == data
+print(receipt_path)
+PY
+  )
+}
+
+shq_cancel_mismatched_stage() {
+  ( cd "$SHQ_REPO" && "${SHQ_PROVIDER_ENV[@]}" "$SHQ_PYTHON" - "$@" <<'PY'
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import secrets
+import signal
+import stat
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+import duckdb
+
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
+
+repo = Path(sys.argv[1]).resolve()
+run_root = Path(sys.argv[2]).resolve()
+binding_raw_path = Path(sys.argv[3])
+expected_coordination_cid = sys.argv[4]
+assert not binding_raw_path.is_symlink()
+binding_path = binding_raw_path.resolve()
+assert sys.flags.optimize == 0
+
+def canonical(value: object) -> bytes:
+    return (
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        + "\n"
+    ).encode("utf-8")
+
+def persist_no_clobber(path: Path, data: bytes) -> None:
+    assert not path.exists() and not path.is_symlink()
+    temp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
+    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
+    try:
+        offset = 0
+        while offset < len(data):
+            written = os.write(fd, data[offset:])
+            assert written > 0
+            offset += written
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    try:
+        os.link(temp, path, follow_symlinks=False)
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        temp.unlink(missing_ok=True)
+
+def load_regular_json(path: Path) -> tuple[bytes, dict[str, object]]:
+    assert path.is_file() and not path.is_symlink()
+    raw = path.read_bytes()
+    value = json.loads(raw)
+    assert isinstance(value, dict)
+    return raw, value
+
+def process_identity(pid: int) -> dict[str, object] | None:
+    stat_path = Path(f"/proc/{pid}/stat")
+    cmdline_path = Path(f"/proc/{pid}/cmdline")
+    if not stat_path.is_file() or not cmdline_path.is_file():
+        return None
+    try:
+        stat_raw = stat_path.read_text(encoding="utf-8")
+        argv = [
+            item.decode("utf-8", "replace")
+            for item in cmdline_path.read_bytes().split(b"\0")
+            if item
+        ]
+    except (FileNotFoundError, ProcessLookupError, PermissionError, OSError):
+        return None
+    fields = stat_raw.rsplit(")", 1)[1].split()
+    return {
+        "pid": pid,
+        "ppid": int(fields[1]),
+        "start_time_ticks": int(fields[19]),
+        "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip(),
+        "argv": argv,
+    }
+
+def same_birth(current: dict[str, object] | None, expected: dict[str, object]) -> bool:
+    return current is not None and current == {
+        "pid": expected["pid"],
+        "ppid": expected["ppid"],
+        "start_time_ticks": expected["start_time_ticks"],
+        "boot_id": expected["boot_id"],
+        "argv": expected["argv"],
+    }
+
+def send_exact(pid: int, expected: dict[str, object], signum: int) -> str:
+    current = process_identity(pid)
+    if current is None:
+        return "absent"
+    if not same_birth(current, expected):
+        return "identity_changed"
+    os.kill(pid, signum)
+    return f"sent:{signum}"
+
+binding_raw, binding = load_regular_json(binding_path)
+assert canonical(binding) == binding_raw
+binding_body = dict(binding)
+binding_id = str(binding_body.pop("binding_id"))
+assert content_identity(binding_body) == binding_id
+stage = binding["stage"]
+assert expected_coordination_cid == stage["coordination_task_cid"]
+
+manifest_path = run_root / "bundle_lanes.json"
+manifest_raw, manifest = load_regular_json(manifest_path)
+lanes = [
+    lane
+    for lane in manifest.get("lanes", [])
+    if lane.get("task_cid") == expected_coordination_cid
+]
+lane = lanes[0] if len(lanes) == 1 else None
+lane_pid = int((lane or {}).get("pid") or 0)
+observed_identity = process_identity(lane_pid) if lane_pid > 1 else None
+signals: list[str] = []
+if observed_identity is not None:
+    assert "ipfs_accelerate_py.agent_supervisor.merge.leased_lane" in observed_identity["argv"]
+    assert str(run_root / "state" / "coordination.duckdb") in observed_identity["argv"]
+    assert expected_coordination_cid in "\0".join(observed_identity["argv"])
+    signals.append(send_exact(lane_pid, observed_identity, signal.SIGTERM))
+    deadline = time.monotonic() + 30.0
+    while time.monotonic() < deadline and same_birth(process_identity(lane_pid), observed_identity):
+        time.sleep(0.2)
+    if same_birth(process_identity(lane_pid), observed_identity):
+        signals.append(send_exact(lane_pid, observed_identity, signal.SIGKILL))
+        kill_deadline = time.monotonic() + 10.0
+        while time.monotonic() < kill_deadline and same_birth(
+            process_identity(lane_pid), observed_identity
+        ):
+            time.sleep(0.1)
+    assert not same_birth(process_identity(lane_pid), observed_identity)
+
+current_head = subprocess.run(
+    ["git", "-C", str(repo), "rev-parse", "--verify", "HEAD^{commit}"],
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.strip()
+current_tree = subprocess.run(
+    ["git", "-C", str(repo), "rev-parse", "--verify", "HEAD^{tree}"],
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.strip()
+assert current_head == binding["target"]["head"]
+assert current_tree == binding["target"]["tree"]
+
+coordination_path = run_root / "state" / "coordination.duckdb"
+lease_state = None
+release_reason = None
+receipt_status = None
+receipt_cid = None
+output_cid = None
+if coordination_path.is_file() and not coordination_path.is_symlink():
+    connection = duckdb.connect(str(coordination_path), read_only=True)
+    try:
+        lease_row = connection.execute(
+            "SELECT state,release_reason FROM leases WHERE task_cid=?",
+            [expected_coordination_cid],
+        ).fetchone()
+        receipt_rows = connection.execute(
+            "SELECT receipt_cid,payload_json FROM receipts "
+            "WHERE task_cid=? ORDER BY rowid",
+            [expected_coordination_cid],
+        ).fetchall()
+    finally:
+        connection.close()
+    if lease_row is not None:
+        lease_state, release_reason = lease_row
+    if receipt_rows:
+        receipt_cid, receipt_json = receipt_rows[-1]
+        receipt = json.loads(receipt_json)
+        receipt_status = receipt.get("status")
+        output_cid = receipt.get("output_cid")
+assert receipt_status != "succeeded"
+assert output_cid is None
+assert lease_state != "completed"
+if lease_state is not None:
+    assert lease_state in {"released", "leased", "accepted"}
+    if lease_state == "released":
+        assert receipt_status in {None, "cancelled", "failed"}
+        if receipt_status is not None:
+            assert str(release_reason or "").startswith(f"receipt:{receipt_status}:retryable")
+
+body = {
+    "schema": "ipfs_accelerate_py/agent-supervisor/operator-stage-mismatch-cancellation@1",
+    "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "binding_id": binding_id,
+    "stage": stage,
+    "target": binding["target"],
+    "live_lane": {
+        "present": lane is not None,
+        "pid": lane_pid or None,
+        "process": observed_identity,
+        "signals": signals,
+        "alive_after_signals": same_birth(process_identity(lane_pid), observed_identity)
+        if observed_identity is not None
+        else False,
+    },
+    "coordination": {
+        "task_cid": expected_coordination_cid,
+        "lease_state": lease_state,
+        "release_reason": release_reason,
+        "receipt_cid": receipt_cid,
+        "receipt_status": receipt_status,
+        "output_cid": output_cid,
+    },
+    "authority": {
+        "task_completion": False,
+        "verification": False,
+        "release": False,
+        "proof": False,
+        "successor_launch": False,
+        "external": False,
+        "attempt_2": False,
+    },
+}
+record = {**body, "cancellation_id": content_identity(body)}
+data = canonical(record)
+receipt_path = binding_path.parent / (
+    f"stage-cancel-{stage['display_task_id']}-{hashlib.sha256(binding_id.encode()).hexdigest()[:16]}.json"
+)
+persist_no_clobber(receipt_path, data)
+assert stat.S_IMODE(receipt_path.stat().st_mode) == 0o600
+assert receipt_path.stat().st_uid == os.getuid()
+assert canonical(json.loads(receipt_path.read_bytes())) == data
+print(receipt_path)
+PY
+  )
+}
+
+if ! SHQ_STAGE_START_VERIFICATION=$(shq_verify_started_stage \
+  "$SHQ_REPO" "$SHQ_RUN" "$SHQ_STAGE_BINDING_PATH" \
+  "$SHQ_STAGE_COORDINATION_TASK_CID"); then
+  SHQ_STAGE_MISMATCH_CANCELLATION=$(shq_cancel_mismatched_stage \
+    "$SHQ_REPO" "$SHQ_RUN" "$SHQ_STAGE_BINDING_PATH" \
+    "$SHQ_STAGE_COORDINATION_TASK_CID")
+  test "$(stat -c '%a' "$SHQ_STAGE_MISMATCH_CANCELLATION")" = 600
+  exit 1
+fi
+test "$(stat -c '%a' "$SHQ_STAGE_START_VERIFICATION")" = 600
+```
+
+Any failed pre-start or post-start assertion is a hard boundary. The
+`if ! shq_verify_started_stage` wrapper always invokes
+`shq_cancel_mismatched_stage` before exiting: that helper binds the exact live
+lane PID, coordination CID, run root and process birth identity, sends
+`SIGTERM` then `SIGKILL` only to that birth identity, refuses a succeeded
+receipt or target-branch mutation, and writes an owner-only
+`operator-stage-mismatch-cancellation@1` record. The operator records start
+verification and mismatch cancellation only as detective evidence; neither
+grants completion, verification, release, proof, successor-launch or external
+authority.
+
+The command above is the only initial launch and terminates through `--once`.
+After its detached lane has durably succeeded and merged cleanly, the operator
+must repeat the no-start dry plan, require the completed predecessor to be
+receipt-backed and nonclaimable, require exactly its direct successor to be the
+sole claimable lane, and then run the same `--start --once` envelope. Repeat
+that successor-admission gate serially for G006B, G006, and G007; never run a
+persistent outer scheduler, and restore `--max-task-attempts 1` for every new
+successor canonical task. If and only if the typed-transient attempt-2 gate
+above passes after a failed stage is fully quiescent, the operator may instead
+repeat the identical dry plan and identical one-shot invocation for that same
+task with the sole policy change `--max-task-attempts 1` →
+`--max-task-attempts 2`. This exposes exactly attempt 2/repair-round 1 for the
+same frozen task input. A semantic/contract rejection, attempt exhaustion,
+changed source/envelope, missing quiescence, or any other failure forbids that
+same-task rerun and requires a reviewed migration.
+
+For a typed-transient attempt 2 only, set `SHQ_MAX_TASK_ATTEMPTS=2` and point
+`SHQ_RETRY_AUTHORIZATION_PATH` at an owner-only canonical mode-`0600`
+`typed-transient-retry-authorization@1` record. That record is the sole
+operator adjudication authority for the retry: it binds the exact member,
+TaskSpec and coordination CIDs, the actual released/null-output receipt, and
+three canonical evidence records for the failed trigger, its before state and
+its distinct corrected after state. Its trigger kind is exactly one of setup,
+provider, resource or process; all authority flags except `attempt_2` are
+false. The helper independently rechecks the canonical attempt count and idle
+reason, absence of retry-budget repair, released coordination, empty managed
+worktree/pool state, absent worktree registration/ref and unchanged
+HEAD/tree/envelope. A label or unbound prose assertion is insufficient.
 
 Launch and dry-plan with an explicitly cleared provider environment and these
 positive bindings: `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=codex`,
@@ -1405,7 +3194,7 @@ worktree, made no model call, incurred no model billing and produced no task
 completion evidence; coordination released attempt/fence 1/1 as
 `cancelled:retryable` before this corrected retry.
 
-The current SHQ-023/024/025 planning records do not declare a provider route or a
+The fresh SHQ-026/027/028/029 planning records do not declare a provider route or a
 nonzero provider resource estimate, so bundle admission does not bind the
 explicit Codex command to that telemetry. For this bootstrap, the `jq` check
 above and the live `implementation_started.command` comparison are operator
@@ -1418,8 +3207,10 @@ qualification model-route evidence.
 
 The current supervisor constrains edits, not reads: its native Landlock policy
 does not prevent a provider from reading other host paths. The content-addressed
-G006 task therefore forbids such reads, uses a repo-relative exact rescue-commit
-reference, disables subagents, and is actively monitored. Stop the scheduler
+four bounded-v12 tasks therefore forbid such reads, use only their current
+clean launch checkout and declared submodules, disable subagents, and are
+actively monitored. No rescue-commit or prior-attempt revision is readable.
+Stop the scheduler
 wrapper if the implementation event differs from the pinned argv or any child
 starts a command whose resolved arguments leave the disposable worktree. Do not
 represent this detective boundary as hard provider sandboxing or qualification
@@ -1429,13 +3220,15 @@ Do not pass `--allow-missing-provider-telemetry`. Missing or stale telemetry is
 valid backpressure. Do not enable objective refinement, codebase refill or a
 second one-shot supervisor against a live lane.
 
-The scoped bootstrap scan intentionally produces only `SHQ-G005A`, `SHQ-G006`,
-and `SHQ-G007`, in distinct bundle keys with G006 dependent on G005A and G007
-dependent on G006. After a
-validated external receipt admits `SHQ-G010`, rerun the daemon without
-`--scope-goal-id` and with `--surplus-findings-per-goal 1`; retain targeted
-source exclusions only for genuinely unrelated/vendored trees. This preserves
-one coherent generated task per leaf goal and avoids overlapping surplus tasks.
+The scoped bootstrap scan intentionally produces only `SHQ-G006A`,
+`SHQ-G006B`, `SHQ-G006`, and `SHQ-G007`, in distinct bundle keys with the
+exact dependency chain G006A→G006B→G006→G007. G005A remains outside scope and
+no G005A/SHQ-023 assumed-completion flag is present. Do not perform the prior
+unscoped rerun after G010 while G005A is blocked; downstream projection is
+deferred until formal operator reconciliation explicitly reopens and then
+verifies G005A. Any later reviewed unscoped invocation retains
+`--surplus-findings-per-goal 1` and targeted source exclusions only for
+genuinely unrelated/vendored trees.
 
 ## 18. Monitoring and anti-stall runbook
 
@@ -1485,7 +3278,9 @@ Intervention order:
    authorized. Never edit todo status, receipts, strategy JSON, keys or the
    coordination database by hand.
 
-The scheduler is intentionally persistent after queue drain. An empty queue with
+The later post-G010 qualification scheduler is intentionally persistent after
+queue drain; this does not apply to the bounded-v12 G006A→G007 one-shot chain.
+An empty queue with
 an open external gate is `waiting_external_admission`, not a stall. Upstream
 supervisors are monitored separately; when all are terminal, an operator creates
 and validates the external receipt, reconciles `SHQ-G010`, reruns the objective
