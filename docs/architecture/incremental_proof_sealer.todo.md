@@ -1686,7 +1686,7 @@ Global invariants for every task:
 
 ## IPS-053 Execute the benchmark and persist provenance-rich result artifacts
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
