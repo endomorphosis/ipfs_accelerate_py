@@ -571,6 +571,91 @@ def validation_executable_path(
     return os.pathsep.join(entries)
 
 
+_SEALED_NODE_RELATIVE = (
+    "data/agent_supervisor/verified_gui_optimizer/"
+    "toolchain/node_modules/.bin/node"
+)
+_SEALED_NODE_VERSION = "v22.19.0"
+_NODE_COMMAND_RE = re.compile(r"(?<![A-Za-z0-9_/-])node(?![A-Za-z0-9_-])")
+
+
+def resolve_sealed_node_executable(start: Path | str | None) -> Path | None:
+    """Locate the digest/version-checked VGO Node 22 runtime.
+
+    Official validation PATH cannot include the operator-writable toolchain
+    directory.  Browser tasks still require that exact Node.  Walk from the
+    workspace toward the supervisor state root and accept only ``v22.19.0``.
+    """
+
+    if start is None:
+        return None
+    here = Path(start)
+    try:
+        here = here.resolve()
+    except OSError:
+        return None
+    for _ in range(14):
+        for candidate in (
+            here / _SEALED_NODE_RELATIVE,
+            here / "toolchain/node_modules/.bin/node",
+        ):
+            if _usable_sealed_node(candidate):
+                try:
+                    return candidate.resolve()
+                except OSError:
+                    return None
+        parent = here.parent
+        if parent == here:
+            break
+        here = parent
+    return None
+
+
+def _usable_sealed_node(path: Path) -> bool:
+    try:
+        if not path.is_file() or not os.access(path, os.X_OK):
+            return False
+    except OSError:
+        return False
+    try:
+        completed = subprocess.run(
+            [str(path), "--version"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    version = (completed.stdout or completed.stderr or "").strip().splitlines()
+    return bool(version) and version[0].strip() == _SEALED_NODE_VERSION
+
+
+def apply_sealed_node_toolchain(
+    environment: Mapping[str, str],
+    *,
+    workspace_path: Path | str,
+    command: str,
+) -> dict[str, str]:
+    """Prepend the sealed Node 22 bin when the command invokes ``node``."""
+
+    env = dict(environment)
+    if not _NODE_COMMAND_RE.search(str(command or "")):
+        return env
+    sealed = resolve_sealed_node_executable(workspace_path)
+    if sealed is None:
+        return env
+    bin_dir = str(sealed.parent)
+    current = str(env.get("PATH") or "")
+    entries = [item for item in current.split(os.pathsep) if item]
+    if bin_dir in entries:
+        entries = [bin_dir, *[item for item in entries if item != bin_dir]]
+    else:
+        entries = [bin_dir, *entries]
+    env["PATH"] = os.pathsep.join(entries)
+    return env
+
+
 def _formal_toolchain_required_commands(
     source: Mapping[str, object],
 ) -> tuple[str, ...]:
@@ -1888,7 +1973,11 @@ def build_hermetic_validation_runtime(
     startup-hook scrubbing by claiming that a mapping was already sanitized.
     """
 
-    child_environment = build_validation_environment(environment)
+    child_environment = apply_sealed_node_toolchain(
+        build_validation_environment(environment),
+        workspace_path=workspace_path,
+        command=command,
+    )
     shell_argv = tuple(validation_shell_command(command))
     if isolation_executable is None:
         discovered = shutil.which("bwrap", path=child_environment["PATH"])

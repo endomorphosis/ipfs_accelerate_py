@@ -42611,6 +42611,57 @@ class PortalImplementationDaemon:
             removed.append(relative)
         return tuple(removed)
 
+    def _stage_declared_submodule_outputs(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+    ) -> tuple[str, ...]:
+        """Force-add declared outputs that live inside nested gitlinks.
+
+        Superproject ``git add`` cannot bind an ignored file inside a
+        submodule.  ``*.json`` under ``external/ipfs_accelerate`` is the
+        VGO-071 stall: the fixture exists on disk, pytest passes, then the
+        candidate patch omits it.
+        """
+
+        prefixes = tuple(
+            path.strip("/")
+            for path in self.worktree_submodule_paths
+            if path.strip("/")
+        )
+        staged: list[str] = []
+        for relative in task_declared_output_paths(task):
+            normalized = str(relative).replace("\\", "/").lstrip("./")
+            if not normalized or not self._repo_relative_path_safe(normalized):
+                continue
+            submodule = ""
+            for prefix in prefixes:
+                if normalized == prefix or normalized.startswith(prefix + "/"):
+                    submodule = prefix
+                    break
+            if not submodule or normalized == submodule:
+                continue
+            inner = normalized[len(submodule) + 1 :]
+            target = workspace_path / normalized
+            try:
+                if target.is_symlink() or not target.is_file():
+                    continue
+            except OSError:
+                continue
+            nested = workspace_path / submodule
+            if not (nested / ".git").exists() and not (nested / ".git").is_file():
+                continue
+            added = subprocess.run(
+                ["git", "--literal-pathspecs", "add", "--force", "--", inner],
+                cwd=nested,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if added.returncode == 0:
+                staged.append(normalized)
+        return tuple(staged)
+
     def _stage_declared_candidate_outputs(
         self,
         workspace_path: Path,
@@ -42633,6 +42684,19 @@ class PortalImplementationDaemon:
         except RuntimeError as exc:
             self._record_event(
                 "implementation_auto_rescue_stage_ignored_failed",
+                {
+                    "task_id": task.task_id,
+                    "workspace_path": str(workspace_path),
+                    "error": str(exc)[-1000:],
+                },
+            )
+        try:
+            staged.extend(
+                self._stage_declared_submodule_outputs(workspace_path, task)
+            )
+        except RuntimeError as exc:
+            self._record_event(
+                "implementation_auto_rescue_stage_submodule_failed",
                 {
                     "task_id": task.task_id,
                     "workspace_path": str(workspace_path),
