@@ -1,0 +1,878 @@
+{
+  "schema": "ipfs_accelerate_py/incremental-proof-sealer/fixture-history@1",
+  "corpus_id": "incremental-proof-sealer-fixture-corpus-v1",
+  "evidence_subset": "ips/fixture-corpus@1",
+  "description": "Hermetic deterministic repository histories and proof graphs for incremental-proof-sealer positive invalidation, reuse, branch, merge, and rollback conformance. Simulated evidence is labeled and never models production seal success.",
+  "manifest_kind": "compact_recipe_catalog",
+  "required_scenarios": [
+    "selector",
+    "fixture",
+    "configuration",
+    "network_policy",
+    "policy",
+    "lock",
+    "tool",
+    "schema",
+    "canonicalization",
+    "checked_spec",
+    "source",
+    "test",
+    "circuit",
+    "key",
+    "documentation",
+    "branch",
+    "merge",
+    "rollback"
+  ],
+  "auxiliary_scenarios": [
+    "genesis",
+    "source_interface",
+    "unrelated_source",
+    "simulated_evidence"
+  ],
+  "repository_id": "repo/incremental-proof-sealer-fixture",
+  "genesis_revision": "rev-0000000000000000000000000000000000000000",
+  "base_paths": [
+    "pkg/mod_a.py",
+    "pkg/mod_b.py",
+    "pkg/api.py",
+    "tests/test_mod_a.py",
+    "tests/fixtures/data.json",
+    "poetry.lock",
+    "config/app.toml",
+    "tools/prover_version.json",
+    "circuits/prove.circom",
+    "keys/pk_main.pkey",
+    "keys/vk_main.vkey",
+    "selectors/unit.json",
+    "policy/verification_policy.json",
+    "policy/network_policy.json",
+    "meta/canonicalization.json",
+    "meta/proof_schema.json",
+    "docs/guide.md",
+    "docs/checked/soundness.md",
+    "environment/trust_policy.json"
+  ],
+  "known_unit_ids": [
+    "aggregate/main",
+    "aggregate/mod-b",
+    "unit/formal-mod-a",
+    "unit/static-mod-a",
+    "unit/static-mod-b",
+    "unit/test-mod-a"
+  ],
+  "path_to_node_ids": {
+    "circuits/prove.circom": [
+      "config/circuits/prove.circom"
+    ],
+    "config/app.toml": [
+      "config/config/app.toml"
+    ],
+    "docs/checked/soundness.md": [
+      "artifact/docs/checked/soundness.md"
+    ],
+    "keys/pk_main.pkey": [
+      "config/keys/pk_main.pkey"
+    ],
+    "keys/vk_main.vkey": [
+      "config/keys/vk_main.vkey"
+    ],
+    "meta/canonicalization.json": [
+      "config/meta/canonicalization.json"
+    ],
+    "meta/proof_schema.json": [
+      "schema/proof"
+    ],
+    "pkg/api.py": [
+      "artifact/pkg/api.py"
+    ],
+    "pkg/mod_a.py": [
+      "artifact/pkg/mod_a.py"
+    ],
+    "pkg/mod_b.py": [
+      "artifact/pkg/mod_b.py"
+    ],
+    "poetry.lock": [
+      "config/poetry.lock"
+    ],
+    "policy/network_policy.json": [
+      "policy/network"
+    ],
+    "policy/verification_policy.json": [
+      "policy/verification"
+    ],
+    "selectors/unit.json": [
+      "config/selectors/unit.json"
+    ],
+    "tests/fixtures/data.json": [
+      "fixture/tests/fixtures/data.json"
+    ],
+    "tests/test_mod_a.py": [
+      "unit/test-mod-a"
+    ],
+    "tools/prover_version.json": [
+      "config/tools/prover_version.json"
+    ]
+  },
+  "cases": [
+    {
+      "id": "01-genesis",
+      "scenario": "genesis",
+      "family": "lifecycle",
+      "description": "Initial repository full checkpoint (no parent seal).",
+      "notes": "Genesis forces full fallback; every unit is newly proved.",
+      "revision": "rev-01-genesis0000000000000000000000000000",
+      "parents": {
+        "kind": "none",
+        "parent_count": 0,
+        "is_merge": false,
+        "selected_parent": "none"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": null,
+        "provenance_required": false
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "build_full_forest",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": true,
+        "policy_overrides": {
+          "is_genesis": true
+        }
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "02-source",
+      "scenario": "source",
+      "family": "source",
+      "description": "Localized private source implementation edit on module A.",
+      "notes": "",
+      "revision": "rev-02-source00000000000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "pkg/mod_a.py",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "update_main_aggregate_only",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "03-source_interface",
+      "scenario": "source_interface",
+      "family": "source",
+      "description": "Public interface edit invalidates interface dependents.",
+      "notes": "",
+      "revision": "rev-03-source-interface000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "pkg/api.py",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "update_main_aggregate_only",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "04-unrelated_source",
+      "scenario": "unrelated_source",
+      "family": "source",
+      "description": "Independent module B edit must not invalidate module A units.",
+      "notes": "",
+      "revision": "rev-04-unrelated-source000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "pkg/mod_b.py",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "update_mod_b_aggregate_only",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "05-test",
+      "scenario": "test",
+      "family": "test",
+      "description": "Unit-test source edit invalidates the test unit and aggregates.",
+      "notes": "",
+      "revision": "rev-05-test000000000000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "tests/test_mod_a.py",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "update_main_aggregate_only",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "06-fixture",
+      "scenario": "fixture",
+      "family": "fixture",
+      "description": "Fixture edit invalidates bound test units.",
+      "notes": "",
+      "revision": "rev-06-fixture000000000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "tests/fixtures/data.json",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "update_main_aggregate_only",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "07-selector",
+      "scenario": "selector",
+      "family": "selector",
+      "description": "Test-selector change recomputes required manifest membership.",
+      "notes": "",
+      "revision": "rev-07-selector00000000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "selectors/unit.json",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "recompute_manifest_and_aggregates",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "08-configuration",
+      "scenario": "configuration",
+      "family": "configuration",
+      "description": "Relevant configuration edit invalidates bound execution units.",
+      "notes": "",
+      "revision": "rev-08-configuration000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "config/app.toml",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "update_main_aggregate_only",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "09-network_policy",
+      "scenario": "network_policy",
+      "family": "policy",
+      "description": "Network-policy change invalidates network-bound units.",
+      "notes": "",
+      "revision": "rev-09-network-policy00000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "policy/network_policy.json",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "update_main_aggregate_only",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "10-policy",
+      "scenario": "policy",
+      "family": "policy",
+      "description": "Verification-policy change recomputes required units.",
+      "notes": "",
+      "revision": "rev-10-policy0000000000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "policy/verification_policy.json",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "recompute_manifest_and_aggregates",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "11-lock",
+      "scenario": "lock",
+      "family": "lock",
+      "description": "Dependency-lock upgrade under policy forces full checkpoint.",
+      "notes": "",
+      "revision": "rev-11-lock000000000000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "poetry.lock",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "full_forest_rebuild",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": true,
+        "policy_overrides": {
+          "treat_dependency_lock_as_full_fallback": true
+        }
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "12-tool",
+      "scenario": "tool",
+      "family": "tool",
+      "description": "Tool/prover version identity change invalidates bound units.",
+      "notes": "",
+      "revision": "rev-12-tool000000000000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "tools/prover_version.json",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "update_main_aggregate_only",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "13-schema",
+      "scenario": "schema",
+      "family": "schema",
+      "description": "Proof-schema change requires full checkpoint.",
+      "notes": "",
+      "revision": "rev-13-schema0000000000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "meta/proof_schema.json",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "full_forest_rebuild",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": true,
+        "policy_overrides": {
+          "proof_schema_changed": true
+        }
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "14-canonicalization",
+      "scenario": "canonicalization",
+      "family": "schema",
+      "description": "Canonicalization version change requires full checkpoint.",
+      "notes": "",
+      "revision": "rev-14-canonicalization000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "meta/canonicalization.json",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "full_forest_rebuild",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": true,
+        "policy_overrides": {
+          "canonicalization_changed": true
+        }
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "15-checked_spec",
+      "scenario": "checked_spec",
+      "family": "documentation",
+      "description": "Checked-specification document edit invalidates bound formal units.",
+      "notes": "",
+      "revision": "rev-15-checked-spec0000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "docs/checked/soundness.md",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "update_main_aggregate_only",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "16-documentation",
+      "scenario": "documentation",
+      "family": "documentation",
+      "description": "Ordinary documentation edit preserves execution proofs.",
+      "notes": "",
+      "revision": "rev-16-documentation000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "docs/guide.md",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "none_near_total_reuse",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "17-circuit",
+      "scenario": "circuit",
+      "family": "circuit_key",
+      "description": "Circuit version change forces full checkpoint.",
+      "notes": "",
+      "revision": "rev-17-circuit000000000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "circuits/prove.circom",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "full_forest_rebuild",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": true,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "18-key",
+      "scenario": "key",
+      "family": "circuit_key",
+      "description": "Verification-key change forces full checkpoint.",
+      "notes": "",
+      "revision": "rev-18-key0000000000000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "keys/vk_main.vkey",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "full_forest_rebuild",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": true,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "19-branch",
+      "scenario": "branch",
+      "family": "lifecycle",
+      "description": "Parent-bound branch-A edit from genesis.",
+      "notes": "Branch identity is the revision id; parent remains genesis.",
+      "revision": "rev-19-branch0000000000000000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "pkg/mod_a.py",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "update_main_aggregate_only",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "20-merge",
+      "scenario": "merge",
+      "family": "lifecycle",
+      "description": "Merge of branch A and branch B with both parents bound.",
+      "notes": "Parents are both branch tips; selected parent is the earlier tip.",
+      "revision": "rev-20-merge00000000000000000000000000000",
+      "parents": {
+        "kind": "multi_parent_merge",
+        "parent_count": 2,
+        "is_merge": true,
+        "selected_parent": "earliest_sorted_branch_tip"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "pkg/mod_b.py",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "bounded_incremental_or_honest_fallback",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "21-rollback",
+      "scenario": "rollback",
+      "family": "lifecycle",
+      "description": "Rollback of source bytes to the genesis content under a new parent-bound transition (never a seal replay).",
+      "notes": "Content may match an earlier root; the transition is new.",
+      "revision": "rev-21-rollback00000000000000000000000000",
+      "parents": {
+        "kind": "source_tip",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "source_revision"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "pkg/mod_a.py",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "update_main_aggregate_only",
+        "production_success_allowed": true
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "integrity_only",
+      "production_success_allowed": true
+    },
+    {
+      "id": "22-simulated_evidence",
+      "scenario": "simulated_evidence",
+      "family": "adversarial_label",
+      "description": "Simulated proving labeled for rejection/non-production plumbing only.",
+      "notes": "proof_mode=simulated forces seal outcome simulated_only under production policy; never sealed_full or sealed_incremental.",
+      "revision": "rev-22-simulated-evidence0000000000000000",
+      "parents": {
+        "kind": "genesis",
+        "parent_count": 1,
+        "is_merge": false,
+        "selected_parent": "genesis"
+      },
+      "changed_artifact_provenance": {
+        "changed_path": "pkg/mod_a.py",
+        "provenance_required": true
+      },
+      "expected_unit_closure": {
+        "direct_field": "direct_invalidated_unit_ids",
+        "transitive_field": "transitive_invalidated_unit_ids",
+        "derived_by": "compute_invalidation_closure"
+      },
+      "aggregate_effect": {
+        "declared_effect": "reject_as_simulated_only",
+        "production_success_allowed": false
+      },
+      "full_fallback_decision": {
+        "required": false,
+        "policy_overrides": {}
+      },
+      "proof_mode": "simulated",
+      "production_success_allowed": false
+    }
+  ],
+  "simulated_production_guard": {
+    "rule": "No fixture may model proof_mode=simulated as production sealed_full or sealed_incremental success.",
+    "simulated_scenario_ids": [
+      "22-simulated_evidence"
+    ],
+    "forbidden_seal_outcomes_for_simulated": [
+      "sealed_full",
+      "sealed_incremental"
+    ],
+    "required_seal_outcome_for_simulated": "simulated_only"
+  },
+  "materialization": {
+    "entry_point": "materialize_history",
+    "byte_identical_generations_required": true,
+    "full_scenario_fields": [
+      "parents",
+      "changed_artifact_provenance",
+      "expected_unit_closure",
+      "aggregate_effect",
+      "full_fallback_decision"
+    ]
+  },
+  "catalog_fingerprint": "incremental-proof-sealer-fixture-corpus-v1|ipfs_accelerate_py/incremental-proof-sealer/fixture-history@1|01-genesis|02-source|03-source_interface|04-unrelated_source|05-test|06-fixture|07-selector|08-configuration|09-network_policy|10-policy|11-lock|12-tool|13-schema|14-canonicalization|15-checked_spec|16-documentation|17-circuit|18-key|19-branch|20-merge|21-rollback|22-simulated_evidence",
+  "corpus_content_id": "catalog:incremental-proof-sealer-fixture-corpus-v1:cases=22"
+}
+
