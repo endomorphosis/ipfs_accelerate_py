@@ -54,7 +54,6 @@ from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.trust import 
     SignerTrustRecord,
     TrustError,
     TrustRejectionReason,
-    TrustedProofPolicy,
     VerificationKeyRecord,
     build_production_policy,
 )
@@ -158,7 +157,7 @@ def _signer(**overrides: object) -> SignerTrustRecord:
     return SignerTrustRecord(**payload)  # type: ignore[arg-type]
 
 
-def _production_policy(**kwargs: object) -> TrustedProofPolicy:
+def _production_policy(**kwargs: object):
     return build_production_policy(
         verification_keys=kwargs.pop("verification_keys", (_vk(),)),  # type: ignore[arg-type]
         proving_keys=kwargs.pop("proving_keys", (_pk(),)),  # type: ignore[arg-type]
@@ -442,7 +441,7 @@ def test_seal_unallowlisted_verification_key_rejects() -> None:
     assert result.failed_stage == "key"
 
 
-def test_unit_unallowlisted_verification_key_rejects_at_crypto_stage() -> None:
+def test_unit_unallowlisted_verification_key_rejects_at_key_stage() -> None:
     seal = _full_seal()
     result = verify_seal(
         seal,
@@ -460,6 +459,7 @@ def test_unit_unallowlisted_verification_key_rejects_at_crypto_stage() -> None:
     )
     assert result.accepted is False
     assert result.reason is SealVerificationReason.UNALLOWLISTED_VERIFICATION_KEY
+    assert result.failed_stage == "key"
 
 
 # ---------------------------------------------------------------------------

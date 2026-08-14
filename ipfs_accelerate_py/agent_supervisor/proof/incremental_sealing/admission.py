@@ -612,7 +612,8 @@ class EvidenceVerifier:
                 RejectionReason.SIMULATED_REQUIRED_UNIT,
                 message=(
                     "simulated required units cannot be admitted under production "
-                    "policy and never become direct-execution evidence"
+                    "policy and never become direct-execution evidence; "
+                    "simulated-as-real is always rejected"
                 ),
                 evidence_class=evidence_class,
                 establishes=establishes,
@@ -694,7 +695,10 @@ class EvidenceVerifier:
                 return self._reject(
                     candidate,
                     RejectionReason.UNSIGNED_REQUIRED_RECEIPT,
-                    message="required signed receipt is unsigned",
+                    message=(
+                        "required signed receipt is unsigned or carries an "
+                        "absent/invalid signature marker"
+                    ),
                     evidence_class=evidence_class,
                     establishes=establishes,
                     does_not_establish=does_not_establish,
@@ -706,7 +710,10 @@ class EvidenceVerifier:
                 return self._reject(
                     candidate,
                     RejectionReason.UNALLOWLISTED_SIGNER,
-                    message=f"signer {evidence.signer_id!r} is not allowlisted",
+                    message=(
+                        f"signer {evidence.signer_id!r} is not allowlisted "
+                        "(untrusted receipt signature)"
+                    ),
                     evidence_class=evidence_class,
                     establishes=establishes,
                     does_not_establish=does_not_establish,

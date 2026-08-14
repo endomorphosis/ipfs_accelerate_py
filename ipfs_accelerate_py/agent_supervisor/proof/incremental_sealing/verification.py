@@ -776,6 +776,49 @@ def verify_seal(
                     "allowlisted": sorted(allowlisted),
                 },
             )
+    # Unit-presented verification keys must also be allowlisted (fail closed).
+    for unit in proofs:
+        unit_vk = unit.verification_key_id
+        if not unit_vk or unit_vk in {"", "n/a", "none"}:
+            continue
+        if policy_obj is not None:
+            decision = policy_obj.select_verification_key(unit_vk)
+            if not decision.accepted:
+                return _reject(
+                    reason=SealVerificationReason.UNALLOWLISTED_VERIFICATION_KEY,
+                    seal_kind=seal_kind,
+                    seal_status=status_value,
+                    seal_cid=seal_cid,
+                    failed_stage="key",
+                    stages_passed=stages,
+                    message=(
+                        f"unit {unit.unit_id!r} verification key "
+                        f"{unit_vk!r} is not allowlisted"
+                    ),
+                    details={
+                        "unit_id": unit.unit_id,
+                        "verification_key_id": unit_vk,
+                        "trust_reason": decision.reason_code,
+                    },
+                )
+        elif unit_vk not in allowlisted:
+            return _reject(
+                reason=SealVerificationReason.UNALLOWLISTED_VERIFICATION_KEY,
+                seal_kind=seal_kind,
+                seal_status=status_value,
+                seal_cid=seal_cid,
+                failed_stage="key",
+                stages_passed=stages,
+                message=(
+                    f"unit {unit.unit_id!r} verification key "
+                    f"{unit_vk!r} is not allowlisted"
+                ),
+                details={
+                    "unit_id": unit.unit_id,
+                    "verification_key_id": unit_vk,
+                    "allowlisted": sorted(allowlisted),
+                },
+            )
     stages.append("key")
 
     # --- policy ---
@@ -1246,34 +1289,6 @@ def verify_seal(
                         "current policy"
                     ),
                     details={"unit_id": unit.unit_id},
-                )
-            if (
-                unit.verification_key_id
-                and unit.verification_key_id not in {"", "n/a"}
-                and allowlisted
-                and unit.verification_key_id not in allowlisted
-                and (
-                    policy_obj is None
-                    or not policy_obj.select_verification_key(
-                        unit.verification_key_id
-                    ).accepted
-                )
-            ):
-                return _reject(
-                    reason=SealVerificationReason.UNALLOWLISTED_VERIFICATION_KEY,
-                    seal_kind=seal_kind,
-                    seal_status=status_value,
-                    seal_cid=seal_cid,
-                    failed_stage="key",
-                    stages_passed=stages,
-                    message=(
-                        f"unit {unit.unit_id!r} verification key "
-                        f"{unit.verification_key_id!r} is not allowlisted"
-                    ),
-                    details={
-                        "unit_id": unit.unit_id,
-                        "verification_key_id": unit.verification_key_id,
-                    },
                 )
     stages.append("signature")
     stages.append("cryptography")

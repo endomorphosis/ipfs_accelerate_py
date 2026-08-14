@@ -312,8 +312,7 @@ def assert_no_sensitive_material(payload: Mapping[str, Any] | str) -> None:
     if not isinstance(payload, Mapping):
         raise ProverError("payload must be a mapping or string")
     for key in payload:
-        key_cf = str(key).casefold()
-        if key_cf in _SENSITIVE_FIELD_NAMES:
+        if _is_sensitive_field_name(str(key)):
             raise ProverError(
                 f"sensitive field {key!r} must not appear on public receipts/logs"
             )
@@ -322,6 +321,12 @@ def assert_no_sensitive_material(payload: Mapping[str, Any] | str) -> None:
             assert_no_sensitive_material(value)
         elif isinstance(value, str):
             assert_no_sensitive_material(value)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                if isinstance(item, Mapping):
+                    assert_no_sensitive_material(item)
+                elif isinstance(item, str):
+                    assert_no_sensitive_material(item)
 
 
 def witness_safe_log_line(message: str, **fields: Any) -> str:
