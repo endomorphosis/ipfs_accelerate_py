@@ -558,10 +558,23 @@ def test_bwrap_banner_alias_output_bytes_change_the_key() -> None:
         b"bubblewrap 0.9.0\r\n",
         b"bwrap 0.9.0 \n",
         b"bubblewrap 0.9.0 \n",
+        b" bwrap 0.9.0\n",
+        b" bubblewrap 0.9.0\n",
+        b"bwrap 0.9.0\r",
+        b"bubblewrap 0.9.0\r",
+        b"bwrap 0.9.0\n\n",
+        b"bubblewrap 0.9.0\n\n",
+        b"notbubblewrap 0.9.0\n",
+        b"not-bwrap 0.9.0\n",
+        b"unreviewed 0.9.0\n",
+        b"bwrap \n",
+        b"bubblewrap \n",
         b"bwrap-helper 0.9.0\n",
         b"bubblewrap-helper 0.9.0\n",
         b"bwrap 0.9\n",
         b"bubblewrap 0.9\n",
+        b"bwrap v0.9.0\n",
+        b"bubblewrap v0.9.0\n",
         b"bwrap 10.9.0\n",
         b"bubblewrap 10.9.0\n",
     ),
@@ -577,7 +590,20 @@ def test_bwrap_banner_alias_rejects_malformed_exact_banners(
 
 @pytest.mark.parametrize(
     "version",
-    ("", "0.9.0 beta", "0.9.0\t", "0.9.0\r", "0.9.0\n", "0.9.0é"),
+    (
+        "",
+        " 0.9.0",
+        "0.9.0 ",
+        "0.9.0 beta",
+        "0.9 .0",
+        "0.9\t.0",
+        "0.9\r.0",
+        "0.9\n.0",
+        "0.9.0\t",
+        "0.9.0\r",
+        "0.9.0\n",
+        "0.9.0é",
+    ),
 )
 def test_bwrap_banner_alias_rejects_non_token_claimed_versions(version: str) -> None:
     values = _bwrap_banner_alias_kwargs()
@@ -587,19 +613,91 @@ def test_bwrap_banner_alias_rejects_non_token_claimed_versions(version: str) -> 
         VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize(
+    "replacement",
+    (
+        frozenset({("bwrap", "unreviewed")}),
+        frozenset({("bwrap", "bubblewrap"), ("bwrap", "unreviewed")}),
+    ),
+)
 def test_bwrap_banner_alias_cannot_be_extended_by_rebinding_constant(
     monkeypatch: pytest.MonkeyPatch,
+    replacement: frozenset[tuple[str, str]],
 ) -> None:
     monkeypatch.setattr(
         verification_contracts,
         "_BWRAP_BANNER_NAME_COMPATIBILITY",
-        frozenset({("bwrap", "bubblewrap"), ("bwrap", "unreviewed")}),
+        replacement,
     )
 
     with pytest.raises(VerificationIdentityError, match="not closed"):
         VerificationIdentityCompiler().compile_key(
             **_bwrap_banner_alias_kwargs(probe_output=b"unreviewed 0.9.0\n")
         )  # type: ignore[arg-type]
+
+
+def test_bwrap_banner_alias_rejects_every_caller_control_channel() -> None:
+    class CallerExtendedCompiler(VerificationIdentityCompiler):
+        BWRAP_BANNER_ALIASES = frozenset({("bwrap", "unreviewed")})
+
+    values = _bwrap_banner_alias_kwargs(probe_output=b"unreviewed 0.9.0\n")
+    snapshot = values["capability_snapshot"]
+    assert isinstance(snapshot, CapabilitySnapshot)
+    values["capability_snapshot"] = replace(
+        snapshot,
+        environment_names=(*snapshot.environment_names, "BWRAP_BANNER_ALIAS"),
+    )
+    observed_environment = dict(values["observed_environment"])  # type: ignore[arg-type]
+    environment_values = dict(observed_environment["environment_values"])  # type: ignore[arg-type]
+    environment_values["BWRAP_BANNER_ALIAS"] = "unreviewed"
+    observed_environment["environment_values"] = environment_values
+    values["observed_environment"] = observed_environment
+    values["configuration_bytes"] = b"bwrap_banner_alias = 'unreviewed'\n"
+    values["adapter_schema"] = "unreviewed-bwrap-verification-adapter@1"
+    values["claimed_environment_cid"] = _structured_cid(
+        ENVIRONMENT_SCHEMA,
+        _expected_environment(values),
+    )
+
+    with pytest.raises(VerificationIdentityError, match="reviewed exact banner"):
+        CallerExtendedCompiler().compile_key(**values)  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        VerificationIdentityCompiler().compile_key(  # type: ignore[call-arg]
+            **values,
+            bwrap_banner_aliases=frozenset({("bwrap", "unreviewed")}),
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        (
+            "tool_name",
+            "bubblewrap",
+            "declared tool name does not match the selected executable",
+        ),
+        (
+            "tool_version",
+            "0.9.1",
+            "bwrap version probe output is not a reviewed exact banner",
+        ),
+    ),
+)
+def test_bwrap_banner_alias_rejects_coherent_name_or_version_claim_mismatch(
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    values = _bwrap_banner_alias_kwargs(probe_output=b"bubblewrap 0.9.0\n")
+    values[field] = value
+    values["claimed_environment_cid"] = _structured_cid(
+        ENVIRONMENT_SCHEMA,
+        _expected_environment(values),
+    )
+
+    with pytest.raises(VerificationIdentityError, match=message):
+        VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("field", ("selector_argv", "tool_version_probe_argv"))
@@ -627,6 +725,13 @@ def test_bwrap_banner_alias_rejects_identity_locator_bytes_and_invocation_mismat
         VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
 
     values = _bwrap_banner_alias_kwargs()
+    executable_bytes = values["tool_executable_bytes"]
+    assert isinstance(executable_bytes, bytes)
+    values["tool_executable_bytes"] = executable_bytes + b"\0"
+    with pytest.raises(VerificationIdentityError, match="executable bytes"):
+        VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
+
+    values = _bwrap_banner_alias_kwargs()
     tool_identity = values["tool_identity"]
     assert isinstance(tool_identity, ToolIdentity)
     values["tool_identity"] = replace(tool_identity, identity="sha256:" + "0" * 64)
@@ -645,8 +750,13 @@ def test_bwrap_banner_alias_rejects_identity_locator_bytes_and_invocation_mismat
 
 def test_bwrap_banner_alias_keeps_non_bwrap_probe_rules_unchanged() -> None:
     for kind, output in (
+        (
+            VerificationReceiptKind.STATIC_ANALYSIS,
+            b"ruff version 0.12.11 (fixture)\n",
+        ),
         (VerificationReceiptKind.TYPE_CHECK, b"mypy version 1.18.2 (fixture)\n"),
         (VerificationReceiptKind.TEST, b"pytest 9.1.1 fixture build\n"),
+        (VerificationReceiptKind.PROOF, b"z3 version 4.13.3 (fixture)\n"),
     ):
         values = _compiler_kwargs(kind)
         values["tool_version_probe_output_bytes"] = output
