@@ -903,7 +903,7 @@ W20 AAE-063
 
 ## AAE-032 Generate requirement-grounded candidate remediation specifications
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
