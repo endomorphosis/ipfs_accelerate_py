@@ -1161,7 +1161,9 @@ def test_cli_adapters_use_native_request_bound_schema_and_verbatim_prompt(
     codex_command = observed["codex_cli"]["command"]
     assert "--json-schema" in grok_command
     assert "--verbatim" in grok_command
-    assert grok_command[grok_command.index("--tools") + 1] == ""
+    assert "--tools" not in grok_command
+    assert "--disallowed-tools" in grok_command
+    assert grok_command[grok_command.index("--deny") + 1] == "*"
     assert "--output-schema" in codex_command
     assert codex_command[codex_command.index("-c") + 1] == (
         'model_reasoning_effort="medium"'

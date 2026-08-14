@@ -431,10 +431,45 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
         frozenset({"declared_paths", "files"}),
         frozenset({"declared_paths", "patch"}),
     }
-    assert observed["grok_cli"]["command"][
-        observed["grok_cli"]["command"].index("--tools") + 1
-    ] == ""
-    assert "--verbatim" in observed["grok_cli"]["command"]
+    grok_command = observed["grok_cli"]["command"]
+    assert "--tools" not in grok_command
+    disallowed_tools = set(
+        grok_command[grok_command.index("--disallowed-tools") + 1].split(",")
+    )
+    assert {
+        "run_terminal_cmd",
+        "run_terminal_command",
+        "read_file",
+        "grep",
+        "search_replace",
+        "list_dir",
+        "write",
+        "web_search",
+        "web_fetch",
+        "todo_write",
+        "task",
+        "spawn_subagent",
+        "memory_search",
+        "get_command_or_subagent_output",
+        "Agent",
+        "image_gen",
+        "image_edit",
+        "image_to_video",
+        "reference_to_video",
+        "scheduler_create",
+        "scheduler_delete",
+        "scheduler_list",
+        "monitor",
+        "search_tool",
+        "use_tool",
+        "workflow",
+        "enter_plan_mode",
+        "exit_plan_mode",
+        "ask_user_question",
+    } == disallowed_tools
+    assert grok_command[grok_command.index("--deny") + 1] == "*"
+    assert grok_command[grok_command.index("--output-format") + 1] == "json"
+    assert "--verbatim" in grok_command
     assert "--output-schema" in observed["codex_cli"]["command"]
     codex_command = observed["codex_cli"]["command"]
     assert codex_command[codex_command.index("-c") + 1] == (

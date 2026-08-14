@@ -29,10 +29,14 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     build_production_contract_packet,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PRODUCTION_PROVIDER_ROUTE_EVENT,
     ImplementationRetryDeferred,
     PortalTask,
     PortalTaskState,
     TodoImplementationDaemon,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.legacy_landed_provider_cli import (
+    _native_cli_failure,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
     LLM_USAGE_MODE_ENFORCE,
@@ -366,6 +370,119 @@ def test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff(
         "production_reviewed_effect_skipped_capacity_recovery" in json.dumps(event)
         for event in events
     ), "expected capacity-recovery skip event"
+
+
+def test_grok_json_quota_defers_without_review_write_or_attempt_charge(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon_for_ephemeral_handoff(tmp_path, monkeypatch)
+    task = _production_task()
+    policy = daemon.production_provider_policy
+    assert isinstance(policy, ProductionCLIProviderPolicy)
+    provider_calls: list[str] = []
+    writes: list[Any] = []
+
+    def seed(worktree_path: Path, branch: str, *, task: Any = None) -> str:
+        _git(
+            daemon.repo_root,
+            "worktree",
+            "add",
+            "-b",
+            branch,
+            str(worktree_path),
+            "HEAD",
+        )
+        return _git(worktree_path, "rev-parse", "HEAD")
+
+    def invoke(_prompt: str, config: Any) -> tuple[str, LlmChildResultEnvelope]:
+        provider_calls.append(str(config.provider or ""))
+        if config.provider != policy.grok_provider:
+            raise AssertionError("Codex review must not run after Grok quota")
+        inner = json.dumps(
+            {
+                "message": (
+                    "API error (status 402 Payment Required): "
+                    "Grok Build usage balance exhausted"
+                ),
+                "http_status": 402,
+            },
+            indent=2,
+        )
+        stdout = json.dumps(
+            {"type": "error", "message": "Internal error: " + inner},
+            separators=(",", ":"),
+        ).encode("utf-8")
+        raise _native_cli_failure(
+            ["grok", "--output-format", "json"],
+            return_code=1,
+            stdout=bytearray(stdout),
+            stderr=bytearray(b"ignored untrusted diagnostic"),
+        )
+
+    grok, codex = build_production_cli_provider_pair(policy, invoker=invoke)
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", seed)
+    monkeypatch.setattr(
+        daemon,
+        "_production_landed_task_guard_for_workspace",
+        lambda *_args, **_kwargs: {
+            "guarded": False,
+            "action": "new_implementation_route_allowed",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_make_production_workspace_writer",
+        lambda *_args, **_kwargs: (
+            lambda proposal, lease: writes.append((proposal, lease))
+        ),
+    )
+    daemon._production_grok_provider = grok
+    daemon._production_codex_provider = codex
+
+    state = PortalTaskState()
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=state,
+        attempt=1,
+        started_at=datetime.now(UTC).isoformat(),
+        log_path=daemon.state_path.parent / "grok-quota.log",
+        prompt="bounded quota deferral regression",
+    )
+
+    assert provider_calls == [policy.grok_provider]
+    assert writes == []
+    assert result["deferred"] is True
+    assert result["reason"] == "provider_capacity_exhausted"
+    assert result["attempt_consumed"] is False
+    assert result["cleanup_result"]["cleaned"] is True
+    assert result["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
+    recovered = PortalTaskState.load(daemon.state_path)
+    assert recovered.implementation_attempts == {}
+    assert recovered.implementation_attempts_by_cid == {}
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    route_event = next(
+        event for event in events if event["type"] == PRODUCTION_PROVIDER_ROUTE_EVENT
+    )
+    assert route_event["reason_code"] == ProviderReason.GROK_QUOTA_EXHAUSTED.value
 
 
 def _provider_request(role: ProviderRole) -> ProviderRequest:

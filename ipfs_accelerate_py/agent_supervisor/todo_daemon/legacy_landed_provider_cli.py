@@ -59,8 +59,44 @@ _CODEX_USAGE_LIMIT_PATTERN: Final = re.compile(
 _GROK_BALANCE_EXHAUSTED_MESSAGE: Final = (
     "API error (status 402 Payment Required): Grok Build usage balance exhausted"
 )
+_GROK_JSON_ERROR_PREFIX: Final = "Internal error:"
 GROK_BUILD_BALANCE_EXHAUSTED_MARKER: Final = "grok_build_balance_exhausted"
 _MAX_GROK_STREAM_EVENT_BYTES: Final = 64 * 1024
+# An empty ``--tools`` value restores Grok's default tool set. Production
+# providers receive a complete bounded packet from an empty working directory,
+# so tools are unnecessary and must remain unavailable. The explicit permission
+# deny is a fail-closed backstop for future tool names.
+_GROK_PROPOSAL_DISALLOWED_TOOLS: Final = (
+    "run_terminal_cmd",
+    "run_terminal_command",
+    "read_file",
+    "grep",
+    "search_replace",
+    "list_dir",
+    "write",
+    "web_search",
+    "web_fetch",
+    "todo_write",
+    "task",
+    "spawn_subagent",
+    "memory_search",
+    "get_command_or_subagent_output",
+    "Agent",
+    "image_gen",
+    "image_edit",
+    "image_to_video",
+    "reference_to_video",
+    "scheduler_create",
+    "scheduler_delete",
+    "scheduler_list",
+    "monitor",
+    "search_tool",
+    "use_tool",
+    "workflow",
+    "enter_plan_mode",
+    "exit_plan_mode",
+    "ask_user_question",
+)
 _NATIVE_CLI_SUBREAPER_PATH: Final = Path(__file__).with_name("native_cli_subreaper.py")
 
 
@@ -175,7 +211,12 @@ def _grok_stream_failure_kind(payload: Mapping[str, Any]) -> str:
     """Classify only CLI-owned structured failure event shapes."""
 
     if payload.get("type") == "error":
-        if str(payload.get("message") or "").strip() == _GROK_BALANCE_EXHAUSTED_MESSAGE:
+        if (
+            set(payload) == {"message", "type"}
+            and str(payload.get("message") or "").strip()
+            == _GROK_BALANCE_EXHAUSTED_MESSAGE
+            or _grok_json_error_is_exact_quota(payload)
+        ):
             return "verified_quota"
         return "other_failure"
     if payload.get("method") not in {
@@ -197,17 +238,57 @@ def _grok_stream_failure_kind(payload: Mapping[str, Any]) -> str:
     return "other_failure"
 
 
-def _stdout_is_exact_grok_quota_failure(value: bytearray) -> bool:
-    """Require a strict JSONL quota event with no conflicting failure.
+def _grok_json_error_is_exact_quota(payload: Mapping[str, Any]) -> bool:
+    """Recognize only Grok JSON mode's fixed nested 402 error envelope."""
 
-    Grok is invoked with ``streaming-json`` output.  Therefore a non-empty
-    non-JSON stdout line is a protocol failure, not evidence that authorizes a
-    provider switch.  Stderr is intentionally never considered.
+    if set(payload) != {"message", "type"} or payload.get("type") != "error":
+        return False
+    message = payload.get("message")
+    if not isinstance(message, str) or not message.startswith(
+        _GROK_JSON_ERROR_PREFIX
+    ):
+        return False
+    try:
+        inner = _strict_json_object(
+            message[len(_GROK_JSON_ERROR_PREFIX) :].strip()
+        )
+    except RuntimeError:
+        return False
+    status = inner.get("http_status")
+    return bool(
+        set(inner) == {"http_status", "message"}
+        and type(status) is int
+        and status == 402
+        and inner.get("message") == _GROK_BALANCE_EXHAUSTED_MESSAGE
+    )
+
+
+def _stdout_is_exact_grok_quota_failure(
+    value: bytearray,
+    *,
+    output_format: str,
+) -> bool:
+    """Require an exact quota event for the explicitly selected output format.
+
+    Native Grok uses one JSON stdout object; older structured transports emit
+    JSONL events. A non-empty non-JSON stdout line is a protocol failure, not
+    evidence that authorizes a provider switch. Stderr is never considered.
     """
 
     try:
         output = bytes(value).decode("utf-8", errors="strict")
     except UnicodeDecodeError:
+        return False
+    if output_format == "json":
+        raw = output.strip()
+        if not raw or len(raw.encode("utf-8")) > _MAX_GROK_STREAM_EVENT_BYTES:
+            return False
+        try:
+            payload = _strict_json_object(raw)
+        except RuntimeError:
+            return False
+        return _grok_stream_failure_kind(payload) == "verified_quota"
+    if output_format != "streaming-json":
         return False
     verified_quota = False
     for raw_line in output.splitlines():
@@ -228,6 +309,17 @@ def _stdout_is_exact_grok_quota_failure(value: bytearray) -> bool:
     return verified_quota
 
 
+def _command_output_format(command: Sequence[str]) -> str:
+    """Return one explicit native output format, or fail closed to empty."""
+
+    formats = [
+        str(command[index + 1]).strip().casefold()
+        for index, value in enumerate(command[:-1])
+        if value == "--output-format"
+    ]
+    return formats[0] if len(formats) == 1 else ""
+
+
 def _native_cli_failure(
     command: Sequence[str],
     *,
@@ -241,7 +333,10 @@ def _native_cli_failure(
     if (
         executable == "grok"
         and return_code == 1
-        and _stdout_is_exact_grok_quota_failure(stdout)
+        and _stdout_is_exact_grok_quota_failure(
+            stdout,
+            output_format=_command_output_format(command),
+        )
     ):
         return NativeGrokQuotaExhaustionSignal()
     if executable == "codex":
@@ -592,8 +687,10 @@ def _grok_native_structured_output(
         "8",
         "--permission-mode",
         "dontAsk",
-        "--tools",
-        "",
+        "--disallowed-tools",
+        ",".join(_GROK_PROPOSAL_DISALLOWED_TOOLS),
+        "--deny",
+        "*",
         "--prompt-file",
         str(prompt_path),
     ]
