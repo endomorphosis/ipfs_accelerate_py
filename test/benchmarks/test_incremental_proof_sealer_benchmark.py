@@ -139,6 +139,9 @@ def test_mandatory_full_checkpoints_and_honest_conditional_rows() -> None:
             assert rows[index]["fallback_reason"]
         else:
             assert rows[index]["fallback_reason"] is None
+    for index in (14, 36):
+        assert rows[index]["seal_status"] == "sealed_incremental"
+        assert rows[index]["fallback_reason"] is None
 
 
 def test_docs_and_unrelated_edits_reuse_instead_of_reprove() -> None:
@@ -196,7 +199,7 @@ def test_report_schema_and_cli_artifacts(tmp_path: Path) -> None:
     assert payload["benchmark_id"] == BENCHMARK_ID
     assert payload["seed"] == DEFAULT_SEED
     assert payload["transition_count"] == 40
-    assert payload["evidence_subset"] == WORKLOAD_EVIDENCE
+    assert "evidence_subset" not in payload
     assert payload["capabilities"]["real_prover_available"] is False
     assert payload["capabilities"]["gpu_available"] is False
     assert "simulated" in payload["capabilities"]["notes"].lower()

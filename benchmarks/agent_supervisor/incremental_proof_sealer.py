@@ -277,7 +277,6 @@ class IncrementalProofBenchmark:
         payload: dict[str, Any] = {
             "schema_version": BENCHMARK_SCHEMA,
             "benchmark_id": BENCHMARK_ID,
-            "evidence_subset": WORKLOAD_EVIDENCE,
             "seed": self.seed,
             "transition_count": self.transition_count,
             "benchmark_worktree_parent_revision": parent_revision,
@@ -489,13 +488,18 @@ def _evaluate_one(
         full_fallback_required=spec.force_full or spec.first_state,
         prefer_incremental=True,
     )
-    full_required = (
-        spec.index in FULL_TRANSITIONS
-        or decision.mode is CheckpointMode.FULL_CHECKPOINT
-        or plan.mode is PlanMode.FULL
-    )
-    if spec.index in CONDITIONAL_FULL_TRANSITIONS:
-        full_required = decision.mode is CheckpointMode.FULL_CHECKPOINT or plan.mode is PlanMode.FULL
+    if spec.index in FULL_TRANSITIONS:
+        full_required = True
+    elif spec.index in CONDITIONAL_FULL_TRANSITIONS:
+        # Honest full-or-incremental; low-reuse merge/policy may fall back.
+        full_required = (
+            decision.mode is CheckpointMode.FULL_CHECKPOINT
+            or plan.mode is PlanMode.FULL
+        )
+    else:
+        # Board-mandated incremental rows cannot be upgraded to full by
+        # low-reuse checkpoint policy.
+        full_required = False
     if full_required:
         seal_status = "sealed_full"
         reused_n = 0
