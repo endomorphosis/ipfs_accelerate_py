@@ -32,6 +32,9 @@ dynamic = ["dependencies"]
 Homepage = "https://github.com/endomorphosis/ipfs_accelerate_py"
 Issues = "https://github.com/endomorphosis/ipfs_accelerate_py/issues"
 
+[project.entry-points.pytest11]
+ipfs-proof-reuse = "ipfs_accelerate_py.testing.proof_reuse.plugin"
+
 [project.scripts]
 ipfs_accelerate = "ipfs_accelerate_py.ai_inference_cli:main"
 ipfs-accelerate = "ipfs_accelerate_py.cli_entry:main"

@@ -40,6 +40,18 @@ from ipfs_accelerate_py.agent_supervisor.proof.test_execution_contracts import (
 
 ACCELERATE_ROOT = Path(__file__).resolve().parents[2]
 EXTERNAL_ROOT = ACCELERATE_ROOT.parent
+# Monorepo nested checkouts live under the accelerate root; sibling external
+# checkouts (if present) keep the historical short names.
+_KIT_ROOT = (
+    ACCELERATE_ROOT / "ipfs_kit_py"
+    if (ACCELERATE_ROOT / "ipfs_kit_py" / "pyproject.toml").is_file()
+    else EXTERNAL_ROOT / "ipfs_kit"
+)
+_DATASETS_ROOT = (
+    ACCELERATE_ROOT / "ipfs_datasets_py"
+    if (ACCELERATE_ROOT / "ipfs_datasets_py" / "pyproject.toml").is_file()
+    else EXTERNAL_ROOT / "ipfs_datasets"
+)
 PLUGIN_MODULE = "ipfs_accelerate_py.testing.proof_reuse.plugin"
 PYTEST_SITE = Path(pytest.__file__).resolve().parents[1]
 
@@ -80,16 +92,16 @@ REPOSITORIES = (
     ),
     RepositorySpec(
         "ipfs_kit",
-        EXTERNAL_ROOT / "ipfs_kit",
-        EXTERNAL_ROOT / "ipfs_kit" / "conftest.py",
+        _KIT_ROOT,
+        _KIT_ROOT / "conftest.py",
         "ipfs-kit-proof-reuse",
         "ipfs_kit_py.pytest_proof_reuse",
         "ipfs-proof-reuse",
     ),
     RepositorySpec(
         "ipfs_datasets",
-        EXTERNAL_ROOT / "ipfs_datasets",
-        EXTERNAL_ROOT / "ipfs_datasets" / "tests" / "conftest.py",
+        _DATASETS_ROOT,
+        _DATASETS_ROOT / "tests" / "conftest.py",
         "ipfs-datasets-proof-reuse",
         "ipfs_datasets_py.pytest_proof_reuse",
         "ipfs-proof-reuse",

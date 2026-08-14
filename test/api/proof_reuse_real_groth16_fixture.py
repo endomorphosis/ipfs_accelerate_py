@@ -84,10 +84,16 @@ def external_root() -> Path:
 
 
 def datasets_root() -> Path:
+    nested = accelerate_root() / "ipfs_datasets_py"
+    if (nested / "pyproject.toml").is_file():
+        return nested
     return external_root() / "ipfs_datasets"
 
 
 def kit_root() -> Path:
+    nested = accelerate_root() / "ipfs_kit_py"
+    if (nested / "pyproject.toml").is_file():
+        return nested
     return external_root() / "ipfs_kit"
 
 
