@@ -1,0 +1,47 @@
+{
+  "check_all": true,
+  "check_terminal": true,
+  "counts": {
+    "benchmark_transitions": 40,
+    "errors": 7,
+    "goals_expected": 14,
+    "strict_lanes": 3,
+    "task_dependency_edges": 83,
+    "tasks_expected": 57
+  },
+  "errors": [
+    "IPS-059 validation path is not canonical: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/data/agent_supervisor/incremental_proof_sealer/state/discovery/2026-08-12-ips-059-reconciliation-9a1e2455799a.md'",
+    "IPS-060 validation path is not canonical: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/data/agent_supervisor/incremental_proof_sealer/state/discovery/2026-08-12-ips-060-reconciliation-4a4ccc39bf0b.md'",
+    "IPS-061 validation path is not canonical: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/data/agent_supervisor/incremental_proof_sealer/state/discovery/2026-08-12-ips-061-reconciliation-8de091b19573.md'",
+    "IPS-062 validation path is not canonical: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/data/agent_supervisor/incremental_proof_sealer/state/discovery/2026-08-12-ips-062-reconciliation-111fede4c879.md'",
+    "IPS-063 validation path is not canonical: '/home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/repo/data/agent_supervisor/incremental_proof_sealer/state/discovery/2026-08-12-ips-063-reconciliation-79743a495e08.md'",
+    "ipfs_datasets_py nested worktree is dirty: ['D .tools/ipfs_kit_py', ' D ipfs_accelerate_py', ' D ipfs_datasets_py/logic/CEC/DCEC_Library', ' D ipfs_datasets_py/logic/CEC/Eng-DCEC', ' D ipfs_datasets_py/logic/CEC/ShadowProver', ' D ipfs_datasets_py/logic/CEC/Talos', ' D ipfs_datasets_py/multimedia/convert_to_txt_based_on_mime_type', ' D ipfs_datasets_py/multimedia/omni_converter_mk2']",
+    "ipfs_kit_py nested worktree is dirty: ['D docs/filesystem_spec', ' D docs/ipfs-docs', ' D docs/ipfs_cluster', ' D docs/ipfsspec', ' D docs/lassie', ' D docs/libp2p-universal-connectivity', ' D docs/libp2p_docs', ' D docs/lighthouse-python-sdk']"
+  ],
+  "source_binding": {
+    "accelerate": "8881344bb2162f3f8d82f22d8348bc0ac7536f95",
+    "ipfs_datasets_py": "bd2ff6245ebe476fc744d45c7c66235c92b0e19c",
+    "ipfs_kit_py": "5a7a2df8181cfdc33bc19be09989df7ff83f2d4e"
+  },
+  "valid": false
+}
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
+/usr/bin/python3.12: No module named pytest
