@@ -930,7 +930,7 @@ W20 AAE-063
 
 ## AAE-033 Implement deterministic diagnosis, development, and held-out evaluation policy
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
