@@ -1500,7 +1500,7 @@ Global invariants for every task:
 
 ## IPS-047 Cover full/delta lifecycle, branches, merge, rollback, and compaction
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
