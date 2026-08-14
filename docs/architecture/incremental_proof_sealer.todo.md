@@ -1655,7 +1655,7 @@ Global invariants for every task:
 
 ## IPS-052 Implement the deterministic forty-transition benchmark workload
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
