@@ -714,7 +714,7 @@ W20 AAE-063
 
 ## AAE-025 Implement bounded equivalent-mutant analysis
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
