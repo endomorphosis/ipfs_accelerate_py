@@ -1345,7 +1345,7 @@ Global invariants for every task:
 
 ## IPS-042 Implement periodic checkpoints and delta-chain compaction
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
