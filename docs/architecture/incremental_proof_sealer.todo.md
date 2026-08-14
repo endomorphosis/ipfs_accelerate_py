@@ -1438,7 +1438,7 @@ Global invariants for every task:
 
 ## IPS-045 Build the deterministic fixture repository and proof-graph generator
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
