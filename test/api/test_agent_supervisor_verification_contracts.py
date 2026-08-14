@@ -83,6 +83,9 @@ from ipfs_accelerate_py.agent_supervisor.verification.contracts import (
     aggregate_terminal_status,
     build_verification_commitment,
 )
+from ipfs_accelerate_py.agent_supervisor.verification import (
+    contracts as verification_contracts,
+)
 
 TREE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/observed-repository-tree@1"
 SEMANTIC_SCHEMA = "ipfs_accelerate_py/agent-supervisor/observed-semantic-state@1"
@@ -427,6 +430,231 @@ def _key(
             _expected_environment(values),
         )
     return VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
+
+
+def _bwrap_banner_alias_kwargs(
+    *,
+    probe_output: bytes = b"bwrap 0.9.0\n",
+) -> dict[str, object]:
+    """Bind a compiler-only bwrap fixture to the reviewed host executable."""
+
+    executable = Path("/usr/bin/bwrap")
+    assert executable.resolve(strict=True) == executable
+    executable_bytes = executable.read_bytes()
+    executable_sha256 = "sha256:" + hashlib.sha256(executable_bytes).hexdigest()
+    values = _compiler_kwargs()
+    snapshot = values["capability_snapshot"]
+    assert isinstance(snapshot, CapabilitySnapshot)
+    values.update(
+        capability_snapshot=replace(
+            snapshot,
+            tool_identities={"bwrap": executable_sha256},
+        ),
+        tool_capability_name="bwrap",
+        tool_identity=ToolIdentity(
+            name="bwrap",
+            kind="executable",
+            locator=str(executable),
+            version="0.9.0",
+            identity=executable_sha256,
+            roles=("verification",),
+        ),
+        resolved_tool_executable=str(executable),
+        tool_executable_bytes=executable_bytes,
+        selector_argv=(str(executable), "--die-with-parent"),
+        tool_version_probe_argv=(str(executable), "--version"),
+        tool_version_probe_output_bytes=probe_output,
+        tool_name="bwrap",
+        tool_version="0.9.0",
+        adapter_schema="bwrap-verification-adapter@1",
+    )
+    values["claimed_environment_cid"] = _structured_cid(
+        ENVIRONMENT_SCHEMA,
+        _expected_environment(values),
+    )
+    return values
+
+
+def test_bwrap_banner_alias_live_host_binds_reviewed_executable_and_banner() -> None:
+    executable = Path("/usr/bin/bwrap")
+    assert executable.resolve(strict=True) == executable
+    executable_bytes = executable.read_bytes()
+    observed = subprocess.run(
+        (str(executable), "--version"),
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ).stdout
+    assert observed == b"bubblewrap 0.9.0\n"
+
+    values = _bwrap_banner_alias_kwargs(probe_output=observed)
+    assert values["tool_executable_bytes"] == executable_bytes
+    assert values["tool_identity"] == ToolIdentity(
+        name="bwrap",
+        kind="executable",
+        locator="/usr/bin/bwrap",
+        version="0.9.0",
+        identity="sha256:" + hashlib.sha256(executable_bytes).hexdigest(),
+        roles=("verification",),
+    )
+    assert values["selector_argv"] == ("/usr/bin/bwrap", "--die-with-parent")
+    assert values["tool_version_probe_argv"] == ("/usr/bin/bwrap", "--version")
+
+    key = VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
+    assert key.environment_observation["tool_version_probe_output_cid"] == cid_for_bytes(
+        b"bubblewrap 0.9.0\n"
+    )
+
+
+def test_bwrap_banner_alias_accepts_canonical_name_in_pure_compiler_fixture() -> None:
+    values = _bwrap_banner_alias_kwargs(probe_output=b"bwrap 0.9.0\n")
+
+    key = VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
+
+    assert key.environment_observation["tool_version_probe_output_cid"] == cid_for_bytes(
+        b"bwrap 0.9.0\n"
+    )
+
+
+def test_bwrap_banner_alias_output_bytes_change_the_key() -> None:
+    canonical = VerificationIdentityCompiler().compile_key(
+        **_bwrap_banner_alias_kwargs(probe_output=b"bwrap 0.9.0\n")
+    )  # type: ignore[arg-type]
+    alias = VerificationIdentityCompiler().compile_key(
+        **_bwrap_banner_alias_kwargs(probe_output=b"bubblewrap 0.9.0\n")
+    )  # type: ignore[arg-type]
+
+    assert canonical.key_id != alias.key_id
+    assert (
+        canonical.environment_observation["tool_version_probe_output_cid"]
+        != alias.environment_observation["tool_version_probe_output_cid"]
+    )
+
+
+@pytest.mark.parametrize(
+    "probe_output",
+    (
+        b"bwrap\n0.9.0\n",
+        b"bwrap  0.9.0\n",
+        b"bwrap 0.9.0 extra\n",
+        b"bwrap 0.9.0",
+        b"bubblewrap\n0.9.0\n",
+        b"bubblewrap  0.9.0\n",
+        b"bubblewrap 0.9.0 extra\n",
+        b"bubblewrap 0.9.0",
+        b"/usr/bin/bwrap 0.9.0\n",
+        b"/usr/bin/bubblewrap 0.9.0\n",
+        b"bwrap 0.9.0\nUsage: bwrap ...\n",
+        b"bubblewrap 0.9.0\nUsage: bubblewrap ...\n",
+        b"error: bwrap 0.9.0\n",
+        b"error: bubblewrap 0.9.0\n",
+        b"bwrap 0.9.0\nextra\n",
+        b"bubblewrap 0.9.0\nextra\n",
+        b"BWRAP 0.9.0\n",
+        b"BubbleWrap 0.9.0\n",
+        b"bwrap\t0.9.0\n",
+        b"bubblewrap\t0.9.0\n",
+        b"bwrap 0.9.0\r\n",
+        b"bubblewrap 0.9.0\r\n",
+        b"bwrap 0.9.0 \n",
+        b"bubblewrap 0.9.0 \n",
+        b"bwrap-helper 0.9.0\n",
+        b"bubblewrap-helper 0.9.0\n",
+        b"bwrap 0.9\n",
+        b"bubblewrap 0.9\n",
+        b"bwrap 10.9.0\n",
+        b"bubblewrap 10.9.0\n",
+    ),
+)
+def test_bwrap_banner_alias_rejects_malformed_exact_banners(
+    probe_output: bytes,
+) -> None:
+    with pytest.raises(VerificationIdentityError, match="reviewed exact banner"):
+        VerificationIdentityCompiler().compile_key(
+            **_bwrap_banner_alias_kwargs(probe_output=probe_output)
+        )  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "version",
+    ("", "0.9.0 beta", "0.9.0\t", "0.9.0\r", "0.9.0\n", "0.9.0é"),
+)
+def test_bwrap_banner_alias_rejects_non_token_claimed_versions(version: str) -> None:
+    values = _bwrap_banner_alias_kwargs()
+    values["tool_version"] = version
+
+    with pytest.raises((VerificationContractError, VerificationIdentityError)):
+        VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
+
+
+def test_bwrap_banner_alias_cannot_be_extended_by_rebinding_constant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        verification_contracts,
+        "_BWRAP_BANNER_NAME_COMPATIBILITY",
+        frozenset({("bwrap", "bubblewrap"), ("bwrap", "unreviewed")}),
+    )
+
+    with pytest.raises(VerificationIdentityError, match="not closed"):
+        VerificationIdentityCompiler().compile_key(
+            **_bwrap_banner_alias_kwargs(probe_output=b"unreviewed 0.9.0\n")
+        )  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("field", ("selector_argv", "tool_version_probe_argv"))
+def test_bwrap_banner_alias_rejects_selector_or_probe_executable_mismatch(
+    field: str,
+) -> None:
+    values = _bwrap_banner_alias_kwargs()
+    values[field] = ("/usr/bin/bwrap-helper", "--version")
+
+    with pytest.raises(VerificationIdentityError, match="selector and version probe"):
+        VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
+
+
+def test_bwrap_banner_alias_rejects_identity_locator_bytes_and_invocation_mismatch() -> None:
+    values = _bwrap_banner_alias_kwargs()
+    tool_identity = values["tool_identity"]
+    assert isinstance(tool_identity, ToolIdentity)
+    values["tool_identity"] = replace(tool_identity, locator="bwrap-helper")
+    with pytest.raises(VerificationIdentityError, match="reviewed tool locator"):
+        VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
+
+    values = _bwrap_banner_alias_kwargs()
+    values["tool_executable_bytes"] = b"reviewed-launcher:bwrap"
+    with pytest.raises(VerificationIdentityError, match="executable bytes"):
+        VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
+
+    values = _bwrap_banner_alias_kwargs()
+    tool_identity = values["tool_identity"]
+    assert isinstance(tool_identity, ToolIdentity)
+    values["tool_identity"] = replace(tool_identity, identity="sha256:" + "0" * 64)
+    with pytest.raises(VerificationIdentityError, match="capability snapshot"):
+        VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
+
+    values = _bwrap_banner_alias_kwargs()
+    values["selector_argv"] = ("/usr/bin/bwrap", "-m", "bwrap")
+    values["claimed_environment_cid"] = _structured_cid(
+        ENVIRONMENT_SCHEMA,
+        _expected_environment(values),
+    )
+    with pytest.raises(VerificationIdentityError, match="selected command launcher/module"):
+        VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
+
+
+def test_bwrap_banner_alias_keeps_non_bwrap_probe_rules_unchanged() -> None:
+    for kind, output in (
+        (VerificationReceiptKind.TYPE_CHECK, b"mypy version 1.18.2 (fixture)\n"),
+        (VerificationReceiptKind.TEST, b"pytest 9.1.1 fixture build\n"),
+    ):
+        values = _compiler_kwargs(kind)
+        values["tool_version_probe_output_bytes"] = output
+        values["claimed_environment_cid"] = _structured_cid(
+            ENVIRONMENT_SCHEMA,
+            _expected_environment(values),
+        )
+        assert VerificationIdentityCompiler().compile_key(**values)  # type: ignore[arg-type]
 
 
 def _observation(

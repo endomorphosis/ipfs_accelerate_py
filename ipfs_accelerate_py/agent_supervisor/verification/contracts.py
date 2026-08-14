@@ -85,6 +85,11 @@ MAX_RAW_IDENTITY_BYTES: Final[int] = 16 * 1_048_576
 MAX_DURATION_MS: Final[int] = 7 * 24 * 60 * 60 * 1_000
 MAX_RESOURCE_QUANTITY: Final[int] = 2**63 - 1
 
+# Bubblewrap's reviewed executable is named ``bwrap``, while its canonical
+# version banner uses the historical ``bubblewrap`` spelling.  This is a
+# closed compatibility record, not a caller-configurable alias registry.
+_BWRAP_BANNER_NAME_COMPATIBILITY: Final = frozenset({("bwrap", "bubblewrap")})
+
 VERIFICATION_RECEIPT_KEY_INTERFACE: Final[str] = "VerificationReceiptKey@1"
 DIRECT_EXECUTION_OBSERVATION_INTERFACE: Final[str] = "DirectExecutionObservation@1"
 STATIC_ANALYSIS_RECEIPT_INTERFACE: Final[str] = "StaticAnalysisReceipt@1"
@@ -1780,6 +1785,7 @@ class VerificationIdentityCompiler:
                 "sandbox environment values do not match the capability snapshot"
             )
         normalized_tool_name = _text(tool_name, field_name="tool_name", maximum=256)
+        raw_tool_version = tool_version
         normalized_tool_version = _text(
             tool_version, field_name="tool_version", maximum=256
         )
@@ -1829,6 +1835,36 @@ class VerificationIdentityCompiler:
             raise VerificationBoundsError(
                 "tool_version_probe_output_bytes exceeds 65536 bytes"
             )
+        reviewed_bwrap_banner = normalized_tool_name == executable.name == "bwrap"
+        if reviewed_bwrap_banner:
+            # Keep the compatibility exception closed even if a caller rebinding
+            # this private module global attempts to turn it into an alias seam.
+            if _BWRAP_BANNER_NAME_COMPATIBILITY != frozenset(
+                {("bwrap", "bubblewrap")}
+            ):
+                raise VerificationIdentityError(
+                    "reviewed bwrap banner compatibility record is not closed"
+                )
+            if (
+                raw_tool_version != normalized_tool_version
+                or re.fullmatch(
+                    r"[A-Za-z0-9._+\-]+", normalized_tool_version, flags=re.ASCII
+                )
+                is None
+            ):
+                raise VerificationIdentityError(
+                    "bwrap version must be one nonempty ASCII token"
+                )
+            permitted_probe_outputs = frozenset(
+                (
+                    f"bwrap {normalized_tool_version}\n".encode("ascii"),
+                    f"bubblewrap {normalized_tool_version}\n".encode("ascii"),
+                )
+            )
+            if tool_version_probe_output_bytes not in permitted_probe_outputs:
+                raise VerificationIdentityError(
+                    "bwrap version probe output is not a reviewed exact banner"
+                )
         try:
             probe_output_text = tool_version_probe_output_bytes.decode("utf-8")
         except UnicodeDecodeError as exc:
@@ -1840,7 +1876,10 @@ class VerificationIdentityCompiler:
             rf"(?![A-Za-z0-9._+\-])"
         )
         if (
-            normalized_tool_name.casefold() not in probe_output_text.casefold()
+            (
+                not reviewed_bwrap_banner
+                and normalized_tool_name.casefold() not in probe_output_text.casefold()
+            )
             or version_pattern.search(probe_output_text) is None
         ):
             raise VerificationIdentityError(
