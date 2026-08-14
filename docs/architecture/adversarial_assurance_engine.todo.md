@@ -849,7 +849,7 @@ W20 AAE-063
 
 ## AAE-030 Diagnose surviving mutants with explicit product versus assurance distinctions
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
