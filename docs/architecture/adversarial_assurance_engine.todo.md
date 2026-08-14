@@ -876,7 +876,7 @@ W20 AAE-063
 
 ## AAE-031 Specify minimized survivor reports and bounded reproduction evidence
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
