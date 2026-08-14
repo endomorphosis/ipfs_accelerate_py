@@ -183,8 +183,21 @@ from ..validation.validation_scheduler import (
 from .contract_packet_provider_router import (
     IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
     PROVIDER_EXECUTION_RECEIPT_INTERFACE,
+    ProviderBounds,
+    ProviderCallable,
 )
 from .diagnostics import summarize_test_failure
+from .production_provider_attestation import (
+    ProductionProviderReviewAuthority,
+    production_provider_review_key_path,
+)
+from .production_provider_cli import (
+    DEFAULT_CONTEXT_BUDGET_TOKENS as DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS,
+    DEFAULT_PROVIDER_TIMEOUT_SECONDS as DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS,
+    PRODUCTION_CLI_POLICY_NAME,
+    ProductionCLIProviderPolicy,
+    build_production_cli_provider_pair,
+)
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
 from .task_execution_policy import (
@@ -3149,6 +3162,10 @@ class PortalImplementationDaemon:
         implement: bool = False,
         implementation_command: str | None = None,
         implementation_timeout: float = DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
+        production_provider_policy: str = "",
+        production_provider_context_budget_tokens: int = 0,
+        production_provider_timeout_seconds: float = 0.0,
+        production_provider_review_authority_key_path: Path | str | None = None,
         max_task_attempts: int = 0,
         implementation_log_dir: Path | None = None,
         use_ephemeral_worktree: bool = False,
@@ -3318,6 +3335,80 @@ class PortalImplementationDaemon:
         self.implement = implement
         self.implementation_command = implementation_command
         self.implementation_timeout = implementation_timeout
+        selected_production_policy = str(
+            production_provider_policy or ""
+        ).strip()
+        raw_production_budget = int(
+            production_provider_context_budget_tokens or 0
+        )
+        raw_production_timeout = float(
+            production_provider_timeout_seconds or 0.0
+        )
+        if (
+            (raw_production_budget or raw_production_timeout)
+            and not selected_production_policy
+        ):
+            raise ValueError(
+                "production provider bounds require a production provider policy"
+            )
+        if (
+            production_provider_review_authority_key_path is not None
+            and not selected_production_policy
+        ):
+            raise ValueError(
+                "production provider review authority requires a production "
+                "provider policy"
+            )
+        self.production_provider_policy: ProductionCLIProviderPolicy | None = None
+        self.production_provider_policy_name = ""
+        self.production_provider_context_budget_tokens = 0
+        self.production_provider_timeout_seconds = 0.0
+        self._production_grok_provider: ProviderCallable | None = None
+        self._production_codex_provider: ProviderCallable | None = None
+        self._production_provider_bounds: ProviderBounds | None = None
+        self._production_provider_review_authority: (
+            ProductionProviderReviewAuthority | None
+        ) = None
+        self.production_provider_review_key_path = Path(
+            production_provider_review_authority_key_path
+            or production_provider_review_key_path(self.state_path)
+        )
+        if selected_production_policy:
+            policy = ProductionCLIProviderPolicy(
+                name=selected_production_policy,
+                context_budget_tokens=(
+                    raw_production_budget
+                    or DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS
+                ),
+                provider_timeout_seconds=(
+                    raw_production_timeout
+                    or DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS
+                ),
+            )
+            self.production_provider_policy = policy
+            self.production_provider_policy_name = policy.name
+            self.production_provider_context_budget_tokens = (
+                policy.context_budget_tokens
+            )
+            self.production_provider_timeout_seconds = float(
+                policy.provider_timeout_seconds
+            )
+            (
+                self._production_grok_provider,
+                self._production_codex_provider,
+            ) = build_production_cli_provider_pair(policy)
+            self._production_provider_bounds = ProviderBounds(
+                max_prompt_tokens=policy.context_budget_tokens,
+                timeout_seconds=policy.provider_timeout_seconds,
+            )
+            if self.implement:
+                authority = ProductionProviderReviewAuthority.load_or_create(
+                    self.production_provider_review_key_path
+                )
+                self._production_provider_review_authority = authority
+                self.production_provider_review_trusted_public_keys = {
+                    authority.issuer_key_id: authority.public_key_bytes
+                }
         self.max_task_attempts = max(0, int(max_task_attempts))
         self.implementation_log_dir = implementation_log_dir or self.state_path.parent / "implementation_logs"
         self.implementation_context_budget = implementation_context_budget
@@ -45434,6 +45525,42 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--production-provider-policy",
+        default="",
+        choices=("", PRODUCTION_CLI_POLICY_NAME),
+        help=(
+            "Opt in to the typed production packet route using Grok for "
+            "implementation and a distinct Codex CLI invocation for review."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-context-budget-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Positive bounded context budget for --production-provider-policy. "
+            f"Zero selects the policy default ({DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS})."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-timeout-seconds",
+        type=float,
+        default=0.0,
+        help=(
+            "Positive bounded per-provider timeout for the production route. "
+            f"Zero selects the policy default ({DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS:g}s)."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-review-authority-key-path",
+        type=Path,
+        default=None,
+        help=(
+            "Operator-controlled Ed25519 private-key file used to sign and "
+            "verify full production provider review receipts."
+        ),
+    )
+    parser.add_argument(
         "--implementation-protected-path",
         action="append",
         default=[],
@@ -45752,6 +45879,16 @@ def main(argv: list[str] | None = None) -> None:
         implement=args.implement,
         implementation_command=args.implementation_command or None,
         implementation_timeout=args.implementation_timeout,
+        production_provider_policy=args.production_provider_policy,
+        production_provider_context_budget_tokens=(
+            args.production_provider_context_budget_tokens
+        ),
+        production_provider_timeout_seconds=(
+            args.production_provider_timeout_seconds
+        ),
+        production_provider_review_authority_key_path=(
+            args.production_provider_review_authority_key_path
+        ),
         max_task_attempts=args.max_task_attempts,
         use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,

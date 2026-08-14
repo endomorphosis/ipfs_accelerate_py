@@ -1444,6 +1444,45 @@ def test_bundle_command_propagates_explicit_policy_without_task_metadata() -> No
     ] == str(shared_key_path)
 
 
+def test_bundle_policy_survives_supervisor_to_daemon_cli_handoff(
+    tmp_path: Path,
+) -> None:
+    key_path = tmp_path / "bundle-state" / "shared-review.ed25519"
+    bundle_command = implementation_supervisor_command(
+        todo_path=tmp_path / "runtime.todo.md",
+        state_dir=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        state_prefix="pcce-provider",
+        task_prefix="## PCCE-",
+        implement=True,
+        daemon_interval=5,
+        stale_seconds=30,
+        check_interval=2,
+        watchdog_startup_grace_seconds=300,
+        max_restarts=1,
+        implementation_timeout=300,
+        production_provider_policy=PRODUCTION_CLI_POLICY_NAME,
+        production_provider_context_budget_tokens=24_576,
+        production_provider_timeout_seconds=300,
+        production_provider_review_authority_key_path=key_path,
+    )
+    supervisor_args = parse_supervisor_args(bundle_command[3:])
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(supervisor_args, repo_root=tmp_path)
+    )
+
+    daemon_command = supervisor._build_daemon_command()
+    daemon_module_index = daemon_command.index(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+    )
+    daemon_args = parse_daemon_args(daemon_command[daemon_module_index + 1 :])
+
+    assert daemon_args.production_provider_policy == PRODUCTION_CLI_POLICY_NAME
+    assert daemon_args.production_provider_context_budget_tokens == 24_576
+    assert daemon_args.production_provider_timeout_seconds == 300.0
+    assert daemon_args.production_provider_review_authority_key_path == key_path
+
+
 def test_bundle_lanes_default_to_one_bundle_root_review_authority(
     tmp_path: Path,
 ) -> None:

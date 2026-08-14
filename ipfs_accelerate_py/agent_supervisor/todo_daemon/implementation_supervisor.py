@@ -76,6 +76,14 @@ from .implementation_supervisor_runner import (
     persist_goal_completion_projection,
     persist_supervisor_scan_receipt,
 )
+from .production_provider_attestation import (
+    DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME,
+)
+from .production_provider_cli import (
+    DEFAULT_PROVIDER_TIMEOUT_SECONDS as DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS,
+    PRODUCTION_CLI_POLICY_NAME,
+    ProductionCLIProviderPolicy,
+)
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
 from ..objectives.scan_receipts import (
     RefillScanResult,
@@ -147,6 +155,8 @@ from .worktrees import (
     pid_is_alive,
     python_identifier_worktree_basename,
 )
+
+DEFAULT_SUPERVISED_PRODUCTION_CONTEXT_BUDGET_TOKENS = 4_096
 
 REPO_ROOT = Path.cwd()
 
@@ -6146,6 +6156,10 @@ class PortalSupervisorConfig:
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
+    production_provider_policy: str = ""
+    production_provider_context_budget_tokens: int = 0
+    production_provider_timeout_seconds: float = 0.0
+    production_provider_review_authority_key_path: Path | None = None
     llm_merge_resolver_command: str = ""
     llm_merge_resolver_timeout_seconds: float | None = None
     implementation_timeout: float = 1800.0
@@ -17970,6 +17984,28 @@ class PortalImplementationSupervisor:
             if self.config.implement:
                 command.append("--implement")
                 command.extend(["--implementation-timeout", str(self.config.implementation_timeout)])
+                if self.config.production_provider_policy:
+                    review_authority_key_path = (
+                        self.config.production_provider_review_authority_key_path
+                        or self.config.state_dir
+                        / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
+                    )
+                    command.extend(
+                        [
+                            "--production-provider-policy",
+                            self.config.production_provider_policy,
+                            "--production-provider-context-budget-tokens",
+                            str(
+                                int(
+                                    self.config.production_provider_context_budget_tokens
+                                )
+                            ),
+                            "--production-provider-timeout-seconds",
+                            str(float(self.config.production_provider_timeout_seconds)),
+                            "--production-provider-review-authority-key-path",
+                            str(review_authority_key_path),
+                        ]
+                    )
                 if self.config.implementation_command:
                     command.extend(["--implementation-command", self.config.implementation_command])
                 if self.config.llm_merge_resolver_command:
@@ -18343,6 +18379,49 @@ class PortalImplementationSupervisor:
             self.config.execution_slice_task_cids
         ):
             return False
+        expected_provider_policies = (
+            {self.config.production_provider_policy}
+            if self.config.implement and self.config.production_provider_policy
+            else set()
+        )
+        if option_values("--production-provider-policy") != expected_provider_policies:
+            return False
+        expected_provider_budgets = (
+            {str(int(self.config.production_provider_context_budget_tokens))}
+            if expected_provider_policies
+            else set()
+        )
+        if (
+            option_values("--production-provider-context-budget-tokens")
+            != expected_provider_budgets
+        ):
+            return False
+        expected_provider_timeouts = (
+            {str(float(self.config.production_provider_timeout_seconds))}
+            if expected_provider_policies
+            else set()
+        )
+        if (
+            option_values("--production-provider-timeout-seconds")
+            != expected_provider_timeouts
+        ):
+            return False
+        expected_review_authority_key_paths = (
+            {
+                str(
+                    self.config.production_provider_review_authority_key_path
+                    or self.config.state_dir
+                    / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
+                )
+            }
+            if expected_provider_policies
+            else set()
+        )
+        if (
+            option_values("--production-provider-review-authority-key-path")
+            != expected_review_authority_key_paths
+        ):
+            return False
         expected_merge_targets = (
             {self.config.merge_target_branch}
             if self.config.merge_target_branch
@@ -18444,6 +18523,45 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER selects the "
             "provider policy; auto prefers ready Grok and otherwise starts "
             "with Codex."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-policy",
+        default="",
+        choices=("", PRODUCTION_CLI_POLICY_NAME),
+        help=(
+            "Opt in to the typed production packet route using Grok for "
+            "implementation and a distinct Codex CLI invocation for review. "
+            "This is an operator policy overlay and does not rewrite task metadata."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-context-budget-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Positive bounded context budget for --production-provider-policy. "
+            "Zero selects the supervised compatibility default "
+            f"({DEFAULT_SUPERVISED_PRODUCTION_CONTEXT_BUDGET_TOKENS})."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-timeout-seconds",
+        type=float,
+        default=0.0,
+        help=(
+            "Positive bounded per-provider timeout for the production route. "
+            f"Zero selects the policy default ({DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS:g}s)."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-review-authority-key-path",
+        type=Path,
+        default=None,
+        help=(
+            "Operator-controlled Ed25519 private-key file forwarded unchanged "
+            "to the managed daemon. Bundle supervisors use one shared path "
+            "for every lane."
         ),
     )
     parser.add_argument(
@@ -19099,6 +19217,52 @@ def supervisor_config_from_args(
     llm_merge_resolver_command = args.llm_merge_resolver_command
     if reconciliation_only and not args.allow_reconciliation_only_llm_resolver:
         llm_merge_resolver_command = ""
+    production_provider_policy = str(
+        getattr(args, "production_provider_policy", "") or ""
+    ).strip()
+    raw_production_budget = int(
+        getattr(args, "production_provider_context_budget_tokens", 0) or 0
+    )
+    raw_production_timeout = float(
+        getattr(args, "production_provider_timeout_seconds", 0.0) or 0.0
+    )
+    raw_review_authority_key_path = getattr(
+        args, "production_provider_review_authority_key_path", None
+    )
+    if (
+        raw_production_budget
+        or raw_production_timeout
+        or raw_review_authority_key_path is not None
+    ) and not production_provider_policy:
+        raise ValueError(
+            "production provider bounds/review authority require a production "
+            "provider policy"
+        )
+    production_provider_context_budget_tokens = 0
+    production_provider_timeout_seconds = 0.0
+    production_provider_review_authority_key_path = None
+    if production_provider_policy:
+        production_policy = ProductionCLIProviderPolicy(
+            name=production_provider_policy,
+            context_budget_tokens=(
+                raw_production_budget
+                or DEFAULT_SUPERVISED_PRODUCTION_CONTEXT_BUDGET_TOKENS
+            ),
+            provider_timeout_seconds=(
+                raw_production_timeout
+                or DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS
+            ),
+        )
+        production_provider_context_budget_tokens = (
+            production_policy.context_budget_tokens
+        )
+        production_provider_timeout_seconds = float(
+            production_policy.provider_timeout_seconds
+        )
+        production_provider_review_authority_key_path = Path(
+            raw_review_authority_key_path
+            or args.state_dir / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
+        )
     return PortalSupervisorConfig(
         todo_path=args.todo_path,
         state_path=state_path or args.state_dir / f"{args.state_prefix}_task_state.json",
@@ -19116,6 +19280,14 @@ def supervisor_config_from_args(
         reconciliation_only=reconciliation_only,
         implement=implement,
         implementation_command=args.implementation_command,
+        production_provider_policy=production_provider_policy,
+        production_provider_context_budget_tokens=(
+            production_provider_context_budget_tokens
+        ),
+        production_provider_timeout_seconds=production_provider_timeout_seconds,
+        production_provider_review_authority_key_path=(
+            production_provider_review_authority_key_path
+        ),
         llm_merge_resolver_command=llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         implementation_timeout=args.implementation_timeout,
