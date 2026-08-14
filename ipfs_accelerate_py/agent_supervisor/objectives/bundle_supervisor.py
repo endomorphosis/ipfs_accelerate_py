@@ -64,6 +64,9 @@ from ..runtime.scheduler_metrics import (
     scheduler_state_events,
     write_scheduler_snapshot,
 )
+from ..todo_daemon.implementation_timeout import (
+    effective_implementation_hard_timeout,
+)
 from ..todo_daemon.legacy_landed_attestation import LegacyLandedReviewAuthority
 from ..todo_daemon.legacy_landed_review import (
     LegacyLandedReviewPolicy,
@@ -87,6 +90,7 @@ from .bundle_optimizer import BundleOptimizationPolicy, optimize_task_bundles
 from .objective_graph import (
     DEFAULT_TASK_PREFIX,
     build_bundle_task_payloads,
+    profile_g_safe_planning_value,
     repo_relative_path,
     safe_bundle_key,
     utc_now,
@@ -630,6 +634,7 @@ class BundleLaneSpec:
     gpu_memory_bytes: int = 0
     disk_bytes: int = 0
     process_slots: int = 1
+    implementation_max_timeout: float = 1800.0
     optimizer_bundle_cid: str = ""
     optimizer_policy_id: str = ""
     optimizer_execution_wave: int = 0
@@ -2123,6 +2128,108 @@ def _execution_slice_members(
     ]
 
 
+def _apply_runtime_task_exclusions(
+    payloads: Sequence[dict[str, Any]],
+    *,
+    excluded_task_ids: Sequence[str],
+) -> list[dict[str, Any]]:
+    """Fence selected ready members without changing reviewed bundle inputs.
+
+    Task exclusions are an operator control for one supervisor run, not a task
+    completion signal. Keep every source member and work contract attached as
+    dependency/provenance evidence, but narrow the authorized execution slice.
+    A bundle whose entire ready slice is excluded is omitted instead of being
+    registered with coordination, so the fenced work cannot consume a retry.
+
+    Embedded Profile-G artifacts bind the original execution slice. Detach
+    that aggregate identity whenever the slice changes and retain a compact
+    provenance reference; registration will derive a fresh slice identity from
+    the remaining canonical member identities.
+    """
+
+    excluded = {
+        str(task_id).strip()
+        for task_id in excluded_task_ids
+        if str(task_id).strip()
+    }
+    if not excluded:
+        return list(payloads)
+
+    projected_payloads: list[dict[str, Any]] = []
+    for original in payloads:
+        payload = dict(original)
+        execution_tasks = _execution_slice_members(
+            payload,
+            _mapping_list(payload.get("tasks")),
+        )
+        excluded_members = [
+            task
+            for task in execution_tasks
+            if str(task.get("task_id") or "").strip() in excluded
+        ]
+        if not excluded_members:
+            projected_payloads.append(payload)
+            continue
+
+        retained_members = [
+            task
+            for task in execution_tasks
+            if str(task.get("task_id") or "").strip() not in excluded
+        ]
+        if not retained_members:
+            continue
+
+        source_profile = (
+            dict(payload.get("profile_g") or {})
+            if isinstance(payload.get("profile_g"), Mapping)
+            else {}
+        )
+        if source_profile:
+            payload["source_profile_g_ref"] = {
+                key: str(source_profile.get(key) or "")
+                for key in (
+                    "goal_cid",
+                    "subgoal_cid",
+                    "plan_branch_cid",
+                    "selection_cid",
+                    "task_cid",
+                    "task_spec_cid",
+                )
+                if source_profile.get(key)
+            }
+            payload.pop("profile_g", None)
+
+        payload["execution_slice_task_ids"] = [
+            str(task.get("task_id") or "").strip()
+            for task in retained_members
+            if str(task.get("task_id") or "").strip()
+        ]
+        payload["execution_slice_task_cids"] = [
+            str(
+                task.get("canonical_task_cid")
+                or task.get("task_cid")
+                or ""
+            ).strip()
+            for task in retained_members
+            if str(
+                task.get("canonical_task_cid")
+                or task.get("task_cid")
+                or ""
+            ).strip()
+        ]
+        payload["runtime_excluded_task_ids"] = sorted(
+            {
+                str(task.get("task_id") or "").strip()
+                for task in excluded_members
+                if str(task.get("task_id") or "").strip()
+            }
+        )
+        projected_payloads.append(
+            dict(profile_g_safe_planning_value(payload))
+        )
+    return projected_payloads
+
+
 def _first_nonempty(payloads: Sequence[dict[str, Any]], *keys: str) -> Any:
     for payload in payloads:
         for key in keys:
@@ -2223,6 +2330,40 @@ def _resource_lane_fields(payload: dict[str, Any]) -> dict[str, Any]:
             maximum("process_slots", "required_process_slots", "worker_slots"),
         ),
     }
+
+
+def _execution_slice_implementation_max_timeout(
+    payload: Mapping[str, Any],
+    *,
+    default_timeout: float,
+) -> float:
+    """Return the largest hard timeout authorized by the execution slice.
+
+    The implementation daemon still receives ``default_timeout`` as its idle
+    and ordinary-task policy. This separate maximum sizes the parent
+    supervisor watchdog so a task-specific hard timeout cannot be interrupted
+    early. Exact per-task limits remain in the digest-bound taskboard and are
+    enforced by ``PortalImplementationDaemon``.
+    """
+
+    baseline = effective_implementation_hard_timeout(
+        {},
+        configured_timeout=default_timeout,
+    ).seconds
+    effective: list[float] = []
+    tasks = _execution_slice_members(
+        payload,
+        _mapping_list(payload.get("tasks")),
+    )
+    for task in tasks:
+        effective.append(
+            effective_implementation_hard_timeout(
+                task,
+                configured_timeout=default_timeout,
+                task_id=str(task.get("task_id") or "<unknown task>"),
+            ).seconds
+        )
+    return max(effective, default=baseline)
 
 
 def _dual_review_resource_fields(
@@ -2782,6 +2923,8 @@ def implementation_supervisor_command(
     watchdog_startup_grace_seconds: float | None,
     max_restarts: int,
     implementation_timeout: float,
+    implementation_max_timeout: float | None = None,
+    implementation_log_stall_seconds: float | None = None,
     max_task_attempts: int = 0,
     implementation_command: str = "",
     production_provider_policy: str = "",
@@ -2843,6 +2986,13 @@ def implementation_supervisor_command(
         "--no-objective-task-janitor",
         "--no-objective-goal-migration",
     ]
+    if implementation_max_timeout is not None:
+        command.extend(
+            [
+                "--implementation-max-timeout",
+                str(implementation_max_timeout),
+            ]
+        )
     if watchdog_startup_grace_seconds is not None:
         command.extend(
             [
@@ -2884,19 +3034,30 @@ def implementation_supervisor_command(
         raise ValueError(
             "legacy landed review requires both explicit policy and key paths"
         )
-    if (
+    legacy_review_enabled = (
         legacy_landed_review_policy_path is not None
         and legacy_landed_review_key_path is not None
-    ):
+    )
+    if legacy_review_enabled:
         # Exact historical review can spend the full bounded implementation
         # timeout inside provider calls without emitting child-log output.
         # Keep the overall timeout authoritative while preventing the default
         # 300-second log-stall watchdog from killing healthy legacy review.
         legacy_log_stall_seconds = max(300.0, float(implementation_timeout))
+        implementation_log_stall_seconds = max(
+            legacy_log_stall_seconds,
+            float(implementation_log_stall_seconds or 0.0),
+        )
+    if implementation_log_stall_seconds is not None:
         command.extend(
             [
                 "--implementation-log-stall-seconds",
-                str(legacy_log_stall_seconds),
+                str(implementation_log_stall_seconds),
+            ]
+        )
+    if legacy_review_enabled:
+        command.extend(
+            [
                 "--legacy-landed-review-policy-path",
                 str(legacy_landed_review_policy_path),
                 "--legacy-landed-review-key-path",
@@ -3184,6 +3345,8 @@ def plan_bundle_lanes(
     watchdog_startup_grace_seconds: float | None = None,
     max_restarts: int = 10,
     implementation_timeout: float = 1800.0,
+    implementation_max_timeout: float | None = None,
+    implementation_log_stall_seconds: float | None = None,
     max_task_attempts: int = 0,
     implementation_command: str = "",
     production_provider_policy: str = "",
@@ -3208,6 +3371,8 @@ def plan_bundle_lanes(
     completion_receipts: Mapping[str, Any] | None = None,
     optimize_bundles: bool = True,
     bundle_optimization_policy: BundleOptimizationPolicy | None = None,
+    excluded_bundle_keys: Sequence[str] = (),
+    excluded_task_ids: Sequence[str] = (),
 ) -> list[BundleLaneSpec]:
     """Return one isolated supervisor command for each objective bundle."""
 
@@ -3278,7 +3443,14 @@ def plan_bundle_lanes(
         for payload in bundle_payloads
         for task_id in _string_list(payload.get("completed_member_task_ids"))
     )
-    excluded_bundle_keys = _excluded_bundle_keys(bundle_index_path)
+    excluded_bundle_keys = {
+        *_excluded_bundle_keys(bundle_index_path),
+        *(
+            str(bundle_key).strip()
+            for bundle_key in excluded_bundle_keys
+            if str(bundle_key).strip()
+        ),
+    }
     bundle_payloads = [
         payload
         for payload in bundle_payloads
@@ -3286,6 +3458,10 @@ def plan_bundle_lanes(
         and payload.get("is_schedulable") is not False
         and payload.get("review_only") is not True
     ]
+    bundle_payloads = _apply_runtime_task_exclusions(
+        bundle_payloads,
+        excluded_task_ids=excluded_task_ids,
+    )
     if optimize_bundles:
         bundle_payloads = optimize_bundle_payloads(
             bundle_payloads,
@@ -3348,6 +3524,26 @@ def plan_bundle_lanes(
         )
         profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
         resource_fields = _resource_lane_fields(payload)
+        slice_implementation_max_timeout = (
+            _execution_slice_implementation_max_timeout(
+                payload,
+                default_timeout=implementation_timeout,
+            )
+        )
+        if implementation_max_timeout is not None:
+            if (
+                isinstance(implementation_max_timeout, bool)
+                or not isinstance(implementation_max_timeout, (int, float))
+                or not math.isfinite(float(implementation_max_timeout))
+                or float(implementation_max_timeout) <= 0
+            ):
+                raise ValueError(
+                    "implementation_max_timeout must be finite and positive"
+                )
+            slice_implementation_max_timeout = max(
+                slice_implementation_max_timeout,
+                float(implementation_max_timeout),
+            )
         legacy_dual_review = bool(
             legacy_review_task_ids.intersection(task_ids)
         )
@@ -3387,6 +3583,15 @@ def plan_bundle_lanes(
             watchdog_startup_grace_seconds=watchdog_startup_grace_seconds,
             max_restarts=max_restarts,
             implementation_timeout=implementation_timeout,
+            implementation_max_timeout=(
+                slice_implementation_max_timeout
+                if slice_implementation_max_timeout
+                > float(implementation_timeout)
+                else None
+            ),
+            implementation_log_stall_seconds=(
+                implementation_log_stall_seconds
+            ),
             max_task_attempts=max_task_attempts,
             implementation_command=implementation_command,
             production_provider_policy=production_provider_policy,
@@ -3485,6 +3690,9 @@ def plan_bundle_lanes(
                 ]
                 if isinstance(payload.get("bundle_optimization"), Mapping)
                 else [],
+                implementation_max_timeout=(
+                    slice_implementation_max_timeout
+                ),
                 **resource_fields,
             )
         )
@@ -4500,9 +4708,11 @@ class DynamicBundleScheduler:
                 self._plan_cache = None
         if self._plan_cache is None:
             allowed = {
-                "task_prefix", "implement", "daemon_interval", "stale_seconds",
+                "task_prefix", "excluded_bundle_keys", "excluded_task_ids",
+                "implement", "daemon_interval", "stale_seconds",
                 "check_interval", "max_restarts", "max_task_attempts",
-                "implementation_timeout",
+                "implementation_timeout", "implementation_max_timeout",
+                "implementation_log_stall_seconds",
                 "implementation_command", "production_provider_policy",
                 "production_provider_context_budget_tokens",
                 "production_provider_timeout_seconds",
@@ -6367,6 +6577,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest-path", type=Path, default=None)
     parser.add_argument("--metrics-path", type=Path, default=None)
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_PREFIX)
+    parser.add_argument(
+        "--exclude-bundle-key",
+        action="append",
+        default=[],
+        help=(
+            "Exact bundle key to omit from this supervisor run; repeat the "
+            "option to fence multiple bundles without rewriting the index"
+        ),
+    )
+    parser.add_argument(
+        "--exclude-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Exact task ID to omit from this supervisor run; repeat the option "
+            "to fence members without rewriting their shared bundle or taskboard"
+        ),
+    )
     parser.add_argument("--start", action="store_true", help="Launch the planned lane supervisors")
     parser.add_argument("--max-lanes", type=int, default=1, help="Maximum concurrent leased workers")
     parser.add_argument("--poll-interval", type=float, default=5.0)
@@ -6404,6 +6632,25 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
+    parser.add_argument(
+        "--implementation-max-timeout",
+        type=float,
+        default=None,
+        help=(
+            "Maximum task-specific implementation hard timeout across each "
+            "lane. This extends only the child supervisor watchdog; "
+            "--implementation-timeout remains the daemon's ordinary policy."
+        ),
+    )
+    parser.add_argument(
+        "--implementation-log-stall-seconds",
+        type=float,
+        default=None,
+        help=(
+            "Recycle an active implementation attempt after this many "
+            "seconds without supervisor-observed log output; <=0 disables."
+        ),
+    )
     parser.add_argument("--implementation-command", default="")
     parser.add_argument(
         "--production-provider-policy",
@@ -6628,6 +6875,16 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
             raise ValueError("legacy landed review policy/key binding is invalid")
     lane_options = dict(
         task_prefix=args.task_prefix,
+        excluded_bundle_keys=tuple(
+            str(bundle_key).strip()
+            for bundle_key in (getattr(args, "exclude_bundle_key", ()) or ())
+            if str(bundle_key).strip()
+        ),
+        excluded_task_ids=tuple(
+            str(task_id).strip()
+            for task_id in (getattr(args, "exclude_task_id", ()) or ())
+            if str(task_id).strip()
+        ),
         implement=args.implement,
         daemon_interval=args.daemon_interval,
         stale_seconds=args.stale_seconds,
@@ -6636,6 +6893,16 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         max_restarts=args.max_restarts,
         max_task_attempts=max(0, int(getattr(args, "max_task_attempts", 0))),
         implementation_timeout=args.implementation_timeout,
+        implementation_max_timeout=getattr(
+            args,
+            "implementation_max_timeout",
+            None,
+        ),
+        implementation_log_stall_seconds=getattr(
+            args,
+            "implementation_log_stall_seconds",
+            None,
+        ),
         implementation_command=args.implementation_command,
         production_provider_policy=production_provider_policy,
         production_provider_context_budget_tokens=(

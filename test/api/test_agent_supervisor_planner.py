@@ -6,20 +6,22 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
-    BundleLaneSpec,
-    DynamicBundleScheduler,
-    _execution_slice_implementation_max_timeout,
-    build_arg_parser as build_bundle_supervisor_arg_parser,
-    launch_bundle_lanes,
-    plan_bundle_lanes,
-)
 from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     DependencyNotReadyError,
     LeaseCoordinator,
     LeaseGrant,
     adapt_goal_bundle,
+)
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    BundleLaneSpec,
+    DynamicBundleScheduler,
+    _execution_slice_implementation_max_timeout,
+    launch_bundle_lanes,
+    plan_bundle_lanes,
+    run_bundle_supervisor,
+)
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    build_arg_parser as build_bundle_supervisor_arg_parser,
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     build_bundle_task_payloads,
@@ -29,6 +31,12 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    parse_args as parse_implementation_supervisor_args,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
+    build_portal_implementation_supervisor_from_args,
 )
 
 
@@ -567,6 +575,7 @@ def test_bundle_lane_planner_omits_fully_excluded_slice_before_retry_registratio
 
 
 def test_checked_in_formal_verification_index_fences_fvt_053_from_fvt_083_retry(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     repo_root = Path(__file__).resolve().parents[2]
@@ -582,10 +591,37 @@ def test_checked_in_formal_verification_index_fences_fvt_053_from_fvt_083_retry(
     source_board = index_path.parent / (
         "formal-verification-tactician-toolchain-release.todo.md"
     )
+    assert not query_path.exists()
+    assert "*.duckdb" in (repo_root / ".gitignore").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    # Query caches are ignored, mutable projections. Only the checked-in JSON
+    # index and source board are authoritative inputs whose bytes must remain
+    # unchanged while runtime exclusions are planned.
     immutable_digests = {
         path: hashlib.sha256(path.read_bytes()).hexdigest()
-        for path in (index_path, query_path, source_board)
+        for path in (index_path, source_board)
     }
+
+    def read_json_projection(path, *, field_names=()):
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+
+    def read_json_fields(path, field_names, *, kind=None):
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        return {name: payload[name] for name in field_names if name in payload}
+
+    # Exercise the authoritative portable representation directly so this
+    # source-integrity regression cannot regenerate an ignored query cache.
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.artifact_store."
+        "read_bundle_index_planning_projection",
+        read_json_projection,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor."
+        "read_artifact_fields",
+        read_json_fields,
+    )
 
     initial_payloads = build_bundle_task_payloads(index_path, max_attempts=4)
     completion_receipts = {
@@ -651,6 +687,7 @@ def test_checked_in_formal_verification_index_fences_fvt_053_from_fvt_083_retry(
         path: hashlib.sha256(path.read_bytes()).hexdigest()
         for path in immutable_digests
     } == immutable_digests
+    assert not query_path.exists()
 
 
 def test_dynamic_scheduler_and_cli_propagate_repeatable_task_exclusions(
@@ -772,6 +809,95 @@ def test_bundle_lane_planner_preserves_task_specific_implementation_timeout(
         == "7200.0"
     )
     assert "--implementation-max-timeout" not in ordinary.command
+
+
+def test_bundle_cli_forwards_parent_timeout_envelope_without_weakening_daemon_policy(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    bundle_dir = repo / "bundles"
+    bundle_dir.mkdir(parents=True)
+    board = bundle_dir / "bounded.todo.md"
+    board.write_text(
+        "## PCCE-001 Inventory\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    index_path = bundle_dir / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "proof-context/inventory": {
+                        "shard_path": "bundles/bounded.todo.md",
+                        "tasks": [
+                            {
+                                "task_id": "PCCE-001",
+                                "canonical_task_cid": "cid-pcce-001",
+                                "canonical_task_key": "task/v1/pcce-001",
+                            }
+                        ],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    args = build_bundle_supervisor_arg_parser().parse_args(
+        [
+            "--bundle-index-path",
+            str(index_path),
+            "--repo-root",
+            str(repo),
+            "--state-root",
+            str(repo / "state"),
+            "--worktree-root",
+            str(repo / "worktrees"),
+            "--log-dir",
+            str(repo / "logs"),
+            "--manifest-path",
+            str(repo / "lanes.json"),
+            "--implementation-timeout",
+            "5400",
+            "--implementation-max-timeout",
+            "10800",
+            "--implementation-log-stall-seconds",
+            "1200",
+            "--implement",
+        ]
+    )
+
+    manifest = run_bundle_supervisor(args)
+    [lane] = manifest["lanes"]
+    lane_command = lane["command"]
+    assert lane["implementation_max_timeout"] == 10_800
+    assert lane_command[lane_command.index("--implementation-timeout") + 1] == "5400.0"
+    assert lane_command[lane_command.index("--implementation-max-timeout") + 1] == "10800.0"
+    assert lane_command[
+        lane_command.index("--implementation-log-stall-seconds") + 1
+    ] == "1200.0"
+
+    assert lane_command[1:3] == [
+        "-m",
+        (
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_supervisor"
+        ),
+    ]
+    parsed_child = parse_implementation_supervisor_args(lane_command[3:])
+    child_supervisor, _context = build_portal_implementation_supervisor_from_args(
+        parsed_child,
+        repo_root=repo,
+    )
+    assert child_supervisor.config.implementation_timeout == 5_400
+    assert child_supervisor.config.implementation_max_timeout == 10_800
+    assert child_supervisor.config.implementation_log_stall_seconds == 1_200
+
+    daemon_command = child_supervisor._build_daemon_command()
+    assert daemon_command[
+        daemon_command.index("--implementation-timeout") + 1
+    ] == "5400.0"
+    assert "--implementation-max-timeout" not in daemon_command
+    assert "--implementation-log-stall-seconds" not in daemon_command
 
 
 def test_bundle_lane_planner_mirrors_provider_default_hard_timeout(
