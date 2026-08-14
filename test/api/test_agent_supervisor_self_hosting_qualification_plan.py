@@ -9,6 +9,9 @@ from ipfs_accelerate_py.agent_supervisor import goal_graph, parse_goal_heap
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     external_authority_goal_fence,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    parse_task_file,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLAN_PATH = REPO_ROOT / "docs/architecture/SELF_HOSTING_QUALIFICATION_PLAN.md"
@@ -214,8 +217,43 @@ def test_work_units_target_and_repository_ownership_are_explicit() -> None:
 
     assert by_id["SHQ-G010"].dependencies == ["SHQ-G007"]
 
-    active_todo = ACTIVE_TODO_PATH.read_text(encoding="utf-8")
-    assert active_todo == "# Objective Todo\n"
+    generated = parse_task_file(ACTIVE_TODO_PATH, "SHQ-")
+    assert [
+        (
+            task.task_id,
+            task.metadata.get("goal id", ""),
+            tuple(task.depends_on),
+            task.metadata.get("bundle", ""),
+        )
+        for task in generated
+    ] == [
+        (
+            "SHQ-026",
+            "SHQ-G006A",
+            (),
+            "agent-supervisor/self-hosting/prerequisite-observer-catalog-bounded-v12",
+        ),
+        (
+            "SHQ-027",
+            "SHQ-G006B",
+            ("SHQ-026",),
+            "agent-supervisor/self-hosting/prerequisite-observer-terminal-chain-bounded-v12",
+        ),
+        (
+            "SHQ-028",
+            "SHQ-G006",
+            ("SHQ-027",),
+            "agent-supervisor/self-hosting/prerequisite-observer-integration-bounded-v12",
+        ),
+        (
+            "SHQ-029",
+            "SHQ-G007",
+            ("SHQ-028",),
+            "agent-supervisor/self-hosting/prerequisite-observation-snapshot-bounded-v12",
+        ),
+    ]
+    assert all(task.metadata.get("status") == "todo" for task in generated)
+    assert all("SHQ-023" not in task.depends_on for task in generated)
 
     historical_suffixes = (
         (
