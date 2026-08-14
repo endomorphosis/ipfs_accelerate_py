@@ -1376,7 +1376,7 @@ Global invariants for every task:
 
 ## IPS-043 Expose the required public APIs and narrowly scoped zk-seal CLI
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
