@@ -84,6 +84,8 @@ from .production_provider_cli import (
     PRODUCTION_CLI_POLICY_NAME,
     ProductionCLIProviderPolicy,
 )
+from .legacy_landed_attestation import LegacyLandedReviewAuthority
+from .legacy_landed_review import load_legacy_landed_review_policy
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
 from ..objectives.scan_receipts import (
     RefillScanResult,
@@ -6160,6 +6162,8 @@ class PortalSupervisorConfig:
     production_provider_context_budget_tokens: int = 0
     production_provider_timeout_seconds: float = 0.0
     production_provider_review_authority_key_path: Path | None = None
+    legacy_landed_review_policy_path: Path | None = None
+    legacy_landed_review_key_path: Path | None = None
     llm_merge_resolver_command: str = ""
     llm_merge_resolver_timeout_seconds: float | None = None
     implementation_timeout: float = 1800.0
@@ -18006,6 +18010,27 @@ class PortalImplementationSupervisor:
                             str(review_authority_key_path),
                         ]
                     )
+                if (self.config.legacy_landed_review_policy_path is None) != (
+                    self.config.legacy_landed_review_key_path is None
+                ):
+                    raise ValueError(
+                        "legacy landed review requires both explicit policy "
+                        "and key paths"
+                    )
+                if (
+                    self.config.legacy_landed_review_policy_path is not None
+                    and self.config.legacy_landed_review_key_path is not None
+                ):
+                    command.extend(
+                        [
+                            "--legacy-landed-review-policy-path",
+                            str(
+                                self.config.legacy_landed_review_policy_path
+                            ),
+                            "--legacy-landed-review-key-path",
+                            str(self.config.legacy_landed_review_key_path),
+                        ]
+                    )
                 if self.config.implementation_command:
                     command.extend(["--implementation-command", self.config.implementation_command])
                 if self.config.llm_merge_resolver_command:
@@ -18422,6 +18447,25 @@ class PortalImplementationSupervisor:
             != expected_review_authority_key_paths
         ):
             return False
+        expected_legacy_policy_paths = (
+            {str(self.config.legacy_landed_review_policy_path)}
+            if self.config.implement
+            and self.config.legacy_landed_review_policy_path is not None
+            and self.config.legacy_landed_review_key_path is not None
+            else set()
+        )
+        expected_legacy_key_paths = (
+            {str(self.config.legacy_landed_review_key_path)}
+            if expected_legacy_policy_paths
+            else set()
+        )
+        if (
+            option_values("--legacy-landed-review-policy-path")
+            != expected_legacy_policy_paths
+            or option_values("--legacy-landed-review-key-path")
+            != expected_legacy_key_paths
+        ):
+            return False
         expected_merge_targets = (
             {self.config.merge_target_branch}
             if self.config.merge_target_branch
@@ -18562,6 +18606,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Operator-controlled Ed25519 private-key file forwarded unchanged "
             "to the managed daemon. Bundle supervisors use one shared path "
             "for every lane."
+        ),
+    )
+    parser.add_argument(
+        "--legacy-landed-review-policy-path",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit operator-owned LegacyLandedReviewPolicy@2 JSON "
+            "forwarded unchanged; omitted by default and never inferred "
+            "from task metadata."
+        ),
+    )
+    parser.add_argument(
+        "--legacy-landed-review-key-path",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit mode-0600 Ed25519 key bound by the legacy policy. "
+            "Both legacy paths are required together."
         ),
     )
     parser.add_argument(
@@ -19263,6 +19326,32 @@ def supervisor_config_from_args(
             raw_review_authority_key_path
             or args.state_dir / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
         )
+    legacy_landed_review_policy_path = getattr(
+        args, "legacy_landed_review_policy_path", None
+    )
+    legacy_landed_review_key_path = getattr(
+        args, "legacy_landed_review_key_path", None
+    )
+    if (legacy_landed_review_policy_path is None) != (
+        legacy_landed_review_key_path is None
+    ):
+        raise ValueError(
+            "legacy landed review requires both explicit policy and key paths"
+        )
+    if (
+        legacy_landed_review_policy_path is not None
+        and legacy_landed_review_key_path is not None
+    ):
+        legacy_policy = load_legacy_landed_review_policy(
+            legacy_landed_review_policy_path
+        )
+        legacy_authority = LegacyLandedReviewAuthority.from_private_key_path(
+            legacy_landed_review_key_path
+        )
+        if legacy_policy.issuer_key_id != legacy_authority.issuer_key_id:
+            raise ValueError(
+                "legacy landed review policy/key binding is invalid"
+            )
     return PortalSupervisorConfig(
         todo_path=args.todo_path,
         state_path=state_path or args.state_dir / f"{args.state_prefix}_task_state.json",
@@ -19288,6 +19377,8 @@ def supervisor_config_from_args(
         production_provider_review_authority_key_path=(
             production_provider_review_authority_key_path
         ),
+        legacy_landed_review_policy_path=legacy_landed_review_policy_path,
+        legacy_landed_review_key_path=legacy_landed_review_key_path,
         llm_merge_resolver_command=llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         implementation_timeout=args.implementation_timeout,
