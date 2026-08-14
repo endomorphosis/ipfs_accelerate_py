@@ -1362,7 +1362,7 @@ W20 AAE-063
 
 ## AAE-049 Create deterministic fixture corpus, requirement oracles, and held-out partitions
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
