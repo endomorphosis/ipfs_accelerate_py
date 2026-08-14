@@ -503,6 +503,58 @@ def test_codex_receives_only_bounded_proposal_evidence_slice(
     assert all(attempt.prompt_tokens <= 4096 for attempt in result["route_result"].attempts)
 
 
+def test_review_decline_codes_become_bounded_retry_evidence(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+
+    def reject(_request):
+        return {
+            "decision": "reject",
+            "findings": ["insufficient_evidence", "tests_missing"],
+        }
+
+    result = daemon.run_production_model_assisted_route(
+        _task(),
+        attempt=1,
+        workspace_path=daemon.repo_root,
+        snapshot_id=_snapshot(daemon),
+        apply=True,
+        grok_provider=_grok,
+        codex_provider=reject,
+        admission_gate=_accept,
+    )
+
+    assert result["returncode"] == 1
+    assert result["review_finding_codes"] == [
+        "insufficient_evidence",
+        "tests_missing",
+    ]
+    assert result["event"]["review_finding_codes"] == [
+        "insufficient_evidence",
+        "tests_missing",
+    ]
+    assert result["event"]["provider_receipt"]["daemon_integration"][
+        "review_finding_codes"
+    ] == ["insufficient_evidence", "tests_missing"]
+    validation = daemon._production_review_decline_validation_result(result)
+    assert validation is not None
+    assert validation["reason"] == "production_review_declined"
+    assert validation["finding_codes"] == [
+        "insufficient_evidence",
+        "tests_missing",
+    ]
+    assert validation["failure_review"]["finding_codes"] == [
+        "insufficient_evidence",
+        "tests_missing",
+    ]
+    addendum = validation["next_attempt_prompt_addendum"]
+    assert "Expand the bounded source evidence" in addendum
+    assert "required bounded test evidence" in addendum
+    assert "raw" not in addendum.casefold()
+
+
 def test_caller_packet_without_context_fails_before_any_provider(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

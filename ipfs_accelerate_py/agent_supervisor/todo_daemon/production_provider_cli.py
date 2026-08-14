@@ -37,12 +37,16 @@ from pathlib import Path
 from typing import Any, Final
 
 from .contract_packet_provider_router import (
+    MAX_PRODUCTION_REVIEW_FINDINGS,
     MAX_PROVIDER_PROMPT_TOKENS,
     MAX_PROVIDER_RESPONSE_BYTES,
     MAX_PROVIDER_TIMEOUT_SECONDS,
+    PRODUCTION_REVIEW_FINDING_CODES,
     ProviderRequest,
     ProviderRole,
+    ProviderRoutingError,
     VerifiedGrokQuotaExhaustion,
+    validate_production_review_decision,
 )
 from .legacy_landed_provider_cli import (
     NativeGrokQuotaExhaustionSignal,
@@ -253,8 +257,13 @@ def _production_response_json_schema(
             "decision": {"type": "string", "enum": ["approve", "reject"]},
             "findings": {
                 "type": "array",
-                "items": {"type": "string", "maxLength": 4_096},
-                "maxItems": 0,
+                "items": {
+                    "type": "string",
+                    "enum": list(PRODUCTION_REVIEW_FINDING_CODES),
+                },
+                "minItems": 0,
+                "maxItems": MAX_PRODUCTION_REVIEW_FINDINGS,
+                "uniqueItems": True,
             },
         }
         required = [*binding_required, "decision", "findings"]
@@ -437,17 +446,14 @@ def _validate_production_native_response(
     else:
         decision = response.get("decision")
         findings = response.get("findings")
-        if findings is None:
-            findings = []
-            response = {**response, "findings": findings}
-        if (
-            decision not in {"approve", "reject"}
-            or findings != []
-        ):
+        try:
+            validate_production_review_decision(decision, findings)
+        except ProviderRoutingError as exc:
             raise RuntimeError(
                 "production Codex response violates its strict schema: "
-                "decision must be approve/reject with empty findings"
-            )
+                "approve requires no findings and reject requires closed "
+                "machine-readable finding codes"
+            ) from exc
     return response
 
 
@@ -731,14 +737,16 @@ class BoundProductionCLIProvider:
         if self.role is ProviderRole.CODEX_REVIEW:
             decision = response.get("decision")
             findings = response.get("findings")
-            if (
-                decision not in {"approve", "reject"}
-                or findings != []
-                or response.get("proposal") not in (None, {})
-            ):
+            try:
+                validate_production_review_decision(decision, findings)
+            except ProviderRoutingError as exc:
                 raise RuntimeError(
-                    "production Codex review must be an approve/reject decision "
-                    "with an empty findings list"
+                    "production Codex review must use a closed, bounded "
+                    "approve/reject finding contract"
+                ) from exc
+            if response.get("proposal") not in (None, {}):
+                raise RuntimeError(
+                    "production Codex review cannot author replacement bytes"
                 )
 
         response["supervisor_provider_execution"] = {

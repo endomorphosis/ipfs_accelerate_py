@@ -21,6 +21,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     legacy_landed_provider_cli as native_cli,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
+    MAX_PRODUCTION_REVIEW_FINDINGS,
+    PRODUCTION_REVIEW_FINDING_CODES,
     ImplementationProviderRouter,
     ProviderBounds,
     ProviderRequest,
@@ -478,7 +480,10 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
     assert observed["codex_cli"]["command"][-1] == "-"
     assert observed["codex_cli"]["schema"]["properties"]["findings"][
         "maxItems"
-    ] == 0
+    ] == MAX_PRODUCTION_REVIEW_FINDINGS
+    assert observed["codex_cli"]["schema"]["properties"]["findings"][
+        "items"
+    ]["enum"] == list(PRODUCTION_REVIEW_FINDING_CODES)
 
     for response, expected_provider, expected_model in (
         (grok_response, "grok_cli", "grok-4.5"),
@@ -605,7 +610,70 @@ def test_custom_invoker_codex_rejects_approve_with_findings() -> None:
         invoker=contradictory_review,
     )
 
-    with pytest.raises(RuntimeError, match="empty findings list"):
+    with pytest.raises(RuntimeError, match="closed, bounded"):
+        reviewer(_request(ProviderRole.CODEX_REVIEW))
+
+
+def test_custom_invoker_codex_preserves_only_closed_reject_codes() -> None:
+    policy = ProductionCLIProviderPolicy()
+
+    def typed_reject(_prompt, config):
+        return (
+            json.dumps(
+                {
+                    "decision": "reject",
+                    "findings": ["insufficient_evidence", "tests_missing"],
+                }
+            ),
+            _child_receipt(config),
+        )
+
+    reviewer = BoundProductionCLIProvider(
+        policy=policy,
+        role=ProviderRole.CODEX_REVIEW,
+        provider_name=policy.codex_provider,
+        model_name=policy.codex_model,
+        invoker=typed_reject,
+    )
+
+    response = reviewer(_request(ProviderRole.CODEX_REVIEW))
+    assert response["decision"] == "reject"
+    assert response["findings"] == ["insufficient_evidence", "tests_missing"]
+
+
+@pytest.mark.parametrize(
+    "findings",
+    (
+        [],
+        ["free-form reviewer prose"],
+        ["insufficient_evidence", "insufficient_evidence"],
+        [
+            "insufficient_evidence",
+            "tests_missing",
+            "invalid_patch",
+            "scope_violation",
+            "unverifiable_claim",
+        ],
+    ),
+)
+def test_custom_invoker_codex_reject_fails_closed_on_invalid_codes(findings) -> None:
+    policy = ProductionCLIProviderPolicy()
+
+    def invalid_reject(_prompt, config):
+        return (
+            json.dumps({"decision": "reject", "findings": findings}),
+            _child_receipt(config),
+        )
+
+    reviewer = BoundProductionCLIProvider(
+        policy=policy,
+        role=ProviderRole.CODEX_REVIEW,
+        provider_name=policy.codex_provider,
+        model_name=policy.codex_model,
+        invoker=invalid_reject,
+    )
+
+    with pytest.raises(RuntimeError, match="closed, bounded"):
         reviewer(_request(ProviderRole.CODEX_REVIEW))
 
 

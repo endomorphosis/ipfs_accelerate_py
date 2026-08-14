@@ -85,6 +85,21 @@ MAX_PROVIDER_JSON_DEPTH: Final = 24
 MAX_PROVIDER_JSON_ITEMS: Final = 8_192
 REDACTION_MARKER: Final = "[REDACTED]"
 
+# Independent review may return only these machine-readable rejection codes.
+# Free-form reviewer prose is deliberately excluded: retry context is a
+# privileged input to the next implementation attempt and must not become a
+# prompt-injection channel.
+PRODUCTION_REVIEW_FINDING_CODES: Final[tuple[str, ...]] = (
+    "acceptance_unsatisfied",
+    "insufficient_evidence",
+    "invalid_patch",
+    "scope_violation",
+    "security_violation",
+    "tests_missing",
+    "unverifiable_claim",
+)
+MAX_PRODUCTION_REVIEW_FINDINGS: Final = 4
+
 
 class ProviderRole(str, Enum):
     GROK_IMPLEMENT = "grok-implement"
@@ -148,6 +163,51 @@ class ProviderReason(str, Enum):
     RECEIPT_CROSS_TASK = "provider_receipt_cross_task"
     REVIEW_CHAIN_UNBOUND = "admitted_review_chain_unbound"
     RAW_MODEL_COMMAND_FORBIDDEN = "raw_model_command_forbidden_for_production_route"
+
+
+def validate_production_review_decision(
+    decision: Any,
+    findings: Any,
+) -> tuple[str, ...]:
+    """Validate one closed, non-prose independent-review disposition.
+
+    Approval is necessarily finding-free.  Rejection must explain itself with
+    one to four distinct codes from the closed catalog.  This gives retry and
+    escalation policy actionable evidence without persisting model-authored
+    prose.
+    """
+
+    if type(decision) is not str or decision not in {"approve", "reject"}:
+        raise ProviderRoutingError(
+            "production review decision must be approve or reject",
+            reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+        )
+    if type(findings) is not list:
+        raise ProviderRoutingError(
+            "production review findings must be a list",
+            reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+        )
+    if (
+        len(findings) > MAX_PRODUCTION_REVIEW_FINDINGS
+        or any(type(code) is not str for code in findings)
+        or len(findings) != len(set(findings))
+        or any(code not in PRODUCTION_REVIEW_FINDING_CODES for code in findings)
+    ):
+        raise ProviderRoutingError(
+            "production review findings are outside the closed catalog",
+            reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+        )
+    if decision == "approve" and findings:
+        raise ProviderRoutingError(
+            "production review approval cannot carry findings",
+            reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+        )
+    if decision == "reject" and not findings:
+        raise ProviderRoutingError(
+            "production review rejection requires a finding code",
+            reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+        )
+    return tuple(findings)
 
 
 class ProductionReceiptDisposition(str, Enum):
@@ -920,7 +980,11 @@ def _provider_response_contract(role: ProviderRole) -> dict[str, Any]:
     elif role is ProviderRole.CODEX_REVIEW:
         shape = {
             "decision": "approve|reject",
-            "findings": [],
+            "findings": [
+                "one or more closed finding codes when decision=reject; "
+                "empty when decision=approve"
+            ],
+            "finding_code_catalog": list(PRODUCTION_REVIEW_FINDING_CODES),
             "proposal": "forbidden; Codex is an independent reviewer only",
         }
     else:
@@ -1099,6 +1163,20 @@ class ImplementationRoutingResult:
         if self.implementation_proposal is None:
             return ReviewPresence.NOT_APPLICABLE.value
         return ReviewPresence.DEGRADED.value
+
+    @property
+    def review_finding_codes(self) -> tuple[str, ...]:
+        """Return validated review codes without carrying model-authored prose."""
+
+        if self.review_proposal is None:
+            return ()
+        try:
+            return validate_production_review_decision(
+                self.review_proposal.payload.get("decision"),
+                self.review_proposal.payload.get("findings"),
+            )
+        except ProviderRoutingError:
+            return ()
 
     @property
     def provider_result_admitted(self) -> bool:
@@ -1318,6 +1396,7 @@ class ImplementationRoutingResult:
             },
             "review_chain": [step.to_dict() for step in self.review_chain],
             "review_presence": self.review_presence,
+            "review_finding_codes": list(self.review_finding_codes),
             "provider_receipt": receipt.to_dict(),
             "selected_proposal": (
                 self.selected_proposal.to_dict()
@@ -2303,12 +2382,12 @@ class ImplementationProviderRouter:
             )
 
         decision = review.payload.get("decision")
-        if not isinstance(decision, str) or decision not in {
-            "approve",
-            "repair",
-            "replace",
-            "reject",
-        }:
+        try:
+            validate_production_review_decision(
+                decision,
+                review.payload.get("findings"),
+            )
+        except ProviderRoutingError:
             return self._result(
                 status=RouteStatus.REJECTED,
                 reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
@@ -2322,33 +2401,6 @@ class ImplementationProviderRouter:
             return self._result(
                 status=RouteStatus.REJECTED,
                 reason_code=ProviderReason.REVIEW_DECLINED.value,
-                packet_id=packet_id,
-                packet=packet_identity,
-                implementation_proposal=grok,
-                review_proposal=review,
-                attempts=attempts,
-            )
-        if decision in {"repair", "replace"}:
-            # Codex-authored replacement bytes have not been independently
-            # reviewed.  Preserve both proposals as non-authoritative evidence
-            # and require a new implementation/review round before any write.
-            return self._result(
-                status=RouteStatus.REJECTED,
-                reason_code=ProviderReason.REVIEW_REJECTED.value,
-                packet_id=packet_id,
-                packet=packet_identity,
-                implementation_proposal=grok,
-                review_proposal=review,
-                attempts=attempts,
-            )
-        # An approving review cannot simultaneously report findings.  Keep
-        # this defense at the writer boundary as well as in the production
-        # provider adapter so an injected/custom provider cannot turn a
-        # contradictory review into an admitted repository mutation.
-        if decision == "approve" and review.payload.get("findings") != []:
-            return self._result(
-                status=RouteStatus.REJECTED,
-                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
                 packet_id=packet_id,
                 packet=packet_identity,
                 implementation_proposal=grok,

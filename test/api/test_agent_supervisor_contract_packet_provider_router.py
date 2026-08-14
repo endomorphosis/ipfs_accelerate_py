@@ -247,7 +247,7 @@ def test_provider_cannot_change_proof_or_completion(
     assert writes == []
 
 
-def test_review_repair_requires_a_further_review_and_never_writes() -> None:
+def test_review_repair_bytes_are_malformed_and_never_write() -> None:
     admissions = []
     writes = []
 
@@ -276,7 +276,7 @@ def test_review_repair_requires_a_further_review_and_never_writes() -> None:
     ]
     assert writes == []
     assert result.status is RouteStatus.REJECTED
-    assert result.reason_code == ProviderReason.REVIEW_REJECTED.value
+    assert result.reason_code == ProviderReason.PROVIDER_RESPONSE_MALFORMED.value
     assert result.selected_proposal is None
     assert not result.write_performed
 
@@ -324,6 +324,60 @@ def test_approve_without_findings_is_rejected_before_writer() -> None:
     assert result.selected_proposal is None
     assert result.write_performed is False
     assert writes == []
+
+
+def test_reject_preserves_closed_findings_in_route_and_receipt() -> None:
+    writes = []
+    result = ImplementationProviderRouter(
+        grok_provider=_grok,
+        codex_provider=lambda _request: {
+            "decision": "reject",
+            "findings": ["insufficient_evidence", "unverifiable_claim"],
+        },
+        admission_gate=_accept,
+        writer=lambda proposal, lease: writes.append((proposal, lease)),
+    ).route(
+        _Packet(),
+        current_snapshot_id=SNAPSHOT,
+        apply=True,
+        writer_lease_id="lease:typed-review-decline",
+    )
+
+    assert result.status is RouteStatus.REJECTED
+    assert result.reason_code == ProviderReason.REVIEW_DECLINED.value
+    assert result.review_finding_codes == (
+        "insufficient_evidence",
+        "unverifiable_claim",
+    )
+    assert result.to_dict()["review_finding_codes"] == [
+        "insufficient_evidence",
+        "unverifiable_claim",
+    ]
+    assert result.review_proposal is not None
+    assert result.review_proposal.payload["findings"] == [
+        "insufficient_evidence",
+        "unverifiable_claim",
+    ]
+    assert writes == []
+
+
+@pytest.mark.parametrize(
+    "findings",
+    ([], ["free-form reviewer prose"], ["tests_missing", "tests_missing"]),
+)
+def test_reject_requires_distinct_closed_finding_codes(findings: list[str]) -> None:
+    result = ImplementationProviderRouter(
+        grok_provider=_grok,
+        codex_provider=lambda _request: {
+            "decision": "reject",
+            "findings": findings,
+        },
+        admission_gate=_accept,
+    ).route(_Packet(), current_snapshot_id=SNAPSHOT)
+
+    assert result.status is RouteStatus.REJECTED
+    assert result.reason_code == ProviderReason.PROVIDER_RESPONSE_MALFORMED.value
+    assert result.review_finding_codes == ()
 
 
 def test_missing_admission_or_writer_lease_never_writes() -> None:

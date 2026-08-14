@@ -208,6 +208,7 @@ from .contract_packet_provider_router import (
     build_production_contract_packet,
     build_production_provider_route_evaluation,
     evaluate_production_provider_receipt,
+    validate_production_review_decision,
 )
 from .diagnostics import summarize_test_failure
 from .git_environment import sanitized_git_environment
@@ -18580,6 +18581,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     if use_production_route
                     else {}
                 )
+                review_decline_validation = (
+                    self._production_review_decline_validation_result(
+                        production_route_payload
+                    )
+                    if use_production_route
+                    else None
+                )
+                if review_decline_validation is not None:
+                    validation_result = review_decline_validation
                 if (
                     use_production_route
                     and production_route_payload.get(
@@ -21601,6 +21611,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "router_interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
             "receipt_interface": PROVIDER_EXECUTION_RECEIPT_INTERFACE,
             "lane_label_is_not_receipt": True,
+            "review_finding_codes": list(route_result.review_finding_codes),
         }
         payload["receipt_id"] = content_identity(payload)
         safe_task_id = re.sub(
@@ -21683,6 +21694,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "review_chain": review_chain,
             "provider_receipt": provider_receipt,
             "review_presence": route_result.review_presence,
+            "review_finding_codes": list(route_result.review_finding_codes),
             "provider_result_admitted": route_result.provider_result_admitted,
             "completion_authoritative": False,
             "proof_authoritative": False,
@@ -22447,16 +22459,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         role_value = str(getattr(role, "value", role) or "")
         if role_value == ProviderRole.CODEX_REVIEW.value:
             decision = payload.get("decision")
-            if not isinstance(decision, str) or decision not in {
-                "approve",
-                "reject",
-            }:
-                return {
-                    "accepted": False,
-                    "reason_code": ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
-                }
             findings = payload.get("findings", [])
-            if not isinstance(findings, list):
+            try:
+                validate_production_review_decision(decision, findings)
+            except ProviderRoutingError:
                 return {
                     "accepted": False,
                     "reason_code": ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
@@ -22479,6 +22485,72 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         return {
             "accepted": True,
             "reason_code": f"admitted:{role_value or 'proposal'}",
+        }
+
+    @staticmethod
+    def _production_review_decline_validation_result(
+        route_payload: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Project a declined review into bounded actionable retry evidence.
+
+        Only closed finding codes cross this boundary.  Raw model text is not
+        accepted or persisted into the next prompt.
+        """
+
+        if str(route_payload.get("reason_code") or "") != (
+            ProviderReason.REVIEW_DECLINED.value
+        ):
+            return None
+        raw_codes = route_payload.get("review_finding_codes")
+        if type(raw_codes) is not list:
+            return None
+        try:
+            codes = validate_production_review_decision("reject", raw_codes)
+        except ProviderRoutingError:
+            return None
+        event = route_payload.get("event")
+        event = event if isinstance(event, Mapping) else {}
+        receipt = event.get("provider_receipt")
+        receipt = receipt if isinstance(receipt, Mapping) else {}
+        guidance_by_code = {
+            "acceptance_unsatisfied": (
+                "Address the declared acceptance criteria with bound evidence."
+            ),
+            "insufficient_evidence": (
+                "Expand the bounded source evidence before proposing changes."
+            ),
+            "invalid_patch": "Produce a complete, parseable in-scope patch.",
+            "scope_violation": "Stay within the exact declared write authority.",
+            "security_violation": (
+                "Remove the security-policy violation; do not weaken policy."
+            ),
+            "tests_missing": (
+                "Supply and run the required bounded test evidence."
+            ),
+            "unverifiable_claim": (
+                "Replace unverifiable claims with content-bound evidence."
+            ),
+        }
+        addendum = " ".join(guidance_by_code[code] for code in codes)
+        review = {
+            "receipt_id": str(receipt.get("receipt_id") or ""),
+            "decision": "guide_rescue",
+            "accepted": False,
+            "reason_codes": ["independent_review_declined"],
+            "finding_codes": list(codes),
+            "next_attempt_prompt_addendum": addendum,
+            "policy_version": "production-independent-review-findings-v1",
+        }
+        return {
+            "attempted": False,
+            "passed": False,
+            "returncode": 1,
+            "results": [],
+            "reason": "production_review_declined",
+            "reason_codes": ["independent_review_declined"],
+            "finding_codes": list(codes),
+            "failure_review": review,
+            "next_attempt_prompt_addendum": addendum,
         }
 
     def _make_production_workspace_writer(
@@ -23255,6 +23327,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "provider_receipt": event.get("provider_receipt") or receipt.to_dict(),
             "provider_result_admitted": route_result.provider_result_admitted,
             "review_presence": route_result.review_presence,
+            "review_finding_codes": list(route_result.review_finding_codes),
             "write_performed": route_result.write_performed,
             "writer_lease_id": (
                 route_result.writer_lease_id if route_result.write_performed else ""
@@ -23344,6 +23417,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "provider_capacity_exhausted" if deferred_infra else ""
             ),
             "reason_code": str(route_result.reason_code or disposition_reason or ""),
+            "review_finding_codes": list(route_result.review_finding_codes),
         }
 
     def production_provider_receipt_allows_merge(
