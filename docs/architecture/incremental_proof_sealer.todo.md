@@ -1531,7 +1531,7 @@ Global invariants for every task:
 
 ## IPS-048 Reject cache-context, manifest, and proof-forest tampering
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
