@@ -1713,7 +1713,7 @@ W20 AAE-063
 
 ## AAE-062 Seal campaigns, benchmark incremental economics, and emit SCG calibration evidence
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
