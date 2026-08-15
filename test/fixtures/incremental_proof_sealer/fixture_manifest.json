@@ -1,0 +1,590 @@
+{
+  "corpus_cid": "sha256:99789241be161892026247e39236f862f6deb7f5f311c60362211cae0be8d6e6",
+  "evidence_subset": "ips/fixture-corpus@1",
+  "genesis_parent": "fixture:genesis@1",
+  "notes": [
+    "No wall-clock or host-environment inputs.",
+    "Simulated proving appears only as rejection_only and never as production success."
+  ],
+  "scenario_kinds": [
+    "source_implementation",
+    "public_interface",
+    "test_selector",
+    "test_source",
+    "test_add",
+    "test_delete",
+    "fixture",
+    "relevant_configuration",
+    "network_policy",
+    "verification_policy",
+    "dependency_lock",
+    "tool_prover_version",
+    "circuit_key",
+    "proof_schema",
+    "canonicalization",
+    "checked_specification_document",
+    "ordinary_documentation",
+    "graph_manifest",
+    "branch",
+    "merge",
+    "rollback",
+    "corruption",
+    "independent_module"
+  ],
+  "scenarios": [
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/source_implementation@00",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "source_implementation",
+        "path": "artifact/source_implementation@00"
+      },
+      "expected_direct_unit_closure": [
+        "unit/source_implementation"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/source_implementation"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "source_implementation",
+      "parent": "fixture:genesis@1",
+      "production_success": null,
+      "scenario_cid": "sha256:9064d7e00bbf8b54d978a27c3cf74b038a983e637de937f6de678ffa6fe711c5",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/public_interface@01",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "public_interface",
+        "path": "artifact/public_interface@01"
+      },
+      "expected_direct_unit_closure": [
+        "unit/public_interface"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/public_interface"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "public_interface",
+      "parent": "sha256:9064d7e00bbf8b54d978a27c3cf74b038a983e637de937f6de678ffa6fe711c5",
+      "production_success": null,
+      "scenario_cid": "sha256:3bb6f334c339ef059f6678d24ca81688df5f2633b7c38d4a03340393a90cd043",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/test_selector@02",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "test_selector",
+        "path": "artifact/test_selector@02"
+      },
+      "expected_direct_unit_closure": [
+        "unit/test_selector"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/test_selector"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "test_selector",
+      "parent": "sha256:3bb6f334c339ef059f6678d24ca81688df5f2633b7c38d4a03340393a90cd043",
+      "production_success": null,
+      "scenario_cid": "sha256:d5852eaa1d77494d697064490ecce6a2c6f9a1e3cb25e5bded06e181352c53f8",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/test_source@03",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "test_source",
+        "path": "artifact/test_source@03"
+      },
+      "expected_direct_unit_closure": [
+        "unit/test_source"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/test_source"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "test_source",
+      "parent": "sha256:d5852eaa1d77494d697064490ecce6a2c6f9a1e3cb25e5bded06e181352c53f8",
+      "production_success": null,
+      "scenario_cid": "sha256:22b53238d761e302a13f6fab4f17074fda5b7b1ff9824a118419f53d5a552e41",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/test_add@04",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "test_add",
+        "path": "artifact/test_add@04"
+      },
+      "expected_direct_unit_closure": [
+        "unit/test_add"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/test_add"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "test_add",
+      "parent": "sha256:22b53238d761e302a13f6fab4f17074fda5b7b1ff9824a118419f53d5a552e41",
+      "production_success": null,
+      "scenario_cid": "sha256:159d7ca533d5a81f1558f29021bc7c1f85298a7a2876d6a269b38dd91a870401",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/test_delete@05",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "test_delete",
+        "path": "artifact/test_delete@05"
+      },
+      "expected_direct_unit_closure": [
+        "unit/test_delete"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/test_delete"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "test_delete",
+      "parent": "sha256:159d7ca533d5a81f1558f29021bc7c1f85298a7a2876d6a269b38dd91a870401",
+      "production_success": null,
+      "scenario_cid": "sha256:11e3a98ba6a140352a9f972e43812f650facb01b97a03f518c88e4d66c22ca85",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/fixture@06",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "fixture",
+        "path": "artifact/fixture@06"
+      },
+      "expected_direct_unit_closure": [
+        "unit/fixture"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/fixture"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "fixture",
+      "parent": "sha256:11e3a98ba6a140352a9f972e43812f650facb01b97a03f518c88e4d66c22ca85",
+      "production_success": null,
+      "scenario_cid": "sha256:e601d3d9585004914b6ddfdac19a5ad7c56d6bf0590a3e7d56fea609dbdc3ad7",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/relevant_configuration@07",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "relevant_configuration",
+        "path": "artifact/relevant_configuration@07"
+      },
+      "expected_direct_unit_closure": [
+        "unit/relevant_configuration"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/relevant_configuration"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "relevant_configuration",
+      "parent": "sha256:e601d3d9585004914b6ddfdac19a5ad7c56d6bf0590a3e7d56fea609dbdc3ad7",
+      "production_success": null,
+      "scenario_cid": "sha256:e629b90b259a2775c2fc5a561dc2a11f53dc5c9f19f4195dc664bb62cfb676a3",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/network_policy@08",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "network_policy",
+        "path": "artifact/network_policy@08"
+      },
+      "expected_direct_unit_closure": [
+        "unit/network_policy"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/network_policy"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "network_policy",
+      "parent": "sha256:e629b90b259a2775c2fc5a561dc2a11f53dc5c9f19f4195dc664bb62cfb676a3",
+      "production_success": null,
+      "scenario_cid": "sha256:58044b49e7e07f9cb4d81bd81e3cb68677ac7758916f6f0b92a8445dc8a567f8",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "full_checkpoint",
+      "changed_artifact": "artifact/verification_policy@09",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "verification_policy",
+        "path": "artifact/verification_policy@09"
+      },
+      "expected_direct_unit_closure": [
+        "unit/verification_policy"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/verification_policy"
+      ],
+      "full_fallback_decision": {
+        "reason": "verification_policy",
+        "required": true
+      },
+      "kind": "verification_policy",
+      "parent": "sha256:58044b49e7e07f9cb4d81bd81e3cb68677ac7758916f6f0b92a8445dc8a567f8",
+      "production_success": null,
+      "scenario_cid": "sha256:92aeaf688a4e693ba08998cff811b1521fab6aaa66a54dd30abeff168a6ff6ce",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "full_checkpoint",
+      "changed_artifact": "artifact/dependency_lock@10",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "dependency_lock",
+        "path": "artifact/dependency_lock@10"
+      },
+      "expected_direct_unit_closure": [
+        "unit/dependency_lock"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/dependency_lock"
+      ],
+      "full_fallback_decision": {
+        "reason": "dependency_lock",
+        "required": true
+      },
+      "kind": "dependency_lock",
+      "parent": "sha256:92aeaf688a4e693ba08998cff811b1521fab6aaa66a54dd30abeff168a6ff6ce",
+      "production_success": null,
+      "scenario_cid": "sha256:7b459aa1ab6074a584c8c27f887e34571b59326efd1ddf0111d5344d7d6aa725",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "full_checkpoint",
+      "changed_artifact": "artifact/tool_prover_version@11",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "tool_prover_version",
+        "path": "artifact/tool_prover_version@11"
+      },
+      "expected_direct_unit_closure": [
+        "unit/tool_prover_version"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/tool_prover_version"
+      ],
+      "full_fallback_decision": {
+        "reason": "tool_prover_version",
+        "required": true
+      },
+      "kind": "tool_prover_version",
+      "parent": "sha256:7b459aa1ab6074a584c8c27f887e34571b59326efd1ddf0111d5344d7d6aa725",
+      "production_success": null,
+      "scenario_cid": "sha256:0e2dc3805c730a9234c10fe9c81ab2896792baef3898fc6e95c85a3fc628d18f",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "full_checkpoint",
+      "changed_artifact": "artifact/circuit_key@12",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "circuit_key",
+        "path": "artifact/circuit_key@12"
+      },
+      "expected_direct_unit_closure": [
+        "unit/circuit_key"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/circuit_key"
+      ],
+      "full_fallback_decision": {
+        "reason": "circuit_key",
+        "required": true
+      },
+      "kind": "circuit_key",
+      "parent": "sha256:0e2dc3805c730a9234c10fe9c81ab2896792baef3898fc6e95c85a3fc628d18f",
+      "production_success": null,
+      "scenario_cid": "sha256:f072383a62d1fa0471a1526f0c79596c16f7e4c8c3668f34ab875929bab82afa",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "full_checkpoint",
+      "changed_artifact": "artifact/proof_schema@13",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "proof_schema",
+        "path": "artifact/proof_schema@13"
+      },
+      "expected_direct_unit_closure": [
+        "unit/proof_schema"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/proof_schema"
+      ],
+      "full_fallback_decision": {
+        "reason": "proof_schema",
+        "required": true
+      },
+      "kind": "proof_schema",
+      "parent": "sha256:f072383a62d1fa0471a1526f0c79596c16f7e4c8c3668f34ab875929bab82afa",
+      "production_success": null,
+      "scenario_cid": "sha256:b3927869f9543db417d1ff1ff7ec3f088ce4f3f5e24ede6e52de485a4fd9a74b",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "full_checkpoint",
+      "changed_artifact": "artifact/canonicalization@14",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "canonicalization",
+        "path": "artifact/canonicalization@14"
+      },
+      "expected_direct_unit_closure": [
+        "unit/canonicalization"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/canonicalization"
+      ],
+      "full_fallback_decision": {
+        "reason": "canonicalization",
+        "required": true
+      },
+      "kind": "canonicalization",
+      "parent": "sha256:b3927869f9543db417d1ff1ff7ec3f088ce4f3f5e24ede6e52de485a4fd9a74b",
+      "production_success": null,
+      "scenario_cid": "sha256:2b7ffac709caae6cc1f4d5028bc8912e160d675a4d4fb4b7c30b5bbe96f4507f",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/checked_specification_document@15",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "checked_specification_document",
+        "path": "artifact/checked_specification_document@15"
+      },
+      "expected_direct_unit_closure": [
+        "unit/checked_specification_document"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/checked_specification_document"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "checked_specification_document",
+      "parent": "sha256:2b7ffac709caae6cc1f4d5028bc8912e160d675a4d4fb4b7c30b5bbe96f4507f",
+      "production_success": null,
+      "scenario_cid": "sha256:e3bca353aa7b63b632e0906ee62feca050c35feb1eba2315fececec923fb51f1",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/ordinary_documentation@16",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "ordinary_documentation",
+        "path": "artifact/ordinary_documentation@16"
+      },
+      "expected_direct_unit_closure": [
+        "unit/ordinary_documentation"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/ordinary_documentation"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "ordinary_documentation",
+      "parent": "sha256:e3bca353aa7b63b632e0906ee62feca050c35feb1eba2315fececec923fb51f1",
+      "production_success": null,
+      "scenario_cid": "sha256:a5c48aac9e1ef7c60afb89a0ec22cf05856961e0d515dc1b53b6099e7ca910d0",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/graph_manifest@17",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "graph_manifest",
+        "path": "artifact/graph_manifest@17"
+      },
+      "expected_direct_unit_closure": [
+        "unit/graph_manifest"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/graph_manifest"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "graph_manifest",
+      "parent": "sha256:a5c48aac9e1ef7c60afb89a0ec22cf05856961e0d515dc1b53b6099e7ca910d0",
+      "production_success": null,
+      "scenario_cid": "sha256:2339fc87cbbdac1b95515b612cc8a33cdc3aa2ad1e04a2eee75d53fd543dbe6f",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/branch@18",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "branch",
+        "path": "artifact/branch@18"
+      },
+      "expected_direct_unit_closure": [
+        "unit/branch"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/branch"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "branch",
+      "parent": "sha256:2339fc87cbbdac1b95515b612cc8a33cdc3aa2ad1e04a2eee75d53fd543dbe6f",
+      "production_success": null,
+      "scenario_cid": "sha256:9159c9e6af498d2c3a135975e64257a306327ed634fd125d8e5d28c989d609d1",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "full_checkpoint",
+      "changed_artifact": "artifact/merge@19",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "merge",
+        "path": "artifact/merge@19"
+      },
+      "expected_direct_unit_closure": [
+        "unit/merge"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/merge"
+      ],
+      "full_fallback_decision": {
+        "reason": "merge",
+        "required": true
+      },
+      "kind": "merge",
+      "parent": "sha256:9159c9e6af498d2c3a135975e64257a306327ed634fd125d8e5d28c989d609d1",
+      "production_success": null,
+      "scenario_cid": "sha256:a558d2bdf8f86ab0e758caa0a2629710b6f70d630f3875c0662e256995c2e2cc",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/rollback@20",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "rollback",
+        "path": "artifact/rollback@20"
+      },
+      "expected_direct_unit_closure": [
+        "unit/rollback"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/rollback"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "rollback",
+      "parent": "sha256:a558d2bdf8f86ab0e758caa0a2629710b6f70d630f3875c0662e256995c2e2cc",
+      "production_success": null,
+      "scenario_cid": "sha256:00d8129f063fb13a8d35a0b5d2d86e9638955b4729c3323656f7674d94f54e1c",
+      "simulated_proving": "absent"
+    },
+    {
+      "aggregate_effect": "full_checkpoint",
+      "changed_artifact": "artifact/corruption@21",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "corruption",
+        "path": "artifact/corruption@21"
+      },
+      "expected_direct_unit_closure": [
+        "unit/corruption"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/corruption"
+      ],
+      "full_fallback_decision": {
+        "reason": "corruption",
+        "required": true
+      },
+      "kind": "corruption",
+      "parent": "sha256:00d8129f063fb13a8d35a0b5d2d86e9638955b4729c3323656f7674d94f54e1c",
+      "production_success": false,
+      "scenario_cid": "sha256:9621865a073d6d48a9f59768481247977fc88e6844331f5073fe6d6b0b4559a2",
+      "simulated_proving": "rejection_only"
+    },
+    {
+      "aggregate_effect": "rebuild_affected_branch",
+      "changed_artifact": "artifact/independent_module@22",
+      "changed_artifact_provenance": {
+        "byte_stable": true,
+        "mutation": "independent_module",
+        "path": "artifact/independent_module@22"
+      },
+      "expected_direct_unit_closure": [
+        "unit/independent_module"
+      ],
+      "expected_transitive_unit_closure": [
+        "unit/independent_module",
+        "unit/source_implementation"
+      ],
+      "full_fallback_decision": {
+        "reason": "incremental_reuse_justified",
+        "required": false
+      },
+      "kind": "independent_module",
+      "parent": "sha256:9621865a073d6d48a9f59768481247977fc88e6844331f5073fe6d6b0b4559a2",
+      "production_success": null,
+      "scenario_cid": "sha256:2e394966eb184e89ee2931127880ff6a9f43b9ed99e49579d5567752a442b105",
+      "simulated_proving": "absent"
+    }
+  ],
+  "schema": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/fixture-manifest@1"
+}

@@ -1515,6 +1515,11 @@ def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
     assert "--objective-refill-scan" not in common
     assert "--codebase-refill-scan" not in common
     assert "--no-objective-task-janitor" in common
+    assert "--task-source-kind" not in common
+    # The configured-board common argv must be accepted by the actual child
+    # supervisor, not merely rendered by the dry-run adapter.
+    parsed = supervisor_module.parse_args(common)
+    assert parsed.todo_path == board.path(board.taskboard_path)
     assert common.count("--worktree-submodule-path") == 2
     assert set(board.worktree_submodule_paths).issubset(common)
     assert common.count("--implementation-protected-path") == len(

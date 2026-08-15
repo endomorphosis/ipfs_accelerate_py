@@ -2657,6 +2657,67 @@ def _docker_grok_command(
     return command
 
 
+def _run_created_grok_container_with_typed_failure_capture(
+    create_command: Sequence[str],
+    *,
+    docker_bin: str,
+    docker_config: Path,
+    cidfile: Path,
+    workspace: Path,
+    env: dict[str, str],
+) -> int:
+    """Create the inert Grok container, then run that exact container.
+
+    ``_docker_grok_command`` deliberately returns a ``docker create`` command
+    so the container identity exists before any provider effect starts.  The
+    ordinary task path must not mistake the successful create command's
+    64-byte container ID for Grok output.  Validate both Docker's response and
+    the runner-owned cidfile before attaching to the exact created container.
+    """
+
+    try:
+        created = subprocess.run(
+            list(create_command),
+            cwd=workspace,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=120.0,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("Grok container creation timed out") from exc
+    if (
+        created.returncode != 0
+        or len(created.stdout) > _DOCKER_INSPECTION_MAX_BYTES
+        or len(created.stderr) > _DOCKER_INSPECTION_MAX_BYTES
+    ):
+        raise ValueError("Grok container could not be created")
+    try:
+        created_fields = created.stdout.decode("ascii", errors="strict").split()
+        recorded_container_id = cidfile.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("Grok container identity is unavailable") from exc
+    if (
+        len(created_fields) != 1
+        or re.fullmatch(r"[0-9a-f]{64}", created_fields[0]) is None
+        or recorded_container_id != created_fields[0]
+    ):
+        raise ValueError("Grok container identity is invalid")
+    start_command = [
+        docker_bin,
+        f"--host={_DOCKER_LOCAL_HOST}",
+        "--config",
+        str(docker_config),
+        "start",
+        "--attach",
+        "--interactive",
+        created_fields[0],
+    ]
+    return _run_grok_with_typed_failure_capture(start_command, env=env)
+
+
 def _docker_codex_fallback_command(
     *,
     codex_command: Sequence[str],
@@ -6137,12 +6198,24 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         output_index = cmd.index("--output-format") + 1
         cmd[output_index] = "streaming-json"
         try:
-            primary_returncode = _run_grok_with_typed_failure_capture(
-                cmd,
-                env=grok_launch_env,
-            )
+            if docker_lease is not None:
+                primary_returncode = (
+                    _run_created_grok_container_with_typed_failure_capture(
+                        cmd,
+                        docker_bin=docker_lease.docker_bin,
+                        docker_config=docker_lease.docker_config,
+                        cidfile=docker_lease.cidfile,
+                        workspace=workspace,
+                        env=grok_launch_env,
+                    )
+                )
+            else:
+                primary_returncode = _run_grok_with_typed_failure_capture(
+                    cmd,
+                    env=grok_launch_env,
+                )
             docker_run_finished = True
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             print(f"unable to launch Grok CLI: {exc}", file=sys.stderr)
             return 127
         if primary_returncode == 0:

@@ -1316,6 +1316,128 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     assert "--dangerously-bypass-approvals-and-sandbox" not in inner
 
 
+def test_docker_grok_create_is_followed_by_attached_exact_container_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    docker_config = tmp_path / "docker-config"
+    docker_config.mkdir()
+    cidfile = tmp_path / "container.cid"
+    container_id = "d" * 64
+    create_command = ["/usr/bin/docker", "create", "fixture-image"]
+    observed: dict[str, object] = {}
+
+    def fake_create(command, **kwargs):
+        observed["create_command"] = list(command)
+        observed["create_kwargs"] = dict(kwargs)
+        cidfile.write_text(container_id + "\n", encoding="ascii")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=(container_id + "\n").encode("ascii"),
+            stderr=b"",
+        )
+
+    def fake_start(command, *, env):
+        observed["start_command"] = list(command)
+        observed["start_env"] = dict(env)
+        return 19
+
+    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_create)
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_grok_with_typed_failure_capture",
+        fake_start,
+    )
+
+    returncode = (
+        grok_cli_runner._run_created_grok_container_with_typed_failure_capture(
+            create_command,
+            docker_bin="/usr/bin/docker",
+            docker_config=docker_config,
+            cidfile=cidfile,
+            workspace=workspace,
+            env={"PATH": "/usr/bin"},
+        )
+    )
+
+    assert returncode == 19
+    assert observed["create_command"] == create_command
+    assert observed["create_kwargs"]["cwd"] == workspace
+    assert observed["create_kwargs"]["stdin"] is subprocess.DEVNULL
+    assert observed["start_command"] == [
+        "/usr/bin/docker",
+        "--host=unix:///var/run/docker.sock",
+        "--config",
+        str(docker_config),
+        "start",
+        "--attach",
+        "--interactive",
+        container_id,
+    ]
+    assert observed["start_env"] == {"PATH": "/usr/bin"}
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ("nonzero", "malformed", "mismatch", "missing_cidfile", "oversized"),
+)
+def test_docker_grok_create_rejects_untrusted_container_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    docker_config = tmp_path / "docker-config"
+    docker_config.mkdir()
+    cidfile = tmp_path / "container.cid"
+    container_id = "d" * 64
+    start_called = False
+
+    def fake_create(command, **_kwargs):
+        if failure not in {"missing_cidfile", "nonzero"}:
+            recorded = "e" * 64 if failure == "mismatch" else container_id
+            cidfile.write_text(recorded + "\n", encoding="ascii")
+        stdout = (container_id + "\n").encode("ascii")
+        if failure == "malformed":
+            stdout = b"not-a-container-id\n"
+        elif failure == "oversized":
+            stdout = b"x" * (grok_cli_runner._DOCKER_INSPECTION_MAX_BYTES + 1)
+        return subprocess.CompletedProcess(
+            command,
+            17 if failure == "nonzero" else 0,
+            stdout=stdout,
+            stderr=b"create failed" if failure == "nonzero" else b"",
+        )
+
+    def fail_if_started(*_args, **_kwargs):
+        nonlocal start_called
+        start_called = True
+        return 0
+
+    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_create)
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_grok_with_typed_failure_capture",
+        fail_if_started,
+    )
+
+    with pytest.raises(ValueError):
+        grok_cli_runner._run_created_grok_container_with_typed_failure_capture(
+            ["/usr/bin/docker", "create", "fixture-image"],
+            docker_bin="/usr/bin/docker",
+            docker_config=docker_config,
+            cidfile=cidfile,
+            workspace=workspace,
+            env={"PATH": "/usr/bin"},
+        )
+
+    assert start_called is False
+
+
 @pytest.mark.parametrize("valid_label", (True, False))
 def test_codex_task_toolchain_image_requires_exact_identity_and_label(
     tmp_path: Path,
@@ -1978,3 +2100,59 @@ def test_build_grok_quota_routed_agent_command_embeds_terra_shape(
     assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
     assert 'model_reasoning_effort="medium"' in fallback
     assert "--ephemeral" in fallback
+
+
+def test_quota_grok_command_authorizes_canonical_legacy_preflight(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_binary",
+        lambda: "/usr/bin/grok",
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/usr/local/bin/codex",
+    )
+    command = implementation_daemon._grok_cli_command(workspace_path=tmp_path)
+    assert "--codex-fallback-command-json" in command
+    assert "--canonical-legacy-preflight-route" in command
+
+    nonce_bound = implementation_daemon._grok_cli_command(
+        workspace_path=tmp_path,
+        failure_receipt_nonce="ab" * 32,
+    )
+    assert "--canonical-legacy-preflight-route" not in nonce_bound
+
+
+def test_incomplete_quota_route_defaults_medium_reasoning_effort(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv(
+        implementation_daemon.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    monkeypatch.setenv(
+        implementation_daemon.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        "primary_quota_exhausted",
+    )
+    monkeypatch.setenv(implementation_daemon._GROK_MODEL_ENV, "grok-4.5")
+    monkeypatch.setenv(implementation_daemon._CODEX_MODEL_ENV, "gpt-5.6-terra")
+    monkeypatch.delenv(
+        implementation_daemon._CODEX_REASONING_EFFORT_ENV,
+        raising=False,
+    )
+
+    plan = implementation_daemon._configured_agent_implementation_route_plan(
+        tmp_path
+    )
+
+    assert plan is not None
+    assert plan.fallback_trigger == "primary_quota_exhausted"
+    assert plan.fallback_reasoning_effort == "medium"
+    assert plan.permits_authentication_unavailable is False

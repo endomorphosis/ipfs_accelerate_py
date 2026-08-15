@@ -24,6 +24,7 @@ from typing import Any, Callable, Mapping, Optional
 from ..task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBRow,
+    exclusive_file_lock,
     initialize_duckdb_database,
     open_duckdb_connection,
 )
@@ -53,6 +54,78 @@ MERGE_TARGET_BINDING_SCHEMA = (
 )
 MAX_MERGE_QUEUE_DEFERRAL_SECONDS = 3600.0
 MAX_MERGE_QUEUE_RECORDED_DEFERRALS = 32
+# A healthy index of a few dozen receipts is well under 1 MiB. Larger files
+# are leftover row-group bloat; opening one under the 256 MB DuckDB cap
+# leaves no room for a startup write-commit and abort the lane.
+MERGE_QUEUE_BLOAT_REBUILD_BYTES = 8 * 1024 * 1024
+_MERGE_REQUEST_COPY_COLUMNS = (
+    "request_id",
+    "branch_name",
+    "task_id",
+    "priority",
+    "lane_id",
+    "enqueued_at",
+    "attempt",
+    "metadata_json",
+    "commit_sha",
+    "canonical_task_id",
+    "canonical_task_key",
+    "dedupe_key",
+    "status",
+    "claimed_at",
+    "consumer_id",
+    "failure_count",
+    "failure_reason",
+    "claim_token",
+    "claim_generation",
+    "retry_not_before",
+    "finished_at",
+    "updated_at",
+)
+_MERGE_QUEUE_SCHEMA_SQL = """
+                CREATE TABLE IF NOT EXISTS merge_requests (
+                    request_id TEXT PRIMARY KEY,
+                    branch_name TEXT NOT NULL,
+                    task_id TEXT NOT NULL,
+                    priority TEXT NOT NULL,
+                    lane_id TEXT NOT NULL,
+                    enqueued_at DOUBLE NOT NULL,
+                    attempt INTEGER NOT NULL,
+                    metadata_json TEXT NOT NULL,
+                    commit_sha TEXT NOT NULL,
+                    canonical_task_id TEXT NOT NULL,
+                    canonical_task_key TEXT NOT NULL,
+                    dedupe_key TEXT,
+                    status TEXT NOT NULL,
+                    claimed_at DOUBLE NOT NULL DEFAULT 0,
+                    consumer_id TEXT NOT NULL DEFAULT '',
+                    failure_count INTEGER NOT NULL DEFAULT 0,
+                    failure_reason TEXT NOT NULL DEFAULT '',
+                    claim_token TEXT NOT NULL DEFAULT '',
+                    claim_generation BIGINT NOT NULL DEFAULT 0,
+                    retry_not_before DOUBLE NOT NULL DEFAULT 0,
+                    finished_at DOUBLE NOT NULL DEFAULT 0,
+                    updated_at DOUBLE NOT NULL
+                );
+                ALTER TABLE merge_requests
+                  ADD COLUMN IF NOT EXISTS claim_token TEXT DEFAULT '';
+                ALTER TABLE merge_requests
+                  ADD COLUMN IF NOT EXISTS claim_generation BIGINT DEFAULT 0;
+                ALTER TABLE merge_requests
+                  ADD COLUMN IF NOT EXISTS retry_not_before DOUBLE DEFAULT 0;
+                UPDATE merge_requests
+                  SET claim_token=COALESCE(claim_token, ''),
+                      claim_generation=COALESCE(claim_generation, 0),
+                      retry_not_before=COALESCE(retry_not_before, 0)
+                  WHERE claim_token IS NULL OR claim_generation IS NULL
+                     OR retry_not_before IS NULL;
+                CREATE UNIQUE INDEX IF NOT EXISTS merge_requests_dedupe
+                  ON merge_requests(dedupe_key);
+                CREATE INDEX IF NOT EXISTS merge_requests_stage_order
+                  ON merge_requests(status, enqueued_at);
+                CREATE INDEX IF NOT EXISTS merge_requests_retry_eligibility
+                  ON merge_requests(status, retry_not_before, enqueued_at);
+                """
 
 
 class MergeQueueFullError(RuntimeError):
@@ -323,6 +396,7 @@ class MergeQueue:
             directory.mkdir(parents=True, exist_ok=True)
         self._init_database()
         self._import_legacy_files()
+        self._compact_if_bloated()
 
     def bind_target(
         self,
@@ -365,6 +439,10 @@ class MergeQueue:
         return open_duckdb_connection(self.database_path)
 
     def _init_database(self) -> None:
+        if self._merge_requests_table_exists():
+            # A write-transaction COMMIT against a bloated file sits on the
+            # 256 MB DuckDB cap and abort-kills the lane (FATAL unique revert).
+            return
         initialize_duckdb_database(
             self.database_path,
             legacy_sqlite_path=self._legacy_database_path,
@@ -376,50 +454,7 @@ class MergeQueue:
                 and not str(value or "")
                 else value
             ),
-            schema_sql="""
-                CREATE TABLE IF NOT EXISTS merge_requests (
-                    request_id TEXT PRIMARY KEY,
-                    branch_name TEXT NOT NULL,
-                    task_id TEXT NOT NULL,
-                    priority TEXT NOT NULL,
-                    lane_id TEXT NOT NULL,
-                    enqueued_at DOUBLE NOT NULL,
-                    attempt INTEGER NOT NULL,
-                    metadata_json TEXT NOT NULL,
-                    commit_sha TEXT NOT NULL,
-                    canonical_task_id TEXT NOT NULL,
-                    canonical_task_key TEXT NOT NULL,
-                    dedupe_key TEXT,
-                    status TEXT NOT NULL,
-                    claimed_at DOUBLE NOT NULL DEFAULT 0,
-                    consumer_id TEXT NOT NULL DEFAULT '',
-                    failure_count INTEGER NOT NULL DEFAULT 0,
-                    failure_reason TEXT NOT NULL DEFAULT '',
-                    claim_token TEXT NOT NULL DEFAULT '',
-                    claim_generation BIGINT NOT NULL DEFAULT 0,
-                    retry_not_before DOUBLE NOT NULL DEFAULT 0,
-                    finished_at DOUBLE NOT NULL DEFAULT 0,
-                    updated_at DOUBLE NOT NULL
-                );
-                ALTER TABLE merge_requests
-                  ADD COLUMN IF NOT EXISTS claim_token TEXT DEFAULT '';
-                ALTER TABLE merge_requests
-                  ADD COLUMN IF NOT EXISTS claim_generation BIGINT DEFAULT 0;
-                ALTER TABLE merge_requests
-                  ADD COLUMN IF NOT EXISTS retry_not_before DOUBLE DEFAULT 0;
-                UPDATE merge_requests
-                  SET claim_token=COALESCE(claim_token, ''),
-                      claim_generation=COALESCE(claim_generation, 0),
-                      retry_not_before=COALESCE(retry_not_before, 0)
-                  WHERE claim_token IS NULL OR claim_generation IS NULL
-                     OR retry_not_before IS NULL;
-                CREATE UNIQUE INDEX IF NOT EXISTS merge_requests_dedupe
-                  ON merge_requests(dedupe_key);
-                CREATE INDEX IF NOT EXISTS merge_requests_stage_order
-                  ON merge_requests(status, enqueued_at);
-                CREATE INDEX IF NOT EXISTS merge_requests_retry_eligibility
-                  ON merge_requests(status, retry_not_before, enqueued_at);
-                """,
+            schema_sql=_MERGE_QUEUE_SCHEMA_SQL,
         )
 
     def _import_legacy_files(self) -> None:
@@ -434,6 +469,14 @@ class MergeQueue:
             ("cancelled", self.cancelled_dir),
         )
         with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT 1 FROM merge_requests LIMIT 1"
+            ).fetchone()
+            if existing is not None:
+                # The durable index is already populated. Re-reading every
+                # stage receipt on constructor start pins the whole table
+                # again and OOMs a 256MB-capped DuckDB on a large queue.
+                return
             connection.execute("BEGIN IMMEDIATE")
             try:
                 metadata_rows = connection.execute(
@@ -536,6 +579,124 @@ class MergeQueue:
                 connection.rollback()
                 raise
 
+    def _merge_requests_table_exists(self) -> bool:
+        if not self.database_path.is_file() or self.database_path.stat().st_size <= 0:
+            return False
+        try:
+            with self._connect() as connection:
+                row = connection.execute(
+                    """
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = 'main'
+                      AND table_name = 'merge_requests'
+                    LIMIT 1
+                    """
+                ).fetchone()
+        except Exception:
+            return False
+        return row is not None
+
+    def _stage_request_ids(self) -> list[str]:
+        request_ids: list[str] = []
+        seen: set[str] = set()
+        for directory in (
+            self.pending_dir,
+            self.processing_dir,
+            self.completed_dir,
+            self.failed_dir,
+            self.quarantine_dir,
+            self.cancelled_dir,
+        ):
+            if not directory.is_dir():
+                continue
+            for path in directory.glob("*.json"):
+                request_id = path.stem.strip()
+                if not request_id or request_id in seen:
+                    continue
+                seen.add(request_id)
+                request_ids.append(request_id)
+        return request_ids
+
+    def _compact_if_bloated(self) -> None:
+        try:
+            size = self.database_path.stat().st_size
+        except OSError:
+            return
+        if size < MERGE_QUEUE_BLOAT_REBUILD_BYTES:
+            return
+        self._rebuild_store_from_live_rows()
+
+    def _rebuild_store_from_live_rows(self) -> None:
+        """Rewrite a bloated DuckDB file from the live receipt-backed rows."""
+
+        request_ids = self._stage_request_ids()
+        if not request_ids:
+            return
+        columns = _MERGE_REQUEST_COPY_COLUMNS
+        select_sql = (
+            "SELECT "
+            + ", ".join(columns)
+            + " FROM merge_requests WHERE request_id = ?"
+        )
+        rows: list[tuple[Any, ...]] = []
+        meta_rows: list[tuple[Any, ...]] = []
+        with self._connect() as connection:
+            for request_id in request_ids:
+                row = connection.execute(select_sql, (request_id,)).fetchone()
+                if row is None:
+                    continue
+                rows.append(tuple(row[column] for column in columns))
+            try:
+                meta = connection.execute(
+                    "SELECT key, value FROM agent_supervisor_store_metadata"
+                ).fetchall()
+                meta_rows = [(row["key"], row["value"]) for row in meta]
+            except Exception:
+                meta_rows = []
+        if not rows:
+            return
+        rebuilt = self.database_path.with_name(f"{self.database_path.name}.rebuild")
+        if rebuilt.exists():
+            rebuilt.unlink()
+        initialize_duckdb_database(
+            rebuilt,
+            table_names=("merge_requests",),
+            schema_sql=_MERGE_QUEUE_SCHEMA_SQL,
+        )
+        placeholders = ", ".join("?" for _ in columns)
+        insert_sql = (
+            "INSERT INTO merge_requests ("
+            + ", ".join(columns)
+            + f") VALUES ({placeholders})"
+        )
+        with open_duckdb_connection(rebuilt) as connection:
+            connection.execute("BEGIN TRANSACTION")
+            for row in rows:
+                connection.execute(insert_sql, row)
+            for key, value in meta_rows:
+                connection.execute(
+                    """INSERT INTO agent_supervisor_store_metadata(key, value)
+                       VALUES (?, ?)
+                       ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+                    (key, value),
+                )
+            connection.commit()
+            connection.execute("CHECKPOINT")
+        lock_path = self.database_path.with_name(f".{self.database_path.name}.lock")
+        with exclusive_file_lock(lock_path, timeout_seconds=60.0):
+            wal = Path(str(self.database_path) + ".wal")
+            os.replace(rebuilt, self.database_path)
+            try:
+                if wal.exists():
+                    wal.unlink()
+            except OSError:
+                pass
+            try:
+                os.chmod(self.database_path, 0o600)
+            except OSError:
+                pass
+
     def _insert(
         self,
         connection: DuckDBConnection,
@@ -543,9 +704,24 @@ class MergeQueue:
         *,
         ignore: bool,
     ) -> None:
-        verb = "INSERT OR IGNORE" if ignore else "INSERT"
+        if ignore:
+            # INSERT OR IGNORE still appends then reverts on unique conflict.
+            # DuckDB treats that revert as FATAL and abort-kills the process.
+            existing = connection.execute(
+                "SELECT 1 FROM merge_requests WHERE request_id = ?",
+                (request.request_id,),
+            ).fetchone()
+            if existing is not None:
+                return
+            if request.dedupe_key:
+                existing = connection.execute(
+                    "SELECT 1 FROM merge_requests WHERE dedupe_key = ?",
+                    (request.dedupe_key,),
+                ).fetchone()
+                if existing is not None:
+                    return
         connection.execute(
-            f"""{verb} INTO merge_requests (
+            """INSERT INTO merge_requests (
                 request_id, branch_name, task_id, priority, lane_id, enqueued_at,
                 attempt, metadata_json, commit_sha, canonical_task_id,
                 canonical_task_key, dedupe_key, status, claimed_at, consumer_id,
@@ -715,8 +891,26 @@ class MergeQueue:
                     raise MergeQueueFullError(
                         f"merge queue capacity {self.max_queue_size} has been reached"
                     )
-                self._insert(connection, request, ignore=False)
+                # Never INSERT a row whose request_id or dedupe_key already
+                # exists. DuckDB INSERT OR IGNORE still appends-then-reverts
+                # and abort-kills the process on that unique-index revert.
+                self._insert(connection, request, ignore=True)
+                stored = connection.execute(
+                    "SELECT * FROM merge_requests WHERE request_id = ?",
+                    (request.request_id,),
+                ).fetchone()
+                if stored is None and request.dedupe_key:
+                    stored = connection.execute(
+                        "SELECT * FROM merge_requests WHERE dedupe_key = ?",
+                        (request.dedupe_key,),
+                    ).fetchone()
+                if stored is None:
+                    connection.rollback()
+                    raise RuntimeError(
+                        "merge queue insert was ignored without an existing row"
+                    )
                 connection.commit()
+                request = self._request_from_row(stored)
             except Exception:
                 connection.rollback()
                 if not request.dedupe_key:
