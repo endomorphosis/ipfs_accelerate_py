@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aae/security-qualification-recipe@1",
+  "title": "AAESecurityQualification recipe catalog",
+  "description": "Compact attack recipes that qualify sandbox, credential, network, authority, path, and instruction-isolation security (AAE-059 / AAESecurityQualification@1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "interface",
+    "evidence",
+    "task_id",
+    "catalog_id",
+    "production_policy_changed",
+    "attack_classes",
+    "recipes"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "aae/security-qualification-recipe@1"
+    },
+    "interface": {
+      "type": "string",
+      "const": "AAESecurityQualification@1"
+    },
+    "evidence": {
+      "type": "string",
+      "const": "aae/security-e2e@1"
+    },
+    "task_id": {
+      "type": "string",
+      "const": "AAE-059"
+    },
+    "catalog_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "production_policy_changed": {
+      "type": "boolean",
+      "const": false
+    },
+    "attack_classes": {
+      "type": "array",
+      "minItems": 7,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "disposable_root_escape",
+          "production_credentials",
+          "network_access",
+          "authority_surface_edit",
+          "self_promotion",
+          "comment_as_policy",
+          "arbitrary_path_exposure"
+        ]
+      }
+    },
+    "recipes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/attack_recipe"
+      }
+    }
+  },
+  "$defs": {
+    "attack_recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recipe_id",
+        "attack_class",
+        "surface",
+        "attack_vector",
+        "expected_denial",
+        "expected_reason_codes",
+        "fail_closed",
+        "notes"
+      ],
+      "properties": {
+        "recipe_id": {
+          "type": "string",
+          "pattern": "^sec-[a-z0-9_.:-]{1,96}$"
+        },
+        "attack_class": {
+          "type": "string",
+          "enum": [
+            "disposable_root_escape",
+            "production_credentials",
+            "network_access",
+            "authority_surface_edit",
+            "self_promotion",
+            "comment_as_policy",
+            "arbitrary_path_exposure"
+          ]
+        },
+        "surface": {
+          "type": "string",
+          "enum": [
+            "worktree_scope",
+            "worktree_apply",
+            "worktree_lifecycle",
+            "admission",
+            "worker_budget",
+            "worker_environment",
+            "hermetic_environment",
+            "git_isolation",
+            "remediation_draft",
+            "contract_payload",
+            "manifest"
+          ]
+        },
+        "attack_vector": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "expected_denial": {
+          "type": "boolean",
+          "const": true
+        },
+        "expected_reason_codes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          }
+        },
+        "fail_closed": {
+          "type": "boolean",
+          "const": true
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    }
+  }
+}
