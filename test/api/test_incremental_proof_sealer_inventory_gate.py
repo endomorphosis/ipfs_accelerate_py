@@ -4695,6 +4695,7 @@ def test_release_environment_routes_all_writes_outside_materialized_source(
 
     assert environment["PYTHONPATH"].split(os.pathsep)[0] == str(source_root.resolve())
     assert environment["PYTEST_ADDOPTS"] == (
+        "--log-cli-level=ERROR --log-level=ERROR "
         f"--benchmark-storage=file://{workspace / 'pytest-benchmark'}"
     )
     for name in (

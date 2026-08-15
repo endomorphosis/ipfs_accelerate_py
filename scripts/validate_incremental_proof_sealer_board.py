@@ -490,7 +490,9 @@ RELEASE_PUBLIC_LOG_POLICY = "public-full-log-secret-scan@1"
 RELEASE_FIXED_EXECUTABLE_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 RELEASE_MAX_LOG_BYTES = 6 * 1024 * 1024
 RELEASE_MAX_REPORT_BYTES = 1024 * 1024
-RELEASE_PROCESS_MAX_OUTPUT_BYTES = 256 * 1024
+# 1488-test datasets-zkp-broad-safe-current cannot emit a complete -vv
+# summary inside 256 KiB. One MiB still sits under the 6 MiB combined log.
+RELEASE_PROCESS_MAX_OUTPUT_BYTES = 1024 * 1024
 RELEASE_VALIDATION_ARGV = (
     "python",
     "scripts/validate_incremental_proof_sealer_board.py",
@@ -9488,6 +9490,7 @@ def _release_environment(workspace: Path, *, source_root: Path = REPO_ROOT) -> d
         "PYTHONPYCACHEPREFIX": str(workspace / "pycache"),
         "PYTHONPATH": python_path,
         "PYTEST_ADDOPTS": (
+            "--log-cli-level=ERROR --log-level=ERROR "
             f"--benchmark-storage=file://{workspace / 'pytest-benchmark'}"
         ),
         "PATH": RELEASE_FIXED_EXECUTABLE_PATH,
