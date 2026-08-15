@@ -2665,3 +2665,15 @@ overlays. Never force-push.
 - Validation: cd ipfs_accelerate_py/mcplusplus/tests-rs && cargo test
 
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in MCPP-005. Use evidence in /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-086-mcpp-005-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release MCPP-005 from strategy blocked_tasks.
+
+## MCPP-087 Resolve validation retry-budget failure for MCPP-006
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: MCPP-001
+- Outputs: docs/reports/mcplusplus-1.0-gap-closure/baseline/ipfs-accelerate-mcplusplus.json, data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery
+- Validation: export PYTHONPATH="$PWD"/ipfs_accelerate_py/mcplusplus:"$PWD"/ipfs_datasets_py:"$PWD"/ipfs_kit_py; python -m pytest -q ipfs_accelerate_py/mcp/tests test/api -k mcplusplus --maxfail=1
+
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in MCPP-006. Use evidence in /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-087-mcpp-006-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release MCPP-006 from strategy blocked_tasks. The declared validation target paths (ipfs_accelerate_py/mcp/tests, test/api) are bounded diagnostic and repair scope: change them only when evidence proves inherited validation debt, and do not weaken correct assertions or policy.
