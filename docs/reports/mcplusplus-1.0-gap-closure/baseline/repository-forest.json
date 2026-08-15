@@ -1,0 +1,1477 @@
+{
+  "schema": "RepositoryForestDescriptor@1",
+  "schema_version": 1,
+  "task_id": "MCPP-001",
+  "goal_id": "MCPP-G010",
+  "bundle": "mcplusplus/1.0/baseline-forest",
+  "board_namespace": "mcplusplus-1-0-gap-closure-v1",
+  "program_branch": "codex/mcplusplus-1.0-gap-closure",
+  "observed_at": "2026-08-15T09:31:31Z",
+  "observation_policy": {
+    "commands_used": [
+      "git rev-parse HEAD",
+      "git rev-parse HEAD^{tree}",
+      "git rev-parse --abbrev-ref HEAD",
+      "git rev-parse --show-toplevel",
+      "git remote -v",
+      "git status --porcelain=v1",
+      "git rev-parse --verify refs/heads/codex/mcplusplus-1.0-gap-closure",
+      "git ls-files -s"
+    ],
+    "commands_forbidden_not_used": [
+      "git reset",
+      "git stash drop",
+      "git checkout",
+      "git clean",
+      "git push --force",
+      "git branch -D"
+    ],
+    "mutation": "none",
+    "overlay_preservation": "all operator dirty and untracked paths recorded and left untouched"
+  },
+  "repositories": [
+    {
+      "logical_name": "lift_coding",
+      "role": "superproject",
+      "path": "/home/barberb/lift_coding",
+      "exists": true,
+      "is_git": true,
+      "authority": "read_only",
+      "notes": "Operator superproject; dirty gitlinks and untracked worktree/backup dirs preserved.",
+      "status": "ok",
+      "toplevel": "/home/barberb/lift_coding",
+      "head": "b6f40c05e0884867eb8557f8882cd25cb760ca2f",
+      "tree": "db6c28fdc119fab6cd6c109412c5d1ccda02c0c6",
+      "branch": "chore/fmt-check-main",
+      "remotes": {
+        "origin": "https://github.com/endomorphosis/lift_coding.git",
+        "wt": "/home/barberb/.local/state/ipfs_accelerate_py/proof-backed-test-reuse-v9/worktrees/ptr_lane_1/workspace-01d0ca0bb69f-d3043386de3c/external/ipfs_datasets"
+      },
+      "dirty": true,
+      "dirty_count": 19,
+      "dirty_paths": [
+        {
+          "status": " M",
+          "path": "external/ipfs_accelerate"
+        },
+        {
+          "status": " M",
+          "path": "external/ipfs_datasets"
+        },
+        {
+          "status": " M",
+          "path": "hallucinate_app"
+        },
+        {
+          "status": " M",
+          "path": "swissknife"
+        },
+        {
+          "status": "??",
+          "path": ".backups/"
+        },
+        {
+          "status": "??",
+          "path": ".codex-sandbox-probe.IbJduK/"
+        },
+        {
+          "status": "??",
+          "path": ".cvefixes-build/"
+        },
+        {
+          "status": "??",
+          "path": ".dqp-recovery-candidates.G6apeG/"
+        },
+        {
+          "status": "??",
+          "path": ".dqp012-diagnostic.kIF1vO/"
+        },
+        {
+          "status": "??",
+          "path": ".dqp016-review.U8kbij/"
+        },
+        {
+          "status": "??",
+          "path": ".git-sync-recovery-20260727-202941.md"
+        },
+        {
+          "status": "??",
+          "path": ".kit-semantic-state-supervisor-worktrees/"
+        },
+        {
+          "status": "??",
+          "path": ".merge-backups/"
+        },
+        {
+          "status": "??",
+          "path": ".recovery-backups/"
+        },
+        {
+          "status": "??",
+          "path": ".tmp-dqp008-recovery.YTuEbE/"
+        },
+        {
+          "status": "??",
+          "path": ".tmp-readme-compare/"
+        },
+        {
+          "status": "??",
+          "path": ".venvs/"
+        },
+        {
+          "status": "??",
+          "path": ".worktrees/"
+        },
+        {
+          "status": "??",
+          "path": "tmp_readme_compare/"
+        }
+      ],
+      "program_branch": {
+        "name": "codex/mcplusplus-1.0-gap-closure",
+        "state": "present",
+        "sha": "b6f40c05e0884867eb8557f8882cd25cb760ca2f"
+      },
+      "gitlinks": [
+        {
+          "mode": "160000",
+          "sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+          "path": "Mcp-Plus-Plus"
+        },
+        {
+          "mode": "160000",
+          "sha": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+          "path": "external/ipfs_accelerate"
+        },
+        {
+          "mode": "160000",
+          "sha": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+          "path": "external/ipfs_datasets"
+        },
+        {
+          "mode": "160000",
+          "sha": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+          "path": "external/ipfs_kit"
+        },
+        {
+          "mode": "160000",
+          "sha": "4e56e1864a5e78194bababc3a68775c4196cbed0",
+          "path": "external/meta-wearables-dat-android"
+        },
+        {
+          "mode": "160000",
+          "sha": "2b5695d16a710f3d2d7341f88570b86d01723d50",
+          "path": "external/meta-wearables-dat-ios"
+        },
+        {
+          "mode": "160000",
+          "sha": "8a5f89e6d4c1566675d2676b84a99abcf9c48419",
+          "path": "hallucinate_app"
+        },
+        {
+          "mode": "160000",
+          "sha": "afdbf885175fde34505ef05a2ea6aac5535ad03e",
+          "path": "swissknife"
+        }
+      ],
+      "observed_at": "2026-08-15T09:31:31Z"
+    },
+    {
+      "logical_name": "Mcp-Plus-Plus",
+      "role": "protocol_conformance",
+      "path": "/home/barberb/lift_coding/Mcp-Plus-Plus",
+      "exists": true,
+      "is_git": true,
+      "authority": "read_only",
+      "notes": "Canonical Mcp-Plus-Plus spec authority checkout under lift_coding.",
+      "status": "ok",
+      "toplevel": "/home/barberb/lift_coding/Mcp-Plus-Plus",
+      "head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+      "tree": "fd328606da5dae3314a87365987f5052180eb807",
+      "branch": "main",
+      "remotes": {
+        "origin": "https://github.com/endomorphosis/Mcp-Plus-Plus.git"
+      },
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_paths": [],
+      "program_branch": {
+        "name": "codex/mcplusplus-1.0-gap-closure",
+        "state": "present",
+        "sha": "6965f89f066769f3b3ac7b5f753b1a0044562570"
+      },
+      "gitlinks": [],
+      "observed_at": "2026-08-15T09:31:31Z"
+    },
+    {
+      "logical_name": "ipfs_accelerate_py",
+      "role": "runtime_accelerate_implementation_worktree",
+      "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_4fbf5a625b5c_cf8849b0b2e2",
+      "exists": true,
+      "is_git": true,
+      "authority": "read_write",
+      "notes": "Isolated supervisor implementation worktree for MCPP-001; program branch already present.",
+      "status": "ok",
+      "toplevel": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_4fbf5a625b5c_cf8849b0b2e2",
+      "head": "e01a7f4ec4ac2275f64a8f980ee614c10ebaae5e",
+      "tree": "b4b7df739b31fab7304771499c9e48ccfd7bb085",
+      "branch": "implementation/mcpp-001-e94eb1589242-attempt-3-1786785925",
+      "remotes": {
+        "origin": "https://github.com/endomorphosis/ipfs_accelerate_py"
+      },
+      "dirty": true,
+      "dirty_count": 2,
+      "dirty_paths": [
+        {
+          "status": "A ",
+          "path": "docs/reports/mcplusplus-1.0-gap-closure/baseline/dirty-overlay.md"
+        },
+        {
+          "status": "A ",
+          "path": "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json"
+        }
+      ],
+      "program_branch": {
+        "name": "codex/mcplusplus-1.0-gap-closure",
+        "state": "present",
+        "sha": "e01a7f4ec4ac2275f64a8f980ee614c10ebaae5e"
+      },
+      "gitlinks": [
+        {
+          "mode": "160000",
+          "sha": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
+          "path": "docs/fastmcp"
+        },
+        {
+          "mode": "160000",
+          "sha": "0da9a074d09267a927d72faa58c26d828f0f8edb",
+          "path": "docs/mcp-python-sdk"
+        },
+        {
+          "mode": "160000",
+          "sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+          "path": "ipfs_accelerate_py/mcplusplus"
+        },
+        {
+          "mode": "160000",
+          "sha": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+          "path": "ipfs_datasets_py"
+        },
+        {
+          "mode": "160000",
+          "sha": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+          "path": "ipfs_kit_py"
+        },
+        {
+          "mode": "160000",
+          "sha": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
+          "path": "ipfs_model_manager_py"
+        },
+        {
+          "mode": "160000",
+          "sha": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
+          "path": "ipfs_transformers_py"
+        },
+        {
+          "mode": "160000",
+          "sha": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+          "path": "test/doc-builder"
+        },
+        {
+          "mode": "160000",
+          "sha": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+          "path": "test/huggingface_doc_builder"
+        },
+        {
+          "mode": "160000",
+          "sha": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f",
+          "path": "test/huggingface_transformers"
+        }
+      ],
+      "observed_at": "2026-08-15T09:31:31Z"
+    },
+    {
+      "logical_name": "ipfs_accelerate_py_operator",
+      "role": "runtime_accelerate_operator",
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate",
+      "exists": true,
+      "is_git": true,
+      "authority": "read_only",
+      "notes": "Operator accelerate checkout with substantial dirty overlay; must not be reset or stash-dropped.",
+      "status": "ok",
+      "toplevel": "/home/barberb/lift_coding/external/ipfs_accelerate",
+      "head": "ea11293bb996f052d620eae989f5377a956764b1",
+      "tree": "ea6869d70e25c7bc8b80e6458c1a46b8c03f945f",
+      "branch": "fix/implementation-auto-rescue-20260809",
+      "remotes": {
+        "origin": "https://github.com/endomorphosis/ipfs_accelerate_py"
+      },
+      "dirty": true,
+      "dirty_count": 147,
+      "dirty_paths": [
+        {
+          "status": " M",
+          "path": "docs/architecture/agent_supervisor/PROGRAMS.md"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/runtime_contract_evidence_compiler.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/control/default_doctor_factory.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/default_planner_factory.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_synthesis.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_validator.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/symbolic_candidate_planner.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/code_proof_obligations.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/ir_adapters.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/ir_registry.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/mcp_contract_obligations.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/prover_matrix_registry.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/deterministic_doctor_runtime.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/event_log.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/pre_implementation_kernel.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/pre_implementation_provider_gate.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni158_embedding_tools.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni184_embedding_dispatch_compat.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/mcp_server/server.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/mcp_server/tools/backend_management_tools/native_backend_management_tools.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/mcp_server/tools/embedding_tools/native_embedding_tools.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/mcp_server/tools/ipfs/native_ipfs_tools.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/mcp_server/tools/ipfs_cluster_tools/native_ipfs_cluster_tools.py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_accelerate_py/mcp_server/tools/workflow/native_workflow_tools.py"
+        },
+        {
+          "status": " M",
+          "path": "scripts/index_repository_contracts.py"
+        },
+        {
+          "status": " M",
+          "path": "test/api/test_agent_supervisor_configured_board_scheduler.py"
+        },
+        {
+          "status": " M",
+          "path": "test/api/test_agent_supervisor_deterministic_doctor_fixed_point.py"
+        },
+        {
+          "status": " M",
+          "path": "test/api/test_agent_supervisor_grok_quota_terra_gate.py"
+        },
+        {
+          "status": " M",
+          "path": "test/api/test_agent_supervisor_implementation_daemon_planner_doctor_hook.py"
+        },
+        {
+          "status": " M",
+          "path": "test/api/test_agent_supervisor_mcp_contract_catalog.py"
+        },
+        {
+          "status": " M",
+          "path": "test/api/test_agent_supervisor_pre_implementation_kernel.py"
+        },
+        {
+          "status": "??",
+          "path": "data/agent_supervisor/.control-transaction.lock"
+        },
+        {
+          "status": "??",
+          "path": "data/agent_supervisor/control-audit.jsonl"
+        },
+        {
+          "status": "??",
+          "path": "docs/architecture/AGENT_SUPERVISOR_PROMPT_ONLY_SELF_IMPROVEMENT_V3_PLAN.md"
+        },
+        {
+          "status": "??",
+          "path": "docs/architecture/MCPPLUSPLUS_1_0_GAP_CLOSURE_PLAN.md"
+        },
+        {
+          "status": "??",
+          "path": "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.objectives.md"
+        },
+        {
+          "status": "??",
+          "path": "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md"
+        },
+        {
+          "status": "??",
+          "path": "docs/architecture/mcplusplus_1_0_gap_closure.objectives.md"
+        },
+        {
+          "status": "??",
+          "path": "docs/architecture/mcplusplus_1_0_gap_closure.todo.md"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/deterministic_desktop_expectations.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/deterministic_repair_analyzer_health.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/deterministic_repair_current_state.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/deterministic_repair_forest.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/hermetic_conformance.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/live_service_conformance.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_graph.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_identity.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_mismatch.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_live_observer.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/provider_surface_health.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/runtime_service_identity.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/autonomous_repair/"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/evaluation/"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/objectives/deterministic_repair_selection.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/objectives/repair_authority_projection.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/deterministic_candidate_portfolio.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/deterministic_failure_memory.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/ir_logic_consumers.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/ir_logic_hooks.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/proof_carrying_repair_dag.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/repair_resource_scheduler.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/dcr_proof_cache.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/ir_integration.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/ir_logic_application.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/ir_structural_application.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/kernel_reconstruction.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/deterministic_repair_provider.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/sca_doctor_bridge.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/sca_ir_integration.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/sca_ir_logic_applicator.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/sca_rpr_admission.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/sca_structural_ir_applicator.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/sca_symbolic_planning.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/sca_symbolic_repair.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/deterministic_repair_composition.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/deterministic_repair_recovery.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/agent_supervisor/validation/runtime_contract_evaluation.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/mcp_server/package_mcp_interop.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_accelerate_py/mcp_server/surface_identity_bindings.py"
+        },
+        {
+          "status": "??",
+          "path": "scripts/generate_mcplusplus_1_0_gap_closure_board.py"
+        },
+        {
+          "status": "??",
+          "path": "scripts/validate_mcplusplus_1_0_gap_closure_board.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_autonomous_repair_source_edit_gate.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_datasets_logic_ir_integration.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr031_mcp_contract_obligations.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr032_multi_prover_router.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr033_kernel_reconstruction.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr042_protocol_repairs.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr045_ui_projection_repairs.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_adversarial.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_analyzer_health.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_candidate_portfolio.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_codegen_roundtrip.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_current_evidence.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_desktop_expectations.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_doctor_composition.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_doctor_diagnosis.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_doctor_transform.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_drift_monitor.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_forest.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_merge_provenance.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_ordered_provider_fallback.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_plan_dag.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_planner_factory.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_post_repair_validation.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_proof_cache.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_provider_surface_health.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_recovery.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_repair_admission.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_replan_memory.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_resource_scheduler.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_runtime_service_identity.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_security_operators.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_selection_refill.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_self_improvement.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_dcr_transaction.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_deterministic_contract_dispatch_repairs.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_deterministic_contract_operator_repairs.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_deterministic_contract_operators.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_deterministic_repair_artifacts.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_deterministic_repair_capabilities.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_deterministic_repair_contracts.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_deterministic_repair_daemon_composition.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_deterministic_repair_no_llm.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_deterministic_repair_provider.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_deterministic_repair_root_ownership.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_hermetic_conformance.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_ir_logic_required_fail_closed.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_mcp_contract_graph.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_mcp_contract_identity.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_mcp_contract_mismatch.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_mcp_live_observer.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_no_llm_runtime_barrier.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_runtime_contract_evaluation.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_runtime_integrity_repair_projection.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_sca_doctor_bridge.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_sca_rpr_admission.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_swissknife_mcplusplus_live_services.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_transport_repairs.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_agent_supervisor_ui_ir_projection_integration.py"
+        },
+        {
+          "status": "??",
+          "path": "test/api/test_mcplusplus_1_0_gap_closure_board.py"
+        }
+      ],
+      "program_branch": {
+        "name": "codex/mcplusplus-1.0-gap-closure",
+        "state": "present",
+        "sha": "e01a7f4ec4ac2275f64a8f980ee614c10ebaae5e"
+      },
+      "gitlinks": [
+        {
+          "mode": "160000",
+          "sha": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
+          "path": "docs/fastmcp"
+        },
+        {
+          "mode": "160000",
+          "sha": "0da9a074d09267a927d72faa58c26d828f0f8edb",
+          "path": "docs/mcp-python-sdk"
+        },
+        {
+          "mode": "160000",
+          "sha": "15c1816d6c63a2b11edd505704f6a04a9abc6167",
+          "path": "ipfs_accelerate_py/mcplusplus"
+        },
+        {
+          "mode": "160000",
+          "sha": "a2f5400b7cb89c8481819379a1b7b9959fe81d45",
+          "path": "ipfs_datasets_py"
+        },
+        {
+          "mode": "160000",
+          "sha": "e164bb21c7a73b722a83aea7623e5677391bce54",
+          "path": "ipfs_kit_py"
+        },
+        {
+          "mode": "160000",
+          "sha": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
+          "path": "ipfs_model_manager_py"
+        },
+        {
+          "mode": "160000",
+          "sha": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
+          "path": "ipfs_transformers_py"
+        },
+        {
+          "mode": "160000",
+          "sha": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+          "path": "test/doc-builder"
+        },
+        {
+          "mode": "160000",
+          "sha": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+          "path": "test/huggingface_doc_builder"
+        },
+        {
+          "mode": "160000",
+          "sha": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f",
+          "path": "test/huggingface_transformers"
+        }
+      ],
+      "observed_at": "2026-08-15T09:31:31Z"
+    },
+    {
+      "logical_name": "ipfs_datasets_py",
+      "role": "runtime_datasets_worktree",
+      "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_4fbf5a625b5c_cf8849b0b2e2/ipfs_datasets_py",
+      "exists": true,
+      "is_git": true,
+      "authority": "read_write",
+      "notes": "Worktree-bound datasets gitlink used by this implementation workspace.",
+      "status": "ok",
+      "toplevel": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_4fbf5a625b5c_cf8849b0b2e2/ipfs_datasets_py",
+      "head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "tree": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47",
+      "branch": "implementation/mcpp-001-e94eb1589242-attempt-3-1786785925-submodule-ipfs_datasets_py",
+      "remotes": {
+        "origin": "https://github.com/endomorphosis/ipfs_datasets_py.git"
+      },
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_paths": [],
+      "program_branch": {
+        "name": "codex/mcplusplus-1.0-gap-closure",
+        "state": "present",
+        "sha": "ac82107e246b30e35a2bbdcf75e01370d22350c6"
+      },
+      "gitlinks": [
+        {
+          "mode": "160000",
+          "sha": "80afdad2fa6db5875f40e5f495f26b98b7f3c767",
+          "path": ".tools/ipfs_kit_py"
+        },
+        {
+          "mode": "160000",
+          "sha": "b157eabc2a1d1f481aa44fff9a1399fa2b29beae",
+          "path": "ipfs_accelerate_py"
+        },
+        {
+          "mode": "160000",
+          "sha": "a4beb5b3280595be6b9221cac3c91dd019e6d371",
+          "path": "ipfs_datasets_py/logic/CEC/DCEC_Library"
+        },
+        {
+          "mode": "160000",
+          "sha": "df518c21ef81b8001e6db59f5fd70f10cc04ff6c",
+          "path": "ipfs_datasets_py/logic/CEC/Eng-DCEC"
+        },
+        {
+          "mode": "160000",
+          "sha": "3060ede1ac1ec3f8ef9f9c9e41386aed1dbbe7f9",
+          "path": "ipfs_datasets_py/logic/CEC/ShadowProver"
+        },
+        {
+          "mode": "160000",
+          "sha": "e0b7650d3e3a403924773f8253e924c719748d36",
+          "path": "ipfs_datasets_py/logic/CEC/Talos"
+        },
+        {
+          "mode": "160000",
+          "sha": "d58933631a5362b1e2fdc45254ef620fa231223a",
+          "path": "ipfs_datasets_py/multimedia/convert_to_txt_based_on_mime_type"
+        },
+        {
+          "mode": "160000",
+          "sha": "c1d9b0d517cea022516aab5b5d8fa5e3bc9a65aa",
+          "path": "ipfs_datasets_py/multimedia/omni_converter_mk2"
+        },
+        {
+          "mode": "160000",
+          "sha": "5c7c2ab8a509073f39359b2a35446183855f460a",
+          "path": "ipfs_datasets_py/processors/web_archiving/common_crawl_search_engine"
+        },
+        {
+          "mode": "160000",
+          "sha": "80afdad2fa6db5875f40e5f495f26b98b7f3c767",
+          "path": "ipfs_kit_py"
+        }
+      ],
+      "observed_at": "2026-08-15T09:31:31Z"
+    },
+    {
+      "logical_name": "ipfs_datasets_py_operator",
+      "role": "runtime_datasets_operator",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "exists": true,
+      "is_git": true,
+      "authority": "read_only",
+      "notes": "Operator datasets checkout; dirty overlay preserved.",
+      "status": "ok",
+      "toplevel": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "tree": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47",
+      "branch": "main",
+      "remotes": {
+        "origin": "https://github.com/endomorphosis/ipfs_datasets_py"
+      },
+      "dirty": true,
+      "dirty_count": 8,
+      "dirty_paths": [
+        {
+          "status": " M",
+          "path": ".tools/ipfs_kit_py"
+        },
+        {
+          "status": " M",
+          "path": "ipfs_datasets_py/core_operations/logic_processor.py"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_datasets_py/logic/ui_ux_ir/"
+        },
+        {
+          "status": "??",
+          "path": "ipfs_datasets_py/mcp_server/mcplusplus/p2p_libp2p_transport.py"
+        },
+        {
+          "status": "??",
+          "path": "tests/fixtures/ui_ux_ir/"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/logic/ui_ux_ir/"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/mcp_server/test_mcplusplus_capability_truthfulness.py"
+        },
+        {
+          "status": "??",
+          "path": "tests/unit/mcp_server/test_mcplusplus_p2p_tool_parity.py"
+        }
+      ],
+      "program_branch": {
+        "name": "codex/mcplusplus-1.0-gap-closure",
+        "state": "present",
+        "sha": "ac82107e246b30e35a2bbdcf75e01370d22350c6"
+      },
+      "gitlinks": [
+        {
+          "mode": "160000",
+          "sha": "80afdad2fa6db5875f40e5f495f26b98b7f3c767",
+          "path": ".tools/ipfs_kit_py"
+        },
+        {
+          "mode": "160000",
+          "sha": "b157eabc2a1d1f481aa44fff9a1399fa2b29beae",
+          "path": "ipfs_accelerate_py"
+        },
+        {
+          "mode": "160000",
+          "sha": "a4beb5b3280595be6b9221cac3c91dd019e6d371",
+          "path": "ipfs_datasets_py/logic/CEC/DCEC_Library"
+        },
+        {
+          "mode": "160000",
+          "sha": "df518c21ef81b8001e6db59f5fd70f10cc04ff6c",
+          "path": "ipfs_datasets_py/logic/CEC/Eng-DCEC"
+        },
+        {
+          "mode": "160000",
+          "sha": "3060ede1ac1ec3f8ef9f9c9e41386aed1dbbe7f9",
+          "path": "ipfs_datasets_py/logic/CEC/ShadowProver"
+        },
+        {
+          "mode": "160000",
+          "sha": "e0b7650d3e3a403924773f8253e924c719748d36",
+          "path": "ipfs_datasets_py/logic/CEC/Talos"
+        },
+        {
+          "mode": "160000",
+          "sha": "d58933631a5362b1e2fdc45254ef620fa231223a",
+          "path": "ipfs_datasets_py/multimedia/convert_to_txt_based_on_mime_type"
+        },
+        {
+          "mode": "160000",
+          "sha": "c1d9b0d517cea022516aab5b5d8fa5e3bc9a65aa",
+          "path": "ipfs_datasets_py/multimedia/omni_converter_mk2"
+        },
+        {
+          "mode": "160000",
+          "sha": "5c7c2ab8a509073f39359b2a35446183855f460a",
+          "path": "ipfs_datasets_py/processors/web_archiving/common_crawl_search_engine"
+        },
+        {
+          "mode": "160000",
+          "sha": "80afdad2fa6db5875f40e5f495f26b98b7f3c767",
+          "path": "ipfs_kit_py"
+        }
+      ],
+      "observed_at": "2026-08-15T09:31:31Z"
+    },
+    {
+      "logical_name": "ipfs_kit_py",
+      "role": "runtime_kit_worktree",
+      "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_4fbf5a625b5c_cf8849b0b2e2/ipfs_kit_py",
+      "exists": true,
+      "is_git": true,
+      "authority": "read_write",
+      "notes": "Worktree-bound kit gitlink used by this implementation workspace.",
+      "status": "ok",
+      "toplevel": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_4fbf5a625b5c_cf8849b0b2e2/ipfs_kit_py",
+      "head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "tree": "93070c709af29095fdff11f3e2698543449c08ef",
+      "branch": "implementation/mcpp-001-e94eb1589242-attempt-3-1786785925-submodule-ipfs_kit_py",
+      "remotes": {
+        "origin": "https://github.com/endomorphosis/ipfs_kit_py.git"
+      },
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_paths": [],
+      "program_branch": {
+        "name": "codex/mcplusplus-1.0-gap-closure",
+        "state": "present",
+        "sha": "6196017ca3df016c7159dce43af60f2a0d96a9ae"
+      },
+      "gitlinks": [
+        {
+          "mode": "160000",
+          "sha": "fec09b04ad626df44a03bc605cb2e526b752b042",
+          "path": "docs/filesystem_spec"
+        },
+        {
+          "mode": "160000",
+          "sha": "4cf83720b59738d93db4068976f9c2a11f023e45",
+          "path": "docs/ipfs-docs"
+        },
+        {
+          "mode": "160000",
+          "sha": "c7ca8b5f87b41fcc795297ca65b0bb41c10234bf",
+          "path": "docs/ipfs_cluster"
+        },
+        {
+          "mode": "160000",
+          "sha": "03f5199b9bf5a96c7ebf5e2e6f5dce8cf58b655f",
+          "path": "docs/ipfsspec"
+        },
+        {
+          "mode": "160000",
+          "sha": "c6ba777810d03fed23aea11b5969b7d8a97f1edf",
+          "path": "docs/lassie"
+        },
+        {
+          "mode": "160000",
+          "sha": "e18a6de9c020c5e406d9f61b638f5d276054798d",
+          "path": "docs/libp2p-universal-connectivity"
+        },
+        {
+          "mode": "160000",
+          "sha": "17cee4a438797313d1e878b103abc1dbefdf423e",
+          "path": "docs/libp2p_docs"
+        },
+        {
+          "mode": "160000",
+          "sha": "6b2c86693090c770d2c9a4d82ba315000a77068b",
+          "path": "docs/lighthouse-python-sdk"
+        },
+        {
+          "mode": "160000",
+          "sha": "d3133ae6ce7333a501e38046aff4275c44326f90",
+          "path": "docs/mcp-python-sdk"
+        },
+        {
+          "mode": "160000",
+          "sha": "3b6791869635735ddb1a54aed7450ad6ef687c06",
+          "path": "docs/storacha_specs"
+        },
+        {
+          "mode": "160000",
+          "sha": "48f13ab632dec4c3575acaad6e309ef60420904b",
+          "path": "ipfs_accelerate_py"
+        }
+      ],
+      "observed_at": "2026-08-15T09:31:31Z"
+    },
+    {
+      "logical_name": "ipfs_kit_py_operator",
+      "role": "runtime_kit_operator",
+      "path": "/home/barberb/lift_coding/external/ipfs_kit",
+      "exists": true,
+      "is_git": true,
+      "authority": "read_only",
+      "notes": "Operator kit checkout; preserved as observed.",
+      "status": "ok",
+      "toplevel": "/home/barberb/lift_coding/external/ipfs_kit",
+      "head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "tree": "93070c709af29095fdff11f3e2698543449c08ef",
+      "branch": "main",
+      "remotes": {
+        "origin": "https://github.com/endomorphosis/ipfs_kit_py"
+      },
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_paths": [],
+      "program_branch": {
+        "name": "codex/mcplusplus-1.0-gap-closure",
+        "state": "present",
+        "sha": "6196017ca3df016c7159dce43af60f2a0d96a9ae"
+      },
+      "gitlinks": [
+        {
+          "mode": "160000",
+          "sha": "fec09b04ad626df44a03bc605cb2e526b752b042",
+          "path": "docs/filesystem_spec"
+        },
+        {
+          "mode": "160000",
+          "sha": "4cf83720b59738d93db4068976f9c2a11f023e45",
+          "path": "docs/ipfs-docs"
+        },
+        {
+          "mode": "160000",
+          "sha": "c7ca8b5f87b41fcc795297ca65b0bb41c10234bf",
+          "path": "docs/ipfs_cluster"
+        },
+        {
+          "mode": "160000",
+          "sha": "03f5199b9bf5a96c7ebf5e2e6f5dce8cf58b655f",
+          "path": "docs/ipfsspec"
+        },
+        {
+          "mode": "160000",
+          "sha": "c6ba777810d03fed23aea11b5969b7d8a97f1edf",
+          "path": "docs/lassie"
+        },
+        {
+          "mode": "160000",
+          "sha": "e18a6de9c020c5e406d9f61b638f5d276054798d",
+          "path": "docs/libp2p-universal-connectivity"
+        },
+        {
+          "mode": "160000",
+          "sha": "17cee4a438797313d1e878b103abc1dbefdf423e",
+          "path": "docs/libp2p_docs"
+        },
+        {
+          "mode": "160000",
+          "sha": "6b2c86693090c770d2c9a4d82ba315000a77068b",
+          "path": "docs/lighthouse-python-sdk"
+        },
+        {
+          "mode": "160000",
+          "sha": "d3133ae6ce7333a501e38046aff4275c44326f90",
+          "path": "docs/mcp-python-sdk"
+        },
+        {
+          "mode": "160000",
+          "sha": "3b6791869635735ddb1a54aed7450ad6ef687c06",
+          "path": "docs/storacha_specs"
+        },
+        {
+          "mode": "160000",
+          "sha": "48f13ab632dec4c3575acaad6e309ef60420904b",
+          "path": "ipfs_accelerate_py"
+        }
+      ],
+      "observed_at": "2026-08-15T09:31:31Z"
+    },
+    {
+      "logical_name": "mcplusplus_gitlink",
+      "role": "accelerate_nested_spec_submodule",
+      "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_4fbf5a625b5c_cf8849b0b2e2/ipfs_accelerate_py/mcplusplus",
+      "exists": true,
+      "is_git": true,
+      "authority": "read_write",
+      "notes": "Accelerate nested Mcp-Plus-Plus gitlink; compare to lift_coding/Mcp-Plus-Plus for drift.",
+      "status": "ok",
+      "toplevel": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_4fbf5a625b5c_cf8849b0b2e2/ipfs_accelerate_py/mcplusplus",
+      "head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+      "tree": "fd328606da5dae3314a87365987f5052180eb807",
+      "branch": "implementation/mcpp-001-e94eb1589242-attempt-3-1786785925-submodule-ipfs_accelerate_py-mcplusplus",
+      "remotes": {
+        "origin": "https://github.com/endomorphosis/Mcp-Plus-Plus.git"
+      },
+      "dirty": false,
+      "dirty_count": 0,
+      "dirty_paths": [],
+      "program_branch": {
+        "name": "codex/mcplusplus-1.0-gap-closure",
+        "state": "present",
+        "sha": "6965f89f066769f3b3ac7b5f753b1a0044562570"
+      },
+      "gitlinks": [],
+      "observed_at": "2026-08-15T09:31:31Z"
+    },
+    {
+      "logical_name": "swissknife",
+      "role": "runtime_swissknife",
+      "path": "/home/barberb/lift_coding/swissknife",
+      "exists": true,
+      "is_git": true,
+      "authority": "read_only",
+      "notes": "Discovered sibling checkout under lift_coding (not an accelerate submodule). Remotes discovered via git remote -v; not invented.",
+      "status": "ok",
+      "toplevel": "/home/barberb/lift_coding/swissknife",
+      "head": "afdbf885175fde34505ef05a2ea6aac5535ad03e",
+      "tree": "6d73fab35179eac9edd87aa81bd7569414857d6b",
+      "branch": "main",
+      "remotes": {
+        "origin": "https://github.com/endomorphosis/swissknife",
+        "upstream": "https://github.com/dnakov/anon-kode.git"
+      },
+      "dirty": true,
+      "dirty_count": 1,
+      "dirty_paths": [
+        {
+          "status": " M",
+          "path": "test-results/virtual-desktop-ipfs-mcp-orb/svd-132.json"
+        }
+      ],
+      "program_branch": {
+        "name": "codex/mcplusplus-1.0-gap-closure",
+        "state": "present",
+        "sha": "afdbf885175fde34505ef05a2ea6aac5535ad03e"
+      },
+      "gitlinks": [],
+      "observed_at": "2026-08-15T09:31:31Z"
+    }
+  ],
+  "spec_drift": {
+    "lift_coding_Mcp_Plus_Plus_head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "accelerate_mcplusplus_gitlink_head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "same_sha": true,
+    "newer_spec_authority": "lift_coding/Mcp-Plus-Plus",
+    "note": "Both checkouts currently share the same HEAD; bind lift_coding/Mcp-Plus-Plus as spec authority when they diverge. Nested gitlink is older only when SHAs differ."
+  },
+  "program_branch_actions": [
+    {
+      "logical_name": "lift_coding",
+      "action": "already_present",
+      "branch": "codex/mcplusplus-1.0-gap-closure",
+      "sha": "b6f40c05e0884867eb8557f8882cd25cb760ca2f",
+      "from_head": "b6f40c05e0884867eb8557f8882cd25cb760ca2f"
+    },
+    {
+      "logical_name": "Mcp-Plus-Plus",
+      "action": "already_present",
+      "branch": "codex/mcplusplus-1.0-gap-closure",
+      "sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+      "from_head": "6965f89f066769f3b3ac7b5f753b1a0044562570"
+    },
+    {
+      "logical_name": "ipfs_accelerate_py",
+      "action": "already_present",
+      "branch": "codex/mcplusplus-1.0-gap-closure",
+      "sha": "e01a7f4ec4ac2275f64a8f980ee614c10ebaae5e",
+      "from_head": "e01a7f4ec4ac2275f64a8f980ee614c10ebaae5e"
+    },
+    {
+      "logical_name": "ipfs_accelerate_py_operator",
+      "action": "already_present",
+      "branch": "codex/mcplusplus-1.0-gap-closure",
+      "sha": "e01a7f4ec4ac2275f64a8f980ee614c10ebaae5e",
+      "from_head": "ea11293bb996f052d620eae989f5377a956764b1"
+    },
+    {
+      "logical_name": "ipfs_datasets_py",
+      "action": "already_present",
+      "branch": "codex/mcplusplus-1.0-gap-closure",
+      "sha": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "from_head": "ac82107e246b30e35a2bbdcf75e01370d22350c6"
+    },
+    {
+      "logical_name": "ipfs_datasets_py_operator",
+      "action": "already_present",
+      "branch": "codex/mcplusplus-1.0-gap-closure",
+      "sha": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "from_head": "ac82107e246b30e35a2bbdcf75e01370d22350c6"
+    },
+    {
+      "logical_name": "ipfs_kit_py",
+      "action": "already_present",
+      "branch": "codex/mcplusplus-1.0-gap-closure",
+      "sha": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "from_head": "6196017ca3df016c7159dce43af60f2a0d96a9ae"
+    },
+    {
+      "logical_name": "ipfs_kit_py_operator",
+      "action": "already_present",
+      "branch": "codex/mcplusplus-1.0-gap-closure",
+      "sha": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "from_head": "6196017ca3df016c7159dce43af60f2a0d96a9ae"
+    },
+    {
+      "logical_name": "mcplusplus_gitlink",
+      "action": "already_present",
+      "branch": "codex/mcplusplus-1.0-gap-closure",
+      "sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+      "from_head": "6965f89f066769f3b3ac7b5f753b1a0044562570"
+    },
+    {
+      "logical_name": "swissknife",
+      "action": "already_present",
+      "branch": "codex/mcplusplus-1.0-gap-closure",
+      "sha": "afdbf885175fde34505ef05a2ea6aac5535ad03e",
+      "from_head": "afdbf885175fde34505ef05a2ea6aac5535ad03e"
+    }
+  ],
+  "acceptance": {
+    "no_uncommitted_file_deleted_or_overwritten": true,
+    "forest_lists_required_roles": [
+      "lift_coding",
+      "Mcp-Plus-Plus",
+      "ipfs_accelerate_py",
+      "ipfs_datasets_py",
+      "ipfs_kit_py",
+      "swissknife"
+    ],
+    "swissknife_remote_discovered_not_invented": true,
+    "program_branch_exists_or_recorded": true
+  },
+  "swissknife_binding": {
+    "bound_checkout": "/home/barberb/lift_coding/swissknife",
+    "discovered_remotes": {
+      "origin": "https://github.com/endomorphosis/swissknife",
+      "upstream": "https://github.com/dnakov/anon-kode.git"
+    },
+    "not_an_accelerate_submodule": true,
+    "sibling_of_lift_coding": true
+  }
+}
