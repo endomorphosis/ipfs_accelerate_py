@@ -26122,9 +26122,28 @@ class PortalImplementationDaemon:
             sorted(
                 path
                 for path in found
-                if path and self._repo_relative_path_safe(path)
+                if path
+                and self._repo_relative_path_safe(path)
+                and self._governed_dependency_root_present(path)
             )
         )
+
+    def _governed_dependency_root_present(self, relative: str) -> bool:
+        """Return whether a implied/configured pin exists in this repository.
+
+        Umbrella-style paths such as ``external/ipfs_datasets`` appear in
+        copied predicted-file strings.  Those pins must not be required in
+        accelerate-shaped checkouts that bind the datasets tree at
+        ``ipfs_datasets_py``.
+        """
+
+        root = Path(self.repo_root).resolve()
+        candidate = root / relative
+        try:
+            candidate.resolve(strict=False).relative_to(root)
+        except (OSError, ValueError):
+            return False
+        return candidate.exists()
 
     def _effective_worktree_submodule_paths(
         self,
