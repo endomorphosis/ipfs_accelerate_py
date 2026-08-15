@@ -151,6 +151,12 @@ def _check_board() -> tuple[list[str], dict[str, object]]:
         errors.append("inventory goal LPC-G010 is missing")
     if "LPC-000" not in tasks:
         errors.append("control task LPC-000 is missing")
+    seal_fields = _fields(tasks.get("LPC-000", ""))
+    if seal_fields.get("Status") != "completed":
+        errors.append("LPC-000 must remain completed after operator seal")
+    for output in _csv(seal_fields.get("Outputs", "")):
+        if output.startswith("docs/architecture/") or output.startswith("config/") or output.startswith("scripts/"):
+            errors.append("LPC-000 must not list protected control files as Outputs")
 
     goal_ids = set(goals)
     for goal_id, block in goals.items():

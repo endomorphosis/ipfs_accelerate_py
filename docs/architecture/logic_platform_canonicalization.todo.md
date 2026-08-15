@@ -25,7 +25,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-000 Seal campaign control files
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: control
@@ -33,12 +33,12 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Goal id: LPC-G000
 - Bundle: logic-platform/root
 - Parallel lane: lpc-control
-- Outputs: docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md, docs/architecture/logic_platform_canonicalization.objectives.md, docs/architecture/logic_platform_canonicalization.todo.md, config/agent_supervisor_logic_platform_canonicalization_scheduler.json, scripts/validate_logic_platform_canonicalization_board.py, scripts/emit_logic_platform_canonicalization_formal_plan.py
-- Predicted files: docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md, docs/architecture/logic_platform_canonicalization.objectives.md, docs/architecture/logic_platform_canonicalization.todo.md, config/agent_supervisor_logic_platform_canonicalization_scheduler.json, scripts/validate_logic_platform_canonicalization_board.py
-- Validation: python scripts/validate_logic_platform_canonicalization_board.py --check-all
-- Conflict policy: Own campaign control files only.
+- Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/lpc000_seal_receipt.md
+- Predicted files: data/agent_supervisor/logic_platform_canonicalization/notes/lpc000_seal_receipt.md
+- Validation: test -f data/agent_supervisor/logic_platform_canonicalization/notes/lpc000_seal_receipt.md && python scripts/validate_logic_platform_canonicalization_board.py --check-all
+- Conflict policy: Own the seal receipt only. Protected plan/objectives/todo/scheduler/validator files are operator-sealed and must not be task Outputs.
 - Resource class: cpu-small
-- Is schedulable: true
+- Is schedulable: false
 - Review only: false
 - Acceptance: Objectives, todo, human plan, scheduler, validator, and FormalWorkPlan exist; validator --check-all returns valid true.
 
