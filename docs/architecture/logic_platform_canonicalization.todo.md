@@ -75,7 +75,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/inventory/datasets_public_api.md, data/agent_supervisor/logic_platform_canonicalization/inventory/datasets_public_api.json
 - Predicted files: data/agent_supervisor/logic_platform_canonicalization/inventory/datasets_public_api.md, data/agent_supervisor/logic_platform_canonicalization/inventory/datasets_public_api.json
 - Validation: test -f data/agent_supervisor/logic_platform_canonicalization/inventory/datasets_public_api.json
-- Conflict policy: Read-only against /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic. Write only inventory artifacts.
+- Conflict policy: Read-only against ipfs_datasets_py/ipfs_datasets_py/logic. Write only inventory artifacts.
 - Resource class: cpu-small
 - Is schedulable: true
 - Review only: false
@@ -212,9 +212,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/catalog
 - Parallel lane: lpc-catalog
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/catalog_migration.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/families/canonical_catalog.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/families/test_canonical_catalog.py, data/agent_supervisor/logic_platform_canonicalization/notes/catalog_migration.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/families/test_canonical_catalog.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/families/canonical_catalog.py, ipfs_datasets_py/tests/unit/logic/families/test_canonical_catalog.py, data/agent_supervisor/logic_platform_canonicalization/notes/catalog_migration.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/families/test_canonical_catalog.py -q
 - Conflict policy: Own new snapshot module and tests in the datasets campaign branch. Do not delete registry v2/v3 or flatten typed layers.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -232,9 +233,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/catalog
 - Parallel lane: lpc-catalog
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/catalog_drift_tests.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/families/test_catalog_drift.py, data/agent_supervisor/logic_platform_canonicalization/notes/catalog_drift_tests.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/families/test_catalog_drift.py -q
+- Predicted files: ipfs_datasets_py/tests/unit/logic/families/test_catalog_drift.py, data/agent_supervisor/logic_platform_canonicalization/notes/catalog_drift_tests.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/families/test_catalog_drift.py -q
 - Conflict policy: Own drift tests only.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -270,9 +272,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/catalog
 - Parallel lane: lpc-catalog
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/generated_catalogs.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/families/generated_catalog.py, data/agent_supervisor/logic_platform_canonicalization/notes/generated_catalogs.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/families/test_generated_catalog.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/families/generated_catalog.py, data/agent_supervisor/logic_platform_canonicalization/notes/generated_catalogs.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/families/test_generated_catalog.py -q
 - Conflict policy: Own generated catalog projection. Do not keep a second hand inventory.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -289,9 +292,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/axes
 - Parallel lane: lpc-axes
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/axis_migration.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/ir_core/axes.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/ir_core/test_axes.py, data/agent_supervisor/logic_platform_canonicalization/notes/axis_migration.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/ir_core/test_axes.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/axes.py, ipfs_datasets_py/tests/unit/logic/ir_core/test_axes.py, data/agent_supervisor/logic_platform_canonicalization/notes/axis_migration.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/ir_core/test_axes.py -q
 - Conflict policy: Own new axes module. Do not reuse one enum as another.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -309,9 +313,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/axes
 - Parallel lane: lpc-axes
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/legacy_enum_mappings.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/ir_core/legacy_axis_map.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/ir_core/test_legacy_axis_map.py, data/agent_supervisor/logic_platform_canonicalization/notes/legacy_enum_mappings.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/ir_core/test_legacy_axis_map.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/legacy_axis_map.py, ipfs_datasets_py/tests/unit/logic/ir_core/test_legacy_axis_map.py, data/agent_supervisor/logic_platform_canonicalization/notes/legacy_enum_mappings.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/ir_core/test_legacy_axis_map.py -q
 - Conflict policy: Own mapping module and tests.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-small
 - Is schedulable: true
 - Review only: false
@@ -328,9 +333,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/axes
 - Parallel lane: lpc-axes
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/no_success_implies_proof.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/backends/test_success_is_not_proof.py, data/agent_supervisor/logic_platform_canonicalization/notes/no_success_implies_proof.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/backends/test_success_is_not_proof.py -q
+- Predicted files: ipfs_datasets_py/tests/unit/logic/backends/test_success_is_not_proof.py, data/agent_supervisor/logic_platform_canonicalization/notes/no_success_implies_proof.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_success_is_not_proof.py -q
 - Conflict policy: Own the adversarial test. Narrow production fixes only where a silent promotion exists.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-small
 - Is schedulable: true
 - Review only: false
@@ -347,9 +353,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/formalization
 - Parallel lane: lpc-formalization
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/new_write_path.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/formalization/admission.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/formalization/test_admission.py, data/agent_supervisor/logic_platform_canonicalization/notes/new_write_path.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/formalization/test_admission.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/formalization/admission.py, ipfs_datasets_py/tests/unit/logic/formalization/test_admission.py, data/agent_supervisor/logic_platform_canonicalization/notes/new_write_path.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/formalization/test_admission.py -q
 - Conflict policy: Own admission helper and tests. Preserve artifacts_v3.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -366,9 +373,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/formalization
 - Parallel lane: lpc-domain-legal
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/legal_domain_adapter.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/legal_ir/domain_slice.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/legal_ir/test_domain_slice.py, data/agent_supervisor/logic_platform_canonicalization/notes/legal_domain_adapter.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/legal_ir/test_domain_slice.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/domain_slice.py, ipfs_datasets_py/tests/unit/logic/legal_ir/test_domain_slice.py, data/agent_supervisor/logic_platform_canonicalization/notes/legal_domain_adapter.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/legal_ir/test_domain_slice.py -q
 - Conflict policy: Own legal slice adapter. Do not map TDFOL/DCEC/frame logic to generic FOL/deontic/object framing.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -386,9 +394,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/formalization
 - Parallel lane: lpc-domain-security
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/security_software_crypto_adapters.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/security_ir/domain_slice.py, /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/domain_slice.py, /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/crypto_ir/domain_slice.py, data/agent_supervisor/logic_platform_canonicalization/notes/security_software_crypto_adapters.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/security_ir /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/software_verification /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/crypto_ir -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/domain_slice.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/domain_slice.py, ipfs_datasets_py/ipfs_datasets_py/logic/crypto_ir/domain_slice.py, data/agent_supervisor/logic_platform_canonicalization/notes/security_software_crypto_adapters.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir ipfs_datasets_py/tests/unit/logic/software_verification ipfs_datasets_py/tests/unit/logic/crypto_ir -q
 - Conflict policy: Own those domain_slice modules and their tests. Keep contracts, STS, authorization, concurrency, separation, hyperproperties, protocols, and monitors distinct.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -406,9 +415,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/formalization
 - Parallel lane: lpc-domain-intent
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/intent_uiux_adapters.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/domain_slice.py, /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/ui_ux_ir/domain_slice.py, data/agent_supervisor/logic_platform_canonicalization/notes/intent_uiux_adapters.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/intent_ir /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/ui_ux_ir -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/intent_ir/domain_slice.py, ipfs_datasets_py/ipfs_datasets_py/logic/ui_ux_ir/domain_slice.py, data/agent_supervisor/logic_platform_canonicalization/notes/intent_uiux_adapters.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/intent_ir ipfs_datasets_py/tests/unit/logic/ui_ux_ir -q
 - Conflict policy: Own intent and UI/UX slice adapters only.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -426,9 +436,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/formalization
 - Parallel lane: lpc-formalization
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/slice_admission.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/backends/test_unadmitted_slice_rejected.py, data/agent_supervisor/logic_platform_canonicalization/notes/slice_admission.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/backends/test_unadmitted_slice_rejected.py -q
+- Predicted files: ipfs_datasets_py/tests/unit/logic/backends/test_unadmitted_slice_rejected.py, data/agent_supervisor/logic_platform_canonicalization/notes/slice_admission.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_unadmitted_slice_rejected.py -q
 - Conflict policy: Own admission tests and the smallest production gate.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-small
 - Is schedulable: true
 - Review only: false
@@ -445,9 +456,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/provider
 - Parallel lane: lpc-provider
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/provider_protocol_migration.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/backends/protocol_v2.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/backends/test_provider_protocol_v2.py, data/agent_supervisor/logic_platform_canonicalization/notes/provider_protocol_migration.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/backends/test_provider_protocol_v2.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/backends/protocol_v2.py, ipfs_datasets_py/tests/unit/logic/backends/test_provider_protocol_v2.py, data/agent_supervisor/logic_platform_canonicalization/notes/provider_protocol_migration.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_provider_protocol_v2.py -q
 - Conflict policy: Own protocol_v2 and tests. Reuse existing successor if inventory proves one already exists.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -465,9 +477,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/provider
 - Parallel lane: lpc-provider
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/provider_v1_adapter.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/backends/protocol_v1_adapter.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/backends/test_protocol_v1_adapter.py, data/agent_supervisor/logic_platform_canonicalization/notes/provider_v1_adapter.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/backends/test_protocol_v1_adapter.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/backends/protocol_v1_adapter.py, ipfs_datasets_py/tests/unit/logic/backends/test_protocol_v1_adapter.py, data/agent_supervisor/logic_platform_canonicalization/notes/provider_v1_adapter.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_protocol_v1_adapter.py -q
 - Conflict policy: Own v1 adapter and tests.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-small
 - Is schedulable: true
 - Review only: false
@@ -484,9 +497,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/provider
 - Parallel lane: lpc-provider
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/provider_responses.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/backends/test_provider_response_v2.py, data/agent_supervisor/logic_platform_canonicalization/notes/provider_responses.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/backends/test_provider_response_v2.py -q
+- Predicted files: ipfs_datasets_py/tests/unit/logic/backends/test_provider_response_v2.py, data/agent_supervisor/logic_platform_canonicalization/notes/provider_responses.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_provider_response_v2.py -q
 - Conflict policy: Own response types/tests.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-small
 - Is schedulable: true
 - Review only: false
@@ -503,9 +517,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/api
 - Parallel lane: lpc-api
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/api_decomposition.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/platform/service.py, data/agent_supervisor/logic_platform_canonicalization/notes/api_decomposition.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/test_verification_api.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/platform/service.py, data/agent_supervisor/logic_platform_canonicalization/notes/api_decomposition.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/test_verification_api.py -q
 - Conflict policy: Own logic/platform/* internal modules. Keep verification_api.py as a facade.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -522,9 +537,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/api
 - Parallel lane: lpc-api
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/pure_data_imports.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/test_pure_data_import.py, data/agent_supervisor/logic_platform_canonicalization/notes/pure_data_imports.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/test_pure_data_import.py -q
+- Predicted files: ipfs_datasets_py/tests/unit/logic/test_pure_data_import.py, data/agent_supervisor/logic_platform_canonicalization/notes/pure_data_imports.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/test_pure_data_import.py -q
 - Conflict policy: Own the import test and the smallest import-graph fix.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-small
 - Is schedulable: true
 - Review only: false
@@ -541,9 +557,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/api
 - Parallel lane: lpc-api-compat
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/compat_facades.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/api.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/test_logic_api_v1_compatibility.py, data/agent_supervisor/logic_platform_canonicalization/notes/compat_facades.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/test_logic_api_v1_compatibility.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/api.py, ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py, data/agent_supervisor/logic_platform_canonicalization/notes/compat_facades.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py -q
 - Conflict policy: Own facades and compatibility tests. No second implementation.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-small
 - Is schedulable: true
 - Review only: false
@@ -560,9 +577,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/tactician
 - Parallel lane: lpc-tactician
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/tactician_plan_model.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/tactician/models.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/tactician/test_models.py, data/agent_supervisor/logic_platform_canonicalization/notes/tactician_plan_model.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/tactician/test_models.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/tactician/models.py, ipfs_datasets_py/tests/unit/logic/tactician/test_models.py, data/agent_supervisor/logic_platform_canonicalization/notes/tactician_plan_model.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/tactician/test_models.py -q
 - Conflict policy: Own tactician models. Do not add a second planner.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -580,9 +598,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/tactician
 - Parallel lane: lpc-tactician
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/advisor_authority.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/tactician/test_advisor_cannot_raise_authority.py, data/agent_supervisor/logic_platform_canonicalization/notes/advisor_authority.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/tactician/test_advisor_cannot_raise_authority.py -q
+- Predicted files: ipfs_datasets_py/tests/unit/logic/tactician/test_advisor_cannot_raise_authority.py, data/agent_supervisor/logic_platform_canonicalization/notes/advisor_authority.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/tactician/test_advisor_cannot_raise_authority.py -q
 - Conflict policy: Own the authority test and the smallest policy fix.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-small
 - Is schedulable: true
 - Review only: false
@@ -599,9 +618,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/cache
 - Parallel lane: lpc-cache
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/cache_key_contract.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/common/canonical_cache_key.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/common/test_canonical_cache_key.py, data/agent_supervisor/logic_platform_canonicalization/notes/cache_key_contract.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/common/test_canonical_cache_key.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/common/canonical_cache_key.py, ipfs_datasets_py/tests/unit/logic/common/test_canonical_cache_key.py, data/agent_supervisor/logic_platform_canonicalization/notes/cache_key_contract.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/common/test_canonical_cache_key.py -q
 - Conflict policy: Own canonical key module. Supervisor cache files may only call it.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -619,9 +639,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/cache
 - Parallel lane: lpc-cache
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/proof_repository.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/common/proof_repository.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/common/test_proof_repository.py, data/agent_supervisor/logic_platform_canonicalization/notes/proof_repository.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/common/test_proof_repository.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/common/proof_repository.py, ipfs_datasets_py/tests/unit/logic/common/test_proof_repository.py, data/agent_supervisor/logic_platform_canonicalization/notes/proof_repository.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/common/test_proof_repository.py -q
 - Conflict policy: Own the public repository interface. DuckDB may remain an implementation.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -677,9 +698,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/manifest
 - Parallel lane: lpc-manifest
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/manifest_handshake.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/platform/manifest.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/platform/test_manifest.py, data/agent_supervisor/logic_platform_canonicalization/notes/manifest_handshake.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/platform/test_manifest.py -q
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/platform/manifest.py, ipfs_datasets_py/tests/unit/logic/platform/test_manifest.py, data/agent_supervisor/logic_platform_canonicalization/notes/manifest_handshake.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/platform/test_manifest.py -q
 - Conflict policy: Own manifest module and tests.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-small
 - Is schedulable: true
 - Review only: false
@@ -754,9 +776,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/parity
 - Parallel lane: lpc-parity
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/operation_catalog.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/test_channel_parity.py, test/api/test_logic_channel_parity.py, data/agent_supervisor/logic_platform_canonicalization/notes/operation_catalog.md
-- Validation: python -m pytest /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/test_channel_parity.py test/api/test_logic_channel_parity.py -q
+- Predicted files: ipfs_datasets_py/tests/unit/logic/test_channel_parity.py, test/api/test_logic_channel_parity.py, data/agent_supervisor/logic_platform_canonicalization/notes/operation_catalog.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/test_channel_parity.py test/api/test_logic_channel_parity.py -q
 - Conflict policy: Own parity tests and generated operation catalog.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
 - Is schedulable: true
 - Review only: false
@@ -868,9 +891,10 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/docs
 - Parallel lane: lpc-docs
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/documentation.md
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/README.md, data/agent_supervisor/logic_platform_canonicalization/notes/documentation.md
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/README.md, data/agent_supervisor/logic_platform_canonicalization/notes/documentation.md
 - Validation: python scripts/validate_logic_platform_canonicalization_board.py --check-docs
 - Conflict policy: Own docs and generated tables. No hardcoded counts or readiness claims.
+- Submodules: ipfs_datasets_py
 - Resource class: cpu-small
 - Is schedulable: true
 - Review only: false
@@ -897,40 +921,43 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-171 Resolve implementation retry-budget failure for LPC-030
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
 - Depends on: LPC-008
-- Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/axis_migration.md
-- Validation: test -f /home/barberb/lift_coding/.worktrees/ipfs_accelerate-lpc/data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-171-lpc-030-implementation-retry-budget.md
+- Goal id: LPC-G030
+- Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/lpc171_worktree_setup_repair.md
+- Predicted files: data/agent_supervisor/logic_platform_canonicalization/notes/lpc171_worktree_setup_repair.md
+- Validation: test -f data/agent_supervisor/logic_platform_canonicalization/notes/lpc171_worktree_setup_repair.md
 - Parallel lane: lpc-axes
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/ir_core/axes.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/ir_core/test_axes.py, data/agent_supervisor/logic_platform_canonicalization/notes/axis_migration.md
-- Allow concurrent with: LPC-020
-- Conflict policy: Own new axes module. Do not reuse one enum as another.
+- Conflict policy: Own the repair note only.
+- Resource class: cpu-small
+- Is schedulable: false
+- Review only: false
 - Generated by: ipfs_accelerate_py.agent_supervisor.retry-budget-repair@1
 - Retry repair source: LPC-030
-- Retry failure kind: implementation
-- Retry repair discovery: /home/barberb/lift_coding/.worktrees/ipfs_accelerate-lpc/data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-171-lpc-030-implementation-retry-budget.md
 - Canonical board task: false
-- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in LPC-030. Use evidence in /home/barberb/lift_coding/.worktrees/ipfs_accelerate-lpc/data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-171-lpc-030-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release LPC-030 from strategy blocked_tasks.
+- Acceptance: Worktree setup now initializes ipfs_datasets_py instead of missing external/ipfs_datasets; LPC-030 is released to implement.
 
 ## LPC-172 Resolve implementation retry-budget failure for LPC-020
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
 - Depends on: LPC-008
-- Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/catalog_migration.md
-- Validation: test -f /home/barberb/lift_coding/.worktrees/ipfs_accelerate-lpc/data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-172-lpc-020-implementation-retry-budget.md
+- Goal id: LPC-G020
+- Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/lpc172_worktree_setup_repair.md
+- Predicted files: data/agent_supervisor/logic_platform_canonicalization/notes/lpc172_worktree_setup_repair.md
+- Validation: test -f data/agent_supervisor/logic_platform_canonicalization/notes/lpc172_worktree_setup_repair.md
 - Parallel lane: lpc-catalog
-- Predicted files: /home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/families/canonical_catalog.py, /home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/families/test_canonical_catalog.py, data/agent_supervisor/logic_platform_canonicalization/notes/catalog_migration.md
-- Allow concurrent with: LPC-030
-- Conflict policy: Own new snapshot module and tests in the datasets campaign branch. Do not delete registry v2/v3 or flatten typed layers.
+- Conflict policy: Own the repair note only.
+- Resource class: cpu-small
+- Is schedulable: false
+- Review only: false
 - Generated by: ipfs_accelerate_py.agent_supervisor.retry-budget-repair@1
 - Retry repair source: LPC-020
-- Retry failure kind: implementation
-- Retry repair discovery: /home/barberb/lift_coding/.worktrees/ipfs_accelerate-lpc/data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-172-lpc-020-implementation-retry-budget.md
 - Canonical board task: false
-- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in LPC-020. Use evidence in /home/barberb/lift_coding/.worktrees/ipfs_accelerate-lpc/data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-172-lpc-020-implementation-retry-budget.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release LPC-020 from strategy blocked_tasks.
+- Acceptance: Worktree setup now initializes ipfs_datasets_py instead of missing external/ipfs_datasets; LPC-020 is released to implement.
+

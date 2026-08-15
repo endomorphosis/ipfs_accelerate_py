@@ -30,7 +30,9 @@
   "implementation_timeout_seconds": 7200,
   "implementation_max_timeout_seconds": 10800,
   "implementation_log_stall_seconds": 1200,
-  "worktree_submodule_paths": [],
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py"
+  ],
   "runtime_paths": {
     "root": "data/agent_supervisor/logic_platform_canonicalization",
     "state": "data/agent_supervisor/logic_platform_canonicalization/state",
