@@ -710,7 +710,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-110 Implement SupervisorLogicPlatformClient
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: supervisor-client
