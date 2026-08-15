@@ -1227,7 +1227,7 @@ W20 AAE-063
 
 ## AAE-044 Execute individual mutants and classify closed outcomes
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
