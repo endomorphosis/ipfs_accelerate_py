@@ -427,7 +427,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-044 Reject unadmitted slices at executable request construction
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: formalization
