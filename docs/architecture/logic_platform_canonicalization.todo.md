@@ -324,7 +324,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-032 Forbid inferring proof authority from provider success
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: axes
