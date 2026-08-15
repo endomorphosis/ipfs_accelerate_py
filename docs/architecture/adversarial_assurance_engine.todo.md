@@ -1605,7 +1605,7 @@ W20 AAE-063
 
 ## AAE-058 Implement disjoint campaign metrics, economics, and report builders
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
