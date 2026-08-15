@@ -787,7 +787,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-140 Hermetic required tests and fail-closed cases
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: tests
