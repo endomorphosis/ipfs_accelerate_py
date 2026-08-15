@@ -203,7 +203,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-020 Compose CanonicalLogicCatalogSnapshot from existing layers
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: catalog
