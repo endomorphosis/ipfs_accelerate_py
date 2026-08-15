@@ -689,7 +689,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-100 Add LogicPlatformManifest@1 and handshake
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: manifest
