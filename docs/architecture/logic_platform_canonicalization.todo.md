@@ -488,7 +488,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-052 Typed provider responses with untrusted default authority
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: provider
