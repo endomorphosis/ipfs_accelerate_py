@@ -1,0 +1,122 @@
+{
+  "admitted_set_cid": "baguqeeray3vsu45qpwhf7s7lclm4y7xl6esi7dv2rhlfqoh6zmhlsdjguhda",
+  "authorization_cid": "baguqeeraf7k4tsfucyf5o3xnzspcv2ykugmwlfvsxconss4pqmf6po2wi5nq",
+  "campaign_plan_cid": "baguqeeracp7xkgrswb67yrxf3rxdcqqfp5ud6b2gl65uw4vp4ahgkbifx7aq",
+  "campaign_policy_cid": "baguqeerawuaempnqjwrf7vn2mnrcxrgzbxaab5fpspbhl4mwyd7ekf4egseq",
+  "campaign_policy_version": "1.0.0",
+  "expected_detection_sets_cid": "baguqeeraz53st5r2jnacm4anhczsvr5d5uwzxtmipu2qcnrryzn45auf7qbq",
+  "expected_old_revision": "0.9.0",
+  "gap_reports_cid": "baguqeerahodublh5u7a34fjohhwyakaosnk7ekpppyb4r7h6s4vot5i4ltpq",
+  "header": {
+    "artifact_kind": "assurance_campaign_receipt",
+    "capsule_cids": [
+      "baguqeera2nxjz7slsfreleehxvo4klrzeaglo4rdeut6jmuwzd6d3g4g7ihq"
+    ],
+    "dependency_lock_cid": "baguqeerakyuizg2vnsze5plclmhl5db4fqqa7wcqulipnkyza2lqs6xjsqtq",
+    "environment_cid": "baguqeeragmzjwaafgjtcklcialunkfj4kc4ap5ofl4cwmn2wz32tcpiex5ma",
+    "header_cid": "baguqeeracsycezoaouva3svajzu4pwl64pamwx6jppohv5wde2fjfk5pybqq",
+    "interface_id": "AssuranceArtifactHeader@1",
+    "metadata": {
+      "evidence": "aae/seal-benchmark@1",
+      "task_id": "AAE-062"
+    },
+    "proof_cids": [],
+    "proof_unit_cids": [
+      "baguqeeravuhfmi5wcio65xs2gd46vginb3fnzrmsur5srf6wzka6zykjmrcq"
+    ],
+    "provenance": {
+      "authority_source": "receipt",
+      "execution_mode": "live",
+      "input_cids": [
+        "baguqeera7g5n7knv4n4hphs4rsxyjlmeqcjadu5ek5p6ozoxs3qcvp45kfvq"
+      ],
+      "notes": null,
+      "policy_cid": "baguqeera7pilvpwexucqkxbazpmr6qkrhxsi5qzlpv2hutxt73nzgiqquwea",
+      "producer_id": "adversarial_assurance",
+      "producer_version": "1",
+      "provenance_cid": "baguqeerazdz3rrn2row5gcunfaqtugr6q6siqc47a3ft5o22np2kbvjo5epa",
+      "schema": "ipfs-datasets.software-contracts.adversarial-assurance-provenance@1",
+      "tool_ids": [
+        "assurance.benchmark.v1",
+        "campaign.sealer.v1"
+      ]
+    },
+    "receipt_cids": [],
+    "repository_id": "repository:sha256:aae062-seal-benchmark",
+    "repository_state_cid": "baguqeeraupgvvylvvqo2aew6mecm3l5cy3as6jznqzhdb5t75ozxglefos2q",
+    "schema": "ipfs-datasets.software-contracts.adversarial-assurance-artifact-header@1",
+    "target_artifact_cids": [
+      "baguqeeramq3pyvecv5m6qorzkc24qs542abb52f4h7pn2m7bhggqutpbjymq"
+    ],
+    "target_symbol_ids": [
+      "adversarial_assurance.campaign"
+    ],
+    "terminal_status": "complete",
+    "versions": {
+      "campaign_policy_id": "default_campaign",
+      "campaign_policy_version": "1.0.0",
+      "generator": {
+        "generator_cid": "baguqeeraawabp3vfu7sd7kxr57lk4klu4rqsb4vqzdqw4tpbsmkjwqkohfvq",
+        "generator_id": "campaign_sealer",
+        "generator_version": "1.0.0",
+        "interface_id": "seal_campaign@1",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-generator@1"
+      },
+      "operator_id": "campaign_operator",
+      "operator_version": "1",
+      "schema": "ipfs-datasets.software-contracts.adversarial-assurance-version-binding@1",
+      "version_binding_cid": "baguqeerapilgwiwukdbmrbov5svkfvjawzhev45k65gxhwmah2ueplyqikca"
+    }
+  },
+  "held_out_evaluation_cid": "baguqeeraocqdwdblqiqbqyubmyfbcdzbdql23o2nex2pa4oym4rxquxvvlya",
+  "held_out_result": "passed",
+  "input_artifact_cids": [
+    "baguqeeracp7xkgrswb67yrxf3rxdcqqfp5ud6b2gl65uw4vp4ahgkbifx7aq",
+    "baguqeeraffc5uwnlr7yk2ahlof6sdjgqxkfcautxnym4kiquv3v4zeze63bq",
+    "baguqeerapfxuazr3lymavqqzrrp2ehdir74to73pvfbn6uphqcnhv4pu5kjq",
+    "baguqeerawuaempnqjwrf7vn2mnrcxrgzbxaab5fpspbhl4mwyd7ekf4egseq"
+  ],
+  "interface_id": "AssuranceCampaignReceipt@1",
+  "metadata": {
+    "content_signing_domain": "aae-062-campaign-receipt-content@1",
+    "evidence": "aae/seal-benchmark@1",
+    "metrics_cid": "baguqeerapfxuazr3lymavqqzrrp2ehdir74to73pvfbn6uphqcnhv4pu5kjq",
+    "scg_calibration_cid": "baguqeeraffc5uwnlr7yk2ahlof6sdjgqxkfcautxnym4kiquv3v4zeze63bq",
+    "task_id": "AAE-062"
+  },
+  "notes": "AAE-062 signed campaign receipt; seal commits exact bytes separately",
+  "outcomes_cid": "baguqeerapxu5j2iujidisfoqavg7cr3gnoteioji63qii3okdevtirpauwsq",
+  "receipt_cid": "baguqeera5x64va4eiunioceaahokb2aoahpjuhwtgtpneqcc5g4amz6bkxla",
+  "receipt_id": "campaign_receipt_aae062",
+  "schema": "ipfs-datasets.software-contracts.adversarial-assurance-campaign-receipt@1",
+  "seal_evidence_cid": "baguqeeracpz6g5mromxnupty5zygeta43t27lbzvq2gx47qbpgkdfvce2k3q",
+  "seal_scope": [
+    "admitted_set",
+    "campaign_artifacts",
+    "campaign_policy",
+    "campaign_receipt",
+    "declared_result_completeness",
+    "expected_detection_sets",
+    "held_out_evaluations",
+    "operator_versions",
+    "outcomes",
+    "status_policy_satisfaction",
+    "survivor_reports",
+    "vacuity_findings"
+  ],
+  "seal_status": "bound",
+  "signature": {
+    "action": "seal_campaign",
+    "audience": "adversarial_assurance.store",
+    "binding_cid": "baguqeeras4ldcyryha3nsgo7xd4japuqrmm47cypwubtmr4uudkmnmamzu6a",
+    "key_identity": "did:key:z6MkpJ8W8QJM8BUV26MU3v48C2LsaTiNjSJQNjmiQkNjRF7y",
+    "schema": "ipfs-datasets.software-contracts.adversarial-assurance-receipt-signature-binding@1",
+    "signature": "JhuAL7hNh6m1BqpyX6DENb_i0XmwAlz6h3TIwkMlXKs_5i5InhJwA0fKBootC6PGOjtiRNKAUO8N4b8m3hBdBA",
+    "signature_algorithm": "EdDSA",
+    "signature_authority": "ipfs-datasets.profile-g.ed25519-did-key@1",
+    "signature_verification_status": "verified",
+    "signer_identity": "did:key:z6MkpJ8W8QJM8BUV26MU3v48C2LsaTiNjSJQNjmiQkNjRF7y"
+  },
+  "survivor_reports_cid": "baguqeerahc67zkwhmcob3csgmrc4bkeeubsmyeiqskotly2v6ohiil2dta7q",
+  "vacuity_findings_cid": "baguqeerad4fsuiasr4w3cfqzknpppyzasgkowfju3whiqqo2dcasqmcc3fmq"
+}
