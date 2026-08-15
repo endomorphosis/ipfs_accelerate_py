@@ -630,7 +630,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-081 Unified backend-neutral proof repository interface
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P1
 - Track: cache
