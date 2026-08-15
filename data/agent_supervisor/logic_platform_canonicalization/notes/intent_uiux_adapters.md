@@ -5,14 +5,8 @@
 **Depends on:** LPC-040 (typed new-write path: `FormalizationArtifact@3` / `DomainLogicSlice@2`)  
 **Acceptance:** Same adapter contract as legal/security. No universal domain IR.  
 **Conflict policy:** Own intent and UI/UX slice adapters only.  
-**Repair context:** LPC-173 resolves the validation retry-budget blocker filed after
-repeated LPC-043 `proposal_gate_failed` attempts that tried to invent predicted
-`domain_slice.py` paths instead of documenting the production adapters that
-already satisfy the DomainLogicSlice@2 role.  
-**Validation (LPC-043):**  
-`python -m pytest ipfs_datasets_py/tests/unit/logic/intent_ir ipfs_datasets_py/tests/unit/logic/ui_ux_ir -q`  
-**Validation (LPC-173 repair gate):**  
-`test -f data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-173-lpc-043-retry-budget.md`
+**Validation:**  
+`python -m pytest ipfs_datasets_py/tests/unit/logic/intent_ir ipfs_datasets_py/tests/unit/logic/ui_ux_ir -q`
 
 ## Purpose
 
@@ -112,8 +106,8 @@ Out of DomainLogicSlice generation scope (related surfaces, not adapters):
 Inventory aliases `intent_ir.domain_slice` and `ui_ux_ir.domain_slice` refer to
 the adapter **roles** satisfied by the production modules above. Those modules
 are the production write path (or declaration-only gate) under LPC-043. Creating
-stub `domain_slice.py` files is not required and was the recurring proposal-gate
-failure mode that LPC-173 repairs by documenting the real adapters.
+stub `domain_slice.py` files is not required and is not admitted as a path to
+satisfy inventory placeholders.
 
 ## Shared adapter contract (intent + UI/UX)
 
@@ -126,7 +120,7 @@ Each route/obligation descriptor declares the LPC-G040 / LPC-041-class fields:
 | Family / profile | expression + slice (`family`, `profile`) | From the domain route table only; no new families |
 | Property | route `property_name` → `property_id(...)` | Property is never promoted to a family |
 | Notation | route `notation_name` → `notation_id(...)` | Surface notation for the admitted view |
-| Preserved semantics | translation edge / route notes | From reviewed translation catalog edge |
+| Preserved semantics | translation edge `preservation` | From reviewed translation catalog edge |
 | Lost semantics | `_loss_ids_for(route)` / explicit deferred sets | Explicit loss ids; never silent |
 | Assumptions | domain-specific assumption axes | Declared even when empty / N/A |
 | Unsupported constructs | deferred kind sets | Rejected fail-closed (not admitted) |
@@ -181,6 +175,44 @@ Property kinds (`safety`, `liveness`) and the view role
 (`verification_condition`) must never be admitted as semantic families
 (`PROPERTY_KIND_ROUTE_KINDS`, `VIEW_ROLE_ROUTE_KINDS`,
 `NEVER_FAMILY_PROPERTY_KINDS`, `NEVER_FAMILY_OPERATION_ROLES`).
+
+### Translation edges (preserved semantics)
+
+| Route kind | Translation edge | Translation family | Compiler id |
+| --- | --- | --- | --- |
+| `intent` | `vc_to_smt` | `program` | `intent.facts.smtlib2` |
+| `skill` | `program_to_smt` | `program` | `intent.skill.program_smt` |
+| `prompt` | `vc_to_smt` | `program` | `intent.prompt.candidate` |
+| `goal` | `intention_to_fol_reified` | `policy_modal` | `intent.goal.intention_fol` |
+| `guard` | `vc_to_smt` | `program` | `intent.guard.smtlib2` |
+| `workflow` | `temporal_ltl_to_tla_plus` | `state_temporal` | `intent.workflow.tla_plus` |
+| `authorization` | `authorization_to_secpal` | `policy_modal` | `intent.authorization.secpal` |
+| `policy` | `deontic_to_fol_reified` | `policy_modal` | `intent.policy.deontic_fol` |
+| `safety` | `temporal_ltl_to_tla_plus` | `state_temporal` | `intent.safety.tla_plus` |
+| `liveness` | `temporal_mtl_to_runtime_mtl` | `state_temporal` | `intent.liveness.runtime_mtl` |
+| `verification_condition` | `vc_to_smt` | `program` | `intent.vc.smtlib2` |
+
+Preservation labels come from the reviewed translation-catalog edge for each
+route (`TranslationEdgeLineage.preservation`). They are never invented on the
+slice connector.
+
+### Preserved / lost semantics (intent)
+
+Explicit losses from `IntentLogicSlice._loss_ids_for(route)`:
+
+| Route | Explicit losses (`loss_ids`) |
+| --- | --- |
+| `intent` | (none — full first-order fact discharge under stated assumptions) |
+| `skill` | `loss.frame_approximation` |
+| `prompt` | `loss.prompt_candidate_only` |
+| `goal` | `loss.intention_reification` |
+| `guard` | (none under stated polarity/signature assumptions) |
+| `workflow` | `loss.bounded_trace` |
+| `authorization` | (none under grounded permission assumptions) |
+| `policy` | `loss.deontic_reification` |
+| `safety` | `loss.bounded_trace` |
+| `liveness` | `loss.finite_trace`, `loss.fairness_restriction` |
+| `verification_condition` | `loss.vc_view_role` |
 
 ### Assumption axes (every admitted intent route)
 
@@ -252,6 +284,7 @@ For each admitted intent route the connector must:
 | Schemas | `ui-ux-logic-slice/v2`, `ui-ux-source-gate/v2`, `ui-ux-formalization-adapter/v2` |
 | Module | `ipfs_datasets_py/logic/conformance/ui_ux_logic_gate_v2.py` |
 | Owner | `domain:ui_ux_ir` |
+| Task / goal lineage | LFP2-026 / LFP2-G050 |
 
 ### Ontology kept distinct
 
@@ -270,7 +303,8 @@ may be **hints** only until exact source import closes the adapter gap.
 | Free-form / token-presence “formalization” | rejected | n/a | `UIUXFreeFormRejectedError` |
 
 `UIUXLogicSlice@2` must never set `blocks_other_work=true`. Absent UI/UX source
-does not block other domain work.
+does not block other domain work. Declaration-only dispositions use
+`AuthorityCeiling.NONE` / `UNKNOWN` only — never a non-empty authority claim.
 
 ### Requirement surfaces (fixed set)
 
@@ -282,6 +316,10 @@ does not block other domain work.
 | `observable_state` | `transition_system` | Observable navigation and runtime state transitions |
 | `ontology_frame` | `frame_logic` | Ontology/frame (F-logic) component and relation structure |
 | `workflow` | `temporal` | Workflow temporal obligations over multi-step UI journeys |
+
+Family hints are **not** admitted family bindings. They record the expected
+catalog family once the owner-scoped adapter lands; they do not emit
+`DomainLogicSlice@2` rows while status is `declaration_only` or `adapter_gap`.
 
 ### Adapter-gap acceptance (when source present)
 
@@ -300,6 +338,18 @@ Rejected acceptance: `token_presence` greps alone.
 `UIUXFormalizationAdapter@2` is a **declaration-only** interface until exact
 source import and the owner-scoped adapter land. It refuses free-form payloads
 and refuses formalization while source is missing.
+
+### Preserved / lost semantics (UI/UX)
+
+While the package is absent or the adapter gap is open:
+
+| Status | Preserved | Lost / deferred |
+| --- | --- | --- |
+| `declaration_only` | Fixed requirement-surface inventory and non-blocking matrix disposition | All executable formalization; no admitted slice, no backend request |
+| `adapter_gap` | Source fingerprint + owner-scoped gap acceptance criteria | Admitted lowering until declared-syntax parse, frame_logic alias canon, and typed round trips land |
+
+Future admitted UI/UX routes must declare route-local `loss_ids` on the same
+contract fields as intent/legal/security; none are admitted in this revision.
 
 ### Proof-safety and counterexample-safety (UI/UX)
 
@@ -377,7 +427,7 @@ owner-scoped adapter lands.
 | `ipfs_datasets_py/ipfs_datasets_py/logic/intent_ir/formalize/typed_compiler.py` | Intent route catalog and non-collapse routing |
 | `ipfs_datasets_py/ipfs_datasets_py/logic/conformance/ui_ux_logic_gate_v2.py` | UI/UX exact-source gate + `UIUXLogicSlice@2` declaration path |
 | `ipfs_datasets_py/ipfs_datasets_py/logic/formalization/artifacts_v3.py` | Shared `DomainLogicSlice@2` contract (preserve; LPC-040) |
-| `data/agent_supervisor/logic_platform_canonicalization/notes/intent_uiux_adapters.md` | This conformance note (LPC-043 / LPC-173 declared output) |
+| `data/agent_supervisor/logic_platform_canonicalization/notes/intent_uiux_adapters.md` | This conformance note (LPC-043 declared output) |
 
 Inventory aliases (`intent_ir.domain_slice`, `ui_ux_ir.domain_slice`) refer to
 the adapter roles satisfied by the modules above. Predicted
@@ -385,17 +435,6 @@ the adapter roles satisfied by the modules above. Predicted
 for LPC-043 admission. Production policy is preserved: document the live
 adapters; do not invent universal domain IR or stub packages to satisfy path
 strings.
-
-## LPC-173 repair notes
-
-| Finding | Resolution |
-| --- | --- |
-| Failure kind | `proposal_validation_failed` / `proposal_gate_failed` (validation never ran; rc 78) |
-| Observed attempts | 4 consecutive LPC-043 failures (retry budget 3) |
-| Evidence | `data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-173-lpc-043-retry-budget.md` |
-| Root cause | Proposal path envelope rejected inventing predicted `domain_slice.py` / `ui_ux_ir` package paths outside the declared note output, while production adapters already exist under `logic_slice_v2` / `ui_ux_logic_gate_v2` |
-| Repair | Emit this declared note only; preserve production admission policy and tests |
-| Release effect | Completing LPC-173 releases LPC-043 from strategy `blocked_tasks` so the supervisor can re-admit the source task against the documented contract |
 
 ## Acceptance
 
@@ -411,7 +450,5 @@ strings.
   unsupported constructs, proof-safety, counterexample-safety).
 - No adapter invents a universal domain IR or collapses the other domain’s
   ontology.
-- Validation (source task LPC-043):
+- Validation:
   `python -m pytest ipfs_datasets_py/tests/unit/logic/intent_ir ipfs_datasets_py/tests/unit/logic/ui_ux_ir -q`
-- Validation (repair task LPC-173):
-  evidence file present at the discovery path recorded above.
