@@ -508,7 +508,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-060 Decompose verification_api into internal platform services
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: api
