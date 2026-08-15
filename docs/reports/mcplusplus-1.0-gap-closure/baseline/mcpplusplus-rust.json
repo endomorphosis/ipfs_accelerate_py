@@ -1,0 +1,271 @@
+{
+  "schema": "BaselineReceipt@1",
+  "interface": "BaselineReceipt@1",
+  "task_id": "MCPP-005",
+  "goal_id": "MCPP-G010",
+  "track": "baseline-rust",
+  "bundle": "mcplusplus/1.0/baseline-rust",
+  "title": "Baseline Mcp-Plus-Plus Rust tests",
+  "generated_at": "2026-08-15T18:45:26.073Z",
+  "status": "pass",
+  "pass_fail": "pass",
+  "language": "rust",
+  "package": {
+    "name": "mcp-validators",
+    "version": "0.1.0",
+    "edition": "2021",
+    "rust_version_manifest": "1.75",
+    "path": "ipfs_accelerate_py/mcplusplus/tests-rs"
+  },
+  "command": {
+    "cwd": "ipfs_accelerate_py/mcplusplus/tests-rs",
+    "argv": [
+      "cargo",
+      "test"
+    ],
+    "shell": "cd ipfs_accelerate_py/mcplusplus/tests-rs && cargo test",
+    "exit_code": 0,
+    "started_at": "2026-08-15T18:44:34Z",
+    "finished_at": "2026-08-15T18:44:35Z",
+    "duration_seconds": 1,
+    "stdout_stderr_sha256": "sha256:05740dae6d45a3189f2c3235e072252555643acd6f6ca9731418a12106ed626c",
+    "stdout_stderr_bytes": 25220,
+    "stdout_stderr_lines": 554,
+    "warning_lines": 56,
+    "notes": [
+      "Exact validation command from MCPP-005 task definition.",
+      "Output captured from a fresh cargo test run in this worktree; compile artifacts were warm on the second timed run."
+    ]
+  },
+  "commit": {
+    "program_worktree": {
+      "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_901bcb268e54_e65f34489353",
+      "head": "961fb1f713a64e2f2133491fe1016ee398cff8d7",
+      "branch": "implementation/mcpp-005-e29f5d7a2797-attempt-1-1786819313",
+      "program_branch": "codex/mcplusplus-1.0-gap-closure",
+      "tree_id": "961fb1f713a64e2f2133491fe1016ee398cff8d7"
+    },
+    "mcplusplus": {
+      "path": "ipfs_accelerate_py/mcplusplus",
+      "head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+      "branch": "implementation/mcpp-005-e29f5d7a2797-attempt-1-1786819313-submodule-ipfs_accelerate_py-mcplusplus",
+      "dirty_path_count": 0,
+      "remote_origin": "https://github.com/endomorphosis/Mcp-Plus-Plus.git",
+      "note": "Nested gitlink SHA matches MCPP-001 repository-forest.json nested_gitlinks['ipfs_accelerate_py/mcplusplus'].head"
+    }
+  },
+  "environment": {
+    "os": "Linux",
+    "kernel": "6.17.0-1014-nvidia",
+    "arch": "aarch64",
+    "target_triple": "aarch64-unknown-linux-gnu",
+    "hostname": "spark-b271",
+    "cargo": {
+      "version": "1.95.0",
+      "commit_hash": "f2d3ce0bd7f24a49f8f72d9000448f8838c4e850",
+      "commit_date": "2026-03-21",
+      "path": "/home/barberb/.local/bin/cargo"
+    },
+    "rustc": {
+      "release": "1.95.0",
+      "commit_hash": "f2d3ce0bd7f24a49f8f72d9000448f8838c4e850",
+      "host": "aarch64-unknown-linux-gnu",
+      "path": "/home/barberb/.local/bin/rustc"
+    },
+    "toolchain_available": true,
+    "toolchain_blocker": null
+  },
+  "results": {
+    "pass_fail": "pass",
+    "exit_code": 0,
+    "test_count": 191,
+    "passed": 191,
+    "failed": 0,
+    "ignored": 0,
+    "skipped_names": [],
+    "failures": [],
+    "suite_count": 6,
+    "suites": [
+      {
+        "name": "unittests src/lib.rs",
+        "binary": "target/aarch64-unknown-linux-gnu/debug/deps/mcp_validators-79dabf7051893749",
+        "passed": 151,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0,
+        "status": "ok",
+        "finished_in_seconds": 0.02
+      },
+      {
+        "name": "tests/conformance_vectors_test.rs",
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0,
+        "status": "ok",
+        "finished_in_seconds": 0.01
+      },
+      {
+        "name": "tests/coverage_completion_test.rs",
+        "passed": 18,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0,
+        "status": "ok",
+        "finished_in_seconds": 0.0
+      },
+      {
+        "name": "tests/integration_test.rs",
+        "passed": 17,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0,
+        "status": "ok",
+        "finished_in_seconds": 0.01
+      },
+      {
+        "name": "tests/profile_g_codec_test.rs",
+        "passed": 3,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0,
+        "status": "ok",
+        "finished_in_seconds": 0.0
+      },
+      {
+        "name": "doc-tests mcp_validators",
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0,
+        "status": "ok",
+        "finished_in_seconds": 0.43
+      }
+    ],
+    "summary_lines": [
+      "test result: ok. 151 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+      "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s"
+    ]
+  },
+  "coverage": {
+    "measured": false,
+    "status": "unavailable",
+    "reason": "This baseline ran only `cargo test` as specified by MCPP-005 validation. No cargo-llvm-cov / llvm-cov / tarpaulin coverage instrumentation was executed, so no current line/region/function percentages are claimed.",
+    "lcov_produced_by_this_run": false,
+    "tool": null,
+    "line_percent": null,
+    "function_percent": null,
+    "region_percent": null,
+    "artifact_paths_checked": [
+      "ipfs_accelerate_py/mcplusplus/tests-rs/lcov.info",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/lcov_final.info",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/coverage_100_percent_final.txt",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/COVERAGE_VERIFICATION.txt",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/COVERAGE_100_PERCENT_ACHIEVED.md"
+    ],
+    "note": "Checked-in lcov and coverage text files exist in the tree but are not treated as current measured evidence for this receipt."
+  },
+  "stale_documents": [
+    {
+      "path": "ipfs_accelerate_py/mcplusplus/tests-rs/COVERAGE_100_PERCENT_ACHIEVED.md",
+      "role": "stale_observation_only",
+      "cited_as_measured_result": false,
+      "observation": "Historical markdown claim of 100.00% line coverage for Rust validators. Present in the tree and listed only as a stale document; it is not the measured result of this baseline."
+    },
+    {
+      "path": "ipfs_accelerate_py/mcplusplus/tests-rs/COVERAGE_VERIFICATION.txt",
+      "role": "stale_observation_only",
+      "cited_as_measured_result": false,
+      "observation": "Historical verification text (dated 2024-02-04 in content) claiming 100% line coverage. Not current-process evidence."
+    },
+    {
+      "path": "ipfs_accelerate_py/mcplusplus/tests-rs/coverage_100_percent_final.txt",
+      "role": "stale_observation_only",
+      "cited_as_measured_result": false,
+      "observation": "Historical cargo-llvm-cov log referencing /home/runner/work/Mcp-Plus-Plus CI paths. Not produced by this run."
+    },
+    {
+      "path": "ipfs_accelerate_py/mcplusplus/tests-rs/lcov.info",
+      "role": "stale_observation_only",
+      "cited_as_measured_result": false,
+      "observation": "Checked-in lcov with SF paths under /home/runner/work/Mcp-Plus-Plus/...; not regenerated by this baseline command."
+    },
+    {
+      "path": "ipfs_accelerate_py/mcplusplus/tests-rs/lcov_final.info",
+      "role": "stale_observation_only",
+      "cited_as_measured_result": false,
+      "observation": "Checked-in final lcov artifact; not regenerated by this baseline command."
+    }
+  ],
+  "sources_inventory": {
+    "library_sources": [
+      "ipfs_accelerate_py/mcplusplus/tests-rs/src/lib.rs",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/src/models.rs",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/src/validators/base_mcp.rs",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/src/validators/cid_artifacts.rs",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/src/validators/event_dag.rs",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/src/validators/mcp_idl.rs",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/src/validators/mod.rs",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/src/validators/policy_evaluation.rs",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/src/validators/transport.rs",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/src/validators/ucan_delegation.rs"
+    ],
+    "integration_tests": [
+      "ipfs_accelerate_py/mcplusplus/tests-rs/tests/conformance_vectors_test.rs",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/tests/coverage_completion_test.rs",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/tests/integration_test.rs",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/tests/profile_g_codec_test.rs"
+    ],
+    "manifest": "ipfs_accelerate_py/mcplusplus/tests-rs/Cargo.toml"
+  },
+  "evidence": {
+    "primary": "cargo test process output (exit 0; 191 passed; 0 failed; 0 ignored)",
+    "subset": [
+      "cargo test command and exit code",
+      "per-suite pass/fail/count summary lines",
+      "toolchain versions (cargo/rustc)",
+      "commit SHAs for program worktree and mcplusplus nested gitlink"
+    ],
+    "not_used_as_measured_result": [
+      "ipfs_accelerate_py/mcplusplus/tests-rs/COVERAGE_100_PERCENT_ACHIEVED.md",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/lcov.info",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/lcov_final.info",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/COVERAGE_VERIFICATION.txt",
+      "ipfs_accelerate_py/mcplusplus/tests-rs/coverage_100_percent_final.txt"
+    ],
+    "evidence_source_policy": "Current process output is inventory authority. Static coverage documents are observations, not evidence."
+  },
+  "acceptance": {
+    "criterion": "COVERAGE_100_PERCENT_ACHIEVED.md is cited only as a stale document, never as the measured result.",
+    "satisfied": true,
+    "measured_result": {
+      "command": "cd ipfs_accelerate_py/mcplusplus/tests-rs && cargo test",
+      "pass_fail": "pass",
+      "passed": 191,
+      "failed": 0,
+      "ignored": 0,
+      "coverage": "unavailable (not measured this run)"
+    }
+  },
+  "dependencies_external": {
+    "crates_io_lock": "Cargo.lock generated/updated during first compile in this worktree (49 packages locked to latest compatible versions at first fetch)",
+    "network_required_for_first_build": true,
+    "network_required_for_warm_rerun": false
+  },
+  "notes": [
+    "Validators compiled and all unit, integration, profile-g, and doc tests passed on aarch64-unknown-linux-gnu.",
+    "Compile produced missing-docs warnings (56 warning lines observed); warnings did not fail the test run.",
+    "No skipped/ignored tests were reported by cargo.",
+    "COVERAGE_100_PERCENT_ACHIEVED.md is explicitly classified as stale and is not used as the measured coverage result."
+  ]
+}
