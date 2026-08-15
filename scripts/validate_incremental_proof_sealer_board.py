@@ -9427,67 +9427,29 @@ def _validate_trust_and_migration_docs(errors: list[str]) -> None:
             errors.append(f"IPS-055 documentation contains disallowed claim {phrase!r}")
 
 
-_HOST_TEST_PACKAGES = (
-    "pytest",
-    "_pytest",
-    "iniconfig",
-    "pluggy",
-    "packaging",
-    "exceptiongroup",
-    "hypothesis",
-    "pytest_benchmark",
-)
-
-
 def _host_import_site_directories() -> list[str]:
-    """Host test tooling visible to the parent runner (real HOME, not isolated).
+    """Host user site-packages visible to the parent runner (real HOME).
 
-    Isolated child HOME hides user-site pytest/hypothesis. Add system
-    site-packages plus only the named user-site packages so a newer user
-    `cffi` cannot shadow the system `_cffi_backend`. The sealed PATH still
-    refuses live `ipfs` and network installs.
+    Isolated child HOME hides ~/.local pytest. Add the user site *root* so
+    `import pytest` and `import _pytest` work as packages. Do not add the
+    `_pytest` directory itself (it shadows stdlib `warnings`) and do not
+    prepend system dist-packages (its older `_cffi_backend` clashes with
+    the user-site `cffi`). The sealed PATH still refuses live `ipfs`.
     """
 
-    directories: list[str] = []
-    seen: set[str] = set()
-    candidates: list[str] = []
-    user_site = ""
     try:
         import site as site_mod
 
-        try:
-            candidates.extend(site_mod.getsitepackages())
-        except Exception:
-            pass
-        try:
-            user_site = str(site_mod.getusersitepackages())
-        except Exception:
-            user_site = ""
+        raw = site_mod.getusersitepackages()
     except Exception:
-        return directories
-    for raw in candidates:
-        path = Path(raw)
-        try:
-            resolved = str(path.resolve())
-        except OSError:
-            continue
-        if resolved in seen or not path.is_dir():
-            continue
-        seen.add(resolved)
-        directories.append(resolved)
-    if user_site:
-        root = Path(user_site)
-        for name in _HOST_TEST_PACKAGES:
-            path = root / name
-            try:
-                resolved = str(path.resolve())
-            except OSError:
-                continue
-            if resolved in seen or not path.is_dir():
-                continue
-            seen.add(resolved)
-            directories.append(resolved)
-    return directories
+        return []
+    path = Path(raw)
+    try:
+        if path.is_dir():
+            return [str(path.resolve())]
+    except OSError:
+        return []
+    return []
 
 
 def _release_environment(workspace: Path, *, source_root: Path = REPO_ROOT) -> dict[str, str]:
