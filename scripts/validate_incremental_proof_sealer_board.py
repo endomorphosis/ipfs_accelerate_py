@@ -9478,6 +9478,8 @@ def _release_environment(workspace: Path, *, source_root: Path = REPO_ROOT) -> d
         "IPS_PROTECTED_MATERIALIZED_SOURCE": "1",
         "IPFS_ACCEL_AUTO_INSTALL": "0",
         "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0",
+        "IPFS_DATASETS_LOCAL_BIN": str(workspace / "bin"),
+        "IPFS_DATASETS_NPM_PREFIX": str(workspace / "bin" / ".deps" / "npm"),
         "IPFS_DATASETS_ENABLE_GROTH16": "0",
         "IPFS_DATASETS_PY_AUTO_GROTH16_BUILD": "0",
         "IPFS_DATASETS_RUN_GROTH16_EVM": "0",
@@ -9503,6 +9505,7 @@ def _release_environment(workspace: Path, *, source_root: Path = REPO_ROOT) -> d
         "TZ": "UTC",
     }
     for child in (
+        "bin",
         "home",
         "hypothesis",
         "ipfs-repo",
@@ -9729,7 +9732,7 @@ def _release_suite_specs(errors: list[str]) -> list[dict[str, Any]]:
     registry = _reviewed_suite_registry(errors)
     baseline_observations = _release_baseline_observations(errors)
     specs: list[dict[str, Any]] = []
-    work_root = REPO_ROOT / RELEASE_WORK_ROOT
+    work_root = REPO_ROOT / RELEASE_WORK_ROOT / "materialized" / "runtime"
     for task_id in BASELINE_RECEIPT_SPECS:
         for command_id in BASELINE_RECEIPT_SPECS[task_id]["command_ids"]:
             suite = registry.get(str(command_id))

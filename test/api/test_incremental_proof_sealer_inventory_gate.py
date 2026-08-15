@@ -4612,6 +4612,7 @@ def test_release_environment_routes_all_writes_outside_materialized_source(
         f"--benchmark-storage=file://{workspace / 'pytest-benchmark'}"
     )
     for name in (
+        "bin",
         "home",
         "hypothesis",
         "ipfs-repo",
