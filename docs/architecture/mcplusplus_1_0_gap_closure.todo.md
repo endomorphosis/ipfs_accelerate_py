@@ -584,7 +584,7 @@ overlays. Never force-push.
 
 ## MCPP-018 Record ADR for dual MCP bindings and A2A extension identifier
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
