@@ -2727,3 +2727,15 @@ overlays. Never force-push.
 - Validation: export PYTHONPATH="$PWD"/ipfs_accelerate_py/mcplusplus:"$PWD"/ipfs_datasets_py:"$PWD"/ipfs_kit_py; cd ipfs_kit_py && python -m pytest -q tests -k 'ucan or mcplusplus or profile' --maxfail=1
 
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in MCPP-008. Use evidence in /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-090-mcpp-008-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release MCPP-008 from strategy blocked_tasks.
+
+## MCPP-091 Resolve validation retry-budget failure for MCPP-013
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: MCPP-012
+- Outputs: ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0001-spec-runtime-ownership.md, data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery
+- Validation: test -f /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-091-mcpp-013-retry-budget.md
+
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in MCPP-013. Use evidence in /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-091-mcpp-013-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release MCPP-013 from strategy blocked_tasks.
