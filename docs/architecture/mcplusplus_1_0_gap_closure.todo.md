@@ -429,7 +429,7 @@ overlays. Never force-push.
 
 ## MCPP-013 Record ADR for spec versus runtime ownership
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
