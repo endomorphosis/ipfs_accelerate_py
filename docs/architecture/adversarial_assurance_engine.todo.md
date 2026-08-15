@@ -1146,7 +1146,7 @@ W20 AAE-063
 
 ## AAE-041 Implement disposable Git worktree mutation executor and admission pipeline
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
