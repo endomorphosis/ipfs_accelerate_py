@@ -1,0 +1,373 @@
+{
+  "schema": "BaselineReceipt@1",
+  "interface": "BaselineReceipt@1",
+  "schema_version": "mcplusplus-baseline-receipt/v1",
+  "task_id": "MCPP-008",
+  "goal_id": "MCPP-G010",
+  "objective_id": "MCPP-008",
+  "track": "baseline-kit",
+  "title": "Baseline ipfs_kit MCP++ and UCAN admission tests",
+  "generated_at": "2026-08-15T19:10:30.176Z",
+  "attempt": 3,
+  "program": {
+    "board_namespace": "mcplusplus-1-0-gap-closure-v1",
+    "bundle": "mcplusplus/1.0/baseline-kit",
+    "program_branch": "codex/mcplusplus-1.0-gap-closure",
+    "forest_generated_at": "2026-08-15T18:36:13.970099+00:00",
+    "forest_schema": "RepositoryForestDescriptor@1",
+    "forest_reference": "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
+    "depends_on": [
+      "MCPP-001"
+    ],
+    "parallel_lane": "mcpp-lane-crypto",
+    "evidence_subset": [
+      "pytest results",
+      "KITA-G080 related tests"
+    ]
+  },
+  "repository": {
+    "name": "ipfs_kit_py",
+    "role": "runtime-kit",
+    "canonical_remote": "https://github.com/endomorphosis/ipfs_kit_py",
+    "validation_checkout": {
+      "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_582294c7b58b_a4eb36f466bc/ipfs_kit_py",
+      "head_sha": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "head_sha_short": "6196017c",
+      "tree_sha": "93070c709af29095fdff11f3e2698543449c08ef",
+      "branch": "implementation/mcpp-008-b451dbaa8b0f-attempt-3-1786820831-submodule-ipfs_kit_py",
+      "origin_url": "https://github.com/endomorphosis/ipfs_kit_py.git",
+      "commit_subject": "Merge remote-tracking branch 'origin/main' into agent/semantic-compression-governor-v1",
+      "commit_date": "2026-08-13T20:05:27+00:00",
+      "status_sb": "## implementation/mcpp-008-b451dbaa8b0f-attempt-3-1786820831-submodule-ipfs_kit_py",
+      "dirty": {
+        "count": 0,
+        "paths": []
+      },
+      "note": "Implementation workspace submodule used for the validation command; clean kit checkout per conflict policy"
+    },
+    "program_nested_gitlink": {
+      "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/ipfs_kit_py",
+      "head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "branch": "main",
+      "remotes": [
+        {
+          "name": "origin",
+          "url": "https://github.com/endomorphosis/ipfs_kit_py.git",
+          "role": "fetch"
+        }
+      ],
+      "dirty": {
+        "count": 0,
+        "paths": []
+      },
+      "live_refresh": {
+        "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/ipfs_kit_py",
+        "head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+        "branch": "main",
+        "origin_main_left_right": "0\t0",
+        "dirty_paths": [],
+        "status_sb": "## main...origin/main"
+      }
+    },
+    "operator_checkout": {
+      "path": "/home/barberb/lift_coding/external/ipfs_kit",
+      "head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "branch": "main",
+      "remotes": [
+        {
+          "name": "origin",
+          "url": "https://github.com/endomorphosis/ipfs_kit_py",
+          "role": "fetch"
+        }
+      ],
+      "dirty": {
+        "count": 0,
+        "paths": []
+      },
+      "live_refresh": {
+        "path": "/home/barberb/lift_coding/external/ipfs_kit",
+        "head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+        "branch": "main",
+        "origin_main_left_right": "0\t0",
+        "dirty_paths": [],
+        "status_sb": "## main...origin/main"
+      },
+      "source": "MCPP-001 RepositoryForestDescriptor@1 operator_checkouts.ipfs_kit_py"
+    },
+    "superproject_gitlink": {
+      "mode": "160000",
+      "path": "ipfs_kit_py",
+      "bound_sha": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "ls_tree": "160000 commit 6196017ca3df016c7159dce43af60f2a0d96a9ae\tipfs_kit_py",
+      "superproject_head": "b2cd286311a337fc13e1bfd078ade8e9a4526aa0",
+      "superproject_branch": "implementation/mcpp-008-b451dbaa8b0f-attempt-3-1786820831"
+    }
+  },
+  "bound_revision": {
+    "live_bound_sha": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+    "live_bound_sha_short": "6196017c",
+    "plan_document_sha": "5a7a2df8181cfdc33bc19be09989df7ff83f2d4e",
+    "plan_document_sha_short": "5a7a2df8",
+    "plan_document_commit_date": "2026-08-10T20:45:43+00:00",
+    "plan_document_subject": "KVFS-811: reconcile release docs on repaired baseline",
+    "plan_sha_is_ancestor_of_live": true,
+    "commits_from_plan_sha_to_live": 45,
+    "recorded_sha": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+    "recorded_sha_reason": "Live bound gitlink/submodule HEAD at validation time (acceptance allows SHA 5a7a2df8 or the live bound SHA)",
+    "plan_observation_note": "MCPPLUSPLUS_1_0_GAP_CLOSURE_PLAN.md historically listed external/ipfs_kit at 5a7a2df8181cfdc33bc19be09989df7ff83f2d4e on main (behind origin 45, clean). Live bound SHA advanced by 45 commits and now equals origin/main."
+  },
+  "origin_status": {
+    "remote": "origin",
+    "remote_url": "https://github.com/endomorphosis/ipfs_kit_py.git",
+    "tracking_ref": "origin/main",
+    "origin_main_sha": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+    "behind_origin": 0,
+    "ahead_of_origin": 0,
+    "left_right_count": "0\t0",
+    "equal_to_origin_main": true,
+    "auto_fast_forwarded": false,
+    "git_fetch_performed": false,
+    "git_pull_performed": false,
+    "policy": "Kit checkout is clean; do not pull origin/main as a side effect of baselining. Behind-origin status is noted, not auto-fast-forwarded.",
+    "note": "Live HEAD 6196017c is 0 behind and 0 ahead of origin/main (local tracking refs only; no fetch/pull). Historical plan SHA 5a7a2df8 was 45 commits behind the current origin/main tip."
+  },
+  "dirty_overlay": {
+    "preserved": true,
+    "operator_files_deleted_or_reset": false,
+    "kit_checkout_clean": true,
+    "source_artifacts": [
+      "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
+      "docs/reports/mcplusplus-1.0-gap-closure/baseline/dirty-overlay.md"
+    ],
+    "operator_dirty_path_count": 0,
+    "operator_dirty_paths": [],
+    "validation_checkout_dirty_path_count": 0,
+    "policy": {
+      "do_not_pull_origin_main": true,
+      "do_not_auto_fast_forward": true,
+      "kit_checkout_is_clean": true,
+      "note": "No dirty overlay mutations; baselining is inventory-only."
+    }
+  },
+  "validation": {
+    "command": "cd ipfs_kit_py && python -m pytest -q tests -k 'ucan or mcplusplus or profile' --maxfail=1",
+    "command_argv": [
+      "/home/barberb/.local/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "tests",
+      "-k",
+      "ucan or mcplusplus or profile",
+      "--maxfail=1"
+    ],
+    "working_directory": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_582294c7b58b_a4eb36f466bc/ipfs_kit_py",
+    "filter": "ucan or mcplusplus or profile",
+    "path": "tests",
+    "maxfail": 1,
+    "exit_code": 1,
+    "ok": false,
+    "started_at": "2026-08-15T19:08:31Z",
+    "ended_at": "2026-08-15T19:08:35Z",
+    "duration_seconds": 4,
+    "outcome": {
+      "exit_code": 1,
+      "result": "failed",
+      "phase": "collection",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": null,
+      "selected": 0,
+      "interrupted_after_maxfail": true,
+      "duration_seconds": 4,
+      "summary": "Collection stopped after first error (--maxfail=1): ImportError collecting tests/mcplusplus_profile_h (cannot import name CallbackFacilitator from mcplusplus_profile_h).",
+      "stdout_tail": "\n==================================== ERRORS ====================================\n_________________ ERROR collecting tests/mcplusplus_profile_h __________________\n/usr/lib/python3.12/importlib/__init__.py:90: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n<frozen importlib._bootstrap>:1387: in _gcd_import\n    ???\n<frozen importlib._bootstrap>:1360: in _find_and_load\n    ???\n<frozen importlib._bootstrap>:1331: in _find_and_load_unlocked\n    ???\n<frozen importlib._bootstrap>:935: in _load_unlocked\n    ???\n/home/barberb/.local/lib/python3.12/site-packages/_pytest/assertion/rewrite.py:188: in exec_module\n    exec(co, module.__dict__)\ntests/mcplusplus_profile_h/conftest.py:36: in <module>\n    from ipfs_kit_py.mcp_server.mcplusplus.profile_h import (  # noqa: E402\nipfs_kit_py/mcp_server/mcplusplus/profile_h.py:26: in <module>\n    from mcplusplus_profile_h import (\nE   ImportError: cannot import name 'CallbackFacilitator' from 'mcplusplus_profile_h' (unknown location)\n=========================== short test summary info ============================\nERROR tests/mcplusplus_profile_h - ImportError: cannot import name 'CallbackFacilitator' from 'mcplusplus_profile_h' (unknown location)\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n",
+      "stderr_tail": "",
+      "error_count": 1,
+      "error_details": [
+        {
+          "phase": "collection",
+          "nodeid": "tests/mcplusplus_profile_h",
+          "exception": "ImportError",
+          "message": "cannot import name 'CallbackFacilitator' from 'mcplusplus_profile_h' (unknown location)",
+          "import_chain": [
+            "tests/mcplusplus_profile_h/conftest.py",
+            "ipfs_kit_py/mcp_server/mcplusplus/profile_h.py",
+            "mcplusplus_profile_h (CallbackFacilitator)"
+          ]
+        }
+      ],
+      "errors": 1
+    },
+    "collected_tests": [],
+    "passed_tests": [],
+    "failed_tests": [],
+    "skipped_tests": [],
+    "error_tests": [
+      {
+        "phase": "collection",
+        "nodeid": "tests/mcplusplus_profile_h",
+        "exception": "ImportError",
+        "message": "cannot import name 'CallbackFacilitator' from 'mcplusplus_profile_h' (unknown location)",
+        "import_chain": [
+          "tests/mcplusplus_profile_h/conftest.py",
+          "ipfs_kit_py/mcp_server/mcplusplus/profile_h.py",
+          "mcplusplus_profile_h (CallbackFacilitator)"
+        ]
+      }
+    ],
+    "coverage": {
+      "status": "unavailable",
+      "reason": "Collection failed before any tests ran; coverage not measured"
+    }
+  },
+  "environment": {
+    "python_version": "3.12.3",
+    "python_executable": "/home/barberb/.local/bin/python",
+    "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+    "pytest_version": "9.1.1",
+    "cwd_validation": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_582294c7b58b_a4eb36f466bc/ipfs_kit_py",
+    "hostname": "spark-b271"
+  },
+  "inventory": {
+    "named_test_modules_matching_path_filter": [
+      "tests/kernel_vfs/container/test_image_profile.py",
+      "tests/mcplusplus_profile_h/conftest.py",
+      "tests/mcplusplus_profile_h/test_paid_kit.py",
+      "tests/runtime_readiness/mcplusplus/test_authorization_dispatch_gate.py",
+      "tests/runtime_readiness/mcplusplus/test_server_bootstrap.py",
+      "tests/runtime_readiness/mcplusplus/test_transport_security_parity.py",
+      "tests/runtime_readiness/mcplusplus/test_ucan_verifier.py",
+      "tests/test_profile_d_policy.py",
+      "tests/test_profile_g_transport.py"
+    ],
+    "per_module_collect_exit_codes": {
+      "tests/test_profile_d_policy.py": 0,
+      "tests/test_profile_g_transport.py": 2,
+      "tests/runtime_readiness/mcplusplus/test_ucan_verifier.py": 0,
+      "tests/runtime_readiness/mcplusplus/test_authorization_dispatch_gate.py": 0,
+      "tests/runtime_readiness/mcplusplus/test_server_bootstrap.py": 0,
+      "tests/runtime_readiness/mcplusplus/test_transport_security_parity.py": 0,
+      "tests/mcplusplus_profile_h/test_paid_kit.py": 4,
+      "tests/kernel_vfs/container/test_image_profile.py": 0
+    },
+    "module_collection_errors": {
+      "tests/mcplusplus_profile_h": {
+        "exit_code": 4,
+        "exception": "ImportError",
+        "message": "cannot import name 'CallbackFacilitator' from 'mcplusplus_profile_h' (unknown location)",
+        "note": "First error hit by the authoritative validation command; stops collection under --maxfail=1"
+      },
+      "tests/test_profile_g_transport.py": {
+        "exit_code": 2,
+        "exception": "ImportError",
+        "message": "cannot import name '_profile_g_rest_binding' from 'ipfs_kit_py.mcp_server.server'",
+        "note": "Observed in supplementary per-module collect; not reached by authoritative run due to maxfail"
+      }
+    },
+    "partial_filter_match_counts_ignoring_profile_h": {
+      "tests/kernel_vfs/container/test_image_profile.py": 17,
+      "tests/kernel_vfs/container/test_live_container.py": 2,
+      "tests/kernel_vfs/container/test_propagation.py": 5,
+      "tests/kernel_vfs/security/test_security_boundaries.py": 3,
+      "tests/runtime_readiness/foundations/test_install_import_baseline.py": 2,
+      "tests/runtime_readiness/interfaces/test_mcp_core_backend_binding.py": 1,
+      "tests/runtime_readiness/mcplusplus/test_authorization_dispatch_gate.py": 13,
+      "tests/runtime_readiness/mcplusplus/test_server_bootstrap.py": 6,
+      "tests/runtime_readiness/mcplusplus/test_transport_security_parity.py": 19,
+      "tests/runtime_readiness/mcplusplus/test_ucan_verifier.py": 14,
+      "tests/runtime_readiness/release/test_soak_chaos.py": 1,
+      "tests/test_coordination_storage.py": 2,
+      "tests/test_profile_d_policy.py": 2,
+      "tests/test_semantic_state_root_contracts.py": 9
+    },
+    "partial_filter_match_count_total": 96,
+    "kita_g080_related_modules": [
+      "tests/test_profile_d_policy.py",
+      "tests/runtime_readiness/mcplusplus/test_ucan_verifier.py",
+      "tests/runtime_readiness/mcplusplus/test_authorization_dispatch_gate.py",
+      "tests/runtime_readiness/mcplusplus/test_server_bootstrap.py",
+      "tests/runtime_readiness/mcplusplus/test_transport_security_parity.py",
+      "tests/mcplusplus_profile_h/test_paid_kit.py",
+      "tests/test_profile_g_transport.py"
+    ],
+    "committed_runtime_mcplusplus_ucan_profile_modules": [
+      "ipfs_kit_py/mcp/profile_d_policy.py",
+      "ipfs_kit_py/mcp_server/mcplusplus/__init__.py",
+      "ipfs_kit_py/mcp_server/mcplusplus/artifacts.py",
+      "ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+      "ipfs_kit_py/mcp_server/mcplusplus/delegation.py",
+      "ipfs_kit_py/mcp_server/mcplusplus/event_dag.py",
+      "ipfs_kit_py/mcp_server/mcplusplus/profile_g_transport.py",
+      "ipfs_kit_py/mcp_server/mcplusplus/profile_h.py",
+      "ipfs_kit_py/mcp_server/mcplusplus/profile_h_http.py",
+      "ipfs_kit_py/mcp_server/mcplusplus/revocation.py",
+      "ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py",
+      "ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py",
+      "ipfs_kit_py/mcp_server/mcplusplus/ucan.py"
+    ],
+    "supplementary_inventory_run": {
+      "note": "Not the authoritative validation command. Targeted run of collectable UCAN/Profile D/runtime_readiness MCP++ modules for inventory only.",
+      "command": "python -m pytest -q tests/test_profile_d_policy.py tests/runtime_readiness/mcplusplus/test_ucan_verifier.py tests/runtime_readiness/mcplusplus/test_authorization_dispatch_gate.py tests/runtime_readiness/mcplusplus/test_server_bootstrap.py tests/runtime_readiness/mcplusplus/test_transport_security_parity.py --maxfail=5",
+      "exit_code": 0,
+      "ok": true,
+      "passed_count_from_quiet_progress": 54,
+      "modules": [
+        {
+          "path": "tests/test_profile_d_policy.py",
+          "collect_count": 2
+        },
+        {
+          "path": "tests/runtime_readiness/mcplusplus/test_ucan_verifier.py",
+          "collect_count": 14
+        },
+        {
+          "path": "tests/runtime_readiness/mcplusplus/test_authorization_dispatch_gate.py",
+          "collect_count": 13
+        },
+        {
+          "path": "tests/runtime_readiness/mcplusplus/test_server_bootstrap.py",
+          "collect_count": 6
+        },
+        {
+          "path": "tests/runtime_readiness/mcplusplus/test_transport_security_parity.py",
+          "collect_count": 19
+        }
+      ],
+      "stdout_tail": "......................................................                   [100%]\n"
+    },
+    "note": "Authoritative validation is the listed board command with --maxfail=1. It fails at collection on Profile H packaging (CallbackFacilitator import). Supplementary inventory shows UCAN verifier, authorization dispatch, server bootstrap, transport security parity, and Profile D policy modules collect and pass when invoked directly."
+  },
+  "acceptance": {
+    "criteria": "Receipt records SHA 5a7a2df8 or the live bound SHA, command, and outcomes. Behind-origin status is noted, not auto-fast-forwarded.",
+    "sha_recorded": true,
+    "recorded_sha": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+    "recorded_sha_short": "6196017c",
+    "plan_sha_5a7a2df8_recorded": true,
+    "plan_sha_full": "5a7a2df8181cfdc33bc19be09989df7ff83f2d4e",
+    "uses_live_bound_sha": true,
+    "command_recorded": true,
+    "outcomes_recorded": true,
+    "behind_origin_noted": true,
+    "behind_origin": 0,
+    "auto_fast_forwarded": false,
+    "failures_not_hidden": true,
+    "satisfied": true
+  },
+  "observations": [
+    "Live bound kit SHA is 6196017ca3df016c7159dce43af60f2a0d96a9ae (6196017c), matching superproject gitlink, program nested gitlink, operator checkout, and origin/main.",
+    "Plan document SHA 5a7a2df8 (5a7a2df8181cfdc33bc19be09989df7ff83f2d4e) remains an ancestor of live HEAD; live is 45 commits ahead of that historical pin.",
+    "Behind-origin status at validation time: 0 behind / 0 ahead of origin/main; no git fetch, pull, or auto-fast-forward was performed.",
+    "Authoritative pytest command failed during collection (exit 1) on tests/mcplusplus_profile_h ImportError for CallbackFacilitator; failure is recorded, not hidden.",
+    "KITA-G080-related UCAN/Profile D/runtime_readiness MCP++ modules remain present and 54 tests passed in a non-authoritative targeted inventory run.",
+    "Kit validation checkout dirty path count is 0; operator kit checkout dirty path count is 0 per MCPP-001 overlay."
+  ],
+  "operator_reverify": {
+    "observed_at": "2026-08-15T22:44:00Z",
+    "command": "cd ipfs_kit_py && python -m pytest -q tests -k 'ucan or mcplusplus or profile' --maxfail=1",
+    "exit_code": 1,
+    "stdout_summary": "ERROR collecting tests/runtime_readiness/foundations/test_fixture_manifest.py (import file mismatch vs tests/kernel_vfs/fixtures/test_fixture_manifest.py)",
+    "note": "Official --maxfail=1 gate still fails on inherited duplicate-basename collection debt. Behind-origin was not auto-fast-forwarded."
+  }
+}

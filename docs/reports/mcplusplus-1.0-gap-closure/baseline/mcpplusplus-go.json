@@ -1,0 +1,837 @@
+{
+  "schema": "BaselineReceipt@1",
+  "interface": "BaselineReceipt@1",
+  "schema_version": "baseline-receipt/v1",
+  "task_id": "MCPP-004",
+  "goal_id": "MCPP-G010",
+  "objective_id": "MCPP-004",
+  "title": "Baseline Mcp-Plus-Plus Go tests",
+  "track": "baseline-go",
+  "program": "mcplusplus-1.0-gap-closure",
+  "board_namespace": "mcplusplus-1-0-gap-closure-v1",
+  "bundle": "mcplusplus/1.0/baseline-go",
+  "description": "Baseline Mcp-Plus-Plus Go tests and statement coverage for the current tree.",
+  "generated_at": "2026-08-15T19:08:05Z",
+  "observed_at": "2026-08-15T19:08:05Z",
+  "attempt": 3,
+  "binding": {
+    "commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "tree_sha": "fd328606da5dae3314a87365987f5052180eb807",
+    "command": "cd ipfs_accelerate_py/mcplusplus/tests-go && go test ./...",
+    "command_argv": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "cwd": "ipfs_accelerate_py/mcplusplus/tests-go",
+    "resolved_runner": "go test",
+    "resolved_runner_version": "go1.24.12",
+    "exit_code": 0,
+    "output_sha256": "sha256:221df5ee9618f49a3506a1505194be96f717ed4aeb83582d7a983038431d8cbc",
+    "binds": [
+      "commit_sha",
+      "command"
+    ]
+  },
+  "repository": {
+    "role": "protocol_conformance_nested_gitlink",
+    "path": "ipfs_accelerate_py/mcplusplus",
+    "relative_suite_root": "ipfs_accelerate_py/mcplusplus",
+    "test_path": "tests-go",
+    "remote": "https://github.com/endomorphosis/Mcp-Plus-Plus.git",
+    "remote_origin": "https://github.com/endomorphosis/Mcp-Plus-Plus.git",
+    "head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "tree": "fd328606da5dae3314a87365987f5052180eb807",
+    "commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "branch": "implementation/mcpp-004-d19ffbe385a0-attempt-3-1786820801-submodule-ipfs_accelerate_py-mcplusplus",
+    "branch_observed": "implementation/mcpp-004-d19ffbe385a0-attempt-3-1786820801-submodule-ipfs_accelerate_py-mcplusplus",
+    "upstream_main_equivalent_head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "dirty": false,
+    "dirty_paths": [],
+    "latest_commit": "6965f89f066769f3b3ac7b5f753b1a0044562570 2026-08-10 19:20:56 +0000 DCR-093: swissknife adversarial interop negatives in Mcp-Plus-Plus",
+    "forest_binding_head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "mcp_plus_plus": {
+      "path": "ipfs_accelerate_py/mcplusplus",
+      "head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+      "tree": "fd328606da5dae3314a87365987f5052180eb807",
+      "branch": "implementation/mcpp-004-d19ffbe385a0-attempt-3-1786820801-submodule-ipfs_accelerate_py-mcplusplus",
+      "dirty_paths": [],
+      "latest_commit": "6965f89f066769f3b3ac7b5f753b1a0044562570 2026-08-10 19:20:56 +0000 DCR-093: swissknife adversarial interop negatives in Mcp-Plus-Plus",
+      "remote_origin": "https://github.com/endomorphosis/Mcp-Plus-Plus.git",
+      "forest_binding_head": "6965f89f066769f3b3ac7b5f753b1a0044562570"
+    },
+    "workspace": {
+      "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_582294c7b58b_f749c5a07dc5",
+      "head": "b2cd286311a337fc13e1bfd078ade8e9a4526aa0",
+      "tree": "7df5b1b89d33d84505ed33b3217d560b64d03702",
+      "branch": "implementation/mcpp-004-d19ffbe385a0-attempt-3-1786820801",
+      "tree_id_binding": "b2cd286311a337fc13e1bfd078ade8e9a4526aa0"
+    },
+    "working_tree": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_582294c7b58b_f749c5a07dc5",
+    "program_branch": "implementation/mcpp-004-d19ffbe385a0-attempt-3-1786820801",
+    "tree_id": "fd328606da5dae3314a87365987f5052180eb807",
+    "notes": "Primary suite SHA is the Mcp-Plus-Plus nested checkout HEAD under ipfs_accelerate_py/mcplusplus. Workspace tree binds the accelerate program worktree that hosts this receipt."
+  },
+  "program_worktree": {
+    "path": "data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_582294c7b58b_f749c5a07dc5",
+    "absolute_path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_582294c7b58b_f749c5a07dc5",
+    "head": "b2cd286311a337fc13e1bfd078ade8e9a4526aa0",
+    "tree": "7df5b1b89d33d84505ed33b3217d560b64d03702",
+    "branch": "implementation/mcpp-004-d19ffbe385a0-attempt-3-1786820801",
+    "forest_reference": "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
+    "tree_id_task": "b2cd286311a337fc13e1bfd078ade8e9a4526aa0"
+  },
+  "suite": {
+    "language": "go",
+    "path": "ipfs_accelerate_py/mcplusplus/tests-go",
+    "module": "github.com/endomorphosis/Mcp-Plus-Plus/tests-go",
+    "go_mod_directive": "1.24.12",
+    "packages": [
+      "github.com/endomorphosis/Mcp-Plus-Plus/tests-go",
+      "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators"
+    ],
+    "go_source_file_count": 12,
+    "test_file_count": 4,
+    "test_files": [
+      "canonical_wire_test.go",
+      "conformance_vectors_test.go",
+      "profile_g_codec_test.go",
+      "validators/validators_test.go"
+    ]
+  },
+  "command": "cd ipfs_accelerate_py/mcplusplus/tests-go && go test ./...",
+  "commands": {
+    "validation": {
+      "command": "cd ipfs_accelerate_py/mcplusplus/tests-go && go test ./...",
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_582294c7b58b_f749c5a07dc5/ipfs_accelerate_py/mcplusplus/tests-go",
+      "exit_code": 0,
+      "started_at": "2026-08-15T19:08:04Z",
+      "ended_at": "2026-08-15T19:08:04Z",
+      "duration_seconds": 0.411,
+      "stdout_summary": "ok  github.com/endomorphosis/Mcp-Plus-Plus/tests-go 0.006s | ok  github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators 0.015s",
+      "stdout": "ok  \tgithub.com/endomorphosis/Mcp-Plus-Plus/tests-go\t0.006s\nok  \tgithub.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators\t0.015s",
+      "stdout_sha256": "sha256:221df5ee9618f49a3506a1505194be96f717ed4aeb83582d7a983038431d8cbc"
+    },
+    "coverage_measurement": {
+      "command": "cd ipfs_accelerate_py/mcplusplus/tests-go && go test ./... -count=1 -coverprofile=/tmp/mcpp004-attempt3-coverage.out -covermode=set",
+      "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_582294c7b58b_f749c5a07dc5/ipfs_accelerate_py/mcplusplus/tests-go",
+      "exit_code": 0,
+      "stdout_summary": "ok tests-go 71.4% statements; ok tests-go/validators 97.6% statements; combined go tool cover -func total 96.9% of statements (250/258)",
+      "coverprofile": "/tmp/mcpp004-attempt3-coverage.out",
+      "note": "Coverage was recomputed in this baseline attempt to a temporary profile under /tmp. On-disk ipfs_accelerate_py/mcplusplus/tests-go/coverage.html and coverage.out were not used as measured results."
+    }
+  },
+  "commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+  "pass_fail": "pass",
+  "result": {
+    "status": "pass",
+    "passed": true,
+    "exit_code": 0,
+    "failures_hidden": false,
+    "packages": {
+      "passed": 2,
+      "failed": 0,
+      "total": 2,
+      "ok": [
+        "github.com/endomorphosis/Mcp-Plus-Plus/tests-go",
+        "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators"
+      ]
+    },
+    "tests": {
+      "passed": 211,
+      "failed": 0,
+      "skipped": 0,
+      "total": 211,
+      "note": "Counts from go test -json Action outcomes for named tests including subtests (211 pass). Static inventory of func Test* declarations is 63 across 4 test files."
+    }
+  },
+  "exit_code": 0,
+  "execution": {
+    "attempted": true,
+    "started": true,
+    "completed": true,
+    "exit_code": 0,
+    "status": "completed",
+    "result": "pass",
+    "pass_fail": "pass",
+    "reason": null,
+    "stdout_stderr": "ok  \tgithub.com/endomorphosis/Mcp-Plus-Plus/tests-go\t0.006s\nok  \tgithub.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators\t0.015s",
+    "duration_seconds": 0.411,
+    "coverage_produced": true,
+    "coverage_out_produced": true,
+    "coverage_html_produced": false,
+    "note": "coverage_html was intentionally not regenerated; measured coverage uses go tool cover -func on a fresh coverprofile."
+  },
+  "test_count": {
+    "total": 211,
+    "passed": 211,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "xpassed": 0,
+    "collected": 211,
+    "packages_ok": 2,
+    "by_package": {
+      "github.com/endomorphosis/Mcp-Plus-Plus/tests-go": 8,
+      "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators": 203
+    },
+    "static_Test_function_count": 63,
+    "note": "total/passed count go test -json Action outcomes for named tests including subtests. Static inventory of func Test* declarations is 63 across 4 test files."
+  },
+  "counts": {
+    "measured": true,
+    "passed": 211,
+    "failed": 0,
+    "skipped": 0,
+    "total_executed": 211,
+    "static_inventory": {
+      "source": "source_scan_Test_functions",
+      "test_function_count": 63,
+      "test_file_count": 4,
+      "packages": [
+        "github.com/endomorphosis/Mcp-Plus-Plus/tests-go",
+        "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators"
+      ],
+      "test_functions": [
+        {
+          "name": "TestCanonicalDelegationWire",
+          "file": "canonical_wire_test.go",
+          "line": 15
+        },
+        {
+          "name": "TestCanonicalDAGEventBothTimestampForms",
+          "file": "canonical_wire_test.go",
+          "line": 33
+        },
+        {
+          "name": "TestCanonicalPolicyDecisionWire",
+          "file": "canonical_wire_test.go",
+          "line": 51
+        },
+        {
+          "name": "TestCanonicalErrorCodes",
+          "file": "canonical_wire_test.go",
+          "line": 66
+        },
+        {
+          "name": "TestConformanceVectors",
+          "file": "conformance_vectors_test.go",
+          "line": 14
+        },
+        {
+          "name": "TestProfileGCanonicalCIDs",
+          "file": "profile_g_codec_test.go",
+          "line": 43
+        },
+        {
+          "name": "TestProfileGInvalidVectors",
+          "file": "profile_g_codec_test.go",
+          "line": 75
+        },
+        {
+          "name": "TestProfileGPriorityTuple",
+          "file": "profile_g_codec_test.go",
+          "line": 83
+        },
+        {
+          "name": "TestBaseMCPValidator_JSONRPCRequest",
+          "file": "validators/validators_test.go",
+          "line": 11
+        },
+        {
+          "name": "TestBaseMCPValidator_JSONRPCResponse",
+          "file": "validators/validators_test.go",
+          "line": 84
+        },
+        {
+          "name": "TestBaseMCPValidator_Notification",
+          "file": "validators/validators_test.go",
+          "line": 144
+        },
+        {
+          "name": "TestBaseMCPValidator_InitializeRequest",
+          "file": "validators/validators_test.go",
+          "line": 194
+        },
+        {
+          "name": "TestBaseMCPValidator_ToolCall",
+          "file": "validators/validators_test.go",
+          "line": 315
+        },
+        {
+          "name": "TestBaseMCPValidator_ResourceRead",
+          "file": "validators/validators_test.go",
+          "line": 390
+        },
+        {
+          "name": "TestBaseMCPValidator_PromptGet",
+          "file": "validators/validators_test.go",
+          "line": 455
+        },
+        {
+          "name": "TestMCPIDLValidator_InterfaceDescriptor",
+          "file": "validators/validators_test.go",
+          "line": 530
+        },
+        {
+          "name": "TestMCPIDLValidator_CompatibilityCheck",
+          "file": "validators/validators_test.go",
+          "line": 635
+        },
+        {
+          "name": "TestCIDValidator_ExecutionEnvelope",
+          "file": "validators/validators_test.go",
+          "line": 668
+        },
+        {
+          "name": "TestCIDValidator_ExecutionReceipt",
+          "file": "validators/validators_test.go",
+          "line": 780
+        },
+        {
+          "name": "TestUCANValidator_UCANToken",
+          "file": "validators/validators_test.go",
+          "line": 833
+        },
+        {
+          "name": "TestUCANValidator_DelegationChain",
+          "file": "validators/validators_test.go",
+          "line": 938
+        },
+        {
+          "name": "TestPolicyValidator_PolicyDescriptor",
+          "file": "validators/validators_test.go",
+          "line": 1031
+        },
+        {
+          "name": "TestPolicyValidator_PolicyDecision",
+          "file": "validators/validators_test.go",
+          "line": 1141
+        },
+        {
+          "name": "TestTransportValidator_TransportMessage",
+          "file": "validators/validators_test.go",
+          "line": 1259
+        },
+        {
+          "name": "TestTransportValidator_SessionInit",
+          "file": "validators/validators_test.go",
+          "line": 1340
+        },
+        {
+          "name": "TestEventDAGValidator_Event",
+          "file": "validators/validators_test.go",
+          "line": 1412
+        },
+        {
+          "name": "TestEventDAGValidator_EventDAG",
+          "file": "validators/validators_test.go",
+          "line": 1536
+        },
+        {
+          "name": "TestEventDAGValidator_CycleDetection",
+          "file": "validators/validators_test.go",
+          "line": 1659
+        },
+        {
+          "name": "TestDefensiveValidation_JSONRPCRequest",
+          "file": "validators/validators_test.go",
+          "line": 1691
+        },
+        {
+          "name": "TestDefensiveValidation_ExecutionEnvelope",
+          "file": "validators/validators_test.go",
+          "line": 1724
+        },
+        {
+          "name": "TestDefensiveValidation_ExecutionReceipt",
+          "file": "validators/validators_test.go",
+          "line": 1741
+        },
+        {
+          "name": "TestDefensiveValidation_Event",
+          "file": "validators/validators_test.go",
+          "line": 1769
+        },
+        {
+          "name": "TestMarshalErrorPaths",
+          "file": "validators/validators_test.go",
+          "line": 1802
+        },
+        {
+          "name": "TestUCANValidator_MarshalErrorPaths",
+          "file": "validators/validators_test.go",
+          "line": 1863
+        },
+        {
+          "name": "TestMCPIDLValidator_AdditionalValidation",
+          "file": "validators/validators_test.go",
+          "line": 1886
+        },
+        {
+          "name": "TestPolicyValidator_AdditionalValidation",
+          "file": "validators/validators_test.go",
+          "line": 1915
+        },
+        {
+          "name": "TestTransportValidator_AdditionalValidation",
+          "file": "validators/validators_test.go",
+          "line": 1945
+        },
+        {
+          "name": "TestEventDAGValidator_ComplexCycles",
+          "file": "validators/validators_test.go",
+          "line": 1976
+        },
+        {
+          "name": "TestEdgeCaseValidations",
+          "file": "validators/validators_test.go",
+          "line": 1996
+        },
+        {
+          "name": "TestValidateJSONRPCRequest_ExplicitVersionCheck",
+          "file": "validators/validators_test.go",
+          "line": 2144
+        },
+        {
+          "name": "TestCIDValidator_InvalidCIDFormats",
+          "file": "validators/validators_test.go",
+          "line": 2156
+        },
+        {
+          "name": "TestEventDAGValidator_ValidationErrors",
+          "file": "validators/validators_test.go",
+          "line": 2215
+        },
+        {
+          "name": "TestMCPIDLValidator_ValidationErrors",
+          "file": "validators/validators_test.go",
+          "line": 2271
+        },
+        {
+          "name": "TestPolicyValidator_ValidationErrors",
+          "file": "validators/validators_test.go",
+          "line": 2308
+        },
+        {
+          "name": "TestTransportValidator_ValidationErrors",
+          "file": "validators/validators_test.go",
+          "line": 2384
+        },
+        {
+          "name": "TestUCANValidator_ValidationErrors",
+          "file": "validators/validators_test.go",
+          "line": 2411
+        },
+        {
+          "name": "TestJSONMarshalErrorPaths",
+          "file": "validators/validators_test.go",
+          "line": 2461
+        },
+        {
+          "name": "TestParamsUnmarshalErrors",
+          "file": "validators/validators_test.go",
+          "line": 2485
+        },
+        {
+          "name": "TestEventDAG_RootNotInEvents",
+          "file": "validators/validators_test.go",
+          "line": 2518
+        },
+        {
+          "name": "TestEventDAG_ParentNotInEvents",
+          "file": "validators/validators_test.go",
+          "line": 2541
+        },
+        {
+          "name": "TestDelegationChain_InvalidProof",
+          "file": "validators/validators_test.go",
+          "line": 2564
+        },
+        {
+          "name": "TestCompatibilityCheck_StructValidation",
+          "file": "validators/validators_test.go",
+          "line": 2592
+        },
+        {
+          "name": "TestBaseMCPValidator_JSONRPCVersionExplicitCheck",
+          "file": "validators/validators_test.go",
+          "line": 2610
+        },
+        {
+          "name": "TestUCANValidator_EmptyCapabilities",
+          "file": "validators/validators_test.go",
+          "line": 2661
+        },
+        {
+          "name": "TestUCANValidator_EmptyCapabilityFields",
+          "file": "validators/validators_test.go",
+          "line": 2682
+        },
+        {
+          "name": "TestCIDValidator_ExecutionEnvelopeInvalidCIDs",
+          "file": "validators/validators_test.go",
+          "line": 2734
+        },
+        {
+          "name": "TestCIDValidator_ExecutionReceiptInvalidCIDsAndStatus",
+          "file": "validators/validators_test.go",
+          "line": 2766
+        },
+        {
+          "name": "TestEventDAGValidator_InvalidCIDFormats",
+          "file": "validators/validators_test.go",
+          "line": 2818
+        },
+        {
+          "name": "TestMCPIDLValidator_EmptyMethodFields",
+          "file": "validators/validators_test.go",
+          "line": 2865
+        },
+        {
+          "name": "TestPolicyValidator_EdgeCases",
+          "file": "validators/validators_test.go",
+          "line": 2919
+        },
+        {
+          "name": "TestTransportValidator_EdgeCases",
+          "file": "validators/validators_test.go",
+          "line": 2991
+        },
+        {
+          "name": "TestUCANValidator_DelegationChainMarshalErrorPaths",
+          "file": "validators/validators_test.go",
+          "line": 3031
+        },
+        {
+          "name": "TestValidators_ComprehensiveCoverage",
+          "file": "validators/validators_test.go",
+          "line": 3077
+        }
+      ]
+    }
+  },
+  "coverage": {
+    "status": "available",
+    "available": true,
+    "measured": true,
+    "tool": "go test -coverprofile + go tool cover -func",
+    "tool_versions": {
+      "go": "go version go1.24.12 linux/arm64",
+      "GOVERSION": "go1.24.12",
+      "bootstrap_go_binary": "go version go1.24.6 linux/arm64",
+      "bootstrap_go_path": "/home/barberb/.local/go/bin/go"
+    },
+    "mode": "set",
+    "scope": "ipfs_accelerate_py/mcplusplus/tests-go ./... (module packages tests-go and tests-go/validators)",
+    "scope_note": "Recomputed statement coverage for this baseline. Existing on-disk coverage.html, coverage.out, and validators/*COVERAGE*.md narrative files are classified stale and are not treated as current evidence.",
+    "percent_covered": 96.89922480620154,
+    "percent_covered_display": "96.9",
+    "num_statements": 258,
+    "covered_lines": 250,
+    "missing_lines": 8,
+    "package_percent_covered": {
+      "github.com/endomorphosis/Mcp-Plus-Plus/tests-go": 71.4,
+      "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators": 97.6
+    },
+    "files": [
+      {
+        "path": "tests-go/models.go",
+        "module_path": "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/models.go",
+        "num_statements": 7,
+        "covered_lines": 5,
+        "missing_lines_count": 2,
+        "percent_covered": 71.42857142857143
+      },
+      {
+        "path": "tests-go/validators/base_mcp.go",
+        "module_path": "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators/base_mcp.go",
+        "num_statements": 89,
+        "covered_lines": 85,
+        "missing_lines_count": 4,
+        "percent_covered": 95.50561797752809
+      },
+      {
+        "path": "tests-go/validators/cid_artifacts.go",
+        "module_path": "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators/cid_artifacts.go",
+        "num_statements": 25,
+        "covered_lines": 25,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0
+      },
+      {
+        "path": "tests-go/validators/event_dag.go",
+        "module_path": "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators/event_dag.go",
+        "num_statements": 47,
+        "covered_lines": 47,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0
+      },
+      {
+        "path": "tests-go/validators/mcp_idl.go",
+        "module_path": "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators/mcp_idl.go",
+        "num_statements": 18,
+        "covered_lines": 18,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0
+      },
+      {
+        "path": "tests-go/validators/policy_evaluation.go",
+        "module_path": "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators/policy_evaluation.go",
+        "num_statements": 27,
+        "covered_lines": 27,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0
+      },
+      {
+        "path": "tests-go/validators/transport.go",
+        "module_path": "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators/transport.go",
+        "num_statements": 18,
+        "covered_lines": 17,
+        "missing_lines_count": 1,
+        "percent_covered": 94.44444444444444
+      },
+      {
+        "path": "tests-go/validators/ucan_delegation.go",
+        "module_path": "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators/ucan_delegation.go",
+        "num_statements": 27,
+        "covered_lines": 26,
+        "missing_lines_count": 1,
+        "percent_covered": 96.29629629629629
+      }
+    ],
+    "profile_path": "/tmp/mcpp004-attempt3-coverage.out",
+    "stale_artifacts_present_but_rejected_as_evidence": [
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/tests-go/coverage.html",
+        "exists": true,
+        "size_bytes": 37760,
+        "sha256": "ec4f0dcc148129a2e1b193ab348d48ca1ab7c0e305956d6c5e001302572e32f4",
+        "mtime_utc": "2026-08-15T19:04:11.107605+00:00",
+        "treated_as_current_evidence": false,
+        "classification": "stale_on_disk_artifact_not_current_measurement"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/tests-go/coverage.out",
+        "exists": true,
+        "size_bytes": 18583,
+        "sha256": "4a932ed51befec68fc42e56bb11b7d9fb5840cdb86f7d71f50088a0a46c55d23",
+        "mtime_utc": "2026-08-15T19:04:11.107605+00:00",
+        "treated_as_current_evidence": false,
+        "classification": "stale_on_disk_artifact_not_current_measurement"
+      }
+    ],
+    "stale_documents_present_but_rejected_as_evidence": [
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/tests-go/validators/COVERAGE_89_6_PERCENT_FINAL.md",
+        "size_bytes": 10986,
+        "sha256": "802d7a378c6b42c926e9e2649be135fe98b8a00bc13333b5bc56a399c56d3de9",
+        "treated_as_current_evidence": false,
+        "classification": "static_coverage_narrative_not_current_measurement"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/tests-go/validators/FINAL_COVERAGE_PUSH_SUMMARY.md",
+        "size_bytes": 6813,
+        "sha256": "37ef116be3aa1ca55113a861029f06ae8198e8818279af47c7789b894978533b",
+        "treated_as_current_evidence": false,
+        "classification": "static_coverage_narrative_not_current_measurement"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/tests-go/validators/GO_VALIDATORS_COVERAGE_REPORT.md",
+        "size_bytes": 7641,
+        "sha256": "32b3a2d6f1ac45b2b74a9fdb667f20d4e16cb986e9ad0835e430222b2da8932f",
+        "treated_as_current_evidence": false,
+        "classification": "static_coverage_narrative_not_current_measurement"
+      }
+    ],
+    "policy": {
+      "current_process_output_is_authority": true,
+      "static_coverage_documents_are_observations_only": true,
+      "existing_coverage_html_is_not_current_evidence": true,
+      "existing_coverage_out_is_not_current_evidence": true
+    }
+  },
+  "skipped_names": [],
+  "skips": {
+    "measured": true,
+    "names": [],
+    "note": "go test reported zero skipped tests."
+  },
+  "failures": [],
+  "errors": [],
+  "environment": {
+    "platform": {
+      "system": "Linux",
+      "release": "6.17.0-1014-nvidia",
+      "machine": "aarch64",
+      "python": "3.12.3",
+      "uname": {
+        "system": "Linux",
+        "node": "spark-b271",
+        "release": "6.17.0-1014-nvidia",
+        "version": "#14-Ubuntu SMP PREEMPT_DYNAMIC Tue Mar 17 19:01:40 UTC 2026",
+        "machine": "aarch64",
+        "processor": "aarch64"
+      }
+    },
+    "toolchain": {
+      "name": "go",
+      "available": true,
+      "on_default_path": false,
+      "binary_path": "/home/barberb/.local/go/bin/go",
+      "bootstrap_version": "go version go1.24.6 linux/arm64",
+      "version": "go version go1.24.12 linux/arm64",
+      "GOVERSION": "go1.24.12",
+      "GOROOT": "/home/barberb/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.12.linux-arm64",
+      "GOTOOLCHAIN": "auto",
+      "required_by_go_mod": "1.24.12",
+      "install_note": "Go is not on the default PATH (env -i PATH=/usr/bin:/bin \u2192 go: command not found / exit 127). A prior user-local bootstrap at /home/barberb/.local/go/bin/go (go1.24.6) is present from earlier baseline work. With PATH augmented and GOTOOLCHAIN=auto, the suite selected the go1.24.12 toolchain required by go.mod.",
+      "probe": {
+        "default_path_search": "go: command not found",
+        "default_path_exit_code": 127,
+        "resolved_bootstrap_binary": "/home/barberb/.local/go/bin/go",
+        "after_path_augment_version": "go version go1.24.12 linux/arm64",
+        "module_toolchain": "go1.24.12 via GOTOOLCHAIN=auto"
+      }
+    },
+    "external_dependencies": [
+      {
+        "module": "github.com/go-playground/validator/v10",
+        "declared_in": "ipfs_accelerate_py/mcplusplus/tests-go/go.mod",
+        "resolved": true,
+        "reason": "resolved by go test module download during suite execution"
+      }
+    ],
+    "path_includes_go": "/home/barberb/.local/go/bin/go"
+  },
+  "env": {
+    "go_binary": "/home/barberb/.local/go/bin/go",
+    "go_version": "go version go1.24.12 linux/arm64",
+    "GOVERSION": "go1.24.12",
+    "GOROOT": "/home/barberb/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.12.linux-arm64",
+    "GOTOOLCHAIN": "auto",
+    "platform": "Linux 6.17.0-1014-nvidia aarch64",
+    "default_path_go_available": false
+  },
+  "evidence": {
+    "validation_command": "cd ipfs_accelerate_py/mcplusplus/tests-go && go test ./...",
+    "validation_exit_code": 0,
+    "go_test_stdout": "ok  \tgithub.com/endomorphosis/Mcp-Plus-Plus/tests-go\t0.006s\nok  \tgithub.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators\t0.015s",
+    "stdout_sha256": "sha256:221df5ee9618f49a3506a1505194be96f717ed4aeb83582d7a983038431d8cbc",
+    "go_test_json_event_counts": {
+      "pass_named_tests": 211,
+      "fail_named_tests": 0,
+      "skip_named_tests": 0,
+      "packages_passed": [
+        "github.com/endomorphosis/Mcp-Plus-Plus/tests-go",
+        "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators"
+      ]
+    },
+    "coverage_func_total_line": "total:\t\t\t\t\t\t\t\t\t\t\t(statements)\t\t\t96.9%",
+    "coverage_profile": "/tmp/mcpp004-attempt3-coverage.out",
+    "notes": [
+      "Validation command completed with exit code 0 for packages tests-go and tests-go/validators.",
+      "Measured 211 named go test cases (including subtests); 211 passed, 0 failed, 0 skipped.",
+      "Recomputed coverage: 96.9% statements (250/258) via fresh coverprofile; not from on-disk coverage.html.",
+      "Existing coverage.html and coverage.out under tests-go are recorded only as stale artifacts with hashes; treated_as_current_evidence=false.",
+      "Static markdown coverage claims under tests-go/validators are observations only and not measured results.",
+      "Toolchain missing from default PATH at probe (exit 127); after PATH include of user-local go and GOTOOLCHAIN=auto, suite executed with go1.24.12."
+    ]
+  },
+  "evidence_subset": {
+    "go_test_output": "ok  \tgithub.com/endomorphosis/Mcp-Plus-Plus/tests-go\t0.006s\nok  \tgithub.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators\t0.015s",
+    "coverage_out_if_produced": "/tmp/mcpp004-attempt3-coverage.out",
+    "notes": [
+      "Evidence subset satisfied with live go test output and a freshly produced coverprofile.",
+      "On-disk tests-go/coverage.out was not promoted to evidence.",
+      "On-disk tests-go/coverage.html was not treated as current evidence."
+    ]
+  },
+  "acceptance": {
+    "criteria": "Receipt is honest about missing toolchain. Existing coverage.html is not treated as current evidence.",
+    "honest_about_missing_toolchain": true,
+    "toolchain_initially_missing": true,
+    "toolchain_missing_from_default_path": true,
+    "toolchain_available_for_measurement": true,
+    "existing_coverage_html_treated_as_current_evidence": false,
+    "existing_coverage_out_treated_as_current_evidence": false,
+    "static_markdown_coverage_treated_as_current_evidence": false,
+    "records_exact_command": true,
+    "records_sha": true,
+    "records_pass_fail": true,
+    "records_count": true,
+    "count_kind": "measured_go_test_json_named_tests",
+    "validation_command_attempted": "cd ipfs_accelerate_py/mcplusplus/tests-go && go test ./...",
+    "validation_command_exit_code": 0,
+    "checks": [
+      {
+        "id": "honest_missing_toolchain",
+        "ok": true,
+        "value": "default PATH lacks go (exit 127); bootstrap found at /home/barberb/.local/go/bin/go; suite ran via go1.24.12"
+      },
+      {
+        "id": "coverage_html_not_current_evidence",
+        "ok": true,
+        "value": "ipfs_accelerate_py/mcplusplus/tests-go/coverage.html treated_as_current_evidence=false"
+      },
+      {
+        "id": "bind_sha",
+        "ok": true,
+        "value": "6965f89f066769f3b3ac7b5f753b1a0044562570"
+      },
+      {
+        "id": "bind_command",
+        "ok": true,
+        "value": "cd ipfs_accelerate_py/mcplusplus/tests-go && go test ./..."
+      },
+      {
+        "id": "records_pass_fail_and_count",
+        "ok": true,
+        "value": "pass / 211 named tests"
+      }
+    ]
+  },
+  "acceptance_fields": {
+    "command": "cd ipfs_accelerate_py/mcplusplus/tests-go && go test ./...",
+    "env_go_version": "go version go1.24.12 linux/arm64",
+    "commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "pass_fail": "pass",
+    "test_count_total": 211,
+    "coverage_percent": 96.89922480620154,
+    "coverage_status": "available",
+    "skipped_names": [],
+    "existing_coverage_html_is_current_evidence": false
+  },
+  "claims": {
+    "suite_passing": true,
+    "suite_executed": true,
+    "coverage_measured": true,
+    "baseline_complete_for_green_tests": true,
+    "baseline_receipt_records_blocker": false,
+    "conformance_claim": false,
+    "uses_stale_coverage_html_as_measured_result": false
+  },
+  "blockers": [],
+  "related_artifacts": {
+    "repository_forest": "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
+    "dirty_overlay": "docs/reports/mcplusplus-1.0-gap-closure/baseline/dirty-overlay.md",
+    "suite_readme": "ipfs_accelerate_py/mcplusplus/tests-go/README.md",
+    "go_mod": "ipfs_accelerate_py/mcplusplus/tests-go/go.mod"
+  },
+  "operator_reverify": {
+    "observed_at": "2026-08-15T22:44:00Z",
+    "command": "cd ipfs_accelerate_py/mcplusplus/tests-go && go test ./...",
+    "exit_code": 0,
+    "stdout_summary": "ok tests-go; ok tests-go/validators",
+    "go_wrapper": "/usr/local/bin/go",
+    "go_version": "go1.24.6 linux/arm64",
+    "note": "Operator re-ran declared gate after /usr/local/bin/go hermetic wrapper was installed. Suite is green. Existing coverage.html is still not treated as current evidence."
+  }
+}
