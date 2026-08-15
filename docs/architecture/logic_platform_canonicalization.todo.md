@@ -670,7 +670,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-091 Classify leftover supervisor semantic types
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P1
 - Track: supervisor-maps
