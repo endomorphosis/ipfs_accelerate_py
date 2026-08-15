@@ -2622,3 +2622,15 @@ overlays. Never force-push.
 - LLM context budget bytes: 24000
 - Acceptance: All 28 acceptance gates are listed with command, result, and artifact path. No gate is passed without evidence. This task does not merge PRs.
 - Embedding query: joined release receipt acceptance gates no-go rc go
+
+## MCPP-084 Resolve validation retry-budget failure for MCPP-001
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: MCPP-000
+- Outputs: docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json, docs/reports/mcplusplus-1.0-gap-closure/baseline/dirty-overlay.md, data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery
+- Validation: test -f /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-084-mcpp-001-retry-budget.md
+
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in MCPP-001. Use evidence in /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-084-mcpp-001-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release MCPP-001 from strategy blocked_tasks.
