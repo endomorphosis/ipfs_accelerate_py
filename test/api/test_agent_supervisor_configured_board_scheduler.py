@@ -26,7 +26,6 @@ from cryptography.hazmat.primitives.serialization import (
     NoEncryption,
     PrivateFormat,
 )
-
 from ipfs_accelerate_py import llm_router
 from ipfs_accelerate_py.agent_supervisor.entrypoints import (
     execution_plan as execution_plan_module,
@@ -501,7 +500,7 @@ def _commit_v3_route_authorization(
     route = {
         "route_id": V3_ROUTE_ID,
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -629,7 +628,7 @@ def _seed_v3_task_repo(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_or_auth_unavailable",
@@ -1514,6 +1513,9 @@ def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
     assert "--strict-task-sharding" in common
     assert "--objective-refill-scan" not in common
     assert "--codebase-refill-scan" not in common
+    assert "--no-retry-budget-guardrail" not in common
+    assert "--no-dependency-guardrail" not in common
+    assert "--no-reconciliation-guardrail" not in common
     assert "--no-objective-task-janitor" in common
     assert "--task-source-kind" not in common
     # The configured-board common argv must be accepted by the actual child
@@ -1531,7 +1533,7 @@ def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
             "primary_quota_exhausted"
         ),
-        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.6",
         "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
         "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
@@ -1577,7 +1579,7 @@ def test_ordered_provider_contract_requires_complete_unambiguous_fields(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "max_concurrency": 2,
     }
@@ -1621,7 +1623,7 @@ def test_ordered_provider_contract_seals_fallback_authority(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_or_auth_unavailable",
@@ -1642,7 +1644,7 @@ def test_ordered_provider_contract_accepts_legacy_quota_medium_tuple(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_exhausted",
@@ -1674,7 +1676,7 @@ def test_ordered_provider_contract_accepts_quota_only_high_effort(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_exhausted",
@@ -1730,7 +1732,7 @@ def test_launch_config_overrides_ambient_provider_environment(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_or_auth_unavailable",
@@ -1850,6 +1852,160 @@ def test_v3_materializer_uses_canonical_ready_and_attempt_admissible_set(
         for execution_slice in receipt.slice_manifest.slices
         for task_id in execution_slice.task_ids
     } == {"TEST-B", "TEST-F"}
+
+
+def test_v3_population_scopes_display_attempts_to_canonical_revision(
+    tmp_path: Path,
+) -> None:
+    repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    source_head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    original = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        task_state_snapshots=(),
+    )
+    old_cid = str(original.all_records[0]["canonical_task_cid"])
+    revised_taskboard = (
+        "# Tasks\n\n"
+        + _task_block("TEST-A").rstrip()
+        + "\n- Semantic key: provider-effect-retry-revision@1\n"
+    ).encode("utf-8")
+    revised = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        taskboard_bytes=revised_taskboard,
+        task_state_snapshots=(),
+    )
+    revised_cid = str(revised.all_records[0]["canonical_task_cid"])
+    assert revised_cid != old_cid
+
+    old_revision_state = {
+        "implementation_attempts": {"TEST-A": 3},
+        "implementation_attempts_by_cid": {old_cid: 3},
+        "task_identities": {
+            "TEST-A": {
+                "display_task_id": "TEST-A",
+                "canonical_task_cid": old_cid,
+            }
+        },
+    }
+    same_revision = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        task_state_snapshots=(old_revision_state,),
+    )
+    assert same_revision.attempt_limited_task_ids == ("TEST-A",)
+    assert same_revision.ready_records == ()
+
+    fresh_revision = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        taskboard_bytes=revised_taskboard,
+        task_state_snapshots=(old_revision_state,),
+    )
+    assert fresh_revision.attempt_limited_task_ids == ()
+    assert tuple(item["task_id"] for item in fresh_revision.ready_records) == (
+        "TEST-A",
+    )
+    assert fresh_revision.ready_records[0]["canonical_task_cid"] == revised_cid
+
+    legacy_state = {
+        "implementation_attempts": {"TEST-A": 3},
+        "implementation_attempts_by_cid": {old_cid: 3},
+    }
+    legacy_revision = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        taskboard_bytes=revised_taskboard,
+        task_state_snapshots=(legacy_state,),
+    )
+    assert legacy_revision.attempt_limited_task_ids == ("TEST-A",)
+    assert legacy_revision.ready_records == ()
+
+
+def test_v3_population_rejects_unbacked_mismatched_task_identity(
+    tmp_path: Path,
+) -> None:
+    repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    source_head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    original = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        task_state_snapshots=(),
+    )
+    old_cid = str(original.all_records[0]["canonical_task_cid"])
+    revised_taskboard = (
+        "# Tasks\n\n"
+        + _task_block("TEST-A").rstrip()
+        + "\n- Semantic key: provider-effect-retry-revision@1\n"
+    ).encode("utf-8")
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="mismatched task identity.*canonical attempt ledger",
+    ):
+        scheduler_module._configured_board_task_population(
+            board,
+            source_head=source_head,
+            taskboard_bytes=revised_taskboard,
+            task_state_snapshots=(
+                {
+                    "implementation_attempts": {"TEST-A": 3},
+                    "implementation_attempts_by_cid": {old_cid: 2},
+                    "task_identities": {
+                        "TEST-A": {
+                            "display_task_id": "TEST-A",
+                            "canonical_task_cid": old_cid,
+                        }
+                    },
+                },
+                # A different lane's ledger cannot authenticate this lane's
+                # display-ID-to-revision association.
+                {"implementation_attempts_by_cid": {old_cid: 3}},
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    "task_identities",
+    (
+        [],
+        {"TEST-A": []},
+        {"TEST-A": {"canonical_task_cid": 7}},
+        {
+            "TEST-A": {
+                "display_task_id": "TEST-B",
+                "canonical_task_cid": "task-cid:test-a",
+            }
+        },
+    ),
+)
+def test_v3_population_rejects_malformed_task_identity_projection(
+    tmp_path: Path,
+    task_identities: object,
+) -> None:
+    repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    with pytest.raises(ConfiguredBoardError, match=r"task[_ ]identit"):
+        scheduler_module._configured_board_task_population(
+            board,
+            source_head=_git(repo, "rev-parse", "HEAD").stdout.strip(),
+            task_state_snapshots=(
+                {
+                    "implementation_attempts": {"TEST-A": 1},
+                    "implementation_attempts_by_cid": {},
+                    "task_identities": task_identities,
+                },
+            ),
+        )
 
 
 def test_v3_materializer_rejects_unsafe_or_ambiguous_attempt_state(

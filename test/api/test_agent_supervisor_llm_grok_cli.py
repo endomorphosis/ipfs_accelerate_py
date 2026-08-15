@@ -44,7 +44,7 @@ print(json.dumps({
     config = LlmRouterInvocation(
         repo_root=Path(__file__).resolve().parents[2],
         provider="grok",
-        model_name="grok-4.5",
+        model_name="grok-4.6",
         allow_local_fallback=False,
         timeout_seconds=15,
         timeout_grace_seconds=2,
@@ -88,7 +88,7 @@ def test_grok_agent_runner_forwards_resolved_launch_policy(
             "--grok-bin",
             "/bin/true",
             "--model",
-            "grok-4.5",
+            "grok-4.6",
             "--max-turns",
             "1234",
             "--permission-mode",
@@ -102,7 +102,7 @@ def test_grok_agent_runner_forwards_resolved_launch_policy(
     assert captured["prompt"] == "repair the board"
     cmd = captured["cmd"]
     assert isinstance(cmd, list)
-    assert cmd[cmd.index("--model") + 1] == "grok-4.5"
+    assert cmd[cmd.index("--model") + 1] == "grok-4.6"
     assert cmd[cmd.index("--max-turns") + 1] == "1234"
     assert cmd[cmd.index("--permission-mode") + 1] == "acceptEdits"
     assert cmd[cmd.index("--output-format") + 1] == "streaming-json"

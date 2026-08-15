@@ -87,7 +87,40 @@ class AutoRescueAction(str, Enum):
     NONE = "none"
     MATERIALIZE_AND_STAGE = "materialize_and_stage"
     STAGE_AND_REVALIDATE = "stage_and_revalidate"
+    STRIP_DENIED_HELPERS = "strip_denied_helpers"
     INLINE_PROVIDER_RESCUE = "inline_provider_rescue"
+
+
+# Scratch helpers implementers add because they have no shell. These are
+# never declared outputs; deleting them and revalidating unblocks the
+# candidate without another provider attempt.
+_HELPER_BASENAME_RE = re.compile(
+    r"^(tmp-|_run_|_vgo|DELETE_ME)",
+    re.IGNORECASE,
+)
+
+
+def is_undeclared_helper_path(
+    path: str,
+    expected_outputs: Sequence[str] = (),
+) -> bool:
+    """Return whether ``path`` is an undeclared self-check helper file."""
+
+    normalized = str(path or "").replace("\\", "/").lstrip("./")
+    if not normalized:
+        return False
+    expected = {
+        str(item).replace("\\", "/").lstrip("./")
+        for item in expected_outputs
+        if str(item).strip()
+    }
+    if normalized in expected:
+        return False
+    name = normalized.rsplit("/", 1)[-1]
+    if _HELPER_BASENAME_RE.match(name):
+        return True
+    lowered = name.lower()
+    return "selfcheck" in lowered or lowered.startswith("tmp-")
 
 
 @dataclass(frozen=True)
@@ -102,6 +135,7 @@ class AutoRescuePlan:
     expected_outputs: tuple[str, ...] = ()
     materialize_commands: tuple[str, ...] = ()
     missing_expected_outputs: tuple[str, ...] = ()
+    denied_helper_paths: tuple[str, ...] = ()
     max_provider_rescue_passes: int = 1
 
     def to_record(self) -> dict[str, Any]:
@@ -116,6 +150,7 @@ class AutoRescuePlan:
             "expected_outputs": list(self.expected_outputs),
             "materialize_commands": list(self.materialize_commands),
             "missing_expected_outputs": list(self.missing_expected_outputs),
+            "denied_helper_paths": list(self.denied_helper_paths),
             "max_provider_rescue_passes": int(self.max_provider_rescue_passes),
         }
 
@@ -197,6 +232,7 @@ def plan_automatic_implementation_rescue(
     provider_rescue_passes_used: int = 0,
     stage_rescue_used: bool = False,
     materialize_rescue_used: bool = False,
+    strip_helpers_used: bool = False,
     allow_provider_rescue: bool = True,
     expected_outputs_present_on_disk: bool = False,
     dirty_in_scope_paths: Sequence[str] = (),
@@ -224,6 +260,7 @@ def plan_automatic_implementation_rescue(
         and provider_rescue_passes_used >= 1
         and stage_rescue_used
         and materialize_rescue_used
+        and strip_helpers_used
     ):
         return AutoRescuePlan(
             action=AutoRescueAction.NONE,
@@ -284,6 +321,39 @@ def plan_automatic_implementation_rescue(
     materialize_commands = derive_materialize_commands(
         tuple(dict.fromkeys((*declared_validation_commands, *failed_commands)))
     )
+
+    denied_paths = _as_str_tuple(
+        review.get("denied_paths")
+        or review.get("out_of_scope_paths")
+        or _mapping(result.get("scope_adjudication")).get("denied_paths")
+        or ()
+    )
+    helper_paths = tuple(
+        path
+        for path in denied_paths
+        if is_undeclared_helper_path(path, expected)
+    )
+    if (
+        not strip_helpers_used
+        and helper_paths
+        and set(helper_paths) == set(denied_paths)
+        and expected_outputs_present_on_disk
+        and (
+            "scope_expansion_denied" in reason_codes
+            or "path_outside_scope" in finding_codes
+            or bool(denied_paths)
+        )
+    ):
+        return AutoRescuePlan(
+            action=AutoRescueAction.STRIP_DENIED_HELPERS,
+            reason="strip_undeclared_helper_paths",
+            finding_codes=finding_codes,
+            reason_codes=reason_codes,
+            failed_commands=failed_commands,
+            expected_outputs=expected,
+            missing_expected_outputs=missing,
+            denied_helper_paths=helper_paths,
+        )
 
     if decision and decision not in {"guide_rescue", ""}:
         if decision == "reject" or set(reason_codes) & HARD_DENY_REASON_CODES:

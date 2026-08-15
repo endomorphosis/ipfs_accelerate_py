@@ -11,6 +11,7 @@ from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     DELTA_RETRY_EVIDENCE_ID,
     ContextCompiler,
     ContextDeltaError,
+    ContextDeltaResult,
     ContextDeltaReceipt,
     ChangedTreeContextError,
     ContentAddressedContextStore,
@@ -848,6 +849,20 @@ def test_implementation_daemon_dispatches_delta_and_reuses_diagnostic(
         restarted._last_implementation_retry.delta_result.parent_capsule,
         restarted._last_implementation_retry.capsule.delta_capsule,
     ) == restarted._last_implementation_retry.reconstructed_capsule
+    retry_context = restarted._last_implementation_context
+    assert isinstance(retry_context, ContextDeltaResult)
+    assert (
+        restarted._scoped_provider_context_capsule(retry_context)
+        == retry_context.reconstructed_capsule
+    )
+    assert (
+        restarted._scoped_provider_context_capsule(retry_context).scope
+        == retry_context.reconstructed_capsule.scope
+    )
+    assert (
+        restarted._scoped_provider_context_capsule(retry_context).budget.content_id
+        == retry_context.reconstructed_capsule.budget.content_id
+    )
 
     reordered_failure = dict(reversed(tuple(failure.items())))
     assert tuple(reordered_failure) != tuple(failure)

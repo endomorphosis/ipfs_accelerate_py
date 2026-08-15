@@ -7,7 +7,7 @@ runtime model drift with ambient package resolution.
 
 from __future__ import annotations
 
-DEFAULT_GROK_PRIMARY_MODEL = "grok-4.5"
+DEFAULT_GROK_PRIMARY_MODEL = "grok-4.6"
 DEFAULT_CODEX_MODEL = "gpt-5.6-sol"
 DEFAULT_CODEX_PROVIDER = "codex_cli"
 

@@ -989,6 +989,13 @@ def run_validation_command(
             **result,
         }
     try:
+        from .validation_runtime import apply_sealed_node_toolchain
+
+        child_environment = apply_sealed_node_toolchain(
+            dict(environment),
+            workspace_path=workspace_path,
+            command=spec.command,
+        )
         completed = subprocess.run(
             validation_shell_command(spec.command),
             cwd=workspace_path,
@@ -998,7 +1005,7 @@ def run_validation_command(
             stderr=subprocess.STDOUT,
             timeout=timeout_seconds,
             check=False,
-            env=dict(environment),
+            env=child_environment,
         )
         return {
             "command": spec.command,

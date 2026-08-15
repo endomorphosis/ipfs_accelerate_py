@@ -112,7 +112,7 @@ ensure_provider_command_bindings(
     strict=False,
 )
 
-DEFAULT_GROK_MODEL = "grok-4.5"
+DEFAULT_GROK_MODEL = "grok-4.6"
 # Grok CLI validates --max-turns as 1..=4294967295 (u32::MAX).
 DEFAULT_GROK_MAX_TURNS = 4_294_967_295
 GROK_QUOTA_EXHAUSTED_EXIT_CODE = 86
@@ -4209,12 +4209,12 @@ def _independently_verify_grok_quota(
         _robust_remove_runner_temp_tree(verifier_root)
 
 
-def _run_typed_grok_preflight(
+def _run_typed_grok_preflight_once(
     *,
     grok_bin: str,
     base_env: dict[str, str],
     nonce: str,
-) -> tuple[int, dict[str, object], bool]:
+) -> tuple[int, dict[str, object], bool, str]:
     """Run the fixed no-tools probe and return its runner-authored receipt.
 
     The probe has no task prompt or task workspace and runs before the primary
@@ -4277,7 +4277,7 @@ def _run_typed_grok_preflight(
         )
         )
         if returncode == 0:
-            return 0, {}, stderr_overflow
+            return 0, {}, stderr_overflow, ""
         receipt_evidence = (
             "isolated Grok quota probe stderr exceeded the trusted evidence "
             f"limit ({stderr_size} bytes)"
@@ -4299,8 +4299,8 @@ def _run_typed_grok_preflight(
             model=DEFAULT_GROK_MODEL,
             returncode=returncode,
         ):
-            return returncode, {}, stderr_overflow
-        return returncode, receipt, stderr_overflow
+            return returncode, {}, stderr_overflow, receipt_evidence
+        return returncode, receipt, stderr_overflow, receipt_evidence
     finally:
         if isolated_home is not None:
             _robust_remove_runner_temp_tree(Path(isolated_home.name))
@@ -4308,6 +4308,41 @@ def _run_typed_grok_preflight(
         _robust_remove_runner_temp_tree(probe_root)
 
 
+def _run_typed_grok_preflight(
+    *,
+    grok_bin: str,
+    base_env: dict[str, str],
+    nonce: str,
+) -> tuple[int, dict[str, object], bool]:
+    """Run the typed probe, retrying only its exact transient turn artifact."""
+
+    from ipfs_accelerate_py.llm_router import (
+        retryable_agent_implementation_preflight_failure,
+    )
+
+    returncode, receipt, overflow, evidence = _run_typed_grok_preflight_once(
+        grok_bin=grok_bin,
+        base_env=base_env,
+        nonce=nonce,
+    )
+    if returncode == 0 or not receipt:
+        return returncode, receipt, overflow
+    if not retryable_agent_implementation_preflight_failure(
+        evidence,
+        receipt,
+        nonce=nonce,
+        model=DEFAULT_GROK_MODEL,
+        probe_returncode=returncode,
+    ):
+        return returncode, receipt, overflow
+    retry_returncode, retry_receipt, retry_overflow, _retry_evidence = (
+        _run_typed_grok_preflight_once(
+            grok_bin=grok_bin,
+            base_env=base_env,
+            nonce=nonce,
+        )
+    )
+    return retry_returncode, retry_receipt, retry_overflow
 
 
 def _stream_grok_process(
@@ -5131,7 +5166,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         )
     if codex_fallback_command and model != DEFAULT_GROK_MODEL:
         print(
-            "Default Grok/Codex route requires primary model grok-4.5",
+            "Default Grok/Codex route requires primary model grok-4.6",
             file=sys.stderr,
         )
         return 2
@@ -5159,6 +5194,23 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             or "bypassPermissions"
         )
     )
+
+    prompt: str | None = None
+    if (
+        codex_fallback_command
+        and route_plan.invocation_binding is not None
+    ):
+        # The scoped route signs the task prompt. Read and verify it before
+        # even the supposedly tool-free primary preflight so no provider call
+        # can be made under a prompt authority that the runner did not receive.
+        prompt = sys.stdin.read()
+        if _agent_prompt_cid(prompt) != route_plan.invocation_binding.prompt_cid:
+            print(
+                "Signed invocation does not match the task prompt; provider "
+                "dispatch is forbidden",
+                file=sys.stderr,
+            )
+            return 2
 
     workspace_baseline = ""
     preflight_fallback_reason = ""
@@ -5886,7 +5938,8 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 else 127
             )
 
-    prompt = sys.stdin.read()
+    if prompt is None:
+        prompt = sys.stdin.read()
     if not prompt.strip():
         print("empty implementation prompt on stdin", file=sys.stderr)
         return 2
@@ -6045,6 +6098,14 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     _SEALED_GROK_DISALLOWED_TOOLS,
                 ]
             )
+            if codex_fallback_command:
+                try:
+                    output_index = cmd.index("--output-format") + 1
+                    cmd[output_index] = "streaming-json"
+                except (ValueError, IndexError) as exc:
+                    raise LLMRouterError(
+                        "Grok agent command has no output-format slot"
+                    ) from exc
             child_env = build_grok_cli_env(
                 base_env=base_env,
                 isolate_alternate_providers=True,
@@ -6134,6 +6195,12 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 # runner-owned config. Only explicitly named sanitized
                 # variables cross into Grok via ``--env NAME`` arguments.
                 grok_launch_env = _docker_control_env(env)
+                cmd = _create_grok_container_and_build_start_command(
+                    cmd,
+                    workspace=workspace,
+                    docker_environment=grok_launch_env,
+                    docker_lease=docker_lease,
+                )
         except (
             LLMRouterError,
             ProviderCommandEnvironmentError,
@@ -6151,8 +6218,9 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         # path so Terra may run only after verified typed provider evidence.
         if not codex_fallback_command:
             child_returncode, error_bytes, error_size, error_overflow = (
-                _run_grok_with_bounded_stderr(cmd, env=env)
+                _run_grok_with_bounded_stderr(cmd, env=grok_launch_env)
             )
+            docker_run_finished = True
             if error_bytes:
                 sys.stderr.buffer.write(error_bytes)
                 if not error_bytes.endswith(b"\n"):
@@ -6195,8 +6263,6 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 else child_returncode
             )
 
-        output_index = cmd.index("--output-format") + 1
-        cmd[output_index] = "streaming-json"
         try:
             if docker_lease is not None:
                 primary_returncode = (

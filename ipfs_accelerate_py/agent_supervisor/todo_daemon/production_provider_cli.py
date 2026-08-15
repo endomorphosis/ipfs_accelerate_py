@@ -69,7 +69,7 @@ PRODUCTION_LANDED_TASK_GUARD_SCHEMA: Final = (
 PRODUCTION_CLI_POLICY_NAME: Final = (
     "grok-implement-codex-independent-review"
 )
-DEFAULT_GROK_MODEL: Final = "grok-4.5"
+DEFAULT_GROK_MODEL: Final = "grok-4.6"
 DEFAULT_CODEX_MODEL: Final = "gpt-5.6-terra"
 DEFAULT_CODEX_REVIEW_REASONING_EFFORT: Final = "medium"
 # Default implement context must cover full declared effect files so admitted

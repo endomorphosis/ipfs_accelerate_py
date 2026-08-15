@@ -103,7 +103,7 @@ EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE: Final = {
         "grok": {
             "role": "grok_audit",
             "provider": "grok_cli",
-            "model": "grok-4.5",
+            "model": "grok-4.6",
             "fallback_allowed": False,
             "self_review_allowed": False,
         },
@@ -411,7 +411,7 @@ def _parse_provider(value: Any, expected_role: str) -> LegacyProviderPolicy:
         raise ValueError("legacy effective model is required")
     reasoning_effort = str(value.get("reasoning_effort") or "").strip()
     if expected_role == "grok_audit":
-        if provider != "grok_cli" or model != "grok-4.5":
+        if provider != "grok_cli" or model != "grok-4.6":
             raise ValueError("legacy Grok reviewer binding is not exact")
         if reasoning_effort:
             raise ValueError("legacy Grok reviewer reasoning override is forbidden")

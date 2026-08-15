@@ -13000,7 +13000,7 @@ def _seal_ordered_grok_codex_route(monkeypatch) -> None:
     )
     monkeypatch.setenv(
         implementation_daemon_module._GROK_MODEL_ENV,
-        "grok-4.5",
+        "grok-4.6",
     )
     monkeypatch.setenv(
         implementation_daemon_module._CODEX_MODEL_ENV,
@@ -13078,7 +13078,7 @@ def _issue_ordered_grok_quota_authority(
     runner_receipt = {
         "schema": implementation_daemon_module.GROK_QUOTA_RECEIPT_SCHEMA,
         "provider": "grok_cli",
-        "model": "grok-4.5",
+        "model": "grok-4.6",
         "failure_kind": "quota_or_balance_exhausted",
         "message": "Grok Build usage balance exhausted",
         "raw_error_sha256": hashlib.sha256(raw_error).hexdigest(),
@@ -13169,7 +13169,7 @@ def test_ordered_grok_route_uses_reviewed_primary_model_and_labels_fallback(
     _seal_ordered_grok_codex_route(monkeypatch)
     monkeypatch.setenv(
         implementation_daemon_module._GROK_MODEL_ENV,
-        "grok-4.5",
+        "grok-4.6",
     )
     monkeypatch.setenv(
         implementation_daemon_module._CODEX_MODEL_ENV,
@@ -13212,7 +13212,7 @@ def test_ordered_grok_route_uses_reviewed_primary_model_and_labels_fallback(
 
     assert command[0] == sys.executable
     assert command[1].endswith("grok_cli_runner.py")
-    assert command[command.index("--model") + 1] == "grok-4.5"
+    assert command[command.index("--model") + 1] == "grok-4.6"
     assert daemon._current_implementation_provider_labels() == {
         "grok",
         "xai",
@@ -13262,7 +13262,7 @@ def test_ordered_grok_route_rejects_inexact_policy_fields(
     assert daemon._ordered_grok_codex_route_configured() is False
     with pytest.raises(
         implementation_daemon_module.ImplementationRetryDeferred,
-        match="requires exact grok_cli/grok-4.5",
+        match="requires exact grok_cli/grok-4.6",
     ):
         daemon._build_implementation_command(repo)
 
@@ -13285,7 +13285,7 @@ def test_ordered_grok_route_fails_closed_when_primary_is_unavailable(
     _seal_ordered_grok_codex_route(monkeypatch)
     monkeypatch.setenv(
         implementation_daemon_module._GROK_MODEL_ENV,
-        "grok-4.5",
+        "grok-4.6",
     )
     monkeypatch.setenv(
         implementation_daemon_module._CODEX_MODEL_ENV,
@@ -13580,7 +13580,7 @@ def test_ordered_codex_fallback_requires_live_exact_daemon_authority(
     )
 
     authority = result["grok_quota_fallback_authority"]
-    assert authority["model_id"] == "grok-4.5"
+    assert authority["model_id"] == "grok-4.6"
     assert authority["command"] == failed_grok_command
     assert authority["command_cid"]
     assert authority["implementation_started_event_id"]
@@ -14179,7 +14179,7 @@ def test_task_declared_grok_partial_ordered_route_fails_closed(
 
     with pytest.raises(
         implementation_daemon_module.ImplementationRetryDeferred,
-        match="requires exact grok_cli/grok-4.5",
+        match="requires exact grok_cli/grok-4.6",
     ):
         daemon._build_implementation_command(repo, task=task)
 
@@ -17075,12 +17075,12 @@ def test_supervisor_worker_watchdog_recognizes_codex_exec_with_global_options(
     "cmdline",
     [
         (
-            "/home/example/.local/bin/grok --model grok-4.5 "
+            "/home/example/.local/bin/grok --model grok-4.6 "
             "--prompt-file /dev/stdin --output-format plain "
             "--permission-mode bypassPermissions --no-plan --no-memory"
         ),
         (
-            "node /home/example/.local/bin/grok --model grok-4.5 "
+            "node /home/example/.local/bin/grok --model grok-4.6 "
             "--prompt-file /dev/stdin"
         ),
     ],
@@ -17678,11 +17678,27 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     )
     monkeypatch.setattr(
         daemon,
+        "_verify_post_validation_candidate_binding",
+        lambda *_args, validation_result, **_kwargs: dict(
+            validation_result
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
         "_restore_and_verify_post_validation_candidate",
         lambda *_args, validation_result, **_kwargs: (
             validation_order.append("restore_then_bind")
             or dict(validation_result)
         ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validated_candidate_handoff_guard",
+        lambda *_args, phase, **_kwargs: {
+            "allowed": True,
+            "phase": phase,
+            "reasons": [],
+        },
     )
     monkeypatch.setattr(
         daemon,
@@ -17834,6 +17850,15 @@ def test_integrated_merge_reuses_durable_completion_with_float_validation(
     )
     monkeypatch.setattr(
         daemon,
+        "_validated_candidate_handoff_guard",
+        lambda *_args, phase, **_kwargs: {
+            "allowed": True,
+            "phase": phase,
+            "reasons": [],
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
         "_commit_worktree_changes",
         lambda *_args, **_kwargs: {
             "committed": True,
@@ -17972,6 +17997,13 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
     )
     monkeypatch.setattr(
         daemon,
+        "_verify_post_validation_candidate_binding",
+        lambda *_args, validation_result, **_kwargs: dict(
+            validation_result
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
         "_implementation_protected_path_violation",
         lambda **_kwargs: (
             validation_order.append("protected_check") or {}
@@ -17991,6 +18023,15 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
             validation_order.append("restore_then_bind")
             or dict(validation_result)
         ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validated_candidate_handoff_guard",
+        lambda *_args, phase, **_kwargs: {
+            "allowed": True,
+            "phase": phase,
+            "reasons": [],
+        },
     )
     monkeypatch.setattr(
         daemon,

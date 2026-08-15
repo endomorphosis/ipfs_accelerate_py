@@ -1005,8 +1005,8 @@ def test_ordinary_shell_arguments_do_not_change_inferred_repository_root(
     assert validation_command_repository_root(command) == ""
 
 
-def test_cd_parent_return_closeout_chain_expands_into_two_safe_commands() -> None:
-    """Monorepo closeout: package suite then root board validator."""
+def test_cd_parent_return_closeout_chain_is_not_reassociated() -> None:
+    """A multi-root ``&&`` program remains one fail-closed command."""
 
     command = (
         "cd ipfs_kit_py && python -m pytest -q "
@@ -1014,25 +1014,15 @@ def test_cd_parent_return_closeout_chain_expands_into_two_safe_commands() -> Non
         "&& cd .. && python scripts/validate_ipfs_kit_runtime_readiness_board.py "
         "--check-all"
     )
-    # The combined form is still root-unsafe until expanded.
     assert validation_command_repository_root(command) is None
-    expanded = expand_cd_parent_return_validation_commands(command)
-    assert expanded == [
-        (
-            "cd ipfs_kit_py && python -m pytest -q "
-            "tests/runtime_readiness/release/test_joined_release_receipt.py"
-        ),
-        "python scripts/validate_ipfs_kit_runtime_readiness_board.py --check-all",
-    ]
-    assert validation_command_repository_root(expanded[0]) == "ipfs_kit_py"
-    assert validation_command_repository_root(expanded[1]) == ""
-    assert split_validation_commands(command) == expanded
+    assert expand_cd_parent_return_validation_commands(command) == [command]
+    assert split_validation_commands(command) == [command]
 
 
-def test_cd_parent_return_closeout_chain_passes_dependency_preflight(
+def test_cd_parent_return_closeout_chain_fails_dependency_preflight(
     tmp_path: Path,
 ) -> None:
-    """Expanded closeout chains must not false-positive as dependency drift."""
+    """Legacy multi-root chains require explicit atomic board commands."""
 
     project = tmp_path / "ipfs_kit_py"
     project.mkdir()
@@ -1061,10 +1051,54 @@ def test_cd_parent_return_closeout_chain_passes_dependency_preflight(
             "probe_source_sha256": "a" * 64,
         },
     )
-    assert receipt["invalid_commands"] == []
-    assert "ipfs_kit_py" in receipt["validation_roots"]
-    # Root-relative board script is the empty-string root.
-    assert "" in receipt["validation_roots"]
+    assert receipt["passed"] is False
+    assert receipt["reason"] == "project_dependency_contract_collection_failed"
+    assert receipt["invalid_commands"][0]["reason"] == (
+        "validation_repository_root_is_unsafe"
+    )
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        (
+            "PYTHONDONTWRITEBYTECODE=1 python3 -B "
+            "scripts/ops/verified_gui_optimizer_vgo001_oracle.py --check-all "
+            "; cd external/ipfs_datasets && python3 -m pytest "
+            "tests/unit/logic/gui_optimizer/test_models.py -q",
+            [
+                "PYTHONDONTWRITEBYTECODE=1 python3 -B "
+                "scripts/ops/verified_gui_optimizer_vgo001_oracle.py --check-all",
+                "cd external/ipfs_datasets && python3 -m pytest "
+                "tests/unit/logic/gui_optimizer/test_models.py -q",
+            ],
+        ),
+        (
+            "PYTHONDONTWRITEBYTECODE=1 python3 -B "
+            "scripts/ops/verified_gui_optimizer_vgo009_oracle.py --check-all "
+            "; cd external/ipfs_accelerate && PYTHONDONTWRITEBYTECODE=1 "
+            "PYTHONPATH=.:../ipfs_datasets python3 -m pytest "
+            "test/api/test_gui_optimizer_authority.py -q",
+            [
+                "PYTHONDONTWRITEBYTECODE=1 python3 -B "
+                "scripts/ops/verified_gui_optimizer_vgo009_oracle.py --check-all",
+                "cd external/ipfs_accelerate && PYTHONDONTWRITEBYTECODE=1 "
+                "PYTHONPATH=.:../ipfs_datasets python3 -m pytest "
+                "test/api/test_gui_optimizer_authority.py -q",
+            ],
+        ),
+    ],
+)
+def test_atomic_multi_root_validation_commands_have_exact_safe_roots(
+    command: str,
+    expected: list[str],
+) -> None:
+    assert split_validation_commands(command) == expected
+    assert validation_command_repository_root(expected[0]) == ""
+    assert validation_command_repository_root(expected[1]) in {
+        "external/ipfs_accelerate",
+        "external/ipfs_datasets",
+    }
 
 
 @pytest.mark.parametrize(
@@ -1081,6 +1115,51 @@ def test_cd_parent_return_closeout_chain_passes_dependency_preflight(
 def test_unsafe_multi_cd_chains_are_not_expanded(command: str) -> None:
     expanded = expand_cd_parent_return_validation_commands(command)
     assert expanded == [command]
+    assert validation_command_repository_root(command) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'cd child && test -n "$VGO_SPLIT_SENTINEL" && cd .. && true',
+        "cd child && echo '~' && cd .. && true",
+        'cd child && echo "*" && cd .. && true',
+        "cd child && echo `printf true` && cd .. && true",
+        "cd child && ! true && cd .. && true",
+        "cd child && true # ignored && cd .. && false",
+        "cd child && export GIT_DIR=missing && cd .. && git status",
+        "cd child && PATH=/missing && cd .. && git status",
+        "cd child && unset PATH && cd .. && git status",
+        "cd child && set -e && cd .. && false",
+        "cd child && printf -v PATH /missing && cd .. && git status",
+        "cd child && exec true && cd .. && false",
+        "cd child && exit 0 && cd .. && false",
+    ],
+)
+def test_noncanonical_parent_return_chains_are_not_expanded(command: str) -> None:
+    assert expand_cd_parent_return_validation_commands(command) == [command]
+    assert validation_command_repository_root(command) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "true && cd child && true ;; true",
+        "true && cd child && true ; ; true",
+        "true && cd child && true ;& true",
+        "true && cd child && true ;| true",
+        "; true && cd child && true",
+        ";; true && cd child && true",
+        ";& true && cd child && true",
+        ";| true && cd child && true",
+        "true && \\\ncd child && true",
+        "cd child && true && \\\ncd .. && true",
+    ],
+)
+def test_public_splitter_preserves_malformed_or_continued_shell_chains(
+    command: str,
+) -> None:
+    assert split_validation_commands(command) == [command]
     assert validation_command_repository_root(command) is None
 
 
