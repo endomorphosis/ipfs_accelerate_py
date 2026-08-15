@@ -528,7 +528,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-061 Keep pure-data imports side-effect free
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: api
