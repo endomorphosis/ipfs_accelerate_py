@@ -825,7 +825,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-142 Real local provider smoke path
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P1
 - Track: tests
