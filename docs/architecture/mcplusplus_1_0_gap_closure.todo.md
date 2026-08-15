@@ -491,7 +491,7 @@ overlays. Never force-push.
 
 ## MCPP-015 Record ADR for conformance levels
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
