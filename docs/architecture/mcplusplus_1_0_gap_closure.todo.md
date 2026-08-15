@@ -677,7 +677,7 @@ overlays. Never force-push.
 
 ## MCPP-021 Specify and test the current MCP 2026-07-28 binding
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
