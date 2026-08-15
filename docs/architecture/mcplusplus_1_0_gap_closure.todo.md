@@ -84,7 +84,7 @@ overlays. Never force-push.
 
 ## MCPP-002 Baseline Mcp-Plus-Plus Python tests and coverage
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
