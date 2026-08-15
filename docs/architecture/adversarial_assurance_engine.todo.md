@@ -1254,7 +1254,7 @@ W20 AAE-063
 
 ## AAE-045 Orchestrate bounded counterexample minimization and survivor diagnosis
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
