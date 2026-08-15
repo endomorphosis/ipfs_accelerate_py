@@ -1443,7 +1443,7 @@ W20 AAE-063
 
 ## AAE-052 Implement the required semantic-compression mutation campaign
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
