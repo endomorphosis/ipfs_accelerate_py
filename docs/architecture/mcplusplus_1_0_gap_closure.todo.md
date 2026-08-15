@@ -332,7 +332,7 @@ overlays. Never force-push.
 
 ## MCPP-010 Verify official MCP 2026-07-28 and A2A extension conventions from primary sources
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
