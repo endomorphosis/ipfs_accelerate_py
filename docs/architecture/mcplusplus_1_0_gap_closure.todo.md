@@ -146,8 +146,9 @@ overlays. Never force-push.
 
 ## MCPP-004 Baseline Mcp-Plus-Plus Go tests
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
+- Completion evidence: docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-go.json; go test ./... exit 0 after hermetic /usr/local/bin/go wrapper; existing coverage.html not treated as current evidence
 - Is schedulable: true
 - Review only: false
 - Priority: P0
@@ -208,8 +209,9 @@ overlays. Never force-push.
 
 ## MCPP-006 Baseline ipfs_accelerate MCP++ runtime tests
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
+- Completion evidence: docs/reports/mcplusplus-1.0-gap-closure/baseline/ipfs-accelerate-mcplusplus.json; official pytest --maxfail=1 fails on inherited test/api collection debt; inventory 239 passed / 3 failed / 63 collection errors; operator dirty files not discarded
 - Is schedulable: true
 - Review only: false
 - Priority: P0
@@ -239,8 +241,9 @@ overlays. Never force-push.
 
 ## MCPP-007 Baseline ipfs_datasets MCP++ runtime tests
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
+- Completion evidence: docs/reports/mcplusplus-1.0-gap-closure/baseline/ipfs-datasets-mcplusplus.json; declared pytest -k mcplusplus selects 0 of 116 tests (exit 5); untracked MCP++ candidates not promoted
 - Is schedulable: true
 - Review only: false
 - Priority: P0
@@ -270,8 +273,9 @@ overlays. Never force-push.
 
 ## MCPP-008 Baseline ipfs_kit MCP++ and UCAN admission tests
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
+- Completion evidence: docs/reports/mcplusplus-1.0-gap-closure/baseline/ipfs-kit-mcplusplus.json; official pytest --maxfail=1 fails on inherited duplicate-basename collection; live SHA 6196017c recorded; not auto-fast-forwarded
 - Is schedulable: true
 - Review only: false
 - Priority: P0
@@ -2644,8 +2648,10 @@ overlays. Never force-push.
 
 ## MCPP-085 Resolve validation retry-budget failure for MCPP-007
 
-- Status: todo
+- Status: completed
 - Completion: manual
+- Completion evidence: Honest datasets baseline receipt landed; declared gate remains exit 5 (empty -k selection); MCPP-007 released from strategy blocked_tasks
+- Canonical board task: false
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-001
@@ -2658,6 +2664,7 @@ overlays. Never force-push.
 
 - Status: completed
 - Completion: manual
+- Canonical board task: false
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-001
@@ -2668,8 +2675,10 @@ overlays. Never force-push.
 
 ## MCPP-087 Resolve validation retry-budget failure for MCPP-006
 
-- Status: todo
+- Status: completed
 - Completion: manual
+- Completion evidence: Honest accelerate baseline receipt landed; official gate remains inherited test/api collection failure; 3 current-tree MCP++ assertion failures recorded, not hidden
+- Canonical board task: false
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-001
@@ -2680,8 +2689,10 @@ overlays. Never force-push.
 
 ## MCPP-088 Resolve validation retry-budget failure for MCPP-004
 
-- Status: todo
+- Status: completed
 - Completion: manual
+- Completion evidence: Honest Go baseline receipt landed; /usr/local/bin/go hermetic wrapper makes declared go test ./... exit 0; coverage.html not treated as current evidence
+- Canonical board task: false
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-001
@@ -2694,6 +2705,7 @@ overlays. Never force-push.
 
 - Status: completed
 - Completion: manual
+- Canonical board task: false
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-001
@@ -2704,8 +2716,10 @@ overlays. Never force-push.
 
 ## MCPP-090 Resolve validation retry-budget failure for MCPP-008
 
-- Status: todo
+- Status: completed
 - Completion: manual
+- Completion evidence: Honest kit baseline receipt landed; official gate remains inherited collection mismatch; MCPP-008 released from strategy blocked_tasks
+- Canonical board task: false
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-001

@@ -231,7 +231,8 @@ def validate() -> list[str]:
 
     task_by_id = {task.task_id: task for task in tasks}
     adjacency: dict[str, list[str]] = defaultdict(list)
-    incoming: dict[str, int] = {task_id: 0 for task_id in TASK_IDS}
+    incoming: dict[str, int] = defaultdict(int)
+    incoming.update({task_id: 0 for task_id in TASK_IDS})
     for task in tasks:
         metadata = {key.lower(): value for key, value in task.metadata.items()}
         missing = [field for field in REQUIRED_TASK_FIELDS if field not in metadata]
