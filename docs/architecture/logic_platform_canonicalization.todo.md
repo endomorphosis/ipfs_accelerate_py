@@ -968,6 +968,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Priority: P1
 - Track: ops
 - Depends on: LPC-040
+- Goal id: LPC-G040
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/intent_uiux_adapters.md
 - Validation: test -f /home/barberb/lift_coding/.worktrees/ipfs_accelerate-lpc/data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-173-lpc-043-retry-budget.md
 - Parallel lane: lpc-domain-intent
@@ -989,6 +990,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Priority: P1
 - Track: ops
 - Depends on: LPC-052, LPC-090, LPC-100
+- Goal id: LPC-G110
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/supervisor_client.md
 - Validation: test -f /home/barberb/lift_coding/.worktrees/ipfs_accelerate-lpc/data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-174-lpc-110-retry-budget.md
 - Parallel lane: lpc-supervisor-client
@@ -1009,6 +1011,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Priority: P1
 - Track: ops
 - Depends on: LPC-062, LPC-110
+- Goal id: LPC-G130
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/operation_catalog.md
 - Validation: test -f /home/barberb/lift_coding/.worktrees/ipfs_accelerate-lpc/data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-175-lpc-130-retry-budget.md
 - Parallel lane: lpc-parity
