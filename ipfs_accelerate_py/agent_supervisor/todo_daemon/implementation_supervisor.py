@@ -18422,6 +18422,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="portal",
         help="State file prefix inside --state-dir",
     )
+    parser.add_argument(
+        "--task-source-kind",
+        choices=("legacy-markdown", "markdown", "duckdb"),
+        default="legacy-markdown",
+        help="Storage contract forwarded from the multi-supervisor runner.",
+    )
+    parser.add_argument(
+        "--authority-mode",
+        default="legacy_markdown",
+        help="State authority mode forwarded from the multi-supervisor runner.",
+    )
+    parser.add_argument(
+        "--state-failover-policy",
+        default="fail_closed",
+        help="State failover policy forwarded from the multi-supervisor runner.",
+    )
+    parser.add_argument(
+        "--explicit-legacy-task-source",
+        action="store_true",
+        help="Acknowledge an explicit legacy markdown task source.",
+    )
     implement_group = parser.add_mutually_exclusive_group()
     implement_group.add_argument(
         "--implement",
