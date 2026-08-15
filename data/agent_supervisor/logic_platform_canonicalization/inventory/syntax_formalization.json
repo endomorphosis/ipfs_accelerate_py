@@ -1,0 +1,563 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/logic-platform-inventory@1",
+  "interface": "LogicPlatformInventory@1",
+  "task_id": "LPC-004",
+  "goal_id": "LPC-G010",
+  "slice": "syntax_formalization",
+  "title": "Syntax, formalization, and domain-slice generations",
+  "observed_at": "2026-08-15",
+  "source_revisions": {
+    "datasets_reviewed_baseline": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "datasets_implementation_authority": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "accelerate_reviewed_baseline": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+    "accelerate_implementation_authority": "ea11293bb996f052d620eae989f5377a956764b1",
+    "implementation_authority_rule": "current heads are implementation authority; reviewed baselines are comparison anchors only"
+  },
+  "source_availability": {
+    "datasets_external_checkout": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "available": false,
+      "note": "Plan-named datasets authority path is not present in this worktree environment."
+    },
+    "datasets_submodule": {
+      "path": "ipfs_datasets_py",
+      "available": false,
+      "note": "Submodule directory is empty; worktree_submodule_paths is empty in the LPC scheduler config."
+    },
+    "classification_method": "Plan contracts, LPC predicted paths, accelerate import sites, and LFV/FVT evidence paths. Items that require on-disk type definitions are flagged with source_read=false."
+  },
+  "classification_vocabulary": [
+    "canonical",
+    "canonical_component",
+    "compatibility_facade",
+    "legacy",
+    "experimental",
+    "declaration_only",
+    "generated",
+    "duplicate",
+    "obsolete",
+    "unresolved"
+  ],
+  "inventory_categories_in_scope": [
+    "ast_or_typed_expression",
+    "formalization_artifact",
+    "domain_logic_slice"
+  ],
+  "canonical_pipeline": [
+    "SourceDocument",
+    "syntax_core parse artifact",
+    "TypedExpression",
+    "ElaborationArtifact",
+    "FormalizationArtifact@3",
+    "DomainLogicSlice@2",
+    "LogicObligation@2",
+    "BackendRequest@2"
+  ],
+  "generation_summary": {
+    "ast_or_typed_expression": {
+      "canonical_write_path_stages": [
+        "SourceDocument",
+        "syntax_core.parse_artifact",
+        "TypedExpression",
+        "ElaborationArtifact"
+      ],
+      "named_generations": [],
+      "note": "syntax_core types are not versioned with @N in plan text; they are the typed front of the new-write path."
+    },
+    "formalization_artifact": {
+      "canonical_generation": "FormalizationArtifact@3",
+      "canonical_module": "ipfs_datasets_py/logic/formalization/artifacts_v3.py",
+      "live_legacy_import": "ipfs_datasets_py.logic.formalization.compiler.FormalizationArtifact",
+      "pre_v3_generations": [
+        {
+          "generation": "FormalizationArtifact@1",
+          "classification": "unresolved",
+          "note": "Implied by artifacts_v3 naming; no distinct @1 module path observed in accelerate imports or LPC board predicted files."
+        },
+        {
+          "generation": "FormalizationArtifact@2",
+          "classification": "unresolved",
+          "note": "Implied by artifacts_v3 naming; no distinct @2 module path observed in accelerate imports or LPC board predicted files."
+        }
+      ]
+    },
+    "domain_logic_slice": {
+      "canonical_generation": "DomainLogicSlice@2",
+      "domain_adapters": [
+        "legal_ir",
+        "security_ir",
+        "software_verification",
+        "crypto_ir",
+        "intent_ir",
+        "ui_ux_ir"
+      ],
+      "pre_v2_generations": [
+        {
+          "generation": "DomainLogicSlice@1",
+          "classification": "unresolved",
+          "note": "Implied by DomainLogicSlice@2 naming; no distinct @1 module path observed in accelerate imports or LPC board predicted files."
+        }
+      ]
+    }
+  },
+  "items": [
+    {
+      "id": "ast:source-document",
+      "name": "SourceDocument",
+      "qualified_name": "ipfs_datasets_py.logic.syntax_core.SourceDocument",
+      "path": "ipfs_datasets_py/logic/syntax_core",
+      "category": "ast_or_typed_expression",
+      "classification": "canonical_component",
+      "generation": null,
+      "pipeline_stage": "SourceDocument",
+      "role": "Source-bound document identity entering the typed new-write path.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#canonical-pipeline",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G040"
+      ],
+      "notes": "Distinct from supervisor program_ast_adapters.SourceDocument, which is an analysis AST surface and is not the logic formalization SourceDocument."
+    },
+    {
+      "id": "ast:syntax-core-package",
+      "name": "syntax_core",
+      "qualified_name": "ipfs_datasets_py.logic.syntax_core",
+      "path": "ipfs_datasets_py/logic/syntax_core",
+      "category": "ast_or_typed_expression",
+      "classification": "canonical",
+      "generation": null,
+      "pipeline_stage": "syntax_core parse artifact",
+      "role": "Canonical parse/AST package for logic expressions on the typed new-write path.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#preserve-existing-strong-contracts",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-004",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G040"
+      ],
+      "notes": "LPC-004 conflict policy treats syntax_core as read-only production source. Unit tests under tests/unit/logic/syntax_core are the plan validation surface for LPC-G040."
+    },
+    {
+      "id": "ast:syntax-core-parse-artifact",
+      "name": "syntax_core parse artifact",
+      "qualified_name": "ipfs_datasets_py.logic.syntax_core.parse_artifact",
+      "path": "ipfs_datasets_py/logic/syntax_core",
+      "category": "ast_or_typed_expression",
+      "classification": "canonical_component",
+      "generation": null,
+      "pipeline_stage": "syntax_core parse artifact",
+      "role": "Parse output binding source spans and raw syntax before typing.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#canonical-pipeline"
+      ],
+      "notes": "Exact class name not readable in this worktree; inventory entry is the plan pipeline stage."
+    },
+    {
+      "id": "ast:typed-expression",
+      "name": "TypedExpression",
+      "qualified_name": "ipfs_datasets_py.logic.syntax_core.TypedExpression",
+      "path": "ipfs_datasets_py/logic/syntax_core",
+      "category": "ast_or_typed_expression",
+      "classification": "canonical",
+      "generation": null,
+      "pipeline_stage": "TypedExpression",
+      "role": "Typed expression identity required on every new formalization write.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#canonical-pipeline",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G040",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-040"
+      ],
+      "notes": "LPC-040 acceptance requires new writes to bind expression identity together with source, digest, spans, family/profile/property/view/notation, features, assumptions, unsupported extensions, status, and content identity."
+    },
+    {
+      "id": "ast:elaboration-artifact",
+      "name": "ElaborationArtifact",
+      "qualified_name": "ipfs_datasets_py.logic.syntax_core.ElaborationArtifact",
+      "path": "ipfs_datasets_py/logic/syntax_core",
+      "category": "ast_or_typed_expression",
+      "classification": "canonical_component",
+      "generation": null,
+      "pipeline_stage": "ElaborationArtifact",
+      "role": "Elaboration between TypedExpression and FormalizationArtifact@3.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#canonical-pipeline",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#epics"
+      ],
+      "notes": "Exact module placement (syntax_core vs formalization) not confirmed without datasets source; classified as typed-expression pipeline stage."
+    },
+    {
+      "id": "ast:supervisor-program-source-document",
+      "name": "agent_supervisor.analysis.program_ast_adapters.SourceDocument",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.analysis.program_ast_adapters.SourceDocument",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/program_ast_adapters.py",
+      "category": "ast_or_typed_expression",
+      "classification": "duplicate",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Supervisor repository/program analysis document type; not the logic formalization SourceDocument.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/analysis/program_ast_adapters.py",
+        "test/api/test_agent_supervisor_program_ast_adapters.py"
+      ],
+      "notes": "Name collision with logic SourceDocument. Must not be treated as a formalization AST generation."
+    },
+    {
+      "id": "fa:formalization-artifact-v3",
+      "name": "FormalizationArtifact@3",
+      "qualified_name": "ipfs_datasets_py.logic.formalization.artifacts_v3.FormalizationArtifact",
+      "path": "ipfs_datasets_py/logic/formalization/artifacts_v3.py",
+      "category": "formalization_artifact",
+      "classification": "canonical",
+      "generation": "FormalizationArtifact@3",
+      "pipeline_stage": "FormalizationArtifact@3",
+      "role": "Only admitted formalization generation for new writes. Binds source, typed-expression identity, family/profile/property/view/notation, assumptions, unsupported extensions, status, and content identity.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G040",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#canonical-pipeline",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-040"
+      ],
+      "notes": "LPC-040 conflict policy: preserve artifacts_v3 while adding admission helper."
+    },
+    {
+      "id": "fa:formalization-artifacts-v3-module",
+      "name": "formalization.artifacts_v3 module",
+      "qualified_name": "ipfs_datasets_py.logic.formalization.artifacts_v3",
+      "path": "ipfs_datasets_py/logic/formalization/artifacts_v3.py",
+      "category": "formalization_artifact",
+      "classification": "canonical",
+      "generation": "FormalizationArtifact@3",
+      "pipeline_stage": "FormalizationArtifact@3",
+      "role": "Module owning FormalizationArtifact@3 wire/types and content identity.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G040",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#preserve-existing-strong-contracts"
+      ],
+      "notes": "Listed separately from the type so module vs generation roles stay distinct."
+    },
+    {
+      "id": "fa:formalization-artifact-compiler",
+      "name": "FormalizationArtifact (compiler surface)",
+      "qualified_name": "ipfs_datasets_py.logic.formalization.compiler.FormalizationArtifact",
+      "path": "ipfs_datasets_py/logic/formalization/compiler.py",
+      "category": "formalization_artifact",
+      "classification": "legacy",
+      "generation": "FormalizationArtifact@compiler",
+      "pipeline_stage": "FormalizationArtifact@3",
+      "role": "Live import path used by supervisor admissibility tests and proof-corpus envelope builders. Not the plan-named @3 new-write generation.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "test/api/test_agent_supervisor_intent_admissibility.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/admissibility_bridge.py"
+      ],
+      "notes": "Relationship to artifacts_v3 (alias, facade, or older generation) cannot be confirmed without datasets source. Classified legacy relative to FormalizationArtifact@3 new-write authority."
+    },
+    {
+      "id": "fa:formalization-artifact-v1",
+      "name": "FormalizationArtifact@1",
+      "qualified_name": null,
+      "path": null,
+      "category": "formalization_artifact",
+      "classification": "unresolved",
+      "generation": "FormalizationArtifact@1",
+      "pipeline_stage": null,
+      "role": "Implied historical generation from artifacts_v3 naming.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G040"
+      ],
+      "notes": "No distinct path, import, or LPC predicted file observed. Must not be used for new writes."
+    },
+    {
+      "id": "fa:formalization-artifact-v2",
+      "name": "FormalizationArtifact@2",
+      "qualified_name": null,
+      "path": null,
+      "category": "formalization_artifact",
+      "classification": "unresolved",
+      "generation": "FormalizationArtifact@2",
+      "pipeline_stage": null,
+      "role": "Implied historical generation from artifacts_v3 naming.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G040"
+      ],
+      "notes": "No distinct path, import, or LPC predicted file observed. Must not be used for new writes."
+    },
+    {
+      "id": "fa:formalization-admission",
+      "name": "formalization.admission",
+      "qualified_name": "ipfs_datasets_py.logic.formalization.admission",
+      "path": "ipfs_datasets_py/logic/formalization/admission.py",
+      "category": "formalization_artifact",
+      "classification": "declaration_only",
+      "generation": "FormalizationArtifact@3",
+      "pipeline_stage": "FormalizationArtifact@3",
+      "role": "Planned LPC-040 admission helper enforcing FormalizationArtifact@3 and DomainLogicSlice@2 on new writes.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-040"
+      ],
+      "notes": "Predicted path only until LPC-040 lands. Does not replace artifacts_v3."
+    },
+    {
+      "id": "fa:proposal-advisors",
+      "name": "formalization.proposal_advisors",
+      "qualified_name": "ipfs_datasets_py.logic.formalization.proposal_advisors",
+      "path": "ipfs_datasets_py/logic/formalization/proposal_advisors.py",
+      "category": "formalization_artifact",
+      "classification": "experimental",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Untrusted proposal/advisor surface (Leanstral, SymAI, static proposals). Candidate-only; never raises proof authority.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "tools/logic/certification/advisors.py",
+        "docs/architecture/logic_formal_verification_expansion.objectives.md#LFV-G061",
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+      ],
+      "notes": "Imported by accelerate certification tooling. Not a FormalizationArtifact generation."
+    },
+    {
+      "id": "fa:autoencoder-advisor",
+      "name": "formalization.autoencoder_advisor",
+      "qualified_name": "ipfs_datasets_py.logic.formalization.autoencoder_advisor",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder_advisor.py",
+      "category": "formalization_artifact",
+      "classification": "experimental",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Bounded formalization advisor adapted from modal autoencoder. Proposal-only.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_formal_verification_expansion.objectives.md#LFV-G060",
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+      ],
+      "notes": "Not a FormalizationArtifact generation and cannot satisfy kernel-required policy."
+    },
+    {
+      "id": "fa:artifact-envelope-from-intent",
+      "name": "proof_corpus.ArtifactEnvelope.from_intent_artifact",
+      "qualified_name": "ipfs_datasets_py.logic.proof_corpus.schemas.ArtifactEnvelope",
+      "path": "ipfs_datasets_py/logic/proof_corpus/schemas.py",
+      "category": "formalization_artifact",
+      "classification": "compatibility_facade",
+      "generation": null,
+      "pipeline_stage": "FormalizationArtifact@3",
+      "role": "Envelope builder wrapping FormalizationArtifact for proof-corpus storage and admissibility fixtures.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "test/api/test_agent_supervisor_intent_admissibility.py"
+      ],
+      "notes": "Consumes FormalizationArtifact; does not define a new formalization generation."
+    },
+    {
+      "id": "dls:domain-logic-slice-v2",
+      "name": "DomainLogicSlice@2",
+      "qualified_name": "ipfs_datasets_py.logic.formalization.DomainLogicSlice",
+      "path": "ipfs_datasets_py/logic/formalization",
+      "category": "domain_logic_slice",
+      "classification": "canonical",
+      "generation": "DomainLogicSlice@2",
+      "pipeline_stage": "DomainLogicSlice@2",
+      "role": "Canonical domain lowering contract after FormalizationArtifact@3. Declares source domain, view, family/profile, property, notation, preserved/lost semantics, assumptions, unsupported constructs, proof-safety, and counterexample-safety.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G040",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#canonical-pipeline",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-040"
+      ],
+      "notes": "Exact defining module not readable here; plan interfaces name DomainLogicSlice@2 alongside FormalizationArtifact@3."
+    },
+    {
+      "id": "dls:domain-logic-slice-v1",
+      "name": "DomainLogicSlice@1",
+      "qualified_name": null,
+      "path": null,
+      "category": "domain_logic_slice",
+      "classification": "unresolved",
+      "generation": "DomainLogicSlice@1",
+      "pipeline_stage": null,
+      "role": "Implied historical generation from DomainLogicSlice@2 naming.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G040"
+      ],
+      "notes": "No distinct path or import observed. Must not be used for executable new writes."
+    },
+    {
+      "id": "dls:legal-domain-slice",
+      "name": "legal_ir.domain_slice",
+      "qualified_name": "ipfs_datasets_py.logic.legal_ir.domain_slice",
+      "path": "ipfs_datasets_py/logic/legal_ir/domain_slice.py",
+      "category": "domain_logic_slice",
+      "classification": "canonical_component",
+      "generation": "DomainLogicSlice@2",
+      "pipeline_stage": "DomainLogicSlice@2",
+      "role": "Legal domain adapter. Must keep TDFOL, DCEC, and frame logic distinct; must not map them to generic FOL/deontic/object framing.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-041",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G040"
+      ],
+      "notes": "LPC-041 predicted path. Families remain distinct under DomainLogicSlice@2."
+    },
+    {
+      "id": "dls:security-domain-slice",
+      "name": "security_ir.domain_slice",
+      "qualified_name": "ipfs_datasets_py.logic.security_ir.domain_slice",
+      "path": "ipfs_datasets_py/logic/security_ir/domain_slice.py",
+      "category": "domain_logic_slice",
+      "classification": "canonical_component",
+      "generation": "DomainLogicSlice@2",
+      "pipeline_stage": "DomainLogicSlice@2",
+      "role": "Security domain adapter lowering security IR without collapsing software-verification families.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-042"
+      ],
+      "notes": "LPC-042 predicted path. Live accelerate imports currently target security_ir.cvefixes.* rather than domain_slice."
+    },
+    {
+      "id": "dls:software-verification-domain-slice",
+      "name": "software_verification.domain_slice",
+      "qualified_name": "ipfs_datasets_py.logic.software_verification.domain_slice",
+      "path": "ipfs_datasets_py/logic/software_verification/domain_slice.py",
+      "category": "domain_logic_slice",
+      "classification": "canonical_component",
+      "generation": "DomainLogicSlice@2",
+      "pipeline_stage": "DomainLogicSlice@2",
+      "role": "Software-verification domain adapter. Keep contracts, STS, authorization, concurrency, separation, hyperproperties, protocols, and monitors distinct.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-042"
+      ],
+      "notes": "LPC-042 predicted path. Broader software_verification package is heavily imported for tactician/protocol/authorization surfaces, which are not DomainLogicSlice generations."
+    },
+    {
+      "id": "dls:crypto-domain-slice",
+      "name": "crypto_ir.domain_slice",
+      "qualified_name": "ipfs_datasets_py.logic.crypto_ir.domain_slice",
+      "path": "ipfs_datasets_py/logic/crypto_ir/domain_slice.py",
+      "category": "domain_logic_slice",
+      "classification": "canonical_component",
+      "generation": "DomainLogicSlice@2",
+      "pipeline_stage": "DomainLogicSlice@2",
+      "role": "Crypto domain adapter lowering crypto IR through DomainLogicSlice@2.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-042",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G040"
+      ],
+      "notes": "LPC-042 predicted path."
+    },
+    {
+      "id": "dls:intent-domain-slice",
+      "name": "intent_ir.domain_slice",
+      "qualified_name": "ipfs_datasets_py.logic.intent_ir.domain_slice",
+      "path": "ipfs_datasets_py/logic/intent_ir/domain_slice.py",
+      "category": "domain_logic_slice",
+      "classification": "canonical_component",
+      "generation": "DomainLogicSlice@2",
+      "pipeline_stage": "DomainLogicSlice@2",
+      "role": "Intent domain adapter. Same adapter contract as legal/security; no universal domain IR.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-043",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G040"
+      ],
+      "notes": "LPC-043 predicted path. Accelerate also references intent_ir/graphrag/retrieval.py for LPR, which is not a DomainLogicSlice generation."
+    },
+    {
+      "id": "dls:ui-ux-domain-slice",
+      "name": "ui_ux_ir.domain_slice",
+      "qualified_name": "ipfs_datasets_py.logic.ui_ux_ir.domain_slice",
+      "path": "ipfs_datasets_py/logic/ui_ux_ir/domain_slice.py",
+      "category": "domain_logic_slice",
+      "classification": "canonical_component",
+      "generation": "DomainLogicSlice@2",
+      "pipeline_stage": "DomainLogicSlice@2",
+      "role": "UI/UX domain adapter. Same adapter contract as legal/security; no universal domain IR.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-043",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G040"
+      ],
+      "notes": "LPC-043 predicted path."
+    },
+    {
+      "id": "dls:unadmitted-slice-gate",
+      "name": "unadmitted DomainLogicSlice@2 rejection",
+      "qualified_name": null,
+      "path": "ipfs_datasets_py/tests/unit/logic/backends/test_unadmitted_slice_rejected.py",
+      "category": "domain_logic_slice",
+      "classification": "declaration_only",
+      "generation": "DomainLogicSlice@2",
+      "pipeline_stage": "DomainLogicSlice@2",
+      "role": "LPC-044 gate: executable BackendRequest construction must reject work lacking an admitted DomainLogicSlice@2.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-044"
+      ],
+      "notes": "Test/gate surface predicted by LPC-044; not a slice generation itself."
+    }
+  ],
+  "counts": {
+    "items": 24,
+    "by_category": {
+      "ast_or_typed_expression": 6,
+      "formalization_artifact": 9,
+      "domain_logic_slice": 9
+    },
+    "by_classification": {
+      "canonical": 5,
+      "canonical_component": 9,
+      "compatibility_facade": 1,
+      "legacy": 1,
+      "experimental": 2,
+      "declaration_only": 2,
+      "duplicate": 1,
+      "unresolved": 3
+    },
+    "source_read_true": 1,
+    "source_read_false": 23
+  },
+  "unresolved_items": [
+    "fa:formalization-artifact-v1",
+    "fa:formalization-artifact-v2",
+    "dls:domain-logic-slice-v1"
+  ],
+  "follow_up": [
+    "When datasets source is mounted at the implementation-authority revision, re-walk syntax_core, formalization, and each domain_slice module and replace source_read=false entries with concrete class/schema identities.",
+    "Confirm whether formalization.compiler.FormalizationArtifact is an alias of artifacts_v3, a compatibility facade, or a distinct pre-@3 generation.",
+    "Confirm whether DomainLogicSlice@1 / FormalizationArtifact@1/@2 exist as modules, type aliases, or only as historical wire labels."
+  ]
+}

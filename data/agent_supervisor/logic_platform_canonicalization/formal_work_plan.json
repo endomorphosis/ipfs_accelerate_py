@@ -1,0 +1,2474 @@
+{
+  "abstraction_ids": [],
+  "actors": [
+    {
+      "actor_id": "actor:implementer",
+      "authority_ids": [],
+      "capabilities": [
+        "implement",
+        "inventory",
+        "test"
+      ],
+      "contract_version": 1,
+      "kind": "agent",
+      "metadata": {},
+      "principal_id": "",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-actor@1"
+    },
+    {
+      "actor_id": "actor:supervisor",
+      "authority_ids": [],
+      "capabilities": [
+        "cancel",
+        "lease",
+        "merge",
+        "schedule"
+      ],
+      "contract_version": 1,
+      "kind": "supervisor",
+      "metadata": {},
+      "principal_id": "",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-actor@1"
+    }
+  ],
+  "contract_version": 1,
+  "effects": [],
+  "events": [],
+  "evidence_requirements": [
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "artifact",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-final-report",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md"
+      ],
+      "subject_ids": [
+        "LPC-170",
+        "LPC-G000"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g010",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-001",
+        "LPC-002",
+        "LPC-003",
+        "LPC-004",
+        "LPC-005",
+        "LPC-006",
+        "LPC-007",
+        "LPC-008",
+        "LPC-G010"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g020",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-020",
+        "LPC-021",
+        "LPC-022",
+        "LPC-023",
+        "LPC-G020"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g030",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-030",
+        "LPC-031",
+        "LPC-032",
+        "LPC-G030"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g040",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-040",
+        "LPC-041",
+        "LPC-042",
+        "LPC-043",
+        "LPC-044",
+        "LPC-G040"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g050",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-050",
+        "LPC-051",
+        "LPC-052",
+        "LPC-G050"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g060",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-060",
+        "LPC-061",
+        "LPC-062",
+        "LPC-G060"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g070",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-070",
+        "LPC-071",
+        "LPC-G070"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g080",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-080",
+        "LPC-081",
+        "LPC-G080"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g090",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-090",
+        "LPC-091",
+        "LPC-G090"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g100",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-100",
+        "LPC-G100"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g110",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-110",
+        "LPC-111",
+        "LPC-G110"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g120",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-120",
+        "LPC-G120"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g130",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-130",
+        "LPC-G130"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g140",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-140",
+        "LPC-141",
+        "LPC-142",
+        "LPC-G140"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g150",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-150",
+        "LPC-151",
+        "LPC-G150"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g160",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-160",
+        "LPC-G160"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_conformance",
+      "metadata": {},
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence:lpc-g170",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ],
+      "subject_ids": [
+        "LPC-170",
+        "LPC-G170"
+      ]
+    }
+  ],
+  "fluents": [],
+  "formulas": [
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G170",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G070",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G160",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G150",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "goal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "goal",
+          "value": "LPC-G000",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G110",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G090",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G040",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G030",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G140",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G060",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G130",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G100",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G050",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G010",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G020",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G120",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": 0,
+      "operands": [
+        {
+          "lower_bound": null,
+          "operands": [],
+          "operator": "atom",
+          "predicate": "subgoal_satisfied",
+          "profile_id": "supervisor-reviewed",
+          "profile_version": 2,
+          "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+          "terms": [
+            {
+              "kind": "constant",
+              "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+              "sort": "subgoal",
+              "value": "LPC-G080",
+              "vocabulary_version": 2
+            }
+          ],
+          "upper_bound": null,
+          "vocabulary_version": 2
+        }
+      ],
+      "operator": "goal_satisfaction",
+      "predicate": null,
+      "profile_id": "supervisor-tdfol",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [],
+      "upper_bound": 64,
+      "vocabulary_version": 2
+    }
+  ],
+  "goals": [
+    {
+      "contract_version": 1,
+      "evidence_requirement_ids": [
+        "evidence:lpc-final-report"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "title": "ipfs_datasets_py.logic is the semantic authority; agent_supervisor owns only execution"
+      },
+      "owner_actor_id": "actor:supervisor",
+      "satisfaction_formula_id": "baguqeerabod2ur3k7cfezivfsafh5vnqtxjrwsxuizws3pwbkw675ur6ro7q",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-goal@1",
+      "source_ids": [
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md"
+      ],
+      "terminal_states": [
+        "satisfied"
+      ]
+    }
+  ],
+  "metadata": {
+    "program": "logic-platform-canonicalization",
+    "reviewed_baseline_accelerate": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+    "reviewed_baseline_datasets": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "task_prefix": "LPC-"
+  },
+  "norms": [],
+  "preconditions": [],
+  "repository_tree_id": "tree:lift-coding-current-heads",
+  "schema": "ipfs_accelerate_py/agent-supervisor/formal-work-plan@1",
+  "source_ids": [
+    "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md",
+    "docs/architecture/logic_platform_canonicalization.objectives.md",
+    "docs/architecture/logic_platform_canonicalization.todo.md"
+  ],
+  "subgoals": [
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g010"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Current-state inventory"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraqducaispkt6mlw7bnhwkivmf37nkvgxvz22ecpdavsgpslffry3a",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G010"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G010"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g020"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Canonical logic catalog snapshot"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerawfyhzisrlpxil2txjq3qtuxg2yiwdqam5lehc4la5y4w6i2ddnia",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G020"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G010"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g030"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Orthogonal status, evidence, authority, boundedness axes"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerahrclpaqh5wnibcvhazix5dw5wbqbyxrypogbjwdutahgdwhxtypq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G030"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G020",
+        "LPC-G030"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g040"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Typed syntax and formalization new-write path"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerahdl7v7qcqweuuawgjodqxwyfem6mmzmown2p3yojju6s3myvgyta",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G040"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G020",
+        "LPC-G030"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g050"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Operation-specific typed provider protocol"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraoviwc2nhsubucwmhbjftvrz7oguuefpp45sinuxydtnzd7ccuh4a",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G050"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G050"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g060"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "verification_api decomposition with compatibility facades"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraix2z3gpp6grlperp6qqhkbc5zhjmnjboyqxsue44aaesnvrethea",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G060"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G040",
+        "LPC-G050"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g070"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Canonical proof-plan / tactician model"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeera3zcv4i7hsymwpxhksimctfsnocysiqwc6wsnazpnbiamc2lkcsea",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G070"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G030",
+        "LPC-G050"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g080"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Canonical semantic cache-key and proof repository"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerazaiqjbfmrrt5eh3fcnj32b4bgqhtki3txrrkslitzhv5g6gfbeda",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G080"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G020",
+        "LPC-G030"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g090"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Replace supervisor hand-maintained semantic maps"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraeo5y3ijgjhgtzyyme6b5ruelkpqnh5obzyhyud64juwls3vufrpq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G090"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G020"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g100"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Package-neutral LogicPlatformManifest handshake"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeranbmtgkt7q5gbwamwjjip3tiurl2qt25s3nfuzxxqsqqgp2hnx7lq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G100"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G050",
+        "LPC-G090",
+        "LPC-G100"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g110"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "SupervisorLogicPlatformClient cutover"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeracwjn6sdasi7nyfiw76ajwtss7w7ek2vb4sjjwluhvkkz2idtdvnq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G110"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G020",
+        "LPC-G050",
+        "LPC-G090"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g120"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Hammer and datasets-logic adapter cleanup"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerawqqurm2o6nhanpp3fa75orwfyjm2uveapeooa7pg3uzbm5dif7ka",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G120"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G060",
+        "LPC-G110"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g130"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Python / CLI / MCP operation parity"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeralvxxntwsrievw2w4vavzjgq7nqo226fl62dxbf3dnwrm7xw45bfq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G130"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G040",
+        "LPC-G050",
+        "LPC-G080",
+        "LPC-G110"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g140"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Mandatory conformance and parity tests"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraitzzmjfmsmkbcm4mquca3ig2butr5kndj442wy677cscslyvywnq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G140"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G140"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g150"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Independent packaging and blocking CI"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeera7ekotclrab3l5tga3oikj7r3t2h3ukdoq4qngasaw2x7bnmj223a",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G150"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G150"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g160"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Generated documentation and migration guide"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeera4cmofrxjl552c6mpnhey3fzqylqrppjypbobnl7zlg4zhzcroe2a",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G160"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-G160"
+      ],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g170"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+        "title": "Evidence-based final report"
+      },
+      "parent_id": "LPC-G000",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeera3ltvbnaqgceczic3dgnp4s4us3c77wqydbnciz2436d4nxpsiwcq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "LPC-G170"
+    }
+  ],
+  "tasks": [
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g010"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G010"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G010",
+      "task_id": "LPC-001",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g010"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G010"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G010",
+      "task_id": "LPC-002",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g010"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G010"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G010",
+      "task_id": "LPC-003",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g010"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G010"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G010",
+      "task_id": "LPC-004",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g010"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G010"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G010",
+      "task_id": "LPC-005",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g010"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G010"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G010",
+      "task_id": "LPC-006",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g010"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G010"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G010",
+      "task_id": "LPC-007",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g010"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G010"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G010",
+      "task_id": "LPC-008",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g020"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G020"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G020",
+      "task_id": "LPC-020",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-020"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g020"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G020"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G020",
+      "task_id": "LPC-021",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-021"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g020"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G020"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G020",
+      "task_id": "LPC-022",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-022"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g020"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G020"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G020",
+      "task_id": "LPC-023",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g030"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G030"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G030",
+      "task_id": "LPC-030",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-030"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g030"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G030"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G030",
+      "task_id": "LPC-031",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-031"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g030"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G030"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G030",
+      "task_id": "LPC-032",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g040"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G040"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G040",
+      "task_id": "LPC-040",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-040"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g040"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G040"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G040",
+      "task_id": "LPC-041",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-041"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g040"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G040"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G040",
+      "task_id": "LPC-042",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-042"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g040"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G040"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G040",
+      "task_id": "LPC-043",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-043"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g040"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G040"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G040",
+      "task_id": "LPC-044",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g050"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G050"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G050",
+      "task_id": "LPC-050",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-050"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g050"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G050"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G050",
+      "task_id": "LPC-051",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-051"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g050"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G050"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G050",
+      "task_id": "LPC-052",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g060"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G060"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G060",
+      "task_id": "LPC-060",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-060"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g060"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G060"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G060",
+      "task_id": "LPC-061",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-061"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g060"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G060"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G060",
+      "task_id": "LPC-062",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g070"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G070"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G070",
+      "task_id": "LPC-070",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-070"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g070"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G070"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G070",
+      "task_id": "LPC-071",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g080"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G080"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G080",
+      "task_id": "LPC-080",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-080"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g080"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G080"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G080",
+      "task_id": "LPC-081",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g090"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G090"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G090",
+      "task_id": "LPC-090",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-090"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g090"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G090"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G090",
+      "task_id": "LPC-091",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g100"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G100"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G100",
+      "task_id": "LPC-100",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g110"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G110"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G110",
+      "task_id": "LPC-110",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-110"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g110"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G110"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G110",
+      "task_id": "LPC-111",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g120"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G120"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G120",
+      "task_id": "LPC-120",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g130"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G130"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G130",
+      "task_id": "LPC-130",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g140"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G140"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G140",
+      "task_id": "LPC-140",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-140"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g140"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G140"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G140",
+      "task_id": "LPC-141",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-141"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g140"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G140"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G140",
+      "task_id": "LPC-142",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g150"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G150"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G150",
+      "task_id": "LPC-150",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "LPC-150"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g150"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G150"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G150",
+      "task_id": "LPC-151",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g160"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G160"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G160",
+      "task_id": "LPC-160",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor:implementer"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence:lpc-g170"
+      ],
+      "goal_id": "LPC-G000",
+      "metadata": {
+        "phase": "LPC-G170"
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "LPC-G170",
+      "task_id": "LPC-170",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    }
+  ],
+  "temporal_constraints": [],
+  "trace_bound": 64,
+  "vocabulary_profile_id": "supervisor-reviewed-dcec-tdfol",
+  "vocabulary_version": 2
+}

@@ -1,0 +1,1126 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/logic-platform-inventory@1",
+  "interface": "LogicPlatformInventory@1",
+  "task_id": "LPC-005",
+  "goal_id": "LPC-G010",
+  "slice": "providers_evidence",
+  "title": "Inventory provider protocols, requests, receipts, and cache keys",
+  "bundle": "logic-platform/inventory",
+  "parallel_lane": "lpc-inventory-provider",
+  "observed_at": "2026-08-15",
+  "source_revisions": {
+    "datasets_reviewed_baseline": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "datasets_implementation_authority": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "accelerate_reviewed_baseline": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+    "accelerate_implementation_authority": "ea11293bb996f052d620eae989f5377a956764b1",
+    "implementation_authority_rule": "current heads are implementation authority; reviewed baselines are comparison anchors only"
+  },
+  "source_availability": {
+    "datasets_external_checkout": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "available": false,
+      "note": "Plan-named datasets authority path is not present in this worktree environment."
+    },
+    "datasets_submodule": {
+      "path": "ipfs_datasets_py",
+      "available": false,
+      "note": "Submodule directory is empty; worktree_submodule_paths is empty in the LPC scheduler config."
+    },
+    "classification_method": "Plan contracts, LPC predicted paths, accelerate supervisor import sites, LFV completion receipts, and formal-planning matrix notes. Items requiring on-disk datasets AST confirmation set source_read=false."
+  },
+  "classification_vocabulary": [
+    "canonical",
+    "canonical_component",
+    "compatibility_facade",
+    "legacy",
+    "experimental",
+    "declaration_only",
+    "generated",
+    "duplicate",
+    "obsolete",
+    "unresolved"
+  ],
+  "inventory_categories_in_scope": [
+    "backend_request_generation",
+    "provider_protocol_generation",
+    "translation_contract",
+    "proof_plan_contract",
+    "receipt",
+    "cache_key_type",
+    "installer_mutation_boundary",
+    "status_authority_boundedness_enum"
+  ],
+  "read_only_production_surfaces": [
+    "ipfs_datasets_py/logic/backends",
+    "ipfs_datasets_py/logic/hammers",
+    "ipfs_datasets_py/logic/common/proof_cache",
+    "ipfs_datasets_py/logic/ir_core"
+  ],
+  "canonical_pipeline_tail": [
+    "LogicObligation@2",
+    "BackendRequest@2",
+    "provider execution under supervisor resources",
+    "typed EvidenceArtifact",
+    "translation validation / reconstruction / kernel checking",
+    "TrustedProofReceipt or typed non-proof outcome",
+    "supervisor admission, validation, merge policy"
+  ],
+  "ownership": {
+    "datasets_logic": [
+      "family/property/profile/notation meaning",
+      "evidence/translation/verdict semantics",
+      "receipt identity",
+      "cache identity",
+      "formalization meaning",
+      "BackendRequest@2 and LogicProviderProtocol@2"
+    ],
+    "agent_supervisor": [
+      "scheduling",
+      "isolation",
+      "resources",
+      "cancellation",
+      "leases",
+      "model routing",
+      "workflow state",
+      "cache placement and single-flight",
+      "ten-point receipt admission policy"
+    ]
+  },
+  "invariants": [
+    "Provider success is not semantic success.",
+    "Registry presence never implies executability.",
+    "v1 generic payloads cannot bypass BackendRequest@2.",
+    "Provider output stays untrusted until validation or reconstruction.",
+    "Advisors propose; they do not prove or raise authority.",
+    "Datasets owns cache-key semantics; supervisor owns placement and single-flight only.",
+    "Operation status, semantic verdict, availability, evidence kind, evidence authority, boundedness, and translation preservation are orthogonal axes.",
+    "Imports and declaration discovery perform no install, network, process, environment, or write side effects.",
+    "A structurally valid receipt is not authenticated evidence.",
+    "Simulated, stale, or authority-overclaiming evidence fails closed."
+  ],
+  "generation_summary": {
+    "backend_request": {
+      "canonical_generation": "BackendRequest@2",
+      "canonical_module": "ipfs_datasets_py/logic/backends/requests_v2.py",
+      "live_legacy_or_prior": [
+        {
+          "name": "BackendRequest (ir_core.protocols)",
+          "module": "ipfs_datasets_py.logic.ir_core.protocols",
+          "classification": "legacy"
+        }
+      ],
+      "planned_successor_modules": [
+        "ipfs_datasets_py/logic/backends/protocol_v2.py"
+      ]
+    },
+    "provider_protocol": {
+      "live_generation": "LogicProvider@1",
+      "live_module": "ipfs_datasets_py/logic/backends/provider.py",
+      "planned_canonical_generation": "LogicProviderProtocol@2",
+      "planned_module": "ipfs_datasets_py/logic/backends/protocol_v2.py",
+      "supervisor_protocol_version": 1,
+      "operations": [
+        "capability",
+        "translate",
+        "prove",
+        "reconstruct",
+        "verify",
+        "attest"
+      ]
+    },
+    "proof_plan": {
+      "planned_canonical": "CanonicalProofPlan@1",
+      "planned_module": "ipfs_datasets_py/logic/tactician/models.py",
+      "supervisor_live": "ProofPlan@1 (formal_verification_contracts)"
+    },
+    "cache_key": {
+      "planned_canonical": "CanonicalProofCacheKey@1",
+      "planned_module": "ipfs_datasets_py/logic/common/canonical_cache_key.py",
+      "live_datasets_surfaces": [
+        "ipfs_datasets_py/logic/common/proof_cache.py",
+        "ipfs_datasets_py/logic/backends/cache_protocol.py"
+      ],
+      "supervisor_live": "ProofCacheKey (formal_verification_cache)"
+    },
+    "receipt": {
+      "plan_canonical_name": "TrustedProofReceipt",
+      "live_datasets_translation_receipt": "LogicTranslationReceipt@1",
+      "supervisor_live": "ProofReceipt (formal_verification_contracts)"
+    }
+  },
+  "items": [
+    {
+      "id": "br:backend-request-v2",
+      "name": "BackendRequest@2",
+      "qualified_name": "ipfs_datasets_py.logic.backends.requests_v2.BackendRequest",
+      "path": "ipfs_datasets_py/logic/backends/requests_v2.py",
+      "category": "backend_request_generation",
+      "classification": "canonical",
+      "generation": "BackendRequest@2",
+      "pipeline_stage": "BackendRequest@2",
+      "role": "Only admitted typed backend-request generation for new writes. Carries operation-specific fields, positive finite bounds, and cannot be bypassed by v1 generic payloads.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#canonical-pipeline",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#preserve-existing-strong-contracts",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G050",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-051"
+      ],
+      "notes": "Plan lists backends.requests_v2 among preserved strong contracts. LPC-051 explicitly forbids v1 generic payloads from bypassing this generation."
+    },
+    {
+      "id": "br:logic-obligation-v2",
+      "name": "LogicObligation@2",
+      "qualified_name": "ipfs_datasets_py.logic.backends.LogicObligation",
+      "path": "ipfs_datasets_py/logic/backends",
+      "category": "backend_request_generation",
+      "classification": "canonical_component",
+      "generation": "LogicObligation@2",
+      "pipeline_stage": "LogicObligation@2",
+      "role": "Typed obligation feeding BackendRequest@2 on the canonical pipeline.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#canonical-pipeline"
+      ],
+      "notes": "Exact module file not confirmed without datasets source; classified as the pipeline stage immediately before BackendRequest@2."
+    },
+    {
+      "id": "br:backend-request-ir-core",
+      "name": "BackendRequest (ir_core.protocols)",
+      "qualified_name": "ipfs_datasets_py.logic.ir_core.protocols.BackendRequest",
+      "path": "ipfs_datasets_py/logic/ir_core/protocols.py",
+      "category": "backend_request_generation",
+      "classification": "legacy",
+      "generation": "BackendRequest@ir_core",
+      "pipeline_stage": "BackendRequest@2",
+      "role": "IR-core protocol symbol bound by supervisor DatasetsLogicBackendSpec IR surface. Not the plan-named BackendRequest@2 new-write generation.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-005"
+      ],
+      "notes": "Supervisor backend probe requires BackendRequest on ir_core.protocols. Relationship to requests_v2 (alias, facade, or older generation) remains source-confirmation open; classified legacy relative to BackendRequest@2."
+    },
+    {
+      "id": "br:backend-request-v1-generic",
+      "name": "BackendRequest / provider payload v1 generic",
+      "qualified_name": null,
+      "path": null,
+      "category": "backend_request_generation",
+      "classification": "legacy",
+      "generation": "v1",
+      "pipeline_stage": null,
+      "role": "Generic unrestricted JSON-style provider payloads retained only through explicit adapters. Must be parsed into an operation type, rejected, or retained as advisory.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G050",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-051"
+      ],
+      "notes": "LPC-051 predicted adapter: protocol_v1_adapter.py. New writes use BackendRequest@2 / protocol v2."
+    },
+    {
+      "id": "pp:logic-provider-protocol-v2",
+      "name": "LogicProviderProtocol@2",
+      "qualified_name": "ipfs_datasets_py.logic.backends.protocol_v2",
+      "path": "ipfs_datasets_py/logic/backends/protocol_v2.py",
+      "category": "provider_protocol_generation",
+      "classification": "declaration_only",
+      "generation": "LogicProviderProtocol@2",
+      "pipeline_stage": "provider execution under supervisor resources",
+      "role": "Planned operation-specific typed provider-protocol successor: capability, translation, prove/check, reconstruct, verify, and attest requests with positive finite bounds on executable ops.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G050",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-050",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#epics"
+      ],
+      "notes": "LPC-050 owns protocol_v2.py and tests. Inventory does not prove an equivalent successor already exists as a separate module; live wire remains LogicProvider@1 in backends.provider."
+    },
+    {
+      "id": "pp:logic-provider-v1",
+      "name": "LogicProvider@1",
+      "qualified_name": "ipfs_datasets_py.logic.backends.provider",
+      "path": "ipfs_datasets_py/logic/backends/provider.py",
+      "category": "provider_protocol_generation",
+      "classification": "canonical",
+      "generation": "LogicProvider@1",
+      "pipeline_stage": "provider execution under supervisor resources",
+      "role": "Live datasets-owned provider wire contract (LogicProviderRequest / LogicProviderResponse and related types). Preserved strong contract and LFV-G015 reconciliation target.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#preserve-existing-strong-contracts",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G050",
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json",
+        "ipfs_accelerate_py/agent_supervisor/proof/logic_provider_contract.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py"
+      ],
+      "notes": "CANONICAL_LOGIC_PROVIDER_MODULE = ipfs_datasets_py.logic.backends.provider. LPC-G050 evidence path points here while predicting protocol_v2 as the typed successor; treat provider.py as live semantic wire until inventory proves protocol_v2 already supersedes it."
+    },
+    {
+      "id": "pp:supervisor-proof-provider-protocol-v1",
+      "name": "Supervisor ProofProvider protocol v1",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py",
+      "category": "provider_protocol_generation",
+      "classification": "compatibility_facade",
+      "generation": "ProofProviderProtocol@1",
+      "pipeline_stage": "provider execution under supervisor resources",
+      "role": "Supervisor-owned execution envelope: ProviderRequest/ProviderResponse, protocol_version=1, six operations, resource budget, cancellation, network policy, fail-closed untrusted output.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_capabilities.py",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#preserve-existing-strong-contracts"
+      ],
+      "notes": "Operations: capability, translate, prove, reconstruct, verify, attest. Does not redefine datasets semantics; converts via SupervisorLogicProviderFacade."
+    },
+    {
+      "id": "pp:supervisor-logic-provider-facade",
+      "name": "SupervisorLogicProviderFacade@1",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.logic_provider_contract.SupervisorLogicProviderFacade",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/logic_provider_contract.py",
+      "category": "provider_protocol_generation",
+      "classification": "compatibility_facade",
+      "generation": "SupervisorLogicProviderFacade@1",
+      "pipeline_stage": "provider execution under supervisor resources",
+      "role": "Lazy supervisor facade converting ProviderRequest to datasets LogicProviderRequest and validating LogicProviderResponse without importing datasets at import time.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/logic_provider_contract.py",
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+      ],
+      "notes": "LFV-G015 interface pair with LogicProvider@1."
+    },
+    {
+      "id": "pp:protocol-v1-adapter",
+      "name": "protocol_v1_adapter",
+      "qualified_name": "ipfs_datasets_py.logic.backends.protocol_v1_adapter",
+      "path": "ipfs_datasets_py/logic/backends/protocol_v1_adapter.py",
+      "category": "provider_protocol_generation",
+      "classification": "declaration_only",
+      "generation": "v1→v2 adapter",
+      "pipeline_stage": null,
+      "role": "Planned LPC-051 adapter so v1 generic payloads are operation-typed, rejected, or advisory-only and cannot bypass BackendRequest@2.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-051"
+      ],
+      "notes": "Predicted path only until LPC-051 lands."
+    },
+    {
+      "id": "pp:hammer-logic-provider",
+      "name": "IpfsDatasetsLogicProvider (Hammer adapter)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_logic_provider.IpfsDatasetsLogicProvider",
+      "path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+      "category": "provider_protocol_generation",
+      "classification": "compatibility_facade",
+      "generation": "HammerProofProvider@1",
+      "pipeline_stage": "provider execution under supervisor resources",
+      "role": "Supervisor hammer/portfolio adapter over datasets hammers and backend probes. Candidate-producing until reconstruction; must not grant proof authority from unreconstructed success.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#epics",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G050"
+      ],
+      "notes": "Plan epic K: hammer adapter cleanup. Binds BackendRequest on ir_core.protocols and hammers modules."
+    },
+    {
+      "id": "pp:hammers-package",
+      "name": "logic.hammers",
+      "qualified_name": "ipfs_datasets_py.logic.hammers",
+      "path": "ipfs_datasets_py/logic/hammers",
+      "category": "provider_protocol_generation",
+      "classification": "canonical_component",
+      "generation": null,
+      "pipeline_stage": "provider execution under supervisor resources",
+      "role": "Datasets hammer surfaces: premise selection, portfolio, reconstruction, corpus. Separates candidate evidence from reconstruction and kernel authority.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+        "docs/architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-005"
+      ],
+      "notes": "LPC-005 conflict policy lists hammers as read-only production surface."
+    },
+    {
+      "id": "tc:logic-translation-receipt-v1",
+      "name": "LogicTranslationReceipt@1",
+      "qualified_name": "ipfs_datasets_py.logic.software_verification.receipts.LogicTranslationReceipt",
+      "path": "ipfs_datasets_py/logic/software_verification/receipts.py",
+      "category": "translation_contract",
+      "classification": "canonical",
+      "generation": "LogicTranslationReceipt@1",
+      "pipeline_stage": "translation validation / reconstruction / kernel checking",
+      "role": "Datasets-owned loss-aware cross-logic translation receipt binding source/target, compilers, assumptions, bounds, unsupported constructs, preservation claim, witnesses, semantic mutations, and authority ceiling.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json",
+        "docs/architecture/logic_formal_verification_expansion.objectives.md",
+        "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py"
+      ],
+      "notes": "CANONICAL_RECEIPT_MODULE points at software_verification.receipts; adapter loads LogicTranslationReceipt."
+    },
+    {
+      "id": "tc:software-verification-translations",
+      "name": "software_verification.translations",
+      "qualified_name": "ipfs_datasets_py.logic.software_verification.translations",
+      "path": "ipfs_datasets_py/logic/software_verification/translations.py",
+      "category": "translation_contract",
+      "classification": "canonical",
+      "generation": "LogicTranslation@1",
+      "pipeline_stage": "translation validation / reconstruction / kernel checking",
+      "role": "Datasets translation compilers and preservation taxonomy projected by SupervisorCanonicalLogicAdapter.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+      ],
+      "notes": "CANONICAL_TRANSLATION_MODULE. Maps supervisor TranslationClass onto PreservationKind / TranslationKind."
+    },
+    {
+      "id": "tc:supervisor-translation-contract",
+      "name": "TranslationContract (supervisor)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.logic_translation_validation.TranslationContract",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/logic_translation_validation.py",
+      "category": "translation_contract",
+      "classification": "compatibility_facade",
+      "generation": "LogicTranslationContract@1",
+      "pipeline_stage": "translation validation / reconstruction / kernel checking",
+      "role": "Supervisor-local translation contract with LogicForm, TranslationClass, ApproximationDirection, SemanticInventory, and fail-closed validation. Projects onto datasets preservation taxonomy.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/logic_translation_validation.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py"
+      ],
+      "notes": "TranslationClass values: exact, equisatisfiable, bounded_abstraction, conservative_approximation, heuristic. Heuristic caps assurance at unverified."
+    },
+    {
+      "id": "tc:translation-preservation-axis",
+      "name": "Translation preservation axis (planned)",
+      "qualified_name": "ipfs_datasets_py.logic.ir_core.axes",
+      "path": "ipfs_datasets_py/logic/ir_core/axes.py",
+      "category": "translation_contract",
+      "classification": "declaration_only",
+      "generation": "LogicAxis@1",
+      "pipeline_stage": null,
+      "role": "Planned orthogonal translation-preservation axis distinct from operation status and semantic verdict (LPC-G030 / LPC-030).",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G030",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-030"
+      ],
+      "notes": "Live supervisor TranslationClass remains through explicit legacy mapping after axes land."
+    },
+    {
+      "id": "plan:canonical-proof-plan-v1",
+      "name": "CanonicalProofPlan@1",
+      "qualified_name": "ipfs_datasets_py.logic.tactician.models.CanonicalProofPlan",
+      "path": "ipfs_datasets_py/logic/tactician/models.py",
+      "category": "proof_plan_contract",
+      "classification": "declaration_only",
+      "generation": "CanonicalProofPlan@1",
+      "pipeline_stage": "provider execution under supervisor resources",
+      "role": "Planned single datasets-owned proof-plan model for goal, interpretations, properties, assumptions, obligations, dependency graph, translations, lanes, reconstruction, bounds, fallbacks, status, and completeness boundary.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G070",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-070",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#epics"
+      ],
+      "notes": "Advisors may propose plans; they must not mark proved or raise authority (LPC-071)."
+    },
+    {
+      "id": "plan:tactician-planner",
+      "name": "tactician.planner",
+      "qualified_name": "ipfs_datasets_py.logic.tactician.planner",
+      "path": "ipfs_datasets_py/logic/tactician/planner.py",
+      "category": "proof_plan_contract",
+      "classification": "canonical",
+      "generation": null,
+      "pipeline_stage": "provider execution under supervisor resources",
+      "role": "LPC-G070 evidence path for the datasets tactician planner that must host one plan model without a second independent tactician.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G070"
+      ],
+      "notes": "Supervisor may reorder semantically valid lanes but must not rewrite their meaning."
+    },
+    {
+      "id": "plan:supervisor-proof-plan",
+      "name": "ProofPlan (supervisor)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ProofPlan",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "category": "proof_plan_contract",
+      "classification": "compatibility_facade",
+      "generation": "ProofPlan@1",
+      "pipeline_stage": "provider execution under supervisor resources",
+      "role": "Supervisor-local deterministic acyclic proof plan (ProofPlan + ProofPlanStep + ProofStage). Operational until CanonicalProofPlan@1 cutover; must not become a second semantic authority.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#preserve-existing-strong-contracts"
+      ],
+      "notes": "Schema: ipfs_accelerate_py/agent-supervisor/proof-plan@1. Stages: translate, model_draft, solve, reconstruct, kernel_verify, validate, attest, persist."
+    },
+    {
+      "id": "plan:portfolio-plan",
+      "name": "PortfolioPlan (multi_prover_router)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.multi_prover_router.PortfolioPlan",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "category": "proof_plan_contract",
+      "classification": "compatibility_facade",
+      "generation": null,
+      "pipeline_stage": "provider execution under supervisor resources",
+      "role": "Supervisor multi-prover portfolio scheduling surface. Routing and isolation only; datasets owns semantic interpretation.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py"
+      ],
+      "notes": "Projected through SupervisorCanonicalLogicAdapter; not CanonicalProofPlan@1."
+    },
+    {
+      "id": "rc:trusted-proof-receipt",
+      "name": "TrustedProofReceipt",
+      "qualified_name": "ipfs_datasets_py.logic.TrustedProofReceipt",
+      "path": null,
+      "category": "receipt",
+      "classification": "declaration_only",
+      "generation": "TrustedProofReceipt",
+      "pipeline_stage": "TrustedProofReceipt or typed non-proof outcome",
+      "role": "Plan-named terminal trusted receipt after translation validation, reconstruction, and kernel checking. Datasets owns receipt identity semantics.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#canonical-pipeline",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G000"
+      ],
+      "notes": "Exact module path not observed as a distinct type name in accelerate imports; live supervisor type is ProofReceipt. Relationship must be confirmed when datasets source is mounted."
+    },
+    {
+      "id": "rc:supervisor-proof-receipt",
+      "name": "ProofReceipt (supervisor)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ProofReceipt",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "category": "receipt",
+      "classification": "compatibility_facade",
+      "generation": "ProofReceipt@1",
+      "pipeline_stage": "TrustedProofReceipt or typed non-proof outcome",
+      "role": "Supervisor immutable proof result binding obligation, plan, attempt, tree, premises, translator/solver/kernel/toolchain/policy, resource budget, verdict, and evidence. Assurance is derived from evidence, never from provider-claimed fields alone.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#receipt-admission-supervisor"
+      ],
+      "notes": "Schema: ipfs_accelerate_py/agent-supervisor/proof-receipt@1. Subject to ten-point admission before completion/merge influence."
+    },
+    {
+      "id": "rc:proof-evidence",
+      "name": "ProofEvidence",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ProofEvidence",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "category": "receipt",
+      "classification": "canonical_component",
+      "generation": "ProofEvidence@1",
+      "pipeline_stage": "typed EvidenceArtifact",
+      "role": "Evidence item with kind, authority, verdict, and bindings. Provider success without adequate kind/authority cannot raise assurance.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py"
+      ],
+      "notes": "Maps onto planned orthogonal evidence-kind and evidence-authority axes."
+    },
+    {
+      "id": "rc:proof-receipt-attestation",
+      "name": "ProofReceiptAttestation@1",
+      "qualified_name": "ipfs_datasets_py.logic.bridge.proof_receipt_attestation",
+      "path": "ipfs_datasets_py/logic/bridge/proof_receipt_attestation.py",
+      "category": "receipt",
+      "classification": "canonical_component",
+      "generation": "ProofReceiptAttestation@1",
+      "pipeline_stage": "TrustedProofReceipt or typed non-proof outcome",
+      "role": "Binds production ZKP attestations to trusted proof receipts. Attestation is orthogonal to and preserves underlying semantic authority; simulated/stale/mismatched attestations fail.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json",
+        "docs/architecture/logic_formal_verification_expansion.objectives.md"
+      ],
+      "notes": "LFV-G063."
+    },
+    {
+      "id": "rc:ten-point-receipt-admission",
+      "name": "Supervisor ten-point receipt admission",
+      "qualified_name": null,
+      "path": "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md",
+      "category": "receipt",
+      "classification": "canonical_component",
+      "generation": null,
+      "pipeline_stage": "supervisor admission, validation, merge policy",
+      "role": "Fail-closed admission gate: structural validity, content identity, source/tree/environment/policy bindings, translation chain, evidence kind supports verdict, authority ceiling, reconstruction/kernel checks, not stale, not simulated, supervisor policy admits authority.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#receipt-admission-supervisor",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#epics"
+      ],
+      "notes": "Epic J: SupervisorLogicPlatformClient handshake + typed invocation + ten-point admission."
+    },
+    {
+      "id": "ck:canonical-proof-cache-key-v1",
+      "name": "CanonicalProofCacheKey@1",
+      "qualified_name": "ipfs_datasets_py.logic.common.canonical_cache_key.CanonicalProofCacheKey",
+      "path": "ipfs_datasets_py/logic/common/canonical_cache_key.py",
+      "category": "cache_key_type",
+      "classification": "declaration_only",
+      "generation": "CanonicalProofCacheKey@1",
+      "pipeline_stage": null,
+      "role": "Planned datasets-owned cache-key contract binding source, expression, formalization, slice, obligation, assumptions, bounds, translation, provider, environment, policy, schema, checker, network policy, evidence kind, and authority ceiling.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G080",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-080",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#epics"
+      ],
+      "notes": "Must reject CID-looking non-CIDs, empty digests, default-string unknown objects, missing semantic fields, cross-environment hits, and candidate-as-kernel entries."
+    },
+    {
+      "id": "ck:datasets-proof-cache",
+      "name": "logic.common.proof_cache",
+      "qualified_name": "ipfs_datasets_py.logic.common.proof_cache",
+      "path": "ipfs_datasets_py/logic/common/proof_cache.py",
+      "category": "cache_key_type",
+      "classification": "canonical",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "LPC-G080 evidence path for datasets semantic proof-cache ownership. Canonical key semantics must live here or in companion canonical_cache_key; supervisor must not redefine meaning.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G080",
+        "docs/architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-005"
+      ],
+      "notes": "LPC-005 conflict policy lists common/proof_cache as read-only production surface."
+    },
+    {
+      "id": "ck:verification-cache-protocol",
+      "name": "VerificationCacheProtocol@1",
+      "qualified_name": "ipfs_datasets_py.logic.backends.cache_protocol",
+      "path": "ipfs_datasets_py/logic/backends/cache_protocol.py",
+      "category": "cache_key_type",
+      "classification": "canonical",
+      "generation": "VerificationCacheProtocol@1",
+      "pipeline_stage": null,
+      "role": "Datasets verification-cache protocol unified with immutable proof corpus (LFV-G062). Supervisor adapter projects ProofCacheKey onto verification-cache-key/v1 shape.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json",
+        "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py"
+      ],
+      "notes": "CANONICAL_CACHE_MODULE = ipfs_datasets_py.logic.backends.cache_protocol."
+    },
+    {
+      "id": "ck:supervisor-proof-cache-key",
+      "name": "ProofCacheKey (supervisor)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache.ProofCacheKey",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "category": "cache_key_type",
+      "classification": "compatibility_facade",
+      "generation": "ProofCacheKey@1",
+      "pipeline_stage": null,
+      "role": "Supervisor content-addressed proof-cache key (obligation, premises, translator, solver, kernel, toolchain, theorem_registry, policy, resource_budget, candidate_tree). Placement and single-flight only; semantic fields must project from datasets key contract.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G080"
+      ],
+      "notes": "Schema: ipfs_accelerate_py/agent-supervisor/formal-verification-cache-key@1. Cache is not a trust root; hits re-derive assurance from evidence."
+    },
+    {
+      "id": "ck:hammers-proof-cache",
+      "name": "hammers.proof_cache",
+      "qualified_name": "ipfs_datasets_py.logic.hammers.proof_cache",
+      "path": "ipfs_datasets_py/logic/hammers/proof_cache.py",
+      "category": "cache_key_type",
+      "classification": "duplicate",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Hammer-local proof cache surface listed alongside common/proof_cache. Must not become a second semantic cache-key authority.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md"
+      ],
+      "notes": "Also listed: DCEC cec_proof_cache and TDFOL tdfol_proof_cache adapters as family-local caches."
+    },
+    {
+      "id": "ck:family-local-proof-caches",
+      "name": "Family-local proof caches (DCEC/TDFOL)",
+      "qualified_name": null,
+      "path": "ipfs_datasets_py/logic/CEC|TDFOL/*proof_cache*",
+      "category": "cache_key_type",
+      "classification": "legacy",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "DCEC and TDFOL family-local cache adapters. Compatibility/local optimization only; must not redefine CanonicalProofCacheKey@1 semantics.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md"
+      ],
+      "notes": "Representative paths: cec_proof_cache.py, tdfol_proof_cache.py."
+    },
+    {
+      "id": "ck:proof-repository",
+      "name": "proof_repository (planned)",
+      "qualified_name": "ipfs_datasets_py.logic.common.proof_repository",
+      "path": "ipfs_datasets_py/logic/common/proof_repository.py",
+      "category": "cache_key_type",
+      "classification": "declaration_only",
+      "generation": "ProofRepository@1",
+      "pipeline_stage": null,
+      "role": "Planned LPC-081 unified backend-neutral proof repository interface covering plans, attempts, evidence, receipts, counterexamples, attestations, lookup, freshness, invalidation, and lineage.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-081"
+      ],
+      "notes": "DuckDB may remain an implementation under one public interface."
+    },
+    {
+      "id": "inst:lazy-installer",
+      "name": "external_provers.lazy_installer",
+      "qualified_name": "ipfs_datasets_py.logic.external_provers.lazy_installer",
+      "path": "ipfs_datasets_py/logic/external_provers/lazy_installer.py",
+      "category": "installer_mutation_boundary",
+      "classification": "canonical_component",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Explicit pinned lazy installer for external provers. Installs require explicit calls with pins/checksums; never during imports, probes, or pure-data loads.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_formal_verification_expansion.objectives.md#LFV-G082",
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+      ],
+      "notes": "LFV-G082 conflict policy: never install during tests/imports; do not mutate system package managers."
+    },
+    {
+      "id": "inst:prover-installer-bridge",
+      "name": "integration.bridges.prover_installer",
+      "qualified_name": "ipfs_datasets_py.logic.integration.bridges.prover_installer",
+      "path": "ipfs_datasets_py/logic/integration/bridges/prover_installer.py",
+      "category": "installer_mutation_boundary",
+      "classification": "canonical_component",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Bridge-layer prover installer coordinating focused installation metadata without expanding mutation surface into pure-data imports.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_formal_verification_expansion.objectives.md#LFV-G082",
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+      ],
+      "notes": "Companion to toolchains.py and lazy_installer."
+    },
+    {
+      "id": "inst:toolchains-registry",
+      "name": "backends.toolchains / VerificationToolchainRegistry@1",
+      "qualified_name": "ipfs_datasets_py.logic.backends.toolchains",
+      "path": "ipfs_datasets_py/logic/backends/toolchains.py",
+      "category": "installer_mutation_boundary",
+      "classification": "canonical",
+      "generation": "VerificationToolchainRegistry@1",
+      "pipeline_stage": null,
+      "role": "Pinned toolchain discovery and installation metadata, resource classes, isolation, and adversarial execution constraints. Declaration never implies installed or production-admitted.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_formal_verification_expansion.objectives.md#LFV-G082",
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+      ],
+      "notes": "LFV-G082 interface VerificationToolchainRegistry@1."
+    },
+    {
+      "id": "inst:pure-data-import-boundary",
+      "name": "Pure-data import mutation boundary",
+      "qualified_name": null,
+      "path": "ipfs_datasets_py/logic",
+      "category": "installer_mutation_boundary",
+      "classification": "canonical_component",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Importing contracts, catalog, syntax, formalization, provider protocol, and supervisor adapter must not import solvers, install packages, open the network, start processes, mutate files, probe hardware, or change environment variables.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-061",
+        "docs/architecture/logic_formal_verification_expansion.objectives.md",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#epics"
+      ],
+      "notes": "LPC-061 pure_data_import test is the planned enforcement surface. Runtime discovery, install, and execution stay explicit."
+    },
+    {
+      "id": "inst:supervisor-provider-isolation",
+      "name": "Supervisor provider isolation boundary",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py",
+      "category": "installer_mutation_boundary",
+      "classification": "compatibility_facade",
+      "generation": null,
+      "pipeline_stage": "provider execution under supervisor resources",
+      "role": "Supervisor owns process isolation (in-process vs subprocess), resource budgets, network_allowed default false, cancellation, and untrusted output bounds. Does not install toolchains on import.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_capabilities.py",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#ownership"
+      ],
+      "notes": "Operational ownership only; semantic installer metadata remains datasets toolchains/lazy_installer."
+    },
+    {
+      "id": "inst:bounded-tool-runner",
+      "name": "BoundedToolRunner@1",
+      "qualified_name": "ipfs_datasets_py.logic.backends.process",
+      "path": "ipfs_datasets_py/logic/backends/process.py",
+      "category": "installer_mutation_boundary",
+      "classification": "canonical_component",
+      "generation": "BoundedToolRunner@1",
+      "pipeline_stage": "provider execution under supervisor resources",
+      "role": "Bounded external-tool process lifecycle: isolated workspaces, timeouts, bounded output/paths, no install on import, fake runners for hermetic tests.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+      ],
+      "notes": "LFV-G014."
+    },
+    {
+      "id": "ax:ir-core-axes",
+      "name": "ir_core.axes (planned orthogonal axes)",
+      "qualified_name": "ipfs_datasets_py.logic.ir_core.axes",
+      "path": "ipfs_datasets_py/logic/ir_core/axes.py",
+      "category": "status_authority_boundedness_enum",
+      "classification": "declaration_only",
+      "generation": "LogicAxis@1",
+      "pipeline_stage": null,
+      "role": "Planned home for orthogonal LogicOperationStatus@1, LogicSemanticVerdict@1, availability, evidence kind, evidence authority, boundedness, and translation preservation.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G030",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-030",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md#epics"
+      ],
+      "notes": "LPC-030/031/032. A succeeded provider response can still carry unknown/advisory; proof authority must not be inferred from operation success."
+    },
+    {
+      "id": "ax:logic-operation-status",
+      "name": "LogicOperationStatus@1",
+      "qualified_name": "ipfs_datasets_py.logic.ir_core.axes.LogicOperationStatus",
+      "path": "ipfs_datasets_py/logic/ir_core/axes.py",
+      "category": "status_authority_boundedness_enum",
+      "classification": "declaration_only",
+      "generation": "LogicOperationStatus@1",
+      "pipeline_stage": null,
+      "role": "Planned orthogonal operation-status axis (lifecycle of an operation attempt), distinct from semantic verdict.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G030"
+      ],
+      "notes": "Supervisor AttemptStatus is the live overlapping legacy surface."
+    },
+    {
+      "id": "ax:logic-semantic-verdict",
+      "name": "LogicSemanticVerdict@1",
+      "qualified_name": "ipfs_datasets_py.logic.ir_core.axes.LogicSemanticVerdict",
+      "path": "ipfs_datasets_py/logic/ir_core/axes.py",
+      "category": "status_authority_boundedness_enum",
+      "classification": "declaration_only",
+      "generation": "LogicSemanticVerdict@1",
+      "pipeline_stage": null,
+      "role": "Planned orthogonal semantic-verdict axis (proved/disproved/inconclusive/...), distinct from provider operation success.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G030"
+      ],
+      "notes": "Supervisor ProofVerdict is the live overlapping legacy surface."
+    },
+    {
+      "id": "ax:supervisor-attempt-status",
+      "name": "AttemptStatus (supervisor)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.AttemptStatus",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "category": "status_authority_boundedness_enum",
+      "classification": "legacy",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Live supervisor lifecycle enum: planned, running, succeeded, failed, unsupported, unavailable, timed_out, cancelled, blocked.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G030"
+      ],
+      "notes": "Must map explicitly onto LogicOperationStatus@1; succeeded does not imply proved."
+    },
+    {
+      "id": "ax:supervisor-proof-verdict",
+      "name": "ProofVerdict (supervisor)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ProofVerdict",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "category": "status_authority_boundedness_enum",
+      "classification": "legacy",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Live supervisor semantic result enum: proved, disproved, inconclusive, unsupported, error, cancelled.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G030"
+      ],
+      "notes": "Maps onto planned LogicSemanticVerdict@1."
+    },
+    {
+      "id": "ax:supervisor-evidence-kind",
+      "name": "EvidenceKind (supervisor)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.EvidenceKind",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "category": "status_authority_boundedness_enum",
+      "classification": "legacy",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Live supervisor evidence-kind enum without implying trust: unknown, llm_output, atp_candidate, smt_candidate, solver_result, kernel_verification, test_result, static_analysis, cryptographic_attestation, cache_entry.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G030"
+      ],
+      "notes": "Overlaps planned orthogonal evidence-kind axis; retain through explicit adapters."
+    },
+    {
+      "id": "ax:supervisor-evidence-authority",
+      "name": "EvidenceAuthority (supervisor proof)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.EvidenceAuthority",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "category": "status_authority_boundedness_enum",
+      "classification": "legacy",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Live supervisor evidence-authority boundary enum: unknown, provider, llm, atp, smt, solver, kernel, attestation_verifier, validation_runner, cache.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G030"
+      ],
+      "notes": "Distinct from objectives goal-quality EvidenceAuthority and planner-doctor EvidenceAuthorityClass; those are supervisor-local non-logic proof authorities and must not silently merge."
+    },
+    {
+      "id": "ax:supervisor-assurance-level",
+      "name": "AssuranceLevel (supervisor)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.AssuranceLevel",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "category": "status_authority_boundedness_enum",
+      "classification": "legacy",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Ordered assurance lattice: unverified < candidate < solver_checked < kernel_verified < attested. Derived from evidence, not provider claim text.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py"
+      ],
+      "notes": "Overlaps authority ceiling concerns; LPC-G030 treats evidence authority as orthogonal to operation status."
+    },
+    {
+      "id": "ax:supervisor-translation-class",
+      "name": "TranslationClass (supervisor)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.logic_translation_validation.TranslationClass",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/logic_translation_validation.py",
+      "category": "status_authority_boundedness_enum",
+      "classification": "legacy",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Live translation-preservation enum projected onto datasets PreservationKind: exact, equisatisfiable, bounded_abstraction, conservative_approximation, heuristic.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/logic_translation_validation.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G030"
+      ],
+      "notes": "Maps to planned translation-preservation axis."
+    },
+    {
+      "id": "ax:boundedness",
+      "name": "Boundedness axis",
+      "qualified_name": "ipfs_datasets_py.logic.ir_core.axes",
+      "path": "ipfs_datasets_py/logic/ir_core/axes.py",
+      "category": "status_authority_boundedness_enum",
+      "classification": "declaration_only",
+      "generation": "Boundedness@1",
+      "pipeline_stage": null,
+      "role": "Planned orthogonal boundedness axis. Live practice embeds finite positive bounds on executable provider ops and ResourceBudget fields rather than a single dedicated enum type.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G030",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G050",
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py"
+      ],
+      "notes": "Supervisor ResourceBudget is the operational bound carrier; must not substitute for the planned datasets boundedness axis."
+    },
+    {
+      "id": "ax:supervisor-resource-budget",
+      "name": "ResourceBudget (supervisor)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ResourceBudget",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "category": "status_authority_boundedness_enum",
+      "classification": "compatibility_facade",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Supervisor operational resource/bound carrier projected to datasets provider budgets. Placement of execution limits, not semantic boundedness authority.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/logic_provider_contract.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py"
+      ],
+      "notes": "Fields include wall_time_ms, cpu_time_ms, memory_bytes, disk_bytes, max_processes, max_premises, max_output_bytes, model_token_limit, provider_quota, network_allowed."
+    },
+    {
+      "id": "ax:duplicate-evidence-authority-goal-quality",
+      "name": "EvidenceAuthority (goal_quality)",
+      "qualified_name": "ipfs_accelerate_py.agent_supervisor.objectives.goal_quality.EvidenceAuthority",
+      "path": "ipfs_accelerate_py/agent_supervisor/objectives/goal_quality.py",
+      "category": "status_authority_boundedness_enum",
+      "classification": "duplicate",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "Supervisor objectives/goal-quality evidence authority vocabulary. Distinct identity from proof EvidenceAuthority; must not silently merge into logic evidence-authority axis.",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "source_read": true,
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/objectives/goal_quality.py",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G030"
+      ],
+      "notes": "Name collision only. Inventory for LPC-006 will cover broader supervisor semantic-type duplicates; listed here because it overlaps authority enum naming in this slice."
+    },
+    {
+      "id": "ax:verification-status-overlapping",
+      "name": "VerificationStatus and related overlapping statuses",
+      "qualified_name": null,
+      "path": "ipfs_datasets_py/logic (scattered)",
+      "category": "status_authority_boundedness_enum",
+      "classification": "unresolved",
+      "generation": null,
+      "pipeline_stage": null,
+      "role": "LPC-G030 names overlapping VerificationStatus, proof/tactician statuses, availability, support, and runtime enums to be replaced by orthogonal axes. Exact datasets type list requires source tree.",
+      "owner_package": "ipfs_datasets_py.logic",
+      "source_read": false,
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G030",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-031"
+      ],
+      "notes": "Not dropped: LPC-031 requires every inventoried legacy enum to gain an explicit mapping. Supervisor SupportStatus in program_contracts is one observed non-logic support enum."
+    }
+  ],
+  "coverage": {
+    "required_categories": [
+      "backend_request_generation",
+      "provider_protocol_generation",
+      "translation_contract",
+      "proof_plan_contract",
+      "receipt",
+      "cache_key_type",
+      "installer_mutation_boundary",
+      "status_authority_boundedness_enum"
+    ],
+    "classified_category_count": 8,
+    "all_required_categories_classified": true,
+    "item_count": 44,
+    "classification_counts": {
+      "canonical": 7,
+      "canonical_component": 9,
+      "compatibility_facade": 10,
+      "legacy": 9,
+      "declaration_only": 9,
+      "duplicate": 2,
+      "unresolved": 1,
+      "experimental": 0,
+      "generated": 0,
+      "obsolete": 0
+    },
+    "unresolved_items": [
+      {
+        "id": "ax:verification-status-overlapping",
+        "reason": "Datasets source tree not mounted; full VerificationStatus and related datasets enum census deferred to LPC-030/031 with source confirmation."
+      },
+      {
+        "id": "datasets_source_tree_readability",
+        "reason": "Declared datasets checkout and nested submodule were not populated; path-level AST confirmation of requests_v2, protocol_v2 presence, and TrustedProofReceipt type remains open for LPC-008 composition once readable."
+      }
+    ]
+  },
+  "downstream_tasks": [
+    {
+      "task_id": "LPC-030",
+      "uses": "status_authority_boundedness_enum classifications"
+    },
+    {
+      "task_id": "LPC-050",
+      "uses": "provider_protocol_generation and backend_request_generation; reuse LogicProvider@1 if equivalent to planned protocol_v2"
+    },
+    {
+      "task_id": "LPC-051",
+      "uses": "v1 generic payload adapter classification"
+    },
+    {
+      "task_id": "LPC-070",
+      "uses": "proof_plan_contract"
+    },
+    {
+      "task_id": "LPC-080",
+      "uses": "cache_key_type"
+    },
+    {
+      "task_id": "LPC-008",
+      "uses": "compose into inventory index"
+    }
+  ]
+}

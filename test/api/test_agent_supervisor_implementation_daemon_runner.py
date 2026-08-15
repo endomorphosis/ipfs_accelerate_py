@@ -98,6 +98,45 @@ def test_validation_command_helpers_unwrap_markdown_inline_code():
     ]
 
 
+def test_implied_submodule_pins_ignore_absent_umbrella_paths(tmp_path: Path) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    (tmp_path / "ipfs_datasets_py").mkdir()
+    daemon = PortalImplementationDaemon(
+        todo_path=board,
+        state_path=state_dir / "task-state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## LPC-",
+        implement=False,
+        worktree_submodule_paths=("ipfs_datasets_py",),
+    )
+    task = PortalTask(
+        task_id="LPC-172",
+        title="Resolve implementation retry-budget failure for LPC-020",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        validation=["test -f notes.md"],
+        metadata={
+            "predicted files": (
+                "/home/barberb/lift_coding/external/ipfs_datasets/"
+                "ipfs_datasets_py/logic/families/canonical_catalog.py"
+            ),
+            "submodules": "ipfs_datasets_py",
+        },
+    )
+
+    implied = daemon._validation_implied_submodule_paths(task)
+    effective = daemon._effective_worktree_submodule_paths(task)
+
+    assert "external/ipfs_datasets" not in implied
+    assert effective == ("ipfs_datasets_py",)
+
+
 def test_supervisor_propagates_explicit_merge_target_branch(tmp_path: Path):
     board = tmp_path / "tasks.todo.md"
     board.write_text("# Tasks\n", encoding="utf-8")
