@@ -363,7 +363,7 @@ overlays. Never force-push.
 
 ## MCPP-011 Inventory Profiles A-H normative versus implemented versus structural-only
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
