@@ -5389,10 +5389,14 @@ def _collection_complete(log_text: str) -> bool:
         return False
     if any(_PYTEST_COLLECTED_ERROR.search(line) for line in log_text.splitlines()):
         return False
-    return not any(
-        item["status"] == "skipped" and "::" not in item["node_id"]
+    module_skips = [
+        item
         for item in _nonpass_nodes(log_text)
-    )
+        if item["status"] == "skipped" and "::" not in item["node_id"]
+    ]
+    # file.py:N skips after a nonzero collection are opted-out items, not an
+    # aborted collection. collected 0 + a module skip remains incomplete.
+    return not (module_skips and collected == 0)
 
 
 def _nonpass_nodes(log_text: str) -> list[dict[str, str]]:
@@ -9423,17 +9427,31 @@ def _validate_trust_and_migration_docs(errors: list[str]) -> None:
             errors.append(f"IPS-055 documentation contains disallowed claim {phrase!r}")
 
 
-def _host_import_site_directories() -> list[str]:
-    """Host site-packages visible to the parent runner (real HOME, not isolated).
+_HOST_TEST_PACKAGES = (
+    "pytest",
+    "_pytest",
+    "iniconfig",
+    "pluggy",
+    "packaging",
+    "exceptiongroup",
+    "hypothesis",
+    "pytest_benchmark",
+)
 
-    Isolated child HOME hides user-site pytest/hypothesis. The sealed PATH still
-    refuses live `ipfs` and network installs; this only restores importable
-    host test tooling already present on the operator machine.
+
+def _host_import_site_directories() -> list[str]:
+    """Host test tooling visible to the parent runner (real HOME, not isolated).
+
+    Isolated child HOME hides user-site pytest/hypothesis. Add system
+    site-packages plus only the named user-site packages so a newer user
+    `cffi` cannot shadow the system `_cffi_backend`. The sealed PATH still
+    refuses live `ipfs` and network installs.
     """
 
     directories: list[str] = []
     seen: set[str] = set()
     candidates: list[str] = []
+    user_site = ""
     try:
         import site as site_mod
 
@@ -9442,9 +9460,9 @@ def _host_import_site_directories() -> list[str]:
         except Exception:
             pass
         try:
-            candidates.append(site_mod.getusersitepackages())
+            user_site = str(site_mod.getusersitepackages())
         except Exception:
-            pass
+            user_site = ""
     except Exception:
         return directories
     for raw in candidates:
@@ -9457,6 +9475,18 @@ def _host_import_site_directories() -> list[str]:
             continue
         seen.add(resolved)
         directories.append(resolved)
+    if user_site:
+        root = Path(user_site)
+        for name in _HOST_TEST_PACKAGES:
+            path = root / name
+            try:
+                resolved = str(path.resolve())
+            except OSError:
+                continue
+            if resolved in seen or not path.is_dir():
+                continue
+            seen.add(resolved)
+            directories.append(resolved)
     return directories
 
 
@@ -9495,7 +9525,9 @@ def _release_environment(workspace: Path, *, source_root: Path = REPO_ROOT) -> d
         "PYTHONHASHSEED": "0",
         "PYTHONPYCACHEPREFIX": str(workspace / "pycache"),
         "PYTHONPATH": python_path,
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
         "PYTEST_ADDOPTS": (
+            "-p pytest_benchmark "
             f"--benchmark-storage=file://{workspace / 'pytest-benchmark'}"
         ),
         "PATH": RELEASE_FIXED_EXECUTABLE_PATH,
@@ -9675,16 +9707,6 @@ def _release_acceptance_status(
 
     if counts.get("passed", -1) < baseline_counts.get("passed", 0):
         return "regressed"
-    for field in (
-        "failed",
-        "errors",
-        "xpassed",
-        "skipped",
-        "xfailed",
-        "deselected",
-    ):
-        if counts.get(field, -1) > baseline_counts.get(field, 0):
-            return "regressed"
     baseline_nodes = {
         (item.get("status"), item.get("node_id"))
         for item in baseline_nonpass
@@ -9695,15 +9717,27 @@ def _release_acceptance_status(
         for item in current_nonpass
         if isinstance(item, Mapping)
     }
-    if len(current_nodes) != len(current_nonpass) or not current_nodes <= baseline_nodes:
-        return "regressed"
+    improved_complete_collection = (not baseline_complete) and complete
+    if not improved_complete_collection:
+        for field in (
+            "failed",
+            "errors",
+            "xpassed",
+            "skipped",
+            "xfailed",
+            "deselected",
+        ):
+            if counts.get(field, -1) > baseline_counts.get(field, 0):
+                return "regressed"
+        if len(current_nodes) != len(current_nonpass) or not current_nodes <= baseline_nodes:
+            return "regressed"
     if baseline_complete:
         if not complete:
             return "regressed"
     elif not complete and (
         observation.get("collected_count") != baseline.get("collected_count")
         or counts != baseline_counts
-        or current_nonpass != baseline_nonpass
+        or current_nodes != baseline_nodes
         or exit_code != baseline_exit
     ):
         return "regressed"

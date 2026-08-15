@@ -4005,6 +4005,92 @@ def test_existing_retained_skip_is_explicitly_non_green() -> None:
     )
 
 
+def test_incomplete_baseline_same_blocker_ignores_pytest_underline_width() -> None:
+    counts = {field: 0 for field in gate.BASELINE_OUTCOME_FIELDS}
+    counts.update({"errors": 1, "selected": 1})
+    spec = {
+        "suite_origin": "reviewed_existing_zk_suite",
+        "baseline_observation": {
+            "capture_status": "completed",
+            "exit_code": 2,
+            "collected_count": 0,
+            "collection_complete": False,
+            "outcome_counts": counts,
+            "non_pass_nodes": [
+                {
+                    "status": "error",
+                    "node_id": "collecting tests/test_agent_supervisor_receipts.py",
+                    "detail": "_" * 30
+                    + " ERROR collecting tests/test_agent_supervisor_receipts.py "
+                    + "_" * 30,
+                }
+            ],
+        },
+    }
+    observation = {
+        "capture_status": "completed",
+        "exit_code": 2,
+        "collected_count": 0,
+        "collection_complete": False,
+        "outcome_counts": copy.deepcopy(counts),
+        "non_pass_nodes": [
+            {
+                "status": "error",
+                "node_id": "collecting tests/test_agent_supervisor_receipts.py",
+                "detail": "_" * 11
+                + " ERROR collecting tests/test_agent_supervisor_receipts.py "
+                + "_" * 11,
+            }
+        ],
+    }
+
+    assert gate._release_acceptance_status(spec, observation) == (
+        "baseline_compatible_non_green"
+    )
+
+
+def test_incomplete_baseline_may_improve_to_complete_collection() -> None:
+    baseline_counts = {field: 0 for field in gate.BASELINE_OUTCOME_FIELDS}
+    baseline_counts.update({"errors": 6, "selected": 6, "deselected": 1})
+    current_counts = {field: 0 for field in gate.BASELINE_OUTCOME_FIELDS}
+    current_counts.update({"passed": 374, "skipped": 2, "selected": 376, "deselected": 1})
+    spec = {
+        "suite_origin": "reviewed_existing_zk_suite",
+        "baseline_observation": {
+            "capture_status": "completed",
+            "exit_code": 2,
+            "collected_count": 34,
+            "collection_complete": False,
+            "outcome_counts": baseline_counts,
+            "non_pass_nodes": [
+                {
+                    "status": "error",
+                    "node_id": "collecting tests/unit/logic/zkp/test_example.py",
+                    "detail": "ERROR collecting tests/unit/logic/zkp/test_example.py",
+                }
+            ],
+        },
+    }
+    observation = {
+        "capture_status": "completed",
+        "exit_code": 0,
+        "collected_count": 377,
+        "collection_complete": True,
+        "outcome_counts": current_counts,
+        "non_pass_nodes": [
+            {
+                "status": "skipped",
+                "node_id": "tests/integration/test_provekit_zkp.py::test_real",
+                "detail": "SKIPPED",
+            }
+        ],
+    }
+
+    assert gate._release_acceptance_status(spec, observation) == (
+        "baseline_compatible_non_green"
+    )
+
+
 def test_release_runner_refuses_live_ipfs_before_starting_any_process(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4608,7 +4694,9 @@ def test_release_environment_routes_all_writes_outside_materialized_source(
     environment = gate._release_environment(workspace, source_root=source_root)
 
     assert environment["PYTHONPATH"].split(os.pathsep)[0] == str(source_root.resolve())
+    assert environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
     assert environment["PYTEST_ADDOPTS"] == (
+        "-p pytest_benchmark "
         f"--benchmark-storage=file://{workspace / 'pytest-benchmark'}"
     )
     for name in (
