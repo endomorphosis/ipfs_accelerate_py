@@ -553,7 +553,7 @@ overlays. Never force-push.
 
 ## MCPP-017 Record ADR for DurableExecutor and local SQLite journal
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
