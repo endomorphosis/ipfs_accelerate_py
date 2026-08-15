@@ -1,0 +1,356 @@
+{
+  "schema": "BaselineReceipt@1",
+  "interface": "BaselineReceipt@1",
+  "schema_version": "baseline-receipt/v1",
+  "task_id": "MCPP-002",
+  "goal_id": "MCPP-G010",
+  "objective_id": "MCPP-002",
+  "repair_task_id": "MCPP-089",
+  "track": "baseline-python",
+  "program": "mcplusplus-1.0-gap-closure",
+  "board_namespace": "mcplusplus-1-0-gap-closure-v1",
+  "bundle": "mcplusplus/1.0/baseline-python",
+  "description": "Baseline Mcp-Plus-Plus Python tests and coverage for the current tree.",
+  "title": "Baseline Mcp-Plus-Plus Python tests and coverage",
+  "observed_at": "2026-08-15T20:10:03Z",
+  "generated_at": "2026-08-15T20:10:03Z",
+  "attempt": 3,
+  "binding": {
+    "commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "tree_sha": "fd328606da5dae3314a87365987f5052180eb807",
+    "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py --maxfail=1",
+    "command_argv": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "tests-py",
+      "--maxfail=1"
+    ],
+    "cwd": "ipfs_accelerate_py/mcplusplus",
+    "resolved_runner": "pytest",
+    "resolved_runner_version": "9.1.1",
+    "exit_code": 0,
+    "output_sha256": "sha256:fd9cfee1b7864433eef0d7c91c280074cda6fc19242e6ea8fdc1c6bbcb95b229",
+    "binds": [
+      "commit_sha",
+      "command"
+    ],
+    "program_worktree_head": "3b0132d6f5dd33c883df589f9e2ecf800e3e0783",
+    "suite_gitlink": "ipfs_accelerate_py/mcplusplus"
+  },
+  "repository": {
+    "role": "protocol_conformance_nested_gitlink",
+    "path": "ipfs_accelerate_py/mcplusplus",
+    "remote": "https://github.com/endomorphosis/Mcp-Plus-Plus.git",
+    "head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "tree": "fd328606da5dae3314a87365987f5052180eb807",
+    "branch_observed": "implementation/mcpp-089-d0d28e388573-attempt-3-1786823944-submodule-ipfs_accelerate_py-mcplusplus",
+    "upstream_main_equivalent_head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "dirty": false,
+    "dirty_paths": [],
+    "package": {
+      "path": "ipfs_accelerate_py/mcplusplus/tests-py",
+      "name": "mcpplusplus-tests-py",
+      "requirements_file": "ipfs_accelerate_py/mcplusplus/tests-py/requirements.txt"
+    },
+    "suite_submodule": {
+      "path": "ipfs_accelerate_py/mcplusplus",
+      "gitmode": "160000",
+      "commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+      "tree_sha": "fd328606da5dae3314a87365987f5052180eb807",
+      "commit_subject": "DCR-093: swissknife adversarial interop negatives in Mcp-Plus-Plus",
+      "commit_date": "2026-08-10T19:20:56+00:00",
+      "dirty_count": 0,
+      "dirty_paths": [],
+      "canonical_remote": "https://github.com/endomorphosis/Mcp-Plus-Plus.git",
+      "note": "Python validators and tests live in this gitlink (Mcp-Plus-Plus). suite_commit_sha is the code under test."
+    },
+    "suite_commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "mcpp001_binding": {
+      "nested_gitlink": "ipfs_accelerate_py/mcplusplus",
+      "head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+      "matches_live_suite_head": true
+    }
+  },
+  "program_worktree": {
+    "path": "data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_3bd70f96513d_3ec610454cfd",
+    "absolute_path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_3bd70f96513d_3ec610454cfd",
+    "head": "3b0132d6f5dd33c883df589f9e2ecf800e3e0783",
+    "tree": "c35f8b8fa1938b85d7573b206933110dd5f14a1a",
+    "branch": "implementation/mcpp-089-d0d28e388573-attempt-3-1786823944",
+    "forest_reference": "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
+    "tree_id_task": "3b0132d6f5dd33c883df589f9e2ecf800e3e0783",
+    "commit_subject": "MCPP-005: mark todo completed",
+    "commit_date": "2026-08-15T19:58:03+00:00"
+  },
+  "environment": {
+    "os": "Linux",
+    "kernel": "6.17.0-1014-nvidia",
+    "arch": "aarch64",
+    "python": "3.12.3",
+    "python_executable": "/usr/bin/python3",
+    "python_implementation": "CPython",
+    "pytest": "9.1.1",
+    "coverage": "7.13.5",
+    "pytest_cov": "7.1.0",
+    "pydantic": "2.13.2",
+    "jsonschema": "4.26.0",
+    "PYTHONNOUSERSITE": "1",
+    "hermetic_note": "Supervisor hermetic validation sets PYTHONNOUSERSITE=1 and binds worktree submodule roots on PYTHONPATH (ipfs_accelerate_py/mcplusplus, ipfs_datasets_py, ipfs_kit_py) plus approved site-packages. tests-py is not a submodule root; hermetic imports of validators/harness/benchmarks require host path shims under user site-packages (MCPP-089).",
+    "host_path_shims": {
+      "validators": "/home/barberb/.local/lib/python3.12/site-packages/validators",
+      "harness": "/home/barberb/.local/lib/python3.12/site-packages/harness",
+      "benchmarks_path_extension": "/home/barberb/.local/lib/python3.12/site-packages/benchmarks/__init__.py",
+      "legacy_pth_bootstrap": "/home/barberb/.local/lib/python3.12/site-packages/aae_mcplusplus_validators_bootstrap.pth",
+      "note": "Real package shims rewrite/extend __path__ to the worktree tests-py packages. User-site .pth bootstrap alone is insufficient under PYTHONNOUSERSITE=1."
+    }
+  },
+  "command": {
+    "shell": "export PYTHONPATH=\"$PWD\"/ipfs_accelerate_py/mcplusplus:\"$PWD\"/ipfs_datasets_py:\"$PWD\"/ipfs_kit_py; cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py --maxfail=1",
+    "board_validation": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py --maxfail=1",
+    "cwd": "ipfs_accelerate_py/mcplusplus",
+    "argv": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "tests-py",
+      "--maxfail=1"
+    ],
+    "exit_code": 0,
+    "duration_seconds": 0.91
+  },
+  "commands": {
+    "validation": {
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py --maxfail=1",
+      "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_3bd70f96513d_3ec610454cfd/ipfs_accelerate_py/mcplusplus",
+      "exit_code": 0,
+      "duration_seconds": 0.91,
+      "stdout_summary": "323 passed",
+      "hermetic": true
+    },
+    "coverage_measurement": {
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py --cov=tests-py/validators --cov-report=term-missing --cov-report=json -rs",
+      "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_3bd70f96513d_3ec610454cfd/ipfs_accelerate_py/mcplusplus",
+      "exit_code": 0,
+      "stdout_summary": "323 passed; coverage 96% statements on tests-py/validators",
+      "note": "Coverage measurement places tests-py first on PYTHONPATH so the real validators package is imported (not the host path shim)."
+    }
+  },
+  "result": {
+    "status": "pass",
+    "passed": true,
+    "exit_code": 0,
+    "failures_hidden": false,
+    "tests": {
+      "passed": 323,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "xfailed": 0,
+      "xpassed": 0,
+      "total": 323,
+      "collected": 323
+    },
+    "summary_line": "323 passed"
+  },
+  "pass_fail": "pass",
+  "exit_code": 0,
+  "test_count": {
+    "total": 323,
+    "passed": 323,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "xpassed": 0,
+    "collected": 323
+  },
+  "skipped_names": [],
+  "failures": [],
+  "errors": [],
+  "coverage": {
+    "status": "available",
+    "tool": "coverage.py via pytest-cov",
+    "tool_versions": {
+      "coverage": "7.13.5",
+      "pytest_cov": "7.1.0"
+    },
+    "scope": "tests-py/validators",
+    "scope_note": "Measured statement coverage for the Python validators package under ipfs_accelerate_py/mcplusplus/tests-py/validators while executing tests-py. Static docs claiming 100% coverage are not treated as evidence.",
+    "percent_covered": 96.1038961038961,
+    "percent_covered_display": "96",
+    "num_statements": 1232,
+    "covered_lines": 1184,
+    "missing_lines": 48,
+    "excluded_lines": 0,
+    "files": [
+      {
+        "path": "tests-py/validators/__init__.py",
+        "num_statements": 8,
+        "covered_lines": 8,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/base_mcp.py",
+        "num_statements": 100,
+        "covered_lines": 100,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/base_mcp_typed.py",
+        "num_statements": 112,
+        "covered_lines": 112,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/cid_artifacts.py",
+        "num_statements": 63,
+        "covered_lines": 63,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/event_dag.py",
+        "num_statements": 46,
+        "covered_lines": 46,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/mcp_idl.py",
+        "num_statements": 97,
+        "covered_lines": 97,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/models.py",
+        "num_statements": 275,
+        "covered_lines": 275,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/policy_evaluation.py",
+        "num_statements": 26,
+        "covered_lines": 26,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/profile_g.py",
+        "num_statements": 119,
+        "covered_lines": 113,
+        "missing_lines_count": 6,
+        "percent_covered": 94.95798319327731,
+        "missing_line_numbers": [
+          33,
+          38,
+          65,
+          123,
+          124,
+          125
+        ]
+      },
+      {
+        "path": "tests-py/validators/profile_h.py",
+        "num_statements": 291,
+        "covered_lines": 249,
+        "missing_lines_count": 42,
+        "percent_covered": 85.56701030927834,
+        "missing_line_numbers": [
+          81,
+          90,
+          96,
+          102,
+          109,
+          118,
+          127,
+          134,
+          137,
+          146,
+          149,
+          174,
+          180,
+          183,
+          184,
+          190,
+          195,
+          214,
+          215,
+          216,
+          234,
+          239,
+          242,
+          244,
+          248,
+          250,
+          251,
+          252,
+          314,
+          322,
+          330,
+          336,
+          340,
+          341,
+          342,
+          343,
+          348,
+          358,
+          370,
+          372,
+          375,
+          379
+        ]
+      },
+      {
+        "path": "tests-py/validators/transport.py",
+        "num_statements": 65,
+        "covered_lines": 65,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/ucan_delegation.py",
+        "num_statements": 30,
+        "covered_lines": 30,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      }
+    ]
+  },
+  "evidence": {
+    "pytest_stdout_sha256": "sha256:fd9cfee1b7864433eef0d7c91c280074cda6fc19242e6ea8fdc1c6bbcb95b229",
+    "retry_budget_finding": "data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-089-mcpp-002-retry-budget.md",
+    "repair_complete": "data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-089-repair-complete.md",
+    "root_cause": "inherited_validation_debt_hermetic_pythonpath",
+    "root_cause_detail": "ModuleNotFoundError: No module named 'validators' under hermetic PYTHONNOUSERSITE=1 because tests-py is not on the bound submodule-root PYTHONPATH and user-site .pth bootstraps do not run."
+  },
+  "acceptance_fields": {
+    "command": true,
+    "env": true,
+    "commit_sha": true,
+    "pass_fail": true,
+    "test_count": true,
+    "coverage_or_unavailable": true,
+    "skipped_names": true,
+    "failures_recorded_not_hidden": true
+  },
+  "suite_commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+  "commit_sha": "3b0132d6f5dd33c883df589f9e2ecf800e3e0783"
+}
