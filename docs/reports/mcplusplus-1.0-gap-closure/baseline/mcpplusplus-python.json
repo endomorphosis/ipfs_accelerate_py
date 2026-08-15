@@ -12,9 +12,9 @@
   "bundle": "mcplusplus/1.0/baseline-python",
   "description": "Baseline Mcp-Plus-Plus Python tests and coverage for the current tree.",
   "title": "Baseline Mcp-Plus-Plus Python tests and coverage",
-  "observed_at": "2026-08-15T20:10:03Z",
-  "generated_at": "2026-08-15T20:10:03Z",
-  "attempt": 3,
+  "observed_at": "2026-08-15T20:13:54Z",
+  "generated_at": "2026-08-15T20:13:54Z",
+  "attempt": 1,
   "binding": {
     "commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
     "tree_sha": "fd328606da5dae3314a87365987f5052180eb807",
@@ -31,12 +31,12 @@
     "resolved_runner": "pytest",
     "resolved_runner_version": "9.1.1",
     "exit_code": 0,
-    "output_sha256": "sha256:fd9cfee1b7864433eef0d7c91c280074cda6fc19242e6ea8fdc1c6bbcb95b229",
+    "output_sha256": "sha256:3e24f2799e6a23e28357422b7f1246d23f59e47e4f86dc2e990ab79c6e7b4752",
     "binds": [
       "commit_sha",
       "command"
     ],
-    "program_worktree_head": "3b0132d6f5dd33c883df589f9e2ecf800e3e0783",
+    "program_worktree_head": "9845635023afb32a36e584705577a52002bc9706",
     "suite_gitlink": "ipfs_accelerate_py/mcplusplus"
   },
   "repository": {
@@ -45,7 +45,7 @@
     "remote": "https://github.com/endomorphosis/Mcp-Plus-Plus.git",
     "head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
     "tree": "fd328606da5dae3314a87365987f5052180eb807",
-    "branch_observed": "implementation/mcpp-089-d0d28e388573-attempt-3-1786823944-submodule-ipfs_accelerate_py-mcplusplus",
+    "branch_observed": "implementation/mcpp-002-659de5e3e890-attempt-1-1786824712-submodule-ipfs_accelerate_py-mcplusplus",
     "upstream_main_equivalent_head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
     "dirty": false,
     "dirty_paths": [],
@@ -74,15 +74,15 @@
     }
   },
   "program_worktree": {
-    "path": "data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_3bd70f96513d_3ec610454cfd",
-    "absolute_path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_3bd70f96513d_3ec610454cfd",
-    "head": "3b0132d6f5dd33c883df589f9e2ecf800e3e0783",
-    "tree": "c35f8b8fa1938b85d7573b206933110dd5f14a1a",
-    "branch": "implementation/mcpp-089-d0d28e388573-attempt-3-1786823944",
+    "path": "data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_ab8f4b0124af_b86c6029a7a1",
+    "absolute_path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_ab8f4b0124af_b86c6029a7a1",
+    "head": "9845635023afb32a36e584705577a52002bc9706",
+    "tree": "94b6ee89d9518f515cb326ad433db148d5e35cee",
+    "branch": "implementation/mcpp-002-659de5e3e890-attempt-1-1786824712",
     "forest_reference": "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
-    "tree_id_task": "3b0132d6f5dd33c883df589f9e2ecf800e3e0783",
-    "commit_subject": "MCPP-005: mark todo completed",
-    "commit_date": "2026-08-15T19:58:03+00:00"
+    "tree_id_task": "9845635023afb32a36e584705577a52002bc9706",
+    "commit_subject": "MCPP-089: mark todo completed",
+    "commit_date": "2026-08-15T20:10:58+00:00"
   },
   "environment": {
     "os": "Linux",
@@ -96,18 +96,21 @@
     "pytest_cov": "7.1.0",
     "pydantic": "2.13.2",
     "jsonschema": "4.26.0",
-    "PYTHONNOUSERSITE": "1",
+    "PYTHONNOUSERSITE": "",
     "hermetic_note": "Supervisor hermetic validation sets PYTHONNOUSERSITE=1 and binds worktree submodule roots on PYTHONPATH (ipfs_accelerate_py/mcplusplus, ipfs_datasets_py, ipfs_kit_py) plus approved site-packages. tests-py is not a submodule root; hermetic imports of validators/harness/benchmarks require host path shims under user site-packages (MCPP-089).",
     "host_path_shims": {
       "validators": "/home/barberb/.local/lib/python3.12/site-packages/validators",
       "harness": "/home/barberb/.local/lib/python3.12/site-packages/harness",
       "benchmarks_path_extension": "/home/barberb/.local/lib/python3.12/site-packages/benchmarks/__init__.py",
       "legacy_pth_bootstrap": "/home/barberb/.local/lib/python3.12/site-packages/aae_mcplusplus_validators_bootstrap.pth",
-      "note": "Real package shims rewrite/extend __path__ to the worktree tests-py packages. User-site .pth bootstrap alone is insufficient under PYTHONNOUSERSITE=1."
-    }
+      "note": "Real package shims rewrite/extend __path__ to the worktree tests-py packages. User-site .pth bootstrap alone is insufficient under PYTHONNOUSERSITE=1.",
+      "validators_listing_note": "exists entries=2",
+      "harness_listing_note": "exists entries=1"
+    },
+    "validation_pythonpath_note": "This receipt ran the board validation command with /usr/bin/python3 and PYTHONPATH including worktree submodule roots; user-site packages were available (PYTHONNOUSERSITE unset for the recorded run) so pytest and test package imports resolve."
   },
   "command": {
-    "shell": "export PYTHONPATH=\"$PWD\"/ipfs_accelerate_py/mcplusplus:\"$PWD\"/ipfs_datasets_py:\"$PWD\"/ipfs_kit_py; cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py --maxfail=1",
+    "shell": "export PYTHONPATH=\"$PWD\"/ipfs_accelerate_py/mcplusplus:\"$PWD\"/ipfs_datasets_py:\"$PWD\"/ipfs_kit_py; cd ipfs_accelerate_py/mcplusplus && /usr/bin/python3 -m pytest -q tests-py --maxfail=1",
     "board_validation": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py --maxfail=1",
     "cwd": "ipfs_accelerate_py/mcplusplus",
     "argv": [
@@ -118,24 +121,28 @@
       "tests-py",
       "--maxfail=1"
     ],
+    "resolved_executable": "/usr/bin/python3",
     "exit_code": 0,
-    "duration_seconds": 0.91
+    "duration_seconds": 1.03
   },
   "commands": {
     "validation": {
       "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py --maxfail=1",
-      "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_3bd70f96513d_3ec610454cfd/ipfs_accelerate_py/mcplusplus",
+      "resolved": "cd ipfs_accelerate_py/mcplusplus && /usr/bin/python3 -m pytest -q tests-py --maxfail=1",
+      "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_ab8f4b0124af_b86c6029a7a1/ipfs_accelerate_py/mcplusplus",
       "exit_code": 0,
-      "duration_seconds": 0.91,
+      "duration_seconds": 1.03,
       "stdout_summary": "323 passed",
-      "hermetic": true
+      "hermetic": false,
+      "hermetic_note": "Recorded run used system python3 with user-site available; PYTHONPATH set to worktree submodule roots."
     },
     "coverage_measurement": {
       "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py --cov=tests-py/validators --cov-report=term-missing --cov-report=json -rs",
-      "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_3bd70f96513d_3ec610454cfd/ipfs_accelerate_py/mcplusplus",
+      "resolved": "cd ipfs_accelerate_py/mcplusplus && /usr/bin/python3 -m pytest -q tests-py --cov=tests-py/validators --cov-report=term-missing --cov-report=json -rs",
+      "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_ab8f4b0124af_b86c6029a7a1/ipfs_accelerate_py/mcplusplus",
       "exit_code": 0,
       "stdout_summary": "323 passed; coverage 96% statements on tests-py/validators",
-      "note": "Coverage measurement places tests-py first on PYTHONPATH so the real validators package is imported (not the host path shim)."
+      "note": "Coverage measurement places tests-py first on PYTHONPATH so the real validators package is imported (not a host path shim)."
     }
   },
   "result": {
@@ -335,7 +342,9 @@
     ]
   },
   "evidence": {
-    "pytest_stdout_sha256": "sha256:fd9cfee1b7864433eef0d7c91c280074cda6fc19242e6ea8fdc1c6bbcb95b229",
+    "pytest_stdout_sha256": "sha256:3e24f2799e6a23e28357422b7f1246d23f59e47e4f86dc2e990ab79c6e7b4752",
+    "checkpoint_directory": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/lane-2/implementation_checkpoints/mcpp-002-659de5e3e890",
+    "pytest_artifacts": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/lane-2/implementation_checkpoints/mcpp-002-659de5e3e890/pytest-run-current",
     "retry_budget_finding": "data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-089-mcpp-002-retry-budget.md",
     "repair_complete": "data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-089-repair-complete.md",
     "root_cause": "inherited_validation_debt_hermetic_pythonpath",
@@ -352,5 +361,5 @@
     "failures_recorded_not_hidden": true
   },
   "suite_commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
-  "commit_sha": "3b0132d6f5dd33c883df589f9e2ecf800e3e0783"
+  "commit_sha": "9845635023afb32a36e584705577a52002bc9706"
 }
