@@ -1,0 +1,1217 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/logic-platform-inventory-supervisor-semantics@1",
+  "task_id": "LPC-006",
+  "goal_id": "LPC-G010",
+  "title": "Inventory supervisor semantic types and datasets imports",
+  "scanned_package": "ipfs_accelerate_py/agent_supervisor",
+  "datasets_package": "ipfs_datasets_py",
+  "classification_vocabulary": [
+    "operational",
+    "compatibility",
+    "duplicate",
+    "canonical projection"
+  ],
+  "classification_rules": {
+    "operational": "Supervisor-owned scheduling, isolation, resource, workflow, storage, or daemon concern that uses datasets as a backend or optional surface without redefining logic-family meaning.",
+    "compatibility": "Alias, spelling, or retained name that preserves an older public surface without adding independent semantic authority.",
+    "duplicate": "Supervisor-local type that redefines or parallel-owns a logic semantic vocabulary datasets is intended to own (family, property, form, translation, evidence, verdict, assurance, cache-scope axes).",
+    "canonical projection": "Import or adapter that loads datasets contracts and projects supervisor values onto them, or consumes datasets types as the authority without inventing a second semantic registry."
+  },
+  "scope_notes": [
+    "Direct imports are AST-level `from/import ipfs_datasets_py...` statements plus explicit lazy importlib targets that load datasets modules at call time.",
+    "String references used only for path scope, documentation provenance, git ls-tree probes, or env var names are not counted as imports.",
+    "Homonymous enums that do not redefine logic-platform axes (for example repository surface EvidenceKind) are inventoried only when they share a name with a logic semantic type and could be mistaken for one.",
+    "ipfs_datasets_py is empty in this worktree; classifications use supervisor source as authority and the plan ownership split (datasets owns semantics; supervisor owns operations)."
+  ],
+  "direct_imports": [
+    {
+      "id": "imp-001",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/contract_analysis/cache_adapter.py",
+      "import_style": "static_top_level",
+      "datasets_module": "ipfs_datasets_py.logic.software_contracts.cache",
+      "symbols": [
+        "AggregateSnapshotReceipt",
+        "AnalysisCacheKey",
+        "CacheLookup",
+        "CacheReceipt",
+        "FormalVerificationCache",
+        "OUTCOME_PROVED"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Thin supervisor adapter; datasets owns cache identity and persistence; supervisor only binds execution identities into the datasets key."
+    },
+    {
+      "id": "imp-002",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/code_contract_logic.py",
+      "import_style": "static_top_level",
+      "datasets_module": "ipfs_datasets_py.logic.ir_core.claims",
+      "symbols": [
+        "IR_ASSUMPTION_SCHEMA_VERSION",
+        "IR_CLAIM_SCHEMA_VERSION",
+        "IR_OBLIGATION_SCHEMA_VERSION",
+        "Assumption",
+        "ClaimValidationError",
+        "IRClaim",
+        "ProofObligation",
+        "freeze_json"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Maps supervisor program contracts onto datasets IR claim schemas without redefining claim identity."
+    },
+    {
+      "id": "imp-003",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/code_contract_prover.py",
+      "import_style": "static_top_level",
+      "datasets_module": "ipfs_datasets_py.logic.backends.cvc5.compiler",
+      "symbols": [
+        "CVC5_BACKEND_ID",
+        "CVC5_BACKEND_VERSION",
+        "CVC5_CAPABILITIES",
+        "CVC5Compiler"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Consumes datasets CVC5 backend compiler contracts as authority for compilation."
+    },
+    {
+      "id": "imp-004",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/code_contract_prover.py",
+      "import_style": "static_top_level",
+      "datasets_module": "ipfs_datasets_py.logic.backends.registry",
+      "symbols": [
+        "BackendRunnerOutput",
+        "CompiledBackendRequest",
+        "MalformedBackendOutput",
+        "UnsupportedBackendRequest",
+        "compile_smtlib_request"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Uses datasets backend registry types for SMT request compilation."
+    },
+    {
+      "id": "imp-005",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/code_contract_prover.py",
+      "import_style": "static_top_level",
+      "datasets_module": "ipfs_datasets_py.logic.backends.z3.compiler",
+      "symbols": [
+        "Z3_BACKEND_ID",
+        "Z3_BACKEND_VERSION",
+        "Z3_CAPABILITIES",
+        "Z3Compiler"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Consumes datasets Z3 backend compiler contracts as authority for compilation."
+    },
+    {
+      "id": "imp-006",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/code_contract_prover.py",
+      "import_style": "static_top_level",
+      "datasets_module": "ipfs_datasets_py.logic.ir_core.claims",
+      "symbols": [
+        "FrozenMap",
+        "IRClaim",
+        "stable_digest"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Uses datasets IR claim identity helpers for portfolio evidence packaging."
+    },
+    {
+      "id": "imp-007",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/code_contract_prover.py",
+      "import_style": "static_top_level",
+      "datasets_module": "ipfs_datasets_py.logic.ir_core.protocols",
+      "symbols": [
+        "AttemptStatus",
+        "BackendCapabilities",
+        "BackendRequest",
+        "ExecutionBounds",
+        "QueryKind",
+        "ResultStatus"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Binds supervisor portfolio attempts to datasets backend protocol types."
+    },
+    {
+      "id": "imp-008",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/code_contract_prover.py",
+      "import_style": "static_function_local",
+      "datasets_module": "ipfs_datasets_py.logic.backends.registry",
+      "symbols": [
+        "_classify_solver_stdout"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Optional call-site use of datasets solver stdout classification."
+    },
+    {
+      "id": "imp-009",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/end_goal_development.py",
+      "import_style": "static_try_optional",
+      "datasets_module": "ipfs_datasets_py.logic.software_verification.tactician.contracts",
+      "symbols": [
+        "AmbiguityStatus",
+        "FormalGoal",
+        "TacticianContractError"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Prefers datasets FormalGoal when available; falls back without inventing a second formal-goal authority."
+    },
+    {
+      "id": "imp-010",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/kernel_verification.py",
+      "import_style": "static_function_local",
+      "datasets_module": "ipfs_datasets_py.logic.hammers.reconstruction",
+      "symbols": [
+        "KernelUnavailableError",
+        "reconstruct_candidate"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Delegates reconstruction to datasets Hammer; maps results into supervisor kernel verification receipts."
+    },
+    {
+      "id": "imp-011",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/runtime_contract_obligations.py",
+      "import_style": "static_function_local",
+      "datasets_module": "ipfs_datasets_py.logic.ir_core.claims",
+      "symbols": [
+        "IRClaim",
+        "Assumption",
+        "FrozenMap",
+        "ProofObligation"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Builds shared IR claims for runtime contract obligations from datasets IR types."
+    },
+    {
+      "id": "imp-012",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/mcp_contract_obligations.py",
+      "import_style": "static_function_local",
+      "datasets_module": "ipfs_datasets_py.logic.ir_core.claims",
+      "symbols": [
+        "IRClaim",
+        "Assumption",
+        "FrozenMap",
+        "ProofObligation"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Builds shared IR claims for MCP contract obligations from datasets IR types."
+    },
+    {
+      "id": "imp-013",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/program_analysis_zkp.py",
+      "import_style": "static_function_local",
+      "datasets_module": "ipfs_datasets_py.logic.zkp.ceremony",
+      "symbols": [
+        "validate_groth16_mpc_ceremony"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Validates ceremony production eligibility through datasets ZKP ceremony contracts."
+    },
+    {
+      "id": "imp-014",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+      "import_style": "static_function_local",
+      "datasets_module": "ipfs_datasets_py.utils.symai_config",
+      "symbols": [
+        "ensure_symai_config_for_import"
+      ],
+      "classification": "operational",
+      "rationale": "Import-isolation helper for optional symai/Hammer cold-start; does not redefine logic family semantics."
+    },
+    {
+      "id": "imp-015",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+      "import_style": "static_function_local",
+      "datasets_module": "ipfs_datasets_py.logic.profile_g",
+      "symbols": [
+        "ProfileGError",
+        "validate_profile_g_artifact"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Validates immutable Profile-G bindings with datasets validators before lease registration trusts them."
+    },
+    {
+      "id": "imp-016",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/task_sources/dataset_store.py",
+      "import_style": "static_function_local",
+      "datasets_module": "ipfs_datasets_py.ipfs_datasets",
+      "symbols": [
+        "Dataset"
+      ],
+      "classification": "operational",
+      "rationale": "Optional storage backend for objective datasets; falls back to HuggingFace datasets. Not a logic semantic import."
+    },
+    {
+      "id": "imp-017",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/task_sources/dataset_store.py",
+      "import_style": "static_function_local",
+      "datasets_module": "ipfs_datasets_py.dataset_manager",
+      "symbols": [
+        "DatasetManager"
+      ],
+      "classification": "operational",
+      "rationale": "Optional dataset manager for storage operations; operational persistence only."
+    },
+    {
+      "id": "imp-018",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py",
+      "import_style": "static_top_level",
+      "datasets_module": "ipfs_datasets_py.logic.deontic.metrics",
+      "symbols": [
+        "summarize_parser_elements"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Uses datasets deontic metrics as the parser-element authority for legal repair work."
+    },
+    {
+      "id": "imp-019",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py",
+      "import_style": "static_top_level",
+      "datasets_module": "ipfs_datasets_py.logic.deontic.exports",
+      "symbols": [
+        "active_repair_details_from_parser_elements"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Projects parser elements through datasets deontic export helpers."
+    },
+    {
+      "id": "imp-020",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py",
+      "import_style": "static_top_level",
+      "datasets_module": "ipfs_datasets_py.logic.deontic.utils.deontic_parser",
+      "symbols": [
+        "build_deontic_formula",
+        "extract_normative_elements"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Uses datasets deontic parser as the normative extraction authority."
+    },
+    {
+      "id": "imp-021",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py",
+      "import_style": "static_top_level",
+      "datasets_module": "ipfs_datasets_py.optimizers.agentic.base",
+      "symbols": [
+        "OptimizationMethod"
+      ],
+      "classification": "operational",
+      "rationale": "Optimizer method enum for daemon repair loops; operational optimizer wiring, not logic-family vocabulary."
+    },
+    {
+      "id": "imp-022",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py",
+      "import_style": "static_top_level",
+      "datasets_module": "ipfs_datasets_py.optimizers.common.base_optimizer",
+      "symbols": [
+        "BaseOptimizer",
+        "OptimizationContext",
+        "OptimizerConfig"
+      ],
+      "classification": "operational",
+      "rationale": "Optimizer base classes for daemon execution; scheduling/repair workflow ownership stays on the supervisor."
+    },
+    {
+      "id": "imp-023",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py",
+      "import_style": "static_function_local",
+      "datasets_module": "ipfs_datasets_py.llm_router",
+      "symbols": [
+        "llm_router"
+      ],
+      "classification": "operational",
+      "rationale": "Optional model-routing backend for legal parser repair; model routing is supervisor operational ownership."
+    },
+    {
+      "id": "imp-024",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/logic_port.py",
+      "import_style": "static_function_local",
+      "datasets_module": "ipfs_datasets_py.optimizers.logic_port_daemon",
+      "symbols": [
+        "main"
+      ],
+      "classification": "operational",
+      "rationale": "Lifecycle dispatcher for the packaged logic-port daemon; process lifecycle is supervisor operational ownership."
+    },
+    {
+      "id": "imp-025",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/logic_provider_contract.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.backends.provider",
+      "symbols": [
+        "LogicProviderRequest",
+        "LogicProviderResponse",
+        "ProviderResourceBudget",
+        "ProviderCancellation"
+      ],
+      "classification": "canonical projection",
+      "rationale": "Lazy facade converts supervisor ProviderRequest/Response to datasets LogicProviderProtocol wire types without cold-import."
+    },
+    {
+      "id": "imp-026",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.families.registry",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Primary vocabulary projection boundary for family registry discovery."
+    },
+    {
+      "id": "imp-027",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.families.models",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Primary vocabulary projection boundary for family models."
+    },
+    {
+      "id": "imp-028",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.software_verification.properties",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Projects supervisor PropertyKind onto datasets software-verification property kinds."
+    },
+    {
+      "id": "imp-029",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.software_verification.translations",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Projects supervisor TranslationClass/LogicForm onto datasets preservation/translation kinds."
+    },
+    {
+      "id": "imp-030",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.software_verification.receipts",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Projects supervisor receipts onto datasets receipt contracts."
+    },
+    {
+      "id": "imp-031",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.backends.cache_protocol",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Projects supervisor cache-scope tokens onto datasets cache protocol identities."
+    },
+    {
+      "id": "imp-032",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.verification_api",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Lazy discovery of datasets verification API for cross-package revision checks."
+    },
+    {
+      "id": "imp-033",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/admissibility_bridge.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.admissibility.gate",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Loads datasets admissibility gate without duplicating join logic."
+    },
+    {
+      "id": "imp-034",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/admissibility_bridge.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.admissibility.profiles",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Loads datasets admissibility profiles for legal-strict and related gates."
+    },
+    {
+      "id": "imp-035",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/admissibility_bridge.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.admissibility.reasons",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Loads datasets admissibility reason vocabulary."
+    },
+    {
+      "id": "imp-036",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/admissibility_bridge.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.proof_corpus.store",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Loads datasets proof-corpus store for admissibility inputs."
+    },
+    {
+      "id": "imp-037",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/admissibility_bridge.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.proof_corpus.schemas",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Loads datasets proof-corpus schemas for artifact validation."
+    },
+    {
+      "id": "imp-038",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/admissibility_bridge.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.formalization.compiler",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Loads datasets formalization compiler for Intent formal CIDs."
+    },
+    {
+      "id": "imp-039",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/admissibility_enforcement.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.admissibility.receipt",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Loads datasets authorization receipt types for pre-dispatch enforcement."
+    },
+    {
+      "id": "imp-040",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/admissibility_enforcement.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.admissibility.service",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Loads datasets authorization service for one-shot capability consumption."
+    },
+    {
+      "id": "imp-041",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/admissibility_enforcement.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.admissibility.compose",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Loads datasets authorization compose helpers."
+    },
+    {
+      "id": "imp-042",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/mcp_contract_attestation.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.bridge.zkp_attestation",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Optional datasets ZKP attestation bridge for MCP contract attestations."
+    },
+    {
+      "id": "imp-043",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.hammers",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Hammer portfolio adapter; candidate-producing until reconstruction; datasets owns hammer semantics."
+    },
+    {
+      "id": "imp-044",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.ir_core.identity",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Uses datasets IR identity for content-addressed hammer provenance."
+    },
+    {
+      "id": "imp-045",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.TDFOL",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Lazy TDFOL prover/core binding for hammer domain reasoning."
+    },
+    {
+      "id": "imp-046",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.CEC.native",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Lazy DCEC/CEC native binding for hammer domain reasoning."
+    },
+    {
+      "id": "imp-047",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.external_provers.smt",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Lazy SMT prover bridges (z3/cvc5) for hammer candidate generation."
+    },
+    {
+      "id": "imp-048",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_tactician_provider.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.tactician",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Lazy tactician adapter; advisors propose, they do not prove."
+    },
+    {
+      "id": "imp-049",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_doctor_logic.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.tactician",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Doctor capability probe of datasets tactician surface; package presence is not authority."
+    },
+    {
+      "id": "imp-050",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_doctor_logic.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.hammers",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Doctor capability probe of datasets hammer surface."
+    },
+    {
+      "id": "imp-051",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_doctor_logic.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.proof_corpus.store",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Doctor capability probe of proof-corpus store."
+    },
+    {
+      "id": "imp-052",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_doctor_logic.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.ir_core.identity",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Doctor capability probe of IR identity surface."
+    },
+    {
+      "id": "imp-053",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_analysis_provider.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.intent_ir.graphrag.retrieval",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Optional GraphRAG retrieval for analysis evidence nomination only."
+    },
+    {
+      "id": "imp-054",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_analysis_provider.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.knowledge_graphs.cypher.ast",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Optional Cypher AST surface for analysis evidence nomination."
+    },
+    {
+      "id": "imp-055",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_analysis_provider.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.ir_core.identity",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Optional IR identity for analysis evidence content addressing."
+    },
+    {
+      "id": "imp-056",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_embedding_provider.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.ml.embeddings.embeddings_engine",
+      "symbols": [],
+      "classification": "operational",
+      "rationale": "Optional embedding backend for retrieval; not a logic-family semantic authority."
+    },
+    {
+      "id": "imp-057",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_test_certificate_provider.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.zkp.test_execution_certificate",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Lazy ZKP test-certificate verification surface from datasets."
+    },
+    {
+      "id": "imp-058",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/tactician_hammer_capabilities.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.tactician",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Capability probe for generic tactician; does not promote nomination scores to proof."
+    },
+    {
+      "id": "imp-059",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/tactician_hammer_capabilities.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.hammers.premise_selection",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Capability probe for hammer premise selection modules."
+    },
+    {
+      "id": "imp-060",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/integrations/tactician_hammer_capabilities.py",
+      "import_style": "lazy_importlib",
+      "datasets_module": "ipfs_datasets_py.logic.hammers.reconstruction",
+      "symbols": [],
+      "classification": "canonical projection",
+      "rationale": "Capability probe for hammer reconstruction (Lean/Coq/Isabelle) modules."
+    }
+  ],
+  "duplicate_semantic_types": [
+    {
+      "id": "sem-001",
+      "name": "LogicFamily",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_operation_registry.py",
+      "kind": "enum",
+      "values": [
+        "tdfol",
+        "dcec",
+        "flogic",
+        "modal",
+        "deontic",
+        "frame",
+        "kg",
+        "event_calculus"
+      ],
+      "overlaps": "ipfs_datasets_py.logic.families family_id vocabulary",
+      "classification": "duplicate",
+      "rationale": "Supervisor-local logic family enum parallel to datasets family registry; projected by SupervisorCanonicalLogicAdapter (flogic/frame both map to frame_logic with residual).",
+      "projection_boundary": "proof/canonical_logic_adapter.py::_ANALYSIS_FAMILY_TO_CANONICAL"
+    },
+    {
+      "id": "sem-002",
+      "name": "PropertyKind",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "kind": "enum",
+      "values": [
+        "finite_constraint",
+        "state_machine",
+        "authorization",
+        "protocol",
+        "hyperproperty",
+        "runtime_trace",
+        "kernel_check",
+        "typed_planning",
+        "temporal_deontic",
+        "first_order_theorem"
+      ],
+      "overlaps": "ipfs_datasets_py.logic.software_verification.properties",
+      "classification": "duplicate",
+      "rationale": "Supervisor multi-prover property families parallel datasets software-verification property kinds; projected (for example finite_constraint→satisfiability).",
+      "projection_boundary": "proof/canonical_logic_adapter.py::_PROPERTY_KIND_TO_CANONICAL"
+    },
+    {
+      "id": "sem-003",
+      "name": "PropertyType",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "kind": "alias",
+      "alias_of": "PropertyKind",
+      "classification": "compatibility",
+      "rationale": "Compatibility-friendly semantic name retained as PropertyType = PropertyKind."
+    },
+    {
+      "id": "sem-004",
+      "name": "ObligationProperty",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "kind": "alias",
+      "alias_of": "PropertyKind",
+      "classification": "compatibility",
+      "rationale": "Compatibility-friendly semantic name retained as ObligationProperty = PropertyKind."
+    },
+    {
+      "id": "sem-005",
+      "name": "LogicForm",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/logic_translation_validation.py",
+      "kind": "enum",
+      "values": [
+        "ast",
+        "dcec",
+        "tdfol",
+        "fol",
+        "tptp",
+        "smt-lib",
+        "tla+",
+        "protocol",
+        "hyperproperty"
+      ],
+      "overlaps": "datasets form/family wire labels used by software_verification translations",
+      "classification": "duplicate",
+      "rationale": "Supervisor translation source/target form enum parallel to datasets form labels; projected (for example fol→first_order, smt-lib→smtlib).",
+      "projection_boundary": "proof/canonical_logic_adapter.py::_LOGIC_FORM_TO_CANONICAL"
+    },
+    {
+      "id": "sem-006",
+      "name": "TranslationClass",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/logic_translation_validation.py",
+      "kind": "enum",
+      "values": [
+        "exact",
+        "equisatisfiable",
+        "bounded_abstraction",
+        "conservative_approximation",
+        "heuristic"
+      ],
+      "overlaps": "datasets PreservationKind / TranslationKind",
+      "classification": "duplicate",
+      "rationale": "Supervisor translation exactness enum parallel to datasets preservation kinds; projected (for example bounded_abstraction→bounded).",
+      "projection_boundary": "proof/canonical_logic_adapter.py::_TRANSLATION_CLASS_TO_PRESERVATION"
+    },
+    {
+      "id": "sem-007",
+      "name": "TranslationExactness",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/logic_translation_validation.py",
+      "kind": "alias",
+      "alias_of": "TranslationClass",
+      "classification": "compatibility",
+      "rationale": "Early design-note name retained as TranslationExactness = TranslationClass."
+    },
+    {
+      "id": "sem-008",
+      "name": "EvidenceKind",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "kind": "enum",
+      "values": [
+        "unknown",
+        "llm_output",
+        "atp_candidate",
+        "smt_candidate",
+        "solver_result",
+        "kernel_verification",
+        "test_result",
+        "static_analysis",
+        "cryptographic_attestation",
+        "cache_entry"
+      ],
+      "overlaps": "datasets evidence-kind axis on receipts and formalization",
+      "classification": "duplicate",
+      "rationale": "Supervisor proof evidence-kind enum is a parallel semantic axis to datasets evidence kinds used in receipts."
+    },
+    {
+      "id": "sem-009",
+      "name": "ProofEvidenceKind",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "kind": "alias",
+      "alias_of": "EvidenceKind",
+      "classification": "compatibility",
+      "rationale": "Alias ProofEvidenceKind = EvidenceKind for older import sites."
+    },
+    {
+      "id": "sem-010",
+      "name": "ZKP_ATTESTATION",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "kind": "enum_member_alias",
+      "alias_of": "EvidenceKind.CRYPTOGRAPHIC_ATTESTATION",
+      "classification": "compatibility",
+      "rationale": "Compatibility spelling ZKP_ATTESTATION = cryptographic_attestation on EvidenceKind."
+    },
+    {
+      "id": "sem-011",
+      "name": "EvidenceAuthority",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "kind": "enum",
+      "values": [
+        "unknown",
+        "provider",
+        "llm",
+        "atp",
+        "smt",
+        "solver",
+        "kernel",
+        "attestation_verifier",
+        "validation_runner",
+        "cache"
+      ],
+      "overlaps": "datasets evidence-authority axis",
+      "classification": "duplicate",
+      "rationale": "Supervisor proof evidence-authority enum parallel to datasets authority axis used for receipt admission."
+    },
+    {
+      "id": "sem-012",
+      "name": "EvidenceAuthority",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/objectives/goal_quality.py",
+      "kind": "enum",
+      "values": [
+        "diagnostic",
+        "proposal",
+        "validation",
+        "proof",
+        "operator",
+        "completion_gate"
+      ],
+      "overlaps": "name collision with proof EvidenceAuthority; domain is goal-quality ops",
+      "classification": "operational",
+      "rationale": "Closed goal-quality evidence authority; not a logic-platform receipt authority and not projected to datasets families."
+    },
+    {
+      "id": "sem-013",
+      "name": "EvidenceAuthority",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py",
+      "kind": "enum",
+      "values": [
+        "prompt",
+        "scan_advisory",
+        "verified",
+        "authoritative"
+      ],
+      "overlaps": "name collision with proof EvidenceAuthority; domain is prompt workflow",
+      "classification": "operational",
+      "rationale": "Prompt-workflow authority labels; operational workflow state, not logic semantic receipts."
+    },
+    {
+      "id": "sem-014",
+      "name": "EvidenceAuthority",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/planning/plan_analysis_query_planner.py",
+      "kind": "enum",
+      "values": [
+        "prompt_nomination",
+        "model_nomination",
+        "retrieval_nomination",
+        "current_root_fact",
+        "reviewed_contract",
+        "reviewed_policy",
+        "security_analysis",
+        "bounded_observation",
+        "proof_receipt",
+        "counterexample"
+      ],
+      "overlaps": "name collision with proof EvidenceAuthority; domain is plan-analysis nomination",
+      "classification": "operational",
+      "rationale": "Plan-analysis nomination authority; operational analysis routing, not datasets family/property vocabulary."
+    },
+    {
+      "id": "sem-015",
+      "name": "EvidenceKind",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/analysis/repository_surface_inventory.py",
+      "kind": "enum",
+      "values": [
+        "definition",
+        "import",
+        "caller",
+        "registration",
+        "test",
+        "documentation",
+        "export",
+        "classification",
+        "relationship",
+        "contradiction"
+      ],
+      "overlaps": "name collision with proof EvidenceKind; domain is repository surface inventory",
+      "classification": "operational",
+      "rationale": "Surface-inventory evidence kinds for code discovery; not proof receipt evidence kinds."
+    },
+    {
+      "id": "sem-016",
+      "name": "AssuranceLevel",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "kind": "enum",
+      "values": [
+        "unverified",
+        "candidate",
+        "solver_checked",
+        "kernel_verified",
+        "attested"
+      ],
+      "overlaps": "datasets assurance / authority ceiling on receipts",
+      "classification": "duplicate",
+      "rationale": "Ordered assurance axis used by supervisor policy gates; parallel to datasets receipt assurance vocabulary."
+    },
+    {
+      "id": "sem-017",
+      "name": "AssuranceLevel.NONE",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "kind": "enum_member_alias",
+      "alias_of": "AssuranceLevel.UNVERIFIED",
+      "classification": "compatibility",
+      "rationale": "Compatibility spelling NONE = unverified."
+    },
+    {
+      "id": "sem-018",
+      "name": "AssuranceLevel.SOLVER_VERIFIED",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "kind": "enum_member_alias",
+      "alias_of": "AssuranceLevel.SOLVER_CHECKED",
+      "classification": "compatibility",
+      "rationale": "Compatibility spelling SOLVER_VERIFIED = solver_checked."
+    },
+    {
+      "id": "sem-019",
+      "name": "ProofVerdict",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "kind": "enum",
+      "values": [
+        "proved",
+        "disproved",
+        "inconclusive",
+        "unsupported",
+        "error",
+        "cancelled"
+      ],
+      "overlaps": "datasets semantic verdict axis",
+      "classification": "duplicate",
+      "rationale": "Supervisor proof-receipt verdict enum parallel to datasets semantic verdict vocabulary."
+    },
+    {
+      "id": "sem-020",
+      "name": "PortfolioVerdict",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "kind": "enum",
+      "values": [
+        "proved",
+        "disproved",
+        "inconclusive",
+        "unsupported",
+        "error"
+      ],
+      "overlaps": "ProofVerdict value set; portfolio orchestration layer",
+      "classification": "operational",
+      "rationale": "Portfolio aggregation verdict for multi-prover routing; supervisor orchestration, derived from lane outcomes rather than a second datasets verdict registry."
+    },
+    {
+      "id": "sem-021",
+      "name": "RouteVerdict",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "kind": "alias",
+      "alias_of": "PortfolioVerdict",
+      "classification": "compatibility",
+      "rationale": "Compatibility name RouteVerdict = PortfolioVerdict."
+    },
+    {
+      "id": "sem-022",
+      "name": "CacheScope",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_operation_registry.py",
+      "kind": "enum",
+      "values": [
+        "exact_tree",
+        "objective_revision",
+        "request",
+        "none"
+      ],
+      "overlaps": "datasets cache scope protocol (tree/policy/request/none)",
+      "classification": "duplicate",
+      "rationale": "Supervisor analysis cache-scope enum parallel to datasets cache protocol scopes; projected (exact_tree→tree, objective_revision→policy).",
+      "projection_boundary": "proof/canonical_logic_adapter.py::_CACHE_SCOPE_TO_CANONICAL"
+    },
+    {
+      "id": "sem-023",
+      "name": "ProofProviderOperation",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_capabilities.py",
+      "kind": "enum",
+      "values": [
+        "capability",
+        "translate",
+        "prove",
+        "reconstruct",
+        "verify",
+        "attest"
+      ],
+      "overlaps": "datasets LogicProviderProtocol operations",
+      "classification": "duplicate",
+      "rationale": "Supervisor provider operation vocabulary parallel to datasets provider protocol operations; retained as public compatibility surface with projection via logic_provider_contract."
+    },
+    {
+      "id": "sem-024",
+      "name": "ProofProviderIsolation",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_capabilities.py",
+      "kind": "enum",
+      "values": [
+        "in_process",
+        "subprocess"
+      ],
+      "overlaps": "datasets runtime isolation labels (in_process, native_process, jvm, ...)",
+      "classification": "operational",
+      "rationale": "Execution isolation is supervisor operational ownership; adapter projects to datasets runtime labels without datasets owning isolation policy.",
+      "projection_boundary": "proof/canonical_logic_adapter.py::_ISOLATION_TO_RUNTIME"
+    },
+    {
+      "id": "sem-025",
+      "name": "ProviderRequest / ProviderResponse / ResourceBudget",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py",
+      "kind": "contract_types",
+      "overlaps": "ipfs_datasets_py.logic.backends.provider LogicProviderRequest/Response/ResourceBudget",
+      "classification": "duplicate",
+      "rationale": "Supervisor provider wire envelope parallel to datasets LogicProviderProtocol; converted by SupervisorLogicProviderFacade without replacing the supervisor API."
+    },
+    {
+      "id": "sem-026",
+      "name": "ProverMatrixEntry / ProverMatrixSnapshot / ProverMatrixRegistry",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/prover_matrix_registry.py",
+      "kind": "registry_types",
+      "overlaps": "datasets provider matrix documentation and capability descriptors",
+      "classification": "operational",
+      "rationale": "Supervisor owns executable, evidence-bound matrix state (probe, quarantine, single-flight); documentation path may cite datasets Markdown but authority is supervisor receipt-bound matrix."
+    },
+    {
+      "id": "sem-027",
+      "name": "formal_verification_cache (ProofCache contracts)",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "kind": "cache_implementation",
+      "overlaps": "datasets cache-key / proof_cache semantic identity",
+      "classification": "operational",
+      "rationale": "Supervisor owns placement, DuckDB single-flight, and fail-closed hit reconstruction; datasets owns semantic cache-key meaning. Not a second semantic key algorithm."
+    },
+    {
+      "id": "sem-028",
+      "name": "DCECOperator / TDFOLProperty / FormulaOperator / ReviewedPredicate",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_logic_vocabulary.py",
+      "kind": "reviewed_plan_vocabulary",
+      "overlaps": "datasets DCEC/TDFOL family operator vocabularies",
+      "classification": "duplicate",
+      "rationale": "Supervisor-reviewed plan-check formula vocabulary for work plans; parallel naming to datasets DCEC/TDFOL operators but scoped to finite-trace plan checks, not code proofs. Residual semantic duplication risk for LPC-091."
+    },
+    {
+      "id": "sem-029",
+      "name": "Sort",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_logic_vocabulary.py",
+      "kind": "alias",
+      "alias_of": "TermSort",
+      "classification": "compatibility",
+      "rationale": "Compatibility alias Sort = TermSort."
+    },
+    {
+      "id": "sem-030",
+      "name": "VocabularyProjection / SupervisorCanonicalLogicAdapter",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+      "kind": "adapter",
+      "overlaps": "all supervisor family/property/form/translation/cache/provider residual maps",
+      "classification": "canonical projection",
+      "rationale": "Single cross-package boundary that replaces overlapping vocabularies with lossless projections onto datasets while retaining supervisor operational ownership."
+    },
+    {
+      "id": "sem-031",
+      "name": "SupervisorLogicProviderFacade",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/logic_provider_contract.py",
+      "kind": "adapter",
+      "overlaps": "datasets LogicProviderProtocol@1 wire types",
+      "classification": "canonical projection",
+      "rationale": "Lazy additive adapter between supervisor provider API and datasets backends.provider; no cold import."
+    },
+    {
+      "id": "sem-032",
+      "name": "LogicCapabilityBinding",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/change_propagation_obligations.py",
+      "kind": "binding_type",
+      "overlaps": "datasets capability descriptors by name only",
+      "classification": "operational",
+      "rationale": "Binds change-propagation obligations to capability probes; operational routing, not a second family registry."
+    },
+    {
+      "id": "sem-033",
+      "name": "LogicCapabilityBinding",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/contract_repair_obligations.py",
+      "kind": "binding_type",
+      "overlaps": "datasets capability descriptors by name only",
+      "classification": "operational",
+      "rationale": "Binds contract-repair obligations to capability probes; operational routing, not a second family registry."
+    },
+    {
+      "id": "sem-034",
+      "name": "OperationStatus",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py",
+      "kind": "enum",
+      "values": [
+        "succeeded",
+        "failed",
+        "denied",
+        "conflict",
+        "not_found",
+        "cancelled",
+        "timed_out",
+        "unavailable"
+      ],
+      "overlaps": "datasets operation-status axis by name only",
+      "classification": "operational",
+      "rationale": "Control-plane operation status for supervisor lifecycle; not logic semantic operation status from datasets registries."
+    },
+    {
+      "id": "sem-035",
+      "name": "ProverRole",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "kind": "enum",
+      "values": [
+        "model_assistant",
+        "domain_reasoner",
+        "orchestrator",
+        "candidate",
+        "model_checker",
+        "kernel"
+      ],
+      "overlaps": "provider role labels in datasets matrices",
+      "classification": "operational",
+      "rationale": "Portfolio lane role for trust boundary routing; supervisor orchestration with authoritative roles limited to model_checker and kernel."
+    },
+    {
+      "id": "sem-036",
+      "name": "AttemptOutcome",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "kind": "enum",
+      "values": [
+        "candidate",
+        "verified",
+        "counterexample",
+        "unknown",
+        "unsupported",
+        "unavailable",
+        "timeout",
+        "malformed",
+        "error",
+        "cancelled",
+        "blocked"
+      ],
+      "overlaps": "lane-level outcome labels similar to datasets attempt statuses",
+      "classification": "operational",
+      "rationale": "Per-lane portfolio attempt outcome for routing; does not grant proof authority by itself."
+    },
+    {
+      "id": "sem-037",
+      "name": "ApproximationDirection / SemanticDimension / TranslationIssueCode",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/proof/logic_translation_validation.py",
+      "kind": "translation_support_enums",
+      "overlaps": "datasets translation validation dimensions",
+      "classification": "duplicate",
+      "rationale": "Supervisor-local translation validation inventory and issue codes parallel datasets translation contracts; intended for later projection/consolidation under LPC-G090."
+    },
+    {
+      "id": "sem-038",
+      "name": "TemporalPropertyKind",
+      "supervisor_path": "ipfs_accelerate_py/agent_supervisor/runtime/runtime_temporal_monitor.py",
+      "kind": "enum",
+      "overlaps": "name resemblance to PropertyKind; domain is runtime temporal monitor",
+      "classification": "operational",
+      "rationale": "Runtime temporal monitor property kinds (lease, stop, merge ordering); supervisor operational safety properties, not datasets software-verification kinds."
+    }
+  ],
+  "summary": {
+    "direct_import_count": 60,
+    "duplicate_semantic_type_count": 38,
+    "classification_counts": {
+      "direct_imports": {
+        "operational": 8,
+        "compatibility": 0,
+        "duplicate": 0,
+        "canonical projection": 52
+      },
+      "duplicate_semantic_types": {
+        "operational": 14,
+        "compatibility": 9,
+        "duplicate": 13,
+        "canonical projection": 2
+      },
+      "combined": {
+        "operational": 22,
+        "compatibility": 9,
+        "duplicate": 13,
+        "canonical projection": 54
+      }
+    },
+    "all_items_classified": true,
+    "unclassified_count": 0
+  },
+  "follow_on": {
+    "LPC-008": "Compose this slice into inventory.json / INDEX.md under categories supervisor_import_into_datasets and duplicate_supervisor_semantic_type.",
+    "LPC-090": "Generate supervisor maps from residual projections; stop hand lists.",
+    "LPC-091": "Classify leftover supervisor semantic types (LogicFamily, PropertyKind, LogicForm, TranslationClass, capability/operation/matrix/cache) for migration or retention."
+  }
+}
