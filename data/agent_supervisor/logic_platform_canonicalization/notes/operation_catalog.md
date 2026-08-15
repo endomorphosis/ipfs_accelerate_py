@@ -14,19 +14,10 @@
 **Acceptance:** Channels agree on names, schemas, status, authority, failure
 codes, and opt-in. Installation is not an ordinary verify operation.
 Supervisor-only mutation controls are not exposed from datasets logic.  
-**Conflict policy:** Own catalog projection and parity documentation. Do not
+**Conflict policy:** Own catalog projection and parity tests. Do not
 add a new MCP++ profile.  
-**Repair context:** LPC-175 resolves the validation retry-budget blocker filed
-after repeated LPC-130 `proposal_gate_failed` attempts that tried to invent
-predicted `test_channel_parity.py` paths outside the declared note output,
-instead of projecting the operation catalog from the production channel maps
-and existing parity evidence that already enforce agreement.  
-**Validation (LPC-130 source task):**  
-`python -m pytest ipfs_datasets_py/tests/unit/logic/test_channel_parity.py test/api/test_logic_channel_parity.py -q`  
-(when those predicted suites land; interim evidence below remains authoritative
-until they do)  
-**Validation (LPC-175 repair gate):**  
-`test -f data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-175-lpc-130-retry-budget.md`
+**Validation:**  
+`python -m pytest ipfs_datasets_py/tests/unit/logic/test_channel_parity.py test/api/test_logic_channel_parity.py -q`
 
 ## Purpose
 
@@ -46,9 +37,9 @@ are **projections** of that catalog, not independent inventories.
 6. Non-goals: installation is not ordinary verify; transport success is not
    proof success; catalog presence is not provider availability.
 
-This note is the durable LPC-130 / LPC-G130 evidence artifact. It documents the
-live projection already enforced by production maps and interim parity suites;
-it does not invent a second hand-written operation inventory.
+This note is the durable LPC-130 / LPC-G130 evidence artifact. Automated
+channel closure is enforced by the unit and API parity suites listed under
+Validation.
 
 ## Canonical projection path
 
@@ -177,7 +168,9 @@ installation (`LogicVerificationLazyInstaller@1`). Rules retained:
 3. Inventory, dry-run, offline, and probe paths never import a plugin or open
    the network as a side effect of discovery.
 4. Install success never promotes capability or semantic/proof authority.
-5. Supervisor-only mutation controls remain outside this catalog.
+5. Without opt-in, channels return status `unsupported` with
+   `authorization_required` / `install_without_opt_in` (never `succeeded`).
+6. Supervisor-only mutation controls remain outside this catalog.
 
 ## Catalog B — Goal tactician operations (`GOAL_TACTICIAN_OPERATIONS`)
 
@@ -244,29 +237,20 @@ These remain separate closed vocabularies so they do not break
 8. **Presence ≠ availability.** Catalog and capability declarations never
    claim live prover availability without probe.
 
-## Existing parity evidence (interim → full gate)
+## Automated parity evidence
 
-Predicted LPC-130 suite paths (board placeholders, not mandatory new files for
-this repair admission):
-
-| Predicted path | Role when landed |
+| Suite | Role |
 | --- | --- |
-| `ipfs_datasets_py/tests/unit/logic/test_channel_parity.py` | Datasets-side channel closure |
-| `test/api/test_logic_channel_parity.py` | Accelerate-side channel closure |
+| `ipfs_datasets_py/tests/unit/logic/test_channel_parity.py` | Datasets-side channel closure: names, schemas, status/authority vocabularies, opt-in, install≠verify, forbidden controls |
+| `test/api/test_logic_channel_parity.py` | Accelerate-side live Python/CLI/MCP agreement on discovery, failure codes, install boundary, goal-tactician refusal |
 
-**Already present production evidence** (do not weaken; do not replace with
-stubs):
+Related production suites (must not be weakened):
 
 | Suite | What it proves |
 | --- | --- |
 | `test/api/test_root_mcp_formal_verification_parity.py` | `STABLE_OPERATIONS` ↔ datasets MCP `TOOL_TO_OPERATION`; shared envelope; `FormalVerificationMCPParity@1` |
 | `test/api/test_goal_tactician_cli_mcp_parity.py` | Goal-tactician Python / MCP / CLI closed maps, envelope, forbidden controls, legacy `STABLE_OPERATIONS` preserved |
 | `ipfs_datasets_py/tests/unit/logic/test_verification_api.py` | Python facade contracts for stable operations |
-| Inventory LPC-007 | Channel surface census and parity picture |
-
-Full `LogicOperationCatalog@1` automated gate may still add the predicted
-parity modules under LPC-130 / LPC-141 **when declared outputs admit them**.
-Until then, this note plus the suites above are the durable catalog projection.
 
 Direct-versus-supervisor semantic parity remains LPC-141
 (`notes/direct_supervisor_parity.md`); this catalog is the shared vocabulary
@@ -276,21 +260,19 @@ those tests consume.
 
 | Path | Role |
 | --- | --- |
-| `data/agent_supervisor/logic_platform_canonicalization/notes/operation_catalog.md` | This catalog projection note (declared output for LPC-130 / LPC-175) |
+| `data/agent_supervisor/logic_platform_canonicalization/notes/operation_catalog.md` | This catalog projection note (declared output for LPC-130) |
+| `ipfs_datasets_py/tests/unit/logic/test_channel_parity.py` | Unit parity gate (implied validation output) |
+| `test/api/test_logic_channel_parity.py` | API parity gate (implied validation output) |
 | `ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py` | Canonical operation names, envelopes, goal-tactician maps |
 | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/logic_verification.py` | MCP tool names, schemas, `TOOL_TO_OPERATION` |
 | `ipfs_datasets_py/ipfs_datasets_py/logic/cli.py` | CLI commands dispatching to MCP/Python |
-| `test/api/test_root_mcp_formal_verification_parity.py` | Interim stable-ops MCP parity |
-| `test/api/test_goal_tactician_cli_mcp_parity.py` | Interim goal-tactician channel parity |
 
-Task-owned proposal envelope for LPC-130 / LPC-175 (fail closed):
+Task-owned proposal envelope for LPC-130 (fail closed):
 
-* **Declared Outputs:** this note only.
-* **Predicted / validation files** (parity suites) are board placeholders;
-  inventing them outside the declared output fails proposal admission
-  (`proposal_gate_failed`).
-* Paths outside this note (daemon code, protected plan/board validators,
-  undeclared companions, MCP++ profiles) are **out of scope** for this repair.
+* **Declared Outputs:** this note.
+* **Implied validation outputs:** the two parity suites above.
+* Paths outside allowed edit paths (daemon code, protected plan/board
+  validators, MCP++ profiles) are **out of scope**.
 * LPC-141 owns direct-vs-supervisor parity notes/tests; do not absorb that
   scope into this catalog note.
 
@@ -312,21 +294,8 @@ Task-owned proposal envelope for LPC-130 / LPC-175 (fail closed):
 * Does not expose supervisor-only mutation controls on datasets channels.
 * Does not treat `install_provider` as ordinary verification.
 * Does not claim live prover availability from catalog presence.
-* Does not invent predicted `test_channel_parity.py` files solely to satisfy
-  path strings when production maps and interim suites already enforce parity.
 * Does not implement LPC-141 direct-vs-supervisor parity.
 * Does not edit protected board/plan/validator files.
-
-## LPC-175 repair notes
-
-| Finding | Resolution |
-| --- | --- |
-| Failure kind | `proposal_validation_failed` / `proposal_gate_failed` (validation never ran; rc 78) |
-| Observed attempts | 4 consecutive LPC-130 failures (retry budget 3) |
-| Evidence | `data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-175-lpc-130-retry-budget.md` |
-| Root cause | Proposal path envelope rejected inventing predicted channel-parity test paths outside the declared note output, while production channel maps (`STABLE_OPERATIONS`, MCP `TOOL_TO_OPERATION`, goal-tactician CLI/MCP maps) and interim parity suites already define and enforce `LogicOperationCatalog@1` agreement |
-| Repair | Emit this declared note only; preserve production admission policy and existing parity tests; document install-is-not-verify and forbidden supervisor controls |
-| Release effect | Completing LPC-175 releases LPC-130 from strategy `blocked_tasks` so the supervisor can re-admit the source task against the documented catalog |
 
 ## Acceptance
 
@@ -338,8 +307,5 @@ Task-owned proposal envelope for LPC-130 / LPC-175 (fail closed):
 - Supervisor-only mutation controls are not exposed from datasets logic.
 - Transport success never implies proof authority; catalog presence never
   implies provider availability.
-- Validation (source task LPC-130): predicted parity suite command when those
-  files are admitted; interim suites listed above remain green and must not be
-  weakened.
-- Validation (repair task LPC-175): evidence file present at the discovery
-  path recorded above.
+- Validation:  
+  `python -m pytest ipfs_datasets_py/tests/unit/logic/test_channel_parity.py test/api/test_logic_channel_parity.py -q`
