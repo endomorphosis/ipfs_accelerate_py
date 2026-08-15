@@ -406,7 +406,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-043 Intent and UI/UX domain adapter conformance
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P1
 - Track: formalization
@@ -415,15 +415,15 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Bundle: logic-platform/formalization
 - Parallel lane: lpc-domain-intent
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/intent_uiux_adapters.md
-- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/intent_ir/domain_slice.py, ipfs_datasets_py/ipfs_datasets_py/logic/ui_ux_ir/domain_slice.py, data/agent_supervisor/logic_platform_canonicalization/notes/intent_uiux_adapters.md
-- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/intent_ir ipfs_datasets_py/tests/unit/logic/ui_ux_ir -q
-- Conflict policy: Own intent and UI/UX slice adapters only.
+- Predicted files: ipfs_datasets_py/tests/unit/logic/intent_ir/test_domain_slice.py, ipfs_datasets_py/tests/unit/logic/ui_ux_ir/test_domain_slice.py, data/agent_supervisor/logic_platform_canonicalization/notes/intent_uiux_adapters.md
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/intent_ir/test_domain_slice.py ipfs_datasets_py/tests/unit/logic/ui_ux_ir/test_domain_slice.py -q
+- Conflict policy: Own intent and UI/UX slice adapter tests only. Do not invent ipfs_datasets_py/logic/ui_ux_ir.
 - Submodules: ipfs_datasets_py
 - Resource class: cpu-medium
-- Is schedulable: true
+- Is schedulable: false
 - Review only: false
 - Allow concurrent with: LPC-041, LPC-042
-- Acceptance: Same adapter contract as legal/security. No universal domain IR.
+- Acceptance: Same adapter contract as legal/security. No universal domain IR. Intent uses IntentLogicSlice@2. UI/UX stays declaration-only via UIUXSourceGate@2.
 
 ## LPC-044 Reject unadmitted slices at executable request construction
 

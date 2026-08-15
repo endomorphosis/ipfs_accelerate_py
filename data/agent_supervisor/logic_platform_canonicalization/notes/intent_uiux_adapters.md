@@ -10,7 +10,7 @@ repeated LPC-043 `proposal_gate_failed` attempts that tried to invent predicted
 `domain_slice.py` paths instead of documenting the production adapters that
 already satisfy the DomainLogicSlice@2 role.  
 **Validation (LPC-043):**  
-`python -m pytest ipfs_datasets_py/tests/unit/logic/intent_ir ipfs_datasets_py/tests/unit/logic/ui_ux_ir -q`  
+`python -m pytest ipfs_datasets_py/tests/unit/logic/intent_ir/test_domain_slice.py ipfs_datasets_py/tests/unit/logic/ui_ux_ir/test_domain_slice.py -q`  
 **Validation (LPC-173 repair gate):**  
 `test -f data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-173-lpc-043-retry-budget.md`
 
