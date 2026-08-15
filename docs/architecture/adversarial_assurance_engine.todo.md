@@ -1470,7 +1470,7 @@ W20 AAE-063
 
 ## AAE-053 Implement the required ZK and incremental-seal mutation campaign
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
