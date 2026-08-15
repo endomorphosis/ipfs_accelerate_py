@@ -460,7 +460,7 @@ overlays. Never force-push.
 
 ## MCPP-014 Record ADR for mandatory crypto suite and mcpp-jcs-v1
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
