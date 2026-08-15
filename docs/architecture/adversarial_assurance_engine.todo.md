@@ -1524,7 +1524,7 @@ W20 AAE-063
 
 ## AAE-055 Implement vacuity, test/proof/policy, and conditional GUI action-binding campaigns
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
