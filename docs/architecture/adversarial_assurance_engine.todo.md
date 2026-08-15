@@ -1497,7 +1497,7 @@ W20 AAE-063
 
 ## AAE-054 Implement distributed-state, storage-durability, and crash mutation campaigns
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
