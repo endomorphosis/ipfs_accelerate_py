@@ -398,7 +398,7 @@ overlays. Never force-push.
 
 ## MCPP-012 Create the requirement-to-evidence traceability matrix
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
