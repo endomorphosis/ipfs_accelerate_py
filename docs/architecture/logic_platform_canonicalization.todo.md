@@ -263,7 +263,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-023 Generate catalog projections instead of hand-written inventories
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P1
 - Track: catalog
