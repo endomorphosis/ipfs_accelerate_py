@@ -384,18 +384,6 @@ TRANSIENT_MERGE_LOCK_REASONS = frozenset(
         "lock_cleanup_failed",
     }
 )
-ABANDONED_MERGE_RECONCILE_REASONS = frozenset(
-    {
-        "stale_failed_merge_candidate",
-        "stale_quarantined_merge",
-        "operator_abandoned_stale_inventory_merge_after_capture_epoch",
-        "baseline_not_ancestor_of_target",
-        "main_checkout_dirty_conflict",
-        "main_checkout_dirty",
-        "dirty_worktree",
-    }
-)
-INVENTORY_TASK_IDS = frozenset({"IPS-001", "IPS-002", "IPS-003"})
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS = 30.0
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
@@ -1617,7 +1605,7 @@ RUNTIME_WAKE_KINDS = frozenset(
         "observation_window",
     }
 )
-DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS = 45.0
+DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS = 3600.0
 
 
 def normalize_llm_merge_resolver_command(value: Any) -> str:
@@ -8047,12 +8035,6 @@ class PortalImplementationDaemon:
                 return "workspace_todo_board_content_change"
             return None
 
-        # Ephemeral workspace rewrote a protected control script while the
-        # shared checkout still holds the authoritative bytes. Discard the
-        # workspace mutation instead of latching an operator-only stall.
-        if scope == "workspace" and change == "content_changed":
-            return "workspace_protected_content_discard"
-
         return None
 
     def _plan_auto_clear_ephemeral_protected_path_deletions(
@@ -8176,14 +8158,11 @@ class PortalImplementationDaemon:
             reason = "shared_todo_board_content_change_accepted"
         elif class_codes == {"content_preserving_identity_thrash"}:
             reason = "content_preserving_identity_thrash_accepted"
-        elif class_codes == {"workspace_protected_content_discard"}:
-            reason = "workspace_protected_content_discarded"
         elif class_codes <= {
             "content_preserving_identity_thrash",
             "shared_todo_board_content_change",
             "workspace_todo_board_content_change",
             "workspace_protected_deletion",
-            "workspace_protected_content_discard",
         }:
             reason = "protected_path_stall_auto_cleared"
         else:
@@ -8236,31 +8215,6 @@ class PortalImplementationDaemon:
             )
         )
         write_json_atomic(receipt_path, receipt)
-        restored_paths: list[str] = []
-        if "workspace_protected_content_discard" in set(receipt.get("class_codes") or []):
-            workspace_value = str(receipt.get("workspace_path") or "").strip()
-            if workspace_value:
-                try:
-                    workspace = Path(workspace_value).resolve(strict=False)
-                except (OSError, RuntimeError, ValueError):
-                    workspace = None
-                if workspace is not None and workspace.exists():
-                    for relative in receipt.get("mutated_paths") or []:
-                        rel = str(relative).strip()
-                        if not rel:
-                            continue
-                        source = self.repo_root / rel
-                        target = workspace / rel
-                        try:
-                            if not source.is_file():
-                                continue
-                            target.parent.mkdir(parents=True, exist_ok=True)
-                            target.write_bytes(source.read_bytes())
-                            restored_paths.append(rel)
-                        except OSError:
-                            continue
-        receipt["restored_paths"] = restored_paths
-        write_json_atomic(receipt_path, receipt)
         try:
             incident_path.unlink()
         except FileNotFoundError:
@@ -8279,7 +8233,6 @@ class PortalImplementationDaemon:
             "attempt": receipt["attempt"],
             "mutated_paths": receipt["mutated_paths"],
             "class_codes": receipt["class_codes"],
-            "restored_paths": restored_paths,
             "blocked": False,
         }
         self._record_event(
@@ -8498,117 +8451,6 @@ class PortalImplementationDaemon:
             "task_id": task_id,
             "attempt": attempt,
             **concurrent_update,
-        }
-        self._record_event(
-            "implementation_protected_path_incident_auto_cleared",
-            result,
-        )
-        return result
-
-    def _auto_clear_shared_checkout_incident_when_head_clean(
-        self,
-        incident: Mapping[str, Any],
-        *,
-        incident_path: Path,
-        active_path: Path,
-    ) -> dict[str, Any] | None:
-        """Clear a shared-checkout latch once those paths match HEAD.
-
-        Control-plane commits can land the same protected bytes the fence
-        treated as an uncommitted mutation. When every incident path is a
-        shared-checkout content change and the checkout is clean at HEAD,
-        there is nothing left to restore and the lane can resume.
-        """
-
-        if (
-            incident.get("schema") != "implementation-protected-path-incident-v1"
-            or incident.get("requires_operator_clearance") is not True
-            or incident.get("reason") != "implementation_protected_path_mutated"
-        ):
-            return None
-        mutations = incident.get("mutations")
-        if not isinstance(mutations, list) or not mutations:
-            return None
-        paths: list[str] = []
-        for item in mutations:
-            if not isinstance(item, Mapping):
-                return None
-            if str(item.get("scope") or "") != "shared_checkout":
-                return None
-            change = str(item.get("change") or "")
-            if change not in {"content_changed", "modified"}:
-                return None
-            path = str(item.get("path") or "").strip()
-            if (
-                not path
-                or path.startswith("/")
-                or ".." in Path(path).parts
-            ):
-                return None
-            paths.append(path)
-        if not paths:
-            return None
-        repo_root = self.repo_root.resolve()
-        status = self._run_git(
-            ["status", "--porcelain", "--untracked-files=no", "--", *paths],
-            cwd=repo_root,
-        )
-        if status.returncode != 0 or str(status.stdout or "").strip():
-            return None
-        task_id = str(incident.get("task_id") or "")
-        try:
-            attempt = int(incident.get("attempt") or 0)
-        except (TypeError, ValueError):
-            attempt = 0
-        clearance_payload = {
-            "kind": "shared-checkout-head-clean",
-            "task_id": task_id,
-            "attempt": attempt,
-            "paths": paths,
-            "incident_latched_at": str(incident.get("latched_at") or ""),
-        }
-        clearance_id = "sha256:" + hashlib.sha256(
-            json.dumps(
-                clearance_payload,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
-        receipt = {
-            "schema": (
-                "implementation-protected-path-head-clean-clearance-v1"
-            ),
-            "clearance_id": clearance_id,
-            "cleared_at": utc_now(),
-            "reason": "shared_checkout_matches_head",
-            **clearance_payload,
-        }
-        receipt_path = (
-            incident_path.parent
-            / (
-                "implementation-protected-path-head-clean-clearance-"
-                f"{clearance_id.removeprefix('sha256:')[:16]}.json"
-            )
-        )
-        write_json_atomic(receipt_path, receipt)
-        try:
-            incident_path.unlink()
-        except FileNotFoundError:
-            pass
-        try:
-            active_path.unlink()
-        except FileNotFoundError:
-            pass
-        result = {
-            "cleared": True,
-            "auto": True,
-            "blocked": False,
-            "reason": receipt["reason"],
-            "clearance_id": clearance_id,
-            "receipt_path": str(receipt_path),
-            "task_id": task_id,
-            "attempt": attempt,
-            "paths": paths,
         }
         self._record_event(
             "implementation_protected_path_incident_auto_cleared",
@@ -16862,13 +16704,6 @@ class PortalImplementationDaemon:
                 )
             )
         }
-        # Fresh capture epochs reopen inventory tasks on the board while old
-        # shared merge completions still advertise those IDs. Drop inventory
-        # completions that no longer pass the published gate so reopen can
-        # make them ready again instead of staying latched completed.
-        shared_completed_task_ids = self._filter_inventory_merges_still_valid(
-            shared_completed_task_ids
-        )
         shared_active_merge_task_ids = {
             task.task_id
             for task in tasks
@@ -17431,6 +17266,7 @@ class PortalImplementationDaemon:
             selectable_tasks = []
         if (
             self.task_shard_count > 1
+            and not self.strict_task_sharding
             and not any(
                 resolved_statuses.get(task.task_id) == "ready"
                 for task in selectable_tasks
@@ -17592,23 +17428,14 @@ class PortalImplementationDaemon:
             )
         elif selected is None and attempt_limit_idle_reason:
             selection_scope["selection_idle_reason"] = attempt_limit_idle_reason
-        elif selected is None:
-            shard_ready = [
-                task
-                for task in execution_tasks
-                if (
-                    resolved_statuses.get(task.task_id) == "ready"
-                    and self._task_belongs_to_shard(task.task_id)
-                )
-            ]
-            if shard_ready and all(
-                task.task_id in resource_reserved_task_ids
-                or task.task_id in active_task_claims
-                for task in shard_ready
-            ):
-                selection_scope["selection_idle_reason"] = (
-                    "all_selectable_ready_tasks_deferred_by_resource_claim"
-                )
+        elif selected is None and any(
+            resolved_statuses.get(task.task_id) == "ready"
+            and task.task_id in resource_reserved_task_ids
+            for task in execution_tasks
+        ):
+            selection_scope["selection_idle_reason"] = (
+                "all_selectable_ready_tasks_deferred_by_resource_claim"
+            )
         state = PortalTaskState.load(self.state_path)
         state.heartbeat_at = previous.heartbeat_at
         if newly_completed or not state.last_progress_at:
@@ -27945,24 +27772,6 @@ class PortalImplementationDaemon:
                 result["merged"] = False
                 result["reason"] = "merge_cleanup_failed"
                 result["returncode"] = 1
-            elif (
-                result.get("already_merged")
-                and str(task.task_id) in INVENTORY_TASK_IDS
-                and not self._inventory_task_passes_published_gate(
-                    str(task.task_id)
-                )
-            ):
-                # Historical inventory merges may still look "already merged"
-                # after a capture-epoch reopen. Do not force-complete until the
-                # published gate accepts the bound inventory outputs. A fresh
-                # merge in this pass still writes the daemon status commit the
-                # published lineage requires.
-                result["merged"] = False
-                result["already_merged"] = False
-                result["completion_skipped"] = True
-                result["reason"] = "inventory_published_gate_not_satisfied"
-                result["returncode"] = 0
-                result["retryable"] = True
             else:
                 completion_daemon = self
                 request_todo_path = Path(str(metadata.get("todo_path") or self.todo_path))
@@ -43957,7 +43766,7 @@ class PortalImplementationDaemon:
             "accepted": False,
             "reason": "accept_only_for_proposal_scope_gate",
         }
-        return result
+        return self._sanitize_failed_validation_result(result)
 
     def _expected_outputs_present_on_disk(
         self,
@@ -48883,172 +48692,6 @@ class PortalImplementationDaemon:
                 return fields[2]
         return ""
 
-    def _inventory_only_commit_range(
-        self,
-        source: Path,
-        base_commit: str,
-        tip_commit: str,
-    ) -> tuple[bool, list[str], str]:
-        """Return whether tip is a linear inventory-document-only range above base."""
-
-        inventory_outputs = {
-            "docs/architecture/incremental_proof_sealer_inventory.json",
-            "docs/architecture/INCREMENTAL_PROOF_SEALER_INVENTORY.md",
-        }
-        range_result = subprocess.run(
-            (
-                "git",
-                "rev-list",
-                "--reverse",
-                f"{base_commit}..{tip_commit}",
-            ),
-            cwd=source,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if range_result.returncode != 0:
-            return False, [], "cannot_enumerate_tip_range"
-        tip_commits = [line for line in range_result.stdout.splitlines() if line]
-        if not tip_commits:
-            return False, [], "empty_tip_range"
-        for commit in tip_commits:
-            parents_result = subprocess.run(
-                ("git", "rev-list", "--parents", "-n", "1", commit),
-                cwd=source,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if parents_result.returncode != 0:
-                return False, tip_commits, "cannot_resolve_tip_parents"
-            tokens = parents_result.stdout.strip().split()
-            if len(tokens) != 2:
-                return False, tip_commits, "non_linear_or_merge_in_tip"
-            parent = tokens[1]
-            changed_result = subprocess.run(
-                (
-                    "git",
-                    "diff",
-                    "--name-only",
-                    "--no-renames",
-                    parent,
-                    commit,
-                ),
-                cwd=source,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if changed_result.returncode != 0:
-                return False, tip_commits, "cannot_inspect_tip_paths"
-            changed = {
-                line for line in changed_result.stdout.splitlines() if line
-            }
-            if not changed or not changed <= inventory_outputs:
-                return False, tip_commits, "tip_has_non_inventory_paths"
-        return True, tip_commits, "inventory_only"
-
-    def _rebind_competing_inventory_submodule_tip(
-        self,
-        *,
-        source: Path,
-        integration_ref: str,
-        current_ref: str,
-        target_base_commit: str,
-        branch_commit: str,
-        target_is_behind: bool,
-    ) -> dict[str, Any]:
-        """Reset integration_ref off a discarded inventory-only tip back to target.
-
-        Concurrent inventory races can advance a nested default/integration tip
-        to an inventory-document rewrite that never lands on control first-parent
-        history. When that tip is a pure inventory-output range (either above
-        ``target_base_commit`` or a sibling inventory tip from a shared base),
-        compare-and-swap the integration ref back so the intended branch can
-        merge instead of latching ``submodule_target_ref_drift``.
-        """
-
-        previous = {
-            "rebound": False,
-            "reason": "not_eligible",
-            "previous_ref": current_ref,
-            "integration_ref_commit": current_ref,
-            "target_base_commit": target_base_commit,
-            "branch_commit": branch_commit,
-            "target_is_behind": bool(target_is_behind),
-        }
-        if not current_ref or not target_base_commit or not integration_ref:
-            previous["reason"] = "missing_refs"
-            return previous
-        if current_ref == target_base_commit:
-            previous["reason"] = "already_at_target"
-            return previous
-
-        tip_commits: list[str] = []
-        reset_reason = "inventory_only_competing_tip_reset"
-        if self._git_ref_is_ancestor_in_repo(
-            source, target_base_commit, current_ref
-        ):
-            ok, tip_commits, detail = self._inventory_only_commit_range(
-                source, target_base_commit, current_ref
-            )
-            if not ok:
-                previous["reason"] = detail
-                return previous
-        else:
-            # Sibling competing tip: both sides fork from a shared base and the
-            # current tip is inventory-only above that base.
-            merge_base = subprocess.run(
-                ("git", "merge-base", target_base_commit, current_ref),
-                cwd=source,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if merge_base.returncode != 0 or not merge_base.stdout.strip():
-                previous["reason"] = "current_does_not_descend_from_target"
-                return previous
-            base = merge_base.stdout.strip()
-            ok, tip_commits, detail = self._inventory_only_commit_range(
-                source, base, current_ref
-            )
-            if not ok:
-                previous["reason"] = detail
-                previous["merge_base"] = base
-                return previous
-            reset_reason = "sibling_inventory_only_competing_tip_reset"
-            previous["merge_base"] = base
-
-        cas = subprocess.run(
-            (
-                "git",
-                "update-ref",
-                integration_ref,
-                target_base_commit,
-                current_ref,
-            ),
-            cwd=source,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if cas.returncode != 0:
-            previous["reason"] = "compare_and_swap_failed"
-            previous["stderr"] = cas.stderr[-2000:]
-            return previous
-        return {
-            "rebound": True,
-            "reason": reset_reason,
-            "previous_ref": current_ref,
-            "integration_ref_commit": target_base_commit,
-            "target_base_commit": target_base_commit,
-            "branch_commit": branch_commit,
-            "target_is_behind": bool(target_is_behind),
-            "reset_commits": tip_commits,
-            "merge_base": previous.get("merge_base", ""),
-        }
-
     def _merge_submodule_branch_to_target_ref(
         self,
         *,
@@ -49217,43 +48860,23 @@ class PortalImplementationDaemon:
                     target_base_commit,
                     current_ref,
                 )
-                rebinding = self._rebind_competing_inventory_submodule_tip(
-                    source=source,
-                    integration_ref=integration_ref,
-                    current_ref=current_ref,
-                    target_base_commit=target_base_commit,
-                    branch_commit=branch_commit,
-                    target_is_behind=target_is_behind,
-                )
-                if rebinding.get("rebound"):
-                    current_ref = str(rebinding["integration_ref_commit"])
-                    integration_ref_fast_forward = {
-                        **integration_ref_fast_forward,
-                        "competing_inventory_tip_rebound_from": rebinding.get(
-                            "previous_ref"
-                        ),
-                        "competing_inventory_tip_rebound_to": current_ref,
-                        "competing_inventory_tip_reason": rebinding.get("reason"),
-                    }
-                else:
-                    return {
-                        "path": full_relative,
-                        "branch": submodule_branch,
-                        "default_branch": integration_ref,
-                        "integration_ref": integration_ref,
-                        "target_base_commit": target_base_commit,
-                        "integration_ref_commit": current_ref,
-                        "merged": False,
-                        "returncode": 2,
-                        "reason": "submodule_target_ref_drift",
-                        "drift_kind": (
-                            "target_behind"
-                            if target_is_behind
-                            else "diverged"
-                        ),
-                        "retryable": True,
-                        "rebinding": rebinding,
-                    }
+                return {
+                    "path": full_relative,
+                    "branch": submodule_branch,
+                    "default_branch": integration_ref,
+                    "integration_ref": integration_ref,
+                    "target_base_commit": target_base_commit,
+                    "integration_ref_commit": current_ref,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "submodule_target_ref_drift",
+                    "drift_kind": (
+                        "target_behind"
+                        if target_is_behind
+                        else "diverged"
+                    ),
+                    "retryable": True,
+                }
 
         worktree_root = self._submodule_target_worktree_root()
         worktree_root.mkdir(parents=True, exist_ok=True)
@@ -54311,10 +53934,16 @@ class PortalImplementationDaemon:
                     implementation_commit
                     and candidate_key
                     not in persistence_recovery_candidate_keys
-                    and (
-                        merge_reason in ABANDONED_MERGE_RECONCILE_REASONS
-                        or reconcile_reason in ABANDONED_MERGE_RECONCILE_REASONS
-                    )
+                    and merge_reason
+                    == "baseline_not_ancestor_of_target"
+                ):
+                    abandoned_candidates.add(candidate_key)
+                elif (
+                    implementation_commit
+                    and candidate_key
+                    not in persistence_recovery_candidate_keys
+                    and reconcile_reason
+                    == "stale_failed_merge_candidate"
                 ):
                     abandoned_candidates.add(candidate_key)
                 continue
@@ -54684,11 +54313,6 @@ class PortalImplementationDaemon:
         if previous.last_merge_returncode in (None, 0):
             return False
         if previous.last_merge_commit:
-            return False
-        if self._implementation_commit_was_reconciled(
-            task.task_id,
-            previous.last_implementation_commit,
-        ):
             return False
         return not self._git_ref_is_ancestor(previous.last_implementation_commit, self._main_branch_name())
 
@@ -55272,23 +54896,19 @@ class PortalImplementationDaemon:
         metadata: dict[str, Any],
     ) -> bool:
         repository_id = str(metadata.get("repository_id") or "")
-        if repository_id and repository_id != self.merge_target_repository_id:
-            return False
-        worktree_root = str(
-            metadata.get("worktree_root") or metadata.get("repo_root") or ""
-        )
-        try:
-            if (
-                worktree_root
-                and Path(worktree_root).resolve() != self.repo_root.resolve()
-            ):
-                # checkout_lock_metadata keeps repo_root empty and records the
-                # checkout in worktree_root. Sibling worktrees share one
-                # git-common-dir lock folder; a live claim in another
-                # checkout must not serialize this board.
+        if repository_id:
+            if repository_id != self.merge_target_repository_id:
                 return False
-        except OSError:
-            return False
+        else:
+            repo_root = str(metadata.get("repo_root") or "")
+            try:
+                if (
+                    repo_root
+                    and Path(repo_root).resolve() != self.repo_root.resolve()
+                ):
+                    return False
+            except OSError:
+                return False
         resource_path = str(metadata.get("resource_path") or "")
         if not resource_path:
             return False
@@ -58235,218 +57855,6 @@ class PortalImplementationDaemon:
                 latest[task_id] = event
         return latest
 
-    def _reconciled_implementation_candidate_keys(self) -> set[tuple[str, str]]:
-        """Return ``(task_id, implementation_commit)`` pairs that are settled."""
-
-        keys: set[tuple[str, str]] = set()
-        for event in self._iter_events():
-            if str(event.get("type") or "") != "merge_reconciled":
-                continue
-            task_id = str(event.get("task_id") or "")
-            implementation_commit = str(event.get("implementation_commit") or "")
-            if not task_id or not implementation_commit:
-                continue
-            if event.get("resolved"):
-                keys.add((task_id, implementation_commit))
-                continue
-            merge_result = event.get("merge_result") or {}
-            merge_reason = (
-                str(merge_result.get("reason") or "")
-                if isinstance(merge_result, dict)
-                else ""
-            )
-            reconcile_reason = str(event.get("reason") or "")
-            if (
-                merge_reason in ABANDONED_MERGE_RECONCILE_REASONS
-                or reconcile_reason in ABANDONED_MERGE_RECONCILE_REASONS
-            ):
-                keys.add((task_id, implementation_commit))
-        return keys
-
-    def _implementation_commit_was_reconciled(
-        self,
-        task_id: str,
-        implementation_commit: str,
-    ) -> bool:
-        task_id = str(task_id or "").strip()
-        implementation_commit = str(implementation_commit or "").strip()
-        if not task_id or not implementation_commit:
-            return False
-        return (
-            task_id,
-            implementation_commit,
-        ) in self._reconciled_implementation_candidate_keys()
-
-    def _latest_queued_implementation_was_reconciled(self, task_id: str) -> bool:
-        latest = self._latest_implementation_finished_by_task().get(str(task_id or ""))
-        if not isinstance(latest, dict):
-            return False
-        merge_result = latest.get("merge_result") or {}
-        if not isinstance(merge_result, dict) or not merge_result.get("queued"):
-            return False
-        return self._implementation_commit_was_reconciled(
-            str(latest.get("task_id") or task_id),
-            str(latest.get("implementation_commit") or ""),
-        )
-
-    def _queued_merge_candidates(self) -> list[dict[str, Any]]:
-        """Return queued implementation_finished rows, last write wins per request."""
-
-        by_request: dict[str, dict[str, Any]] = {}
-        fallback: list[dict[str, Any]] = []
-        for event in self._iter_events():
-            if str(event.get("type") or "") != "implementation_finished":
-                continue
-            merge_result = event.get("merge_result") or {}
-            if not isinstance(merge_result, dict) or not merge_result.get("queued"):
-                continue
-            implementation_commit = str(event.get("implementation_commit") or "")
-            task_id = str(event.get("task_id") or "")
-            if not implementation_commit or not task_id:
-                continue
-            request_id = str(merge_result.get("request_id") or "")
-            payload = {
-                "task_id": task_id,
-                "attempt": int(event.get("attempt") or 0),
-                "branch": str(event.get("branch") or merge_result.get("branch") or ""),
-                "implementation_commit": implementation_commit,
-                "request_id": request_id,
-                "merge_result": merge_result,
-            }
-            if request_id:
-                by_request[request_id] = payload
-            else:
-                fallback.append(payload)
-        return [*by_request.values(), *fallback]
-
-    def _task_has_blocking_pending_merge(self, task: PortalTask) -> bool:
-        """True when the shared queue still owns a live, unresolved merge."""
-
-        has_pending = getattr(self.merge_queue, "has_pending_for_task", None)
-        if not callable(has_pending):
-            return False
-        if not (
-            has_pending(self._canonical_ref(task))
-            or has_pending(task.task_id)
-        ):
-            return False
-        queued_commits = {
-            str(item.get("implementation_commit") or "")
-            for item in self._queued_merge_candidates()
-            if str(item.get("task_id") or "") == task.task_id
-            and str(item.get("implementation_commit") or "")
-        }
-        if not queued_commits:
-            latest = self._latest_implementation_finished_by_task().get(task.task_id) or {}
-            implementation_commit = str(latest.get("implementation_commit") or "")
-            if implementation_commit and self._implementation_commit_was_reconciled(
-                task.task_id,
-                implementation_commit,
-            ):
-                return False
-            return True
-        return any(
-            not self._implementation_commit_was_reconciled(task.task_id, commit)
-            for commit in queued_commits
-        )
-
-    def _cancel_reconciled_merge_request(
-        self,
-        request_id: str,
-        request_status: str,
-    ) -> bool:
-        if not request_id or request_status != "pending":
-            return False
-        cancel = getattr(self.merge_queue, "cancel", None)
-        if not callable(cancel):
-            return False
-        try:
-            cancel(request_id, reason="stale_quarantined_merge")
-        except Exception:
-            return False
-        return True
-
-    def _release_stale_quarantined_merges(self) -> list[dict[str, Any]]:
-        """Abandon queued merges that can no longer land on the current tip.
-
-        A quarantined or still-active inventory merge whose commit is off the
-        target first-parent history, or that fails the published artifact gate
-        after a recapture epoch, must not latch the source task as blocked.
-        Leftover pending rows for already-reconciled commits are cancelled so
-        they cannot keep ``has_pending_for_task`` true after a later failed
-        implementation.
-        """
-
-        if not hasattr(self.merge_queue, "get"):
-            return []
-        results: list[dict[str, Any]] = []
-        target_branch = self._main_branch_name()
-        for event in self._queued_merge_candidates():
-            task_id = str(event.get("task_id") or "")
-            implementation_commit = str(event.get("implementation_commit") or "")
-            merge_result = event.get("merge_result") or {}
-            request_id = str(event.get("request_id") or "")
-            request = self.merge_queue.get(request_id) if request_id else None
-            request_status = str(getattr(request, "status", "") or "")
-            failure_reason = str(getattr(request, "failure_reason", "") or "")
-            if self._implementation_commit_was_reconciled(
-                task_id,
-                implementation_commit,
-            ):
-                if self._cancel_reconciled_merge_request(request_id, request_status):
-                    results.append(
-                        {
-                            "task_id": task_id,
-                            "implementation_commit": implementation_commit,
-                            "request_id": request_id,
-                            "request_status": "cancelled",
-                            "resolved": True,
-                            "reason": "stale_quarantined_merge",
-                            "cancelled_reconciled_pending": True,
-                        }
-                    )
-                continue
-            if request_status not in {"quarantined", "pending", "processing"}:
-                continue
-            not_ancestor = not self._git_ref_is_ancestor(
-                implementation_commit,
-                target_branch,
-            )
-            inventory_task = task_id in INVENTORY_TASK_IDS
-            if request_status != "quarantined" and not inventory_task:
-                continue
-            # A published-gate miss on a commit that is already on the target
-            # first-parent is usually just the missing daemon status commit.
-            # Only abandon merges that cannot land (wrong branch / off-history).
-            if not (
-                not_ancestor
-                or failure_reason == "merge_branch_candidate_mismatch"
-            ):
-                continue
-            result = {
-                "task_id": task_id,
-                "attempt": int(event.get("attempt") or 0),
-                "branch": str(
-                    event.get("branch") or merge_result.get("branch") or ""
-                ),
-                "implementation_commit": implementation_commit,
-                "request_id": request_id,
-                "request_status": request_status,
-                "failure_reason": failure_reason,
-                "resolved": True,
-                "reason": "stale_quarantined_merge",
-                "merge_result": {
-                    "attempted": False,
-                    "merged": False,
-                    "queued": True,
-                    "request_id": request_id,
-                    "reason": "stale_quarantined_merge",
-                },
-            }
-            self._record_event("merge_reconciled", result)
-            results.append(result)
-        return results
-
     def _pending_queued_merge_task_ids(
         self,
         latest_results: dict[str, dict[str, Any]] | None = None,
@@ -58474,16 +57882,11 @@ class PortalImplementationDaemon:
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict) or not merge_result.get("queued"):
                 continue
-            implementation_commit = str(event.get("implementation_commit") or "")
-            if self._implementation_commit_was_reconciled(
-                task_id,
-                implementation_commit,
-            ):
-                continue
             request_id = str(merge_result.get("request_id") or "")
             request = self.merge_queue.get(request_id) if request_id and hasattr(self.merge_queue, "get") else None
             if request is not None and str(getattr(request, "status", "")) == "quarantined":
                 continue
+            implementation_commit = str(event.get("implementation_commit") or "")
             if implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
                 pending.add(task_id)
         return pending
@@ -58515,12 +57918,6 @@ class PortalImplementationDaemon:
                 continue
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict) or not merge_result.get("queued"):
-                continue
-            implementation_commit = str(event.get("implementation_commit") or "")
-            if self._implementation_commit_was_reconciled(
-                task_id,
-                implementation_commit,
-            ):
                 continue
             request_id = str(merge_result.get("request_id") or "")
             request = self.merge_queue.get(request_id) if request_id else None
@@ -58656,48 +58053,7 @@ class PortalImplementationDaemon:
             ):
                 continue
             task_ids.update(bound_task_ids)
-        return self._filter_inventory_merges_still_valid(task_ids)
-
-    def _inventory_task_passes_published_gate(self, task_id: str) -> bool:
-        """True when an inventory task still passes the published artifact gate."""
-
-        if task_id not in {"IPS-001", "IPS-002", "IPS-003"}:
-            return True
-        try:
-            from scripts import validate_incremental_proof_sealer_board as ips_gate
-        except Exception:
-            return False
-        try:
-            result = ips_gate.validate_artifact(
-                task_id,
-                require_published=True,
-            )
-        except Exception:
-            return False
-        return isinstance(result, dict) and result.get("valid") is True
-
-    def _filter_inventory_merges_still_valid(
-        self,
-        task_ids: set[str],
-    ) -> set[str]:
-        """Drop inventory completions that no longer pass the published gate.
-
-        Fresh capture epochs can leave historical merge events pointing at
-        outputs that no longer bind current operator receipts. Those tasks must
-        not be force-recompleted after an operator reopen.
-        """
-
-        inventory_tasks = {"IPS-001", "IPS-002", "IPS-003"}
-        if not task_ids.intersection(inventory_tasks):
-            return task_ids
-        kept: set[str] = set()
-        for task_id in task_ids:
-            if task_id not in inventory_tasks:
-                kept.add(task_id)
-                continue
-            if self._inventory_task_passes_published_gate(task_id):
-                kept.add(task_id)
-        return kept
+        return task_ids
 
     def _task_has_recent_no_change_outcome(
         self,
@@ -67817,6 +67173,348 @@ class DatabaseImplementationDaemon:
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
 
+    @staticmethod
+    def _todo_vector_record_int(record: dict[str, Any], key: str) -> int:
+        try:
+            return int(record.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _todo_vector_record_primary_rank(task_id: str, record: dict[str, Any], context: dict[str, Any]) -> int:
+        execution_packet_primary_by_task = context.get("execution_packet_primary_by_task")
+        primary_task_id = (
+            str(execution_packet_primary_by_task.get(task_id) or "")
+            if isinstance(execution_packet_primary_by_task, dict)
+            else ""
+        )
+        candidate_kind = str(record.get("candidate_kind") or "").strip().lower()
+        packet_role = str(record.get("goal_packet_role") or "").strip().lower()
+        merge_role = str(record.get("merge_role") or "").strip().lower()
+        if primary_task_id and task_id == primary_task_id:
+            return 0
+        if candidate_kind == "goal_packet_aggregate" or packet_role == "packet_aggregate" or merge_role == "packet_aggregate":
+            return 1
+        if packet_role == "packet_anchor":
+            return 2
+        if candidate_kind == "aggregate":
+            return 3
+        if candidate_kind == "evidence_cluster":
+            return 4
+        if packet_role == "packet_member":
+            return 5
+        return 6
+
+    def _todo_vector_selection_rank(self, task: PortalTask, context: dict[str, Any]) -> tuple[int, ...]:
+        record_by_task = context.get("record_by_task")
+        if not isinstance(record_by_task, dict):
+            return (9, 9, 0, 0, 0, 0, 0, 0)
+        record = record_by_task.get(task.task_id)
+        if not isinstance(record, dict):
+            return (9, 9, 0, 0, 0, 0, 0, 0)
+
+        cluster_by_task = context.get("cluster_by_task")
+        ready_cluster_sizes = context.get("ready_cluster_sizes")
+        cluster_key = (
+            str(cluster_by_task.get(task.task_id) or "")
+            if isinstance(cluster_by_task, dict)
+            else ""
+        )
+        ready_cluster_size = (
+            int(ready_cluster_sizes.get(cluster_key) or 0)
+            if cluster_key and isinstance(ready_cluster_sizes, dict)
+            else 0
+        )
+        bundle_context_by_task = context.get("bundle_context_by_task")
+        ready_bundle_context_sizes = context.get("ready_bundle_context_sizes")
+        bundle_context_key = (
+            str(bundle_context_by_task.get(task.task_id) or "")
+            if isinstance(bundle_context_by_task, dict)
+            else ""
+        )
+        ready_bundle_context_size = (
+            int(ready_bundle_context_sizes.get(bundle_context_key) or 0)
+            if bundle_context_key and isinstance(ready_bundle_context_sizes, dict)
+            else 0
+        )
+        execution_packet_by_task = context.get("execution_packet_by_task")
+        ready_execution_packet_sizes = context.get("ready_execution_packet_sizes")
+        execution_packet_key = (
+            str(execution_packet_by_task.get(task.task_id) or "")
+            if isinstance(execution_packet_by_task, dict)
+            else ""
+        )
+        ready_execution_packet_size = (
+            int(ready_execution_packet_sizes.get(execution_packet_key) or 0)
+            if execution_packet_key and isinstance(ready_execution_packet_sizes, dict)
+            else 0
+        )
+        primary_rank = self._todo_vector_record_primary_rank(task.task_id, record, context)
+        work_item_count = self._todo_vector_record_int(record, "work_item_count")
+        packet_work_item_count = self._todo_vector_record_int(record, "goal_packet_work_item_count")
+        token_count = int(record.get("token_count") or 0)
+
+        anchor = context.get("anchor_record")
+        if not isinstance(anchor, dict):
+            return (
+                5,
+                primary_rank,
+                -work_item_count,
+                -packet_work_item_count,
+                -ready_execution_packet_size,
+                -ready_bundle_context_size,
+                -ready_cluster_size,
+                token_count,
+            )
+
+        anchor_related = {
+            str(task_id)
+            for task_id in anchor.get("related_task_ids", [])
+            if str(task_id)
+        } if isinstance(anchor.get("related_task_ids"), list) else set()
+        record_related = {
+            str(task_id)
+            for task_id in record.get("related_task_ids", [])
+            if str(task_id)
+        } if isinstance(record.get("related_task_ids"), list) else set()
+        anchor_task_id = str(context.get("anchor_task_id") or "")
+        anchor_cluster_key = str(context.get("anchor_cluster_key") or "")
+        anchor_bundle_context_key = str(context.get("anchor_bundle_context_key") or "")
+        anchor_execution_packet_key = str(context.get("anchor_execution_packet_key") or "")
+
+        if record.get("merge_key") and record.get("merge_key") == anchor.get("merge_key"):
+            relation_rank = 0
+        elif record.get("goal_packet_key") and record.get("goal_packet_key") == anchor.get("goal_packet_key"):
+            relation_rank = 1
+        elif execution_packet_key and anchor_execution_packet_key and execution_packet_key == anchor_execution_packet_key:
+            relation_rank = 2
+        elif bundle_context_key and anchor_bundle_context_key and bundle_context_key == anchor_bundle_context_key:
+            relation_rank = 3
+        elif cluster_key and anchor_cluster_key and cluster_key == anchor_cluster_key:
+            relation_rank = 4
+        elif task.task_id in anchor_related or (anchor_task_id and anchor_task_id in record_related):
+            relation_rank = 5
+        elif record.get("merge_family") and record.get("merge_family") == anchor.get("merge_family"):
+            relation_rank = 6
+        elif record.get("surplus_group") and record.get("surplus_group") == anchor.get("surplus_group"):
+            relation_rank = 7
+        elif record.get("goal_id") and record.get("goal_id") == anchor.get("goal_id"):
+            relation_rank = 8
+        else:
+            relation_rank = 9
+        return (
+            relation_rank,
+            primary_rank,
+            -work_item_count,
+            -packet_work_item_count,
+            -ready_execution_packet_size,
+            -ready_bundle_context_size,
+            -ready_cluster_size,
+            token_count,
+        )
+
+    @staticmethod
+    def _task_metadata_int(task: PortalTask, key: str) -> int:
+        try:
+            return int(str(task.metadata.get(key, "0")).strip() or "0")
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _task_candidate_rank(task: PortalTask) -> int:
+        candidate_kind = str(task.metadata.get("candidate kind", "")).strip().lower()
+        goal_packet_role = str(task.metadata.get("goal packet role", "")).strip().lower()
+        merge_role = str(task.metadata.get("merge role", "")).strip().lower()
+        if candidate_kind == "goal_packet_aggregate" or goal_packet_role == "packet_aggregate" or merge_role == "packet_aggregate":
+            return 0
+        if goal_packet_role == "packet_anchor":
+            return 1
+        if candidate_kind == "aggregate":
+            return 2
+        if candidate_kind == "evidence_cluster":
+            return 3
+        if goal_packet_role == "packet_member":
+            return 4
+        return 5
+
+    def _task_work_surface_rank(self, task: PortalTask) -> tuple[int, int, int]:
+        packet_work_items = self._task_metadata_int(task, "goal packet work item count")
+        work_items = self._task_metadata_int(task, "work item count")
+        return (self._task_candidate_rank(task), -packet_work_items, -work_items)
+
+    @staticmethod
+    def _strict_off_mission_deprioritized_task_ids(strategy: dict[str, Any]) -> set[str]:
+        return {
+            str(receipt.get("task_id") or "")
+            for receipt in strategy.get("objective_task_janitor_receipts", [])
+            if isinstance(receipt, dict)
+            and str(receipt.get("action") or "") == "deprioritize"
+            and str(receipt.get("retired_task_reason") or "").startswith("off_mission_")
+        }
+
+    def _selection_scope(
+        self,
+        tasks: list[PortalTask],
+        resolved_statuses: dict[str, str],
+        strategy: dict[str, Any],
+    ) -> dict[str, Any]:
+        selectable_ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
+        strict_ready = [task.task_id for task in selectable_ready if task.task_id in strict_deprioritized]
+        eligible_ready = [task.task_id for task in selectable_ready if task.task_id not in strict_deprioritized]
+        reason = ""
+        if not eligible_ready:
+            if strict_ready:
+                reason = "all_selectable_ready_tasks_deprioritized_as_off_mission"
+            elif selectable_ready:
+                reason = "no_eligible_ready_tasks_after_selection_filters"
+            else:
+                reason = "no_shard_selectable_ready_tasks"
+        return {
+            "selectable_ready_task_ids": [task.task_id for task in selectable_ready],
+            "eligible_ready_task_ids": eligible_ready,
+            "strict_deprioritized_ready_task_ids": strict_ready,
+            "selection_idle_reason": reason,
+        }
+
+    def _select_next_task(
+        self,
+        tasks: list[PortalTask],
+        resolved_statuses: dict[str, str],
+        strategy: dict[str, Any],
+        unresolved_merge_failures: dict[str, dict[str, Any]],
+        recent_outcomes: dict[str, dict[str, Any]],
+    ) -> PortalTask | None:
+        ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        # The durable queue is authoritative across isolated lane state dirs.
+        # Consult both canonical and display identities for compatibility with
+        # queue records written before canonical task ids were introduced.
+        ready = [
+            task
+            for task in ready
+            if not self.merge_queue.has_pending_for_task(self._canonical_ref(task))
+            and not self.merge_queue.has_pending_for_task(task.task_id)
+        ]
+        strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
+        if strict_deprioritized:
+            ready = [task for task in ready if task.task_id not in strict_deprioritized]
+        # Graceful degradation: skip tasks that depend on degraded submodules
+        degraded_skipped: list[str] = []
+        if self.degradation_state.degraded_submodules():
+            filtered_ready = []
+            for task in ready:
+                degraded_sub = self.degradation_state.should_skip_task(
+                    task_declared_output_paths(task),
+                    getattr(task, "inputs", None),
+                )
+                if degraded_sub:
+                    degraded_skipped.append(task.task_id)
+                else:
+                    filtered_ready.append(task)
+            if degraded_skipped:
+                self._record_event("tasks_skipped_degraded_submodule", {
+                    "skipped_task_ids": degraded_skipped[:20],
+                    "degraded_submodules": self.degradation_state.degraded_submodules(),
+                })
+            ready = filtered_ready
+        if not ready:
+            return None
+        # Concurrent submodule protection: skip tasks that modify submodules
+        # already being worked on by in-flight implementations
+        inflight_submodules = self._inflight_submodule_paths()
+        if inflight_submodules:
+            conflict_skipped: list[str] = []
+            safe_ready = []
+            for task in ready:
+                conflicting = self._task_conflicts_with_inflight_submodules(task, inflight_submodules)
+                if conflicting:
+                    conflict_skipped.append(task.task_id)
+                else:
+                    safe_ready.append(task)
+            if conflict_skipped and safe_ready:
+                self._record_event("tasks_skipped_submodule_conflict", {
+                    "skipped_task_ids": conflict_skipped[:20],
+                    "inflight_submodules": sorted(inflight_submodules),
+                })
+                ready = safe_ready
+            # If ALL tasks conflict, proceed anyway (don't deadlock)
+        if not ready:
+            return None
+        # Filter out tasks in cooldown from persistent queue
+        cooled_ready = [t for t in ready if not self.task_queue.is_cooled_down(self._canonical_ref(t))]
+        if not cooled_ready:
+            # All ready tasks are in cooldown - use the one with shortest remaining cooldown
+            cooled_ready = ready
+        ready = cooled_ready
+        ready_task_ids = {task.task_id for task in ready}
+        vector_context = self._todo_vector_selection_context(tasks, ready_task_ids)
+        focus_order = {
+            track: index
+            for index, track in enumerate(normalize_focus_tracks(strategy.get("focus_tracks", DEFAULT_TRACKS)))
+        }
+        deprioritized = {str(item) for item in strategy.get("deprioritized_tasks", [])}
+        blocked_strategy_task_ids = {str(item) for item in strategy.get("blocked_tasks", [])}
+
+        def sort_key(task: PortalTask) -> tuple[Any, ...]:
+            selection_penalty = self.task_queue.get_penalty(self._canonical_ref(task))
+            if task.task_id in unresolved_merge_failures:
+                selection_penalty += UNRESOLVED_MERGE_SELECTION_PENALTY
+            if self._task_has_recent_no_change_outcome(task.task_id, recent_outcomes):
+                selection_penalty += NO_CHANGE_SELECTION_PENALTY
+            retry_repair_source_id, _failure_kind = retry_budget_repair_source(task)
+            vector_rank = self._todo_vector_selection_rank(task, vector_context)
+            work_surface_rank = self._task_work_surface_rank(task)
+            return (
+                selection_penalty,
+                PRIORITY_ORDER.get(task.priority, 99),
+                0 if retry_repair_source_id in blocked_strategy_task_ids else 1,
+                1 if task.task_id in deprioritized else 0,
+                focus_order.get(task.track, len(focus_order)),
+                *vector_rank,
+                *work_surface_rank,
+                len(task.depends_on),
+                task.task_id,
+            )
+
+        selected = sorted(ready, key=sort_key)[0]
+        # Record selection in persistent queue
+        self.task_queue.record_selection(self._canonical_ref(selected))
+        return selected
+
+    def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
+        enriched = dict(payload)
+        task_source_identity = self._task_source_identity_record()
+        if task_source_identity is not None:
+            enriched.setdefault("task_source_identity", task_source_identity)
+        task_id = str(enriched.get("task_id") or "")
+        identity = self._task_identity_by_display_id.get(task_id)
+        if identity is not None:
+            enriched.setdefault("canonical_task_key", identity.canonical_task_key)
+            enriched.setdefault("canonical_task_cid", identity.canonical_task_cid)
+            enriched.setdefault("board_namespace", identity.board_namespace)
+        append_jsonl_event(self.events_path, event_type, enriched)
+        self._invalidate_event_cache()
+
+
+
+    @staticmethod
+    def _path_crosses_live_symlink(
+        workspace_path: Path,
+        relative: str,
+    ) -> bool:
+        """Refuse force-add through any live symlink component."""
+
+        current = workspace_path
+        for part in PurePosixPath(relative).parts:
+            current = current / part
+            try:
+                identity = current.lstat()
+            except FileNotFoundError:
+                break
+            except OSError:
+                return True
+            if stat_module.S_ISLNK(identity.st_mode):
+                return True
         return False
 
     def _require_connection(self) -> Any:

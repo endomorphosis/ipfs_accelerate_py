@@ -20,12 +20,26 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Final
+
+def _ensure_nested_package_paths() -> None:
+    """Make sibling datasets/kit packages importable from the superproject root."""
+
+    repo_root = Path(__file__).resolve().parents[4]
+    for name in ("ipfs_datasets_py", "ipfs_kit_py"):
+        candidate = repo_root / name
+        package = candidate / name
+        if package.is_dir() and str(candidate) not in sys.path:
+            sys.path.insert(0, str(candidate))
+
+
+_ensure_nested_package_paths()
 
 from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.delta_seal import (
     DeltaSeal,

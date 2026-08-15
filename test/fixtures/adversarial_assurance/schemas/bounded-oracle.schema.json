@@ -1,0 +1,91 @@
+{
+  "$id": "https://ipfs-accelerate.dev/schemas/aae/bounded-oracle@1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "bounds": {
+      "additionalProperties": false,
+      "properties": {
+        "max_depth": {
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "max_steps": {
+          "maximum": 100000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "timeout_ms": {
+          "maximum": 3600000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_steps",
+        "max_depth",
+        "timeout_ms"
+      ],
+      "type": "object"
+    },
+    "expected_outcome": {
+      "enum": [
+        "killed",
+        "survived_selected",
+        "survived_full",
+        "invalid",
+        "equivalent_review"
+      ],
+      "type": "string"
+    },
+    "fail_closed": {
+      "type": "boolean"
+    },
+    "kill_mechanisms": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_.:/+-]{0,127}$",
+        "type": "string"
+      },
+      "maxItems": 32,
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "observation_points": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_.:/+-]{0,127}$",
+        "type": "string"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "oracle_cid": {
+      "maxLength": 128,
+      "minLength": 8,
+      "pattern": "^b[a-z2-7]+$",
+      "type": "string"
+    },
+    "oracle_id": {
+      "pattern": "^[a-z][a-z0-9_.:/+-]{0,127}$",
+      "type": "string"
+    },
+    "schema": {
+      "const": "aae/bounded-oracle@1"
+    }
+  },
+  "required": [
+    "schema",
+    "oracle_id",
+    "expected_outcome",
+    "kill_mechanisms",
+    "bounds",
+    "observation_points",
+    "fail_closed",
+    "oracle_cid"
+  ],
+  "title": "AAE bounded oracle",
+  "type": "object"
+}
