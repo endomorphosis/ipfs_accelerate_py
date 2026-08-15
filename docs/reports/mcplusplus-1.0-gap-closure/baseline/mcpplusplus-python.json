@@ -1,0 +1,277 @@
+{
+  "schema": "BaselineReceipt@1",
+  "task_id": "MCPP-002",
+  "title": "Baseline Mcp-Plus-Plus Python tests and coverage",
+  "track": "baseline-python",
+  "bundle": "mcplusplus/1.0/baseline-python",
+  "generated_at": "2026-08-15T18:45:11.900652+00:00",
+  "repository": {
+    "working_tree": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_901bcb268e54_72297b076dcc",
+    "relative_suite_root": "ipfs_accelerate_py/mcplusplus",
+    "test_path": "tests-py",
+    "commit_sha": "961fb1f713a64e2f2133491fe1016ee398cff8d7",
+    "branch": "implementation/mcpp-002-659de5e3e890-attempt-1-1786819312",
+    "program_branch": "codex/mcplusplus-1.0-gap-closure",
+    "tree_id": "961fb1f713a64e2f2133491fe1016ee398cff8d7"
+  },
+  "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py --maxfail=1",
+  "commands": {
+    "validation": {
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py --maxfail=1",
+      "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_901bcb268e54_72297b076dcc/ipfs_accelerate_py/mcplusplus",
+      "exit_code": 0,
+      "duration_seconds": 0.53,
+      "stdout_summary": "323 passed in 0.53s"
+    },
+    "coverage_measurement": {
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py --cov=tests-py/validators --cov-report=term-missing --cov-report=json -rs",
+      "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_901bcb268e54_72297b076dcc/ipfs_accelerate_py/mcplusplus",
+      "exit_code": 0,
+      "duration_seconds": 1.185,
+      "stdout_summary": "323 passed; coverage 96.10% statements on tests-py/validators"
+    }
+  },
+  "commit_sha": "961fb1f713a64e2f2133491fe1016ee398cff8d7",
+  "pass_fail": "pass",
+  "result": "pass",
+  "exit_code": 0,
+  "test_count": {
+    "total": 323,
+    "passed": 323,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "xfailed": 0,
+    "xpassed": 0,
+    "collected": 323
+  },
+  "coverage": {
+    "status": "available",
+    "tool": "coverage.py via pytest-cov",
+    "tool_versions": {
+      "coverage": "7.13.5",
+      "pytest_cov": "7.1.0"
+    },
+    "scope": "tests-py/validators",
+    "scope_note": "Measured statement coverage for the Python validators package under ipfs_accelerate_py/mcplusplus/tests-py/validators while executing tests-py. This is a recomputed baseline; static docs claiming 100% coverage are not treated as evidence.",
+    "percent_covered": 96.1038961038961,
+    "percent_covered_display": "96",
+    "num_statements": 1232,
+    "covered_lines": 1184,
+    "missing_lines": 48,
+    "excluded_lines": 0,
+    "files": [
+      {
+        "path": "tests-py/validators/__init__.py",
+        "num_statements": 8,
+        "covered_lines": 8,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/base_mcp.py",
+        "num_statements": 100,
+        "covered_lines": 100,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/base_mcp_typed.py",
+        "num_statements": 112,
+        "covered_lines": 112,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/cid_artifacts.py",
+        "num_statements": 63,
+        "covered_lines": 63,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/event_dag.py",
+        "num_statements": 46,
+        "covered_lines": 46,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/mcp_idl.py",
+        "num_statements": 97,
+        "covered_lines": 97,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/models.py",
+        "num_statements": 275,
+        "covered_lines": 275,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/policy_evaluation.py",
+        "num_statements": 26,
+        "covered_lines": 26,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/profile_g.py",
+        "num_statements": 119,
+        "covered_lines": 113,
+        "missing_lines_count": 6,
+        "percent_covered": 94.95798319327731,
+        "missing_line_numbers": [
+          33,
+          38,
+          65,
+          123,
+          124,
+          125
+        ]
+      },
+      {
+        "path": "tests-py/validators/profile_h.py",
+        "num_statements": 291,
+        "covered_lines": 249,
+        "missing_lines_count": 42,
+        "percent_covered": 85.56701030927834,
+        "missing_line_numbers": [
+          81,
+          90,
+          96,
+          102,
+          109,
+          118,
+          127,
+          134,
+          137,
+          146,
+          149,
+          174,
+          180,
+          183,
+          184,
+          190,
+          195,
+          214,
+          215,
+          216,
+          234,
+          239,
+          242,
+          244,
+          248,
+          250,
+          251,
+          252,
+          314,
+          322,
+          330,
+          336,
+          340,
+          341,
+          342,
+          343,
+          348,
+          358,
+          370,
+          372,
+          375,
+          379
+        ]
+      },
+      {
+        "path": "tests-py/validators/transport.py",
+        "num_statements": 65,
+        "covered_lines": 65,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      },
+      {
+        "path": "tests-py/validators/ucan_delegation.py",
+        "num_statements": 30,
+        "covered_lines": 30,
+        "missing_lines_count": 0,
+        "percent_covered": 100.0,
+        "missing_line_numbers": []
+      }
+    ]
+  },
+  "skipped_names": [],
+  "failures": [],
+  "errors": [],
+  "env": {
+    "python_executable": "/usr/bin/python3",
+    "python_version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+    "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+    "platform_system": "Linux",
+    "platform_machine": "aarch64",
+    "packages": {
+      "coverage": "7.13.5",
+      "jsonschema": "4.26.0",
+      "pydantic": "2.13.2",
+      "pytest": "9.1.1",
+      "pytest_cov": "7.1.0"
+    },
+    "requirements_file": "ipfs_accelerate_py/mcplusplus/tests-py/requirements.txt",
+    "PATH": "/opt/openfoam14/thirdparty/platforms/linuxArm64Gcc/gperftools-svn/bin:/opt/openfoam14/bin:/opt/openfoam14/wmake:/home/barberb/OpenFOAM/barberb-14/platforms/linuxArm64GccDPInt32Opt/bin:/opt/site/14/platforms/linuxArm64GccDPInt32Opt/bin:/opt/openfoam14/platforms/linuxArm64GccDPInt32Opt/bin:/home/barberb/.elan/bin:/home/barberb/.local/bin:/usr/local/cuda/bin:/opt/bin/:/home/barberb/.grok/bin:/home/barberb/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure",
+    "VIRTUAL_ENV": null,
+    "LANG": "en_US.utf8",
+    "USER": "barberb",
+    "IPFS_ACCELERATE_AGENT_TASK_CHECKPOINT_DIR": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/lane-2/implementation_checkpoints/mcpp-002-659de5e3e890",
+    "pytest_plugins_observed": [
+      "mock",
+      "xdist",
+      "benchmark",
+      "cov",
+      "base-url",
+      "asyncio",
+      "trio",
+      "typeguard",
+      "env",
+      "hypothesis",
+      "playwright",
+      "timeout",
+      "anyio"
+    ]
+  },
+  "evidence": {
+    "junit_suite": {
+      "tests": 323,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "time_seconds": 1.185
+    },
+    "notes": [
+      "Validation command completed with exit code 0 (323 passed, 0 failed, 0 skipped).",
+      "Coverage measurement used the same test path with pytest-cov on tests-py/validators.",
+      "No tests were skipped; skipped_names is an empty list by measurement, not omission.",
+      "failures and errors arrays are present and empty; failures would be recorded with name and message if any occurred.",
+      "Existing COVERAGE_100_PERCENT.md / FINAL_* coverage documents under tests-py are stale narrative and were not used as the measured result."
+    ]
+  },
+  "acceptance_fields": {
+    "command": true,
+    "env": true,
+    "commit_sha": true,
+    "pass_fail": true,
+    "test_count": true,
+    "coverage_or_explicit_unavailable": true,
+    "skipped_names": true,
+    "failures_recorded_not_hidden": true
+  }
+}
