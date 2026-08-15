@@ -64,7 +64,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-002 Inventory datasets public logic APIs and compatibility shims
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: inventory
