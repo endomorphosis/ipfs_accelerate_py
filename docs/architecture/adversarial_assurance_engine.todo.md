@@ -1119,7 +1119,7 @@ W20 AAE-063
 
 ## AAE-040 Compose risk-weighted campaign planning, generation, and detector prediction
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
