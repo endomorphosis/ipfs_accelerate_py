@@ -1,0 +1,1117 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/logic-platform-inventory@1",
+  "interface": "LogicPlatformInventory@1",
+  "task_id": "LPC-008",
+  "goal_id": "LPC-G010",
+  "title": "Canonical logic platform inventory index",
+  "composed_at": "2026-08-15",
+  "program": "logic-platform-canonicalization",
+  "classification_vocabulary": [
+    "canonical",
+    "canonical_component",
+    "compatibility_facade",
+    "legacy",
+    "experimental",
+    "declaration_only",
+    "generated",
+    "duplicate",
+    "obsolete",
+    "unresolved"
+  ],
+  "required_categories": [
+    "public_logic_api",
+    "registry_generation",
+    "family_profile_property_provider",
+    "ast_or_typed_expression",
+    "formalization_artifact",
+    "domain_logic_slice",
+    "backend_request",
+    "provider_protocol",
+    "translation_contract",
+    "proof_plan",
+    "receipt_and_evidence",
+    "cache_key",
+    "provider_matrix",
+    "status_enum",
+    "authority_enum",
+    "boundedness_enum",
+    "alias_table",
+    "installer_mutation_boundary",
+    "supervisor_import_into_datasets",
+    "duplicate_supervisor_semantic_type",
+    "mcp_cli_python_exposure",
+    "compatibility_shim",
+    "deprecated_module",
+    "test_and_conformance_corpus"
+  ],
+  "implementation_authority_rule": {
+    "rule": "current_heads_are_implementation_authority",
+    "statement": "Use the current checked-out sources as implementation authority. Reviewed baselines are comparison pins only; they do not override current heads for production edits.",
+    "compare_then_authority": true,
+    "production_edit_gate": "Record intervening changes (LPC-001) before any production edit. No production contract rewrite is admitted until LPC-G010 closes."
+  },
+  "source_revisions": {
+    "reviewed_baselines": {
+      "ipfs_datasets_py": {
+        "repository": "endomorphosis/ipfs_datasets_py",
+        "commit": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+        "role": "reviewed_baseline"
+      },
+      "ipfs_accelerate_py": {
+        "repository": "endomorphosis/ipfs_accelerate_py",
+        "commit": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+        "role": "reviewed_baseline"
+      }
+    },
+    "current_heads": {
+      "ipfs_datasets_py": {
+        "repository": "endomorphosis/ipfs_datasets_py",
+        "role": "implementation_authority",
+        "branch": "agent/logic-platform-canonicalization",
+        "commit": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+        "equals_reviewed_baseline": true
+      },
+      "ipfs_accelerate_py": {
+        "repository": "endomorphosis/ipfs_accelerate_py",
+        "role": "implementation_authority",
+        "branch": "agent/logic-platform-canonicalization",
+        "commit": "ea11293bb996f052d620eae989f5377a956764b1",
+        "equals_reviewed_baseline": false,
+        "behind_reviewed_baseline": 1245
+      }
+    },
+    "ahead_behind": {
+      "ipfs_datasets_py": { "ahead": 0, "behind": 0, "merge_base": "ac82107e246b30e35a2bbdcf75e01370d22350c6" },
+      "ipfs_accelerate_py": { "ahead": 0, "behind": 1245, "merge_base": "ea11293bb996f052d620eae989f5377a956764b1" }
+    },
+    "dirty_paths": [],
+    "source": "data/agent_supervisor/logic_platform_canonicalization/inventory/revisions.json"
+  },
+  "slice_sources": [
+    {
+      "task_id": "LPC-001",
+      "files": ["revisions.json", "revisions.md"],
+      "role": "Exact source revisions, ahead/behind, dirty paths, intervening changes"
+    },
+    {
+      "task_id": "LPC-002",
+      "files": ["datasets_public_api.json", "datasets_public_api.md"],
+      "role": "public_logic_api, mcp_cli_python_exposure, compatibility_shim, deprecated_module",
+      "item_count": 59
+    },
+    {
+      "task_id": "LPC-003",
+      "files": ["registries.json", "registries.md"],
+      "role": "registry_generation, family_profile_property_provider, provider_matrix, alias_table, generated catalogs",
+      "surface_count": 8
+    },
+    {
+      "task_id": "LPC-004",
+      "files": ["syntax_formalization.json", "syntax_formalization.md"],
+      "role": "ast_or_typed_expression, formalization_artifact, domain_logic_slice",
+      "item_count": 24
+    },
+    {
+      "task_id": "LPC-005",
+      "files": ["providers_evidence.json", "providers_evidence.md"],
+      "role": "backend_request, provider_protocol, translation_contract, proof_plan, receipt_and_evidence, cache_key, installer_mutation_boundary, status/authority/boundedness enums",
+      "item_count": 44
+    },
+    {
+      "task_id": "LPC-006",
+      "files": ["supervisor_semantics.json", "supervisor_semantics.md"],
+      "role": "supervisor_import_into_datasets, duplicate_supervisor_semantic_type",
+      "direct_import_count": 60,
+      "duplicate_semantic_type_count": 38
+    },
+    {
+      "task_id": "LPC-007",
+      "files": ["tests_and_surfaces.json", "tests_and_surfaces.md"],
+      "role": "mcp_cli_python_exposure, compatibility_shim, deprecated_module, test_and_conformance_corpus",
+      "item_count": 49
+    }
+  ],
+  "category_normalization": {
+    "backend_request_generation": "backend_request",
+    "provider_protocol_generation": "provider_protocol",
+    "proof_plan_contract": "proof_plan",
+    "receipt": "receipt_and_evidence",
+    "cache_key_type": "cache_key",
+    "status_authority_boundedness_enum": "split into status_enum | authority_enum | boundedness_enum by item semantics",
+    "supervisor_slice_classifications": {
+      "operational": "canonical_component (supervisor-owned operational surface; slice_classification retained where present)",
+      "compatibility": "compatibility_facade",
+      "duplicate": "duplicate",
+      "canonical projection": "canonical_component (datasets authority projection; slice_classification retained where present)"
+    }
+  },
+  "invariants": [
+    "Current heads are implementation authority; reviewed baselines are comparison pins only.",
+    "Registry presence never implies executability.",
+    "Declaration never implies production admission.",
+    "Provider success is not semantic success.",
+    "Datasets owns logic semantics; supervisor owns scheduling, isolation, resources, and admission policy.",
+    "Unresolved items are listed explicitly and are not silently dropped.",
+    "No production contract rewrite is admitted until LPC-G010 closes.",
+    "Full per-symbol detail remains in the owning slice inventories; this index guarantees category coverage and unresolved ledger completeness."
+  ],
+  "summary": {
+    "composition_mode": "canonical_index_with_category_coverage_and_unresolved_ledger",
+    "item_count": 74,
+    "unresolved_count": 12,
+    "required_category_count": 24,
+    "all_required_categories_classified": true,
+    "by_category": {
+      "public_logic_api": 4,
+      "registry_generation": 3,
+      "family_profile_property_provider": 3,
+      "ast_or_typed_expression": 4,
+      "formalization_artifact": 5,
+      "domain_logic_slice": 4,
+      "backend_request": 3,
+      "provider_protocol": 3,
+      "translation_contract": 2,
+      "proof_plan": 2,
+      "receipt_and_evidence": 3,
+      "cache_key": 3,
+      "provider_matrix": 2,
+      "status_enum": 3,
+      "authority_enum": 3,
+      "boundedness_enum": 2,
+      "alias_table": 1,
+      "installer_mutation_boundary": 2,
+      "supervisor_import_into_datasets": 4,
+      "duplicate_supervisor_semantic_type": 4,
+      "mcp_cli_python_exposure": 4,
+      "compatibility_shim": 3,
+      "deprecated_module": 3,
+      "test_and_conformance_corpus": 4
+    },
+    "slice_item_totals_referenced": {
+      "LPC-002": 59,
+      "LPC-003": 8,
+      "LPC-004": 24,
+      "LPC-005": 44,
+      "LPC-006": 98,
+      "LPC-007": 49
+    }
+  },
+  "unresolved": [
+    {
+      "id": "LPC-008:datasets_source_tree_readability",
+      "classification": "unresolved",
+      "source_tasks": ["LPC-002", "LPC-003", "LPC-004", "LPC-005", "LPC-006", "LPC-007"],
+      "summary": "Declared datasets checkout (/home/barberb/lift_coding/external/ipfs_datasets) and nested ipfs_datasets_py submodule were not populated in inventory worktrees. Classifications are bound to plan contracts, accelerate import sites, and LFV/FVT evidence; path-level AST confirmation remains open.",
+      "remediation": "Mount datasets at implementation-authority revision ac82107e246b30e35a2bbdcf75e01370d22350c6 before production contract rewrites."
+    },
+    {
+      "id": "LPC-003:datasets_source_tree_readability",
+      "classification": "unresolved",
+      "source_file": "registries.json",
+      "summary": "Declared datasets checkout and nested submodule were not populated; path-level AST confirmation of each registry module file remains open."
+    },
+    {
+      "id": "LPC-004:fa:formalization-artifact-v1",
+      "category": "formalization_artifact",
+      "classification": "unresolved",
+      "source_file": "syntax_formalization.json",
+      "summary": "FormalizationArtifact@1 implied by artifacts_v3 naming; no distinct @1 module path observed."
+    },
+    {
+      "id": "LPC-004:fa:formalization-artifact-v2",
+      "category": "formalization_artifact",
+      "classification": "unresolved",
+      "source_file": "syntax_formalization.json",
+      "summary": "FormalizationArtifact@2 implied by artifacts_v3 naming; no distinct @2 module path observed."
+    },
+    {
+      "id": "LPC-004:dls:domain-logic-slice-v1",
+      "category": "domain_logic_slice",
+      "classification": "unresolved",
+      "source_file": "syntax_formalization.json",
+      "summary": "DomainLogicSlice@1 implied by DomainLogicSlice@2 naming; no distinct @1 module path observed."
+    },
+    {
+      "id": "LPC-005:ax:verification-status-overlapping",
+      "category": "status_enum",
+      "classification": "unresolved",
+      "source_file": "providers_evidence.json",
+      "summary": "Full datasets VerificationStatus and related overlapping enum census deferred to LPC-030/031; datasets source tree not mounted."
+    },
+    {
+      "id": "LPC-005:datasets_source_tree_readability",
+      "classification": "unresolved",
+      "source_file": "providers_evidence.json",
+      "summary": "Path-level AST confirmation of requests_v2, protocol_v2 presence, and TrustedProofReceipt type remains open."
+    },
+    {
+      "id": "LPC-007:unresolved.datasets_checkout_absent",
+      "category": "test_and_conformance_corpus",
+      "classification": "unresolved",
+      "source_file": "tests_and_surfaces.json",
+      "summary": "ipfs_datasets_py gitlink empty and external datasets path absent; datasets unit/integration corpora cannot be file-listed."
+    },
+    {
+      "id": "LPC-007:unresolved.full_logic_api_export_census",
+      "category": "mcp_cli_python_exposure",
+      "classification": "unresolved",
+      "source_file": "tests_and_surfaces.json",
+      "summary": "Complete public symbol lists for logic.__init__, logic.api, and logic.cli require datasets source (owned primarily by LPC-002)."
+    },
+    {
+      "id": "LPC-007:unresolved.deprecated_datasets_module_exhaustive_list",
+      "category": "deprecated_module",
+      "classification": "unresolved",
+      "source_file": "tests_and_surfaces.json",
+      "summary": "Exhaustive deprecated module list inside ipfs_datasets_py.logic requires source scan of datasets checkout."
+    },
+    {
+      "id": "LPC-007:corpus.datasets.unit_logic",
+      "category": "test_and_conformance_corpus",
+      "classification": "unresolved",
+      "source_file": "tests_and_surfaces.json",
+      "summary": "Datasets unit logic corpus path known from plans/tests but not file-listed without checkout."
+    },
+    {
+      "id": "LPC-007:corpus.datasets.integration_logic",
+      "category": "test_and_conformance_corpus",
+      "classification": "unresolved",
+      "source_file": "tests_and_surfaces.json",
+      "summary": "Datasets integration logic corpus path known from plans/tests but not file-listed without checkout."
+    }
+  ],
+  "items": [
+    {
+      "id": "LPC-002:mod:logic.verification_api",
+      "source_id": "mod:logic.verification_api",
+      "name": "LogicVerificationAPI@1",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "source_task": "LPC-002",
+      "source_file": "datasets_public_api.json",
+      "path": "ipfs_datasets_py/logic/verification_api.py",
+      "owner_package": "ipfs_datasets_py.logic",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Stable Python software-verification facade; pure-data import must remain side-effect free.",
+      "slice_detail": "Full public-symbol census (59 items) in datasets_public_api.json"
+    },
+    {
+      "id": "LPC-002:mod:logic.__init__",
+      "source_id": "mod:logic.__init__",
+      "name": "ipfs_datasets_py.logic package root",
+      "category": "public_logic_api",
+      "classification": "compatibility_facade",
+      "source_task": "LPC-002",
+      "source_file": "datasets_public_api.json",
+      "path": "ipfs_datasets_py/logic/__init__.py",
+      "role": "Lazy public re-export surface; planned LPC-G060 keeps this as a thin adapter over platform services."
+    },
+    {
+      "id": "LPC-002:py:logic.verification_api.STABLE_OPERATIONS",
+      "name": "STABLE_OPERATIONS",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "source_task": "LPC-002",
+      "source_file": "datasets_public_api.json",
+      "path": "ipfs_datasets_py/logic/verification_api.py",
+      "role": "Closed set of 13 stable verification operations shared across Python/CLI/MCP channels."
+    },
+    {
+      "id": "LPC-002:py:gt.plan_proof",
+      "source_id": "py:gt.plan_proof",
+      "name": "plan_proof (GoalTacticianAPI@1)",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "source_task": "LPC-002",
+      "source_file": "datasets_public_api.json",
+      "path": "ipfs_datasets_py/logic/verification_api.py",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Build/select a proof plan. Models may propose; they may not close plans. Goal-tactician ops must not merge into STABLE_OPERATIONS."
+    },
+    {
+      "id": "LPC-003:registry",
+      "source_id": "registry",
+      "name": "LogicFamilyRegistry@1 (registry v2)",
+      "category": "registry_generation",
+      "classification": "canonical",
+      "source_task": "LPC-003",
+      "source_file": "registries.json",
+      "path": "ipfs_datasets_py/logic/families/registry.py",
+      "interface": "LogicFamilyRegistry@1",
+      "layer_role": "descriptor_taxonomy",
+      "role": "Canonical v2 taxonomy layer for family, fragment, property, operation, runtime, evidence, boundedness, translation, and provider-capability descriptors.",
+      "does_not_imply": ["provider_executability", "toolchain_installation", "production_admission"]
+    },
+    {
+      "id": "LPC-003:registry_v3",
+      "source_id": "registry_v3",
+      "name": "LogicFamilyRegistryPublication@3",
+      "category": "registry_generation",
+      "classification": "canonical",
+      "source_task": "LPC-003",
+      "source_file": "registries.json",
+      "path": "ipfs_datasets_py/logic/families/registry_v3.py",
+      "interface": "LogicFamilyRegistryPublication@3",
+      "layer_role": "lifecycle_publication",
+      "role": "Canonical v3 lifecycle and publication layer. Distinct from v2 taxonomy. No registry v4 rename unless wire-format migration is required."
+    },
+    {
+      "id": "LPC-003:generated_catalog",
+      "source_id": "generated_catalog",
+      "name": "GeneratedLogicCatalog@1",
+      "category": "registry_generation",
+      "classification": "generated",
+      "source_task": "LPC-003",
+      "source_file": "registries.json",
+      "path": "ipfs_datasets_py/logic/families/generated_catalog.py",
+      "role": "Generated projection over taxonomy, namespaces, aliases, registry v2/v3, profiles, and provider matrix. Must not become a second hand-maintained inventory."
+    },
+    {
+      "id": "LPC-003:profile_catalog_v3",
+      "source_id": "profile_catalog_v3",
+      "name": "LogicProfileCatalog@3",
+      "category": "family_profile_property_provider",
+      "classification": "canonical",
+      "source_task": "LPC-003",
+      "source_file": "registries.json",
+      "path": "ipfs_datasets_py/logic/families/profile_catalog_v3.py",
+      "interface": "LogicProfileCatalog@3",
+      "role": "Canonical profile catalog generation; composes into CanonicalLogicCatalogSnapshot."
+    },
+    {
+      "id": "LPC-003:namespaces",
+      "source_id": "namespaces",
+      "name": "LogicNamespaces@1",
+      "category": "family_profile_property_provider",
+      "classification": "canonical_component",
+      "source_task": "LPC-003",
+      "source_file": "registries.json",
+      "path": "ipfs_datasets_py/logic/families/namespaces.py",
+      "role": "Namespace identifiers, coercion rules, and reserved supervisor.* residual namespace. Fail-closed."
+    },
+    {
+      "id": "LPC-003:families_models",
+      "source_id": "families_models",
+      "name": "families.models",
+      "category": "family_profile_property_provider",
+      "classification": "canonical_component",
+      "source_task": "LPC-003",
+      "source_file": "registries.json",
+      "path": "ipfs_datasets_py/logic/families/models.py",
+      "role": "Shared typed descriptors for registry generations; not a separate registry generation."
+    },
+    {
+      "id": "LPC-004:ast:syntax-core-package",
+      "source_id": "ast:syntax-core-package",
+      "name": "syntax_core",
+      "category": "ast_or_typed_expression",
+      "classification": "canonical",
+      "source_task": "LPC-004",
+      "source_file": "syntax_formalization.json",
+      "path": "ipfs_datasets_py/logic/syntax_core",
+      "role": "Canonical parse/AST package for logic expressions on the typed new-write path."
+    },
+    {
+      "id": "LPC-004:ast:typed-expression",
+      "source_id": "ast:typed-expression",
+      "name": "TypedExpression",
+      "category": "ast_or_typed_expression",
+      "classification": "canonical",
+      "source_task": "LPC-004",
+      "source_file": "syntax_formalization.json",
+      "path": "ipfs_datasets_py/logic/syntax_core",
+      "role": "Typed expression stage on the canonical pipeline after parse artifact."
+    },
+    {
+      "id": "LPC-004:ast:elaboration-artifact",
+      "source_id": "ast:elaboration-artifact",
+      "name": "ElaborationArtifact",
+      "category": "ast_or_typed_expression",
+      "classification": "canonical_component",
+      "source_task": "LPC-004",
+      "source_file": "syntax_formalization.json",
+      "path": "ipfs_datasets_py/logic/syntax_core",
+      "role": "Elaboration stage between TypedExpression and FormalizationArtifact@3."
+    },
+    {
+      "id": "LPC-004:ast:supervisor-program-source-document",
+      "source_id": "ast:supervisor-program-source-document",
+      "name": "program_ast_adapters.SourceDocument",
+      "category": "ast_or_typed_expression",
+      "classification": "duplicate",
+      "source_task": "LPC-004",
+      "source_file": "syntax_formalization.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/program_ast_adapters.py",
+      "role": "Supervisor repository/program analysis document type; not the logic formalization SourceDocument."
+    },
+    {
+      "id": "LPC-004:fa:formalization-artifact-v3",
+      "source_id": "fa:formalization-artifact-v3",
+      "name": "FormalizationArtifact@3",
+      "category": "formalization_artifact",
+      "classification": "canonical",
+      "source_task": "LPC-004",
+      "source_file": "syntax_formalization.json",
+      "path": "ipfs_datasets_py/logic/formalization/artifacts_v3.py",
+      "generation": "FormalizationArtifact@3",
+      "role": "Only admitted formalization generation for new writes."
+    },
+    {
+      "id": "LPC-004:fa:formalization-artifact-compiler",
+      "source_id": "fa:formalization-artifact-compiler",
+      "name": "FormalizationArtifact (compiler surface)",
+      "category": "formalization_artifact",
+      "classification": "legacy",
+      "source_task": "LPC-004",
+      "source_file": "syntax_formalization.json",
+      "path": "ipfs_datasets_py/logic/formalization/compiler.py",
+      "role": "Live import path used by supervisor admissibility; not the plan-named @3 new-write generation."
+    },
+    {
+      "id": "LPC-004:fa:formalization-artifact-v1",
+      "source_id": "fa:formalization-artifact-v1",
+      "name": "FormalizationArtifact@1",
+      "category": "formalization_artifact",
+      "classification": "unresolved",
+      "source_task": "LPC-004",
+      "source_file": "syntax_formalization.json",
+      "generation": "FormalizationArtifact@1",
+      "role": "Implied historical generation; no distinct module path observed. Must not be used for new writes."
+    },
+    {
+      "id": "LPC-004:fa:formalization-artifact-v2",
+      "source_id": "fa:formalization-artifact-v2",
+      "name": "FormalizationArtifact@2",
+      "category": "formalization_artifact",
+      "classification": "unresolved",
+      "source_task": "LPC-004",
+      "source_file": "syntax_formalization.json",
+      "generation": "FormalizationArtifact@2",
+      "role": "Implied historical generation; no distinct module path observed. Must not be used for new writes."
+    },
+    {
+      "id": "LPC-004:fa:proposal-advisors",
+      "source_id": "fa:proposal-advisors",
+      "name": "formalization proposal advisors",
+      "category": "formalization_artifact",
+      "classification": "experimental",
+      "source_task": "LPC-004",
+      "source_file": "syntax_formalization.json",
+      "role": "Advisors propose; they do not prove or raise authority."
+    },
+    {
+      "id": "LPC-004:dls:domain-logic-slice-v2",
+      "source_id": "dls:domain-logic-slice-v2",
+      "name": "DomainLogicSlice@2",
+      "category": "domain_logic_slice",
+      "classification": "canonical",
+      "source_task": "LPC-004",
+      "source_file": "syntax_formalization.json",
+      "generation": "DomainLogicSlice@2",
+      "role": "Only admitted domain-slice generation for new writes."
+    },
+    {
+      "id": "LPC-004:dls:domain-logic-slice-v1",
+      "source_id": "dls:domain-logic-slice-v1",
+      "name": "DomainLogicSlice@1",
+      "category": "domain_logic_slice",
+      "classification": "unresolved",
+      "source_task": "LPC-004",
+      "source_file": "syntax_formalization.json",
+      "generation": "DomainLogicSlice@1",
+      "role": "Implied historical generation; no distinct module path observed."
+    },
+    {
+      "id": "LPC-004:dls:legal-domain-slice",
+      "source_id": "dls:legal-domain-slice",
+      "name": "legal_ir domain slice",
+      "category": "domain_logic_slice",
+      "classification": "canonical_component",
+      "source_task": "LPC-004",
+      "source_file": "syntax_formalization.json",
+      "path": "ipfs_datasets_py/logic/legal_ir",
+      "role": "Domain adapter feeding DomainLogicSlice@2 (legal)."
+    },
+    {
+      "id": "LPC-004:dls:security-domain-slice",
+      "source_id": "dls:security-domain-slice",
+      "name": "security_ir domain slice",
+      "category": "domain_logic_slice",
+      "classification": "canonical_component",
+      "source_task": "LPC-004",
+      "source_file": "syntax_formalization.json",
+      "path": "ipfs_datasets_py/logic/security_ir",
+      "role": "Domain adapter feeding DomainLogicSlice@2 (security). Keep software/security families distinct."
+    },
+    {
+      "id": "LPC-005:br:backend-request-v2",
+      "source_id": "br:backend-request-v2",
+      "name": "BackendRequest@2",
+      "category": "backend_request",
+      "classification": "canonical",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_datasets_py/logic/backends/requests_v2.py",
+      "generation": "BackendRequest@2",
+      "role": "Only admitted typed backend-request generation for new writes. v1 generic payloads cannot bypass it."
+    },
+    {
+      "id": "LPC-005:br:backend-request-ir-core",
+      "source_id": "br:backend-request-ir-core",
+      "name": "BackendRequest (ir_core.protocols)",
+      "category": "backend_request",
+      "classification": "legacy",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_datasets_py/logic/ir_core/protocols.py",
+      "role": "IR-core protocol symbol bound by supervisor; not the plan-named BackendRequest@2 new-write generation."
+    },
+    {
+      "id": "LPC-005:br:backend-request-v1-generic",
+      "source_id": "br:backend-request-v1-generic",
+      "name": "BackendRequest / provider payload v1 generic",
+      "category": "backend_request",
+      "classification": "legacy",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "generation": "v1",
+      "role": "Generic unrestricted JSON-style provider payloads retained only through explicit adapters."
+    },
+    {
+      "id": "LPC-005:pp:logic-provider-v1",
+      "source_id": "pp:logic-provider-v1",
+      "name": "LogicProvider@1",
+      "category": "provider_protocol",
+      "classification": "canonical",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_datasets_py/logic/backends/provider.py",
+      "generation": "LogicProvider@1",
+      "role": "Live datasets-owned provider wire contract. Preserved strong contract until protocol_v2 supersedes it."
+    },
+    {
+      "id": "LPC-005:pp:logic-provider-protocol-v2",
+      "source_id": "pp:logic-provider-protocol-v2",
+      "name": "LogicProviderProtocol@2",
+      "category": "provider_protocol",
+      "classification": "declaration_only",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_datasets_py/logic/backends/protocol_v2.py",
+      "generation": "LogicProviderProtocol@2",
+      "role": "Planned operation-specific typed provider-protocol successor (LPC-050)."
+    },
+    {
+      "id": "LPC-005:pp:supervisor-proof-provider-protocol-v1",
+      "source_id": "pp:supervisor-proof-provider-protocol-v1",
+      "name": "Supervisor ProofProvider protocol v1",
+      "category": "provider_protocol",
+      "classification": "compatibility_facade",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py",
+      "role": "Supervisor-owned execution envelope; must project onto datasets provider semantics."
+    },
+    {
+      "id": "LPC-005:tc:logic-translation-receipt-v1",
+      "source_id": "tc:logic-translation-receipt-v1",
+      "name": "LogicTranslationReceipt@1",
+      "category": "translation_contract",
+      "classification": "canonical",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "role": "Datasets-owned translation receipt contract."
+    },
+    {
+      "id": "LPC-005:tc:supervisor-translation-contract",
+      "source_id": "tc:supervisor-translation-contract",
+      "name": "supervisor translation validation",
+      "category": "translation_contract",
+      "classification": "compatibility_facade",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/logic_translation_validation.py",
+      "role": "Supervisor translation-preservation projection onto datasets PreservationKind."
+    },
+    {
+      "id": "LPC-005:plan:canonical-proof-plan-v1",
+      "source_id": "plan:canonical-proof-plan-v1",
+      "name": "CanonicalProofPlan@1",
+      "category": "proof_plan",
+      "classification": "declaration_only",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_datasets_py/logic/tactician/models.py",
+      "generation": "CanonicalProofPlan@1",
+      "role": "Planned single datasets-owned proof-plan model. Advisors propose; they do not prove."
+    },
+    {
+      "id": "LPC-005:plan:supervisor-proof-plan",
+      "source_id": "plan:supervisor-proof-plan",
+      "name": "ProofPlan (supervisor)",
+      "category": "proof_plan",
+      "classification": "compatibility_facade",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "role": "Supervisor-local operational plan until CanonicalProofPlan@1 cutover."
+    },
+    {
+      "id": "LPC-005:rc:trusted-proof-receipt",
+      "source_id": "rc:trusted-proof-receipt",
+      "name": "TrustedProofReceipt",
+      "category": "receipt_and_evidence",
+      "classification": "declaration_only",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "role": "Plan-named trusted receipt outcome; structural validity is not authentication."
+    },
+    {
+      "id": "LPC-005:rc:supervisor-proof-receipt",
+      "source_id": "rc:supervisor-proof-receipt",
+      "name": "ProofReceipt (supervisor)",
+      "category": "receipt_and_evidence",
+      "classification": "compatibility_facade",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "role": "Supervisor-local receipt surface; ten-point admission is supervisor policy ownership."
+    },
+    {
+      "id": "LPC-005:rc:ten-point-receipt-admission",
+      "source_id": "rc:ten-point-receipt-admission",
+      "name": "ten-point receipt admission policy",
+      "category": "receipt_and_evidence",
+      "classification": "canonical_component",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "role": "Supervisor admission gate: structural validity, content identity, bindings, translation, evidence kind, authority ceiling, bounds, cache provenance, attestation, policy match."
+    },
+    {
+      "id": "LPC-005:ck:canonical-proof-cache-key-v1",
+      "source_id": "ck:canonical-proof-cache-key-v1",
+      "name": "CanonicalProofCacheKey@1",
+      "category": "cache_key",
+      "classification": "declaration_only",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_datasets_py/logic/common/canonical_cache_key.py",
+      "generation": "CanonicalProofCacheKey@1",
+      "role": "Planned single datasets-owned cache-key contract. Datasets owns semantics; supervisor owns placement and single-flight."
+    },
+    {
+      "id": "LPC-005:ck:datasets-proof-cache",
+      "source_id": "ck:datasets-proof-cache",
+      "name": "proof_cache",
+      "category": "cache_key",
+      "classification": "canonical",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_datasets_py/logic/common/proof_cache.py",
+      "role": "Live datasets proof-cache surface."
+    },
+    {
+      "id": "LPC-005:ck:supervisor-proof-cache-key",
+      "source_id": "ck:supervisor-proof-cache-key",
+      "name": "ProofCacheKey (supervisor)",
+      "category": "cache_key",
+      "classification": "duplicate",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "role": "Supervisor-local cache key; must project onto datasets cache identity rather than redefine it."
+    },
+    {
+      "id": "LPC-003:provider_matrix_v2",
+      "source_id": "provider_matrix_v2",
+      "name": "LogicProviderMatrix@2",
+      "category": "provider_matrix",
+      "classification": "canonical",
+      "source_task": "LPC-003",
+      "source_file": "registries.json",
+      "path": "ipfs_datasets_py/logic/families/provider_matrix_v2.py",
+      "interface": "LogicProviderMatrix@2",
+      "role": "Canonical provider capability matrix. Matrix membership alone never admits a proof result."
+    },
+    {
+      "id": "LPC-003:provider_matrix_supervisor_prover_matrix",
+      "name": "prover_matrix_registry (supervisor)",
+      "category": "provider_matrix",
+      "classification": "duplicate",
+      "source_task": "LPC-003",
+      "source_file": "registries.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/prover_matrix_registry.py",
+      "role": "Supervisor evidence-bound prover matrix. Must project onto datasets matrix rather than redefine provider identity."
+    },
+    {
+      "id": "LPC-005:ax:logic-operation-status",
+      "source_id": "ax:logic-operation-status",
+      "name": "LogicOperationStatus@1",
+      "category": "status_enum",
+      "classification": "declaration_only",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_datasets_py/logic/ir_core/axes.py",
+      "role": "Planned orthogonal operation-status axis, distinct from semantic verdict."
+    },
+    {
+      "id": "LPC-005:ax:supervisor-attempt-status",
+      "source_id": "ax:supervisor-attempt-status",
+      "name": "AttemptStatus (supervisor)",
+      "category": "status_enum",
+      "classification": "legacy",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "role": "Live supervisor lifecycle enum. succeeded does not imply proved."
+    },
+    {
+      "id": "LPC-005:ax:verification-status-overlapping",
+      "source_id": "ax:verification-status-overlapping",
+      "name": "VerificationStatus and related overlapping statuses",
+      "category": "status_enum",
+      "classification": "unresolved",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "role": "Overlapping VerificationStatus / tactician / availability / support / runtime enums to be replaced by orthogonal axes (LPC-G030). Exact datasets type list requires source tree."
+    },
+    {
+      "id": "LPC-005:ax:supervisor-evidence-authority",
+      "source_id": "ax:supervisor-evidence-authority",
+      "name": "EvidenceAuthority (supervisor proof)",
+      "category": "authority_enum",
+      "classification": "legacy",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "role": "Live supervisor evidence-authority boundary enum."
+    },
+    {
+      "id": "LPC-005:ax:supervisor-assurance-level",
+      "source_id": "ax:supervisor-assurance-level",
+      "name": "AssuranceLevel (supervisor)",
+      "category": "authority_enum",
+      "classification": "legacy",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "role": "Ordered assurance lattice derived from evidence, not provider claim text."
+    },
+    {
+      "id": "LPC-005:ax:duplicate-evidence-authority-goal-quality",
+      "source_id": "ax:duplicate-evidence-authority-goal-quality",
+      "name": "EvidenceAuthority (goal_quality)",
+      "category": "authority_enum",
+      "classification": "duplicate",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/objectives/goal_quality.py",
+      "role": "Name collision with proof EvidenceAuthority; must not silently merge into logic evidence-authority axis."
+    },
+    {
+      "id": "LPC-005:ax:boundedness",
+      "source_id": "ax:boundedness",
+      "name": "Boundedness axis",
+      "category": "boundedness_enum",
+      "classification": "declaration_only",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_datasets_py/logic/ir_core/axes.py",
+      "role": "Planned orthogonal boundedness axis."
+    },
+    {
+      "id": "LPC-005:ax:supervisor-resource-budget",
+      "source_id": "ax:supervisor-resource-budget",
+      "name": "ResourceBudget (supervisor)",
+      "category": "boundedness_enum",
+      "classification": "compatibility_facade",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "role": "Supervisor operational resource/bound carrier; placement of execution limits, not semantic boundedness authority."
+    },
+    {
+      "id": "LPC-003:aliases",
+      "source_id": "aliases",
+      "name": "LogicAliasTable@1",
+      "category": "alias_table",
+      "classification": "canonical_component",
+      "source_task": "LPC-003",
+      "source_file": "registries.json",
+      "path": "ipfs_datasets_py/logic/families/aliases.py",
+      "interface": "LogicAliasTable@1",
+      "role": "Canonical alias table for deterministic identity resolution. Alias collisions fail closed. Supervisor-local maps are compatibility facades, not a second semantic authority."
+    },
+    {
+      "id": "LPC-005:inst:lazy-installer",
+      "source_id": "inst:lazy-installer",
+      "name": "external_provers.lazy_installer",
+      "category": "installer_mutation_boundary",
+      "classification": "canonical_component",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "path": "ipfs_datasets_py/logic/external_provers/lazy_installer.py",
+      "role": "Explicit pinned lazy installer. Installs require explicit calls; never during imports, probes, or pure-data loads."
+    },
+    {
+      "id": "LPC-005:inst:pure-data-import-boundary",
+      "source_id": "inst:pure-data-import-boundary",
+      "name": "pure-data import boundary",
+      "category": "installer_mutation_boundary",
+      "classification": "canonical",
+      "source_task": "LPC-005",
+      "source_file": "providers_evidence.json",
+      "role": "Imports and declaration discovery perform no install, network, process, environment, or write side effects. install_provider is opt-in mutation, not ordinary verify."
+    },
+    {
+      "id": "LPC-006:imp-001",
+      "source_id": "imp-001",
+      "name": "ipfs_datasets_py.logic.software_contracts.cache",
+      "category": "supervisor_import_into_datasets",
+      "classification": "canonical_component",
+      "slice_classification": "canonical projection",
+      "source_task": "LPC-006",
+      "source_file": "supervisor_semantics.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/contract_analysis/cache_adapter.py",
+      "role": "Thin supervisor adapter; datasets owns cache identity; supervisor binds execution identities.",
+      "slice_detail": "All 60 direct imports in supervisor_semantics.json"
+    },
+    {
+      "id": "LPC-006:imp-026",
+      "source_id": "imp-026",
+      "name": "ipfs_datasets_py.logic.families.registry",
+      "category": "supervisor_import_into_datasets",
+      "classification": "canonical_component",
+      "slice_classification": "canonical projection",
+      "source_task": "LPC-006",
+      "source_file": "supervisor_semantics.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+      "role": "Primary vocabulary projection boundary for family registry discovery."
+    },
+    {
+      "id": "LPC-006:imp-025",
+      "source_id": "imp-025",
+      "name": "ipfs_datasets_py.logic.backends.provider",
+      "category": "supervisor_import_into_datasets",
+      "classification": "canonical_component",
+      "slice_classification": "canonical projection",
+      "source_task": "LPC-006",
+      "source_file": "supervisor_semantics.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/logic_provider_contract.py",
+      "role": "Lazy facade converts supervisor ProviderRequest/Response to datasets LogicProviderProtocol wire types."
+    },
+    {
+      "id": "LPC-006:imp-014",
+      "source_id": "imp-014",
+      "name": "ipfs_datasets_py.utils.symai_config",
+      "category": "supervisor_import_into_datasets",
+      "classification": "canonical_component",
+      "slice_classification": "operational",
+      "source_task": "LPC-006",
+      "source_file": "supervisor_semantics.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+      "role": "Import-isolation helper for optional symai/Hammer cold-start; does not redefine logic family semantics."
+    },
+    {
+      "id": "LPC-006:sem-001",
+      "source_id": "sem-001",
+      "name": "LogicFamily",
+      "category": "duplicate_supervisor_semantic_type",
+      "classification": "duplicate",
+      "slice_classification": "duplicate",
+      "source_task": "LPC-006",
+      "source_file": "supervisor_semantics.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_operation_registry.py",
+      "role": "Supervisor-local logic family enum parallel to datasets family registry.",
+      "slice_detail": "All 38 duplicate semantic types in supervisor_semantics.json"
+    },
+    {
+      "id": "LPC-006:sem-002",
+      "source_id": "sem-002",
+      "name": "PropertyKind",
+      "category": "duplicate_supervisor_semantic_type",
+      "classification": "duplicate",
+      "slice_classification": "duplicate",
+      "source_task": "LPC-006",
+      "source_file": "supervisor_semantics.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "role": "Supervisor multi-prover property families parallel datasets software-verification property kinds."
+    },
+    {
+      "id": "LPC-006:sem-005",
+      "source_id": "sem-005",
+      "name": "LogicForm",
+      "category": "duplicate_supervisor_semantic_type",
+      "classification": "duplicate",
+      "slice_classification": "duplicate",
+      "source_task": "LPC-006",
+      "source_file": "supervisor_semantics.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/logic_translation_validation.py",
+      "role": "Supervisor-local logic form vocabulary parallel to datasets translation/form kinds."
+    },
+    {
+      "id": "LPC-006:sem-003",
+      "source_id": "sem-003",
+      "name": "PropertyType",
+      "category": "duplicate_supervisor_semantic_type",
+      "classification": "compatibility_facade",
+      "slice_classification": "compatibility",
+      "source_task": "LPC-006",
+      "source_file": "supervisor_semantics.json",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "role": "Compatibility alias PropertyType = PropertyKind."
+    },
+    {
+      "id": "LPC-007:surface.python.logic_verification_api",
+      "source_id": "surface.python.logic_verification_api",
+      "name": "LogicVerificationAPI@1 (Python channel)",
+      "category": "mcp_cli_python_exposure",
+      "classification": "canonical",
+      "source_task": "LPC-007",
+      "source_file": "tests_and_surfaces.json",
+      "path": "ipfs_datasets_py/logic/verification_api.py",
+      "channel": "python",
+      "role": "Stable Python verification surface. Import must remain side-effect free."
+    },
+    {
+      "id": "LPC-007:surface.cli.logic_verification_cli",
+      "source_id": "surface.cli.logic_verification_cli",
+      "name": "LogicVerificationCLI@1",
+      "category": "mcp_cli_python_exposure",
+      "classification": "canonical",
+      "source_task": "LPC-007",
+      "source_file": "tests_and_surfaces.json",
+      "path": "ipfs_datasets_py/logic/cli.py",
+      "channel": "cli",
+      "role": "Datasets logic CLI projects STABLE_OPERATIONS and GoalTactician operations."
+    },
+    {
+      "id": "LPC-007:surface.mcp.logic_verification",
+      "source_id": "surface.mcp.logic_verification",
+      "name": "LogicVerificationMCP@1",
+      "category": "mcp_cli_python_exposure",
+      "classification": "canonical",
+      "source_task": "LPC-007",
+      "source_file": "tests_and_surfaces.json",
+      "path": "ipfs_datasets_py/mcp_server/tools/logic_verification.py",
+      "channel": "mcp",
+      "role": "Datasets MCP formal-verification tool surface with Python/CLI envelope parity."
+    },
+    {
+      "id": "LPC-007:unresolved.full_logic_api_export_census",
+      "source_id": "unresolved.full_logic_api_export_census",
+      "name": "full logic API export census",
+      "category": "mcp_cli_python_exposure",
+      "classification": "unresolved",
+      "source_task": "LPC-007",
+      "source_file": "tests_and_surfaces.json",
+      "role": "Complete public symbol lists for logic.__init__, logic.api, and logic.cli require datasets source."
+    },
+    {
+      "id": "LPC-002:mod:logic.api",
+      "source_id": "mod:logic.api",
+      "name": "logic.api",
+      "category": "compatibility_shim",
+      "classification": "compatibility_facade",
+      "source_task": "LPC-002",
+      "source_file": "datasets_public_api.json",
+      "path": "ipfs_datasets_py/logic/api.py",
+      "interface": "LogicAPICompatibility@1",
+      "role": "Legacy Python API facade frozen by LFV-G011."
+    },
+    {
+      "id": "LPC-007:shim.provider_protocol_v1_adapter",
+      "source_id": "shim.provider_protocol_v1_adapter",
+      "name": "provider protocol v1 adapter",
+      "category": "compatibility_shim",
+      "classification": "compatibility_facade",
+      "source_task": "LPC-007",
+      "source_file": "tests_and_surfaces.json",
+      "role": "Planned/declared adapter retaining v1 generic payloads only through explicit conversion."
+    },
+    {
+      "id": "LPC-007:shim.accelerate_native_logic_tools_delegate",
+      "source_id": "shim.accelerate_native_logic_tools_delegate",
+      "name": "accelerate native logic_tools delegate",
+      "category": "compatibility_shim",
+      "classification": "compatibility_facade",
+      "source_task": "LPC-007",
+      "source_file": "tests_and_surfaces.json",
+      "path": "ipfs_accelerate_py/mcp_server/tools/logic_tools/native_logic_tools.py",
+      "role": "Parent-repo compatibility delegate for datasets logic_tools; not a second semantic authority."
+    },
+    {
+      "id": "LPC-002:mod:legacy_mcp_tools.temporal_deontic",
+      "source_id": "mod:legacy_mcp_tools.temporal_deontic",
+      "name": "legacy_mcp_tools temporal-deontic path",
+      "category": "deprecated_module",
+      "classification": "obsolete",
+      "source_task": "LPC-002",
+      "source_file": "datasets_public_api.json",
+      "path": "ipfs_datasets_py/mcp_server/tools/legacy_mcp_tools/__init__.py",
+      "role": "Deprecated import path; temporal-deontic exports routed through canonical logic_tools."
+    },
+    {
+      "id": "LPC-007:deprecated.legacy_cec_tdfol_mcp_tools",
+      "source_id": "deprecated.legacy_cec_tdfol_mcp_tools",
+      "name": "legacy CEC/TDFOL MCP tools",
+      "category": "deprecated_module",
+      "classification": "legacy",
+      "source_task": "LPC-007",
+      "source_file": "tests_and_surfaces.json",
+      "role": "Legacy family MCP tools retained as compatibility; must remain distinct from generic verification_check."
+    },
+    {
+      "id": "LPC-007:unresolved.deprecated_datasets_module_exhaustive_list",
+      "source_id": "unresolved.deprecated_datasets_module_exhaustive_list",
+      "name": "exhaustive deprecated datasets modules",
+      "category": "deprecated_module",
+      "classification": "unresolved",
+      "source_task": "LPC-007",
+      "source_file": "tests_and_surfaces.json",
+      "role": "Exhaustive deprecated module list inside ipfs_datasets_py.logic requires source scan of datasets checkout."
+    },
+    {
+      "id": "LPC-007:corpus.accelerate.goal_tactician_cli_mcp_parity",
+      "source_id": "corpus.accelerate.goal_tactician_cli_mcp_parity",
+      "name": "goal tactician CLI/MCP parity tests",
+      "category": "test_and_conformance_corpus",
+      "classification": "canonical",
+      "source_task": "LPC-007",
+      "source_file": "tests_and_surfaces.json",
+      "path": "test/api/test_goal_tactician_cli_mcp_parity.py",
+      "role": "Channel parity evidence for GoalTactician operations."
+    },
+    {
+      "id": "LPC-007:corpus.planned.lpc_mandatory_matrix",
+      "source_id": "corpus.planned.lpc_mandatory_matrix",
+      "name": "LPC mandatory test matrix",
+      "category": "test_and_conformance_corpus",
+      "classification": "declaration_only",
+      "source_task": "LPC-007",
+      "source_file": "tests_and_surfaces.json",
+      "role": "LPC-G140 owns the composed matrix note. Hermetic required vs installed-provider optional vs network/heavy opt-in."
+    },
+    {
+      "id": "LPC-003:conformance_inventories",
+      "source_id": "conformance_inventories",
+      "name": "LogicCapabilityMatrix@1 conformance inventories",
+      "category": "test_and_conformance_corpus",
+      "classification": "generated",
+      "source_task": "LPC-003",
+      "source_file": "registries.json",
+      "role": "Conformance and capability inventories are fixture-bound census artifacts; must not upgrade declared states into live or production claims."
+    },
+    {
+      "id": "LPC-007:corpus.datasets.unit_logic",
+      "source_id": "corpus.datasets.unit_logic",
+      "name": "datasets unit logic corpus",
+      "category": "test_and_conformance_corpus",
+      "classification": "unresolved",
+      "source_task": "LPC-007",
+      "source_file": "tests_and_surfaces.json",
+      "role": "Datasets unit logic corpus path known from plans/tests but not file-listed without checkout."
+    }
+  ]
+}
