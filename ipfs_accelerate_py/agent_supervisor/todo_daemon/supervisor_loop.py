@@ -162,7 +162,7 @@ class SupervisorLoop:
         self.last_run_id = ""
         self.last_log_path = ""
         self._last_worker_status: dict[str, Any] = {}
-        self._worker_tracking_phase = ""
+        self._worker_tracking_generation = ""
         self._last_worker_seen_monotonic: Optional[float] = None
 
     def _child_spec(self, run_id: str) -> SupervisedChildSpec:
@@ -424,14 +424,17 @@ class SupervisorLoop:
 
         status = dict(worker_status)
         if not status.get("required"):
-            self._worker_tracking_phase = ""
+            self._worker_tracking_generation = ""
             self._last_worker_seen_monotonic = None
             status["worker_absence_age_seconds"] = None
             return status
 
         phase = str(status.get("phase") or "")
-        if phase != self._worker_tracking_phase:
-            self._worker_tracking_phase = phase
+        tracking_generation = str(
+            status.get("tracking_generation") or phase
+        )
+        if tracking_generation != self._worker_tracking_generation:
+            self._worker_tracking_generation = tracking_generation
             self._last_worker_seen_monotonic = None
 
         now_monotonic = self.monotonic()
@@ -521,7 +524,7 @@ class SupervisorLoop:
                 self.sleep(self.config.restart_policy.delay_for_status(self.last_recycle_reason, run_duration=0.0))
                 continue
             child_started_at = self.monotonic()
-            self._worker_tracking_phase = ""
+            self._worker_tracking_generation = ""
             self._last_worker_seen_monotonic = None
             self._last_worker_status = {}
             self._safe_write_status("starting", child=child, run_id=run_id, log_path=log_path)

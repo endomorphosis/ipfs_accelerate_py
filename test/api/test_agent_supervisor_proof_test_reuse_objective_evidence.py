@@ -368,14 +368,14 @@ def test_assembler_emits_one_binding_and_exact_acceptance_population() -> None:
     assert not bundle.gaps
 
 
-def test_full_heap_has_twelve_goals_and_exact_acceptance_population() -> None:
+def test_full_heap_has_fifteen_goals_and_exact_acceptance_population() -> None:
     assert OBJECTIVES_PATH.is_file(), f"missing heap at {OBJECTIVES_PATH}"
     heap_text = OBJECTIVES_PATH.read_text(encoding="utf-8")
     expected = goal_requirements_by_id(heap_text)
-    assert len(expected) == 12
+    assert len(expected) == 15
 
     bundle = _assemble(heap_text)
-    assert len(bundle.goal_ids) == 12
+    assert len(bundle.goal_ids) == 15
     assert set(bundle.goal_ids) == set(expected)
     for goal_id, reqs in expected.items():
         assert bundle.acceptance_for(goal_id) == reqs

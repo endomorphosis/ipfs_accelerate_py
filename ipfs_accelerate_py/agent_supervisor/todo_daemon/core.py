@@ -24,6 +24,27 @@ from ..runtime.event_log import unique_backup_path
 
 
 JsonDict = Dict[str, Any]
+ProcessIdentityRecord = Tuple[str, int, int, int, str]
+
+
+@dataclass(frozen=True)
+class ProcessIdentitySnapshot:
+    """Typed result of one authoritative Linux process-table observation."""
+
+    available: bool
+    processes: Mapping[int, ProcessIdentityRecord] = field(default_factory=dict)
+    error: str = ""
+
+    @classmethod
+    def observed(
+        cls,
+        processes: Mapping[int, ProcessIdentityRecord],
+    ) -> "ProcessIdentitySnapshot":
+        return cls(available=True, processes=dict(processes))
+
+    @classmethod
+    def unavailable(cls, error: str) -> "ProcessIdentitySnapshot":
+        return cls(available=False, processes={}, error=str(error or "unavailable"))
 
 
 @dataclass(frozen=True)
@@ -457,21 +478,25 @@ def _process_relationship_snapshot() -> Dict[int, Tuple[int, int]]:
     return relationships
 
 
-def _process_identity_snapshot() -> Dict[int, Tuple[str, int, int, int, str]]:
-    """Return ``pid -> (state, ppid, pgrp, session, starttime)`` on Linux."""
+def _process_identity_snapshot() -> ProcessIdentitySnapshot:
+    """Observe Linux process identities without conflating failure and empty."""
 
-    processes: Dict[int, Tuple[str, int, int, int, str]] = {}
+    processes: Dict[int, ProcessIdentityRecord] = {}
     proc_root = Path("/proc")
     try:
         entries = tuple(proc_root.iterdir())
-    except OSError:
-        return processes
+    except OSError as exc:
+        return ProcessIdentitySnapshot.unavailable(
+            f"{type(exc).__name__}: {exc}"
+        )
     for entry in entries:
         if not entry.name.isdigit():
             continue
         try:
             stat = (entry / "stat").read_text(encoding="utf-8")
             closing_parenthesis = stat.rfind(")")
+            if closing_parenthesis < 0:
+                raise ValueError("malformed /proc stat record")
             fields = stat[closing_parenthesis + 2 :].split()
             processes[int(entry.name)] = (
                 fields[0],
@@ -480,9 +505,14 @@ def _process_identity_snapshot() -> Dict[int, Tuple[str, int, int, int, str]]:
                 int(fields[3]),
                 fields[19],
             )
-        except (OSError, UnicodeError, ValueError, IndexError):
+        except FileNotFoundError:
+            # The PID exited between directory enumeration and the stat read.
             continue
-    return processes
+        except (OSError, UnicodeError, ValueError, IndexError) as exc:
+            return ProcessIdentitySnapshot.unavailable(
+                f"{entry.name}: {type(exc).__name__}: {exc}"
+            )
+    return ProcessIdentitySnapshot.observed(processes)
 
 
 def _strictly_fence_pid_tree(
@@ -510,25 +540,41 @@ def _strictly_fence_pid_tree(
         own_group = 0
     tracked: Dict[int, Tuple[str, int]] = {}
     tracked_groups: set[int] = {own_group} if own_group > 1 else set()
-    initial_table = _process_identity_snapshot()
+    initial_snapshot = _process_identity_snapshot()
+    if not initial_snapshot.available:
+        return False
+    initial_table = dict(initial_snapshot.processes)
     initial_root = initial_table.get(pid)
+    expected_start = ""
     if expected_root_start_time_ticks is not None:
         expected_start = str(int(expected_root_start_time_ticks))
         if (
             int(expected_root_start_time_ticks) <= 0
-            or initial_root is None
-            or initial_root[4] != expected_start
+            or (
+                initial_root is not None
+                and initial_root[4] != expected_start
+            )
         ):
             # Refuse before the first signal when the caller's durable birth
             # identity no longer names this numeric PID.
             return False
-    if own_group and (
-        initial_root is None or initial_root[2] != own_group
-    ):
+    if own_group and initial_root is not None and initial_root[2] != own_group:
         # A claimed dedicated process group is part of the ownership fence.
-        # Never turn a mismatched claim into an empty tree and report success.
+        # Never signal a root whose current group contradicts the claim.
         return False
-    root_starttime = initial_root[4] if initial_root is not None else ""
+    if own_group and initial_root is None and not expected_start:
+        # An empty numeric process group is not authority by itself: the PID
+        # may already have been reused.  Only a captured birth identity lets a
+        # caller carry the dedicated-group authority across leader exit.
+        return False
+    # The direct child may have exited between Popen.poll() and this fence.
+    # Its dedicated process group remains the durable ownership boundary for
+    # surviving descendants; an empty group is already safely quiescent.
+    root_starttime = (
+        initial_root[4]
+        if initial_root is not None
+        else expected_start
+    )
 
     def exact_live(
         process_id: int,
@@ -570,7 +616,10 @@ def _strictly_fence_pid_tree(
     freeze_deadline = time.monotonic() + max(0.2, float(grace_seconds))
     stable_scans = 0
     while stable_scans < 2:
-        table = _process_identity_snapshot()
+        snapshot = _process_identity_snapshot()
+        if not snapshot.available:
+            return False
+        table = dict(snapshot.processes)
         selected = closure(table)
         new_member = False
         for process_id in selected:
@@ -602,7 +651,10 @@ def _strictly_fence_pid_tree(
                 pass
 
         time.sleep(0.01)
-        verification = _process_identity_snapshot()
+        verification_snapshot = _process_identity_snapshot()
+        if not verification_snapshot.available:
+            return False
+        verification = dict(verification_snapshot.processes)
         verification_members = closure(verification)
         all_stopped = all(
             record[0] in {"T", "t", "Z"}
@@ -624,7 +676,10 @@ def _strictly_fence_pid_tree(
     # Once frozen, TERM handlers must not run: they are precisely where a
     # supervised process can fork a replacement after an ordinary snapshot.
     while True:
-        table = _process_identity_snapshot()
+        snapshot = _process_identity_snapshot()
+        if not snapshot.available:
+            return False
+        table = dict(snapshot.processes)
         for process_id in closure(table):
             state, _parent, process_group, _session, starttime = table[process_id]
             existing = tracked.get(process_id)
@@ -913,6 +968,33 @@ def check_daemon_health(spec: ManagedDaemonSpec, *, stale_after_seconds: float =
         "phase_stuck_grace_seconds": supervisor.get("phase_stuck_grace_seconds"),
         "stop_grace_seconds": supervisor.get("stop_grace_seconds"),
         "last_recycle_reason": supervisor.get("last_recycle_reason"),
+        "control_plane_source_id": supervisor.get(
+            "control_plane_source_id"
+        ),
+        "control_plane_current_source_id": supervisor.get(
+            "control_plane_current_source_id"
+        ),
+        "control_plane_source_tree_id": supervisor.get(
+            "control_plane_source_tree_id"
+        ),
+        "control_plane_current_source_tree_id": supervisor.get(
+            "control_plane_current_source_tree_id"
+        ),
+        "control_plane_update_pending": supervisor.get(
+            "control_plane_update_pending"
+        ),
+        "control_plane_update_detected_at": supervisor.get(
+            "control_plane_update_detected_at"
+        ),
+        "control_plane_reload_deferred": supervisor.get(
+            "control_plane_reload_deferred"
+        ),
+        "control_plane_reload_deferred_reason": supervisor.get(
+            "control_plane_reload_deferred_reason"
+        ),
+        "control_plane_reload_deferred_task_id": supervisor.get(
+            "control_plane_reload_deferred_task_id"
+        ),
         "active_state": active_state,
         "active_state_started_at": first_present(
             status.get("active_state_started_at"),

@@ -1,0 +1,937 @@
+{
+  "schema": "aae/datasets-inventory@1",
+  "interface": "AAEDatasetsInventory@1",
+  "task_id": "AAE-002",
+  "evidence_id": "aae/datasets-inventory@1",
+  "title": "Inventory datasets index, capsules, claim analysis, mutation, property, and vacuity assets",
+  "inspected_at": "2026-08-13",
+  "authority": {
+    "repository": "endomorphosis/ipfs_datasets_py",
+    "gitlink_path": "ipfs_datasets_py",
+    "commit": "fbd1ba9f70803de157622bb20e22595ef09d606f",
+    "commit_short": "fbd1ba9f7",
+    "status": "reusable ISI, semantic-state/capsule contracts, IR claim/property declarations, controlled mutation fixtures, and narrow tactician vacuity checks present; no AAE mutation campaign or general vacuity analyzer",
+    "planning_baseline": {
+      "plan_claim": "Datasets provides IncrementalSemanticIndex, repository-state/delta and invalidation models, dependency graphs, SemanticCapsuleCompiler@1 through the functional capsule compiler, capsule freshness and raw-source fallback, test/proof selection, canonical bytes, and CID authority.",
+      "workspace_collect_only": {
+        "paths": [
+          "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_index",
+          "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state",
+          "ipfs_datasets_py/tests/unit/logic/software_contracts/test_content_identity.py",
+          "ipfs_datasets_py/tests/unit/logic/ir_core",
+          "ipfs_datasets_py/tests/unit/logic/software_verification",
+          "ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py",
+          "ipfs_datasets_py/tests/fixtures/software_contracts"
+        ],
+        "note": "Collect-only enumeration is evidence of test assets; it is not a green acceptance run and is not re-labeled as AAE campaign readiness."
+      }
+    }
+  },
+  "ownership": {
+    "package_root": "ipfs_datasets_py.logic",
+    "owns_for_aae_reuse": [
+      "incremental semantic index scan/delta/invalidation/explain/watch",
+      "storage-neutral semantic-state producer (bundle, root, Merkle, capsules)",
+      "functional SemanticCapsuleCompiler@1 (not a public class)",
+      "AnalysisConfidence exact/conservative/heuristic/opaque taxonomy and durable AnalysisLimitation records",
+      "IR claim/assumption/obligation declarations and software-verification property vocabulary",
+      "controlled semantic-state mutation fixtures and ISI invalidation fixtures",
+      "canonical content identity (CIDv1 profile) under logic.software_contracts.content",
+      "narrow heuristic vacuity/non-vacuity checks inside ProofCandidateValidator@1"
+    ],
+    "does_not_own": [
+      "accelerate MutationLedger@1 file-lineage ledger (accelerate analysis package)",
+      "accelerate ContextPacker / IncrementalVerificationPlanner / VerificationExecutor",
+      "kit DurableCoordinationStore / root CAS / recovery",
+      "AAE domain package adversarial_assurance (planned; not present as a public package on this pin)",
+      "integrated semantic mutation campaign, equivalent-mutant analyzer, expected-detection engine",
+      "general formal/policy/test/ZK vacuity families (analyze_vacuity and related AAE APIs)"
+    ],
+    "language_targets": {
+      "language": "python",
+      "python_minor": "3.12",
+      "test_framework": "pytest"
+    }
+  },
+  "conflict_policy": {
+    "rule": "Inventory only. Do not invent missing APIs, second scanners/graphs/compilers/CID profiles, or a public SemanticCapsuleCompiler class. Missing AAE surfaces are typed_unavailable.",
+    "semantic_capsule_compiler": "SemanticCapsuleCompiler@1 is an interface identifier implemented by the functional capsule compiler in semantic_state/capsules.py; it is not a public class and must not be re-created.",
+    "identity": "Canonical bytes and CID authority only from logic.software_contracts.content.",
+    "mutation_ledger": "MutationLedger@1 is accelerate lineage evidence, not a datasets mutation-campaign engine and not an AAE assurance campaign.",
+    "vacuity": "Only the located narrow heuristic is_vacuous_statement/_check_non_vacuity path may be cited as existing formal-vacuity support; do not label it as analyze_vacuity or four-family vacuity analysis."
+  },
+  "packages": {
+    "semantic_index": {
+      "import_path": "ipfs_datasets_py.logic.software_contracts.semantic_index",
+      "source_dir": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index",
+      "modules": [
+        "__init__.py",
+        "index.py",
+        "models.py",
+        "identity.py",
+        "scanner.py",
+        "snapshot.py",
+        "python_analysis.py",
+        "pytest_analysis.py",
+        "symbol_graph.py",
+        "delta.py",
+        "invalidation.py",
+        "explain.py",
+        "persistence.py",
+        "watch.py"
+      ],
+      "docs": [
+        "ipfs_datasets_py/docs/software_contracts/INCREMENTAL_SEMANTIC_INDEX.md"
+      ]
+    },
+    "semantic_state": {
+      "import_path": "ipfs_datasets_py.logic.software_contracts.semantic_state",
+      "source_dir": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state",
+      "modules": [
+        "__init__.py",
+        "api.py",
+        "models.py",
+        "merkle.py",
+        "capsules.py",
+        "bindings.py",
+        "freshness.py",
+        "invalidation.py",
+        "source.py",
+        "test_selection.py",
+        "oracle.py",
+        "schemas/semantic-state.payload.schema.json"
+      ],
+      "docs": [
+        "ipfs_datasets_py/docs/software_contracts/SEMANTIC_STATE_CONTRACT.md",
+        "ipfs_datasets_py/docs/software_contracts/SOUNDNESS_AND_THREAT_MODEL.md"
+      ]
+    },
+    "content_identity": {
+      "import_path": "ipfs_datasets_py.logic.software_contracts.content",
+      "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/content.py",
+      "docs": [
+        "ipfs_datasets_py/docs/software_contracts/CID_PROFILE_V1.md"
+      ]
+    },
+    "ir_claims": {
+      "import_path": "ipfs_datasets_py.logic.ir_core.claims",
+      "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/claims.py",
+      "role": "solver-neutral claim / assumption / proof-obligation declarations with no verification verdict"
+    },
+    "software_verification_properties": {
+      "import_path": "ipfs_datasets_py.logic.software_verification.properties",
+      "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/properties.py",
+      "role": "provider-neutral VerificationProperty and VerificationAssumption vocabulary"
+    },
+    "proof_candidate_validation": {
+      "import_path": "ipfs_datasets_py.logic.software_verification.tactician.candidate_validation",
+      "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_validation.py",
+      "role": "ProofCandidateValidator@1 including narrow heuristic non-vacuity stage",
+      "duplicate_helper": {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/abduction.py",
+        "note": "is_vacuous_statement also appears in abduction.py; candidate_validation.py owns the validation pipeline stage _check_non_vacuity"
+      }
+    },
+    "semantic_governor": {
+      "import_path": "ipfs_datasets_py.logic.software_contracts.semantic_governor",
+      "source_dir": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_governor",
+      "role": "SCG coverage/policy contracts reusing AnalysisConfidenceRank; not an AAE campaign engine"
+    }
+  },
+  "analysis_confidence": {
+    "closed": true,
+    "enum": "AnalysisConfidence",
+    "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/models.py",
+    "values": [
+      {
+        "value": "exact",
+        "rank": 0,
+        "meaning": "Analysis fact is exact under declared extractor/scope assumptions; may support exact capsule substitution when also fresh."
+      },
+      {
+        "value": "conservative",
+        "rank": 1,
+        "meaning": "Sound over-approximation or conservative admission; may support conservative_substitute_with_caveats when fresh with visible caveats."
+      },
+      {
+        "value": "heuristic",
+        "rank": 2,
+        "meaning": "Heuristic observation only; never raises confidence; raw source required for capsule admission; cannot discharge proof obligations."
+      },
+      {
+        "value": "opaque",
+        "rank": 3,
+        "meaning": "Opaque/unresolved analysis; raw source required; may force full test/proof fallback; always visible in limitations."
+      }
+    ],
+    "promotion_rule": "Confidence is never raised by combining evidence; least-confident rank wins where ranks are combined.",
+    "surfaces": [
+      "SymbolRecord.confidence",
+      "ArtifactRecord.confidence",
+      "DependencyEdge.confidence",
+      "InvalidationObligation.confidence",
+      "SemanticCapsule.confidence",
+      "SymbolMerkleNode.confidence",
+      "AnalysisLimitation.confidence",
+      "semantic_governor.AnalysisConfidenceRank (exact/conservative/heuristic/opaque)"
+    ],
+    "admission_coupling": {
+      "exact_substitute": "fresh + exact confidence",
+      "conservative_substitute_with_caveats": "fresh + conservative with at least one visible caveat",
+      "raw_source_required": [
+        "heuristic confidence",
+        "opaque confidence",
+        "stale or unknown freshness",
+        "invalid/corrupt capsule",
+        "schema/compiler/producer mismatch",
+        "binding projection mismatch",
+        "raw_source obligations"
+      ]
+    },
+    "explain_boundary": "explain_symbol / explain_impact report recorded graph facts and confidence limitations only; they do not promote lexical, heuristic, or opaque observations into runtime-behavior claims."
+  },
+  "assets": {
+    "index": {
+      "name": "IncrementalSemanticIndex",
+      "kind": "public_class_and_functional_api",
+      "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/index.py",
+      "export": "ipfs_datasets_py.logic.software_contracts.semantic_index.IncrementalSemanticIndex",
+      "construction": {
+        "signature": "IncrementalSemanticIndex(*, scanner: RepositoryScanner | None = None, store: SemanticIndexStore | None = None)",
+        "side_effects": "none on construct or import; no store inferred from path; no watch started"
+      },
+      "methods": [
+        {
+          "name": "scan_repository",
+          "alias": "scan",
+          "signature": "(self, repo_path: str | os.PathLike[str], previous_state: RepositoryState | None = None) -> RepositoryState"
+        },
+        {
+          "name": "diff_repository_states",
+          "signature": "(self, previous_state: RepositoryState, current_state: RepositoryState) -> RepositoryStateDelta"
+        },
+        {
+          "name": "calculate_invalidation",
+          "signature": "(self, previous_state: RepositoryState, current_state: RepositoryState, delta: RepositoryStateDelta) -> InvalidationPlan"
+        },
+        {
+          "name": "explain_symbol",
+          "signature": "(self, repository_state: RepositoryState, symbol_id: str) -> SymbolExplanation"
+        },
+        {
+          "name": "explain_impact",
+          "signature": "(self, repository_state: RepositoryState, changed_symbol_ids: Iterable[str]) -> ImpactExplanation"
+        },
+        {
+          "name": "watch_repository",
+          "signature": "(self, repo_path: str | os.PathLike[str], callback: Callable[[WatchNotification], object], *, debounce_ms: int = 250) -> RepositoryWatch",
+          "notes": "Only API that may create a worker thread; notification-only"
+        },
+        {
+          "name": "store_state",
+          "signature": "(self, state: RepositoryState) -> str",
+          "notes": "Requires injected store"
+        },
+        {
+          "name": "publish_state",
+          "signature": "(self, state: RepositoryState, *, expected_old_cid: str | None = None) -> str",
+          "notes": "CAS publish via injected store"
+        },
+        {
+          "name": "load_state",
+          "signature": "(self, state_cid: str) -> RepositoryState",
+          "notes": "Requires injected store"
+        }
+      ],
+      "module_level_functions": [
+        "scan_repository",
+        "diff_repository_states",
+        "calculate_invalidation",
+        "explain_symbol",
+        "explain_impact",
+        "watch_repository"
+      ],
+      "scanner_constants": {
+        "SCANNER_NAME": "semantic-repository-scanner",
+        "SCANNER_VERSION": "1",
+        "DEFAULT_EXTRACTOR_NAME": "python-cpython-ast",
+        "DEFAULT_EXTRACTOR_VERSION": "1",
+        "python_analysis_schema": "ipfs-datasets.software-contracts.python-semantic-analysis@2"
+      },
+      "durable_records": {
+        "RepositoryState": {
+          "identity": "state_cid",
+          "fields": [
+            "repository_id",
+            "symbols",
+            "artifacts",
+            "edges",
+            "extractor_name",
+            "extractor_version",
+            "schema"
+          ]
+        },
+        "RepositoryStateDelta": {
+          "fields": [
+            "previous_state_cid",
+            "current_state_cid",
+            "added_symbol_ids",
+            "deleted_symbol_ids",
+            "modified_symbol_ids",
+            "unchanged_symbol_ids",
+            "rename_candidates",
+            "added_artifact_ids",
+            "deleted_artifact_ids",
+            "modified_artifact_ids",
+            "added_edge_ids",
+            "deleted_edge_ids"
+          ],
+          "rename_candidates_note": "heuristic annotations only; not identity-preserving"
+        },
+        "InvalidationPlan": {
+          "fields": ["previous_state_cid", "current_state_cid", "obligations"],
+          "producer": "calculate_invalidation(previous_state, current_state, delta)"
+        }
+      },
+      "determinism": [
+        "Cold and incremental scans of identical repository bytes produce byte-identical RepositoryState and state_cid",
+        "previous_state is verified reuse only; never changes cold identity",
+        "reuse diagnostics live outside durable root identity"
+      ],
+      "semantic_state_extension": {
+        "build_semantic_state": "(semantic_index, *, environment_bindings=(), previous_bundle=None) -> SemanticStateBundle",
+        "extend_semantic_invalidation": "preserves ISI obligations and adds environment-binding obligations; default max 2000",
+        "select_tests_and_proofs": "pure selection; never imports or collects target tests",
+        "compare_test_selection_oracle": "pure metrics; accelerate supplies run facts"
+      }
+    },
+    "capsules": {
+      "interface": "SemanticCapsuleCompiler@1",
+      "kind": "interface_identifier_functional_compiler",
+      "public_class": false,
+      "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py",
+      "constants": {
+        "SEMANTIC_CAPSULE_COMPILER_INTERFACE": "SemanticCapsuleCompiler@1",
+        "SEMANTIC_CAPSULE_COMPILER_SCHEMA": "ipfs-datasets.software-contracts.semantic-capsule-compiler@1",
+        "CAPSULE_COMPILER_VERSION": "1",
+        "SEMANTIC_CAPSULE_SCHEMA": "ipfs-datasets.software-contracts.semantic-capsule@1"
+      },
+      "owner_statement": "semantic_state/capsules.py is the sole owner of SemanticCapsuleCompiler@1",
+      "functions": [
+        {
+          "name": "compile_semantic_capsule",
+          "export": "ipfs_datasets_py.logic.software_contracts.semantic_state.compile_semantic_capsule",
+          "signature": "(semantic_index: RepositoryState | SemanticIndexForCapsules, stable_symbol_id: str, *, relevant_bindings=None, binding_set=None, environment_bindings=None, relevant_projection=None, projections=None) -> SemanticCapsule",
+          "behavior": [
+            "Compiles one deterministic authoritative capsule from sealed ISI view plus bindings-owned relevant projection",
+            "Never rediscovers binding scope as a second authority",
+            "Never raises confidence",
+            "Never references another capsule or symbol-node CID as a dependency (cycle-free content identity)",
+            "Heuristic metadata keys (llm_summary, summary, ai_summary, generated_summary, ...) excluded from authoritative truth",
+            "Promoted metadata keys only: defaults, contracts, effects, exception_behavior, docstring, docstring_hint"
+          ]
+        },
+        {
+          "name": "compile_semantic_capsules",
+          "signature": "(semantic_index, *, relevant_bindings=None, binding_set=None, environment_bindings=None, projections=None, previous_bundle=None) -> CapsuleCompileResult",
+          "behavior": [
+            "Batch compile; previous_bundle accelerates only after complete current inputs reverify and stored block bytes are byte-identical to cold path",
+            "Cold and verified-incremental compilation over identical inputs are byte-identical"
+          ]
+        },
+        {
+          "name": "verify_capsule_compile_result",
+          "signature": "(result: CapsuleCompileResult) -> CapsuleCompileResult"
+        }
+      ],
+      "result_type": {
+        "name": "CapsuleCompileResult",
+        "fields": ["capsules", "index", "blocks", "reused_cids"]
+      },
+      "normative_producer_key": [
+        "stable_symbol_id",
+        "version_cid",
+        "semantic_index_schema",
+        "extractor_version"
+      ],
+      "supporting": {
+        "assess_capsule_freshness": "assess_capsule_freshness(capsule, *, current_state, invalidation=None) -> CapsuleFreshness",
+        "freshness_states": ["fresh", "stale", "unknown"],
+        "admission_decisions": [
+          "exact_substitute",
+          "conservative_substitute_with_caveats",
+          "raw_source_required"
+        ],
+        "read_required_source": "producer-bound raw source materialization; never treats heuristic/capsule text as exact source",
+        "SemanticStateView": {
+          "interface": "SemanticStateView@1",
+          "members": ["root", "get_block", "symbol_node", "capsule"],
+          "implementation": "VerifiedSemanticStateView"
+        }
+      },
+      "accelerate_must_not_recompile": {
+        "SemanticCapsuleRef_fields": [
+          "capsule_cid",
+          "semantic_state_root_cid",
+          "stable_symbol_id",
+          "version_cid",
+          "source_cid",
+          "confidence",
+          "validity_bindings",
+          "raw_source_required"
+        ]
+      }
+    },
+    "claim_analysis": {
+      "description": "Existing claim-analysis assets are (1) AnalysisConfidence-ranked semantic graph facts and explanations, and (2) solver-neutral IR claim/property declarations. They do not constitute AAE claim/specification analysis or assurance-gap diagnosis.",
+      "semantic_graph_claims": {
+        "confidence_taxonomy": "exact | conservative | heuristic | opaque",
+        "durable_limitation": {
+          "type": "AnalysisLimitation",
+          "fields": ["code", "message", "subject_id", "confidence"],
+          "role": "Visible analysis limitation retained on SemanticStateRoot.analysis_limitation_index_cid"
+        },
+        "explain_api": {
+          "explain_symbol": {
+            "signature": "(state: RepositoryState, symbol_id: str) -> SymbolExplanation",
+            "result_fields": [
+              "symbol_id",
+              "state_cid",
+              "symbol",
+              "outgoing_edges",
+              "incoming_edges",
+              "limitations"
+            ]
+          },
+          "explain_impact": {
+            "signature": "(state: RepositoryState, changed_symbol_ids: Iterable[str], ...) -> ImpactExplanation",
+            "result_fields": [
+              "state_cid",
+              "changed_symbol_ids",
+              "obligations",
+              "traversed_edge_ids",
+              "limitations"
+            ]
+          },
+          "boundary": "Does not turn lexical/heuristic/opaque observations into runtime-behavior claims; opaque paths always include raw-source requirements."
+        }
+      },
+      "ir_claim_declarations": {
+        "source": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/claims.py",
+        "schemas": {
+          "IRClaim": "ir-claim/v1",
+          "Assumption": "ir-assumption/v1",
+          "ProofObligation": "ir-proof-obligation/v1"
+        },
+        "types": {
+          "IRClaim": {
+            "fields": [
+              "claim_id",
+              "statement",
+              "assumptions",
+              "obligations",
+              "domain",
+              "declaration_id",
+              "source_refs",
+              "metadata",
+              "schema_version"
+            ],
+            "constraints": [
+              "at least one ProofObligation",
+              "unique assumption and obligation IDs",
+              "obligation assumption_ids must reference declared assumptions",
+              "digest is declaration identity independent of any verification run"
+            ]
+          },
+          "Assumption": {
+            "fields": [
+              "assumption_id",
+              "statement",
+              "source_refs",
+              "metadata",
+              "schema_version"
+            ],
+            "note": "Declaring an assumption does not establish that it is true"
+          },
+          "ProofObligation": {
+            "fields": [
+              "obligation_id",
+              "statement",
+              "assumption_ids",
+              "logic_family",
+              "source_refs",
+              "metadata",
+              "schema_version"
+            ],
+            "note": "Theorem-shaped target with no implied verification status"
+          }
+        }
+      },
+      "not_present": [
+        "analyze_claim_specification (AAE planned)",
+        "assurance-gap taxonomy as a datasets API",
+        "expected-detection claim binding as a datasets API"
+      ]
+    },
+    "mutation": {
+      "description": "Existing mutation assets are fixture corpora and invalidation cases for selection/index soundness. There is no integrated semantic mutation campaign engine in datasets.",
+      "semantic_state_controlled_fixture": {
+        "path": "ipfs_datasets_py/tests/fixtures/software_contracts/semantic_state",
+        "manifest": "ipfs_datasets_py/tests/fixtures/software_contracts/semantic_state/manifest.json",
+        "recipe": "ipfs_datasets_py/tests/fixtures/software_contracts/semantic_state/recipe.py",
+        "controlled": "ipfs_datasets_py/tests/fixtures/software_contracts/semantic_state/controlled.py",
+        "schema": "ipfs-datasets.software-contracts.semantic-state-controlled-fixture@1",
+        "interface": "SemanticStateControlledFixture@1",
+        "required_mutation_kinds": [
+          "local_body",
+          "signature",
+          "cross_module",
+          "schema",
+          "exception",
+          "fixture",
+          "config",
+          "plugin",
+          "lock",
+          "policy",
+          "interface",
+          "generated",
+          "dynamic",
+          "monkey",
+          "native",
+          "format",
+          "delete",
+          "rename"
+        ],
+        "public_fixture_helpers": [
+          "list_mutation_cases()",
+          "apply_mutation(repository, case_id)",
+          "materialize helpers for baseline + single case"
+        ],
+        "constraints": [
+          "no_checked_in_git",
+          "no_state_store",
+          "no_generated_receipt",
+          "no_hand_built_dependency_edge",
+          "no_second_benchmark_corpus",
+          "no_hidden_external_dependency",
+          "scanner_consumes_without_importing_fixture_package"
+        ]
+      },
+      "isi_invalidation_fixtures": {
+        "path": "ipfs_datasets_py/tests/fixtures/software_contracts/incremental_semantic_index",
+        "cases": [
+          "body_test_impact",
+          "dataclass_schema",
+          "deletion_rename",
+          "dynamic_import",
+          "exception_recovery",
+          "fixture_config",
+          "formatting_identity",
+          "git_snapshot_truth",
+          "git_snapshot_authority_adversarial",
+          "git_snapshot_authority_closure",
+          "identical_roots",
+          "lock_environment",
+          "monkey_patch",
+          "persistence_recovery",
+          "pytest_identity",
+          "python_constructs",
+          "python_relation_closure",
+          "signature_callers",
+          "unrelated_edit"
+        ]
+      },
+      "plan_mapping_note": "Plan body/signature/schema/exception/fixture/config/plugin/lock/policy/generated/dynamic/native/deletion/rename mutation cases map to the controlled fixture required kinds and ISI fixture set above.",
+      "out_of_scope_here": [
+        {
+          "name": "MutationLedger@1",
+          "owner": "ipfs_accelerate_py.agent_supervisor.analysis.mutation_ledger",
+          "role": "file-lineage states accepted/rejected/quarantined/no-op/partial/rolled_back; not a datasets campaign engine"
+        },
+        {
+          "name": "proof_reuse_mutations",
+          "owner": "accelerate test fixtures",
+          "path_example": "test/fixtures/proof_reuse_mutations.py",
+          "role": "proof-reuse invalidation corpus owned by accelerate/proof-reuse track"
+        },
+        {
+          "name": "leanstral_mutations",
+          "path": "ipfs_datasets_py/tests/fixtures/logic/modal/leanstral_mutations.json",
+          "role": "modal/legal-IR codec mutation fixture; not semantic-assurance campaign operators"
+        }
+      ],
+      "not_present": [
+        "generate_mutation_candidates",
+        "execute_mutation campaign orchestration",
+        "classify_mutation_outcome assurance engine",
+        "equivalent-mutant analyzer",
+        "expected-detection construction engine",
+        "authorized AAE promotion flow"
+      ]
+    },
+    "property": {
+      "description": "Property assets are declaration vocabularies plus existing property-based/fuzz tests. They are not an AAE property-campaign runtime.",
+      "verification_property_vocabulary": {
+        "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/properties.py",
+        "schemas": {
+          "VerificationProperty": "verification-property/v1",
+          "VerificationAssumption": "verification-assumption/v1"
+        },
+        "types": {
+          "VerificationProperty": {
+            "fields": [
+              "property_id",
+              "kind",
+              "statement",
+              "expression",
+              "logic_family",
+              "subject_ids",
+              "assumption_ids",
+              "bound_ids",
+              "source_ref_ids",
+              "span_ids",
+              "extensions",
+              "schema_version"
+            ],
+            "constraints": [
+              "source mapped via source_ref_ids or span_ids",
+              "no backend request, solver result, or proof authority embedded"
+            ]
+          },
+          "VerificationAssumption": {
+            "fields": [
+              "assumption_id",
+              "statement",
+              "kind",
+              "expression",
+              "subject_ids",
+              "source_ref_ids",
+              "span_ids",
+              "extensions",
+              "schema_version"
+            ]
+          }
+        },
+        "PropertyKind": [
+          "authentication",
+          "authorization",
+          "contract",
+          "data_race_freedom",
+          "heap_safety",
+          "hyperproperty",
+          "invariant",
+          "liveness",
+          "noninterference",
+          "reachability",
+          "refinement",
+          "safety",
+          "satisfiability",
+          "secrecy",
+          "termination",
+          "theorem",
+          "trace_conformance",
+          "validity"
+        ],
+        "AssumptionKind": [
+          "semantic",
+          "environment",
+          "modeling",
+          "platform",
+          "fairness",
+          "trust",
+          "boundedness",
+          "translation"
+        ]
+      },
+      "hypothesis_and_fuzz_assets": {
+        "software_contracts_and_related": [
+          "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_governor/test_audit_contracts.py",
+          "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_explanation.py"
+        ],
+        "logic_parser_fuzz_properties": [
+          "ipfs_datasets_py/tests/fuzz/logic/test_parser_properties.py",
+          "ipfs_datasets_py/tests/fuzz/logic/test_wave2_parser_properties.py"
+        ],
+        "broader_datasets_hypothesis_note": "The datasets tree also contains many Hypothesis-based optimizer/graphrag/knowledge-graph property tests; those are general property assets, not semantic-assurance campaign operators.",
+        "vacuity_adversarial_property_style": "ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py includes bounded fuzz of vacuous/circular/contradiction statements against the narrow non-vacuity gate"
+      },
+      "not_present": [
+        "AAE property-campaign planner",
+        "risk-weighted property selection engine",
+        "held-out property adequacy scorer as a datasets API"
+      ]
+    },
+    "vacuity": {
+      "description": "Only narrow heuristic vacuity support for proof candidates is present. General AAE vacuity families are typed_unavailable.",
+      "existing": {
+        "is_vacuous_statement": {
+          "signature": "(statement: str) -> bool",
+          "source": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_validation.py",
+          "kind": "narrow_heuristic",
+          "recognizes": [
+            "",
+            "true",
+            "True",
+            "TRUE",
+            "⊤",
+            "top",
+            "1",
+            "tt",
+            "yes",
+            "always",
+            "tautology"
+          ],
+          "note": "String-normalized tautology marker set; not SMT/semantic entailment vacuity"
+        },
+        "is_contradiction_statement": {
+          "signature": "(statement: str) -> bool",
+          "source": "same module",
+          "kind": "narrow_heuristic",
+          "recognizes": [
+            "false",
+            "False",
+            "FALSE",
+            "⊥",
+            "bot",
+            "bottom",
+            "contradiction",
+            "0",
+            "ff",
+            "never",
+            "unsat"
+          ]
+        },
+        "_check_non_vacuity": {
+          "signature": "(candidate: CandidateProofStep) -> ValidationCheck",
+          "stage": "non_vacuity",
+          "visibility": "internal pipeline stage of ProofCandidateValidator@1",
+          "fail_detail": "vacuous/tautological candidate rejected"
+        },
+        "public_entrypoints": [
+          {
+            "name": "validate_candidate",
+            "signature": "(candidate, hole, binding, *, backends=(), recipe=None, expected_candidate_content_id='', expected_hole_content_id='', proposed_provider_verdicts=None, bounds=None) -> CandidateValidationResult",
+            "interface": "ProofCandidateValidator@1 convenience entry"
+          },
+          {
+            "name": "validate_candidate_set",
+            "signature": "(requests, *, backends=(), bounds=None) -> CandidateSetValidationResult"
+          }
+        ],
+        "tests": [
+          "ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py"
+        ]
+      },
+      "not_present": [
+        "analyze_vacuity",
+        "analyze_formal_vacuity",
+        "analyze_policy_vacuity",
+        "analyze_test_vacuity",
+        "analyze_zk_receipt_vacuity",
+        "general equivalent-mutant vacuity classification",
+        "vacuity findings that state residual proven properties beyond the narrow non_vacuity stage detail"
+      ],
+      "status": "typed_unavailable_for_aae_vacuity_families"
+    }
+  },
+  "statuses_and_taxonomies": {
+    "AnalysisConfidence": {
+      "closed": true,
+      "values": ["exact", "conservative", "heuristic", "opaque"]
+    },
+    "FreshnessState": {
+      "closed": true,
+      "values": ["fresh", "stale", "unknown"]
+    },
+    "AdmissionDecision": {
+      "closed": true,
+      "values": [
+        "exact_substitute",
+        "conservative_substitute_with_caveats",
+        "raw_source_required"
+      ]
+    },
+    "SelectionFallback": {
+      "closed": true,
+      "values": ["none", "full_pytest", "full_proofs", "both"]
+    }
+  },
+  "canonical_identity": {
+    "authority_module": "ipfs_datasets_py.logic.software_contracts.content",
+    "profile": {
+      "profile_id": "software-contract-cid-profile-v1",
+      "profile_version": "1.0.0",
+      "cid_version": 1,
+      "base": "base32",
+      "multihash": "sha2-256",
+      "source_codec": "raw",
+      "structured_codec": "dag-json"
+    },
+    "public_functions": [
+      "canonical_dag_json_bytes(obj) -> bytes",
+      "cid_for_bytes(data: bytes) -> str",
+      "cid_for_structured(obj) -> str",
+      "validate_cid(value, *, codecs=None) -> str",
+      "verify_source_read(claimed_cid, data) -> bytes",
+      "verify_structured_read(claimed_cid, obj)"
+    ],
+    "cid_vectors_fixture": "ipfs_datasets_py/tests/fixtures/software_contracts/cid_vectors.json"
+  },
+  "fixtures_and_fuzzing": {
+    "semantic_state_mutation_manifest": {
+      "path": "ipfs_datasets_py/tests/fixtures/software_contracts/semantic_state",
+      "required_mutation_kinds_count": 18
+    },
+    "isi_fixtures": {
+      "path": "ipfs_datasets_py/tests/fixtures/software_contracts/incremental_semantic_index",
+      "case_count": 19
+    },
+    "content_identity_vectors": {
+      "path": "ipfs_datasets_py/tests/fixtures/software_contracts/cid_vectors.json"
+    },
+    "fuzz": {
+      "logic_parser": [
+        "ipfs_datasets_py/tests/fuzz/logic/test_parser_properties.py",
+        "ipfs_datasets_py/tests/fuzz/logic/test_wave2_parser_properties.py"
+      ],
+      "tactician_vacuity_bounded_fuzz": "ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py::test_bounded_fuzz_of_vacuous_and_circular_statements"
+    },
+    "hypothesis_property_breadth": "Broad Hypothesis property tests exist across optimizers/graphrag/knowledge-graphs and selected software-verification paths; AAE must not treat that breadth as integrated mutation-campaign coverage."
+  },
+  "limitations_and_blind_spots": {
+    "visibility_rule": "Opaque/dynamic limitations remain visible as AnalysisConfidence, AnalysisLimitation records, raw_source_required_reasons, CapsuleFreshness caveats, and TestSelection.fallback_reasons.",
+    "cannot_make_dynamic_python_exact": true,
+    "known_weak_areas": [
+      {
+        "area": "dynamic dispatch / dynamic import",
+        "typical_confidence": ["conservative", "heuristic", "opaque"]
+      },
+      {
+        "area": "reflection (getattr/setattr/hasattr/dir/inspect/...)",
+        "typical_confidence": ["opaque"],
+        "opaque_reason_codes": ["reflection"]
+      },
+      {
+        "area": "descriptors / unsafe decorators",
+        "typical_confidence": ["conservative", "heuristic", "opaque"]
+      },
+      {
+        "area": "eval/exec/compile/runpy runtime generation",
+        "typical_confidence": ["opaque"],
+        "opaque_reason_codes": ["runtime_code_generation", "eval_or_exec"]
+      },
+      {
+        "area": "metaclasses",
+        "typical_confidence": ["opaque"],
+        "opaque_reason_codes": ["metaclass_mutation"]
+      },
+      {
+        "area": "monkey patching",
+        "typical_confidence": ["opaque"],
+        "opaque_reason_codes": ["monkey_patch"]
+      },
+      {
+        "area": "pytest plugin collection / dynamic test discovery",
+        "typical_confidence": ["heuristic", "opaque"],
+        "fallback": ["full_pytest", "both"]
+      },
+      {
+        "area": "generated/native bindings (ctypes/cffi/cython)",
+        "typical_confidence": ["opaque"],
+        "opaque_reason_codes": ["native_boundary"],
+        "fallback": ["full_pytest", "full_proofs", "both"]
+      },
+      {
+        "area": "renames",
+        "note": "rename_candidates are heuristic only and do not preserve identity"
+      },
+      {
+        "area": "uncontrolled I/O",
+        "typical_confidence": ["conservative", "heuristic", "opaque"]
+      },
+      {
+        "area": "incomplete call graphs",
+        "note": "Symbol graph is an evidence/invalidation boundary, not a complete Python runtime call graph"
+      }
+    ],
+    "docstring_and_llm": {
+      "docstrings": "non-authoritative hints (docstring_hint)",
+      "llm_summaries": "excluded from capsule/root truth; cannot raise confidence, establish behavior, satisfy verification, or discharge obligations"
+    }
+  },
+  "missing_apis": {
+    "status_vocabulary": "typed_unavailable",
+    "items": [
+      {
+        "name": "generate_mutation_candidates",
+        "status": "typed_unavailable",
+        "note": "AAE planned; not present in datasets on this pin"
+      },
+      {
+        "name": "predict_detection_set / expected-detection engine",
+        "status": "typed_unavailable"
+      },
+      {
+        "name": "execute_mutation / classify_mutation_outcome campaign engine",
+        "status": "typed_unavailable"
+      },
+      {
+        "name": "diagnose_surviving_mutant / equivalent-mutant analyzer",
+        "status": "typed_unavailable"
+      },
+      {
+        "name": "analyze_vacuity and four vacuity families",
+        "status": "typed_unavailable",
+        "existing_partial": "narrow is_vacuous_statement/_check_non_vacuity only"
+      },
+      {
+        "name": "SemanticCapsuleCompiler public class",
+        "status": "must_not_invent",
+        "existing": "functional SemanticCapsuleCompiler@1 interface identifier"
+      },
+      {
+        "name": "ipfs_datasets_py.logic.software_contracts.adversarial_assurance package",
+        "status": "typed_unavailable",
+        "note": "Canonical AAE domain package path is planned; inventory does not fabricate it"
+      }
+    ]
+  },
+  "focused_tests": {
+    "semantic_index_unit": "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_index",
+    "semantic_state_unit": "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state",
+    "content_identity": "ipfs_datasets_py/tests/unit/logic/software_contracts/test_content_identity.py",
+    "ir_claims": "ipfs_datasets_py/tests/unit/logic/ir_core",
+    "tactician_vacuity_adversarial": "ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py",
+    "fuzz_logic_parser": "ipfs_datasets_py/tests/fuzz/logic",
+    "recommended_validation_commands": [
+      "python3 -m json.tool docs/architecture/adversarial_assurance_inventory/datasets.json >/dev/null",
+      "python3.12 -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_index ipfs_datasets_py/tests/unit/logic/software_contracts/test_content_identity.py"
+    ]
+  },
+  "handoff_to_aae": {
+    "reuse": [
+      "ISI scan/diff/invalidate/explain",
+      "functional SemanticCapsuleCompiler@1 and CapsuleFreshness admission",
+      "AnalysisConfidence exact/conservative/heuristic/opaque without promotion",
+      "controlled mutation fixture kinds and ISI invalidation cases as seed corpora",
+      "IRClaim / VerificationProperty declaration shapes",
+      "narrow non_vacuity stage as a hard-fail candidate filter only"
+    ],
+    "must_not": [
+      "reimplement scanner, symbol graph, capsule compiler, or CID profile",
+      "treat MutationLedger as a mutation campaign",
+      "relabel narrow is_vacuous_statement as general vacuity analysis",
+      "hide heuristic/opaque confidence or invent missing AAE APIs as present"
+    ],
+    "pipeline_sketch": "ISI scan/diff/invalidate -> build_semantic_state -> compile_semantic_capsule / assess_capsule_freshness -> (future AAE) mutation candidates over sealed views with confidence-preserving detection prediction"
+  },
+  "acceptance_checklist": {
+    "distinguishes_exact_conservative_heuristic_opaque": true,
+    "functional_SemanticCapsuleCompiler_at_1_described": true,
+    "no_public_SemanticCapsuleCompiler_class_inferred": true,
+    "existing_fixtures_and_fuzzing_inventoried": true,
+    "narrow_vacuity_checks_only_no_general_vacuity_invented": true,
+    "missing_apis_marked_typed_unavailable": true,
+    "no_second_scanner_graph_compiler_or_cid_implementation_proposed": true
+  }
+}

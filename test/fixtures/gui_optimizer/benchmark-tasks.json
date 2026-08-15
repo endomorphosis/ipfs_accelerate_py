@@ -1,0 +1,835 @@
+{
+  "application_id": "app:agent-supervisor",
+  "benchmark_id": "benchmark-v1",
+  "catalog_id": "catalog:gui-optimizer-benchmark-v1",
+  "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+  "expected_task_count": 15,
+  "interface": "GuiOptimizationBenchmark@1",
+  "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/optimization-benchmark@1",
+  "screen_id": "screen:agent-supervisor",
+  "tasks": [
+    {
+      "affected_check_ids": [
+        "check:accessibility-contracts",
+        "check:interaction-scenarios",
+        "check:direct-tests"
+      ],
+      "affected_component_ids": [
+        "comp:goal-form"
+      ],
+      "affected_scenario_ids": [
+        "scenario:keyboard-only",
+        "scenario:valid-submission"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-focus-restoration",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "exact_aria_reference_repair",
+      "declared_tier": "deterministic",
+      "evidence_class": "structural",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "focus_restoration",
+      "objective_ids": [
+        "objective:focus-restoration"
+      ],
+      "objective_metric_ids": [
+        "focus_restoration_coverage"
+      ],
+      "raw_retrieval_token_estimate": 1720,
+      "reference_id": "ref:vgo-083-focus-restoration",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:focus-restoration",
+      "title": "Restore focus after a controlled Agent Supervisor rerender."
+    },
+    {
+      "affected_check_ids": [
+        "check:accessible-name",
+        "check:accessibility-contracts",
+        "check:direct-tests"
+      ],
+      "affected_component_ids": [
+        "comp:goal-form"
+      ],
+      "affected_scenario_ids": [
+        "scenario:invalid-submission",
+        "scenario:keyboard-only"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-accessible-labels",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "exact_label_substitution",
+      "declared_tier": "deterministic",
+      "evidence_class": "structural",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "accessible_labels",
+      "objective_ids": [
+        "objective:accessible-labels"
+      ],
+      "objective_metric_ids": [
+        "accessible_name_coverage"
+      ],
+      "raw_retrieval_token_estimate": 1680,
+      "reference_id": "ref:vgo-083-accessible-labels",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:accessible-labels",
+      "title": "Add exact accessible names on the selected goal form."
+    },
+    {
+      "affected_check_ids": [
+        "check:accessibility-contracts",
+        "check:accessibility-scenarios",
+        "check:direct-tests"
+      ],
+      "affected_component_ids": [
+        "comp:goal-form"
+      ],
+      "affected_scenario_ids": [
+        "scenario:invalid-submission",
+        "scenario:keyboard-only"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-error-presentation",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "aria_reference_repair",
+      "declared_tier": "deterministic",
+      "evidence_class": "structural",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "error_presentation",
+      "objective_ids": [
+        "objective:error-presentation"
+      ],
+      "objective_metric_ids": [
+        "error_association_coverage"
+      ],
+      "raw_retrieval_token_estimate": 1740,
+      "reference_id": "ref:vgo-083-error-presentation",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:error-presentation",
+      "title": "Associate validation errors with the fields they describe."
+    },
+    {
+      "affected_check_ids": [
+        "check:interaction-scenarios",
+        "check:outcome",
+        "check:reachability"
+      ],
+      "affected_component_ids": [
+        "comp:console-root"
+      ],
+      "affected_scenario_ids": [
+        "scenario:loading",
+        "scenario:initial-load"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-loading-state",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-scenarios.json"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-services",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "exact_route_migration",
+      "declared_tier": "deterministic",
+      "evidence_class": "structural",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "loading_state",
+      "objective_ids": [
+        "objective:loading-state"
+      ],
+      "objective_metric_ids": [
+        "loading_state_completeness"
+      ],
+      "raw_retrieval_token_estimate": 1810,
+      "reference_id": "ref:vgo-083-loading-state",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:loading-state",
+      "title": "Add the missing loading outcome on the selected screen."
+    },
+    {
+      "affected_check_ids": [
+        "check:interaction-scenarios",
+        "check:outcome",
+        "check:reachability"
+      ],
+      "affected_component_ids": [
+        "comp:console-root"
+      ],
+      "affected_scenario_ids": [
+        "scenario:recoverable-failure",
+        "scenario:unrecoverable-failure",
+        "scenario:service-unavailable"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-failure-state",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-scenarios.json"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-services",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "exact_route_migration",
+      "declared_tier": "deterministic",
+      "evidence_class": "structural",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "failure_state",
+      "objective_ids": [
+        "objective:failure-state"
+      ],
+      "objective_metric_ids": [
+        "failure_state_completeness"
+      ],
+      "raw_retrieval_token_estimate": 1860,
+      "reference_id": "ref:vgo-083-failure-state",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:failure-state",
+      "title": "Add the missing failure and recovery outcome on the selected screen."
+    },
+    {
+      "affected_check_ids": [
+        "check:interaction",
+        "check:confirmation",
+        "check:interaction-scenarios"
+      ],
+      "affected_component_ids": [
+        "comp:goal-form"
+      ],
+      "affected_scenario_ids": [
+        "scenario:valid-submission",
+        "scenario:success"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-interaction-step-reduction",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "exact_action_binding_migration",
+      "declared_tier": "deterministic",
+      "evidence_class": "structural",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only",
+        "gate:no-hidden-dispatch"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "interaction_step_reduction",
+      "objective_ids": [
+        "objective:interaction-step-reduction"
+      ],
+      "objective_metric_ids": [
+        "interaction_step_count"
+      ],
+      "raw_retrieval_token_estimate": 1790,
+      "reference_id": "ref:vgo-083-interaction-step-reduction",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:interaction-step-reduction",
+      "title": "Reduce steps for one non-sensitive, non-destructive task."
+    },
+    {
+      "affected_check_ids": [
+        "check:overflow",
+        "check:responsive",
+        "check:containing-screenshots"
+      ],
+      "affected_component_ids": [
+        "comp:console-root"
+      ],
+      "affected_scenario_ids": [
+        "scenario:viewport-mobile",
+        "scenario:viewport-desktop"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-responsive-overflow",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "design_token_substitution",
+      "declared_tier": "deterministic",
+      "evidence_class": "automated",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "responsive_overflow",
+      "objective_ids": [
+        "objective:responsive-overflow"
+      ],
+      "objective_metric_ids": [
+        "overflow_violation_count"
+      ],
+      "raw_retrieval_token_estimate": 1650,
+      "reference_id": "ref:vgo-083-responsive-overflow",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:responsive-overflow",
+      "title": "Remove narrow-viewport document overflow on the selected screen."
+    },
+    {
+      "affected_check_ids": [
+        "check:containing-screenshots",
+        "check:accessibility-contracts",
+        "check:direct-tests"
+      ],
+      "affected_component_ids": [
+        "comp:console-root",
+        "comp:goal-form"
+      ],
+      "affected_scenario_ids": [
+        "scenario:initial-load",
+        "scenario:viewport-desktop"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-primary-action-hierarchy",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "human_hierarchy_review",
+      "declared_tier": "human",
+      "evidence_class": "human_reviewed",
+      "expected_decision": "human_review",
+      "expected_route": "human_review",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "primary_action_hierarchy",
+      "objective_ids": [
+        "objective:primary-action-hierarchy"
+      ],
+      "objective_metric_ids": [
+        "primary_action_hierarchy_score"
+      ],
+      "raw_retrieval_token_estimate": 1900,
+      "reference_id": "ref:vgo-083-primary-action-hierarchy",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:primary-action-hierarchy",
+      "title": "Improve primary-action hierarchy under human review only."
+    },
+    {
+      "affected_check_ids": [
+        "check:dependent-screenshots",
+        "check:contrast",
+        "check:direct-tests"
+      ],
+      "affected_component_ids": [
+        "comp:console-root"
+      ],
+      "affected_scenario_ids": [
+        "scenario:dark-mode",
+        "scenario:viewport-desktop"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-design-token-consistency",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "design_token_substitution",
+      "declared_tier": "deterministic",
+      "evidence_class": "structural",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "design_token_consistency",
+      "objective_ids": [
+        "objective:design-token-consistency"
+      ],
+      "objective_metric_ids": [
+        "design_token_consistency"
+      ],
+      "raw_retrieval_token_estimate": 1620,
+      "reference_id": "ref:vgo-083-design-token-consistency",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:design-token-consistency",
+      "title": "Replace one inconsistent design token on the selected screen."
+    },
+    {
+      "affected_check_ids": [
+        "check:confirmation",
+        "check:policy",
+        "check:interaction"
+      ],
+      "affected_component_ids": [
+        "comp:goal-form"
+      ],
+      "affected_scenario_ids": [
+        "scenario:confirmation-grant",
+        "scenario:confirmation-deny"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-confirmation-ux",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "exact_action_binding_migration",
+      "declared_tier": "deterministic",
+      "evidence_class": "integrity",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only",
+        "gate:no-hidden-dispatch"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "confirmation_ux",
+      "objective_ids": [
+        "objective:confirmation-ux"
+      ],
+      "objective_metric_ids": [
+        "confirmation_binding_coverage"
+      ],
+      "raw_retrieval_token_estimate": 1760,
+      "reference_id": "ref:vgo-083-confirmation-ux",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:confirmation-ux",
+      "title": "Enforce exact destructive confirmation on the selected screen."
+    },
+    {
+      "affected_check_ids": [
+        "check:accessible-name",
+        "check:accessibility-scenarios",
+        "check:direct-tests"
+      ],
+      "affected_component_ids": [
+        "comp:console-root"
+      ],
+      "affected_scenario_ids": [
+        "scenario:empty"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-empty-state-guidance",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "exact_label_substitution",
+      "declared_tier": "deterministic",
+      "evidence_class": "structural",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "empty_state_guidance",
+      "objective_ids": [
+        "objective:empty-state-guidance"
+      ],
+      "objective_metric_ids": [
+        "empty_state_guidance_coverage"
+      ],
+      "raw_retrieval_token_estimate": 1580,
+      "reference_id": "ref:vgo-083-empty-state-guidance",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:empty-state-guidance",
+      "title": "Improve empty-state guidance on the selected screen."
+    },
+    {
+      "affected_check_ids": [
+        "check:accessibility-contracts",
+        "check:interaction-scenarios",
+        "check:direct-tests"
+      ],
+      "affected_component_ids": [
+        "comp:goal-form"
+      ],
+      "affected_scenario_ids": [
+        "scenario:keyboard-only",
+        "scenario:initial-load"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-keyboard-reachability",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "aria_reference_repair",
+      "declared_tier": "deterministic",
+      "evidence_class": "structural",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "keyboard_reachability",
+      "objective_ids": [
+        "objective:keyboard-reachability"
+      ],
+      "objective_metric_ids": [
+        "keyboard_access_coverage"
+      ],
+      "raw_retrieval_token_estimate": 1700,
+      "reference_id": "ref:vgo-083-keyboard-reachability",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:keyboard-reachability",
+      "title": "Repair keyboard activation for a custom control on the selected screen."
+    },
+    {
+      "affected_check_ids": [
+        "check:clipping",
+        "check:locale-scenarios",
+        "check:text-layout-screenshots"
+      ],
+      "affected_component_ids": [
+        "comp:console-root",
+        "comp:goal-form"
+      ],
+      "affected_scenario_ids": [
+        "scenario:text-scale-200",
+        "scenario:viewport-mobile"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-localization-clipping",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "exact_label_substitution",
+      "declared_tier": "deterministic",
+      "evidence_class": "automated",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "localization_clipping",
+      "objective_ids": [
+        "objective:localization-clipping"
+      ],
+      "objective_metric_ids": [
+        "localization_clipping_count"
+      ],
+      "raw_retrieval_token_estimate": 1840,
+      "reference_id": "ref:vgo-083-localization-clipping",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:localization-clipping",
+      "title": "Prevent localized text clipping on the selected screen."
+    },
+    {
+      "affected_check_ids": [
+        "check:accessibility-contracts",
+        "check:interaction-scenarios",
+        "check:interaction"
+      ],
+      "affected_component_ids": [
+        "comp:goal-form"
+      ],
+      "affected_scenario_ids": [
+        "scenario:confirmation-grant",
+        "scenario:keyboard-only"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-modal-focus-lifecycle",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "aria_reference_repair",
+      "declared_tier": "deterministic",
+      "evidence_class": "structural",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "modal_focus_lifecycle",
+      "objective_ids": [
+        "objective:modal-focus-lifecycle"
+      ],
+      "objective_metric_ids": [
+        "modal_focus_lifecycle_coverage"
+      ],
+      "raw_retrieval_token_estimate": 1780,
+      "reference_id": "ref:vgo-083-modal-focus-lifecycle",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:modal-focus-lifecycle",
+      "title": "Restore modal focus trap and return focus on the selected screen."
+    },
+    {
+      "affected_check_ids": [
+        "check:action-bindings",
+        "check:policy",
+        "check:confirmation",
+        "check:host-boundary",
+        "check:invocation-tests"
+      ],
+      "affected_component_ids": [
+        "comp:goal-form"
+      ],
+      "affected_scenario_ids": [
+        "scenario:valid-submission",
+        "scenario:confirmation-deny"
+      ],
+      "application_id": "app:agent-supervisor",
+      "baseline_id": "baseline:agent-supervisor-action-binding-integrity",
+      "bounded_file_paths": [
+        "swissknife/web/js/apps/agent-supervisor.js",
+        "swissknife/test/fixtures/gui-optimizer/agent-supervisor/fixture-host.html"
+      ],
+      "conflict_policy": "Benchmark only the selected screen and controlled variants; do not ask a provider to make the app generally better or auto-approve subjective redesigns.",
+      "controlled_fixture_ids": [
+        "fixture:agent-supervisor-host",
+        "fixture:agent-supervisor-scenarios"
+      ],
+      "declared_method": "exact_action_binding_migration",
+      "declared_tier": "deterministic",
+      "evidence_class": "integrity",
+      "expected_decision": "accept",
+      "expected_route": "deterministic_transform",
+      "hard_gate_ids": [
+        "gate:no-critical-accessibility-regression",
+        "gate:no-authorization-regression",
+        "gate:no-confirmation-regression",
+        "gate:scope-selected-screen-only",
+        "gate:no-whole-app-rewrite",
+        "gate:measurable-objective-improvement",
+        "gate:isolated-worktree-only",
+        "gate:no-hidden-dispatch"
+      ],
+      "interface": "GuiBenchmarkTask@1",
+      "kind": "action_binding_integrity",
+      "objective_ids": [
+        "objective:action-binding-integrity"
+      ],
+      "objective_metric_ids": [
+        "action_binding_integrity"
+      ],
+      "raw_retrieval_token_estimate": 1880,
+      "reference_id": "ref:vgo-083-action-binding-integrity",
+      "route_id": "route:agent-supervisor",
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/gui-optimizer/benchmark-task@1",
+      "screen_id": "screen:agent-supervisor",
+      "task_id": "task:action-binding-integrity",
+      "title": "Keep action bindings exact and host-authorized on the selected screen."
+    }
+  ],
+  "uses_production_credentials": false,
+  "uses_production_services": false
+}

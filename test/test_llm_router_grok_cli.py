@@ -87,7 +87,7 @@ def test_grok_cli_provider_uses_bounded_headless_json_mode(monkeypatch) -> None:
     assert provider is not None
     result = provider.generate(
         'Reply to "quoted text".',
-        model_name="grok-4.5",
+        model_name="grok-4.6",
         timeout=12,
     )
 
@@ -96,7 +96,7 @@ def test_grok_cli_provider_uses_bounded_headless_json_mode(monkeypatch) -> None:
     cmd = captured["cmd"]
     assert isinstance(cmd, list)
     assert cmd[0] == "grok"
-    assert cmd[cmd.index("--model") + 1] == "grok-4.5"
+    assert cmd[cmd.index("--model") + 1] == "grok-4.6"
     assert cmd[cmd.index("--output-format") + 1] == "json"
     assert cmd[cmd.index("--max-turns") + 1] == "1"
     assert cmd[cmd.index("--permission-mode") + 1] == "dontAsk"
@@ -117,16 +117,16 @@ def test_grok_cli_agent_command_is_noninteractive(tmp_path) -> None:
     cmd = llm_router.build_grok_cli_command(
         mode="agent",
         workspace=tmp_path,
-        model_name="grok-4.5",
+        model_name="grok-4.6",
         max_turns=100_000,
         grok_bin="grok",
         prompt_file=prompt_path,
     )
 
-    assert cmd[cmd.index("--model") + 1] == "grok-4.5"
+    assert cmd[cmd.index("--model") + 1] == "grok-4.6"
     assert cmd[cmd.index("--max-turns") + 1] == "100000"
     assert cmd[cmd.index("--permission-mode") + 1] == "bypassPermissions"
-    assert cmd[cmd.index("--output-format") + 1] == "plain"
+    assert cmd[cmd.index("--output-format") + 1] == "streaming-json"
     assert cmd[cmd.index("--cwd") + 1] == str(tmp_path.resolve())
     assert cmd[cmd.index("--prompt-file") + 1] == str(prompt_path)
     assert "--always-approve" in cmd
@@ -142,7 +142,7 @@ def test_grok_cli_agent_command_supports_fail_closed_sandbox_and_denies(
     cmd = llm_router.build_grok_cli_command(
         mode="agent",
         workspace=tmp_path,
-        model_name="grok-4.5",
+        model_name="grok-4.6",
         grok_bin="grok",
         prompt_file=prompt_path,
         sandbox_profile="provider-isolated",
@@ -338,13 +338,13 @@ def test_grok_cli_command_template_preserves_prompt_as_one_argument(monkeypatch)
 
     provider = llm_router._get_grok_cli_provider()
     assert provider is not None
-    result = provider.generate('Keep "this prompt" together.', model_name="grok-4.5")
+    result = provider.generate('Keep "this prompt" together.', model_name="grok-4.6")
 
     assert result == "template-ok"
     assert captured["cmd"] == [
         "grok-wrapper",
         "--model",
-        "grok-4.5",
+        "grok-4.6",
         "--prompt",
         'Keep "this prompt" together.',
     ]
@@ -421,3 +421,400 @@ def test_grok_cli_auto_discovery_requires_auth(monkeypatch) -> None:
         deps=llm_router.get_default_router_deps(),
     ) is grok
     assert "grok_cli" in calls
+
+
+@pytest.mark.parametrize(
+    ("kind", "reason"),
+    (
+        (
+            llm_router.AgentCLIProviderFailureKind.GROK_QUOTA_EXHAUSTED,
+            "grok_provider_insufficient_quota",
+        ),
+        (
+            llm_router.AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE,
+            "grok_authentication_failure",
+        ),
+        (
+            llm_router.AgentCLIProviderFailureKind.LAUNCH_FAILURE,
+            "grok_process_did_not_launch",
+        ),
+    ),
+)
+def test_grok_codex_agent_route_allows_only_typed_pre_side_effect_failure(
+    kind,
+    reason,
+    tmp_path,
+) -> None:
+    snapshot = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    classification = llm_router.AgentCLIFailureClassification(kind, reason)
+    receipt = llm_router.serialize_agent_cli_failure_receipt(
+        classification,
+        returncode=19,
+        activity_state=llm_router.AgentCLIActivityState.NO_ACTIVITY,
+    )
+
+    decision = llm_router.route_agent_cli_failure(
+        policy=llm_router.GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY,
+        primary_provider="grok",
+        fallback_provider="codex",
+        primary_result=llm_router.AgentCLIProviderResult(19),
+        workspace_before=snapshot,
+        workspace_after=snapshot,
+        trusted_failure_receipt=receipt,
+    )
+
+    assert decision.should_fallback is True
+    assert decision.route_record["failure_kind"] == kind.value
+    assert decision.route_record["side_effects_started"] is False
+    assert decision.route_record["completion_authority"] is False
+
+
+def test_grok_codex_quota_only_route_accepts_only_trusted_quota(
+    tmp_path,
+) -> None:
+    snapshot = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    receipt = llm_router.serialize_agent_cli_failure_receipt(
+        llm_router.AgentCLIFailureClassification(
+            llm_router.AgentCLIProviderFailureKind.GROK_QUOTA_EXHAUSTED,
+            "grok_provider_insufficient_quota",
+        ),
+        returncode=19,
+        activity_state=llm_router.AgentCLIActivityState.NO_ACTIVITY,
+    )
+
+    decision = llm_router.route_agent_cli_failure(
+        policy=llm_router.GROK_QUOTA_ONLY_AGENT_ROUTE_POLICY,
+        primary_provider="grok",
+        fallback_provider="codex",
+        primary_result=llm_router.AgentCLIProviderResult(19),
+        workspace_before=snapshot,
+        workspace_after=snapshot,
+        trusted_failure_receipt=receipt,
+    )
+
+    assert decision.should_fallback is True
+    assert decision.route_record["fallback_policy"] == (
+        llm_router.GROK_QUOTA_ONLY_AGENT_ROUTE_POLICY
+    )
+    assert decision.route_record["failure_kind"] == "grok_quota_exhausted"
+
+
+@pytest.mark.parametrize(
+    "kind",
+    (
+        llm_router.AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE,
+        llm_router.AgentCLIProviderFailureKind.LAUNCH_FAILURE,
+    ),
+)
+def test_grok_codex_quota_only_route_rejects_non_quota_receipt(
+    kind,
+    tmp_path,
+) -> None:
+    snapshot = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    receipt = llm_router.serialize_agent_cli_failure_receipt(
+        llm_router.AgentCLIFailureClassification(
+            kind,
+            "grok_primary_unavailable",
+        ),
+        returncode=19,
+        activity_state=llm_router.AgentCLIActivityState.NO_ACTIVITY,
+    )
+
+    decision = llm_router.route_agent_cli_failure(
+        policy=llm_router.GROK_QUOTA_ONLY_AGENT_ROUTE_POLICY,
+        primary_provider="grok",
+        fallback_provider="codex",
+        primary_result=llm_router.AgentCLIProviderResult(19),
+        workspace_before=snapshot,
+        workspace_after=snapshot,
+        trusted_failure_receipt=receipt,
+    )
+
+    assert decision.should_fallback is False
+    assert decision.terminal_reason == "failure_not_fallback_eligible"
+
+
+@pytest.mark.parametrize(
+    "kind",
+    (
+        llm_router.AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE,
+        llm_router.AgentCLIProviderFailureKind.LAUNCH_FAILURE,
+    ),
+)
+def test_grok_codex_quota_only_route_rejects_preflight_unavailable(
+    kind,
+    tmp_path,
+) -> None:
+    snapshot = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    decision = llm_router.route_agent_cli_failure(
+        policy=llm_router.GROK_QUOTA_ONLY_AGENT_ROUTE_POLICY,
+        primary_provider="grok",
+        fallback_provider="codex",
+        primary_result=llm_router.AgentCLIProviderResult(
+            None,
+            launched=False,
+            activity_state=llm_router.AgentCLIActivityState.PRE_DISPATCH,
+        ),
+        workspace_before=snapshot,
+        workspace_after=snapshot,
+        primary_unavailable_kind=kind,
+    )
+
+    assert decision.should_fallback is False
+    assert decision.terminal_reason == "failure_not_fallback_eligible"
+
+
+@pytest.mark.parametrize(
+    "kind",
+    (
+        llm_router.AgentCLIProviderFailureKind.GENERIC_NONZERO_EXIT,
+        llm_router.AgentCLIProviderFailureKind.TASK_FAILURE,
+        llm_router.AgentCLIProviderFailureKind.TRANSPORT_FAILURE,
+        llm_router.AgentCLIProviderFailureKind.TIMEOUT,
+        llm_router.AgentCLIProviderFailureKind.MALFORMED_OUTPUT,
+    ),
+)
+def test_grok_codex_agent_route_keeps_terminal_failure_pinned(
+    kind,
+    tmp_path,
+) -> None:
+    snapshot = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    receipt = llm_router.serialize_agent_cli_failure_receipt(
+        llm_router.AgentCLIFailureClassification(kind, "grok_terminal_failure"),
+        returncode=19,
+        activity_state=llm_router.AgentCLIActivityState.NO_ACTIVITY,
+    )
+
+    decision = llm_router.route_agent_cli_failure(
+        policy=llm_router.GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY,
+        primary_provider="grok",
+        fallback_provider="codex",
+        primary_result=llm_router.AgentCLIProviderResult(19),
+        workspace_before=snapshot,
+        workspace_after=snapshot,
+        trusted_failure_receipt=receipt,
+    )
+
+    assert decision.should_fallback is False
+    assert decision.terminal_reason == "failure_not_fallback_eligible"
+
+
+@pytest.mark.parametrize(
+    "activity",
+    (
+        llm_router.AgentCLIActivityState.STARTED,
+        llm_router.AgentCLIActivityState.UNKNOWN,
+    ),
+)
+def test_grok_codex_agent_route_rejects_failure_after_side_effect_event(
+    activity,
+    tmp_path,
+) -> None:
+    snapshot = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    receipt = llm_router.serialize_agent_cli_failure_receipt(
+        llm_router.AgentCLIFailureClassification(
+            llm_router.AgentCLIProviderFailureKind.GROK_QUOTA_EXHAUSTED,
+            "grok_provider_insufficient_quota",
+        ),
+        returncode=19,
+        activity_state=activity,
+    )
+    decision = llm_router.route_agent_cli_failure(
+        policy=llm_router.GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY,
+        primary_provider="grok",
+        fallback_provider="codex",
+        primary_result=llm_router.AgentCLIProviderResult(19),
+        workspace_before=snapshot,
+        workspace_after=snapshot,
+        trusted_failure_receipt=receipt,
+    )
+    assert decision.should_fallback is False
+    assert decision.terminal_reason == "side_effects_started"
+
+
+def test_grok_codex_agent_route_rejects_mutated_workspace_and_forged_receipt(
+    tmp_path,
+) -> None:
+    candidate = tmp_path / "candidate.py"
+    candidate.write_text("before\n", encoding="utf-8")
+    before = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    candidate.write_text("after\n", encoding="utf-8")
+    after = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    receipt = llm_router.serialize_agent_cli_failure_receipt(
+        llm_router.AgentCLIFailureClassification(
+            llm_router.AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE,
+            "grok_authentication_failure",
+        ),
+        returncode=19,
+        activity_state=llm_router.AgentCLIActivityState.NO_ACTIVITY,
+    )
+    mutated = llm_router.route_agent_cli_failure(
+        policy=llm_router.GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY,
+        primary_provider="grok",
+        fallback_provider="codex",
+        primary_result=llm_router.AgentCLIProviderResult(19),
+        workspace_before=before,
+        workspace_after=after,
+        trusted_failure_receipt=receipt,
+    )
+    forged = llm_router.route_agent_cli_failure(
+        policy=llm_router.GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY,
+        primary_provider="grok",
+        fallback_provider="codex",
+        primary_result=llm_router.AgentCLIProviderResult(19),
+        workspace_before=after,
+        workspace_after=after,
+        trusted_failure_receipt=json.dumps(
+            {
+                **json.loads(receipt),
+                "provider_body": "authentication_failure",
+            }
+        ),
+    )
+    assert mutated.terminal_reason == "side_effects_started"
+    assert forged.classification.kind is (
+        llm_router.AgentCLIProviderFailureKind.MALFORMED_OUTPUT
+    )
+    assert forged.should_fallback is False
+
+
+def test_agent_cli_workspace_snapshot_hashes_mode_and_symlink_target(tmp_path) -> None:
+    target = tmp_path / "target"
+    target.write_text("same bytes\n", encoding="utf-8")
+    link = tmp_path / "link"
+    link.symlink_to("target")
+    initial = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    target.chmod(0o700)
+    mode_changed = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    link.unlink()
+    link.symlink_to("other")
+    link_changed = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    assert initial.reliable and mode_changed.reliable and link_changed.reliable
+    assert len({initial.digest, mode_changed.digest, link_changed.digest}) == 3
+
+
+def test_agent_cli_workspace_snapshot_hashes_gitignored_file(tmp_path) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=tmp_path,
+        check=True,
+    )
+    (tmp_path / ".gitignore").write_text("private.cache\n", encoding="utf-8")
+    (tmp_path / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", ".gitignore", "tracked.txt"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "seed"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    ignored = tmp_path / "private.cache"
+    ignored.write_text("before\n", encoding="utf-8")
+
+    before = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    ignored.write_text("after\n", encoding="utf-8")
+    after = llm_router.snapshot_agent_cli_workspace(tmp_path)
+
+    assert before.reliable and after.reliable
+    assert before.digest != after.digest
+
+
+def test_agent_cli_workspace_snapshot_hashes_git_control_file_and_prunes_git_dirs(
+    tmp_path,
+) -> None:
+    control = tmp_path / ".git"
+    control.write_text("gitdir: /tmp/first-control-dir\n", encoding="utf-8")
+    nested_git = tmp_path / "nested" / ".git"
+    nested_git.mkdir(parents=True)
+    (nested_git / "private-state").write_text("ignored\n", encoding="utf-8")
+
+    paths = llm_router._filesystem_agent_cli_snapshot_paths(tmp_path)
+    before = llm_router.snapshot_agent_cli_workspace(tmp_path)
+    control.write_text("gitdir: /tmp/second-control-dir\n", encoding="utf-8")
+    after = llm_router.snapshot_agent_cli_workspace(tmp_path)
+
+    assert ".git" in paths
+    assert not any(path.startswith("nested/.git") for path in paths)
+    assert before.reliable and after.reliable
+    assert before.digest != after.digest
+
+
+def test_agent_cli_classification_terminal_evidence_precedes_auth() -> None:
+    timeout = llm_router.classify_grok_agent_cli_failure(
+        llm_router.AgentCLIProviderResult(
+            19,
+            stderr="authentication failed; request timed out",
+        )
+    )
+    transport = llm_router.classify_grok_agent_cli_failure(
+        llm_router.AgentCLIProviderResult(
+            19,
+            stderr="authentication failed; connection reset by peer",
+        )
+    )
+    assert timeout.kind is llm_router.AgentCLIProviderFailureKind.TIMEOUT
+    assert transport.kind is (
+        llm_router.AgentCLIProviderFailureKind.TRANSPORT_FAILURE
+    )
+
+
+def test_agent_route_readiness_negative_auth_text_outranks_zero_exit(
+    monkeypatch,
+) -> None:
+    probes = iter(
+        (
+            (0, "You are not authenticated.\nDefault model: grok-4.5", None),
+            (0, "Not logged in\nLogged in using ChatGPT", None),
+        )
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "_bounded_agent_cli_probe",
+        lambda command, timeout_seconds: next(probes),
+    )
+    readiness = llm_router.probe_grok_codex_agent_route_readiness(
+        grok_bin="/provider/grok",
+        codex_bin="/provider/codex",
+    )
+    assert readiness.grok_ready is False
+    assert readiness.codex_ready is False
+    assert readiness.effective_provider == ""
+    assert readiness.failure_kind is (
+        llm_router.AgentCLIProviderFailureKind.AUTHENTICATION_FAILURE
+    )
+
+
+def test_agent_route_readiness_accepts_positive_login_status(
+    monkeypatch,
+) -> None:
+    probes = iter(
+        (
+            (0, "Login successful; available model grok-4.5", None),
+            (0, "Logged in using ChatGPT", None),
+        )
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "_bounded_agent_cli_probe",
+        lambda command, timeout_seconds: next(probes),
+    )
+
+    readiness = llm_router.probe_grok_codex_agent_route_readiness(
+        grok_bin="/provider/grok",
+        codex_bin="/provider/codex",
+    )
+
+    assert readiness.grok_ready is True
+    assert readiness.codex_ready is True
+    assert readiness.effective_provider == "grok"
+    assert readiness.failure_kind is None

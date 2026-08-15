@@ -1,0 +1,324 @@
+{
+  "acceptance_parent": {
+    "branch": "agent/prompt-self-improvement-v3",
+    "head": "8f6cbb84bad3f4a715f634ad562126b6f9949f2f",
+    "manifest_schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-manifest@2",
+    "receipt_paths_absent": [
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/duckdb_connection_policy_acceptance_receipt.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/hermetic_control_plane_identity_acceptance_receipt.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/native_dependency_launch_authorization.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_023_20260808.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_027_20260808.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_daemon_reload_receipt.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_generation_birth_receipt.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/sealed_native_dependency_acceptance_receipt.json"
+    ],
+    "reload_gate_status": "blocked",
+    "task_statuses": {
+      "ASE3-019": "completed",
+      "ASE3-022": "blocked",
+      "ASE3-023": "todo",
+      "ASE3-027": "todo",
+      "ASE3-030": "todo",
+      "ASE3-031": "todo",
+      "ASE3-032": "todo"
+    },
+    "tree": "21d31f2bb210538dbe9baa6a5466bd23c77e3154"
+  },
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "closure": {
+    "archive": {
+      "format": "zip-stored-sorted-v1",
+      "member_paths": [
+        "ipfs_accelerate_py/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "ipfs_accelerate_py/utils/__init__.py",
+        "ipfs_accelerate_py/utils/cid_utils.py"
+      ],
+      "root_sha256": "sha256:728c0a18daa7830affbbc36459223add2d3b0896a671adc47740d0059f24fa6c",
+      "schema": "ipfs_accelerate_py.agent_supervisor.deterministic-control-plane-archive@1",
+      "sha256": "sha256:6639fd68582ad1187ded0cc17f95ab66582e4684c3868eee2ff4b05b07f4f46c"
+    },
+    "capsule": {
+      "archive_root_sha256": "sha256:728c0a18daa7830affbbc36459223add2d3b0896a671adc47740d0059f24fa6c",
+      "archive_sha256": "sha256:6639fd68582ad1187ded0cc17f95ab66582e4684c3868eee2ff4b05b07f4f46c",
+      "manifest_sha256": "sha256:2a62b2ef420ca1a4abd3ed618a00e7c87b26666f8a03a0c78e426eee7b9369eb",
+      "member_count": 7,
+      "schema": "ipfs_accelerate_py.agent_supervisor.sealed-control-plane-capsule@1",
+      "sealed_descriptor_sha256": "sha256:6facf8cc60c12c3ae1e6dfa27742ff893d22b28390704b4f89942850c9f7adc4"
+    },
+    "capsule_sha256": "sha256:fae3ab225615693aaf921283bb01491fad0dbe61b045c5e86e88e533df352092",
+    "cid_vectors": [
+      {
+        "cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+        "codec": "raw",
+        "input_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "minted": true,
+        "multicodec": 85,
+        "multihash": "sha2-256",
+        "name": "empty-raw",
+        "validated": true
+      },
+      {
+        "cid": "baguqeeraiqjw7i2vwntyuekgvulpp2det2kpwt6cd7tx5ayqybqpmhfk76fa",
+        "codec": "dag-json",
+        "input_sha256": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "minted": true,
+        "multicodec": 297,
+        "multihash": "sha2-256",
+        "name": "empty-dag-json",
+        "validated": true
+      }
+    ],
+    "manifest": {
+      "cid_profile": "cidv1-base32-lower-raw+dag-json-sha2-256",
+      "member_paths": [
+        "ipfs_accelerate_py/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "ipfs_accelerate_py/utils/__init__.py",
+        "ipfs_accelerate_py/utils/cid_utils.py"
+      ],
+      "module_names": [
+        "ipfs_accelerate_py",
+        "ipfs_accelerate_py.agent_supervisor",
+        "ipfs_accelerate_py.agent_supervisor.core",
+        "ipfs_accelerate_py.agent_supervisor.core.multiformats_identity",
+        "ipfs_accelerate_py.llm_router",
+        "ipfs_accelerate_py.utils",
+        "ipfs_accelerate_py.utils.cid_utils"
+      ],
+      "schema": "ipfs_accelerate_py.agent_supervisor.control-plane-dependency-manifest@1",
+      "source_head": "8f6cbb84bad3f4a715f634ad562126b6f9949f2f",
+      "source_tree": "21d31f2bb210538dbe9baa6a5466bd23c77e3154"
+    },
+    "manifest_sha256": "sha256:2a62b2ef420ca1a4abd3ed618a00e7c87b26666f8a03a0c78e426eee7b9369eb",
+    "members": {
+      "ipfs_accelerate_py/__init__.py": {
+        "archive_member_sha256": "sha256:0bb676dde293ed70132b5b5c7df5b3154639dc9ca36996967cf64da32cf41958",
+        "git_blob": "4b21d326f200dab5927c7be628438a182bf0f612",
+        "raw_sha256": "sha256:0bb676dde293ed70132b5b5c7df5b3154639dc9ca36996967cf64da32cf41958"
+      },
+      "ipfs_accelerate_py/agent_supervisor/__init__.py": {
+        "archive_member_sha256": "sha256:df692cbf44bf2eee9fb6f113bc2220a3f93d386082c95dfae7097b6a3a2dd50d",
+        "git_blob": "346c809c0457f0d612d378672abbdb0324de1f47",
+        "raw_sha256": "sha256:df692cbf44bf2eee9fb6f113bc2220a3f93d386082c95dfae7097b6a3a2dd50d"
+      },
+      "ipfs_accelerate_py/agent_supervisor/core/__init__.py": {
+        "archive_member_sha256": "sha256:8f63664c0f36cffc31902ee60919f14280ef47c81d8c5a67fd18c13476a32f7a",
+        "git_blob": "24322042c103d710c215d52e53a6947a836e7ad9",
+        "raw_sha256": "sha256:8f63664c0f36cffc31902ee60919f14280ef47c81d8c5a67fd18c13476a32f7a"
+      },
+      "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py": {
+        "archive_member_sha256": "sha256:e8a2b5beae30ac0a40dcc1095a9241cfd80597f55f319828e2c844aeee1aa1ce",
+        "git_blob": "fdc9a1ef5f93814d38dec4692336b44b48623c70",
+        "raw_sha256": "sha256:e8a2b5beae30ac0a40dcc1095a9241cfd80597f55f319828e2c844aeee1aa1ce"
+      },
+      "ipfs_accelerate_py/llm_router.py": {
+        "archive_member_sha256": "sha256:69bd7e48a0ffc13f7a868b0b3e9bf8a09506104c4a80e5a78146adabbb73beb4",
+        "git_blob": "db2a7d220acf681954d5311a50cc5a970c49573a",
+        "raw_sha256": "sha256:69bd7e48a0ffc13f7a868b0b3e9bf8a09506104c4a80e5a78146adabbb73beb4"
+      },
+      "ipfs_accelerate_py/utils/__init__.py": {
+        "archive_member_sha256": "sha256:07c143316f3fb9d40d5ee1d0f6c584948ba49438b059bcdb6d868e0f81e3d3e3",
+        "git_blob": "4bb5af77be27aa8fb0b50618b0c05c57904bee49",
+        "raw_sha256": "sha256:07c143316f3fb9d40d5ee1d0f6c584948ba49438b059bcdb6d868e0f81e3d3e3"
+      },
+      "ipfs_accelerate_py/utils/cid_utils.py": {
+        "archive_member_sha256": "sha256:e7f6e94532c19ae22781fef967715f28c6825ffe4721bf52a52b647dce55e139",
+        "git_blob": "5d520ac3ee4191b132117ef28bce9ac2b0af16e2",
+        "raw_sha256": "sha256:e7f6e94532c19ae22781fef967715f28c6825ffe4721bf52a52b647dce55e139"
+      }
+    },
+    "module_origins": {
+      "ipfs_accelerate_py": {
+        "member_path": "ipfs_accelerate_py/__init__.py",
+        "origin": "capsule://sealed/ipfs_accelerate_py/__init__.py"
+      },
+      "ipfs_accelerate_py.agent_supervisor": {
+        "member_path": "ipfs_accelerate_py/agent_supervisor/__init__.py",
+        "origin": "capsule://sealed/ipfs_accelerate_py/agent_supervisor/__init__.py"
+      },
+      "ipfs_accelerate_py.agent_supervisor.core": {
+        "member_path": "ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+        "origin": "capsule://sealed/ipfs_accelerate_py/agent_supervisor/core/__init__.py"
+      },
+      "ipfs_accelerate_py.agent_supervisor.core.multiformats_identity": {
+        "member_path": "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+        "origin": "capsule://sealed/ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py"
+      },
+      "ipfs_accelerate_py.llm_router": {
+        "member_path": "ipfs_accelerate_py/llm_router.py",
+        "origin": "capsule://sealed/ipfs_accelerate_py/llm_router.py"
+      },
+      "ipfs_accelerate_py.utils": {
+        "member_path": "ipfs_accelerate_py/utils/__init__.py",
+        "origin": "capsule://sealed/ipfs_accelerate_py/utils/__init__.py"
+      },
+      "ipfs_accelerate_py.utils.cid_utils": {
+        "member_path": "ipfs_accelerate_py/utils/cid_utils.py",
+        "origin": "capsule://sealed/ipfs_accelerate_py/utils/cid_utils.py"
+      }
+    }
+  },
+  "created_at": "2026-08-10T02:46:27Z",
+  "denials": {
+    "convergence_manifest_digest_in_receipt_allowed": false,
+    "extra_archive_member_allowed": false,
+    "machine_local_capsule_root_allowed": false,
+    "missing_member_allowed": false,
+    "mutable_repository_or_candidate_import_allowed": false,
+    "optional_multiformats_required": false,
+    "pythonpath_allowed": false,
+    "receipt_selected_provenance_allowed": false,
+    "scheduler_or_provider_effect_before_probe_allowed": false,
+    "substituted_member_allowed": false,
+    "unverified_module_origin_allowed": false,
+    "user_site_allowed": false,
+    "zip_shadow_allowed": false
+  },
+  "probe": {
+    "all_module_origins_verified": true,
+    "all_modules_imported": true,
+    "command": [
+      "python",
+      "-I",
+      "-c",
+      "import runpy;runpy.run_module('ipfs_accelerate_py.agent_supervisor.core.multiformats_identity',run_name='__main__')"
+    ],
+    "dag_json_cid_minted": true,
+    "dag_json_cid_validated": true,
+    "environment": {
+      "PYTHONNOUSERSITE": "1",
+      "PYTHONPATH": null
+    },
+    "exit_code": 0,
+    "isolated": true,
+    "multiformats_imported": false,
+    "pythonpath_present": false,
+    "raw_cid_minted": true,
+    "raw_cid_validated": true,
+    "repository_or_candidate_imported": false,
+    "scheduler_or_provider_effect_started": false,
+    "sealed_descriptor_only": true,
+    "stderr_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "user_site_enabled": false
+  },
+  "provenance": {
+    "final_blobs": {
+      "ipfs_accelerate_py/__init__.py": "4b21d326f200dab5927c7be628438a182bf0f612",
+      "ipfs_accelerate_py/agent_supervisor/__init__.py": "346c809c0457f0d612d378672abbdb0324de1f47",
+      "ipfs_accelerate_py/agent_supervisor/core/__init__.py": "24322042c103d710c215d52e53a6947a836e7ad9",
+      "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py": "fdc9a1ef5f93814d38dec4692336b44b48623c70",
+      "ipfs_accelerate_py/llm_router.py": "db2a7d220acf681954d5311a50cc5a970c49573a",
+      "ipfs_accelerate_py/utils/__init__.py": "4bb5af77be27aa8fb0b50618b0c05c57904bee49",
+      "ipfs_accelerate_py/utils/cid_utils.py": "5d520ac3ee4191b132117ef28bce9ac2b0af16e2"
+    },
+    "final_raw_sha256": {
+      "ipfs_accelerate_py/__init__.py": "sha256:0bb676dde293ed70132b5b5c7df5b3154639dc9ca36996967cf64da32cf41958",
+      "ipfs_accelerate_py/agent_supervisor/__init__.py": "sha256:df692cbf44bf2eee9fb6f113bc2220a3f93d386082c95dfae7097b6a3a2dd50d",
+      "ipfs_accelerate_py/agent_supervisor/core/__init__.py": "sha256:8f63664c0f36cffc31902ee60919f14280ef47c81d8c5a67fd18c13476a32f7a",
+      "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py": "sha256:e8a2b5beae30ac0a40dcc1095a9241cfd80597f55f319828e2c844aeee1aa1ce",
+      "ipfs_accelerate_py/llm_router.py": "sha256:69bd7e48a0ffc13f7a868b0b3e9bf8a09506104c4a80e5a78146adabbb73beb4",
+      "ipfs_accelerate_py/utils/__init__.py": "sha256:07c143316f3fb9d40d5ee1d0f6c584948ba49438b059bcdb6d868e0f81e3d3e3",
+      "ipfs_accelerate_py/utils/cid_utils.py": "sha256:e7f6e94532c19ae22781fef967715f28c6825ffe4721bf52a52b647dce55e139"
+    },
+    "generations": [
+      {
+        "changed_paths": [
+          "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+          "ipfs_accelerate_py/llm_router.py",
+          "ipfs_accelerate_py/utils/cid_utils.py",
+          "test/api/test_agent_supervisor_hermetic_cid_capsule.py"
+        ],
+        "integrated_commit": "8ef29834e9af7629a621d583ec43bf37f136b10e",
+        "integrated_parent": "32face22bc17eb0b76f09fed2186ef799075b110",
+        "integrated_patch_sha256": "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16",
+        "integrated_tree": "46be4b75f0a5ab9be06cf3b85a75691157fba09e",
+        "replay_commit": "f97cad9607f16e71c7b1383e55b624f5149def71",
+        "replay_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+        "replay_patch_sha256": "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16",
+        "replay_tree": "22101ffb8eb2568d5f3c457e9664bba014e1e8ee",
+        "role": "hermetic-cid-seal",
+        "source_commit": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+        "source_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+        "source_patch_sha256": "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16",
+        "source_tree": "22101ffb8eb2568d5f3c457e9664bba014e1e8ee"
+      },
+      {
+        "changed_paths": [
+          "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+          "ipfs_accelerate_py/llm_router.py",
+          "ipfs_accelerate_py/utils/cid_utils.py",
+          "test/api/test_agent_supervisor_control_plane.py",
+          "test/api/test_agent_supervisor_control_plane_capsule_identity.py",
+          "test/api/test_agent_supervisor_hermetic_cid_capsule.py",
+          "test/api/test_llm_router_agent_implementation_route.py"
+        ],
+        "integrated_commit": "3740b4bc2c31a945748bb9cd9861a37a54abd6aa",
+        "integrated_parent": "8ef29834e9af7629a621d583ec43bf37f136b10e",
+        "integrated_patch_sha256": "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26",
+        "integrated_tree": "d1956cb171afbe24225ba1c65920c4192b4a8177",
+        "replay_commit": "eb9944cf7c214403531f375f971756f5acc6766b",
+        "replay_parent": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+        "replay_patch_sha256": "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26",
+        "replay_tree": "d91e3cb65806c3dcd4068e10e5f5fe5362a60c6a",
+        "role": "hermetic-cid-close",
+        "source_commit": "35992cba2261714a0030dff9d58a7a52c31f1d80",
+        "source_parent": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+        "source_patch_sha256": "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26",
+        "source_tree": "d91e3cb65806c3dcd4068e10e5f5fe5362a60c6a"
+      }
+    ]
+  },
+  "review": {
+    "algorithm": "Ed25519",
+    "fallback_authorization_id": "sha256:dfbcb29e1b624b345b263857ba750404b8287f3a869b317efdadc363250a9301",
+    "fallback_authorization_sha256": "sha256:f06c7865e93e2282be43345427b2026478e88ba0afde9376286bf804fc1078b1",
+    "implementer_identity": "codex:ase3-030-product",
+    "implementer_provider": "codex",
+    "lifecycle_anchor_digest": "sha256:45ff0b7b60c71f8c682e7e32e9e6af1193a5f238fca846190089cf4ee8d41239",
+    "lifecycle_anchor_id": "475715c3bc8d562132e5323dcf98c13dba1b5aaf8f34546c0c50d40d6f62b2d8",
+    "lifecycle_generation": 1,
+    "lifecycle_root_identity_did": "did:key:z6Mktp3ogPs9QwXBnKEQrdMThdbuPPNKQXiAP7X7JwXVq1G7",
+    "lifecycle_root_pin_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_profile_lifecycle_root_pin_20260808.json",
+    "lifecycle_root_pin_sha256": "sha256:898b9ccbe61a3ea82ad2243498940cd70f06efa0838d34ee0ebc4c418e377ff2",
+    "lifecycle_witness_id": "sha256:c0ff822e398493bd35e054b8bdbe8ed3b6d94bcbb04521241e1b1a48bc3cd65b",
+    "lifecycle_witness_nonce": "z3Y5bP4zbgLAgGHWV0sKhzXCKJ8CAMNt",
+    "lifecycle_witness_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_operator_lifecycle_witness.json",
+    "lifecycle_witness_sha256": "sha256:89084565ed3d636a5687188209a332eccda33a73968e157fc6e7f45448daf410",
+    "profile_content_id": "sha256:bb9681dbaa2e084bd0704675672133e20f4ddeaf2ad0c130b1034b109615ffec",
+    "profile_id": "78d545927196b5dad4c2c76b461927ec",
+    "reviewer_identity": "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
+    "reviewer_provider": "local_operator",
+    "signature": "ed25519:n71-ST3Nmk27-CNCuppCvOmr8rU0o5lUTnThoEPYRmNmfIeQwoXLuJl4-k6hEg2DKKqHRYb7g2ve-gl0eOBcCQ",
+    "signed_at": "2026-08-10T02:46:27Z"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.ase3-030-hermetic-identity-acceptance@1",
+  "suite": {
+    "command": "python -m pytest test/api/test_agent_supervisor_control_plane_capsule_identity.py test/api/test_agent_supervisor_control_plane.py test/api/test_agent_supervisor_multiformats_identity.py test/api/test_llm_router_agent_implementation_route.py -q",
+    "exit_code": 0,
+    "failed_count": 0,
+    "passed": true,
+    "passed_count": 108,
+    "report_sha256": "sha256:7d934821dcb386e22c19e0704ca0261cdbbf354557e6f02fad56298c2162b0dd",
+    "validated_head": "8f6cbb84bad3f4a715f634ad562126b6f9949f2f",
+    "validated_tree": "21d31f2bb210538dbe9baa6a5466bd23c77e3154"
+  },
+  "task": {
+    "canonical_task_cid": "baguqeeraixg3vmaaqjjzelv2eh5hhib3y57ezmtrp2uq5aufnvuakmjnov6q",
+    "completed_contract_sha256": "sha256:987d74c4304897722a00a614f161938c0ac0803569c11f09b7e63ebad9a2a935",
+    "goal_id": "ASE3-G040",
+    "repairs_task": "ASE3-019-control-plane-capsule",
+    "status_after": "completed",
+    "status_before": "todo",
+    "task_id": "ASE3-030",
+    "todo_contract_sha256": "sha256:fe06816d222c538150df4f2c67773e722233c2d0cf4ad0199ae9968e11e52263"
+  }
+}

@@ -1,0 +1,186 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.semantic_compression_governor.scheduler_config@1",
+  "taskboard_path": "docs/architecture/semantic_compression_governor.todo.md",
+  "objectives_path": "docs/architecture/semantic_compression_governor.objectives.md",
+  "plan_path": "docs/architecture/SEMANTIC_COMPRESSION_GOVERNOR_PLAN.md",
+  "validator_path": "scripts/validate_semantic_compression_governor_board.py",
+  "task_prefix": "SCG-",
+  "goal_prefix": "SCG-G",
+  "board_namespace": "semantic-compression-governor-v1",
+  "merge_target_branch": "agent/semantic-compression-governor-v1",
+  "source_binding": {
+    "accelerator_required_ancestor": "dfd92b554e662d4312411f2e8e63a52368806f2a",
+    "accelerator_required_branch": "agent/semantic-compression-governor-v1",
+    "bootstrap_task_source": "legacy-markdown",
+    "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+    "ipfs_datasets_planning_revision": "1330038f626ef92993f03d46f21e1a57719e9c25",
+    "ipfs_kit_submodule_path": "ipfs_kit_py",
+    "ipfs_kit_planning_revision": "df2f9cc092456329de9724c45a50c54b410875d1",
+    "mcp_plus_plus_submodule_path": "ipfs_accelerate_py/mcplusplus",
+    "mcp_plus_plus_planning_revision": "dc3164653a48d059ae9812078359daeafb451c07",
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "initial_projection": {
+    "task_count": 49,
+    "completed_task_ids": [
+      "SCG-000"
+    ],
+    "ready_task_ids": [
+      "SCG-001",
+      "SCG-002",
+      "SCG-003",
+      "SCG-004"
+    ],
+    "blocked_task_ids": [],
+    "terminal_task_id": "SCG-048",
+    "goal_count": 10,
+    "root_goal_id": "SCG-G000"
+  },
+  "max_lanes": 3,
+  "strict_task_sharding": true,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 45,
+  "check_interval_seconds": 20,
+  "stale_seconds": 1200,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 8,
+  "max_task_attempts": 4,
+  "implementation_retry_budget": 4,
+  "validation_retry_budget": 4,
+  "merge_retry_budget": 4,
+  "implementation_timeout_seconds": 14400,
+  "implementation_max_timeout_seconds": 14400,
+  "implementation_log_stall_seconds": 900,
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py",
+    "ipfs_kit_py",
+    "ipfs_accelerate_py/mcplusplus"
+  ],
+  "protected_paths": [
+    ".gitignore",
+    "docs/architecture/SEMANTIC_COMPRESSION_GOVERNOR_PLAN.md",
+    "docs/architecture/semantic_compression_governor.objectives.md",
+    "docs/architecture/semantic_compression_governor.todo.md",
+    "config/semantic_compression_governor_scheduler.json",
+    "scripts/validate_semantic_compression_governor_board.py",
+    "scripts/ops/agent_supervisor/semantic_compression_governor_scheduler.py",
+    "scripts/ops/agent_supervisor/incremental_verification_planner_scheduler.py",
+    "test/api/test_semantic_compression_governor_board.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/semantic_compression_governor/run-scg-v1",
+    "state": "data/agent_supervisor/semantic_compression_governor/run-scg-v1/state",
+    "worktrees": "data/agent_supervisor/semantic_compression_governor/run-scg-v1/worktrees",
+    "merge_queue": "data/agent_supervisor/semantic_compression_governor/run-scg-v1/merge-queue",
+    "logs": "data/agent_supervisor/semantic_compression_governor/run-scg-v1/logs",
+    "evidence": "data/agent_supervisor/semantic_compression_governor/run-scg-v1/evidence",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "scg-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [
+        "SCG-003"
+      ],
+      "initial_focus": "kit-storage-policy-cas-and-promotion"
+    },
+    {
+      "index": 1,
+      "name": "scg-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_task_ids": [
+        "SCG-001",
+        "SCG-004"
+      ],
+      "initial_focus": "accelerate-runtime-mcplusplus-and-sealing"
+    },
+    {
+      "index": 2,
+      "name": "scg-lane-2",
+      "strict_shard_remainder": 2,
+      "initial_task_ids": [
+        "SCG-002"
+      ],
+      "initial_focus": "datasets-analysis-expansion-and-calibration"
+    }
+  ],
+  "task_groups": {
+    "SCG-G000": ["SCG-000"],
+    "SCG-G010": ["SCG-001", "SCG-002", "SCG-003", "SCG-004", "SCG-005"],
+    "SCG-G020": ["SCG-006", "SCG-007", "SCG-008", "SCG-009", "SCG-010"],
+    "SCG-G030": ["SCG-011", "SCG-012", "SCG-013", "SCG-014", "SCG-015", "SCG-016", "SCG-017", "SCG-018"],
+    "SCG-G040": ["SCG-019", "SCG-020", "SCG-021", "SCG-022"],
+    "SCG-G050": ["SCG-023", "SCG-024", "SCG-025", "SCG-026", "SCG-027", "SCG-028", "SCG-029", "SCG-030", "SCG-031", "SCG-032"],
+    "SCG-G060": ["SCG-033", "SCG-034", "SCG-035"],
+    "SCG-G070": ["SCG-036", "SCG-037", "SCG-038", "SCG-039"],
+    "SCG-G080": ["SCG-040", "SCG-041", "SCG-042", "SCG-043", "SCG-044", "SCG-045"],
+    "SCG-G090": ["SCG-046", "SCG-047", "SCG-048"]
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "high",
+    "max_concurrency": 3,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "authority_policy": {
+    "canonical_identity_authority": "ipfs_datasets_py.logic.software_contracts.content",
+    "canonical_verification_authority": "ipfs_accelerate_py.agent_supervisor.verification",
+    "canonical_storage_authority": "ipfs_kit_py DurableCoordinationStore and DurableStateRootAdapter",
+    "exact_receipt_identity_required": true,
+    "provider_claim_is_verification_authority": false,
+    "test_or_proof_presence_is_verification_authority": false,
+    "verification_pass_alone_proves_sufficiency": false,
+    "semantic_uncertainty_requires_broader_execution": true,
+    "model_route_is_provider_selection": false,
+    "model_agreement_is_proof": false,
+    "production_acceptance_requires_current_admitted_receipts": true,
+    "timeout_unavailable_unknown_stale_invalid_cancelled_or_simulated_can_pass": false,
+    "nonreproducible_environment_requires_human_review": true
+  },
+  "capability_policy": {
+    "automatic_dependency_installation_allowed": false,
+    "mock_hardware_or_inference_allowed": false,
+    "new_content_identity_allowed": false,
+    "new_receipt_format_allowed": false,
+    "new_mcplusplus_profile_allowed": false,
+    "new_proof_system_allowed": false,
+    "missing_incremental_proof_sealer_disposition": "typed_unavailable",
+    "missing_optional_dependency_disposition": "typed_unavailable",
+    "shell_string_execution_allowed": false,
+    "process_tree_termination_required": true,
+    "bounded_stdout_and_stderr_required": true,
+    "isolated_evaluation_worktree_required": true,
+    "unapproved_external_expanded_shadow_allowed": false
+  },
+  "completion_policy": {
+    "terminal_task_id": "SCG-048",
+    "all_task_dependencies_terminal_required": true,
+    "goal_heap_is_planning_lineage_only": true,
+    "current_tree_evidence_required": true,
+    "held_out_evaluation_required_for_promotion": true,
+    "separate_authorization_required_for_promotion": true,
+    "policy_compare_and_swap_required": true,
+    "critical_assurance_reduction_without_authorization_allowed": false,
+    "stale_partial_simulated_skipped_or_print_only_evidence_satisfies_release": false,
+    "intentional_critical_omission_acceptance_floor": 0,
+    "stale_or_simulated_production_acceptance_floor": 0,
+    "honest_unmet_target_reporting_required": true,
+    "proof_scope_must_be_bounded": true,
+    "final_report_required": true
+  }
+}

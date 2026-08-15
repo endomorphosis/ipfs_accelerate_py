@@ -27,20 +27,21 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
 
 VALIDATION_PATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PATH"
 VALIDATION_PYTHON_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON"
 VALIDATION_PYTHONPATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"
-VALIDATION_PYTHON_MODULES_ENV = (
-    "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON_MODULES"
-)
 VALIDATION_NPM_CACHE_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_NPM_CACHE"
+VALIDATION_CARGO_HOME_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_CARGO_HOME"
+VALIDATION_RUSTUP_HOME_ENV = (
+    "IPFS_ACCELERATE_AGENT_VALIDATION_RUSTUP_HOME"
+)
 VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV = (
     "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
 )
-VALIDATION_SUPERVISOR_STATE_ROOT_ENV = "LPR_STATE_ROOT"
 FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV = (
     "IPFS_ACCELERATE_AGENT_FORMAL_TOOLCHAIN_CONTRACT_SHA256"
 )
@@ -53,6 +54,26 @@ FORMAL_TOOLCHAIN_PATH_ENV = (
 FORMAL_TOOLCHAIN_ROOT_ENV_NAMES = (
     "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
     "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
+)
+FORMAL_TOOLCHAIN_DEPLOYMENT_MANIFEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "formal-toolchain-deployment-manifest@1"
+)
+_FORMAL_TOOL_COMMAND_RE = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}"
+)
+_MAX_FORMAL_TOOL_COMMANDS = 64
+PROOF_REUSE_STATE_ROOT_ENV = "IPFS_PROOF_REUSE_STATE_ROOT"
+PROVIDER_PROTECTED_STATE_ROOT_ENV = (
+    "IPFS_ACCELERATE_AGENT_PROTECTED_STATE_ROOT"
+)
+VALIDATION_FILESYSTEM_BOUNDARY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "validation-filesystem-boundary@1"
+)
+PROVIDER_FILESYSTEM_BOUNDARY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "provider-filesystem-boundary@1"
 )
 VALIDATION_PYTHON_LAUNCHER_SHA256_ENV = (
     "IPFS_ACCELERATE_VALIDATION_PYTHON_LAUNCHER_SHA256"
@@ -69,48 +90,66 @@ VALIDATION_PYTHON_INTERPRETER_SHA256_ENV = (
 VALIDATION_PYTHON_INTERPRETER_STAT_ENV = (
     "IPFS_ACCELERATE_VALIDATION_PYTHON_INTERPRETER_STAT"
 )
+VALIDATION_RUFF_EXECUTABLE_MODE_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_RUFF_EXECUTABLE_MODE"
+)
+VALIDATION_RUFF_EXECUTABLE_SHA256_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_RUFF_EXECUTABLE_SHA256"
+)
+VALIDATION_RUFF_EXECUTABLE_STAT_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_RUFF_EXECUTABLE_STAT"
+)
 _CHILD_PYTHON_ENV = "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"
+VALIDATION_RUFF_EXECUTABLE_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_RUFF_EXECUTABLE"
+)
+VALIDATION_RUFF_UNAVAILABLE_MARKER = (
+    "ipfs-accelerate-validation-ruff-error:unavailable"
+)
 _NEUTRAL_HOME = "/nonexistent/ipfs-accelerate-validation"
 _NPM_DISABLED_USER_CONFIG = "/dev/null/npmrc"
 HERMETIC_VALIDATION_RUNTIME_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/hermetic-validation-runtime@1"
 )
-VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/validation-environment-contract@1"
-)
-FORMAL_TOOLCHAIN_DEPLOYMENT_MANIFEST_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "formal-toolchain-deployment-manifest@1"
-)
 _RUNTIME_ID_ENV = "IPFS_ACCELERATE_VALIDATION_RUNTIME_ID"
 _CANCELLATION_ID_ENV = "IPFS_ACCELERATE_VALIDATION_CANCELLATION_ID"
 _VALIDATION_PYTHON_LAUNCHER_POLICY_BASE = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "nested-validation-python-launcher@1;"
+    "nested-validation-python-launcher@2;"
     "seals=write,grow,shrink,seal;"
     "shell-startup=privileged-no-bash-env;"
     "user-site=interpreter-s-flag;"
-    "pythonpath=task-local-then-approved"
+    "pythonpath=task-local-then-approved;"
+    "ruff=active-distribution-content-stat-sealed-memfd-exact-module"
 )
 _SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE = (
     "__ipfs_accelerate_sealed_validation_python__"
 )
-_FORMAL_TOOL_COMMAND_RE = re.compile(
-    r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}"
+_LANDLOCK_CREATE_RULESET_VERSION = 1
+_LANDLOCK_RULE_PATH_BENEATH = 1
+_LANDLOCK_MINIMUM_ABI = 3
+_LANDLOCK_SYSCALL_CREATE_RULESET = 444
+_LANDLOCK_SYSCALL_ADD_RULE = 445
+_LANDLOCK_SYSCALL_RESTRICT_SELF = 446
+_LANDLOCK_WRITE_ACCESS = (
+    (1 << 1)  # WRITE_FILE
+    | (1 << 4)  # REMOVE_DIR
+    | (1 << 5)  # REMOVE_FILE
+    | (1 << 6)  # MAKE_CHAR
+    | (1 << 7)  # MAKE_DIR
+    | (1 << 8)  # MAKE_REG
+    | (1 << 9)  # MAKE_SOCK
+    | (1 << 10)  # MAKE_FIFO
+    | (1 << 11)  # MAKE_BLOCK
+    | (1 << 12)  # MAKE_SYM
+    | (1 << 13)  # REFER (ABI 2)
+    | (1 << 14)  # TRUNCATE (ABI 3)
 )
-_PYTHON_MODULE_RE = re.compile(
-    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*"
+VALIDATION_LANDLOCK_FAILURE_MARKER = (
+    "ipfs-accelerate-validation-landlock-error:"
 )
-_MAX_FORMAL_TOOL_COMMANDS = 64
-_MAX_VALIDATION_PYTHON_MODULES = 64
-_MAX_VALIDATION_PYTHON_PROBE_OUTPUT_BYTES = 64 * 1024
-_VALIDATION_PYTHON_PROBE_MARKER = (
-    "__IPFS_ACCELERATE_VALIDATION_PYTHON_MODULE_PROBE__="
-)
-DEFAULT_VALIDATION_PYTHON_MODULES = ("pytest",)
-VALIDATION_PYTHON_MODULE_PREFLIGHT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "validation-python-module-preflight@1"
+LANDLOCK_APPLIED_ACK_FD_ENV = (
+    "IPFS_ACCELERATE_AGENT_LANDLOCK_APPLIED_ACK_FD"
 )
 
 # These values affect deterministic/offline validation without carrying the
@@ -166,6 +205,71 @@ class ValidationPythonLauncherReceipt:
     mode: str
     policy_sha256: str
     sealed: bool
+
+
+@dataclass(frozen=True)
+class ValidationFilesystemBoundaryReceipt:
+    """Body-free evidence for the state-root write boundary."""
+
+    landlock_abi: int
+    policy_sha256: str
+
+    def to_dict(self, *, applied: bool = True) -> dict[str, object]:
+        return {
+            "schema": VALIDATION_FILESYSTEM_BOUNDARY_SCHEMA,
+            "mode": "landlock-read-only-host-v1",
+            "landlock_abi": self.landlock_abi,
+            "policy_sha256": self.policy_sha256,
+            "applied": bool(applied),
+            "proof_reuse_control_state_read_only": bool(applied),
+            "proof_reuse_state_write_exception": (
+                "exact-workspace-private-home-and-std-devices"
+            ),
+            "protected_hardlink_aliases_checked": True,
+            "workspace_writable": True,
+            "private_home_writable": True,
+            "standard_device_nodes_writable": True,
+            "proof_authoritative": False,
+            "completion_authority": False,
+        }
+
+
+@dataclass(frozen=True)
+class ProviderFilesystemBoundaryReceipt:
+    """Body-free evidence for one autonomous provider write boundary."""
+
+    landlock_abi: int
+    policy_sha256: str
+    checkpoint_writable: bool
+    provider_profile_count: int
+
+    def to_dict(
+        self,
+        *,
+        task_id: str,
+        attempt: int,
+        stage: str,
+        applied: bool = True,
+    ) -> dict[str, object]:
+        return {
+            "schema": PROVIDER_FILESYSTEM_BOUNDARY_SCHEMA,
+            "mode": "landlock-provider-write-fence-v1",
+            "task_id": str(task_id),
+            "attempt": int(attempt),
+            "stage": str(stage),
+            "landlock_abi": self.landlock_abi,
+            "policy_sha256": self.policy_sha256,
+            "applied": bool(applied),
+            "provider_descendants_fenced": bool(applied),
+            "proof_reuse_authority_content_and_names_read_only": bool(applied),
+            "task_checkpoint_writable": self.checkpoint_writable,
+            "provider_private_home_writable": True,
+            "provider_profile_count": self.provider_profile_count,
+            "shared_git_metadata_writable": False,
+            "protected_hardlink_aliases_checked": True,
+            "proof_authoritative": False,
+            "completion_authority": False,
+        }
 
 
 class ValidationNetworkMode(str, Enum):
@@ -571,6 +675,91 @@ def validation_executable_path(
     return os.pathsep.join(entries)
 
 
+_SEALED_NODE_RELATIVE = (
+    "data/agent_supervisor/verified_gui_optimizer/"
+    "toolchain/node_modules/.bin/node"
+)
+_SEALED_NODE_VERSION = "v22.19.0"
+_NODE_COMMAND_RE = re.compile(r"(?<![A-Za-z0-9_/-])node(?![A-Za-z0-9_-])")
+
+
+def resolve_sealed_node_executable(start: Path | str | None) -> Path | None:
+    """Locate the digest/version-checked VGO Node 22 runtime.
+
+    Official validation PATH cannot include the operator-writable toolchain
+    directory.  Browser tasks still require that exact Node.  Walk from the
+    workspace toward the supervisor state root and accept only ``v22.19.0``.
+    """
+
+    if start is None:
+        return None
+    here = Path(start)
+    try:
+        here = here.resolve()
+    except OSError:
+        return None
+    for _ in range(14):
+        for candidate in (
+            here / _SEALED_NODE_RELATIVE,
+            here / "toolchain/node_modules/.bin/node",
+        ):
+            if _usable_sealed_node(candidate):
+                try:
+                    return candidate.resolve()
+                except OSError:
+                    return None
+        parent = here.parent
+        if parent == here:
+            break
+        here = parent
+    return None
+
+
+def _usable_sealed_node(path: Path) -> bool:
+    try:
+        if not path.is_file() or not os.access(path, os.X_OK):
+            return False
+    except OSError:
+        return False
+    try:
+        completed = subprocess.run(
+            [str(path), "--version"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    version = (completed.stdout or completed.stderr or "").strip().splitlines()
+    return bool(version) and version[0].strip() == _SEALED_NODE_VERSION
+
+
+def apply_sealed_node_toolchain(
+    environment: Mapping[str, str],
+    *,
+    workspace_path: Path | str,
+    command: str,
+) -> dict[str, str]:
+    """Prepend the sealed Node 22 bin when the command invokes ``node``."""
+
+    env = dict(environment)
+    if not _NODE_COMMAND_RE.search(str(command or "")):
+        return env
+    sealed = resolve_sealed_node_executable(workspace_path)
+    if sealed is None:
+        return env
+    bin_dir = str(sealed.parent)
+    current = str(env.get("PATH") or "")
+    entries = [item for item in current.split(os.pathsep) if item]
+    if bin_dir in entries:
+        entries = [bin_dir, *[item for item in entries if item != bin_dir]]
+    else:
+        entries = [bin_dir, *entries]
+    env["PATH"] = os.pathsep.join(entries)
+    return env
+
+
 def _formal_toolchain_required_commands(
     source: Mapping[str, object],
 ) -> tuple[str, ...]:
@@ -888,6 +1077,682 @@ def _approved_directory(
     return str(resolved)
 
 
+def validation_landlock_abi() -> int:
+    """Return the host Landlock ABI, or fail before untrusted execution."""
+
+    if not sys.platform.startswith("linux"):
+        raise ValidationRuntimeError(
+            "proof-reuse state validation requires Linux Landlock"
+        )
+    try:
+        import ctypes
+
+        libc = ctypes.CDLL(None, use_errno=True)
+        ctypes.set_errno(0)
+        abi = int(
+            libc.syscall(
+                _LANDLOCK_SYSCALL_CREATE_RULESET,
+                None,
+                0,
+                _LANDLOCK_CREATE_RULESET_VERSION,
+            )
+        )
+        error_number = ctypes.get_errno()
+    except (AttributeError, ImportError, OSError, TypeError, ValueError) as exc:
+        raise ValidationRuntimeError(
+            "proof-reuse state validation Landlock probe failed"
+        ) from exc
+    if abi < _LANDLOCK_MINIMUM_ABI:
+        detail = f"abi={abi}" if abi >= 0 else f"errno={error_number}"
+        raise ValidationRuntimeError(
+            "proof-reuse state validation requires Landlock ABI 3 or newer "
+            f"({detail})"
+        )
+    return abi
+
+
+def _validation_standard_device_write_paths() -> tuple[str, ...]:
+    """Return host device nodes that must stay writable under the fence.
+
+    Pytest, cargo, and many hermetic runners open ``/dev/null`` (and similar
+    sinks) for logging.  Denying those nodes breaks ordinary validation even
+    though they cannot forge proof-state evidence.
+    """
+
+    allowed: list[str] = []
+    for candidate in ("/dev/null", "/dev/full", "/dev/zero"):
+        path = Path(candidate)
+        try:
+            if path.is_symlink():
+                continue
+            details = path.lstat()
+            if not stat.S_ISCHR(details.st_mode):
+                continue
+            resolved = path.resolve(strict=True)
+        except OSError:
+            continue
+        allowed.append(str(resolved))
+    return tuple(allowed)
+
+
+def _validation_landlock_launcher_source() -> str:
+    """Render the isolated interpreter source that applies the write fence."""
+
+    return """\
+import ctypes
+import json
+import os
+import stat as stat_module
+import sys
+
+CREATE_RULESET = 444
+ADD_RULE = 445
+RESTRICT_SELF = 446
+CREATE_RULESET_VERSION = 1
+RULE_PATH_BENEATH = 1
+PR_SET_NO_NEW_PRIVS = 38
+MINIMUM_ABI = 3
+WRITE_ACCESS = ((1 << 1) | (1 << 4) | (1 << 5) | (1 << 6) |
+                (1 << 7) | (1 << 8) | (1 << 9) | (1 << 10) |
+                (1 << 11) | (1 << 12) | (1 << 13) | (1 << 14))
+# Character devices (e.g. /dev/null) only accept file-write bits under
+# PATH_BENEATH; MAKE_*/REMOVE_* bits return EINVAL.
+DEVICE_WRITE_ACCESS = (1 << 1) | (1 << 14)  # WRITE_FILE | TRUNCATE
+FAILURE_MARKER = "ipfs-accelerate-validation-landlock-error:"
+
+class RulesetAttr(ctypes.Structure):
+    _fields_ = [("handled_access_fs", ctypes.c_uint64)]
+
+class PathBeneathAttr(ctypes.Structure):
+    _fields_ = [
+        ("allowed_access", ctypes.c_uint64),
+        ("parent_fd", ctypes.c_int32),
+    ]
+
+def checked(value):
+    if int(value) < 0:
+        number = ctypes.get_errno()
+        raise OSError(number, os.strerror(number))
+    return int(value)
+
+def inventory_walk_error(error):
+    raise error
+
+try:
+    payload = json.loads(sys.argv[1])
+    if not isinstance(payload, dict) or set(payload) - {
+        "writable_paths",
+        "expected_path_identities",
+        "hardlink_guard",
+    }:
+        raise ValueError("invalid policy keys")
+    writable_paths = payload["writable_paths"]
+    if (
+        not isinstance(writable_paths, list)
+        or len(writable_paths) < 2
+        or len(writable_paths) > 16
+    ):
+        raise ValueError("invalid writable path population")
+    expected_identities = payload.get("expected_path_identities", [])
+    if not isinstance(expected_identities, list) or len(expected_identities) > 16:
+        raise ValueError("invalid expected path identities")
+    for expected in expected_identities:
+        if not isinstance(expected, list) or len(expected) != 3:
+            raise ValueError("invalid expected path identity")
+        raw_path, raw_dev, raw_ino = expected
+        if not isinstance(raw_path, str) or not os.path.isabs(raw_path):
+            raise ValueError("invalid identity path")
+        identity = os.lstat(raw_path)
+        if (int(identity.st_dev), int(identity.st_ino)) != (raw_dev, raw_ino):
+            raise RuntimeError("writable path identity changed")
+    hardlink_guard = payload.get("hardlink_guard")
+    if hardlink_guard is not None:
+        if not isinstance(hardlink_guard, dict) or set(hardlink_guard) != {
+            "excluded_protected_roots",
+            "protected_roots",
+            "writable_roots",
+        }:
+            raise ValueError("invalid hardlink guard")
+        writable_roots = hardlink_guard["writable_roots"]
+        protected_roots = hardlink_guard["protected_roots"]
+        excluded_roots = set(hardlink_guard["excluded_protected_roots"])
+        if (
+            not isinstance(writable_roots, list)
+            or not isinstance(protected_roots, list)
+            or len(writable_roots) > 16
+            or len(protected_roots) > 16
+            or any(not isinstance(item, str) or not os.path.isabs(item) for item in writable_roots)
+            or any(not isinstance(item, str) or not os.path.isabs(item) for item in protected_roots)
+            or any(not isinstance(item, str) or not os.path.isabs(item) for item in excluded_roots)
+        ):
+            raise ValueError("invalid hardlink guard roots")
+        candidate_inodes = set()
+        visited = 0
+        for writable_root in writable_roots:
+            for directory, directory_names, file_names in os.walk(
+                writable_root,
+                topdown=True,
+                onerror=inventory_walk_error,
+                followlinks=False,
+            ):
+                directory_names[:] = [
+                    name
+                    for name in directory_names
+                    if not os.path.islink(os.path.join(directory, name))
+                ]
+                for name in file_names:
+                    visited += 1
+                    if visited > 1000000:
+                        raise RuntimeError("hardlink inventory bound exceeded")
+                    identity = os.lstat(os.path.join(directory, name))
+                    if stat_module.S_ISREG(identity.st_mode) and identity.st_nlink > 1:
+                        candidate_inodes.add((int(identity.st_dev), int(identity.st_ino)))
+        if candidate_inodes:
+            for protected_root in protected_roots:
+                for directory, directory_names, file_names in os.walk(
+                    protected_root,
+                    topdown=True,
+                    onerror=inventory_walk_error,
+                    followlinks=False,
+                ):
+                    if directory == protected_root:
+                        directory_names[:] = [
+                            name for name in directory_names if name != "worktrees"
+                        ]
+                    retained = []
+                    for name in directory_names:
+                        child = os.path.join(directory, name)
+                        if os.path.islink(child) or child in excluded_roots:
+                            continue
+                        retained.append(name)
+                    directory_names[:] = retained
+                    for name in file_names:
+                        visited += 1
+                        if visited > 2000000:
+                            raise RuntimeError("protected inventory bound exceeded")
+                        identity = os.lstat(os.path.join(directory, name))
+                        if (
+                            stat_module.S_ISREG(identity.st_mode)
+                            and (int(identity.st_dev), int(identity.st_ino)) in candidate_inodes
+                        ):
+                            raise RuntimeError("writable hardlink aliases protected state")
+    command = sys.argv[2:]
+    if not command:
+        raise ValueError("validation command is missing")
+    libc = ctypes.CDLL(None, use_errno=True)
+    abi = checked(libc.syscall(CREATE_RULESET, None, 0, CREATE_RULESET_VERSION))
+    if abi < MINIMUM_ABI:
+        raise RuntimeError("Landlock ABI is too old")
+    ruleset_attr = RulesetAttr(WRITE_ACCESS)
+    ruleset_fd = checked(
+        libc.syscall(
+            CREATE_RULESET,
+            ctypes.byref(ruleset_attr),
+            ctypes.sizeof(ruleset_attr),
+            0,
+        )
+    )
+    try:
+        for raw_path in writable_paths:
+            if not isinstance(raw_path, str) or not os.path.isabs(raw_path):
+                raise ValueError("writable path is not absolute")
+            if os.path.realpath(raw_path) != raw_path:
+                raise ValueError("writable path is not canonical")
+            identity = os.lstat(raw_path)
+            open_flags = os.O_PATH | os.O_CLOEXEC | os.O_NOFOLLOW
+            allowed_access = WRITE_ACCESS
+            if stat_module.S_ISDIR(identity.st_mode):
+                open_flags |= os.O_DIRECTORY
+            elif stat_module.S_ISCHR(identity.st_mode):
+                allowed_access = DEVICE_WRITE_ACCESS
+            elif not stat_module.S_ISREG(identity.st_mode):
+                raise ValueError("writable path has unsupported file type")
+            path_fd = os.open(raw_path, open_flags)
+            try:
+                path_attr = PathBeneathAttr(allowed_access, path_fd)
+                checked(
+                    libc.syscall(
+                        ADD_RULE,
+                        ruleset_fd,
+                        RULE_PATH_BENEATH,
+                        ctypes.byref(path_attr),
+                        0,
+                    )
+                )
+            finally:
+                os.close(path_fd)
+        for executable_variable in (
+            "PYTHON",
+            "IPFS_ACCELERATE_VALIDATION_RUFF_EXECUTABLE",
+        ):
+            raw_executable = os.environ.get(executable_variable, "")
+            if raw_executable.startswith("/proc/"):
+                executable_fd = os.open(raw_executable, os.O_RDONLY)
+                os.set_inheritable(executable_fd, True)
+                os.environ[executable_variable] = (
+                    "/proc/" + str(os.getpid()) + "/fd/" + str(executable_fd)
+                )
+        checked(libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0))
+        checked(libc.syscall(RESTRICT_SELF, ruleset_fd, 0))
+    finally:
+        os.close(ruleset_fd)
+    raw_ack_fd = os.environ.pop(
+        "IPFS_ACCELERATE_AGENT_LANDLOCK_APPLIED_ACK_FD", ""
+    ).strip()
+    if raw_ack_fd:
+        ack_fd = int(raw_ack_fd)
+        if ack_fd < 3:
+            raise ValueError("invalid Landlock acknowledgement descriptor")
+        os.write(ack_fd, b"landlock-applied-v1\\n")
+        os.close(ack_fd)
+    os.execvpe(command[0], command, os.environ)
+except BaseException as exc:
+    message = (FAILURE_MARKER + type(exc).__name__ + "\\n").encode(
+        "ascii", errors="replace"
+    )
+    os.write(2, message[:256])
+    os._exit(75)
+"""
+
+
+def _reviewed_proof_state_roots(state_root: Path) -> tuple[Path, ...]:
+    """Return the current root and versioned siblings sharing its profile."""
+
+    match = re.fullmatch(r"(?P<prefix>.+)-v\d+", state_root.name)
+    if match is None:
+        return (state_root,)
+    prefix = str(match.group("prefix"))
+    roots = [state_root]
+    try:
+        siblings = tuple(state_root.parent.iterdir())
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "proof-reuse state-root siblings are unavailable"
+        ) from exc
+    for sibling in siblings:
+        if sibling == state_root or sibling.is_symlink():
+            continue
+        if re.fullmatch(rf"{re.escape(prefix)}-v\d+", sibling.name) is None:
+            continue
+        try:
+            resolved = sibling.resolve(strict=True)
+        except OSError as exc:
+            raise ValidationRuntimeError(
+                "reviewed proof-reuse state root is unavailable"
+            ) from exc
+        if not resolved.is_dir():
+            raise ValidationRuntimeError(
+                "reviewed proof-reuse state root is not a directory"
+            )
+        roots.append(resolved)
+    return tuple(sorted(set(roots), key=str))
+
+
+def _workspace_multilink_inodes(workspace: Path) -> set[tuple[int, int]]:
+    """Collect regular-file identities that have aliases outside one name."""
+
+    identities: set[tuple[int, int]] = set()
+
+    def reject_walk_error(error: OSError) -> None:
+        raise error
+
+    try:
+        for directory, directory_names, file_names in os.walk(
+            workspace,
+            topdown=True,
+            onerror=reject_walk_error,
+            followlinks=False,
+        ):
+            directory_path = Path(directory)
+            directory_names[:] = [
+                name
+                for name in directory_names
+                if not (directory_path / name).is_symlink()
+            ]
+            for name in file_names:
+                candidate = directory_path / name
+                identity = candidate.lstat()
+                if stat.S_ISREG(identity.st_mode) and identity.st_nlink > 1:
+                    identities.add((int(identity.st_dev), int(identity.st_ino)))
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "validation workspace hardlink inventory is unavailable"
+        ) from exc
+    return identities
+
+
+def _reject_protected_state_hardlink_aliases(
+    *,
+    state_root: Path,
+    workspace: Path,
+    additional_writable_paths: Sequence[Path] = (),
+    protected_scan_exclusions: Sequence[Path] = (),
+) -> None:
+    """Reject any writable name aliasing protected proof-control evidence."""
+
+    writable_paths = tuple(
+        dict.fromkeys((workspace, *additional_writable_paths))
+    )
+    candidate_inodes: set[tuple[int, int]] = set()
+    for writable_path in writable_paths:
+        candidate_inodes.update(_workspace_multilink_inodes(writable_path))
+    if not candidate_inodes:
+        return
+    excluded_paths = tuple(
+        dict.fromkeys((workspace, *protected_scan_exclusions))
+    )
+
+    def reject_walk_error(error: OSError) -> None:
+        raise error
+
+    for reviewed_root in _reviewed_proof_state_roots(state_root):
+        try:
+            for directory, directory_names, file_names in os.walk(
+                reviewed_root,
+                topdown=True,
+                onerror=reject_walk_error,
+                followlinks=False,
+            ):
+                directory_path = Path(directory)
+                if directory_path == reviewed_root:
+                    # Other task worktrees are mutable implementation scratch,
+                    # not receipt/control authority.  They may legitimately
+                    # share compiler artifacts with this task.
+                    directory_names[:] = [
+                        name for name in directory_names if name != "worktrees"
+                    ]
+                retained_directories: list[str] = []
+                for name in directory_names:
+                    child = directory_path / name
+                    if child.is_symlink():
+                        continue
+                    if child in excluded_paths:
+                        # Never compare an explicitly non-authoritative
+                        # writable subtree to itself.  Ancestors are retained
+                        # until this exact path is reached so neighboring
+                        # control state remains in the protected inventory.
+                        continue
+                    retained_directories.append(name)
+                directory_names[:] = retained_directories
+                for name in file_names:
+                    candidate = directory_path / name
+                    identity = candidate.lstat()
+                    if not stat.S_ISREG(identity.st_mode):
+                        continue
+                    if (
+                        int(identity.st_dev),
+                        int(identity.st_ino),
+                    ) in candidate_inodes:
+                        raise ValidationRuntimeError(
+                            "writable provider or validation state aliases protected "
+                            "proof-reuse state through a hardlink"
+                        )
+        except ValidationRuntimeError:
+            raise
+        except OSError as exc:
+            raise ValidationRuntimeError(
+                "protected proof-reuse state hardlink inventory is unavailable"
+            ) from exc
+
+
+def validation_readonly_state_command(
+    command: Sequence[str],
+    *,
+    workspace_path: Path | str,
+    private_home_path: Path | str,
+    environment: Mapping[str, str],
+) -> tuple[list[str], ValidationFilesystemBoundaryReceipt | None]:
+    """Fence an exposed proof-state root against validation-process writes.
+
+    The validation worktree and its fresh private home remain writable.  Every
+    other filesystem object, including the current and reviewed historical
+    proof-state roots, is readable but cannot be created, removed, renamed, or
+    truncated by the command or any descendant.  Landlock is inherited across
+    ``exec`` and cannot be relaxed by the restricted process.
+    """
+
+    argv = [str(value) for value in command]
+    if not argv:
+        raise ValidationRuntimeError("validation command must not be empty")
+    state_root_text = str(
+        environment.get(PROOF_REUSE_STATE_ROOT_ENV) or ""
+    ).strip()
+    if not state_root_text:
+        return argv, None
+    state_root = Path(state_root_text).resolve(strict=True)
+    workspace = Path(workspace_path).resolve(strict=True)
+    private_home = Path(private_home_path).resolve(strict=True)
+    if not state_root.is_dir():
+        raise ValidationRuntimeError(
+            "proof-reuse state root is not a directory"
+        )
+    for writable in (workspace, private_home):
+        try:
+            state_root.relative_to(writable)
+        except ValueError:
+            pass
+        else:
+            raise ValidationRuntimeError(
+                "proof-reuse state root overlaps a writable validation path"
+            )
+    _reject_protected_state_hardlink_aliases(
+        state_root=state_root,
+        workspace=workspace,
+    )
+    abi = validation_landlock_abi()
+    source = _validation_landlock_launcher_source()
+    executable = validation_python_executable(
+        {VALIDATION_PYTHON_ENV: environment.get(_CHILD_PYTHON_ENV, "")}
+    )
+    writable_paths = [str(workspace), str(private_home)]
+    writable_paths.extend(_validation_standard_device_write_paths())
+    policy = json.dumps(
+        {
+            "writable_paths": writable_paths,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    receipt = ValidationFilesystemBoundaryReceipt(
+        landlock_abi=abi,
+        policy_sha256=hashlib.sha256(source.encode("utf-8")).hexdigest(),
+    )
+    return [executable, "-I", "-c", source, policy, *argv], receipt
+
+
+def provider_readonly_state_command(
+    command: Sequence[str],
+    *,
+    state_root_path: Path | str,
+    workspace_path: Path | str,
+    private_home_path: Path | str,
+    checkpoint_path: Path | str | None,
+    provider_profile_paths: Sequence[Path | str],
+    environment: Mapping[str, str],
+) -> tuple[list[str], ProviderFilesystemBoundaryReceipt]:
+    """Fence one autonomous provider child from proof-authority writes.
+
+    The exact worktree, fresh private home, canonical provider profile roots,
+    and (when present) the task's non-authoritative checkpoint directory stay
+    writable.  Shared Git metadata and every current/historical proof-control
+    path remain read-only.  The returned launcher is inherited by every tool
+    process spawned by the provider.
+    """
+
+    argv = [str(value) for value in command]
+    if not argv:
+        raise ValidationRuntimeError("provider command must not be empty")
+    state_root = Path(state_root_path).resolve(strict=True)
+    workspace = Path(workspace_path).resolve(strict=True)
+    private_home = Path(private_home_path).resolve(strict=True)
+    if not state_root.is_dir():
+        raise ValidationRuntimeError(
+            "proof-reuse state root is not a directory"
+        )
+    if not workspace.is_dir() or not private_home.is_dir():
+        raise ValidationRuntimeError(
+            "provider workspace and private home must be directories"
+        )
+
+    checkpoint: Path | None = None
+    if checkpoint_path is not None and str(checkpoint_path).strip():
+        checkpoint = Path(checkpoint_path).resolve(strict=True)
+        if not checkpoint.is_dir():
+            raise ValidationRuntimeError(
+                "provider checkpoint path is not a directory"
+            )
+        try:
+            checkpoint_relative = checkpoint.relative_to(state_root)
+        except ValueError as exc:
+            raise ValidationRuntimeError(
+                "provider checkpoint path is outside the current state root"
+            ) from exc
+        if (
+            len(checkpoint_relative.parts) != 4
+            or checkpoint_relative.parts[0] != "state"
+            or checkpoint_relative.parts[2] != "implementation_checkpoints"
+            or not checkpoint_relative.parts[1].startswith("ptr_lane_")
+            or not checkpoint_relative.parts[3]
+        ):
+            raise ValidationRuntimeError(
+                "provider checkpoint path is not task checkpoint scratch"
+            )
+
+    profiles: list[Path] = []
+    for raw_path in provider_profile_paths:
+        text = str(raw_path).strip()
+        if not text:
+            continue
+        profile = Path(text).resolve(strict=True)
+        if not profile.is_dir():
+            raise ValidationRuntimeError(
+                "provider profile path is not a directory"
+            )
+        profiles.append(profile)
+    profiles = list(dict.fromkeys(profiles))
+
+    protected_roots = _reviewed_proof_state_roots(state_root)
+    for protected_root in protected_roots:
+        try:
+            workspace_relative = workspace.relative_to(protected_root)
+        except ValueError:
+            continue
+        if (
+            protected_root != state_root
+            or len(workspace_relative.parts) != 3
+            or workspace_relative.parts[0] != "worktrees"
+            or re.fullmatch(r"ptr_lane_\d+", workspace_relative.parts[1])
+            is None
+            or not workspace_relative.parts[2]
+        ):
+            raise ValidationRuntimeError(
+                "provider workspace is not an exact current-lane worktree"
+            )
+    for writable in (private_home, *profiles):
+        for protected_root in protected_roots:
+            try:
+                writable.relative_to(protected_root)
+            except ValueError:
+                pass
+            else:
+                raise ValidationRuntimeError(
+                    "provider private/profile path overlaps proof state"
+                )
+            try:
+                protected_root.relative_to(writable)
+            except ValueError:
+                pass
+            else:
+                raise ValidationRuntimeError(
+                    "provider writable path contains proof state"
+                )
+    for writable in (workspace, checkpoint):
+        if writable is None:
+            continue
+        try:
+            state_root.relative_to(writable)
+        except ValueError:
+            pass
+        else:
+            raise ValidationRuntimeError(
+                "provider writable path contains proof state"
+            )
+
+    additional_hardlink_surfaces = [private_home, *profiles]
+    protected_scan_exclusions: list[Path] = []
+    if checkpoint is not None:
+        additional_hardlink_surfaces.append(checkpoint)
+        protected_scan_exclusions.append(checkpoint)
+    _reject_protected_state_hardlink_aliases(
+        state_root=state_root,
+        workspace=workspace,
+        additional_writable_paths=tuple(additional_hardlink_surfaces),
+        protected_scan_exclusions=tuple(protected_scan_exclusions),
+    )
+
+    source = _validation_landlock_launcher_source()
+    writable_paths = [str(workspace), str(private_home)]
+    if checkpoint is not None:
+        writable_paths.append(str(checkpoint))
+    writable_paths.extend(str(path) for path in profiles)
+    null_devices = tuple(
+        path
+        for path in _validation_standard_device_write_paths()
+        if path == "/dev/null"
+    )
+    writable_paths.extend(null_devices)
+    writable_paths = list(dict.fromkeys(writable_paths))
+    if len(writable_paths) > 8:
+        raise ValidationRuntimeError(
+            "provider filesystem boundary has too many writable paths"
+        )
+    writable_directories = [workspace, private_home]
+    if checkpoint is not None:
+        writable_directories.append(checkpoint)
+    writable_directories.extend(profiles)
+    excluded_protected_roots = []
+    for candidate in (workspace, checkpoint):
+        if candidate is None:
+            continue
+        if any(
+            candidate == protected_root
+            or protected_root in candidate.parents
+            for protected_root in protected_roots
+        ):
+            excluded_protected_roots.append(str(candidate))
+    expected_path_identities: list[list[object]] = []
+    for raw_path in writable_paths:
+        identity = Path(raw_path).lstat()
+        expected_path_identities.append(
+            [raw_path, int(identity.st_dev), int(identity.st_ino)]
+        )
+    policy = json.dumps(
+        {
+            "expected_path_identities": expected_path_identities,
+            "hardlink_guard": {
+                "excluded_protected_roots": excluded_protected_roots,
+                "protected_roots": [str(path) for path in protected_roots],
+                "writable_roots": [str(path) for path in writable_directories],
+            },
+            "writable_paths": writable_paths,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    executable = validation_python_executable(
+        {VALIDATION_PYTHON_ENV: environment.get(_CHILD_PYTHON_ENV, "")}
+    )
+    receipt = ProviderFilesystemBoundaryReceipt(
+        landlock_abi=validation_landlock_abi(),
+        policy_sha256=hashlib.sha256(
+            source.encode("utf-8") + b"\0" + policy.encode("utf-8")
+        ).hexdigest(),
+        checkpoint_writable=checkpoint is not None,
+        provider_profile_count=len(profiles),
+    )
+    return [executable, "-I", "-c", source, policy, *argv], receipt
+
+
 def _validation_python_launcher_mode(*, sealed: bool = False) -> str:
     delivery = "sealed-memfd" if sealed else "canonical-direct"
     return f"{sys.platform}:{delivery}"
@@ -919,6 +1784,83 @@ def _validation_python_interpreter_identity(
         }
     )
     return str(identity["sha256"]), stat_identity
+
+
+def _active_ruff_executable_snapshot(
+    *, approved_pythonpath: str
+) -> tuple[bytes, str, str] | None:
+    """Read the approved active Ruff distribution binary with stable identity."""
+
+    try:
+        approved_roots = {
+            Path(entry).resolve(strict=True)
+            for entry in approved_pythonpath.split(os.pathsep)
+            if entry
+        }
+        distribution = importlib_metadata.distribution("ruff")
+        if Path(distribution.locate_file("")).resolve(
+            strict=True
+        ) not in approved_roots:
+            return None
+        executable_name = "ruff.exe" if os.name == "nt" else "ruff"
+        candidates = {
+            Path(distribution.locate_file(entry)).resolve(strict=True)
+            for entry in distribution.files or ()
+            if Path(str(entry)).name == executable_name
+        }
+    except importlib_metadata.PackageNotFoundError:
+        return None
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "active Ruff distribution is unavailable"
+        ) from exc
+    if not candidates:
+        return None
+    if len(candidates) != 1:
+        raise ValidationRuntimeError(
+            "active Ruff distribution has ambiguous executable entries"
+        )
+    executable = candidates.pop()
+    try:
+        before = executable.stat()
+        if not stat.S_ISREG(before.st_mode) or not (
+            stat.S_IMODE(before.st_mode) & 0o111
+        ):
+            raise ValidationRuntimeError(
+                "active Ruff executable is not a regular executable"
+            )
+        content = executable.read_bytes()
+        after = executable.stat()
+
+        def stat_payload(value: os.stat_result) -> str:
+            return _canonical_json(
+                {
+                    "path": str(executable),
+                    "device": int(value.st_dev),
+                    "inode": int(value.st_ino),
+                    "size": int(value.st_size),
+                    "mode": stat.S_IMODE(value.st_mode),
+                    "mtime_ns": int(value.st_mtime_ns),
+                    "ctime_ns": int(value.st_ctime_ns),
+                }
+            )
+        before_identity = stat_payload(before)
+        after_identity = stat_payload(after)
+        if before_identity != after_identity:
+            raise ValidationRuntimeError(
+                "active Ruff executable changed while being read"
+            )
+        if len(content) != int(after.st_size):
+            raise ValidationRuntimeError(
+                "active Ruff executable read was incomplete"
+            )
+        return content, hashlib.sha256(content).hexdigest(), after_identity
+    except ValidationRuntimeError:
+        raise
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "active Ruff executable cannot be read"
+        ) from exc
 
 
 def sealed_validation_python_runner(runner: Any) -> Any:
@@ -959,6 +1901,27 @@ def validation_environment_for_runner(
         raise ValidationRuntimeError(
             "validation environment is missing its canonical Python"
         )
+    for variable in (
+        VALIDATION_RUFF_EXECUTABLE_MODE_ENV,
+        VALIDATION_RUFF_EXECUTABLE_SHA256_ENV,
+        VALIDATION_RUFF_EXECUTABLE_STAT_ENV,
+        VALIDATION_RUFF_EXECUTABLE_ENV,
+    ):
+        result.pop(variable, None)
+    ruff_snapshot = _active_ruff_executable_snapshot(
+        approved_pythonpath=str(result.get("PYTHONPATH") or "")
+    )
+    if ruff_snapshot is None:
+        result[VALIDATION_RUFF_EXECUTABLE_MODE_ENV] = "unavailable"
+    else:
+        _ruff_content, ruff_sha256, ruff_stat = ruff_snapshot
+        result.update(
+            {
+                VALIDATION_RUFF_EXECUTABLE_MODE_ENV: "sealed-memfd",
+                VALIDATION_RUFF_EXECUTABLE_SHA256_ENV: ruff_sha256,
+                VALIDATION_RUFF_EXECUTABLE_STAT_ENV: ruff_stat,
+            }
+        )
     mode = _validation_python_launcher_mode(sealed=True)
     result.update(
         {
@@ -970,6 +1933,9 @@ def validation_environment_for_runner(
                 _validation_python_launcher_source(
                     executable=executable,
                     approved_pythonpath=result.get("PYTHONPATH", ""),
+                    ruff_sha256=(
+                        ruff_snapshot[1] if ruff_snapshot is not None else ""
+                    ),
                 )
             ).hexdigest(),
         }
@@ -984,7 +1950,6 @@ def build_validation_environment(
 
     source = os.environ if environment is None else environment
     python_executable = validation_python_executable(source)
-    formal_toolchain = formal_toolchain_deployment_manifest(source)
     result = {
         key: str(source[key])
         for key in sorted(VALIDATION_ENVIRONMENT_ALLOWLIST)
@@ -1005,9 +1970,7 @@ def build_validation_environment(
             # to remain unavailable, so neither scope can import host settings.
             "NPM_CONFIG_USERCONFIG": _NPM_DISABLED_USER_CONFIG,
             "PAGER": "cat",
-            "PATH": os.pathsep.join(
-                str(item) for item in formal_toolchain["path_entries"]
-            ),
+            "PATH": validation_executable_path(source),
             "PIP_CONFIG_FILE": "/dev/null",
             "PIP_DISABLE_PIP_VERSION_CHECK": "1",
             "PIP_NO_INPUT": "1",
@@ -1028,18 +1991,28 @@ def build_validation_environment(
     npm_cache = _approved_directory(source, VALIDATION_NPM_CACHE_ENV)
     if npm_cache is not None:
         result["NPM_CONFIG_CACHE"] = npm_cache
+    cargo_home = _approved_directory(source, VALIDATION_CARGO_HOME_ENV)
+    if cargo_home is not None:
+        # Private validation HOME cannot see the supervisor cargo registry.
+        # Bind the pre-populated host cache read-only and stay offline so
+        # validation never mutates or redownloads crates.io content.
+        result["CARGO_HOME"] = cargo_home
+        result.setdefault("CARGO_NET_OFFLINE", "true")
+    rustup_home = _approved_directory(source, VALIDATION_RUSTUP_HOME_ENV)
+    if rustup_home is not None:
+        result["RUSTUP_HOME"] = rustup_home
     playwright_browsers = _approved_directory(
         source,
         VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
     )
     if playwright_browsers is not None:
         result["PLAYWRIGHT_BROWSERS_PATH"] = playwright_browsers
-    supervisor_state_root = _approved_directory(
+    proof_reuse_state_root = _approved_directory(
         source,
-        VALIDATION_SUPERVISOR_STATE_ROOT_ENV,
+        PROOF_REUSE_STATE_ROOT_ENV,
     )
-    if supervisor_state_root is not None:
-        result[VALIDATION_SUPERVISOR_STATE_ROOT_ENV] = supervisor_state_root
+    if proof_reuse_state_root is not None:
+        result[PROOF_REUSE_STATE_ROOT_ENV] = proof_reuse_state_root
     python_path = _runtime_python_path_entries(source)
     if python_path:
         result["PYTHONPATH"] = os.pathsep.join(python_path)
@@ -1062,6 +2035,7 @@ def build_validation_environment(
     result.setdefault("LC_ALL", "C")
     result.setdefault("PYTHONHASHSEED", "0")
     result.setdefault("TZ", "UTC")
+    formal_toolchain = formal_toolchain_deployment_manifest(source)
     result[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] = str(
         formal_toolchain["manifest_sha256"]
     )
@@ -1075,92 +2049,107 @@ def build_validation_environment(
         result[FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV] = ",".join(
             required_commands
         )
-    for variable, root in dict(
-        formal_toolchain["managed_roots"]
-    ).items():
+    for variable, root in dict(formal_toolchain["managed_roots"]).items():
         result[str(variable)] = str(root)
     return result
-
-
-def canonical_validation_environment_contract(
-    environment: Mapping[str, object] | None = None,
-) -> dict[str, object]:
-    """Describe the exact sanitized environment without changing its policy.
-
-    Implementation providers run outside the validation boundary and can see a
-    broader operator ``PATH`` and profile home.  Exposing this body-free
-    contract lets prompts and retry diagnostics distinguish that convenience
-    environment from the one used for authoritative checks.  Values come from
-    :func:`build_validation_environment`, so this helper cannot accidentally
-    advertise a toolchain entry that the scheduler would later scrub.
-
-    The todo daemon replaces the neutral base ``HOME``/XDG values with a fresh
-    private directory for every command.  That final per-command mapping is
-    documented by the daemon because the temporary path itself is intentionally
-    unpredictable.
-    """
-
-    source = os.environ if environment is None else environment
-    child = build_validation_environment(source)
-    path = child["PATH"]
-    formal_toolchain = formal_toolchain_deployment_manifest(source)
-    return {
-        "schema": VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA,
-        "path": path,
-        "path_entries": tuple(path.split(os.pathsep)),
-        "path_source": (
-            VALIDATION_PATH_ENV
-            if str(source.get(VALIDATION_PATH_ENV) or "").strip()
-            else "trusted_system_directories"
-        ),
-        "path_override_environment_variable": VALIDATION_PATH_ENV,
-        "path_override_active": bool(
-            str(source.get(VALIDATION_PATH_ENV) or "").strip()
-        ),
-        "inherited_path_ignored": True,
-        "writable_toolchain_paths_rejected": True,
-        "python_interpreter": child["PYTHON"],
-        "required_python_modules": required_validation_python_modules(
-            environment=source,
-        ),
-        "formal_toolchain_contract_sha256": formal_toolchain[
-            "manifest_sha256"
-        ],
-        "formal_toolchain_required_executables": {
-            command: identity["sha256"]
-            for command, identity in dict(
-                formal_toolchain["required_executables"]
-            ).items()
-        },
-        "formal_toolchain_managed_roots": dict(
-            formal_toolchain["managed_roots"]
-        ),
-        "base_home": child["HOME"],
-        "base_xdg": {
-            key: child[key]
-            for key in (
-                "XDG_CACHE_HOME",
-                "XDG_CONFIG_HOME",
-                "XDG_DATA_HOME",
-                "XDG_STATE_HOME",
-            )
-        },
-    }
 
 
 def _validation_python_launcher_source(
     *,
     executable: str,
     approved_pythonpath: str,
+    ruff_sha256: str,
 ) -> bytes:
-    """Render a launcher containing no child-controlled configuration."""
+    """Render a launcher that discovers Ruff beside its sealed parent FD."""
+
+    ruff_broker = (
+        "import fcntl,hashlib,os,re,stat,sys\n"
+        "launcher,expected=sys.argv[1:3]\n"
+        "match=re.fullmatch(r'/proc/(?:([1-9][0-9]*)|self)/fd/([0-9]+)',launcher)\n"
+        "if match is None: sys.exit(75)\n"
+        "directory=('/proc/'+match.group(1)+'/fd') if match.group(1) else '/proc/self/fd'\n"
+        "launcher_fd=int(match.group(2))\n"
+        "entries=[int(entry) for entry in os.listdir(directory) if entry.isdecimal()]\n"
+        "if len(entries)>512: sys.exit(75)\n"
+        "required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_SEAL\n"
+        "fd=-1\n"
+        "for candidate in sorted(entries):\n"
+        " if candidate==launcher_fd: continue\n"
+        " opened=-1\n"
+        " try:\n"
+        "  opened=os.open(directory+'/'+str(candidate),os.O_RDONLY|os.O_CLOEXEC)\n"
+        "  before=os.fstat(opened)\n"
+        "  if not stat.S_ISREG(before.st_mode) or not before.st_mode&0o111: continue\n"
+        "  if fcntl.fcntl(opened,fcntl.F_GET_SEALS)&required != required: continue\n"
+        "  digest=hashlib.sha256()\n"
+        "  while chunk:=os.read(opened,1024*1024): digest.update(chunk)\n"
+        "  after=os.fstat(opened)\n"
+        "  if (before.st_dev,before.st_ino,before.st_size,before.st_mode)!=(after.st_dev,after.st_ino,after.st_size,after.st_mode): continue\n"
+        "  if digest.hexdigest()!=expected: continue\n"
+        "  os.lseek(opened,0,os.SEEK_SET)\n"
+        "  fd=opened\n"
+        "  opened=-1\n"
+        "  break\n"
+        " except OSError:\n"
+        "  pass\n"
+        " finally:\n"
+        "  if opened>=0: os.close(opened)\n"
+        "if fd<0: sys.exit(75)\n"
+        "env=dict(os.environ)\n"
+        f"[env.pop(key,None) for key in {(VALIDATION_RUFF_EXECUTABLE_ENV, VALIDATION_RUFF_EXECUTABLE_MODE_ENV, VALIDATION_RUFF_EXECUTABLE_SHA256_ENV, VALIDATION_RUFF_EXECUTABLE_STAT_ENV)!r}]\n"
+        "os.execve(fd,['ruff',*sys.argv[3:]],env)\n"
+    )
 
     return (
         "#!/bin/bash -p\n"
         f"readonly executable={shlex.quote(executable)}\n"
         f"readonly approved={shlex.quote(approved_pythonpath)}\n"
-        "unset BASH_ENV ENV PYTHONHOME PYTHONSTARTUP\n"
+        'readonly launcher_path="$0"\n'
+        f"readonly ruff_sha256={shlex.quote(ruff_sha256)}\n"
+        f"readonly ruff_broker={shlex.quote(ruff_broker)}\n"
+        "unset BASH_ENV ENV PYTHONHOME PYTHONSTARTUP "
+        f"{VALIDATION_RUFF_EXECUTABLE_ENV} "
+        f"{VALIDATION_RUFF_EXECUTABLE_MODE_ENV} "
+        f"{VALIDATION_RUFF_EXECUTABLE_SHA256_ENV} "
+        f"{VALIDATION_RUFF_EXECUTABLE_STAT_ENV}\n"
         "export PYTHONNOUSERSITE=1\n"
+        "ruff_invocation=0\n"
+        'if [[ "$#" -ge 2 && "$1" =~ ^-[^-]*m$ '
+        '&& "$2" == "ruff" ]]; then\n'
+        "    shift 2\n"
+        "    ruff_invocation=1\n"
+        'elif [[ "$#" -ge 1 && "$1" == "-mruff" ]]; then\n'
+        "    shift\n"
+        "    ruff_invocation=1\n"
+        "else\n"
+        "    previous_module_flag=0\n"
+        '    for argument in "$@"; do\n'
+        '        if [[ "$previous_module_flag" == 1 && '
+        '"$argument" =~ ^ruff(\\.|$) ]]; then\n'
+        "            printf '%s\\n' "
+        "ipfs-accelerate-validation-ruff-error:unsupported-module-spelling >&2\n"
+        "            exit 75\n"
+        "        fi\n"
+        '        if [[ "$argument" =~ ^-[^-]*mruff(\\.|$) ]]; then\n'
+        "            printf '%s\\n' "
+        "ipfs-accelerate-validation-ruff-error:unsupported-module-spelling >&2\n"
+        "            exit 75\n"
+        "        fi\n"
+        '        if [[ "$argument" =~ ^-[^-]*m$ ]]; then\n'
+        "            previous_module_flag=1\n"
+        "        else\n"
+        "            previous_module_flag=0\n"
+        "        fi\n"
+        "    done\n"
+        "fi\n"
+        'if [[ "$ruff_invocation" == 1 ]]; then\n'
+        '    if [[ -z "$ruff_sha256" ]]; then\n'
+        f"        printf '%s\\n' {shlex.quote(VALIDATION_RUFF_UNAVAILABLE_MARKER)} >&2\n"
+        "        exit 75\n"
+        "    fi\n"
+        '    exec "$executable" -I -c "$ruff_broker" '
+        '"$launcher_path" "$ruff_sha256" "$@"\n'
+        "fi\n"
         'requested="${PYTHONPATH-}"\n'
         'if [[ -n "$approved" && "$requested" != "$approved" ]]; then\n'
         '    if [[ -n "$requested" ]]; then\n'
@@ -1170,7 +2159,7 @@ def _validation_python_launcher_source(
         "    fi\n"
         "fi\n"
         'exec "$executable" -s "$@"\n'
-    ).encode("utf-8")
+    ).encode()
 
 
 def _write_all(fd: int, payload: bytes) -> None:
@@ -1182,6 +2171,65 @@ def _write_all(fd: int, payload: bytes) -> None:
                 "sealed validation Python launcher write was incomplete"
             )
         offset += written
+
+
+def _sealed_executable_memfd(
+    *,
+    name: str,
+    payload: bytes,
+    creation_flags: int,
+    required_seals: int,
+    fcntl_module: Any,
+) -> tuple[int, str]:
+    """Copy executable bytes to a verified sealed memfd."""
+
+    fd = -1
+    try:
+        fd = os.memfd_create(name, creation_flags)
+        _write_all(fd, payload)
+        os.fchmod(fd, 0o500)
+        fcntl_module.fcntl(fd, fcntl_module.F_ADD_SEALS, required_seals)
+        actual_seals = int(
+            fcntl_module.fcntl(fd, fcntl_module.F_GET_SEALS)
+        )
+        if actual_seals & required_seals != required_seals:
+            raise ValidationRuntimeError(
+                f"sealed {name} did not acquire all required seals"
+            )
+        expected_sha256 = hashlib.sha256(payload).hexdigest()
+        persisted_hasher = hashlib.sha256()
+        offset = 0
+        while offset < len(payload):
+            chunk = os.pread(
+                fd,
+                min(1024 * 1024, len(payload) - offset),
+                offset,
+            )
+            if not chunk:
+                break
+            persisted_hasher.update(chunk)
+            offset += len(chunk)
+        if (
+            offset != len(payload)
+            or os.pread(fd, 1, offset)
+            or persisted_hasher.hexdigest() != expected_sha256
+        ):
+            raise ValidationRuntimeError(
+                f"sealed {name} content mismatch"
+            )
+        executable_path = f"/proc/{os.getpid()}/fd/{fd}"
+        if not os.access(executable_path, os.R_OK | os.X_OK):
+            raise ValidationRuntimeError(
+                f"sealed {name} is not executable"
+            )
+        return fd, executable_path
+    except Exception:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        raise
 
 
 @contextmanager
@@ -1297,6 +2345,40 @@ def validation_python_launcher_environment(
         )
         return
 
+    recorded_ruff_mode = str(
+        child_environment.get(VALIDATION_RUFF_EXECUTABLE_MODE_ENV) or ""
+    )
+    recorded_ruff_sha256 = str(
+        child_environment.get(VALIDATION_RUFF_EXECUTABLE_SHA256_ENV) or ""
+    )
+    recorded_ruff_stat = str(
+        child_environment.get(VALIDATION_RUFF_EXECUTABLE_STAT_ENV) or ""
+    )
+    if recorded_ruff_mode not in {"sealed-memfd", "unavailable"}:
+        raise ValidationRuntimeError(
+            "validation Ruff executable mode does not match runtime policy"
+        )
+    ruff_snapshot = _active_ruff_executable_snapshot(
+        approved_pythonpath=approved_pythonpath
+    )
+    if recorded_ruff_mode == "unavailable":
+        if (
+            recorded_ruff_sha256
+            or recorded_ruff_stat
+            or ruff_snapshot is not None
+        ):
+            raise ValidationRuntimeError(
+                "validation Ruff unavailable identity mismatch"
+            )
+    elif (
+        ruff_snapshot is None
+        or recorded_ruff_sha256 != ruff_snapshot[1]
+        or recorded_ruff_stat != ruff_snapshot[2]
+    ):
+        raise ValidationRuntimeError(
+            "validation Ruff executable identity mismatch"
+        )
+
     try:
         import fcntl
 
@@ -1312,42 +2394,46 @@ def validation_python_launcher_environment(
             "sealed validation Python launcher is unavailable on Linux"
         ) from exc
 
-    payload = _validation_python_launcher_source(
+    identity_payload = _validation_python_launcher_source(
         executable=rendered_executable,
         approved_pythonpath=approved_pythonpath,
+        ruff_sha256=(ruff_snapshot[1] if ruff_snapshot is not None else ""),
     )
-    content_sha256 = hashlib.sha256(payload).hexdigest()
+    content_sha256 = hashlib.sha256(identity_payload).hexdigest()
     if recorded_content_sha256 != content_sha256:
         raise ValidationRuntimeError(
             "validation Python launcher content identity mismatch"
         )
-    fd = -1
+    open_fds: set[int] = set()
     try:
-        fd = os.memfd_create(
-            "ipfs-accelerate-validation-python",
-            creation_flags,
+        if ruff_snapshot is not None:
+            ruff_fd, ruff_path = (
+                _sealed_executable_memfd(
+                    name="validation Ruff executable",
+                    payload=ruff_snapshot[0],
+                    creation_flags=creation_flags,
+                    required_seals=required_seals,
+                    fcntl_module=fcntl,
+                )
+            )
+            open_fds.add(ruff_fd)
+            child_environment[VALIDATION_RUFF_EXECUTABLE_ENV] = ruff_path
+        python_fd, launcher_path = (
+            _sealed_executable_memfd(
+                name="validation Python launcher",
+                payload=identity_payload,
+                creation_flags=creation_flags,
+                required_seals=required_seals,
+                fcntl_module=fcntl,
+            )
         )
-        _write_all(fd, payload)
-        os.fchmod(fd, 0o500)
-        fcntl.fcntl(fd, fcntl.F_ADD_SEALS, required_seals)
-        actual_seals = int(fcntl.fcntl(fd, fcntl.F_GET_SEALS))
-        if actual_seals & required_seals != required_seals:
-            raise ValidationRuntimeError(
-                "validation Python launcher did not acquire all required seals"
-            )
-        persisted = os.pread(fd, len(payload) + 1, 0)
-        if (
-            len(persisted) != len(payload)
-            or hashlib.sha256(persisted).hexdigest() != content_sha256
+        open_fds.add(python_fd)
+        for variable in (
+            VALIDATION_RUFF_EXECUTABLE_MODE_ENV,
+            VALIDATION_RUFF_EXECUTABLE_SHA256_ENV,
+            VALIDATION_RUFF_EXECUTABLE_STAT_ENV,
         ):
-            raise ValidationRuntimeError(
-                "sealed validation Python launcher content mismatch"
-            )
-        launcher_path = f"/proc/{os.getpid()}/fd/{fd}"
-        if not os.access(launcher_path, os.R_OK | os.X_OK):
-            raise ValidationRuntimeError(
-                "sealed validation Python launcher is not executable"
-            )
+            child_environment.pop(variable, None)
         child_environment["PYTHON"] = launcher_path
         yield child_environment, ValidationPythonLauncherReceipt(
             executable=launcher_path,
@@ -1365,352 +2451,67 @@ def validation_python_launcher_environment(
             "sealed validation Python launcher construction failed"
         ) from exc
     finally:
-        if fd >= 0:
+        for fd in open_fds:
             try:
                 os.close(fd)
             except OSError:
                 pass
 
 
-def normalize_validation_python_modules(
-    modules: Sequence[str] | str,
-) -> tuple[str, ...]:
-    """Normalize a bounded list of import names used by validation.
-
-    Import names, rather than package-manager requirement strings, keep the
-    probe independent of pip and prevent task metadata from becoming code.
-    """
-
-    raw_modules = (modules,) if isinstance(modules, str) else modules
-    normalized: list[str] = []
-    for raw in raw_modules:
-        for item in str(raw).split(","):
-            module = item.strip()
-            if not module:
-                continue
-            if not _PYTHON_MODULE_RE.fullmatch(module):
-                raise ValidationRuntimeError(
-                    "required validation Python module must be a dotted "
-                    f"import name: {module!r}"
-                )
-            if module not in normalized:
-                normalized.append(module)
-            if len(normalized) > _MAX_VALIDATION_PYTHON_MODULES:
-                raise ValidationRuntimeError(
-                    "too many required validation Python modules"
-                )
-    return tuple(normalized)
-
-
-def required_validation_python_modules(
-    additional_modules: Sequence[str] | str = (),
-    *,
-    environment: Mapping[str, object] | None = None,
-) -> tuple[str, ...]:
-    """Return core, operator-configured, and task-configured import names."""
-
-    source = os.environ if environment is None else environment
-    configured = str(
-        source.get(VALIDATION_PYTHON_MODULES_ENV) or ""
-    ).strip()
-    configured_modules: tuple[str, ...] = (
-        (configured,) if configured else ()
-    )
-    additional: tuple[str, ...] = (
-        (additional_modules,)
-        if isinstance(additional_modules, str)
-        else tuple(additional_modules)
-    )
-    return normalize_validation_python_modules(
-        (
-            *DEFAULT_VALIDATION_PYTHON_MODULES,
-            *configured_modules,
-            *additional,
-        )
-    )
-
-
-@contextmanager
-def private_validation_environment(
-    environment: Mapping[str, str],
-) -> Iterator[dict[str, str]]:
-    """Yield the same fresh profile boundary used by validation commands."""
-
-    with tempfile.TemporaryDirectory(
-        prefix="ipfs-accelerate-validation-home-"
-    ) as temporary_home:
-        home_path = Path(temporary_home)
-        child_environment = {
-            str(key): str(value) for key, value in environment.items()
-        }
-        child_environment.update(
-            {
-                "HOME": str(home_path),
-                "PYTHONNOUSERSITE": "1",
-                "XDG_CACHE_HOME": str(home_path / ".cache"),
-                "XDG_CONFIG_HOME": str(home_path / ".config"),
-                "XDG_DATA_HOME": str(home_path / ".local" / "share"),
-                "XDG_STATE_HOME": str(home_path / ".local" / "state"),
-            }
-        )
-        for key in (
-            "XDG_CACHE_HOME",
-            "XDG_CONFIG_HOME",
-            "XDG_DATA_HOME",
-            "XDG_STATE_HOME",
-        ):
-            Path(child_environment[key]).mkdir(
-                mode=0o700,
-                parents=True,
-                exist_ok=True,
-            )
-        yield child_environment
-
-
-_VALIDATION_PYTHON_MODULE_PROBE_SOURCE = r"""
-import contextlib
-import importlib
-import io
-import json
-import os
-import site
-import sys
-
-required = json.loads(sys.argv[1])
-missing = []
-failures = {}
-for module in required:
-    captured_stdout = io.StringIO()
-    captured_stderr = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(captured_stdout):
-            with contextlib.redirect_stderr(captured_stderr):
-                importlib.import_module(module)
-    except ModuleNotFoundError as exc:
-        missing_name = str(getattr(exc, "name", "") or "")
-        if missing_name == module or module.startswith(missing_name + "."):
-            missing.append(module)
-        else:
-            failures[module] = {
-                "exception_type": type(exc).__name__,
-                "missing_dependency": missing_name,
-            }
-    except BaseException as exc:
-        failures[module] = {"exception_type": type(exc).__name__}
-
-payload = {
-    "missing_modules": missing,
-    "failed_modules": failures,
-    "environment": {
-        "home_is_private": os.path.basename(os.environ.get("HOME", "")).startswith(
-            "ipfs-accelerate-validation-home-"
-        ),
-        "python_no_user_site": os.environ.get("PYTHONNOUSERSITE") == "1",
-        "site_user_enabled": bool(site.ENABLE_USER_SITE),
-    },
-    "python_executable": sys.executable,
-}
-print(
-    "__IPFS_ACCELERATE_VALIDATION_PYTHON_MODULE_PROBE__="
-    + json.dumps(payload, sort_keys=True, separators=(",", ":"))
+_SHELL_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.DOTALL)
+_SHELL_CONTROL_TOKEN = re.compile(r"[;&|()]+")
+_PYTHON_MODULE_FLAG = re.compile(r"^-[^-]*m$")
+_PYTHON_COMPACT_RUFF_MODULE = re.compile(r"^-[^-]*mruff(?:\.|$)")
+_RUFF_MODULE_NAME = re.compile(r"^ruff(?:\.|$)")
+_DYNAMIC_SHELL_COMMAND_WORD = re.compile(r"[$*?\[\]{}~]")
+_COMMAND_WRAPPERS = frozenset(
+    {"chrt", "command", "env", "ionice", "nice", "nohup", "setsid", "stdbuf", "timeout"}
 )
-raise SystemExit(0 if not missing and not failures else 3)
-"""
 
 
-@sealed_validation_python_runner
-def preflight_validation_python_modules(
-    additional_modules: Sequence[str] | str = (),
-    *,
-    environment: Mapping[str, object] | None = None,
-    timeout_seconds: float = 15.0,
-) -> dict[str, object]:
-    """Probe required imports through the authoritative Python boundary.
+def _ruff_module_indices(
+    arguments: Sequence[str],
+) -> tuple[tuple[int, int | None], ...]:
+    """Locate Python Ruff module spellings without executing argv wrappers."""
 
-    This runs the exact configured interpreter behind the same sealed launcher,
-    approved ``PYTHONPATH``, private ``HOME``/XDG directories, and
-    ``PYTHONNOUSERSITE=1`` policy used by authoritative validation.  Missing or
-    broken imports are returned as infrastructure diagnostics so callers can
-    defer before a task attempt or model invocation is charged.
-    """
+    found: list[tuple[int, int | None]] = []
+    for index, argument in enumerate(arguments):
+        if _PYTHON_COMPACT_RUFF_MODULE.match(argument):
+            found.append((index, None))
+        elif (
+            _PYTHON_MODULE_FLAG.match(argument)
+            and index + 1 < len(arguments)
+            and _RUFF_MODULE_NAME.match(arguments[index + 1])
+        ):
+            found.append((index, index + 1))
+    return tuple(found)
 
-    if isinstance(timeout_seconds, bool) or float(timeout_seconds) <= 0:
-        raise ValidationRuntimeError(
-            "validation Python module preflight timeout must be positive"
-        )
-    required_modules = required_validation_python_modules(
-        additional_modules,
-        environment=environment,
-    )
-    child_environment = validation_environment_for_runner(
-        build_validation_environment(environment),
-        preflight_validation_python_modules,
-    )
-    interpreter = str(child_environment.get(_CHILD_PYTHON_ENV) or "")
-    interpreter_sha256 = str(
-        child_environment.get(VALIDATION_PYTHON_INTERPRETER_SHA256_ENV) or ""
-    )
-    base_receipt: dict[str, object] = {
-        "schema": VALIDATION_PYTHON_MODULE_PREFLIGHT_SCHEMA,
-        "passed": False,
-        "reason": "validation_python_module_probe_not_run",
-        "required_modules": list(required_modules),
-        "missing_modules": [],
-        "failed_modules": {},
-        "python_executable": interpreter,
-        "python_interpreter_sha256": interpreter_sha256,
-        "private_home": True,
-        "python_no_user_site": True,
-    }
-    try:
-        with private_validation_environment(
-            child_environment
-        ) as private_environment:
-            with validation_python_launcher_environment(
-                private_environment
-            ) as (launcher_environment, launcher_receipt):
-                completed = subprocess.run(
-                    [
-                        launcher_environment["PYTHON"],
-                        "-c",
-                        _VALIDATION_PYTHON_MODULE_PROBE_SOURCE,
-                        json.dumps(list(required_modules)),
-                    ],
-                    cwd=private_environment["HOME"],
-                    text=True,
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    timeout=float(timeout_seconds),
-                    check=False,
-                    env=launcher_environment,
-                )
-    except subprocess.TimeoutExpired:
-        return {
-            **base_receipt,
-            "reason": "validation_python_module_probe_timed_out",
-            "action": (
-                "verify the configured validation interpreter starts without "
-                "profile hooks and imports the required modules promptly"
-            ),
-        }
-    except (OSError, ValidationRuntimeError) as exc:
-        return {
-            **base_receipt,
-            "reason": "validation_python_module_probe_unavailable",
-            "exception_type": type(exc).__name__,
-            "error": str(exc)[-1000:],
-            "action": (
-                "repair IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON and its "
-                "sealed package environment before restarting the supervisor"
-            ),
-        }
 
-    output = completed.stdout or ""
-    if len(output.encode("utf-8", errors="replace")) > (
-        _MAX_VALIDATION_PYTHON_PROBE_OUTPUT_BYTES
-    ):
-        return {
-            **base_receipt,
-            "reason": "validation_python_module_probe_output_too_large",
-            "returncode": int(completed.returncode),
-            "action": (
-                "repair a required module that emits excessive output during "
-                "import before restarting the supervisor"
-            ),
-        }
-    marker_index = output.rfind(_VALIDATION_PYTHON_PROBE_MARKER)
-    if marker_index < 0:
-        return {
-            **base_receipt,
-            "reason": "validation_python_module_probe_receipt_missing",
-            "returncode": int(completed.returncode),
-            "action": (
-                "verify the configured validation interpreter can execute the "
-                "sealed dependency probe"
-            ),
-        }
-    encoded_receipt = output[
-        marker_index + len(_VALIDATION_PYTHON_PROBE_MARKER) :
-    ].splitlines()[0]
-    try:
-        probe = json.loads(encoded_receipt)
-    except (json.JSONDecodeError, TypeError):
-        return {
-            **base_receipt,
-            "reason": "validation_python_module_probe_receipt_invalid",
-            "returncode": int(completed.returncode),
-            "action": (
-                "verify the configured validation interpreter can emit the "
-                "dependency probe receipt"
-            ),
-        }
-    if not isinstance(probe, Mapping):
-        return {
-            **base_receipt,
-            "reason": "validation_python_module_probe_receipt_invalid",
-            "returncode": int(completed.returncode),
-        }
-    missing = [
-        str(item)
-        for item in probe.get("missing_modules", [])
-        if str(item)
-    ]
-    failed_raw = probe.get("failed_modules")
-    failed = (
-        {
-            str(key): value
-            for key, value in failed_raw.items()
-            if str(key)
-        }
-        if isinstance(failed_raw, Mapping)
-        else {}
-    )
-    probe_environment = probe.get("environment")
-    environment_matches = (
-        isinstance(probe_environment, Mapping)
-        and probe_environment.get("home_is_private") is True
-        and probe_environment.get("python_no_user_site") is True
-        and probe_environment.get("site_user_enabled") is False
-    )
-    passed = (
-        completed.returncode == 0
-        and not missing
-        and not failed
-        and environment_matches
-        and str(probe.get("python_executable") or "") == interpreter
-    )
-    reason = (
-        "validation_python_modules_available"
-        if passed
-        else "validation_python_modules_unavailable"
-        if missing or failed
-        else "validation_python_module_probe_environment_mismatch"
-    )
-    result = {
-        **base_receipt,
-        "passed": passed,
-        "reason": reason,
-        "returncode": int(completed.returncode),
-        "missing_modules": missing,
-        "failed_modules": failed,
-        "environment": dict(probe_environment or {}),
-        "validation_python_launcher": {
-            "content_sha256": launcher_receipt.content_sha256,
-            "interpreter_sha256": launcher_receipt.interpreter_sha256,
-            "interpreter_stat": launcher_receipt.interpreter_stat,
-            "mode": launcher_receipt.mode,
-            "policy_sha256": launcher_receipt.policy_sha256,
-            "sealed": launcher_receipt.sealed,
-        },
-    }
-    if not passed:
-        result["action"] = (
-            "install or seal the required import modules into "
-            f"{interpreter!r}, then restart the supervisor; user-site "
-            "packages are intentionally unavailable"
-        )
-    return result
+def _shell_command_start(arguments: Sequence[str], index: int) -> int:
+    """Return the first token after the nearest shell control operator."""
+
+    for candidate in range(index - 1, -1, -1):
+        if _SHELL_CONTROL_TOKEN.fullmatch(arguments[candidate]):
+            return candidate + 1
+    return 0
+
+
+def _shell_command_segments(
+    arguments: Sequence[str],
+) -> tuple[tuple[str, ...], ...]:
+    """Split reviewed shell words at command-control operators."""
+
+    segments: list[tuple[str, ...]] = []
+    start = 0
+    for index, argument in enumerate(arguments):
+        if not _SHELL_CONTROL_TOKEN.fullmatch(argument):
+            continue
+        if index > start:
+            segments.append(tuple(arguments[start:index]))
+        start = index + 1
+    if start < len(arguments):
+        segments.append(tuple(arguments[start:]))
+    return tuple(segments)
 
 
 def validation_shell_command(command: str) -> list[str]:
@@ -1724,8 +2525,9 @@ def validation_shell_command(command: str) -> list[str]:
             "dynamic command substitution is not permitted for validation"
         )
     try:
+        analysis_text = text.replace("\r\n", ";").replace("\n", ";").replace("\r", ";")
         lexer = shlex.shlex(
-            text,
+            analysis_text,
             posix=True,
             punctuation_chars=";&|()<>",
         )
@@ -1745,36 +2547,82 @@ def validation_shell_command(command: str) -> list[str]:
         raise ValidationRuntimeError(
             "dynamic shell evaluation is not permitted for validation"
         )
-    if any(
-        token.startswith(
-            (
-                f"{VALIDATION_SUPERVISOR_STATE_ROOT_ENV}=",
-                f"{VALIDATION_SUPERVISOR_STATE_ROOT_ENV}+=",
-            )
-        )
-        for token in leading
-    ):
-        raise ValidationRuntimeError(
-            "validation command may not override the supervisor state root"
-        )
-    shell_controls = frozenset({";", "&&", "||", "|", "&"})
-    for index, token in enumerate(leading):
-        if Path(token).name != "env":
+    for token in leading:
+        if not any(character.isspace() for character in token):
             continue
-        argument_index = index + 1
-        while argument_index < len(leading):
-            argument = leading[argument_index]
-            if argument in shell_controls or argument == "--":
-                break
-            if argument == "-" or argument.startswith("-"):
+        try:
+            embedded = shlex.split(token)
+        except ValueError as exc:
+            raise ValidationRuntimeError(
+                "validation command has invalid embedded shell arguments"
+            ) from exc
+        if (
+            _ruff_module_indices(embedded)
+            or any(Path(part).name == "ruff" for part in embedded)
+            or any(Path(part).name in {"python", "python3"} for part in embedded)
+        ):
+            raise ValidationRuntimeError(
+                "embedded Python or Ruff validation arguments are not permitted"
+            )
+    ruff_module_indices = _ruff_module_indices(leading)
+    for module_index, _value_index in ruff_module_indices:
+        command_start = _shell_command_start(leading, module_index)
+        while (
+            command_start < module_index
+            and _SHELL_ASSIGNMENT.fullmatch(leading[command_start])
+        ):
+            command_start += 1
+        if (
+            command_start >= module_index
+            or leading[command_start] not in {"python", "python3"}
+        ):
+            raise ValidationRuntimeError(
+                "Ruff validation must use the sealed python or python3 launcher"
+            )
+    module_value_indices = {
+        value_index
+        for _flag_index, value_index in ruff_module_indices
+        if value_index is not None
+    }
+    for index, token in enumerate(leading):
+        if index in module_value_indices or Path(token).name != "ruff":
+            continue
+        raise ValidationRuntimeError(
+            "direct Ruff validation requires the sealed Python launcher"
+        )
+    for segment in _shell_command_segments(leading):
+        command_index = 0
+        while (
+            command_index < len(segment)
+            and _SHELL_ASSIGNMENT.fullmatch(segment[command_index])
+        ):
+            command_index += 1
+        if command_index >= len(segment):
+            continue
+        if _DYNAMIC_SHELL_COMMAND_WORD.search(segment[command_index]):
+            raise ValidationRuntimeError(
+                "dynamic validation command names are not permitted"
+            )
+        for later in segment[command_index + 1 :]:
+            if Path(later).name in {"python", "python3"}:
                 raise ValidationRuntimeError(
-                    "validation command may not use env options inside the "
-                    "protected environment"
+                    "wrapped Python validation commands are not permitted"
                 )
-            if "=" in argument:
-                argument_index += 1
-                continue
-            break
+        command_name = segment[command_index]
+        if Path(command_name).name in _COMMAND_WRAPPERS and any(
+            _DYNAMIC_SHELL_COMMAND_WORD.search(argument)
+            for argument in segment[command_index + 1 :]
+        ):
+            raise ValidationRuntimeError(
+                "dynamic wrapped validation command names are not permitted"
+            )
+        if Path(command_name).name in {"python", "python3"} and command_name not in {
+            "python",
+            "python3",
+        }:
+            raise ValidationRuntimeError(
+                "validation Python must use the sealed python or python3 launcher"
+            )
     # A reviewed command may prepend workspace-local import roots with an
     # assignment such as ``PYTHONPATH=src:. python -m pytest``.  Bash applies
     # that assignment to the shell function itself, which would otherwise
@@ -1785,22 +2633,26 @@ def validation_shell_command(command: str) -> list[str]:
     # the pinned pytest/runtime packages available.
     guarded = (
         f"readonly {_CHILD_PYTHON_ENV}; "
-        f"readonly {VALIDATION_SUPERVISOR_STATE_ROOT_ENV}; "
+        '_IPFS_ACCELERATE_SEALED_PYTHON="${PYTHON}"; '
+        "readonly _IPFS_ACCELERATE_SEALED_PYTHON; "
         '_IPFS_ACCELERATE_APPROVED_PYTHONPATH="${PYTHONPATH-}"; '
         "readonly _IPFS_ACCELERATE_APPROVED_PYTHONPATH; "
         "_ipfs_accelerate_validation_python() { "
         'local requested="${PYTHONPATH-}"; '
         'local approved="${_IPFS_ACCELERATE_APPROVED_PYTHONPATH}"; '
+        'local -a prefix=(); '
+        f'if [[ "${{_IPFS_ACCELERATE_SEALED_PYTHON}}" '
+        f'== "${{{_CHILD_PYTHON_ENV}}}" ]]; then prefix=(-s); fi; '
         'if [[ -n "$approved" && "$requested" != "$approved" ]]; then '
         'if [[ -n "$requested" ]]; then '
         'PYTHONPATH="$requested:$approved" '
-        f'"${{{_CHILD_PYTHON_ENV}}}" -s "$@"; '
+        '"${_IPFS_ACCELERATE_SEALED_PYTHON}" "${prefix[@]}" "$@"; '
         "else "
         'PYTHONPATH="$approved" '
-        f'"${{{_CHILD_PYTHON_ENV}}}" -s "$@"; '
+        '"${_IPFS_ACCELERATE_SEALED_PYTHON}" "${prefix[@]}" "$@"; '
         "fi; "
         "else "
-        f'"${{{_CHILD_PYTHON_ENV}}}" -s "$@"; '
+        '"${_IPFS_ACCELERATE_SEALED_PYTHON}" "${prefix[@]}" "$@"; '
         "fi; "
         "}; "
         'python() { _ipfs_accelerate_validation_python "$@"; }; '
@@ -1826,6 +2678,55 @@ def validation_argv_command(command: Sequence[str]) -> list[str]:
     parts = [str(part) for part in command]
     if not parts or not parts[0]:
         raise ValidationRuntimeError("validation argv must not be empty")
+    executable_name = Path(parts[0]).name
+    split_env_argv: list[str] = []
+    for index, part in enumerate(parts):
+        split_text = ""
+        if part in {"-S", "--split-string"} and index + 1 < len(parts):
+            split_text = parts[index + 1]
+        elif part.startswith("--split-string="):
+            split_text = part.partition("=")[2]
+        elif part.startswith("-S") and len(part) > 2:
+            split_text = part[2:]
+        if split_text:
+            try:
+                split_env_argv.extend(shlex.split(split_text))
+            except ValueError as exc:
+                raise ValidationRuntimeError(
+                    "invalid env split-string validation argv"
+                ) from exc
+    embedded_argv: list[str] = []
+    for part in parts:
+        if not any(character.isspace() for character in part):
+            continue
+        try:
+            embedded_argv.extend(shlex.split(part))
+        except ValueError as exc:
+            raise ValidationRuntimeError(
+                "invalid embedded validation argv"
+            ) from exc
+    ruff_argv = [parts, split_env_argv, embedded_argv]
+    if (
+        any(Path(part).name == "ruff" for argv in ruff_argv for part in argv)
+        or any(_ruff_module_indices(argv) for argv in ruff_argv)
+    ):
+        raise ValidationRuntimeError(
+            "direct argv Ruff validation requires the sealed string-command launcher"
+        )
+    if executable_name in {"python", "python3"} and parts[0] not in {
+        "python",
+        "python3",
+    }:
+        raise ValidationRuntimeError(
+            "direct argv Python must use the canonical launcher name"
+        )
+    if any(
+        Path(part).name in {"python", "python3"}
+        for part in parts[1:]
+    ):
+        raise ValidationRuntimeError(
+            "wrapped direct argv Python validation is not permitted"
+        )
     if parts[0] in {"python", "python3"}:
         return [validation_python_executable(), "-s", *parts[1:]]
     if parts[0] == "pytest":
@@ -1836,8 +2737,7 @@ def validation_argv_command(command: Sequence[str]) -> list[str]:
             "pytest",
             *parts[1:],
         ]
-    executable = Path(parts[0]).name
-    if executable not in {"bash", "sh"}:
+    if executable_name not in {"bash", "sh"}:
         if any(Path(part).name in {"bash", "sh"} for part in parts[1:]):
             raise ValidationRuntimeError(
                 "wrapped validation shells are not permitted"
@@ -1888,7 +2788,11 @@ def build_hermetic_validation_runtime(
     startup-hook scrubbing by claiming that a mapping was already sanitized.
     """
 
-    child_environment = build_validation_environment(environment)
+    child_environment = apply_sealed_node_toolchain(
+        build_validation_environment(environment),
+        workspace_path=workspace_path,
+        command=command,
+    )
     shell_argv = tuple(validation_shell_command(command))
     if isolation_executable is None:
         discovered = shutil.which("bwrap", path=child_environment["PATH"])
@@ -2147,4 +3051,61 @@ def run_hermetic_validation_process(
         "runtime_id": runtime.runtime_id,
         "cancellation_id": runtime.cancellation_id,
         "execution_elapsed_seconds": max(0.0, time.time() - started_at),
+    }
+
+
+VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/validation-environment-contract@1"
+)
+
+
+def canonical_validation_environment_contract(
+    environment: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Describe the exact sanitized environment without changing its policy."""
+
+    source = os.environ if environment is None else environment
+    child = build_validation_environment(source)
+    path = str(child["PATH"])
+    formal_toolchain = formal_toolchain_deployment_manifest(source)
+    return {
+        "schema": VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA,
+        "path": path,
+        "path_entries": tuple(path.split(os.pathsep)),
+        "path_source": (
+            VALIDATION_PATH_ENV
+            if str(source.get(VALIDATION_PATH_ENV) or "").strip()
+            else "trusted_system_directories"
+        ),
+        "path_override_environment_variable": VALIDATION_PATH_ENV,
+        "path_override_active": bool(
+            str(source.get(VALIDATION_PATH_ENV) or "").strip()
+        ),
+        "inherited_path_ignored": True,
+        "writable_toolchain_paths_rejected": True,
+        "python_interpreter": child["PYTHON"],
+        "required_python_modules": (),
+        "formal_toolchain_contract_sha256": formal_toolchain.get(
+            "manifest_sha256", ""
+        ),
+        "formal_toolchain_required_executables": {
+            command: identity["sha256"]
+            for command, identity in dict(
+                formal_toolchain.get("required_executables") or {}
+            ).items()
+        },
+        "formal_toolchain_managed_roots": dict(
+            formal_toolchain.get("managed_roots") or {}
+        ),
+        "base_home": child["HOME"],
+        "base_xdg": {
+            key: child[key]
+            for key in (
+                "XDG_CACHE_HOME",
+                "XDG_CONFIG_HOME",
+                "XDG_DATA_HOME",
+                "XDG_STATE_HOME",
+            )
+            if key in child
+        },
     }

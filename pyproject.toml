@@ -1,7 +1,7 @@
 [build-system]
 requires = [
   "setuptools>=61.0",
-  "tomli>=2.0.1,<3; python_version < '3.11'",
+  "tomli>=1.2; python_version < '3.11'",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -41,11 +41,13 @@ ipfs-accelerate-agent-bundle-supervisor = "ipfs_accelerate_py.agent_supervisor.o
 ipfs-accelerate-agent-artifact-query = "ipfs_accelerate_py.agent_supervisor.runtime.artifact_store:main"
 ipfs-accelerate-agent-implementation-daemon = "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon:main"
 ipfs-accelerate-agent-implementation-supervisor = "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main"
-ipfs-accelerate-agent-durable-process = "ipfs_accelerate_py.agent_supervisor.runtime.durable_process:main"
 ipfs-accelerate-agent-merge-resolver = "ipfs_accelerate_py.agent_supervisor.merge.merge_resolver:main"
 ipfs-accelerate-agent-llm-merge-resolver-fallback = "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main"
-ipfs-accelerate-contract-repair-deps = "ipfs_accelerate_py.agent_supervisor.integrations.contract_repair_dependencies:main"
+ipfs-accelerate-proof-reuse-provision = "ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main"
 ipfs-accelerate-llama-cpp-serve = "ipfs_accelerate_py.utils.llama_cpp:main"
+
+[project.entry-points.pytest11]
+ipfs-proof-reuse = "ipfs_accelerate_py.testing.proof_reuse.plugin"
 
 [tool.setuptools]
 package-dir = {"" = "."}
@@ -57,6 +59,27 @@ package-dir = {"" = "."}
 dependencies = {file = ["requirements.txt"]}
 
 [project.optional-dependencies]
+proof-reuse = [
+  # Keep the install-time extra non-circular and aligned with
+  # requirements-proof-reuse.txt + setup.py extras_require["proof-reuse"].
+  #
+  # Content-addressing: multiformats is also a core dependency (requirements.txt)
+  # so ordinary installs can CID without the extra; re-declared here for scoped
+  # proof-reuse environments.
+  #
+  # Datasets-ZK: ipfs_datasets_py is deliberately absent. The
+  # ProofReuseLazyDependencyInstaller materializes a closed exact Git-blob
+  # snapshot in an owner-private content-addressed cache on first requested
+  # certificate capability. It runs no pip/VCS installer, build hook, or
+  # submodule operation and does not mutate global site-packages. No remote
+  # fallback exists until the reviewed verifier revision is published.
+  # NLTK here means only the Python distribution. Corpus downloads and the
+  # Groth16 Cargo backend remain explicit, bounded first-use operations.
+  "pytest>=8.0.0",
+  "multiformats>=0.3,<1",
+  "jsonschema>=4,<5",
+  "nltk>=3.8.1,<4",
+]
 dev = [
   # test runner + core test deps
   "pytest>=8.0.0",
@@ -66,14 +89,12 @@ dev = [
   "anyio>=4.0.0",
   "httpx>=0.28.1",
   # MCP/FastAPI integration tests
-  "fastapi>=0.110.0,<1.0.0",
-  "uvicorn>=0.27.0,<0.35.0; python_version < '3.10'",
-  "uvicorn>=0.35.0,<1.0.0; python_version >= '3.10'",
+  "fastapi>=0.110.0",
+  "uvicorn>=0.27.0",
   # local dev tooling (matches VS Code tasks)
   "black>=24.0.0",
   "flake8>=7.0.0",
   "mypy>=1.8.0",
-  "ruff>=0.12.0,<1.0.0",
 ]
 
 # Optional extras
@@ -85,8 +106,7 @@ minimal = [
   "aiohttp>=3.8.1",
   "duckdb>=0.7.0",
   "ipfshttpclient>=0.8.0a2",
-  "websockets==10.4; python_version < '3.10'",
-  "websockets>=15.0.1; python_version >= '3.10'",
+  "websockets>=10.1",
   "tqdm>=4.64.0",
   "numpy>=1.23.0",
 ]
@@ -94,8 +114,7 @@ minimal = [
 # Feature-scoped extras (optional runtime capabilities)
 distributed = [
   "aiohttp>=3.8.1",
-  "websockets==10.4; python_version < '3.10'",
-  "websockets>=15.0.1; python_version >= '3.10'",
+  "websockets>=10.1",
   "networkx>=2.8",
 ]
 scraping = [
@@ -124,9 +143,8 @@ viz = [
 full = [
   "torch>=2.1",
   "transformers>=4.46",
-  "uvicorn>=0.27.0,<0.35.0; python_version < '3.10'",
-  "uvicorn>=0.35.0,<1.0.0; python_version >= '3.10'",
-  "fastapi>=0.110.0,<1.0.0",
+  "uvicorn>=0.27.0",
+  "fastapi>=0.110.0",
   "sentence-transformers",
   "ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main",
   "ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main",
@@ -139,8 +157,7 @@ testing = [
   "anyio>=4.0.0",
   "trio>=0.25.0",
   "aiohttp>=3.8.1",
-  "websockets==10.4; python_version < '3.10'",
-  "websockets>=15.0.1; python_version >= '3.10'",
+  "websockets>=10.1",
   "networkx>=2.8",
   "PyJWT>=2.0.0",
   "psutil>=5.9.0",
@@ -151,16 +168,11 @@ testing = [
   "scikit-learn>=1.3.0",
   "requests>=2.31.0",
   # Serving contract gates use FastAPI TestClient
-  "fastapi>=0.110.0,<1.0.0",
+  "fastapi>=0.110.0",
   "httpx>=0.27.0",
 ]
 mcp = [
-  "fastmcp==2.14.7; python_version >= '3.10'",
-  "fastapi>=0.110.0,<1.0.0",
-  "uvicorn>=0.27.0,<0.35.0; python_version < '3.10'",
-  "uvicorn>=0.35.0,<1.0.0; python_version >= '3.10'",
-  "websockets==10.4; python_version < '3.10'",
-  "websockets>=15.0.1; python_version >= '3.10'",
+  "fastmcp>=0.1.0",
   "async-timeout>=4.0.0",
   "flask>=3.0.0",
   "flask-cors>=4.0.0",
@@ -168,13 +180,13 @@ mcp = [
   "PyGithub>=2.3.0",
 ]
 mcp-p2p = [
-  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main ; python_version >= '3.10'",
+  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
   "protobuf>=5.27.0",
   "pymultihash>=0.8.2",
   "dnspython>=2.2.1",
 ]
 libp2p = [
-  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main ; python_version >= '3.10'",
+  "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
   "protobuf>=5.27.0",
   "pymultihash>=0.8.2",
   "dnspython>=2.2.1",
@@ -182,8 +194,7 @@ libp2p = [
 webnn = [
   "playwright>=1.31.0",
   "aiohttp>=3.8.1",
-  "websockets==10.4; python_version < '3.10'",
-  "websockets>=15.0.1; python_version >= '3.10'",
+  "websockets>=10.1",
 ]
 llama_cpp = [
   "llama-cpp-python[server]>=0.3.10",
@@ -193,9 +204,8 @@ all = [
   # aggregate without native P2P by default
   "torch>=2.1",
   "transformers>=4.46",
-  "uvicorn>=0.27.0,<0.35.0; python_version < '3.10'",
-  "uvicorn>=0.35.0,<1.0.0; python_version >= '3.10'",
-  "fastapi>=0.110.0,<1.0.0",
+  "uvicorn>=0.27.0",
+  "fastapi>=0.110.0",
   "sentence-transformers",
   "ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main",
   "ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main",
@@ -210,12 +220,11 @@ all = [
   "newspaper3k>=0.2.8",
   "readability-lxml>=0.8.1",
   "lxml_html_clean>=0.1.1",
-  "websockets==10.4; python_version < '3.10'",
-  "websockets>=15.0.1; python_version >= '3.10'",
+  "websockets>=10.1",
   "matplotlib>=3.7.0",
   "seaborn>=0.13.0",
   "plotly>=5.22.0",
-  "fastmcp==2.14.7; python_version >= '3.10'",
+  "fastmcp>=0.1.0",
   "async-timeout>=4.0.0",
   "llama-cpp-python[server]>=0.3.10",
   "huggingface_hub>=0.24.0",

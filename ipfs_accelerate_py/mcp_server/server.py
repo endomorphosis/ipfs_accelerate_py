@@ -160,10 +160,11 @@ def configure_agent_supervisor_tools(manager: HierarchicalToolManager) -> None:
 
     def load_agent_supervisor_tools(value: HierarchicalToolManager) -> None:
         from .tools.agent_supervisor_tools import (  # noqa: PLC0415
-            register_native_agent_supervisor_tools,
+            register_all_agent_supervisor_tools,
         )
 
-        register_native_agent_supervisor_tools(value)
+        # Control-plane operations + ASE3-011 prompt-lifecycle facade tools.
+        register_all_agent_supervisor_tools(value)
 
     manager.register_category_loader(
         "agent_supervisor",
@@ -1465,7 +1466,6 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     passthrough_result_fields=isinstance(result, dict),
                     extra_fields={
                         **_authorization_success_fields(),
-                        "event_dag": _always_dag_meta,
                         **({"cache": dict(cache_meta)} if use_result_cache else {}),
                         **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
                         **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),
@@ -1480,7 +1480,6 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 policy_decision_obj=policy_decision_binding,
                 extra_fields={
                     **_authorization_success_fields(),
-                    "event_dag": _always_dag_meta,
                     **({"cache": dict(cache_meta)} if use_result_cache else {}),
                     **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
                     **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),

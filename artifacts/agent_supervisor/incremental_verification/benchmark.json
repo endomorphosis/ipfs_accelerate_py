@@ -1,0 +1,2558 @@
+{
+  "authoritative": false,
+  "benchmark_duration_ms": 112,
+  "cases": [
+    {
+      "change_kind": "config_edge",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 269,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4188,
+        "raw_log_tokens": 1048,
+        "tokens": 68,
+        "tokens_saved": 980
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "config-edge-change",
+      "localized": true,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "passing_selected_is_not_false_positive",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "localized_exact",
+        "context_token_estimate": 512,
+        "decisive_reason_codes": [
+          "localized_exact_counterexample"
+        ],
+        "frontier_escalation": false,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "small_local_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_config.py::test_configured"
+        ],
+        "selected": [
+          "tests/test_config.py::test_configured"
+        ],
+        "selected_count": 1
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 68,
+        "estimator_bound": true,
+        "raw_log_tokens": 1048,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 980
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "deliberately_failing",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 347,
+        "has_failure_context": true,
+        "raw_log_bytes_bound": 4466,
+        "raw_log_tokens": 1117,
+        "tokens": 87,
+        "tokens_saved": 1030
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "deliberately-failing-observed",
+      "localized": true,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "localized_exact",
+        "context_token_estimate": 512,
+        "decisive_reason_codes": [
+          "localized_exact_counterexample"
+        ],
+        "frontier_escalation": false,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "small_local_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_deliberately_fails"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_deliberately_fails"
+        ],
+        "selected_count": 1
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 87,
+        "estimator_bound": true,
+        "raw_log_tokens": 1117,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 1030
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "direct_symbol",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 251,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4205,
+        "raw_log_tokens": 1052,
+        "tokens": 63,
+        "tokens_saved": 989
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "direct-symbol-fn",
+      "localized": true,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "passing_selected_is_not_false_positive",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "localized_exact",
+        "context_token_estimate": 512,
+        "decisive_reason_codes": [
+          "localized_exact_counterexample"
+        ],
+        "frontier_escalation": false,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "small_local_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected_count": 1
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 63,
+        "estimator_bound": true,
+        "raw_log_tokens": 1052,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 989
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "dynamic",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 251,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4212,
+        "raw_log_tokens": 1054,
+        "tokens": 63,
+        "tokens_saved": 991
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_helper"
+        ],
+        "count": 2,
+        "ground_truth": [
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_helper"
+        ]
+      },
+      "fixture_id": "dynamic-critical",
+      "localized": false,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "uncertain_or_uncovered_selector",
+        "broader_or_full_suite_required",
+        "selected_outside_ground_truth",
+        "passing_selected_is_not_false_positive",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "opaque",
+        "context_token_estimate": 4096,
+        "decisive_reason_codes": [
+          "mandatory_full_suite_pending",
+          "verification_incomplete"
+        ],
+        "frontier_escalation": true,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": true,
+        "route": "human_review_required"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper"
+        ],
+        "selected_count": 3
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 63,
+        "estimator_bound": true,
+        "raw_log_tokens": 1054,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 991
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "environment",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 267,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4212,
+        "raw_log_tokens": 1054,
+        "tokens": 67,
+        "tokens_saved": 987
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "environment-identity",
+      "localized": true,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "passing_selected_is_not_false_positive",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "localized_exact",
+        "context_token_estimate": 512,
+        "decisive_reason_codes": [
+          "localized_exact_counterexample"
+        ],
+        "frontier_escalation": false,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "small_local_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected_count": 1
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 67,
+        "estimator_bound": true,
+        "raw_log_tokens": 1054,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 987
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "equivalent_controlled",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 279,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4200,
+        "raw_log_tokens": 1051,
+        "tokens": 70,
+        "tokens_saved": 981
+      },
+      "equivalence_label": "equivalent-pair:mod-fn@1",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "equivalent-controlled-a",
+      "localized": true,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "passing_selected_is_not_false_positive",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "localized_exact",
+        "context_token_estimate": 512,
+        "decisive_reason_codes": [
+          "localized_exact_counterexample"
+        ],
+        "frontier_escalation": false,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "small_local_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected_count": 1
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 70,
+        "estimator_bound": true,
+        "raw_log_tokens": 1051,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 981
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "equivalent_controlled",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 279,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4208,
+        "raw_log_tokens": 1053,
+        "tokens": 70,
+        "tokens_saved": 983
+      },
+      "equivalence_label": "equivalent-pair:mod-fn@1",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "equivalent-controlled-b",
+      "localized": true,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "passing_selected_is_not_false_positive",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "localized_exact",
+        "context_token_estimate": 512,
+        "decisive_reason_codes": [
+          "localized_exact_counterexample"
+        ],
+        "frontier_escalation": false,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "small_local_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected_count": 1
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 70,
+        "estimator_bound": true,
+        "raw_log_tokens": 1053,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 983
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "fixture_edge",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 273,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4203,
+        "raw_log_tokens": 1051,
+        "tokens": 69,
+        "tokens_saved": 982
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "fixture-edge-change",
+      "localized": true,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "passing_selected_is_not_false_positive",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "localized_exact",
+        "context_token_estimate": 512,
+        "decisive_reason_codes": [
+          "localized_exact_counterexample"
+        ],
+        "frontier_escalation": false,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "small_local_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_fixture.py::test_with_fixture"
+        ],
+        "selected": [
+          "tests/test_fixture.py::test_with_fixture"
+        ],
+        "selected_count": 1
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 69,
+        "estimator_bound": true,
+        "raw_log_tokens": 1051,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 982
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "flaky",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 239,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4197,
+        "raw_log_tokens": 1050,
+        "tokens": 60,
+        "tokens_saved": 990
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "flaky-outcome",
+      "localized": false,
+      "measurement_status": "inconclusive",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [
+          "flaky_outcome"
+        ],
+        "inconclusive_tests": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "present": true,
+        "reason_codes": [
+          "flaky_outcome"
+        ]
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "flaky_outcome",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "ambiguous",
+        "context_token_estimate": 4096,
+        "decisive_reason_codes": [
+          "ambiguous_work"
+        ],
+        "frontier_escalation": true,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "frontier_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected_count": 1
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 60,
+        "estimator_bound": true,
+        "raw_log_tokens": 1050,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 990
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "full_suite_timeout",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 259,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4201,
+        "raw_log_tokens": 1051,
+        "tokens": 65,
+        "tokens_saved": 986
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": null,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": null,
+        "ground_truth": []
+      },
+      "fixture_id": "full-suite-timeout",
+      "localized": false,
+      "measurement_status": "not_measured",
+      "not_measured_reasons": [
+        "full_suite_timeout"
+      ],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "full_suite_timeout"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "broad",
+        "context_token_estimate": 4096,
+        "decisive_reason_codes": [
+          "mandatory_full_suite_pending",
+          "verification_incomplete"
+        ],
+        "frontier_escalation": true,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": true,
+        "route": "human_review_required"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [],
+        "full_count": 0,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected_count": 1
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 65,
+        "estimator_bound": true,
+        "raw_log_tokens": 1051,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 986
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "full_suite_unavailable",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 275,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4205,
+        "raw_log_tokens": 1052,
+        "tokens": 69,
+        "tokens_saved": 983
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": null,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": null,
+        "ground_truth": []
+      },
+      "fixture_id": "full-suite-unavailable",
+      "localized": false,
+      "measurement_status": "not_measured",
+      "not_measured_reasons": [
+        "full_suite_unavailable"
+      ],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "full_suite_unavailable"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "broad",
+        "context_token_estimate": 4096,
+        "decisive_reason_codes": [
+          "mandatory_full_suite_pending",
+          "verification_incomplete"
+        ],
+        "frontier_escalation": true,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": true,
+        "route": "human_review_required"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [],
+        "full_count": 0,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected_count": 1
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 69,
+        "estimator_bound": true,
+        "raw_log_tokens": 1052,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 983
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "lock",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 239,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4205,
+        "raw_log_tokens": 1052,
+        "tokens": 60,
+        "tokens_saved": 992
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "lock-identity",
+      "localized": true,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "passing_selected_is_not_false_positive",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "localized_exact",
+        "context_token_estimate": 512,
+        "decisive_reason_codes": [
+          "localized_exact_counterexample"
+        ],
+        "frontier_escalation": false,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "small_local_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected_count": 1
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 60,
+        "estimator_bound": true,
+        "raw_log_tokens": 1052,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 992
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "opaque",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 247,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4211,
+        "raw_log_tokens": 1053,
+        "tokens": 62,
+        "tokens_saved": 991
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_helper"
+        ],
+        "count": 2,
+        "ground_truth": [
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_helper"
+        ]
+      },
+      "fixture_id": "opaque-critical",
+      "localized": false,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "uncertain_or_uncovered_selector",
+        "broader_or_full_suite_required",
+        "selected_outside_ground_truth",
+        "passing_selected_is_not_false_positive",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "opaque",
+        "context_token_estimate": 4096,
+        "decisive_reason_codes": [
+          "mandatory_full_suite_pending",
+          "verification_incomplete"
+        ],
+        "frontier_escalation": true,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": true,
+        "route": "human_review_required"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper"
+        ],
+        "selected_count": 3
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 62,
+        "estimator_bound": true,
+        "raw_log_tokens": 1053,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 991
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "order_dependent",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 247,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4193,
+        "raw_log_tokens": 1049,
+        "tokens": 62,
+        "tokens_saved": 987
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "order-dependent",
+      "localized": false,
+      "measurement_status": "inconclusive",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [
+          "order_dependent_outcome"
+        ],
+        "inconclusive_tests": [
+          "tests/test_mod.py::test_helper"
+        ],
+        "present": true,
+        "reason_codes": [
+          "order_dependent_outcome"
+        ]
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "passing_selected_is_not_false_positive",
+        "order_dependent_outcome",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "ambiguous",
+        "context_token_estimate": 4096,
+        "decisive_reason_codes": [
+          "ambiguous_work"
+        ],
+        "frontier_escalation": true,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "frontier_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper"
+        ],
+        "selected_count": 2
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 62,
+        "estimator_bound": true,
+        "raw_log_tokens": 1049,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 987
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "deliberately_failing",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 291,
+        "has_failure_context": true,
+        "raw_log_bytes_bound": 4522,
+        "raw_log_tokens": 1131,
+        "tokens": 73,
+        "tokens_saved": 1058
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "outcome-discrepancy",
+      "localized": true,
+      "measurement_status": "inconclusive",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [
+          "selected_full_outcome_discrepancy"
+        ],
+        "inconclusive_tests": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "present": true,
+        "reason_codes": [
+          "selected_full_outcome_discrepancy"
+        ]
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "selected_full_outcome_discrepancy",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "localized_exact",
+        "context_token_estimate": 512,
+        "decisive_reason_codes": [
+          "localized_exact_counterexample"
+        ],
+        "frontier_escalation": false,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "small_local_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected_count": 1
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 73,
+        "estimator_bound": true,
+        "raw_log_tokens": 1131,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 1058
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "false_negative_seed",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 271,
+        "has_failure_context": true,
+        "raw_log_bytes_bound": 4212,
+        "raw_log_tokens": 1054,
+        "tokens": 68,
+        "tokens_saved": 986
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [
+          "tests/test_mod.py::test_deliberately_fails"
+        ],
+        "count": 1,
+        "full_suite_oracle": [
+          "tests/test_mod.py::test_deliberately_fails"
+        ],
+        "ground_truth": [
+          "tests/test_mod.py::test_deliberately_fails"
+        ]
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "seeded-false-negative",
+      "localized": false,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "ground_truth_affected_omitted",
+        "full_suite_failure_not_observed_by_selected",
+        "passing_selected_is_not_false_positive",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "ambiguous",
+        "context_token_estimate": 4096,
+        "decisive_reason_codes": [
+          "ambiguous_work"
+        ],
+        "frontier_escalation": true,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "frontier_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected_count": 1
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 68,
+        "estimator_bound": true,
+        "raw_log_tokens": 1054,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 986
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "false_positive_seed",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 271,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4213,
+        "raw_log_tokens": 1054,
+        "tokens": 68,
+        "tokens_saved": 986
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [
+          "tests/test_other.py::test_unrelated"
+        ],
+        "count": 1,
+        "ground_truth": [
+          "tests/test_other.py::test_unrelated"
+        ]
+      },
+      "fixture_id": "seeded-false-positive",
+      "localized": false,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "selected_outside_ground_truth",
+        "passing_selected_is_not_false_positive",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "localized_conservative",
+        "context_token_estimate": 4096,
+        "decisive_reason_codes": [
+          "localized_exact_counterexample"
+        ],
+        "frontier_escalation": false,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "small_local_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_fn",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "selected_count": 2
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 68,
+        "estimator_bound": true,
+        "raw_log_tokens": 1054,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 986
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "transitive",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 259,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4204,
+        "raw_log_tokens": 1052,
+        "tokens": 65,
+        "tokens_saved": 987
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "transitive-helper",
+      "localized": false,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "passing_selected_is_not_false_positive",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "multi_file_synthesis",
+        "context_token_estimate": 4096,
+        "decisive_reason_codes": [
+          "multi_file_synthesis"
+        ],
+        "frontier_escalation": false,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "medium_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper"
+        ],
+        "selected_count": 2
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 65,
+        "estimator_bound": true,
+        "raw_log_tokens": 1052,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 987
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "unrelated",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 244,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4194,
+        "raw_log_tokens": 1049,
+        "tokens": 62,
+        "tokens_saved": 987
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [],
+        "count": 0,
+        "ground_truth": []
+      },
+      "fixture_id": "unrelated-edit",
+      "localized": true,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "localized_exact",
+        "context_token_estimate": 512,
+        "decisive_reason_codes": [
+          "localized_exact_counterexample"
+        ],
+        "frontier_escalation": false,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": false,
+        "route": "small_local_model"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [],
+        "selected": [],
+        "selected_count": 0
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 62,
+        "estimator_bound": true,
+        "raw_log_tokens": 1049,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 987
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    },
+    {
+      "change_kind": "validation_mapping",
+      "counterexample_context": {
+        "bound_bytes": 8192,
+        "bytes": 303,
+        "has_failure_context": false,
+        "raw_log_bytes_bound": 4215,
+        "raw_log_tokens": 1054,
+        "tokens": 76,
+        "tokens_saved": 978
+      },
+      "equivalence_label": "",
+      "false_negatives": {
+        "aggregate": [],
+        "count": 0,
+        "full_suite_oracle": [],
+        "ground_truth": []
+      },
+      "false_positives": {
+        "aggregate": [
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_helper"
+        ],
+        "count": 2,
+        "ground_truth": [
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_helper"
+        ]
+      },
+      "fixture_id": "validation-mapping-incomplete",
+      "localized": false,
+      "measurement_status": "measured",
+      "not_measured_reasons": [],
+      "outcome_discrepancies": {
+        "inconclusive_reasons": [],
+        "inconclusive_tests": [],
+        "present": false,
+        "reason_codes": []
+      },
+      "reason_codes": [
+        "target_success_not_asserted",
+        "uncertain_or_uncovered_selector",
+        "broader_or_full_suite_required",
+        "validation_id_to_node_id_mapping_missing",
+        "selected_outside_ground_truth",
+        "passing_selected_is_not_false_positive",
+        "identities_and_timing_bound"
+      ],
+      "reused_time": {
+        "basis": "estimated_selected_vs_full",
+        "full_ms": 20,
+        "label": "estimated",
+        "saved_ms": 15,
+        "selected_ms": 5
+      },
+      "route": {
+        "analysis_kind": "opaque",
+        "context_token_estimate": 4096,
+        "decisive_reason_codes": [
+          "mandatory_full_suite_pending",
+          "verification_incomplete"
+        ],
+        "frontier_escalation": true,
+        "policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+        "requires_human_review": true,
+        "route": "human_review_required"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-case@1",
+      "static_proof_execution": {
+        "proof_obligations_catalogued": 0,
+        "proof_obligations_executed": 0,
+        "reason": "controlled_fixture_catalog_has_no_static_or_proof_items",
+        "static_checks_catalogued": 0,
+        "static_checks_executed": 0,
+        "status": "not_measured",
+        "type_checks_catalogued": 0,
+        "type_checks_executed": 0
+      },
+      "tests": {
+        "full": [
+          "tests/test_config.py::test_configured",
+          "tests/test_fixture.py::test_with_fixture",
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper",
+          "tests/test_other.py::test_unrelated"
+        ],
+        "full_count": 6,
+        "ground_truth_affected": [
+          "tests/test_mod.py::test_fn"
+        ],
+        "selected": [
+          "tests/test_mod.py::test_deliberately_fails",
+          "tests/test_mod.py::test_fn",
+          "tests/test_mod.py::test_helper"
+        ],
+        "selected_count": 3
+      },
+      "token_savings": {
+        "compared_artifact_bounds": {
+          "counterexample_bytes": 8192,
+          "raw_log_bytes": 262144
+        },
+        "counterexample_tokens": 76,
+        "estimator_bound": true,
+        "raw_log_tokens": 1054,
+        "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+        "tokenizer_version": "1.0.0",
+        "tokens_saved": 978
+      },
+      "wall": {
+        "evaluation_duration_ms": 0,
+        "full_suite_duration_ms": 20,
+        "selected_duration_ms": 5
+      }
+    }
+  ],
+  "commands": {
+    "generate_artifact": [
+      "PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:.",
+      "python3",
+      "benchmarks/agent_supervisor/incremental_verification.py",
+      "--output",
+      "artifacts/agent_supervisor/incremental_verification/benchmark.json"
+    ],
+    "validate": [
+      "PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:.",
+      "python3",
+      "-m",
+      "pytest",
+      "-q",
+      "--timeout=300",
+      "test/benchmarks/test_incremental_verification_planner_benchmark.py"
+    ]
+  },
+  "commitments": {
+    "body": {
+      "case_fixture_ids": [
+        "config-edge-change",
+        "deliberately-failing-observed",
+        "direct-symbol-fn",
+        "dynamic-critical",
+        "environment-identity",
+        "equivalent-controlled-a",
+        "equivalent-controlled-b",
+        "fixture-edge-change",
+        "flaky-outcome",
+        "full-suite-timeout",
+        "full-suite-unavailable",
+        "lock-identity",
+        "opaque-critical",
+        "order-dependent",
+        "outcome-discrepancy",
+        "seeded-false-negative",
+        "seeded-false-positive",
+        "transitive-helper",
+        "unrelated-edit",
+        "validation-mapping-incomplete"
+      ],
+      "corpus_cid": "sha256:83ec610cd96baba7419f9e8219a1189d919d5f6aa6717475cb218cb154a13f8e",
+      "metrics_digest": "baguqeeralpl6umixxwvdhbeqeeoya7ogh2iitepabzjmgjbd4zkksn4w3viq",
+      "policy_id": "policy:ivp-incremental-verification-benchmark@1",
+      "source_snapshot_id": "sha256:32bf46ccd07392b0c1dd4b7006f21e67fad0f5e439b034a586ebb3610065939c"
+    },
+    "commitment_cid": "baguqeerapkswlsalqvc3o3jcoaic42ta7ca2t46ffb64hnqjqulzyn2ybu3a",
+    "deterministic": true
+  },
+  "content_id": "baguqeeram6jtyce43lbhoazqxpw5zfltxu3qibiezbvzrsexfkxaidhksctq",
+  "corpus": {
+    "case_count": 20,
+    "corpus_cid": "sha256:83ec610cd96baba7419f9e8219a1189d919d5f6aa6717475cb218cb154a13f8e",
+    "corpus_id": "ivp-semantic-capsule-controlled-v1",
+    "evaluated_count": 20,
+    "fixture_relpath": "test/fixtures/incremental_verification",
+    "inconclusive_count": 3,
+    "measured_count": 15,
+    "measurement_status": "measured",
+    "not_measured_count": 2,
+    "path": "test/fixtures/incremental_verification/corpus_manifest.json",
+    "present": true,
+    "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-selection-corpus@1",
+    "selection_measurement_status": "measured",
+    "status": "available"
+  },
+  "cross_tree_unaffected_reuse": {
+    "explicitly_unmet": true,
+    "new_tree_disposition": "missing",
+    "new_tree_reusable": false,
+    "reason": "exact_full_tree_binding_forbids_incompatible_cross_tree_reuse",
+    "status": "unmet",
+    "target": "unaffected_cross_tree_reuse"
+  },
+  "effective_environment": {
+    "cwd": ".",
+    "env_markers": {
+      "CI": "",
+      "GITHUB_ACTIONS": ""
+    },
+    "executable": "/usr/bin/python3.12",
+    "machine": "aarch64",
+    "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+    "processor": "aarch64",
+    "python_version": "3.12.3",
+    "system": "Linux"
+  },
+  "evidence": "ivp/benchmark@2",
+  "goal_id": "IVP-G090",
+  "historical_preservation": {
+    "historical_present": true,
+    "holds": true,
+    "old_key_reusable": true,
+    "tombstones": 0
+  },
+  "interface": "IncrementalVerificationBenchmark@2",
+  "measurement_schema": {
+    "counterexample_byte_bound": 8192,
+    "fields": [
+      "cache_hit_rate",
+      "tests_selected_full",
+      "ground_truth_false_negatives",
+      "ground_truth_false_positives",
+      "outcome_discrepancies",
+      "static_proof_execution",
+      "wall_samples",
+      "paired_estimated_reused_time",
+      "route",
+      "frontier_escalation",
+      "counterexample_context",
+      "estimator_bound_token_savings"
+    ],
+    "raw_log_byte_bound": 262144,
+    "reused_time_labels": [
+      "paired",
+      "estimated"
+    ],
+    "small_route_min_fraction": 0.2,
+    "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+    "tokenizer_version": "1.0.0",
+    "version": "ivp-benchmark-measurement/v1",
+    "wall_samples": 5,
+    "wall_tolerance_ratio": 0.35
+  },
+  "metrics": {
+    "cache": {
+      "cross_tree_unaffected_reuse": {
+        "explicitly_unmet": true,
+        "new_tree_disposition": "missing",
+        "new_tree_reusable": false,
+        "reason": "exact_full_tree_binding_forbids_incompatible_cross_tree_reuse",
+        "status": "unmet",
+        "target": "unaffected_cross_tree_reuse"
+      },
+      "historical_preservation": {
+        "historical_present": true,
+        "holds": true,
+        "old_key_reusable": true,
+        "tombstones": 0
+      },
+      "hit_rate": 0.5,
+      "hit_rate_bps": 5000,
+      "hits": 2,
+      "lookups": 4,
+      "misses": 2,
+      "zero_stale_simulated_accepted": true
+    },
+    "counterexample_context": {
+      "bound_bytes": 8192,
+      "total_bytes": 5361,
+      "total_tokens": 1347
+    },
+    "false_negatives": {
+      "corpus_total": 1,
+      "ground_truth_total": 1,
+      "measurement_status": "measured"
+    },
+    "false_positives": {
+      "corpus_total": 7,
+      "ground_truth_total": 7,
+      "measurement_status": "measured"
+    },
+    "frontier_escalation": {
+      "cases": 20,
+      "count": 8,
+      "rate": 0.4
+    },
+    "outcome_discrepancies": {
+      "case_count": 3,
+      "inconclusive_count": 3
+    },
+    "reused_time": {
+      "basis": "estimated_selected_vs_full_aggregate",
+      "label": "estimated",
+      "paired_cache": {
+        "basis": "paired_cold_hot",
+        "cold_lookup_ms": 0.386524,
+        "hot_lookup_ms": 12.614613,
+        "label": "paired",
+        "sample_count": 1,
+        "saved_ms": 0.0
+      },
+      "saved_ms": 300
+    },
+    "routes": {
+      "counts": {
+        "frontier_model": 3,
+        "human_review_required": 5,
+        "medium_model": 1,
+        "small_local_model": 11
+      },
+      "frontier_escalation_count": 8,
+      "frontier_escalation_rate": 0.4
+    },
+    "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark-metrics@1",
+    "static_proof_execution": {
+      "note": "controlled corpus catalogs empty static/proof sets; real prover availability is probed separately",
+      "proof_obligations_executed": 0,
+      "provers": {
+        "any_real_prover": false,
+        "available": [],
+        "missing_typed": "unavailable",
+        "probes": {
+          "coqc": {
+            "measurement_status": "not_measured",
+            "name": "coqc",
+            "path": null,
+            "reason": "executable_not_on_path",
+            "status": "unavailable",
+            "version": null
+          },
+          "isabelle": {
+            "measurement_status": "not_measured",
+            "name": "isabelle",
+            "path": null,
+            "reason": "executable_not_on_path",
+            "status": "unavailable",
+            "version": null
+          },
+          "lean": {
+            "measurement_status": "not_measured",
+            "name": "lean",
+            "path": null,
+            "reason": "executable_not_on_path",
+            "status": "unavailable",
+            "version": null
+          },
+          "z3": {
+            "measurement_status": "not_measured",
+            "name": "z3",
+            "path": null,
+            "reason": "executable_not_on_path",
+            "status": "unavailable",
+            "version": null
+          }
+        },
+        "unavailable": [
+          "coqc",
+          "isabelle",
+          "lean",
+          "z3"
+        ]
+      },
+      "static_checks_executed": 0,
+      "status": "not_measured",
+      "type_checks_executed": 0
+    },
+    "tests": {
+      "cases": 20,
+      "full_total": 108,
+      "measured_cases": 15,
+      "selected_total": 28
+    },
+    "token_savings": {
+      "compared_artifact_bounds": {
+        "counterexample_bytes": 8192,
+        "raw_log_bytes": 262144
+      },
+      "estimator_bound": true,
+      "tokenizer_id": "ivp-estimator/utf8-bytes-div4@1",
+      "tokenizer_version": "1.0.0",
+      "tokens_saved_total": 19834
+    },
+    "wall_samples": {
+      "max_ms": 1.327993,
+      "mean_ms": 1.290453,
+      "median_ms": 1.283736,
+      "min_ms": 1.273847,
+      "p95_ms": 1.327993,
+      "role": "observational",
+      "sample_count": 5,
+      "samples_ms": [
+        1.273847,
+        1.273975,
+        1.283736,
+        1.292712,
+        1.327993
+      ],
+      "tolerance_ms": 1.0,
+      "tolerance_ratio": 0.35
+    }
+  },
+  "observed_head": "8c7800cedc5e1b848367db9952f912428466f8cc",
+  "policy": {
+    "performance_cannot_weaken_correctness": true,
+    "policy_id": "policy:ivp-incremental-verification-benchmark@1",
+    "route_policy_cid": "baguqeerar5ccpa2ngmbee7aktejbk67pfjyrjzr52gz267ppuolwzagotonq",
+    "selection_policy_id": "policy:ivp-selection-eval@1",
+    "zero_stale_simulated_acceptance_hard": true
+  },
+  "provers": {
+    "any_real_prover": false,
+    "available": [],
+    "missing_typed": "unavailable",
+    "probes": {
+      "coqc": {
+        "measurement_status": "not_measured",
+        "name": "coqc",
+        "path": null,
+        "reason": "executable_not_on_path",
+        "status": "unavailable",
+        "version": null
+      },
+      "isabelle": {
+        "measurement_status": "not_measured",
+        "name": "isabelle",
+        "path": null,
+        "reason": "executable_not_on_path",
+        "status": "unavailable",
+        "version": null
+      },
+      "lean": {
+        "measurement_status": "not_measured",
+        "name": "lean",
+        "path": null,
+        "reason": "executable_not_on_path",
+        "status": "unavailable",
+        "version": null
+      },
+      "z3": {
+        "measurement_status": "not_measured",
+        "name": "z3",
+        "path": null,
+        "reason": "executable_not_on_path",
+        "status": "unavailable",
+        "version": null
+      }
+    },
+    "unavailable": [
+      "coqc",
+      "isabelle",
+      "lean",
+      "z3"
+    ]
+  },
+  "repository_root": ".",
+  "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@2",
+  "selection_summary": {
+    "authoritative": false,
+    "corpus_id": "ivp-semantic-capsule-controlled-v1",
+    "evaluated_count": 20,
+    "evidence": "ivp/test-selection-evaluation@1",
+    "fixture_ids": [
+      "config-edge-change",
+      "deliberately-failing-observed",
+      "direct-symbol-fn",
+      "dynamic-critical",
+      "environment-identity",
+      "equivalent-controlled-a",
+      "equivalent-controlled-b",
+      "fixture-edge-change",
+      "flaky-outcome",
+      "full-suite-timeout",
+      "full-suite-unavailable",
+      "lock-identity",
+      "opaque-critical",
+      "order-dependent",
+      "outcome-discrepancy",
+      "seeded-false-negative",
+      "seeded-false-positive",
+      "transitive-helper",
+      "unrelated-edit",
+      "validation-mapping-incomplete"
+    ],
+    "inconclusive_count": 3,
+    "interface": "SelectionCorpusEvaluationSummary@1",
+    "measured_count": 15,
+    "measurement_status": "measured",
+    "not_measured_count": 2,
+    "schema": "ipfs_accelerate_py/agent-supervisor/selection-corpus-evaluation@1",
+    "target_success_asserted": false,
+    "total_false_negatives": 1,
+    "total_false_positives": 7
+  },
+  "source_snapshot_domain": "ivp-source-snapshot@1",
+  "source_snapshot_id": "sha256:32bf46ccd07392b0c1dd4b7006f21e67fad0f5e439b034a586ebb3610065939c",
+  "source_snapshot_schema": "ipfs_accelerate_py/agent-supervisor/ivp-source-snapshot@1",
+  "status": "red",
+  "target_misses": [
+    {
+      "count": 1,
+      "detail": "total_false_negatives=1",
+      "status": "red",
+      "target": "zero_controlled_false_negatives"
+    }
+  ],
+  "target_success_asserted": false,
+  "targets": {
+    "deterministic_commitments": {
+      "hard": true,
+      "status": "met",
+      "value": true
+    },
+    "incompatible_cross_tree_unaffected_reuse": {
+      "explicitly_unmet": true,
+      "hard": false,
+      "reason": "exact_full_tree_binding_forbids_incompatible_cross_tree_reuse",
+      "status": "unmet",
+      "value": false
+    },
+    "metrics_complete": {
+      "hard": false,
+      "status": "met"
+    },
+    "old_key_historical_preservation": {
+      "hard": true,
+      "status": "met",
+      "value": true
+    },
+    "small_route_localized_distribution": {
+      "fraction": 1.0,
+      "hard": false,
+      "localized_measured": 9,
+      "required_min_absolute": 1,
+      "required_min_fraction": 0.2,
+      "small_route_count": 9,
+      "status": "met"
+    },
+    "zero_controlled_false_negatives": {
+      "hard": false,
+      "note": "hard only in IVP-016/IVP-019; recorded honestly here",
+      "status": "red",
+      "value": 1
+    },
+    "zero_stale_simulated_accepted": {
+      "hard": true,
+      "status": "met",
+      "value": true
+    }
+  },
+  "task_id": "IVP-017",
+  "zero_stale_simulated_accepted": true
+}

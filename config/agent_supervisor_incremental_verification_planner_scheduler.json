@@ -1,0 +1,190 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.incremental_verification_planner.scheduler_config@1",
+  "taskboard_path": "docs/architecture/incremental_verification_planner.todo.md",
+  "objectives_path": "docs/architecture/incremental_verification_planner.objectives.md",
+  "plan_path": "docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_PLAN.md",
+  "validator_path": "scripts/validate_incremental_verification_planner_board.py",
+  "task_prefix": "IVP-",
+  "goal_prefix": "IVP-G",
+  "board_namespace": "incremental-verification-planner-v1",
+  "merge_target_branch": "integration/incremental-verification-planner-main-20260811",
+  "source_binding": {
+    "accelerator_required_ancestor": "c1e33e8f443253e106c464d7c5b5c341c3095876",
+    "accelerator_required_branch": "integration/incremental-verification-planner-main-20260811",
+    "bootstrap_task_source": "legacy-markdown",
+    "ipfs_kit_submodule_path": "ipfs_kit_py",
+    "ipfs_kit_planning_revision": "5a7a2df8181cfdc33bc19be09989df7ff83f2d4e",
+    "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+    "ipfs_datasets_planning_revision": "6cd037c7738f44904add46391537588e67f6f238",
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "initial_projection": {
+    "task_count": 22,
+    "completed_task_ids": [
+      "IVP-000"
+    ],
+    "ready_task_ids": [
+      "IVP-001"
+    ],
+    "blocked_task_ids": [],
+    "terminal_task_id": "IVP-019",
+    "goal_count": 11,
+    "root_goal_id": "IVP-G000"
+  },
+  "max_lanes": 3,
+  "strict_task_sharding": true,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 45,
+  "check_interval_seconds": 20,
+  "stale_seconds": 1200,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 8,
+  "max_task_attempts": 4,
+  "implementation_retry_budget": 4,
+  "validation_retry_budget": 4,
+  "merge_retry_budget": 4,
+  "implementation_timeout_seconds": 5400,
+  "implementation_max_timeout_seconds": 7200,
+  "implementation_log_stall_seconds": 900,
+  "worktree_submodule_paths": [
+    "ipfs_kit_py",
+    "ipfs_datasets_py"
+  ],
+  "protected_paths": [
+    ".gitignore",
+    "docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_PLAN.md",
+    "docs/architecture/incremental_verification_planner.objectives.md",
+    "docs/architecture/incremental_verification_planner.todo.md",
+    "config/agent_supervisor_incremental_verification_planner_scheduler.json",
+    "scripts/validate_incremental_verification_planner_board.py",
+    "scripts/ops/agent_supervisor/incremental_verification_planner_scheduler.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/incremental_verification_planner",
+    "state": "data/agent_supervisor/incremental_verification_planner/state",
+    "worktrees": "data/agent_supervisor/incremental_verification_planner/worktrees",
+    "merge_queue": "data/agent_supervisor/incremental_verification_planner/merge-queue",
+    "logs": "data/agent_supervisor/incremental_verification_planner/logs",
+    "evidence": "data/agent_supervisor/incremental_verification_planner/evidence",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "ivp-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [],
+      "initial_focus": "storage-selection-routing-and-evidence"
+    },
+    {
+      "index": 1,
+      "name": "ivp-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_task_ids": [
+        "IVP-001"
+      ],
+      "initial_focus": "contracts-runtime-conformance-and-release"
+    },
+    {
+      "index": 2,
+      "name": "ivp-lane-2",
+      "strict_shard_remainder": 2,
+      "initial_task_ids": [],
+      "initial_focus": "adapters-cache-orchestration-and-benchmark"
+    }
+  ],
+  "task_groups": {
+    "IVP-G010": [
+      "IVP-001"
+    ],
+    "IVP-G020": [
+      "IVP-002",
+      "IVP-003",
+      "IVP-004"
+    ],
+    "IVP-G030": [
+      "IVP-008"
+    ],
+    "IVP-G040": [
+      "IVP-005",
+      "IVP-006",
+      "IVP-007"
+    ],
+    "IVP-G050": [
+      "IVP-009",
+      "IVP-010"
+    ],
+    "IVP-G060": [
+      "IVP-011",
+      "IVP-013"
+    ],
+    "IVP-G070": [
+      "IVP-012"
+    ],
+    "IVP-G080": [
+      "IVP-014"
+    ],
+    "IVP-G090": [
+      "IVP-015",
+      "IVP-016",
+      "IVP-017"
+    ],
+    "IVP-G100": [
+      "IVP-018",
+      "IVP-020",
+      "IVP-021",
+      "IVP-019"
+    ]
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "high",
+    "max_concurrency": 3,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "authority_policy": {
+    "exact_receipt_identity_required": true,
+    "provider_claim_is_verification_authority": false,
+    "test_or_proof_presence_is_verification_authority": false,
+    "semantic_uncertainty_requires_broader_execution": true,
+    "model_route_is_provider_selection": false,
+    "production_acceptance_requires_current_admitted_receipts": true,
+    "timeout_unavailable_unknown_stale_invalid_cancelled_or_simulated_can_pass": false,
+    "nonreproducible_environment_requires_human_review": true
+  },
+  "capability_policy": {
+    "automatic_dependency_installation_allowed": false,
+    "mock_hardware_or_inference_allowed": false,
+    "new_theorem_prover_allowed": false,
+    "proof_assistant_requires_current_operational_probe": true,
+    "missing_optional_dependency_disposition": "typed_unavailable",
+    "shell_string_execution_allowed": false,
+    "process_tree_termination_required": true,
+    "bounded_stdout_and_stderr_required": true
+  },
+  "completion_policy": {
+    "terminal_task_id": "IVP-019",
+    "all_task_dependencies_terminal_required": true,
+    "goal_heap_is_planning_lineage_only": true,
+    "current_tree_evidence_required": true,
+    "stale_partial_simulated_skipped_or_print_only_evidence_satisfies_release": false,
+    "controlled_fixture_false_negative_floor": 0,
+    "stale_or_simulated_production_acceptance_floor": 0,
+    "deterministic_commitment_required": true,
+    "honest_unmet_target_reporting_required": true,
+    "final_report_required": true
+  }
+}

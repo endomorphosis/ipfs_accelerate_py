@@ -13,22 +13,19 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.merge import checkout_lock as checkout_lock_module
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
-    BACKLOG_REFINERY_AUTHOR_EMAIL,
-    CheckoutMaintenanceLease,
-    checkout_lock_metadata,
-    checkout_mutation_lock_path,
-    crash_fence_reconciliation_lock_path,
-    durable_input_generation,
-    generated_protected_board_commit_subject,
-    generations_match,
     serialized_lock_update,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     core as core_module,
     implementation_daemon as implementation_daemon_module,
-    implementation_supervisor as implementation_supervisor_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    BACKLOG_REFINERY_AUTHOR_EMAIL,
+    checkout_lock_metadata,
+    checkout_mutation_lock_path,
+    generated_protected_board_commit_subject,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
 )
@@ -36,7 +33,6 @@ from ipfs_accelerate_py.agent_supervisor.merge_queue import (
     MERGE_TARGET_BINDING_SCHEMA,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-    CrashFenceReconciler,
     PortalImplementationDaemon,
     PortalTask,
     PortalTaskState,
@@ -54,29 +50,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
 )
 from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
     ProcessBirthIdentity,
-    WorkspaceLifecycleState,
+    current_process_birth,
 )
 
 
 POLICY_PATH = "implementation_plan/policies/analyzer-approvals.json"
-
-
-@pytest.fixture(autouse=True)
-def _relax_task_execution_metadata_requirement(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Unit fixtures omit reviewed provider roles; clear the supervisor env gate.
-
-    The live implementation daemon sets
-    ``IPFS_ACCELERATE_AGENT_REQUIRE_TASK_EXECUTION_METADATA`` for production
-    lanes. Protected-path unit tests must remain independent of that host
-    policy so lease and fence regressions stay isolated.
-    """
-
-    monkeypatch.delenv(
-        "IPFS_ACCELERATE_AGENT_REQUIRE_TASK_EXECUTION_METADATA",
-        raising=False,
-    )
 
 
 def _daemon(
@@ -290,6 +268,47 @@ def _persist_active_attempt_state(
     return state
 
 
+def _seed_active_lifecycle(
+    daemon: PortalImplementationDaemon,
+    task: PortalTask,
+    workspace: Path,
+    owner: ProcessBirthIdentity,
+):
+    identity = daemon._identity_for_task(task)
+    record = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=1,
+        lane_id="shutdown-reconciliation",
+        workspace_path=workspace,
+        branch="lane",
+        merge_target=daemon.resolved_merge_target_branch,
+        state_dir=str(daemon.state_path.parent.resolve()),
+        owner=owner,
+    )
+    return daemon.worktree_lifecycle.mark_active(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+
+
+def _persist_stale_implementation_lock(
+    daemon: PortalImplementationDaemon,
+    task: PortalTask,
+) -> Path:
+    lock_path = daemon._implementation_lock_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = daemon._build_implementation_lock_metadata(
+        task,
+        1,
+        "2026-07-31T00:00:00+00:00",
+    )
+    payload["pid"] = 2**30 - 7
+    lock_path.write_text(json.dumps(payload), encoding="utf-8")
+    return lock_path
+
+
 def test_normalize_implementation_protected_paths_is_exact_and_fail_closed(
     tmp_path: Path,
 ) -> None:
@@ -435,224 +454,6 @@ def test_daemon_skips_protected_declarations_before_launch(
     assert result["skipped"] is True
     assert result["reason"] == "implementation_protected_path_declared"
     assert result["protected_paths"] == [POLICY_PATH]
-
-
-def test_shared_protected_maintenance_lease_defers_model_dispatch(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    supervisor = _supervisor(tmp_path)
-    lease, guard = supervisor._acquire_protected_path_maintenance_lease()
-    assert lease is not None
-    assert guard["blocked"] is False
-    daemon = _daemon(tmp_path)
-    task = _task(outputs=["src/example.py"])
-    monkeypatch.setattr(
-        daemon,
-        "_build_implementation_prompt",
-        lambda *_args, **_kwargs: pytest.fail(
-            "maintenance coordination must precede model prompt construction"
-        ),
-    )
-
-    try:
-        result = daemon._run_implementation(task, PortalTaskState())
-    finally:
-        supervisor._release_protected_path_maintenance_lease(lease)
-
-    assert result["skipped"] is True
-    assert result["reason"] == "implementation_protected_path_maintenance_active"
-    assert result["backoff_seconds"] == 30
-    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task)) is True
-    assert not daemon._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=daemon._canonical_ref(task),
-    ).exists()
-
-
-def test_repo_global_maintenance_lease_defers_daemon_without_local_paths(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    supervisor = _supervisor(tmp_path)
-    lease, guard = supervisor._acquire_protected_path_maintenance_lease()
-    assert lease is not None
-    assert guard["blocked"] is False
-    daemon = _daemon(tmp_path, protected_paths=())
-    task = _task(outputs=["src/example.py"])
-    monkeypatch.setattr(
-        daemon,
-        "_build_implementation_prompt",
-        lambda *_args, **_kwargs: pytest.fail(
-            "the repo-global lease must precede prompt construction"
-        ),
-    )
-
-    try:
-        result = daemon._run_implementation(task, PortalTaskState())
-    finally:
-        supervisor._release_protected_path_maintenance_lease(lease)
-
-    assert result["skipped"] is True
-    assert result["reason"] == "implementation_protected_path_maintenance_active"
-    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task)) is True
-
-
-def test_live_shared_maintenance_lease_survives_empty_process_command_line(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    owner = _supervisor(
-        tmp_path,
-        state_path=tmp_path / "lane-owner" / "task-state.json",
-    )
-    contender = _supervisor(
-        tmp_path,
-        state_path=tmp_path / "lane-contender" / "task-state.json",
-    )
-    lease, guard = owner._acquire_protected_path_maintenance_lease()
-    assert lease is not None
-    assert guard["blocked"] is False
-    lock_path = owner._protected_path_maintenance_lock_path()
-    monkeypatch.setattr(
-        implementation_supervisor_module,
-        "process_command_line",
-        lambda _pid: "",
-    )
-
-    try:
-        contender_lease, contender_guard = (
-            contender._acquire_protected_path_maintenance_lease()
-        )
-        persisted = json.loads(lock_path.read_text(encoding="utf-8"))
-    finally:
-        owner._release_protected_path_maintenance_lease(lease)
-
-    assert contender_lease is None
-    assert contender_guard["reason"] == "protected_path_maintenance_active"
-    assert persisted["lease_id"] == lease["lease_id"]
-
-
-def test_shared_protected_maintenance_waits_for_active_task_claim(
-    tmp_path: Path,
-) -> None:
-    daemon = _daemon(tmp_path)
-    supervisor = _supervisor(tmp_path)
-    task = _task(outputs=["src/example.py"])
-    task_claim_path = daemon._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=daemon._canonical_ref(task),
-    )
-    task_claim_metadata = daemon._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-07-29T00:00:00+00:00",
-    )
-    acquired, _reason, _existing = (
-        daemon._try_acquire_implementation_task_claim(
-            task_claim_path,
-            task_claim_metadata,
-        )
-    )
-    assert acquired is True
-
-    try:
-        lease, guard = supervisor._acquire_protected_path_maintenance_lease()
-    finally:
-        daemon._release_implementation_task_claim(
-            task_claim_path,
-            task_claim_metadata,
-        )
-
-    assert lease is None
-    assert guard["reason"] == "shared_implementation_task_claim_active"
-    assert guard["active_claims"][0]["task_id"] == task.task_id
-    assert not supervisor._protected_path_maintenance_lock_path().exists()
-
-
-@pytest.mark.parametrize(
-    "fence_filename",
-    [
-        implementation_daemon_module.IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
-        implementation_daemon_module.IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
-    ],
-)
-def test_shared_maintenance_waits_for_orphan_task_claim_fence(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    fence_filename: str,
-) -> None:
-    daemon = _daemon(
-        tmp_path,
-        state_path=tmp_path / "lane-worker" / "task-state.json",
-    )
-    supervisor = _supervisor(
-        tmp_path,
-        state_path=tmp_path / "lane-maintenance" / "task-state.json",
-    )
-    task = _task(outputs=["src/example.py"])
-    claim_path = daemon._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=daemon._canonical_ref(task),
-    )
-    claim_metadata = daemon._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-07-29T00:00:00+00:00",
-    )
-    acquired, _reason, _existing = (
-        daemon._try_acquire_implementation_task_claim(
-            claim_path,
-            claim_metadata,
-        )
-    )
-    assert acquired is True
-    fence_path = daemon.state_path.parent / fence_filename
-    fence_path.parent.mkdir(parents=True, exist_ok=True)
-    fence_path.write_text('{"schema":"test-fence"}\n', encoding="utf-8")
-    # The attempt finalizer must keep the repo-wide pointer to its durable
-    # lane-local safety fence.
-    assert daemon._release_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-    assert claim_path.exists()
-    monkeypatch.setattr(
-        implementation_supervisor_module,
-        "process_is_running",
-        lambda _pid: False,
-    )
-
-    blocked_lease, blocked_guard = (
-        supervisor._acquire_protected_path_maintenance_lease()
-    )
-
-    assert blocked_lease is None
-    assert blocked_guard["reason"] == "shared_implementation_task_claim_active"
-    assert blocked_guard["active_claims"][0]["owner_live"] is False
-    assert blocked_guard["active_claims"][0]["protected_fence_paths"] == [
-        str(fence_path)
-    ]
-    assert claim_path.exists()
-    assert fence_path.exists()
-
-    fence_path.unlink()
-    assert daemon._release_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-    assert not claim_path.exists()
-    released_lease, released_guard = (
-        supervisor._acquire_protected_path_maintenance_lease()
-    )
-    try:
-        assert released_lease is not None
-        assert released_guard["blocked"] is False
-    finally:
-        if released_lease is not None:
-            supervisor._release_protected_path_maintenance_lease(
-                released_lease
-            )
 
 
 @pytest.mark.parametrize(
@@ -905,6 +706,7 @@ def test_validated_no_change_guard_rejects_disappeared_candidate() -> None:
                 ]
             }
         },
+        require_no_change_policy_gate=False,
     )
 
     assert guard["allowed"] is False
@@ -922,10 +724,44 @@ def test_validated_no_change_guard_accepts_exact_unchanged_baseline() -> None:
         expected_branch="implementation/task-attempt-1",
         current_branch="implementation/task-attempt-1",
         validation_result={"selection": {"changed_files": []}},
+        require_no_change_policy_gate=False,
     )
 
     assert guard["allowed"] is True
     assert guard["reasons"] == []
+
+
+def test_no_change_policy_gate_is_universal_across_execution_modes() -> None:
+    def task(mode: str | None) -> PortalTask:
+        metadata = {"Provider role": "deterministic-only"}
+        if mode is not None:
+            metadata["No-change completion"] = mode
+        return PortalTask(
+            task_id="AUTO-DETERMINISTIC",
+            title="Run a typed local validation",
+            status="todo",
+            completion="auto",
+            priority="P0",
+            track="ops",
+            metadata=metadata,
+        )
+
+    assert PortalImplementationDaemon._no_change_policy_gate_required(
+        task("allowed"),
+        deterministic_only=True,
+    ) is True
+    assert PortalImplementationDaemon._no_change_policy_gate_required(
+        task(None),
+        deterministic_only=True,
+    ) is True
+    assert PortalImplementationDaemon._no_change_policy_gate_required(
+        task("forbidden"),
+        deterministic_only=True,
+    ) is True
+    assert PortalImplementationDaemon._no_change_policy_gate_required(
+        task("allowed"),
+        deterministic_only=False,
+    ) is True
 
 
 def test_crash_snapshot_reconciliation_blocks_before_merge_consumption(
@@ -1091,15 +927,13 @@ def test_crash_reconciliation_accepts_missing_ephemeral_workspace_when_shared_is
 
     result = daemon._reconcile_implementation_protected_path_fence()
 
-    assert result["blocked"] is False
-    assert result["reason"] == "crash_reconciliation_ephemeral_workspace_missing"
-    assert result["task_id"] == task.task_id
-    assert result["attempt"] == 1
-    assert result["workspace_path"] == str(workspace)
-    proof = result.get("reconciliation_proof") or {}
-    assert proof.get("scan_outside_lease") is True
-    assert proof.get("critical_section_entered") is True
-    assert proof.get("lease_hold_bounded") is True
+    assert result == {
+        "blocked": False,
+        "reason": "crash_reconciliation_ephemeral_workspace_missing",
+        "task_id": task.task_id,
+        "attempt": 1,
+        "workspace_path": str(workspace),
+    }
     assert not daemon._implementation_protected_active_snapshot_path().exists()
     assert not daemon._implementation_protected_incident_path().exists()
 
@@ -1125,13 +959,32 @@ def test_crash_reconciliation_rejects_missing_ephemeral_workspace_when_shared_ch
     assert daemon._implementation_protected_incident_path().exists()
 
 
+@pytest.mark.parametrize("terminal_lifecycle", [False, True])
 def test_quiesced_shutdown_reconciles_fence_before_operator_board_revision(
     tmp_path: Path,
+    terminal_lifecycle: bool,
 ) -> None:
     daemon, _repo, workspace, protected = _protected_git_worktree_daemon(
         tmp_path
     )
     task = _task(outputs=["src/example.py"])
+    lifecycle = _seed_active_lifecycle(
+        daemon,
+        task,
+        workspace,
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    if terminal_lifecycle:
+        lifecycle = daemon.worktree_lifecycle.mark_terminal(
+            workspace,
+            lease_id=lifecycle.lease_id,
+            expected_fence=lifecycle.fence,
+            reason="interrupted_terminal_cleanup",
+        )
     daemon._require_implementation_protected_snapshot(
         task=task,
         attempt=1,
@@ -1152,6 +1005,26 @@ def test_quiesced_shutdown_reconciles_fence_before_operator_board_revision(
         result["protected_path_reconciliation"]["reason"]
         == "crash_reconciliation_unchanged"
     )
+    assert (
+        result["worktree_lifecycle_precheck"]["reason"]
+        == "worktree_lifecycle_quiescence_verified"
+    )
+    assert (
+        result["worktree_lifecycle_reconciliation"]["finalized"]
+        is True
+    )
+    assert (
+        daemon.worktree_lifecycle.load_workspace(workspace)
+        is None
+    )
+    assert (
+        daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=lifecycle.canonical_task_cid,
+            task_id=lifecycle.task_id,
+            attempt=lifecycle.attempt,
+        )
+        is None
+    )
     assert not daemon._implementation_protected_active_snapshot_path().exists()
     assert not daemon._implementation_protected_incident_path().exists()
     state = PortalTaskState.load(daemon.state_path)
@@ -1164,158 +1037,7 @@ def test_quiesced_shutdown_reconciles_fence_before_operator_board_revision(
     protected.write_text("operator board revision after clean stop\n", encoding="utf-8")
     restart = daemon._reconcile_implementation_protected_path_fence()
 
-    assert restart == {
-        "blocked": False,
-        "reason": "no_active_snapshot",
-        "critical_section_entered": False,
-        "scan_outside_lease": True,
-    }
-    assert not daemon._implementation_protected_incident_path().exists()
-
-
-def test_quiesced_shutdown_terminalizes_exact_dead_lifecycle_owner_and_unblocks_retry(
-    tmp_path: Path,
-) -> None:
-    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
-        tmp_path
-    )
-    task = _task(outputs=["src/example.py"])
-    identity = daemon._identity_for_task(task)
-    daemon._require_implementation_protected_snapshot(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-    )
-    _persist_active_attempt_state(
-        daemon,
-        task=task,
-        workspace=workspace,
-    )
-    lifecycle = daemon.worktree_lifecycle.begin_preparing(
-        task_id=task.task_id,
-        canonical_task_cid=identity.canonical_task_cid,
-        attempt=1,
-        lane_id="terminated-lane",
-        workspace_path=workspace,
-        branch="lane",
-        merge_target="main",
-        state_dir=str(daemon.state_path.parent.resolve()),
-        owner=ProcessBirthIdentity(
-            pid=2**30 - 19,
-            start_time_ticks=1,
-            boot_id="provably-dead-owner",
-        ),
-    )
-    lifecycle = daemon.worktree_lifecycle.mark_active(
-        workspace,
-        lease_id=lifecycle.lease_id,
-        expected_fence=lifecycle.fence,
-    )
-    assert lifecycle.expires_at > daemon.worktree_lifecycle.clock()
-
-    result = daemon.reconcile_quiesced_active_attempt()
-
-    assert result["reconciled"] is True
-    assert result["blocked"] is False
-    lifecycle_result = result["worktree_lifecycle_reconciliation"]
-    assert (
-        lifecycle_result["reason"]
-        == "worktree_lifecycle_dead_owner_terminalized"
-    )
-    assert lifecycle_result["terminal_reason"] == (
-        "controlled_shutdown_quiesced_owner"
-    )
-    terminal = daemon.worktree_lifecycle.load_workspace(workspace)
-    assert terminal is not None
-    assert terminal.state is WorkspaceLifecycleState.TERMINAL
-    assert terminal.fence == lifecycle.fence + 1
-    assert PortalTaskState.load(daemon.state_path).implementation_in_progress is False
-
-    # The original six-hour lease remains unexpired, but the terminal task
-    # index must no longer reject the same retry attempt in a replacement
-    # workspace.
-    retry = daemon.worktree_lifecycle.begin_preparing(
-        task_id=task.task_id,
-        canonical_task_cid=identity.canonical_task_cid,
-        attempt=1,
-        lane_id="replacement-lane",
-        workspace_path=workspace.parent / "replacement",
-        branch="implementation/example-retry",
-        merge_target="main",
-        state_dir=str(tmp_path / "replacement-state"),
-    )
-    assert retry.state is WorkspaceLifecycleState.PREPARING
-
-
-@pytest.mark.parametrize(
-    ("ownership_case", "expected_reason"),
-    [
-        ("live", "worktree_lifecycle_owner_still_active"),
-        ("wrong_state", "worktree_lifecycle_state_dir_mismatch"),
-        ("unknown_liveness", "worktree_lifecycle_owner_liveness_unknown"),
-    ],
-)
-def test_quiesced_shutdown_keeps_unproven_lifecycle_ownership_blocked(
-    tmp_path: Path,
-    ownership_case: str,
-    expected_reason: str,
-) -> None:
-    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
-        tmp_path
-    )
-    task = _task(outputs=["src/example.py"])
-    identity = daemon._identity_for_task(task)
-    daemon._require_implementation_protected_snapshot(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-    )
-    _persist_active_attempt_state(
-        daemon,
-        task=task,
-        workspace=workspace,
-    )
-    dead_owner = ProcessBirthIdentity(
-        pid=2**30 - 23,
-        start_time_ticks=1,
-        boot_id="provably-dead-owner",
-    )
-    lifecycle = daemon.worktree_lifecycle.begin_preparing(
-        task_id=task.task_id,
-        canonical_task_cid=identity.canonical_task_cid,
-        attempt=1,
-        lane_id=f"{ownership_case}-lane",
-        workspace_path=workspace,
-        branch="lane",
-        merge_target="main",
-        state_dir=str(
-            tmp_path / "different-state"
-            if ownership_case == "wrong_state"
-            else daemon.state_path.parent.resolve()
-        ),
-        owner=None if ownership_case == "live" else dead_owner,
-    )
-    lifecycle = daemon.worktree_lifecycle.mark_active(
-        workspace,
-        lease_id=lifecycle.lease_id,
-        expected_fence=lifecycle.fence,
-    )
-    if ownership_case == "unknown_liveness":
-        daemon.worktree_lifecycle.proc_root = tmp_path / "missing-proc"
-
-    result = daemon.reconcile_quiesced_active_attempt()
-
-    assert result["reconciled"] is False
-    assert result["blocked"] is True
-    assert result["reason"] == "worktree_lifecycle_reconciliation_blocked"
-    lifecycle_result = result["worktree_lifecycle_reconciliation"]
-    assert lifecycle_result["reason"] == expected_reason
-    unchanged = daemon.worktree_lifecycle.load_workspace(workspace)
-    assert unchanged is not None
-    assert unchanged.state is WorkspaceLifecycleState.ACTIVE
-    assert unchanged.fence == lifecycle.fence
-    assert PortalTaskState.load(daemon.state_path).implementation_in_progress is True
-    assert daemon._implementation_protected_active_snapshot_path().exists()
+    assert restart == {"blocked": False, "reason": "no_active_snapshot"}
     assert not daemon._implementation_protected_incident_path().exists()
 
 
@@ -1352,6 +1074,229 @@ def test_quiesced_shutdown_preserves_real_protected_path_incident(
     state = PortalTaskState.load(daemon.state_path)
     assert state.implementation_in_progress is True
     assert state.active_task_id == task.task_id
+
+
+def test_quiesced_shutdown_preserves_fence_for_live_lifecycle_owner(
+    tmp_path: Path,
+) -> None:
+    daemon, _repo, workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    _seed_active_lifecycle(
+        daemon,
+        task,
+        workspace,
+        current_process_birth(),
+    )
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    snapshot_path = (
+        daemon._implementation_protected_active_snapshot_path()
+    )
+    before_lifecycle = (
+        daemon.worktree_lifecycle.workspace_path_for(workspace).read_bytes()
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == (
+        "worktree_lifecycle_reconciliation_blocked"
+    )
+    assert (
+        result["worktree_lifecycle_precheck"]["reason"]
+        == "worktree_lifecycle_owner_alive"
+    )
+    assert snapshot_path.exists()
+    assert PortalTaskState.load(
+        daemon.state_path
+    ).implementation_in_progress
+    assert (
+        daemon.worktree_lifecycle.workspace_path_for(
+            workspace
+        ).read_bytes()
+        == before_lifecycle
+    )
+
+
+@pytest.mark.parametrize("failure", ["unknown", "binding_mismatch"])
+def test_quiesced_shutdown_preserves_all_evidence_for_lifecycle_rejection(
+    tmp_path: Path,
+    failure: str,
+) -> None:
+    daemon, _repo, workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    lifecycle = _seed_active_lifecycle(
+        daemon,
+        task,
+        workspace,
+        ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    record_path = daemon.worktree_lifecycle.workspace_path_for(workspace)
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        task_id=lifecycle.task_id,
+        attempt=lifecycle.attempt,
+    )
+    if failure == "unknown":
+        daemon.worktree_lifecycle.proc_root = tmp_path / "missing-proc"
+    else:
+        payload = json.loads(record_path.read_text(encoding="utf-8"))
+        payload["branch"] = "different-branch"
+        record_path.write_text(json.dumps(payload), encoding="utf-8")
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    lock_path = _persist_stale_implementation_lock(daemon, task)
+    snapshot_path = daemon._implementation_protected_active_snapshot_path()
+    before = {
+        "record": record_path.read_bytes(),
+        "index": index_path.read_bytes(),
+        "snapshot": snapshot_path.read_bytes(),
+        "state": daemon.state_path.read_bytes(),
+        "lock": lock_path.read_bytes(),
+    }
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert record_path.read_bytes() == before["record"]
+    assert index_path.read_bytes() == before["index"]
+    assert snapshot_path.read_bytes() == before["snapshot"]
+    assert daemon.state_path.read_bytes() == before["state"]
+    assert lock_path.read_bytes() == before["lock"]
+
+
+@pytest.mark.parametrize(
+    "phase_drift",
+    ["owner", "successor", "delete"],
+)
+def test_quiesced_shutdown_phase_drift_preserves_snapshot_state_and_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase_drift: str,
+) -> None:
+    daemon, _repo, workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    lifecycle = _seed_active_lifecycle(
+        daemon,
+        task,
+        workspace,
+        ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    record_path = daemon.worktree_lifecycle.workspace_path_for(workspace)
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=lifecycle.canonical_task_cid,
+        task_id=lifecycle.task_id,
+        attempt=lifecycle.attempt,
+    )
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    lock_path = _persist_stale_implementation_lock(daemon, task)
+    snapshot_path = daemon._implementation_protected_active_snapshot_path()
+    preserved = {
+        "snapshot": snapshot_path.read_bytes(),
+        "state": daemon.state_path.read_bytes(),
+        "lock": lock_path.read_bytes(),
+    }
+    original_reconcile = (
+        daemon._reconcile_exact_quiesced_worktree_lifecycle
+    )
+    drifted_evidence: dict[str, bytes] = {}
+
+    def drift_before_finalize(*args, **kwargs):
+        if kwargs.get("action") == "finalize":
+            if phase_drift == "delete":
+                record_path.unlink()
+                index_path.unlink()
+            else:
+                record_payload = json.loads(
+                    record_path.read_text(encoding="utf-8")
+                )
+                record_payload["owner"] = ProcessBirthIdentity(
+                    pid=2**30 - 9,
+                    start_time_ticks=2,
+                    boot_id="replacement-dead-owner",
+                ).to_dict()
+                if phase_drift == "successor":
+                    record_payload["fence"] += 1
+                    record_payload["lease_id"] = "successor-lease"
+                record_path.write_text(
+                    json.dumps(record_payload),
+                    encoding="utf-8",
+                )
+                index_payload = json.loads(
+                    index_path.read_text(encoding="utf-8")
+                )
+                if phase_drift == "successor":
+                    index_payload["fence"] += 1
+                    index_payload["lease_id"] = "successor-lease"
+                    index_path.write_text(
+                        json.dumps(index_payload),
+                        encoding="utf-8",
+                    )
+                drifted_evidence["record"] = record_path.read_bytes()
+                drifted_evidence["index"] = index_path.read_bytes()
+        return original_reconcile(*args, **kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_reconcile_exact_quiesced_worktree_lifecycle",
+        drift_before_finalize,
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "worktree_lifecycle_reconciliation_blocked"
+    assert snapshot_path.read_bytes() == preserved["snapshot"]
+    assert daemon.state_path.read_bytes() == preserved["state"]
+    assert lock_path.read_bytes() == preserved["lock"]
+    if phase_drift == "delete":
+        assert not record_path.exists()
+        assert not index_path.exists()
+    else:
+        assert record_path.read_bytes() == drifted_evidence["record"]
+        assert index_path.read_bytes() == drifted_evidence["index"]
 
 
 def test_quiesced_shutdown_refuses_live_implementation_lock(
@@ -2436,42 +2381,6 @@ def test_operator_clearance_requires_exact_untrusted_commit_and_writes_receipt(
     assert receipt["history"][0]["trusted_generator"] is False
 
 
-def test_operator_clearance_accepts_exact_shared_checkout_rollback(
-    tmp_path: Path,
-) -> None:
-    daemon, _repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
-    task = _task(outputs=["src/example.py"])
-    before = daemon._require_implementation_protected_snapshot(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-    )
-
-    protected.write_text("temporary operator update\n", encoding="utf-8")
-    violation = daemon._implementation_protected_path_violation(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-        before=before,
-    )
-    assert violation["reason"] == "implementation_protected_path_mutated"
-
-    protected.write_text("before\n", encoding="utf-8")
-    cleared = daemon.clear_implementation_protected_path_incident(
-        operator_note="Restored the protected controller input exactly.",
-    )
-
-    assert cleared["cleared"] is True
-    assert cleared["reason"] == "operator_confirmed_shared_checkout_rollback"
-    assert cleared["shared_checkout_rollback_confirmed"] is True
-    receipt = json.loads(
-        Path(cleared["receipt_path"]).read_text(encoding="utf-8")
-    )
-    proof = receipt["shared_checkout_rollback_proof"]
-    assert proof["schema"] == "implementation-protected-path-rollback-proof-v1"
-    assert proof["restored_paths"][POLICY_PATH]["sha256"]
-
-
 def test_operator_clearance_rejects_workspace_protected_path_mutation(
     tmp_path: Path,
 ) -> None:
@@ -2897,6 +2806,56 @@ def test_auto_clear_refuses_shared_checkout_deletions(tmp_path: Path) -> None:
     assert result.get("blocked") is True
     assert result.get("reason") == "implementation_protected_path_incident_latched"
     assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_auto_clears_shared_checkout_content_change_when_head_is_clean(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Fixture")
+    _git(repo, "config", "user.email", "fixture@example.invalid")
+    protected = repo / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("committed\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(repo, "commit", "-m", "protect")
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_root=tmp_path / "worktrees",
+        implement=True,
+        implementation_command="implementation-command-that-must-not-run",
+        implementation_protected_paths=(POLICY_PATH,),
+    )
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-001",
+            "attempt": 2,
+            "workspace_path": str(tmp_path / "worktrees" / "gone"),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "content_changed",
+                    "before": {"sha256": "old"},
+                    "after": {"sha256": "new"},
+                }
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("cleared") is True
+    assert result.get("auto") is True
+    assert result.get("reason") == "shared_checkout_matches_head"
+    assert not daemon._implementation_protected_incident_path().exists()
 
 
 def test_auto_clear_refuses_shared_plan_content_changes(tmp_path: Path) -> None:
@@ -3481,6 +3440,107 @@ def test_generated_board_replacement_failed_release_is_not_durable(
     assert supervisor._current_supervisor_checkout_lease() is not None
 
 
+def test_retained_generated_recovery_reacquires_when_lease_is_absent(
+    tmp_path: Path,
+) -> None:
+    supervisor, repo, _todo_path = _generated_protected_supervisor(tmp_path)
+    lock_path = checkout_mutation_lock_path(repo)
+    lease, reason, _existing = supervisor._acquire_supervisor_checkout_lease(
+        lock_path,
+        supervisor._supervisor_checkout_lock_metadata(
+            operation="generated_board_update",
+            extra={"producer": "lost-lease-test"},
+        ),
+    )
+    assert lease is not None
+    assert reason == "acquired"
+    supervisor._checkout_mutation_context.lease = lease
+    supervisor._checkout_mutation_context.transaction_depth = 0
+    supervisor._checkout_mutation_context.retain_until_protected_clean = True
+    supervisor._checkout_mutation_context.retained_operation = (
+        "generated_board_update"
+    )
+    supervisor._checkout_mutation_context.retained_producer = (
+        "lost-lease-test"
+    )
+    lock_path.unlink()
+    callback_lease_ids: list[str] = []
+
+    def callback() -> list[str]:
+        current = supervisor._current_supervisor_checkout_lease()
+        assert current is not None
+        assert current.lock_path.exists()
+        callback_lease_ids.append(current.lease_id)
+        return ["recovered"]
+
+    result = supervisor._run_generated_board_producer(
+        producer="lost-lease-test",
+        commit_outputs=True,
+        operation="generated_dirty_repair",
+        callback=callback,
+    )
+
+    assert result == ["recovered"]
+    assert callback_lease_ids
+    assert callback_lease_ids != [lease.lease_id]
+    assert supervisor._current_supervisor_checkout_lease() is None
+    assert not lock_path.exists()
+
+
+def test_absent_retained_recovery_keeps_context_when_reacquire_loses_race(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, repo, _todo_path = _generated_protected_supervisor(tmp_path)
+    lock_path = checkout_mutation_lock_path(repo)
+    lease, reason, _existing = supervisor._acquire_supervisor_checkout_lease(
+        lock_path,
+        supervisor._supervisor_checkout_lock_metadata(
+            operation="generated_board_update",
+            extra={"producer": "lost-race-test"},
+        ),
+    )
+    assert lease is not None
+    assert reason == "acquired"
+    supervisor._checkout_mutation_context.lease = lease
+    supervisor._checkout_mutation_context.transaction_depth = 0
+    supervisor._checkout_mutation_context.retain_until_protected_clean = True
+    supervisor._checkout_mutation_context.retained_producer = (
+        "lost-race-test"
+    )
+    lock_path.unlink()
+    monkeypatch.setattr(
+        supervisor,
+        "_acquire_supervisor_checkout_lease",
+        lambda *_args, **_kwargs: (
+            None,
+            "lock_exists",
+            {"lease_id": "competing-lease"},
+        ),
+    )
+    callback_called = False
+
+    def callback() -> list[str]:
+        nonlocal callback_called
+        callback_called = True
+        return []
+
+    with pytest.raises(
+        RuntimeError,
+        match="checkout_mutation_absent_lease_reacquire_lock_exists",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="lost-race-test",
+            commit_outputs=True,
+            operation="generated_dirty_repair",
+            callback=callback,
+        )
+
+    assert callback_called is False
+    assert supervisor._current_supervisor_checkout_lease() is lease
+    assert supervisor._retained_generated_checkout_lease() is True
+
+
 def test_generated_board_snapshot_exception_releases_without_fake_nesting(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3894,7 +3954,6 @@ def test_supervisor_maintenance_lease_is_visible_and_removed_on_success(
 ) -> None:
     supervisor = _supervisor(tmp_path)
     lock_path = tmp_path / "state" / "implementation.lock"
-    shared_lock_path = supervisor._protected_path_maintenance_lock_path()
     observed: dict[str, object] = {}
 
     def maintenance_body(
@@ -3904,9 +3963,6 @@ def test_supervisor_maintenance_lease_is_visible_and_removed_on_success(
         implementation_maintenance_lease=None,
     ):
         observed.update(json.loads(lock_path.read_text(encoding="utf-8")))
-        assert json.loads(shared_lock_path.read_text(encoding="utf-8"))[
-            "lease_role"
-        ] == "shared_protected_path_maintenance"
         assert include_refill is False
         assert implementation_maintenance_lease == observed
         assert _daemon(tmp_path)._implementation_lock_owner_is_active(observed)
@@ -3929,7 +3985,6 @@ def test_supervisor_maintenance_lease_is_visible_and_removed_on_success(
     assert observed["pid"] == os.getpid()
     assert observed["lease_id"]
     assert not lock_path.exists()
-    assert not shared_lock_path.exists()
 
 
 def test_supervisor_maintenance_lease_is_removed_on_exception(
@@ -3938,7 +3993,6 @@ def test_supervisor_maintenance_lease_is_removed_on_exception(
 ) -> None:
     supervisor = _supervisor(tmp_path)
     lock_path = tmp_path / "state" / "implementation.lock"
-    shared_lock_path = supervisor._protected_path_maintenance_lock_path()
 
     def failing_maintenance(
         _update_phase,
@@ -3950,7 +4004,6 @@ def test_supervisor_maintenance_lease_is_removed_on_exception(
         metadata = json.loads(lock_path.read_text(encoding="utf-8"))
         assert implementation_maintenance_lease == metadata
         assert metadata["lease_role"] == "supervisor_maintenance"
-        assert shared_lock_path.exists()
         raise RuntimeError("maintenance failed")
 
     monkeypatch.setattr(
@@ -3966,57 +4019,6 @@ def test_supervisor_maintenance_lease_is_removed_on_exception(
         )
 
     assert not lock_path.exists()
-    assert not shared_lock_path.exists()
-
-
-def test_supervisor_preflight_does_not_repair_checkout_before_shared_lease(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    supervisor = _supervisor(tmp_path)
-
-    class StoppedLoop:
-        def __init__(self, *_args, **_kwargs) -> None:
-            pass
-
-        def run(self) -> SimpleNamespace:
-            return SimpleNamespace(
-                status="stopped",
-                restart_count=0,
-                last_exit_code=None,
-                last_recycle_reason="",
-                last_run_id="",
-                last_log_path="",
-            )
-
-    monkeypatch.setattr(
-        supervisor,
-        "ensure_event_log_file",
-        lambda: {"repaired": False},
-    )
-    monkeypatch.setattr(
-        supervisor,
-        "ensure_managed_daemon_pid_file",
-        lambda: {"adopted": False},
-    )
-    monkeypatch.setattr(
-        supervisor,
-        "repair_main_checkout_merge_state",
-        lambda: pytest.fail(
-            "checkout repair must run only inside run_once's shared lease"
-        ),
-    )
-    monkeypatch.setattr(
-        supervisor,
-        "run_once",
-        lambda *, include_refill=True: {
-            "stuck": False,
-            "include_refill": include_refill,
-        },
-    )
-    supervisor.shared_supervisor_loop_class = StoppedLoop
-
-    supervisor._run_forever_loop()
 
 
 def test_supervisor_maintenance_lease_uses_effective_state_path_parent(
@@ -4288,8 +4290,6 @@ def test_serialized_lock_update_has_windows_backend(
     monkeypatch.setattr(checkout_lock_module, "msvcrt", FakeMsvcrt)
     lock_path = tmp_path / "state" / "implementation.lock"
 
-    # Resolve through the monkeypatched module so this remains isolated even
-    # when another test reloads the checkout-lock module during collection.
     with checkout_lock_module.serialized_lock_update(lock_path):
         assert calls == [(FakeMsvcrt.LK_NBLCK, 1)]
 
@@ -4642,309 +4642,27 @@ def test_successful_agent_runner_quiesces_daemonized_descendants(
                 pass
 
 
-def test_crash_fence_reconciliation_defers_without_clearance_under_maintenance(
-    tmp_path: Path,
-) -> None:
-    """Active maintenance must not produce a false clear of a crash snapshot."""
-
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("before\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
-    task = _task(outputs=["src/example.py"])
-    daemon._require_implementation_protected_snapshot(
-        task=task,
-        attempt=1,
-        workspace_path=tmp_path,
+def test_supervisor_trusts_daemon_owned_board_completion_commits():
+    trusted = (
+        PortalImplementationSupervisor._trusted_generated_protected_commit
     )
-    active_path = daemon._implementation_protected_active_snapshot_path()
-    assert active_path.exists()
-    supervisor = _supervisor(tmp_path)
-    lease, guard = supervisor._acquire_protected_path_maintenance_lease()
-    assert lease is not None
-    assert guard["blocked"] is False
-
-    try:
-        result = daemon._reconcile_implementation_protected_path_fence()
-    finally:
-        supervisor._release_protected_path_maintenance_lease(lease)
-
-    assert result["blocked"] is True
-    assert result["deferred"] is True
-    assert result["reason"] == "crash_reconciliation_deferred_maintenance_active"
-    assert result["scan_outside_lease"] is True
-    assert result["critical_section_entered"] is False
-    assert active_path.exists()
-    assert not daemon._implementation_protected_incident_path().exists()
-
-
-def test_crash_fence_reconciliation_defers_auto_clear_under_maintenance(
-    tmp_path: Path,
-) -> None:
-    """Active maintenance must not auto-clear a latched incident either."""
-
-    worktrees = tmp_path / "worktrees"
-    workspace = worktrees / "workspace-ephemeral"
-    worktrees.mkdir()
-    # Workspace already gone; shared protected path remains intact.
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("authoritative\n", encoding="utf-8")
-    daemon = PortalImplementationDaemon(
-        todo_path=tmp_path / "tasks.todo.md",
-        state_path=tmp_path / "state" / "task-state.json",
-        strategy_path=tmp_path / "state" / "strategy.json",
-        events_path=tmp_path / "state" / "events.jsonl",
-        repo_root=tmp_path,
-        worktree_root=worktrees,
-        implement=True,
-        implementation_command="implementation-command-that-must-not-run",
-        implementation_protected_paths=(POLICY_PATH,),
+    assert trusted(
+        "implementation-daemon@example.invalid",
+        "SCG-015: mark todo completed",
     )
-    daemon._latch_implementation_protected_incident(
-        {
-            "reason": "implementation_protected_path_mutated",
-            "task_id": "EX-001",
-            "attempt": 1,
-            "workspace_path": str(workspace),
-            "mutations": [
-                {
-                    "scope": "workspace",
-                    "path": POLICY_PATH,
-                    "change": "deleted",
-                    "before": {"state": "present"},
-                    "after": {"state": "missing"},
-                }
-            ],
-        }
+    assert trusted(
+        "implementation-daemon@example.invalid",
+        "SCG-018: reopen dependency-ready tasks",
     )
-    supervisor = _supervisor(tmp_path)
-    lease, guard = supervisor._acquire_protected_path_maintenance_lease()
-    assert lease is not None
-
-    try:
-        result = daemon._reconcile_implementation_protected_path_fence()
-    finally:
-        supervisor._release_protected_path_maintenance_lease(lease)
-
-    assert result["deferred"] is True
-    assert result["reason"] == "crash_reconciliation_deferred_maintenance_active"
-    assert daemon._implementation_protected_incident_path().exists()
-    assert result.get("cleared") is not True
-
-
-def test_crash_fence_reconciliation_scans_outside_exclusive_lease(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("unchanged\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
-    daemon._require_implementation_protected_snapshot(
-        task=_task(outputs=["src/example.py"]),
-        attempt=1,
-        workspace_path=tmp_path,
+    assert trusted(
+        BACKLOG_REFINERY_AUTHOR_EMAIL,
+        generated_protected_board_commit_subject("generated board update"),
     )
-    lease_held_during_scan: list[bool] = []
-    original_snapshot = daemon._implementation_protected_path_snapshot
-
-    def tracking_snapshot(workspace_path: Path):
-        recon_lock = crash_fence_reconciliation_lock_path(tmp_path)
-        lease_held_during_scan.append(recon_lock.exists())
-        return original_snapshot(workspace_path)
-
-    monkeypatch.setattr(
-        daemon,
-        "_implementation_protected_path_snapshot",
-        tracking_snapshot,
+    assert not trusted(
+        "implementation-daemon@example.invalid",
+        "SCG-015: rewrite protected scheduler",
     )
-
-    result = daemon._reconcile_implementation_protected_path_fence()
-
-    assert result["blocked"] is False
-    assert result["reason"] == "crash_reconciliation_unchanged"
-    proof = result["reconciliation_proof"]
-    assert proof["scan_outside_lease"] is True
-    assert proof["critical_section_entered"] is True
-    assert proof["lease_hold_bounded"] is True
-    assert float(proof["critical_section"]["hold_seconds"]) <= float(
-        proof["max_hold_seconds"]
+    assert not trusted(
+        "untrusted@example.invalid",
+        "SCG-015: mark todo completed",
     )
-    assert lease_held_during_scan
-    assert all(held is False for held in lease_held_during_scan)
-    assert not daemon._implementation_protected_active_snapshot_path().exists()
-
-
-def test_crash_fence_reconciliation_revalidates_inputs_before_mutation(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("before\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
-    daemon._require_implementation_protected_snapshot(
-        task=_task(outputs=["src/example.py"]),
-        attempt=1,
-        workspace_path=tmp_path,
-    )
-    active_path = daemon._implementation_protected_active_snapshot_path()
-    original_apply = CrashFenceReconciler._apply_under_lease
-
-    def mutate_then_apply(self, plan, *, incident_path, active_path):
-        # Simulate a concurrent writer changing the durable fence between the
-        # outside scan and the exclusive critical section.
-        payload = json.loads(active_path.read_text(encoding="utf-8"))
-        payload["task_id"] = "MUTATED-AFTER-SCAN"
-        active_path.write_text(
-            json.dumps(payload, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        return original_apply(
-            self,
-            plan,
-            incident_path=incident_path,
-            active_path=active_path,
-        )
-
-    monkeypatch.setattr(CrashFenceReconciler, "_apply_under_lease", mutate_then_apply)
-
-    result = daemon._reconcile_implementation_protected_path_fence()
-
-    assert result["deferred"] is True
-    assert result["reason"] == "crash_reconciliation_input_changed"
-    assert active_path.exists()
-    assert json.loads(active_path.read_text(encoding="utf-8"))["task_id"] == (
-        "MUTATED-AFTER-SCAN"
-    )
-    assert not daemon._implementation_protected_incident_path().exists()
-
-
-def test_crash_fence_reconciliation_reclaims_stale_serialization_lease(
-    tmp_path: Path,
-) -> None:
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("unchanged\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
-    daemon._require_implementation_protected_snapshot(
-        task=_task(outputs=["src/example.py"]),
-        attempt=1,
-        workspace_path=tmp_path,
-    )
-    lock_path = crash_fence_reconciliation_lock_path(tmp_path)
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path.write_text(
-        json.dumps(
-            {
-                "kind": "crash-fence-reconciliation",
-                "lease_id": "stale-lease",
-                "pid": 0,
-                "owner_script": "dead-reconciler.py",
-            },
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    result = daemon._reconcile_implementation_protected_path_fence()
-
-    assert result["blocked"] is False
-    assert result["reason"] == "crash_reconciliation_unchanged"
-    assert result["reconciliation_proof"]["lease_hold_bounded"] is True
-    assert not lock_path.exists()
-    assert not daemon._implementation_protected_active_snapshot_path().exists()
-
-
-def test_crash_fence_reconciliation_fails_closed_on_malformed_serialization_lease(
-    tmp_path: Path,
-) -> None:
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("unchanged\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
-    daemon._require_implementation_protected_snapshot(
-        task=_task(outputs=["src/example.py"]),
-        attempt=1,
-        workspace_path=tmp_path,
-    )
-    active_path = daemon._implementation_protected_active_snapshot_path()
-    lock_path = crash_fence_reconciliation_lock_path(tmp_path)
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path.write_text("{malformed", encoding="utf-8")
-
-    result = daemon._reconcile_implementation_protected_path_fence()
-
-    assert result["blocked"] is True
-    assert result["deferred"] is True
-    assert result["reason"] == "crash_reconciliation_serialized"
-    assert result["lease_reason"] == "checkout_maintenance_lease_malformed"
-    assert active_path.exists()
-    assert lock_path.exists()
-
-
-def test_checkout_maintenance_lease_bounds_hold_time(tmp_path: Path) -> None:
-    lock_path = tmp_path / "git" / "implementation-protected-path-crash-fence-recon.lock"
-    lease = CheckoutMaintenanceLease(
-        lock_path,
-        metadata={
-            "kind": "crash-fence-reconciliation",
-            "lease_role": "unit-test",
-            "repo_root": str(tmp_path.resolve()),
-        },
-        max_hold_seconds=0.05,
-    )
-    with pytest.raises(RuntimeError, match="hold exceeded bound"):
-        with lease.exclusive_section() as timing:
-            time.sleep(0.08)
-            lease.ensure_within_hold_bound()
-            timing["should_not_reach"] = True
-
-    assert not lock_path.exists()
-    assert lease.hold_seconds is not None
-    assert lease.hold_seconds >= 0.05
-
-
-def test_durable_input_generation_detects_content_change(tmp_path: Path) -> None:
-    path = tmp_path / "fence.json"
-    path.write_text('{"v":1}\n', encoding="utf-8")
-    before = durable_input_generation(path)
-    path.write_text('{"v":2}\n', encoding="utf-8")
-    after = durable_input_generation(path)
-    assert before["state"] == "present"
-    assert after["state"] == "present"
-    assert not generations_match(before, after)
-    missing = durable_input_generation(tmp_path / "absent.json")
-    assert missing["state"] == "missing"
-
-
-def test_crash_fence_reconciler_clears_unchanged_snapshot_with_proof(
-    tmp_path: Path,
-) -> None:
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("stable\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
-    daemon._require_implementation_protected_snapshot(
-        task=_task(outputs=["src/example.py"]),
-        attempt=2,
-        workspace_path=tmp_path,
-    )
-
-    result = CrashFenceReconciler(daemon).reconcile()
-
-    assert result["blocked"] is False
-    assert result["reason"] == "crash_reconciliation_unchanged"
-    assert result["task_id"] == "EX-001"
-    assert result["attempt"] == 2
-    proof = result["reconciliation_proof"]
-    assert proof["scan_outside_lease"] is True
-    assert proof["critical_section_entered"] is True
-    assert proof["lease_hold_bounded"] is True
-    assert proof["critical_section"]["within_bound"] is True
-    assert float(proof["critical_section"]["hold_seconds"]) <= float(
-        proof["max_hold_seconds"]
-    )
-    assert not daemon._implementation_protected_active_snapshot_path().exists()

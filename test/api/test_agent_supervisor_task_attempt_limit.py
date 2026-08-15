@@ -1,33 +1,41 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 
 import pytest
-from ipfs_datasets_py.logic.profile_g import validate_profile_g_artifact
-
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
-    build_arg_parser as build_bundle_arg_parser,
-    implementation_supervisor_command,
-)
 from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     LeaseCoordinator,
     adapt_goal_bundle,
     profile_g_cid,
 )
-from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    build_arg_parser as build_bundle_arg_parser,
+)
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    implementation_supervisor_command,
+)
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTaskState,
     parse_task_file,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     parse_args as parse_daemon_args,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
-    parse_args as parse_supervisor_args,
     supervisor_config_from_args,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    parse_args as parse_supervisor_args,
+)
+from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
+from ipfs_datasets_py.logic.profile_g import validate_profile_g_artifact
 
 
 def _write_single_task_board(path) -> None:
@@ -74,7 +82,7 @@ def _framed_grok_quota_stderr(
     receipt = {
         "schema": GROK_QUOTA_RECEIPT_SCHEMA,
         "provider": "grok_cli",
-        "model": "grok-4.5",
+        "model": "grok-4.6",
         "failure_kind": "quota_or_balance_exhausted",
         "message": "Grok Build usage balance exhausted",
         "raw_error_sha256": hashlib.sha256(raw_bytes).hexdigest(),
@@ -224,11 +232,10 @@ def test_canonical_attempt_limit_blocks_cooldown_fallback_retry(
     state_dir = tmp_path / "state"
     state_path = state_dir / "task_state.json"
     events_path = state_dir / "events.jsonl"
-    strategy_path = state_dir / "strategy.json"
     daemon = PortalImplementationDaemon(
         todo_path=todo_path,
         state_path=state_path,
-        strategy_path=strategy_path,
+        strategy_path=state_dir / "strategy.json",
         events_path=events_path,
         repo_root=tmp_path,
         task_header_prefix="## TASK-",
@@ -330,11 +337,10 @@ def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
     state_dir = tmp_path / "state"
     state_path = state_dir / "task_state.json"
     events_path = state_dir / "events.jsonl"
-    strategy_path = state_dir / "strategy.json"
     daemon = PortalImplementationDaemon(
         todo_path=todo_path,
         state_path=state_path,
-        strategy_path=strategy_path,
+        strategy_path=state_dir / "strategy.json",
         events_path=events_path,
         repo_root=tmp_path,
         task_header_prefix="## TASK-",
@@ -374,15 +380,6 @@ def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
 """,
         encoding="utf-8",
     )
-    strategy_path.write_text(
-        json.dumps(
-            {
-                "blocked_tasks": ["TASK-001", "TASK-999"],
-                "focus_tracks": ["agent"],
-            }
-        ),
-        encoding="utf-8",
-    )
     launched_attempts: list[int] = []
 
     def record_launch(task, current_state):
@@ -407,14 +404,6 @@ def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
     assert first["retry_budget_resets"][0][
         "previous_display_attempt_count"
     ] == 1
-    assert first["released_retry_budget_strategy_blocks"] == [
-        {
-            "source_task_id": "TASK-001",
-            "repair_task_id": "TASK-002",
-            "failure_kind": "validation",
-        }
-    ]
-    assert daemon.load_strategy()["blocked_tasks"] == ["TASK-999"]
     assert first["attempt_limited_task_ids"] == []
     assert reset_state.retry_budget_repair_receipts == {
         "TASK-001": "TASK-002"
@@ -1178,3 +1167,111 @@ def test_new_canonical_revision_gets_fresh_attempt_budget(
     assert updated.implementation_attempts_by_cid[
         identity_a.canonical_task_cid
     ] == 1
+
+
+def test_semantic_key_revision_resets_projection_without_inheriting_backpressure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_single_task_board(todo_path)
+    state_dir = tmp_path / "state"
+    state_path = state_dir / "task_state.json"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## TASK-",
+        implement=True,
+        max_task_attempts=5,
+        worktree_pool_enabled=False,
+    )
+    old_task = parse_task_file(todo_path, "## TASK-")[0]
+    daemon._register_task_identities([old_task])
+    old_identity = daemon._identity_for_task(old_task)
+    latch_body = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "protected-implementation-attempt-latch@1"
+        ),
+        "task_id": old_task.task_id,
+        "attempt": 5,
+        "task_revision_cid": old_identity.canonical_task_cid,
+        "board_namespace": old_task.board_namespace,
+        "route_id": "route:old-revision",
+        "invocation_id": "invocation:old-revision",
+        "logical_attempt_id": "logical:old-revision",
+        "worktree_id": "worktree:old-revision",
+        "provider_attempt_store": str(state_dir / "provider-attempts"),
+        "provider_attempt_store_identity": "sha256:" + "a" * 64,
+    }
+    latch = {
+        **latch_body,
+        "latch_id": content_identity(latch_body),
+    }
+    latch_key = daemon._protected_attempt_latch_key(
+        old_task.task_id,
+        5,
+        old_identity.canonical_task_cid,
+    )
+    old_state = PortalTaskState(
+        task_identities={old_task.task_id: old_identity.to_dict()},
+        implementation_attempts={old_task.task_id: 5},
+        implementation_attempts_by_cid={old_identity.canonical_task_cid: 5},
+        protected_implementation_attempts={latch_key: latch},
+    )
+    old_state.save(state_path)
+    daemon.task_queue.record_failure(
+        old_identity.canonical_task_cid,
+        reason="old revision infrastructure failure",
+    )
+    daemon.task_queue.save()
+    assert daemon.task_queue.is_cooled_down(old_identity.canonical_task_cid)
+    assert daemon._durable_protected_recovery_attempt(old_state, old_task) == 5
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8")
+        + "- Semantic key: provider-effect-retry-revision@1\n",
+        encoding="utf-8",
+    )
+    new_task = parse_task_file(todo_path, "## TASK-")[0]
+    new_identity = daemon._identity_for_task(new_task)
+    launched_attempts: list[int] = []
+
+    def record_launch(task, current_state):
+        attempt = daemon._task_attempt(current_state, task)
+        launched_attempts.append(attempt)
+        daemon._record_task_attempt(current_state, task, attempt)
+        current_state.save(state_path)
+        return {
+            "task_id": task.task_id,
+            "attempt": attempt,
+            "returncode": 0,
+        }
+
+    monkeypatch.setattr(daemon, "_run_implementation", record_launch)
+
+    result = daemon.run_once()
+    updated = PortalTaskState.load(state_path)
+
+    assert new_task.acceptance == old_task.acceptance
+    assert new_identity.canonical_task_cid != old_identity.canonical_task_cid
+    assert launched_attempts == [1]
+    assert result["attempt_limited_task_ids"] == []
+    assert updated.implementation_attempts == {old_task.task_id: 1}
+    assert updated.implementation_attempts_by_cid == {
+        old_identity.canonical_task_cid: 5,
+        new_identity.canonical_task_cid: 1,
+    }
+    assert updated.task_identities[old_task.task_id][
+        "canonical_task_cid"
+    ] == new_identity.canonical_task_cid
+    assert updated.protected_implementation_attempts[latch_key] == latch
+    assert daemon._durable_protected_recovery_attempt(updated, old_task) == 5
+    assert daemon._durable_protected_recovery_attempt(updated, new_task) is None
+    assert (
+        daemon.task_queue.is_cooled_down(new_identity.canonical_task_cid)
+        is False
+    )

@@ -1,0 +1,159 @@
+{
+  "acceptance_parent": {
+    "branch": "agent/prompt-self-improvement-v3",
+    "future_artifact_paths_absent": [
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/duckdb_connection_policy_acceptance_receipt.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/native_dependency_launch_authorization.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_023_20260808.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_acceptance_receipt_ase3_027_20260808.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_daemon_reload_receipt.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_attempt_generation_birth_receipt.json",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/sealed_native_dependency_acceptance_receipt.json"
+    ],
+    "head": "be6f573066f062dad3e3b7c9bad89c5d1901a369",
+    "manifest_schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-convergence-manifest@2",
+    "phase": "A030",
+    "prior_artifacts": {
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/hermetic_control_plane_identity_acceptance_receipt.json": "sha256:aaf8412b2abb3fe2c27b955dd1e31debadf35f173e30c144413467dd5397e7ee",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_operator_lifecycle_witness.json": "sha256:89084565ed3d636a5687188209a332eccda33a73968e157fc6e7f45448daf410",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_profile_lifecycle_root_pin_20260808.json": "sha256:898b9ccbe61a3ea82ad2243498940cd70f06efa0838d34ee0ebc4c418e377ff2",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/operator_salvage_receipt_ase3_019_20260808.json": "sha256:386517e52a94951b0336cf9cf6468665c7a82392a179e92727cc7f0ff11fb72b",
+      "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json": "sha256:f06c7865e93e2282be43345427b2026478e88ba0afde9376286bf804fc1078b1"
+    },
+    "reload_gate_status": "blocked",
+    "task_statuses": {
+      "ASE3-019": "completed",
+      "ASE3-022": "blocked",
+      "ASE3-023": "todo",
+      "ASE3-027": "todo",
+      "ASE3-030": "completed",
+      "ASE3-031": "todo",
+      "ASE3-032": "todo"
+    },
+    "tree": "5b2ca20fcb59f5607b03fec77c6e99d4c2252425"
+  },
+  "authorization_id": "sha256:82b2b4367da611bf82b0310eb9e2a191ebf2a1c8661f413860c6a30fcc2ad66e",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "claims": {
+    "pre_launch_authorization_only": true,
+    "preload_observed": false,
+    "process_terminal_state_observed": false,
+    "runtime_effect_started": false,
+    "sealed_fd_verified": false
+  },
+  "created_at": "2026-08-10T02:46:27Z",
+  "denials": {
+    "ambient_ld_environment_allowed": false,
+    "authorization_claims_launch_effect": false,
+    "authorization_creates_acceptance": false,
+    "codex_or_openai_reviewer_allowed": false,
+    "inspection_evidence_is_acceptance": false,
+    "python_late_rejection_counts_as_parent_sanitization": false,
+    "receipt_selected_native_pin_allowed": false,
+    "receipt_selected_product_identity_allowed": false,
+    "self_review_allowed": false
+  },
+  "host_abi_trust_boundary": {
+    "all_ld_environment_removed_before_exec": true,
+    "fully_transitive_hermetic_claim_allowed": false,
+    "ordered_dt_needed_names_identity_bound": true,
+    "python_side_ld_rejection_is_prevention": false,
+    "sanitized_parent_exec_required": true,
+    "sealed_bytes": [
+      "reviewed_python_executable",
+      "reviewed__duckdb_payload"
+    ],
+    "system_loader_and_needed_library_bytes_sealed": false,
+    "trusted_host_tcb": [
+      "kernel",
+      "default_system_elf_loader",
+      "libdl.so.2",
+      "libstdc++.so.6",
+      "libm.so.6",
+      "libgcc_s.so.1",
+      "libpthread.so.0",
+      "libc.so.6"
+    ]
+  },
+  "native_pin": {
+    "dependency_id": "sha256:bf982f675cc4c4fa212066d706cd387c9821b3b69f5f8cc7c07169bc347b88b5",
+    "distribution_name": "duckdb",
+    "distribution_version": "1.5.2",
+    "elf_abi_version": 0,
+    "elf_class_bits": 64,
+    "elf_dt_needed": [
+      "libdl.so.2",
+      "libstdc++.so.6",
+      "libm.so.6",
+      "libgcc_s.so.1",
+      "libpthread.so.0",
+      "libc.so.6"
+    ],
+    "elf_endianness": "little",
+    "elf_flags": 0,
+    "elf_ident_version": 1,
+    "elf_machine": 183,
+    "elf_object_type": 3,
+    "elf_object_version": 1,
+    "elf_osabi": 3,
+    "engine_version": "v1.5.2",
+    "extension_filename": "_duckdb.cpython-312-aarch64-linux-gnu.so",
+    "module_name": "_duckdb",
+    "payload_sha256": "sha256:c378b8f61040764fdc904cf7c0643a005d547f491ab9303e6bd13c33aa353f2a",
+    "platform_machine": "aarch64",
+    "platform_name": "linux",
+    "public_alias": "duckdb",
+    "python_cache_tag": "cpython-312",
+    "python_executable_sha256": "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+    "python_soabi": "cpython-312-aarch64-linux-gnu",
+    "schema": "ipfs_accelerate_py.agent_supervisor.native-dependency-pin@1",
+    "size_bytes": 54278072
+  },
+  "phase": "P031",
+  "product": {
+    "binary_patch_sha256": "sha256:90b45612588258bfa34559f84f253801179f44f9968d938698b8dc7de24186fd",
+    "changed_paths": [
+      "ipfs_accelerate_py/llm_router.py",
+      "test/api/test_agent_supervisor_native_dependency_pin.py"
+    ],
+    "commit": "1a419e525699e74254a450c0137264d8dd60ea00",
+    "file_raw_sha256": {
+      "ipfs_accelerate_py/llm_router.py": "sha256:69bd7e48a0ffc13f7a868b0b3e9bf8a09506104c4a80e5a78146adabbb73beb4",
+      "test/api/test_agent_supervisor_native_dependency_pin.py": "sha256:429c86eeade5cb7f97eef359085c2efa2821b1df93c6565fc1219512046c59be"
+    },
+    "parent": "3740b4bc2c31a945748bb9cd9861a37a54abd6aa",
+    "tree": "06ea3c5444bd190996ad591b5fc82cad2443dcc4"
+  },
+  "review": {
+    "algorithm": "Ed25519",
+    "fallback_authorization_id": "sha256:dfbcb29e1b624b345b263857ba750404b8287f3a869b317efdadc363250a9301",
+    "fallback_authorization_sha256": "sha256:f06c7865e93e2282be43345427b2026478e88ba0afde9376286bf804fc1078b1",
+    "implementer_identity": "codex:ase3-031-authorization",
+    "implementer_provider": "codex",
+    "lifecycle_anchor_digest": "sha256:45ff0b7b60c71f8c682e7e32e9e6af1193a5f238fca846190089cf4ee8d41239",
+    "lifecycle_anchor_id": "475715c3bc8d562132e5323dcf98c13dba1b5aaf8f34546c0c50d40d6f62b2d8",
+    "lifecycle_generation": 1,
+    "lifecycle_root_identity_did": "did:key:z6Mktp3ogPs9QwXBnKEQrdMThdbuPPNKQXiAP7X7JwXVq1G7",
+    "lifecycle_root_pin_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_profile_lifecycle_root_pin_20260808.json",
+    "lifecycle_root_pin_sha256": "sha256:898b9ccbe61a3ea82ad2243498940cd70f06efa0838d34ee0ebc4c418e377ff2",
+    "lifecycle_witness_id": "sha256:c0ff822e398493bd35e054b8bdbe8ed3b6d94bcbb04521241e1b1a48bc3cd65b",
+    "lifecycle_witness_nonce": "z3Y5bP4zbgLAgGHWV0sKhzXCKJ8CAMNt",
+    "lifecycle_witness_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_operator_lifecycle_witness.json",
+    "lifecycle_witness_sha256": "sha256:89084565ed3d636a5687188209a332eccda33a73968e157fc6e7f45448daf410",
+    "profile_content_id": "sha256:bb9681dbaa2e084bd0704675672133e20f4ddeaf2ad0c130b1034b109615ffec",
+    "profile_id": "78d545927196b5dad4c2c76b461927ec",
+    "reviewer_identity": "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
+    "reviewer_provider": "local_operator",
+    "signature": "ed25519:pEId2MivRihoRO108J7dmn7-tRcyPngvlHcfs9xkEDMHs8AnQFVL-A9g-WozmWSEyRYJdgnlcDMLkDiH0xysAw",
+    "signed_at": "2026-08-10T02:46:27Z"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.ase3-031-native-dependency-launch-authorization@1",
+  "task": {
+    "canonical_task_cid": "baguqeeraxwgr3bpjg2efihsmv3id5fknng2oa5bapas3fdq4hwjklpa4lxdq",
+    "completed_contract_sha256": "sha256:4508ec83e0ee46240fee9a9b2566733842e90bbed8cc73acf84f1319c8ad141f",
+    "status_after": "todo",
+    "status_before": "todo",
+    "task_id": "ASE3-031",
+    "todo_contract_sha256": "sha256:e749edab95f0f359cb39ab69cfc9a7858490600f4e73622a64e4f6f099eda7ff"
+  }
+}

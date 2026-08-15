@@ -1,0 +1,215 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.duckdb-quack-control-plane.scheduler_config@1",
+  "taskboard_path": "docs/architecture/agent_supervisor_duckdb_quack_control_plane.todo.md",
+  "objectives_path": "docs/architecture/agent_supervisor_duckdb_quack_control_plane.objectives.md",
+  "plan_path": "docs/architecture/AGENT_SUPERVISOR_DUCKDB_QUACK_CONTROL_PLANE_PLAN.md",
+  "validator_path": "scripts/validate_agent_supervisor_duckdb_quack_control_plane_board.py",
+  "task_prefix": "DQP-",
+  "goal_prefix": "DQP-G",
+  "board_namespace": "agent-supervisor-duckdb-quack-control-plane-v1",
+  "merge_target_branch": "agent/duckdb-quack-control-plane-20260808",
+  "source_binding": {
+    "accelerator_required_ancestor": "34420f615d3eebfefa3cc1a3e4ebf8f51b16afac",
+    "accelerator_required_branch": "agent/duckdb-quack-control-plane-20260808",
+    "require_clean_checkout_at_launch": true,
+    "record_repository_revision_at_launch": true,
+    "bootstrap_task_source": "legacy-markdown",
+    "bootstrap_is_final_file_authoritative_program": true,
+    "database_canary_task_id": "DQP-035",
+    "default_cutover_task_id": "DQP-038"
+  },
+  "initial_projection": {
+    "task_count": 40,
+    "completed_task_ids": [
+      "DQP-000"
+    ],
+    "ready_task_ids": [
+      "DQP-001",
+      "DQP-002",
+      "DQP-003",
+      "DQP-004",
+      "DQP-009"
+    ],
+    "blocked_task_ids": [],
+    "terminal_task_id": "DQP-039",
+    "goal_count": 10,
+    "root_goal_id": "DQP-G000"
+  },
+  "max_lanes": 4,
+  "strict_task_sharding": true,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 30,
+  "check_interval_seconds": 15,
+  "stale_seconds": 1200,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 5,
+  "max_task_attempts": 4,
+  "implementation_retry_budget": 4,
+  "validation_retry_budget": 4,
+  "merge_retry_budget": 4,
+  "implementation_timeout_seconds": 10800,
+  "implementation_max_timeout_seconds": 21600,
+  "implementation_log_stall_seconds": 1800,
+  "worktree_submodule_paths": [],
+  "protected_paths": [
+    ".gitignore",
+    "docs/architecture/AGENT_SUPERVISOR_DUCKDB_QUACK_CONTROL_PLANE_PLAN.md",
+    "docs/architecture/agent_supervisor_duckdb_quack_control_plane.objectives.md",
+    "docs/architecture/agent_supervisor_duckdb_quack_control_plane.todo.md",
+    "config/agent_supervisor_duckdb_quack_control_plane_scheduler.json",
+    "scripts/validate_agent_supervisor_duckdb_quack_control_plane_board.py",
+    "test/api/test_agent_supervisor_duckdb_quack_control_plane_board.py"
+  ],
+  "runtime_paths": {
+    "root": "state/agent_supervisor_duckdb_quack_control_plane",
+    "state": "state/agent_supervisor_duckdb_quack_control_plane/state",
+    "worktrees": "state/agent_supervisor_duckdb_quack_control_plane/worktrees",
+    "merge_queue": "state/agent_supervisor_duckdb_quack_control_plane/merge-queue",
+    "logs": "state/agent_supervisor_duckdb_quack_control_plane/logs",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "dqp-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [
+        "DQP-002",
+        "DQP-004"
+      ],
+      "initial_focus": "contracts-and-quack-capability"
+    },
+    {
+      "index": 1,
+      "name": "dqp-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_task_ids": [
+        "DQP-001"
+      ],
+      "initial_focus": "state-sink-inventory"
+    },
+    {
+      "index": 2,
+      "name": "dqp-lane-2",
+      "strict_shard_remainder": 2,
+      "initial_task_ids": [
+        "DQP-003"
+      ],
+      "initial_focus": "schema-migration-runner"
+    },
+    {
+      "index": 3,
+      "name": "dqp-lane-3",
+      "strict_shard_remainder": 3,
+      "initial_task_ids": [
+        "DQP-009"
+      ],
+      "initial_focus": "state-and-llm-churn-baseline"
+    }
+  ],
+  "task_groups": {
+    "DQP-G010": [
+      "DQP-001",
+      "DQP-002",
+      "DQP-003",
+      "DQP-004",
+      "DQP-005",
+      "DQP-006",
+      "DQP-007",
+      "DQP-008",
+      "DQP-009"
+    ],
+    "DQP-G020": [
+      "DQP-010",
+      "DQP-011",
+      "DQP-012",
+      "DQP-013",
+      "DQP-025"
+    ],
+    "DQP-G030": [
+      "DQP-014",
+      "DQP-015",
+      "DQP-016",
+      "DQP-017",
+      "DQP-018",
+      "DQP-019",
+      "DQP-030"
+    ],
+    "DQP-G040": [
+      "DQP-020",
+      "DQP-021",
+      "DQP-022",
+      "DQP-023",
+      "DQP-024"
+    ],
+    "DQP-G050": [
+      "DQP-009",
+      "DQP-026",
+      "DQP-027",
+      "DQP-028",
+      "DQP-036"
+    ],
+    "DQP-G060": [
+      "DQP-029",
+      "DQP-030",
+      "DQP-031"
+    ],
+    "DQP-G070": [
+      "DQP-032",
+      "DQP-033",
+      "DQP-034"
+    ],
+    "DQP-G080": [
+      "DQP-035",
+      "DQP-037",
+      "DQP-038"
+    ],
+    "DQP-G090": [
+      "DQP-039"
+    ]
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.6",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "medium",
+    "max_concurrency": 4,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "authority_policy": {
+    "database_after_canary_is_primary": true,
+    "quack_is_transport_not_authority_model": true,
+    "git_remains_source_byte_authority": true,
+    "legacy_files_after_cutover_are_import_or_export_only": true,
+    "automatic_file_fallback_from_quack": false,
+    "raw_llm_sql_allowed": false,
+    "implementation_provider_receives_state_credentials": false,
+    "remote_quack_enabled": false,
+    "default_quack_authorization_is_production_sufficient": false,
+    "static_analysis_precedes_model_dispatch": true,
+    "complete_impact_frontier_required_for_automatic_mutation": true,
+    "ast_or_graph_semantic_authority": false,
+    "model_semantic_or_write_authority": false,
+    "current_validation_and_merge_evidence_required": true,
+    "unknown_stale_ambiguous_or_unsupported_disposition": "abstain_or_require_approval"
+  },
+  "release_safety_floors": {
+    "duplicate_non_idempotent_effects": 0,
+    "stale_lease_writes": 0,
+    "unauthorized_sql_effects": 0,
+    "secret_leaks": 0,
+    "false_completions": 0,
+    "accepted_state_losses": 0,
+    "event_projection_divergences": 0,
+    "incomplete_mutation_lineage_admissions": 0,
+    "open_impact_frontier_automatic_mutations": 0,
+    "legacy_export_authority_reads_in_canary": 0,
+    "silent_quack_to_file_fallbacks": 0
+  }
+}

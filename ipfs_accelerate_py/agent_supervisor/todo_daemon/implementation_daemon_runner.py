@@ -1138,6 +1138,32 @@ def apply_merge_resolver_environment(parsed: argparse.Namespace) -> None:
         os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(timeout_seconds)
 
 
+def resolve_database_implementation_paths(
+    parsed: argparse.Namespace,
+) -> dict[str, Path | None]:
+    """Resolve control-plane database paths for database-authoritative execution.
+
+    JSON queue/status/events/PID projections are intentionally optional and may
+    be absent under database authority.
+    """
+
+    database_path = getattr(parsed, "database_path", None)
+    if database_path is not None:
+        database_path = Path(database_path)
+    todo_path = getattr(parsed, "todo_path", None)
+    if database_path is None and todo_path is not None:
+        candidate = Path(todo_path)
+        if candidate.suffix.lower() in {".duckdb", ".ddb"}:
+            database_path = candidate
+    coordination_path = getattr(parsed, "coordination_path", None)
+    if coordination_path is not None:
+        coordination_path = Path(coordination_path)
+    return {
+        "database_path": database_path,
+        "coordination_path": coordination_path,
+    }
+
+
 def build_portal_implementation_daemon_from_args(
     parsed: argparse.Namespace,
     *,
@@ -1147,15 +1173,73 @@ def build_portal_implementation_daemon_from_args(
     default_objective_path: Path | None = None,
     default_objective_bundle_dir: Path | None = None,
 ) -> tuple[object, ImplementationDaemonRunContext]:
-    """Build a ``PortalImplementationDaemon`` from parsed CLI args and local defaults."""
+    """Build a portal or database implementation daemon from parsed CLI args."""
 
     from .implementation_daemon import (
         DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
+        DatabaseImplementationDaemon,
         PortalImplementationDaemon,
+        database_program_from_daemon_namespace,
+        is_database_authority_mode,
     )
 
     apply_merge_resolver_environment(parsed)
     state_paths = implementation_state_paths(parsed)
+    program = database_program_from_daemon_namespace(parsed)
+    db_paths = resolve_database_implementation_paths(parsed)
+    database_path = db_paths["database_path"]
+    if database_path is None and program is not None and program.store_id:
+        candidate = Path(program.store_id)
+        if candidate.suffix.lower() in {".duckdb", ".ddb"}:
+            database_path = candidate
+
+    authority_mode = (
+        program.authority_mode
+        if program is not None
+        else str(getattr(parsed, "authority_mode", "") or "")
+    )
+    task_source_kind = (
+        program.task_source_kind
+        if program is not None
+        else str(getattr(parsed, "task_source_kind", "") or "")
+    )
+    if (
+        database_path is not None
+        and is_database_authority_mode(
+            authority_mode=authority_mode,
+            task_source_kind=task_source_kind,
+        )
+    ):
+        # Database-authoritative cutover: JSON projections may be absent.
+        optional_state = state_paths["state_path"]
+        optional_strategy = state_paths["strategy_path"]
+        optional_events = state_paths["events_path"]
+        # Prefer absent projections when state_dir was not explicitly needed.
+        use_projections = bool(getattr(parsed, "require_json_projections", False))
+        daemon: object = DatabaseImplementationDaemon(
+            database_path=database_path,
+            coordination_path=db_paths["coordination_path"],
+            owner_session_id=str(getattr(parsed, "owner_session_id", "") or ""),
+            authority_mode=authority_mode or "embedded",
+            task_source_kind=task_source_kind or "duckdb",
+            markdown_path=(
+                parsed.todo_path
+                if str(getattr(parsed, "todo_path", "") or "").endswith(".md")
+                else None
+            ),
+            state_path=optional_state if use_projections else None,
+            strategy_path=optional_strategy if use_projections else None,
+            events_path=optional_events if use_projections else None,
+            pid_path=None,
+            queue_path=None,
+        )
+        return daemon, ImplementationDaemonRunContext(
+            parsed=parsed,
+            state_path=optional_state,
+            strategy_path=optional_strategy,
+            events_path=optional_events,
+        )
+
     worktree_submodule_paths = (
         getattr(parsed, "worktree_submodule_path", None)
         or default_worktree_submodule_paths
@@ -1168,6 +1252,18 @@ def build_portal_implementation_daemon_from_args(
     )
     daemon = PortalImplementationDaemon(
         todo_path=parsed.todo_path,
+        task_source=(
+            parsed.todo_path
+            if str(getattr(parsed, "task_source_kind", "") or "")
+            in {"markdown", "duckdb"}
+            else None
+        ),
+        task_source_kind=(
+            str(getattr(parsed, "task_source_kind", "") or "")
+            if str(getattr(parsed, "task_source_kind", "") or "")
+            in {"markdown", "duckdb"}
+            else ""
+        ),
         state_path=state_paths["state_path"],
         strategy_path=state_paths["strategy_path"],
         events_path=state_paths["events_path"],
@@ -1214,12 +1310,58 @@ def build_portal_implementation_daemon_from_args(
         merged_worktree_cleanup_max=parsed.merged_worktree_cleanup_max,
         task_shard_count=parsed.task_shard_count,
         task_shard_index=parsed.task_shard_index,
-        strict_task_sharding=bool(
-            getattr(parsed, "strict_task_sharding", False)
-        ),
+        strict_task_sharding=bool(getattr(parsed, "strict_task_sharding", False)),
         maintenance_interval_seconds=getattr(parsed, "maintenance_interval_seconds", None),
     )
     return daemon, ImplementationDaemonRunContext(parsed=parsed, **state_paths)
+
+
+def build_database_implementation_daemon_from_args(
+    parsed: argparse.Namespace,
+    *,
+    database_path: Path | str | None = None,
+    owner_session_id: str = "",
+    provider_fn: Callable[..., Any] | None = None,
+    effect_fn: Callable[..., Any] | None = None,
+    validation_fn: Callable[..., Any] | None = None,
+) -> object:
+    """Build a DatabaseImplementationDaemon@1 from CLI/env authority bindings."""
+
+    from .implementation_daemon import (
+        DatabaseImplementationDaemon,
+        database_program_from_daemon_namespace,
+    )
+
+    program = database_program_from_daemon_namespace(parsed)
+    db_paths = resolve_database_implementation_paths(parsed)
+    resolved_db = Path(database_path) if database_path is not None else db_paths["database_path"]
+    if resolved_db is None:
+        raise ValueError(
+            "database_path is required for DatabaseImplementationDaemon "
+            "(pass --database-path or a .duckdb --todo-path)"
+        )
+    authority_mode = (
+        program.authority_mode if program is not None else "embedded"
+    )
+    task_source_kind = (
+        program.task_source_kind if program is not None else "duckdb"
+    )
+    return DatabaseImplementationDaemon(
+        database_path=resolved_db,
+        coordination_path=db_paths["coordination_path"],
+        owner_session_id=owner_session_id
+        or str(getattr(parsed, "owner_session_id", "") or ""),
+        authority_mode=authority_mode,
+        task_source_kind=task_source_kind,
+        provider_fn=provider_fn,
+        effect_fn=effect_fn,
+        validation_fn=validation_fn,
+        state_path=None,
+        strategy_path=None,
+        events_path=None,
+        pid_path=None,
+        queue_path=None,
+    )
 
 
 def _run_hooks(
