@@ -301,7 +301,7 @@ overlays. Never force-push.
 
 ## MCPP-009 Baseline SwissKnife MCP++ tests from the discovered checkout
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
