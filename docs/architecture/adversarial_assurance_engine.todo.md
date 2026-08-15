@@ -1686,7 +1686,7 @@ W20 AAE-063
 
 ## AAE-061 Qualify held-out remediation, controlled promotion, and initial success targets
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
