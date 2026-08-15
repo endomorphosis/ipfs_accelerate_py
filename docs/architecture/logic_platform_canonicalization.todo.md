@@ -184,7 +184,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-008 Compose the canonical inventory index
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: inventory
