@@ -177,7 +177,7 @@ overlays. Never force-push.
 
 ## MCPP-005 Baseline Mcp-Plus-Plus Rust tests
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
