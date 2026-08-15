@@ -925,7 +925,7 @@ overlays. Never force-push.
 
 ## MCPP-029 Generate schemas from one canonical source
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
