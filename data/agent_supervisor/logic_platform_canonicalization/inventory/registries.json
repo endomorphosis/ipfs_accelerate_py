@@ -1,0 +1,499 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/logic-platform-inventory-registries@1",
+  "interface": "LogicPlatformInventory@1",
+  "task_id": "LPC-003",
+  "goal_id": "LPC-G010",
+  "bundle": "logic-platform/inventory",
+  "parallel_lane": "lpc-inventory-registry",
+  "title": "Inventory registries, namespaces, aliases, and generated catalogs",
+  "inspected_at": "2026-08-15",
+  "authority": {
+    "implementation_heads_are_authority": true,
+    "datasets": {
+      "repository": "endomorphosis/ipfs_datasets_py",
+      "reviewed_baseline": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "current_head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "declared_checkout": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "declared_branch": "agent/logic-platform-canonicalization",
+      "nested_submodule_path": "ipfs_datasets_py",
+      "package_root_relative": "ipfs_datasets_py/logic"
+    },
+    "accelerator": {
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "reviewed_baseline": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+      "current_head": "ea11293bb996f052d620eae989f5377a956764b1",
+      "note": "Current head is behind the reviewed baseline; current head remains implementation authority."
+    }
+  },
+  "source_probe": {
+    "external_checkout_readable": false,
+    "nested_submodule_populated": false,
+    "classification_basis": [
+      "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md",
+      "docs/architecture/logic_platform_canonicalization.objectives.md",
+      "docs/architecture/logic_platform_canonicalization.todo.md",
+      "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+      "docs/architecture/logic_formal_verification_expansion.objectives.md",
+      "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+    ],
+    "note": "Datasets production sources are read-only for this task. The declared external checkout and nested submodule were not populated in this worktree; classifications use sealed plan contracts and supervisor bindings rather than silent omission."
+  },
+  "semantic_roles": [
+    "canonical",
+    "canonical_component",
+    "compatibility_facade",
+    "legacy",
+    "experimental",
+    "declaration_only",
+    "generated",
+    "duplicate",
+    "obsolete",
+    "unresolved"
+  ],
+  "required_surfaces": [
+    "registry",
+    "registry_v3",
+    "profile_catalog_v3",
+    "provider_matrix_v2",
+    "namespaces",
+    "aliases",
+    "generated_catalog",
+    "conformance_inventories"
+  ],
+  "invariants": [
+    "Registry presence never implies executability.",
+    "Declaration never implies production admission.",
+    "Registry v2 remains the descriptor taxonomy layer.",
+    "Registry v3 remains the lifecycle and publication layer unless a documented better arrangement is tested.",
+    "No registry v4 rename unless a genuine wire-format migration is required.",
+    "Compose layers into CanonicalLogicCatalogSnapshot; do not flatten typed layers.",
+    "Aliases must not silently merge distinct semantic identities.",
+    "Generated catalogs must differ from source declarations only by failing tests."
+  ],
+  "items": [
+    {
+      "id": "registry",
+      "surface": "registry",
+      "generation": "v2",
+      "semantic_role": "canonical",
+      "category": "registry_generation",
+      "inventory_categories": [
+        "registry_generation",
+        "family_profile_property_provider"
+      ],
+      "layer_role": "descriptor_taxonomy",
+      "interface": "LogicFamilyRegistry@1",
+      "owner_package": "ipfs_datasets_py.logic.families",
+      "import_module": "ipfs_datasets_py.logic.families.registry",
+      "expected_paths": [
+        "ipfs_datasets_py/logic/families/registry.py",
+        "ipfs_datasets_py/logic/families/models.py",
+        "tests/unit/logic/families/test_registry.py"
+      ],
+      "authority_paths": [
+        "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/families/registry.py",
+        "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/families/models.py"
+      ],
+      "symbols": [
+        "LogicFamilyRegistry",
+        "DEFAULT_REGISTRY",
+        "CANONICAL_REGISTRY",
+        "ProviderCapabilityDescriptor",
+        "EvidenceAuthority"
+      ],
+      "supervisor_bindings": [
+        {
+          "module": "ipfs_accelerate_py.agent_supervisor.proof.canonical_logic_adapter",
+          "constant": "CANONICAL_FAMILY_REGISTRY_MODULE",
+          "value": "ipfs_datasets_py.logic.families.registry",
+          "semantic_role": "compatibility_facade"
+        },
+        {
+          "module": "ipfs_accelerate_py.agent_supervisor.proof.canonical_logic_adapter",
+          "constant": "CANONICAL_FAMILY_MODELS_MODULE",
+          "value": "ipfs_datasets_py.logic.families.models",
+          "semantic_role": "compatibility_facade"
+        }
+      ],
+      "presence": {
+        "plan_declared": true,
+        "lfv_evidence_bound": true,
+        "source_readable_in_worktree": false,
+        "status": "declared_canonical"
+      },
+      "does_not_imply": [
+        "provider_executability",
+        "toolchain_installation",
+        "production_admission"
+      ],
+      "notes": "Canonical v2 taxonomy layer for family, fragment, property, operation, runtime, evidence, boundedness, translation, and provider-capability descriptors. Rejects alias collisions and silent semantic equivalence. Imports no provider runtime."
+    },
+    {
+      "id": "registry_v3",
+      "surface": "registry_v3",
+      "generation": "v3",
+      "semantic_role": "canonical",
+      "category": "registry_generation",
+      "inventory_categories": [
+        "registry_generation",
+        "family_profile_property_provider"
+      ],
+      "layer_role": "lifecycle_publication",
+      "interface": "LogicFamilyRegistryPublication@3",
+      "owner_package": "ipfs_datasets_py.logic.families",
+      "import_module": "ipfs_datasets_py.logic.families.registry_v3",
+      "expected_paths": [
+        "ipfs_datasets_py/logic/families/registry_v3.py"
+      ],
+      "authority_paths": [
+        "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/families/registry_v3.py"
+      ],
+      "symbols": [
+        "publication lifecycle states",
+        "identity-exists through production-admitted ladder"
+      ],
+      "supervisor_bindings": [],
+      "presence": {
+        "plan_declared": true,
+        "lfv_evidence_bound": false,
+        "source_readable_in_worktree": false,
+        "status": "declared_canonical"
+      },
+      "does_not_imply": [
+        "provider_executability",
+        "kernel_proof_success",
+        "production_admission_without_policy"
+      ],
+      "notes": "Canonical v3 lifecycle and publication layer. Distinct from v2 taxonomy. Must not be deleted or flattened into an untyped dictionary. No registry v4 rename unless wire-format migration is required."
+    },
+    {
+      "id": "profile_catalog_v3",
+      "surface": "profile_catalog_v3",
+      "generation": "v3",
+      "semantic_role": "canonical",
+      "category": "family_profile_property_provider",
+      "inventory_categories": [
+        "family_profile_property_provider",
+        "registry_generation"
+      ],
+      "layer_role": "profile_catalog",
+      "interface": "LogicProfileCatalog@3",
+      "owner_package": "ipfs_datasets_py.logic.families",
+      "import_module": "ipfs_datasets_py.logic.families.profile_catalog_v3",
+      "expected_paths": [
+        "ipfs_datasets_py/logic/families/profile_catalog_v3.py"
+      ],
+      "authority_paths": [
+        "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/families/profile_catalog_v3.py"
+      ],
+      "symbols": [
+        "profile descriptors",
+        "profile-to-family references",
+        "authority ceilings"
+      ],
+      "supervisor_bindings": [],
+      "presence": {
+        "plan_declared": true,
+        "lfv_evidence_bound": false,
+        "source_readable_in_worktree": false,
+        "status": "declared_canonical"
+      },
+      "does_not_imply": [
+        "provider_executability",
+        "live_toolchain_availability"
+      ],
+      "notes": "Canonical profile catalog generation. Composes into CanonicalLogicCatalogSnapshot with families, properties, views, notations, and encodings. Drift tests must fail closed on profile/family reference breakage."
+    },
+    {
+      "id": "provider_matrix_v2",
+      "surface": "provider_matrix_v2",
+      "generation": "v2",
+      "semantic_role": "canonical",
+      "category": "provider_matrix",
+      "inventory_categories": [
+        "provider_matrix",
+        "family_profile_property_provider"
+      ],
+      "layer_role": "provider_capability_matrix",
+      "interface": "LogicProviderMatrix@2",
+      "owner_package": "ipfs_datasets_py.logic.families",
+      "import_module": "ipfs_datasets_py.logic.families.provider_matrix_v2",
+      "expected_paths": [
+        "ipfs_datasets_py/logic/families/provider_matrix_v2.py"
+      ],
+      "authority_paths": [
+        "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/families/provider_matrix_v2.py"
+      ],
+      "related_surfaces": [
+        {
+          "path": "ipfs_datasets_py/logic/backends/registry.py",
+          "semantic_role": "canonical_component",
+          "note": "Executable backend provider registry; related but not the families provider_matrix_v2 generation."
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/prover_matrix_registry.py",
+          "semantic_role": "duplicate",
+          "note": "Supervisor evidence-bound prover matrix. Must project onto datasets matrix rather than redefine provider identity."
+        }
+      ],
+      "symbols": [
+        "provider capability rows",
+        "native/translated/declaration-only/unsupported support classes",
+        "executable-vs-declared feature separation"
+      ],
+      "supervisor_bindings": [
+        {
+          "module": "ipfs_accelerate_py.agent_supervisor.proof.prover_matrix_registry",
+          "semantic_role": "duplicate",
+          "note": "Supervisor-local matrix is not semantic authority."
+        }
+      ],
+      "presence": {
+        "plan_declared": true,
+        "lfv_evidence_bound": false,
+        "source_readable_in_worktree": false,
+        "status": "declared_canonical"
+      },
+      "does_not_imply": [
+        "provider_executability",
+        "installed_toolchain",
+        "semantic_success_from_provider_success"
+      ],
+      "notes": "Canonical provider matrix generation. Declared capabilities and executable lanes stay orthogonal. Matrix membership alone never admits a proof result."
+    },
+    {
+      "id": "namespaces",
+      "surface": "namespaces",
+      "generation": "v1",
+      "semantic_role": "canonical_component",
+      "category": "family_profile_property_provider",
+      "inventory_categories": [
+        "family_profile_property_provider",
+        "alias_table"
+      ],
+      "layer_role": "namespace_vocabulary",
+      "interface": "LogicNamespaces@1",
+      "owner_package": "ipfs_datasets_py.logic.families",
+      "import_module": "ipfs_datasets_py.logic.families.namespaces",
+      "expected_paths": [
+        "ipfs_datasets_py/logic/families/namespaces.py"
+      ],
+      "authority_paths": [
+        "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/families/namespaces.py"
+      ],
+      "symbols": [
+        "namespace identifiers",
+        "namespace coercion rules",
+        "reserved supervisor.* residual namespace"
+      ],
+      "supervisor_bindings": [
+        {
+          "module": "ipfs_accelerate_py.agent_supervisor.proof.canonical_logic_adapter",
+          "note": "Supervisor residual families use reserved supervisor.<name> namespace so reverse mapping remains exact.",
+          "semantic_role": "compatibility_facade"
+        }
+      ],
+      "presence": {
+        "plan_declared": true,
+        "lfv_evidence_bound": false,
+        "source_readable_in_worktree": false,
+        "status": "declared_canonical_component"
+      },
+      "does_not_imply": [
+        "family_executability",
+        "silent_equivalence_across_namespaces"
+      ],
+      "notes": "Canonical component of catalog identity. Namespace coercion is fail-closed and covered by catalog drift tests."
+    },
+    {
+      "id": "aliases",
+      "surface": "aliases",
+      "generation": "v1",
+      "semantic_role": "canonical_component",
+      "category": "alias_table",
+      "inventory_categories": [
+        "alias_table",
+        "family_profile_property_provider"
+      ],
+      "layer_role": "identity_alias_table",
+      "interface": "LogicAliasTable@1",
+      "owner_package": "ipfs_datasets_py.logic.families",
+      "import_module": "ipfs_datasets_py.logic.families.aliases",
+      "expected_paths": [
+        "ipfs_datasets_py/logic/families/aliases.py"
+      ],
+      "authority_paths": [
+        "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/families/aliases.py"
+      ],
+      "symbols": [
+        "alias-to-canonical family ids",
+        "provider aliases",
+        "collision rejection"
+      ],
+      "supervisor_bindings": [
+        {
+          "module": "ipfs_accelerate_py.agent_supervisor.proof.canonical_logic_adapter",
+          "maps": [
+            "_ANALYSIS_FAMILY_TO_CANONICAL",
+            "_CANONICAL_FAMILY_TO_SUPERVISOR",
+            "_SUPERVISOR_PROVER_TO_CANONICAL_PROVIDER",
+            "_PROPERTY_KIND_TO_CANONICAL"
+          ],
+          "semantic_role": "compatibility_facade",
+          "note": "Supervisor maps are temporary projections until generated maps replace hand lists (LPC-G090)."
+        }
+      ],
+      "presence": {
+        "plan_declared": true,
+        "lfv_evidence_bound": false,
+        "source_readable_in_worktree": false,
+        "status": "declared_canonical_component"
+      },
+      "does_not_imply": [
+        "semantic_equivalence_of_aliased_identities",
+        "authority_escalation",
+        "provider_executability"
+      ],
+      "notes": "Canonical alias table for deterministic identity resolution. Alias collisions fail closed. Supervisor-local maps are compatibility facades, not a second semantic authority."
+    },
+    {
+      "id": "generated_catalog",
+      "surface": "generated_catalog",
+      "generation": "projection",
+      "semantic_role": "generated",
+      "category": "registry_generation",
+      "inventory_categories": [
+        "registry_generation",
+        "family_profile_property_provider"
+      ],
+      "layer_role": "generated_projection",
+      "interface": "GeneratedLogicCatalog@1",
+      "owner_package": "ipfs_datasets_py.logic.families",
+      "import_module": "ipfs_datasets_py.logic.families.generated_catalog",
+      "expected_paths": [
+        "ipfs_datasets_py/logic/families/generated_catalog.py",
+        "tests/unit/logic/families/test_generated_catalog.py"
+      ],
+      "authority_paths": [
+        "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/families/generated_catalog.py"
+      ],
+      "related_planned_composition": {
+        "interface": "CanonicalLogicCatalogSnapshot@1",
+        "path": "ipfs_datasets_py/logic/families/canonical_catalog.py",
+        "task_ids": [
+          "LPC-020",
+          "LPC-023"
+        ],
+        "semantic_role": "canonical"
+      },
+      "symbols": [
+        "generated catalog projections",
+        "content-root reproducibility helpers"
+      ],
+      "supervisor_bindings": [],
+      "presence": {
+        "plan_declared": true,
+        "lfv_evidence_bound": false,
+        "source_readable_in_worktree": false,
+        "status": "planned_generated",
+        "planned_by": [
+          "LPC-023"
+        ]
+      },
+      "does_not_imply": [
+        "hand-written second inventory authority",
+        "divergence from source declarations without test failure"
+      ],
+      "notes": "Generated projection over taxonomy, namespaces, aliases, registry v2/v3, profiles, and provider matrix. Semantic role is generated. Must not become a second hand-maintained inventory."
+    },
+    {
+      "id": "conformance_inventories",
+      "surface": "conformance_inventories",
+      "generation": "fixture_corpus",
+      "semantic_role": "generated",
+      "category": "test_and_conformance_corpus",
+      "inventory_categories": [
+        "test_and_conformance_corpus",
+        "provider_matrix"
+      ],
+      "layer_role": "conformance_and_capability_census",
+      "interface": "LogicCapabilityMatrix@1",
+      "owner_package": "ipfs_datasets_py",
+      "import_module": null,
+      "expected_paths": [
+        "ipfs_datasets_py/docs/logic/software_verification_capability_inventory.md",
+        "ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json",
+        "ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py",
+        "ipfs_datasets_py/tests/fixtures/logic/software_verification/conformance/manifest.json",
+        "ipfs_datasets_py/tests/integration/logic/test_software_verification_conformance.py",
+        "ipfs_datasets_py/tests/integration/logic/test_verification_provider_matrix_api.py"
+      ],
+      "authority_paths": [
+        "/home/barberb/lift_coding/external/ipfs_datasets/docs/logic/software_verification_capability_inventory.md",
+        "/home/barberb/lift_coding/external/ipfs_datasets/tests/fixtures/logic/software_verification/capability_matrix.json",
+        "/home/barberb/lift_coding/external/ipfs_datasets/tests/fixtures/logic/software_verification/conformance/manifest.json"
+      ],
+      "maturity_states": [
+        "declared",
+        "discoverable",
+        "installed",
+        "smoke_tested",
+        "translation_conformant",
+        "reconstruction_capable",
+        "shadow",
+        "canary",
+        "authoritative_for"
+      ],
+      "supervisor_bindings": [
+        {
+          "path": "test/api/test_root_mcp_formal_verification_parity.py",
+          "semantic_role": "canonical_component",
+          "note": "Cross-package parity surface over provider matrix and MCP/Python channels."
+        }
+      ],
+      "presence": {
+        "plan_declared": true,
+        "lfv_evidence_bound": true,
+        "source_readable_in_worktree": false,
+        "status": "declared_generated_corpus"
+      },
+      "does_not_imply": [
+        "live_provider_availability",
+        "production_readiness",
+        "kernel_authority_from_fixture_pass"
+      ],
+      "notes": "Conformance and capability inventories are generated or fixture-bound census artifacts. They classify maturity honestly and must not upgrade declared or fixture-tested states into live or production claims."
+    }
+  ],
+  "supporting_components": [
+    {
+      "id": "families_models",
+      "semantic_role": "canonical_component",
+      "import_module": "ipfs_datasets_py.logic.families.models",
+      "expected_path": "ipfs_datasets_py/logic/families/models.py",
+      "note": "Shared typed descriptors for registry generations; not a separate registry generation."
+    },
+    {
+      "id": "canonical_catalog_snapshot",
+      "semantic_role": "canonical",
+      "import_module": "ipfs_datasets_py.logic.families.canonical_catalog",
+      "expected_path": "ipfs_datasets_py/logic/families/canonical_catalog.py",
+      "planned_by": [
+        "LPC-020"
+      ],
+      "note": "Future composition root over the surfaces inventoried here. Not yet required as a production rewrite before LPC-G010 closes."
+    }
+  ],
+  "coverage": {
+    "required_surface_count": 8,
+    "classified_surface_count": 8,
+    "all_required_surfaces_classified": true,
+    "unresolved_items": [
+      {
+        "id": "datasets_source_tree_readability",
+        "semantic_role": "unresolved",
+        "reason": "Declared datasets checkout and nested submodule were not populated in this worktree; path-level AST confirmation of each module file remains for LPC-001/LPC-008 revision composition once the source tree is readable."
+      }
+    ]
+  }
+}
