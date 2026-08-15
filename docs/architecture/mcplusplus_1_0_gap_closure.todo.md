@@ -2692,7 +2692,7 @@ overlays. Never force-push.
 
 ## MCPP-089 Resolve validation retry-budget failure for MCPP-002
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
