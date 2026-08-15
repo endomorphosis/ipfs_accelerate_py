@@ -104,7 +104,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-004 Inventory syntax, formalization, and domain-slice generations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: inventory
