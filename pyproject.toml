@@ -46,6 +46,8 @@ ipfs-accelerate-agent-llm-merge-resolver-fallback = "ipfs_accelerate_py.agent_su
 ipfs-accelerate-proof-reuse-provision = "ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main"
 ipfs-accelerate-llama-cpp-serve = "ipfs_accelerate_py.utils.llama_cpp:main"
 
+[project.entry-points.pytest11]
+ipfs-proof-reuse = "ipfs_accelerate_py.testing.proof_reuse.plugin"
 
 [tool.setuptools]
 package-dir = {"" = "."}
