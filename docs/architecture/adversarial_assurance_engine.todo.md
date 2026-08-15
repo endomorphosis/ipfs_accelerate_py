@@ -1632,7 +1632,7 @@ W20 AAE-063
 
 ## AAE-059 Qualify sandbox, credential, network, authority, path, and instruction-isolation security
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
