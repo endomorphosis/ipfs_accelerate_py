@@ -1389,7 +1389,7 @@ W20 AAE-063
 
 ## AAE-050 Implement controlled security mutations 1 through 10
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
