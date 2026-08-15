@@ -1578,7 +1578,7 @@ W20 AAE-063
 
 ## AAE-057 Add gaps, vacuity, remediate, evaluate, promote, and benchmark CLI commands
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
