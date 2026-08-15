@@ -115,7 +115,7 @@ overlays. Never force-push.
 
 ## MCPP-003 Baseline Mcp-Plus-Plus TypeScript tests and coverage
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
