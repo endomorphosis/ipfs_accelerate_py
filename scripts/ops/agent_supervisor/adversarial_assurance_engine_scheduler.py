@@ -94,9 +94,10 @@ def _aae_prerequisite_binding(board):
         raise AAESchedulerError(
             "AAE prerequisite status must be blocked or completed"
         )
-    release_report = _aae_validator(board).validate_prerequisites(
+    release_report = _aae_validator(board)._prerequisite_release_report(
         board.repo_root,
         check_repository=True,
+        execute_release_probes=False,
     )
     if release_report.get("valid") is not True:
         raise AAESchedulerError(
