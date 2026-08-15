@@ -748,7 +748,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-120 Derive Hammer adapter vocabularies from the catalog
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: hammer
