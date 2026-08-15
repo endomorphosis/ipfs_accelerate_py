@@ -1200,7 +1200,7 @@ W20 AAE-063
 
 ## AAE-043 Integrate incremental invalidation, verification cache, temporary proof forests, and cost accounting
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
