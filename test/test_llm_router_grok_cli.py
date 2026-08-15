@@ -87,7 +87,7 @@ def test_grok_cli_provider_uses_bounded_headless_json_mode(monkeypatch) -> None:
     assert provider is not None
     result = provider.generate(
         'Reply to "quoted text".',
-        model_name="grok-4.5",
+        model_name="grok-4.6",
         timeout=12,
     )
 
@@ -96,7 +96,7 @@ def test_grok_cli_provider_uses_bounded_headless_json_mode(monkeypatch) -> None:
     cmd = captured["cmd"]
     assert isinstance(cmd, list)
     assert cmd[0] == "grok"
-    assert cmd[cmd.index("--model") + 1] == "grok-4.5"
+    assert cmd[cmd.index("--model") + 1] == "grok-4.6"
     assert cmd[cmd.index("--output-format") + 1] == "json"
     assert cmd[cmd.index("--max-turns") + 1] == "1"
     assert cmd[cmd.index("--permission-mode") + 1] == "dontAsk"
@@ -117,13 +117,13 @@ def test_grok_cli_agent_command_is_noninteractive(tmp_path) -> None:
     cmd = llm_router.build_grok_cli_command(
         mode="agent",
         workspace=tmp_path,
-        model_name="grok-4.5",
+        model_name="grok-4.6",
         max_turns=100_000,
         grok_bin="grok",
         prompt_file=prompt_path,
     )
 
-    assert cmd[cmd.index("--model") + 1] == "grok-4.5"
+    assert cmd[cmd.index("--model") + 1] == "grok-4.6"
     assert cmd[cmd.index("--max-turns") + 1] == "100000"
     assert cmd[cmd.index("--permission-mode") + 1] == "bypassPermissions"
     assert cmd[cmd.index("--output-format") + 1] == "streaming-json"
@@ -142,7 +142,7 @@ def test_grok_cli_agent_command_supports_fail_closed_sandbox_and_denies(
     cmd = llm_router.build_grok_cli_command(
         mode="agent",
         workspace=tmp_path,
-        model_name="grok-4.5",
+        model_name="grok-4.6",
         grok_bin="grok",
         prompt_file=prompt_path,
         sandbox_profile="provider-isolated",
@@ -338,13 +338,13 @@ def test_grok_cli_command_template_preserves_prompt_as_one_argument(monkeypatch)
 
     provider = llm_router._get_grok_cli_provider()
     assert provider is not None
-    result = provider.generate('Keep "this prompt" together.', model_name="grok-4.5")
+    result = provider.generate('Keep "this prompt" together.', model_name="grok-4.6")
 
     assert result == "template-ok"
     assert captured["cmd"] == [
         "grok-wrapper",
         "--model",
-        "grok-4.5",
+        "grok-4.6",
         "--prompt",
         'Keep "this prompt" together.',
     ]

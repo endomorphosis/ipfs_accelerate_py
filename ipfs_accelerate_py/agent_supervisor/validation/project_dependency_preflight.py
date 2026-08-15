@@ -2,13 +2,16 @@
 
 The preflight is deliberately detection-only.  Importing this module performs
 no subprocess, package-manager, network, or filesystem mutation.  At explicit
-call time it reads only static PEP-621 dependency declarations and evaluates
-them in the same approved, sealed Python environment used by authoritative
-validation.
+call time it reads static PEP-621 declarations or a narrowly scoped, declarative
+supervisor contract and evaluates them in the same approved, sealed Python
+environment used by authoritative validation.  Scoped contracts may attest a
+literal ``setup.py`` extra without executing setup code; they never replace
+ordinary project-wide dependency metadata.
 """
 
 from __future__ import annotations
 
+import ast
 import base64
 import hashlib
 import importlib.metadata
@@ -47,11 +50,27 @@ PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA = (
 PROJECT_DEPENDENCY_PROBE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/validation-project-dependency-probe@1"
 )
+SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@1"
+)
+SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2 = (
+    "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@2"
+)
+SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-prior-seed@1"
+)
 PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS = 300
 PROJECT_DEPENDENCY_PREFLIGHT_MAX_BACKOFF_SECONDS = 1800
 MAX_PYPROJECT_BYTES = 2 * 1024 * 1024
 MAX_DEPENDENCY_MANIFEST_FILES = 16
 MAX_DEPENDENCY_MANIFEST_BYTES = 2 * 1024 * 1024
+MAX_SCOPED_CONTRACT_TARGETS = 16
+MAX_SCOPED_CONTRACT_TARGET_BYTES = 2048
+MAX_SCOPED_CONTRACT_TARGET_TOTAL_BYTES = 64 * 1024
+MAX_SCOPED_CONTRACT_TASK_IDENTITY_BYTES = 4096
+MAX_SCOPED_RUNTIME_DECLARED_OUTPUTS = 256
+MAX_SCOPED_RUNTIME_DECLARED_OUTPUT_TOTAL_BYTES = 256 * 1024
+MAX_SCOPED_PRIOR_SEED_AUTHORITY_BYTES = 4 * 1024 * 1024
 MAX_STATIC_REQUIREMENTS = 512
 MAX_REQUIREMENT_BYTES = 2048
 MAX_INSTALLED_VERSION_BYTES = 512
@@ -73,6 +92,82 @@ PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY = (
     "dev",
 )
 PYTEST_COMMAND_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])pytest(?=$|[\s;&|])")
+_LOWER_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+_SAFE_SCOPED_TARGET_PATTERN = re.compile(
+    r"tests/(?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)*"
+    r"[A-Za-z0-9_][A-Za-z0-9_.-]*\.py"
+)
+_SCOPED_CONTRACT_FIELDS = frozenset(
+    {
+        "schema",
+        "authority",
+        "requires-python",
+        "covered-pytest-target",
+        "covered-pytest-target-sha256",
+        "requirements",
+    }
+)
+_SCOPED_CONTRACT_V2_FIELDS = frozenset(
+    {
+        "schema",
+        "authority",
+        "requires-python",
+        "targets",
+    }
+)
+_SCOPED_CONTRACT_V2_TARGET_FIELDS = frozenset(
+    {
+        "target",
+        "validation-command-sha256",
+        "requirements",
+        "task",
+        "baseline",
+    }
+)
+_SCOPED_CONTRACT_V2_TASK_FIELDS = frozenset(
+    {
+        "board-namespace",
+        "canonical-task-cid",
+        "declared-output",
+    }
+)
+_SCOPED_CONTRACT_V2_PRESENT_BASELINE_FIELDS = frozenset(
+    {"state", "sha256"}
+)
+_SCOPED_CONTRACT_V2_ABSENT_BASELINE_FIELDS = frozenset({"state"})
+_SCOPED_RUNTIME_TASK_AUTHORITY_FIELDS = frozenset(
+    {"board_namespace", "canonical_task_cid", "declared_outputs"}
+)
+_SCOPED_PRIOR_SEED_AUTHORITY_FIELDS = frozenset(
+    {
+        "schema",
+        "board_namespace",
+        "canonical_task_cid",
+        "baseline_receipt",
+        "baseline_commit_id",
+        "repository_tree_id",
+        "proposal_repository_tree_id",
+        "source_proposal_id",
+        "source_proposal_receipt_id",
+        "proposal_id",
+        "proposal_receipt_id",
+        "changed_paths",
+        "authorized_paths",
+        "seeded_outputs",
+        "authority_sha256",
+    }
+)
+_SCOPED_PRIOR_SEED_OUTPUT_FIELDS = frozenset(
+    {"path", "sha256", "git_blob_id"}
+)
+_SCOPED_CONTRACT_AUTHORITY_FIELDS = frozenset(
+    {
+        "file",
+        "sha256",
+        "extra",
+        "extra-requirements-sha256",
+    }
+)
 _DEFAULT_VERSION_GETTER = importlib.metadata.version
 _DEFAULT_REQUIRES_GETTER = object()
 _PROBE_ARGV_BOOTSTRAP = (
@@ -110,6 +205,14 @@ class _BoundedFileTooLarge(ValueError):
 
 class _BoundedFileSnapshotRace(ValueError):
     """A metadata path or opened file changed during snapshot collection."""
+
+
+class _ScopedDependencyContractError(ValueError):
+    """A safe, stable v2 contract failure suitable for retry receipts."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 def _stat_snapshot(stat_result: os.stat_result) -> tuple[int, ...]:
@@ -410,6 +513,1042 @@ def _setuptools_file_backed_dependencies(
     )
 
 
+def _scoped_dependency_contract_configuration(
+    parsed: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Return the closed supervisor-only dependency contract when declared."""
+
+    tool = parsed.get("tool")
+    if not isinstance(tool, Mapping):
+        return None
+    namespace = tool.get("ipfs-accelerate-agent-supervisor")
+    if namespace is None:
+        return None
+    if not isinstance(namespace, Mapping):
+        raise ValueError("agent-supervisor tool namespace must be a table")
+    contract = namespace.get("project-dependency-preflight")
+    if contract is None:
+        return None
+    if not isinstance(contract, Mapping):
+        raise ValueError("scoped dependency contract must be a table")
+    schema = contract.get("schema")
+    expected_fields = (
+        _SCOPED_CONTRACT_V2_FIELDS
+        if schema == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2
+        else _SCOPED_CONTRACT_FIELDS
+    )
+    if set(contract) != expected_fields:
+        raise ValueError("scoped dependency contract fields are not closed")
+    return contract
+
+
+def _setup_extra_literal_requirements(
+    payload: bytes,
+    *,
+    extra: str,
+) -> list[str]:
+    """Read one literal ``setup(..., extras_require={...})`` value via AST.
+
+    Setup code is never imported or executed.  Dynamic keys, dictionary
+    expansion, multiple setup calls, and computed entries all fail closed.
+    """
+
+    try:
+        source = payload.decode("utf-8")
+        tree = ast.parse(source, filename="setup.py", mode="exec")
+    except (SyntaxError, UnicodeError) as exc:
+        raise ValueError("setup.py authority is not static UTF-8 Python") from exc
+    setup_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "setup"
+    ]
+    if len(setup_calls) != 1:
+        raise ValueError("setup.py authority must contain exactly one setup call")
+    setup_call = setup_calls[0]
+    if any(keyword.arg is None for keyword in setup_call.keywords):
+        raise ValueError("setup.py authority cannot expand setup keyword arguments")
+    extras_values = [
+        keyword.value
+        for keyword in setup_call.keywords
+        if keyword.arg == "extras_require"
+    ]
+    if len(extras_values) != 1 or not isinstance(extras_values[0], ast.Dict):
+        raise ValueError("setup.py extras_require authority must be one literal mapping")
+    extras = extras_values[0]
+    literal_keys: list[str] = []
+    selected_values: list[ast.expr] = []
+    for index, key in enumerate(extras.keys):
+        value = extras.values[index]
+        if not (
+            isinstance(key, ast.Constant)
+            and type(key.value) is str
+            and key.value
+        ):
+            raise ValueError("setup.py extras_require keys must be literal strings")
+        literal_keys.append(key.value)
+        if key.value == extra:
+            selected_values.append(value)
+    if len(literal_keys) != len(set(literal_keys)):
+        raise ValueError("setup.py extras_require contains duplicate keys")
+    if len(selected_values) != 1 or not isinstance(selected_values[0], ast.List):
+        raise ValueError("setup.py selected extra must be one literal list")
+    requirements: list[str] = []
+    for element in selected_values[0].elts:
+        if not (
+            isinstance(element, ast.Constant)
+            and type(element.value) is str
+            and element.value.strip() == element.value
+            and element.value
+        ):
+            raise ValueError("setup.py selected extra entries must be literal strings")
+        requirements.append(element.value)
+    if not requirements or len(requirements) != len(set(requirements)):
+        raise ValueError("setup.py selected extra must be nonempty and unique")
+    return requirements
+
+
+def _command_is_exact_scoped_pytest_target(
+    command: str,
+    *,
+    relative_root: str,
+    target: str,
+) -> bool:
+    """Match the sole command grammar admitted by a scoped contract.
+
+    The exact grammar intentionally leaves no room for node selectors, a
+    second path, plugins, ``-k`` expressions, shell suffixes, environment
+    overrides, or alternate runners.
+    """
+
+    try:
+        tokens = shlex.split(str(command), posix=True)
+    except ValueError:
+        return False
+    expected = ["python3", "-m", "pytest", target, "-q"]
+    if relative_root:
+        expected = ["cd", relative_root, "&&", *expected]
+    return tokens == expected
+
+
+def _require_safe_scoped_pytest_target(value: Any) -> str:
+    """Return one bounded canonical test-file target or fail closed."""
+
+    if type(value) is not str:
+        raise _ScopedDependencyContractError("v2_target_type_invalid")
+    target = value
+    target_bytes = len(target.encode("utf-8", errors="surrogatepass"))
+    target_path = PurePosixPath(target)
+    if (
+        not target
+        or target_bytes > MAX_SCOPED_CONTRACT_TARGET_BYTES
+        or target.strip() != target
+        or "\\" in target
+        or target_path.is_absolute()
+        or ".." in target_path.parts
+        or target_path.as_posix() != target
+        or not target.startswith("tests/")
+        or not target.endswith(".py")
+        or _SAFE_SCOPED_TARGET_PATTERN.fullmatch(target) is None
+        or "::" in target
+    ):
+        raise _ScopedDependencyContractError("v2_target_path_invalid")
+    return target
+
+
+def _require_scoped_requirements(value: Any) -> list[str]:
+    """Return one nonempty, bounded, non-coercing requirement list."""
+
+    if not (
+        type(value) is list
+        and value
+        and all(
+            type(requirement) is str
+            and requirement
+            and requirement.strip() == requirement
+            and len(
+                requirement.encode("utf-8", errors="surrogatepass")
+            )
+            <= MAX_REQUIREMENT_BYTES
+            for requirement in value
+        )
+        and len(value) <= MAX_STATIC_REQUIREMENTS
+        and len(value) == len(set(value))
+    ):
+        raise _ScopedDependencyContractError("v2_target_requirements_invalid")
+    return list(value)
+
+
+def _expected_scoped_declared_output(relative_root: str, target: str) -> str:
+    return (PurePosixPath(relative_root) / target).as_posix()
+
+
+def _require_scoped_prior_seed_paths(
+    value: Any,
+    *,
+    reason: str,
+) -> list[str]:
+    """Return one closed, bounded list of canonical repository paths."""
+
+    if not (
+        type(value) is list
+        and value
+        and len(value) <= MAX_SCOPED_RUNTIME_DECLARED_OUTPUTS
+        and len(value) == len(set(value))
+        and all(
+            type(path) is str
+            and path
+            and path.strip() == path
+            and len(path.encode("utf-8", errors="surrogatepass"))
+            <= MAX_SCOPED_CONTRACT_TARGET_BYTES
+            and "\\" not in path
+            and not PurePosixPath(path).is_absolute()
+            and ".." not in PurePosixPath(path).parts
+            and PurePosixPath(path).as_posix() == path
+            and not any(ord(character) < 32 for character in path)
+            for path in value
+        )
+        and sum(
+            len(path.encode("utf-8", errors="surrogatepass"))
+            for path in value
+        )
+        <= MAX_SCOPED_RUNTIME_DECLARED_OUTPUT_TOTAL_BYTES
+    ):
+        raise _ScopedDependencyContractError(reason)
+    return list(value)
+
+
+def _scoped_prior_seed_target_sha256(
+    authority: Mapping[str, Any] | None,
+    *,
+    project_root: Path,
+    relative_root: str,
+    selected_target: Mapping[str, Any],
+) -> str:
+    """Authenticate one task-bound replay that materialized an absent target.
+
+    The baseline receipt proves that the target was absent before replay.  The
+    seed authority is emitted only after the daemon's accepted proposal gate
+    has rebound the prior task delta to the current clean baseline.  This
+    verifier closes and content-binds that compact handoff before trusting it.
+    """
+
+    if not (
+        type(authority) is dict
+        and set(authority) == _SCOPED_PRIOR_SEED_AUTHORITY_FIELDS
+    ):
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_authority_fields_invalid"
+        )
+    try:
+        authority_bytes = _canonical_json(authority).encode(
+            "utf-8", errors="surrogatepass"
+        )
+    except (TypeError, ValueError) as exc:
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_authority_not_canonical"
+        ) from exc
+    if len(authority_bytes) > MAX_SCOPED_PRIOR_SEED_AUTHORITY_BYTES:
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_authority_exceeds_bound"
+        )
+
+    claimed_authority_sha256 = authority.get("authority_sha256")
+    unsigned_authority = dict(authority)
+    unsigned_authority.pop("authority_sha256", None)
+    if not (
+        type(claimed_authority_sha256) is str
+        and _LOWER_SHA256_PATTERN.fullmatch(claimed_authority_sha256)
+        and _content_sha256(unsigned_authority) == claimed_authority_sha256
+    ):
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_authority_digest_mismatch"
+        )
+    if authority.get("schema") != SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA:
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_authority_schema_invalid"
+        )
+    if (
+        authority.get("board_namespace")
+        != selected_target["board_namespace"]
+        or authority.get("canonical_task_cid")
+        != selected_target["canonical_task_cid"]
+    ):
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_task_authority_mismatch"
+        )
+
+    for field_name in (
+        "source_proposal_id",
+        "source_proposal_receipt_id",
+        "proposal_id",
+        "proposal_receipt_id",
+    ):
+        value = authority.get(field_name)
+        if not (
+            type(value) is str
+            and value
+            and value.strip() == value
+            and len(value.encode("utf-8", errors="surrogatepass"))
+            <= MAX_SCOPED_CONTRACT_TASK_IDENTITY_BYTES
+            and not any(ord(character) < 32 for character in value)
+        ):
+            raise _ScopedDependencyContractError(
+                "v2_prior_seed_proposal_identity_invalid"
+            )
+
+    baseline_commit_id = authority.get("baseline_commit_id")
+    repository_tree_id = authority.get("repository_tree_id")
+    proposal_repository_tree_id = authority.get(
+        "proposal_repository_tree_id"
+    )
+    if not (
+        type(baseline_commit_id) is str
+        and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", baseline_commit_id)
+        and type(repository_tree_id) is str
+        and re.fullmatch(
+            r"git-tree:(?:[0-9a-f]{40}|[0-9a-f]{64})",
+            repository_tree_id,
+        )
+        and type(proposal_repository_tree_id) is str
+        and proposal_repository_tree_id
+        in {baseline_commit_id, repository_tree_id}
+    ):
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_repository_identity_invalid"
+        )
+
+    changed_paths = _require_scoped_prior_seed_paths(
+        authority.get("changed_paths"),
+        reason="v2_prior_seed_changed_paths_invalid",
+    )
+    authorized_paths = _require_scoped_prior_seed_paths(
+        authority.get("authorized_paths"),
+        reason="v2_prior_seed_authorized_paths_invalid",
+    )
+    declared_output = str(selected_target["declared_output"])
+    if (
+        declared_output not in changed_paths
+        or declared_output not in authorized_paths
+    ):
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_target_not_proposal_bound"
+        )
+
+    seeded_outputs = authority.get("seeded_outputs")
+    if not (
+        type(seeded_outputs) is list
+        and seeded_outputs
+        and len(seeded_outputs) <= MAX_SCOPED_RUNTIME_DECLARED_OUTPUTS
+        and all(
+            type(output) is dict
+            and set(output) == _SCOPED_PRIOR_SEED_OUTPUT_FIELDS
+            for output in seeded_outputs
+        )
+    ):
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_outputs_invalid"
+        )
+    matching_outputs = [
+        output
+        for output in seeded_outputs
+        if output.get("path") == declared_output
+    ]
+    if len(matching_outputs) != 1:
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_target_attestation_missing"
+        )
+    seeded_output = matching_outputs[0]
+    target_sha256 = seeded_output.get("sha256")
+    git_blob_id = seeded_output.get("git_blob_id")
+    if not (
+        type(target_sha256) is str
+        and _LOWER_SHA256_PATTERN.fullmatch(target_sha256)
+        and type(git_blob_id) is str
+        and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", git_blob_id)
+    ):
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_target_attestation_invalid"
+        )
+
+    baseline_receipt = authority.get("baseline_receipt")
+    if type(baseline_receipt) is not dict:
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_baseline_receipt_invalid"
+        )
+    claimed_receipt_id = baseline_receipt.get("receipt_id")
+    unsigned_receipt = dict(baseline_receipt)
+    unsigned_receipt.pop("retry_fingerprint", None)
+    unsigned_receipt.pop("receipt_id", None)
+    if not (
+        type(claimed_receipt_id) is str
+        and _LOWER_SHA256_PATTERN.fullmatch(claimed_receipt_id)
+        and _content_sha256(unsigned_receipt) == claimed_receipt_id
+        and baseline_receipt.get("schema")
+        == PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA
+        and baseline_receipt.get("passed") is True
+    ):
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_baseline_receipt_digest_mismatch"
+        )
+
+    workspace = project_root
+    for _part in PurePosixPath(relative_root).parts:
+        workspace = workspace.parent
+    try:
+        expected_workspace = str(workspace.resolve(strict=True))
+    except OSError as exc:
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_baseline_workspace_invalid"
+        ) from exc
+    if baseline_receipt.get("workspace") != expected_workspace:
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_baseline_workspace_mismatch"
+        )
+
+    projects = baseline_receipt.get("projects")
+    if not isinstance(projects, list):
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_baseline_projects_invalid"
+        )
+    matching_projects = [
+        project
+        for project in projects
+        if isinstance(project, Mapping) and project.get("root") == relative_root
+    ]
+    expected_task_authority = {
+        "board_namespace": selected_target["board_namespace"],
+        "canonical_task_cid": selected_target["canonical_task_cid"],
+        "declared_output": declared_output,
+    }
+    if len(matching_projects) != 1:
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_baseline_project_missing"
+        )
+    baseline_project = matching_projects[0]
+    if not (
+        baseline_project.get("passed") is True
+        and baseline_project.get("dependency_contract_schema")
+        == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2
+        and baseline_project.get("scoped_validation_command_sha256")
+        == selected_target["validation_command_sha256"]
+        and baseline_project.get("scoped_validation_target_baseline_state")
+        == "declared-output-absent"
+        and baseline_project.get(
+            "scoped_validation_target_materialization_state"
+        )
+        == "absent"
+        and baseline_project.get("scoped_validation_task_authority_sha256")
+        == _content_sha256(expected_task_authority)
+        and baseline_project.get("scoped_validation_target_contract_sha256")
+        == _content_sha256(selected_target)
+    ):
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_baseline_project_mismatch"
+        )
+    return target_sha256
+
+
+def _require_absent_scoped_target(
+    project_root: Path,
+    target: str,
+    expected_project_root_snapshot: tuple[int, ...],
+) -> None:
+    """Prove an authorized output is absent behind stable, safe parents."""
+
+    _require_directory_snapshot(project_root, expected_project_root_snapshot)
+    snapshots: list[tuple[Path, tuple[int, ...]]] = []
+    missing_parent: Path | None = None
+    current = project_root
+    for part in PurePosixPath(target).parts[:-1]:
+        current = current / part
+        try:
+            current_stat = os.stat(current, follow_symlinks=False)
+        except FileNotFoundError:
+            missing_parent = current
+            break
+        if not stat_module.S_ISDIR(current_stat.st_mode):
+            raise _ScopedDependencyContractError("v2_target_parent_invalid")
+        snapshots.append((current, _stat_snapshot(current_stat)))
+
+    candidate = project_root / target
+    try:
+        candidate.lstat()
+    except FileNotFoundError:
+        pass
+    else:
+        raise _ScopedDependencyContractError("v2_absent_target_is_present")
+
+    _require_directory_snapshot(project_root, expected_project_root_snapshot)
+    for parent, expected_snapshot in snapshots:
+        try:
+            current_stat = os.stat(parent, follow_symlinks=False)
+        except OSError as exc:
+            raise _BoundedFileSnapshotRace(
+                "scoped dependency target parent changed"
+            ) from exc
+        if (
+            not stat_module.S_ISDIR(current_stat.st_mode)
+            or _stat_snapshot(current_stat) != expected_snapshot
+        ):
+            raise _BoundedFileSnapshotRace(
+                "scoped dependency target parent changed"
+            )
+    if missing_parent is not None:
+        try:
+            missing_parent.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            raise _BoundedFileSnapshotRace(
+                "scoped dependency missing target parent appeared"
+            )
+    try:
+        candidate.lstat()
+    except FileNotFoundError:
+        return
+    raise _BoundedFileSnapshotRace(
+        "scoped dependency absent target appeared"
+    )
+
+
+def _scoped_v2_selected_target(
+    contract: Mapping[str, Any],
+    *,
+    relative_root: str,
+    validation_commands: Sequence[str],
+    task_authority: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Validate all v2 entries and select exactly one task-bound command."""
+
+    targets = contract.get("targets")
+    if not (
+        type(targets) is list
+        and targets
+        and len(targets) <= MAX_SCOPED_CONTRACT_TARGETS
+    ):
+        raise _ScopedDependencyContractError("v2_targets_invalid_or_exceed_bound")
+    if len(validation_commands) != 1:
+        raise _ScopedDependencyContractError("v2_validation_command_count_invalid")
+    validation_command = validation_commands[0]
+    validation_command_sha256 = hashlib.sha256(
+        validation_command.encode("utf-8", errors="surrogatepass")
+    ).hexdigest()
+
+    if not (
+        type(task_authority) is dict
+        and set(task_authority) == _SCOPED_RUNTIME_TASK_AUTHORITY_FIELDS
+    ):
+        raise _ScopedDependencyContractError("v2_runtime_task_authority_fields_invalid")
+    runtime_board_namespace = task_authority.get("board_namespace")
+    runtime_task_cid = task_authority.get("canonical_task_cid")
+    runtime_declared_outputs = task_authority.get("declared_outputs")
+    if not (
+        type(runtime_board_namespace) is str
+        and runtime_board_namespace
+        and runtime_board_namespace.strip() == runtime_board_namespace
+        and type(runtime_task_cid) is str
+        and runtime_task_cid
+        and runtime_task_cid.strip() == runtime_task_cid
+        and type(runtime_declared_outputs) is list
+        and len(runtime_declared_outputs) <= MAX_SCOPED_RUNTIME_DECLARED_OUTPUTS
+        and all(
+            type(output) is str
+            and output
+            and output.strip() == output
+            and len(output.encode("utf-8", errors="surrogatepass"))
+            <= MAX_SCOPED_CONTRACT_TARGET_BYTES
+            and "\\" not in output
+            and not PurePosixPath(output).is_absolute()
+            and ".." not in PurePosixPath(output).parts
+            and PurePosixPath(output).as_posix() == output
+            for output in runtime_declared_outputs
+        )
+        and len(runtime_declared_outputs) == len(set(runtime_declared_outputs))
+        and sum(
+            len(output.encode("utf-8", errors="surrogatepass"))
+            for output in runtime_declared_outputs
+        )
+        <= MAX_SCOPED_RUNTIME_DECLARED_OUTPUT_TOTAL_BYTES
+    ):
+        raise _ScopedDependencyContractError("v2_runtime_task_authority_invalid")
+    runtime_identity_bytes = len(
+        runtime_board_namespace.encode("utf-8", errors="surrogatepass")
+    ) + len(runtime_task_cid.encode("utf-8", errors="surrogatepass"))
+    if runtime_identity_bytes > MAX_SCOPED_CONTRACT_TASK_IDENTITY_BYTES:
+        raise _ScopedDependencyContractError("v2_runtime_task_authority_exceeds_bound")
+
+    parsed_targets: list[dict[str, Any]] = []
+    seen_targets: set[str] = set()
+    seen_commands: set[str] = set()
+    target_total_bytes = 0
+    requirement_count = 0
+    requirement_total_bytes = 0
+    for raw_entry in targets:
+        if not (
+            type(raw_entry) is dict
+            and set(raw_entry) == _SCOPED_CONTRACT_V2_TARGET_FIELDS
+        ):
+            raise _ScopedDependencyContractError("v2_target_fields_invalid")
+        target = _require_safe_scoped_pytest_target(raw_entry.get("target"))
+        target_total_bytes += len(
+            target.encode("utf-8", errors="surrogatepass")
+        )
+        if (
+            target in seen_targets
+            or target_total_bytes > MAX_SCOPED_CONTRACT_TARGET_TOTAL_BYTES
+        ):
+            raise _ScopedDependencyContractError("v2_targets_duplicate_or_oversized")
+        seen_targets.add(target)
+
+        command_sha256 = raw_entry.get("validation-command-sha256")
+        if not (
+            type(command_sha256) is str
+            and _LOWER_SHA256_PATTERN.fullmatch(command_sha256)
+            and command_sha256 not in seen_commands
+        ):
+            raise _ScopedDependencyContractError(
+                "v2_validation_command_digest_invalid_or_duplicate"
+            )
+        seen_commands.add(command_sha256)
+
+        requirements = _require_scoped_requirements(
+            raw_entry.get("requirements")
+        )
+        requirement_count += len(requirements)
+        requirement_total_bytes += sum(
+            len(requirement.encode("utf-8", errors="surrogatepass"))
+            for requirement in requirements
+        )
+        if (
+            requirement_count > MAX_STATIC_REQUIREMENTS
+            or requirement_total_bytes > MAX_DEPENDENCY_MANIFEST_BYTES
+        ):
+            raise _ScopedDependencyContractError(
+                "v2_target_requirements_exceed_aggregate_bound"
+            )
+
+        entry_task = raw_entry.get("task")
+        if not (
+            type(entry_task) is dict
+            and set(entry_task) == _SCOPED_CONTRACT_V2_TASK_FIELDS
+        ):
+            raise _ScopedDependencyContractError("v2_target_task_fields_invalid")
+        board_namespace = entry_task.get("board-namespace")
+        canonical_task_cid = entry_task.get("canonical-task-cid")
+        declared_output = entry_task.get("declared-output")
+        if not (
+            type(board_namespace) is str
+            and board_namespace
+            and board_namespace.strip() == board_namespace
+            and type(canonical_task_cid) is str
+            and canonical_task_cid
+            and canonical_task_cid.strip() == canonical_task_cid
+            and type(declared_output) is str
+            and declared_output
+            and declared_output.strip() == declared_output
+            and declared_output
+            == _expected_scoped_declared_output(relative_root, target)
+        ):
+            raise _ScopedDependencyContractError("v2_target_task_authority_invalid")
+        identity_bytes = sum(
+            len(value.encode("utf-8", errors="surrogatepass"))
+            for value in (board_namespace, canonical_task_cid, declared_output)
+        )
+        if identity_bytes > MAX_SCOPED_CONTRACT_TASK_IDENTITY_BYTES:
+            raise _ScopedDependencyContractError(
+                "v2_target_task_authority_exceeds_bound"
+            )
+
+        baseline = raw_entry.get("baseline")
+        if type(baseline) is not dict:
+            raise _ScopedDependencyContractError("v2_target_baseline_type_invalid")
+        baseline_state = baseline.get("state")
+        if baseline_state == "present":
+            if set(baseline) != _SCOPED_CONTRACT_V2_PRESENT_BASELINE_FIELDS:
+                raise _ScopedDependencyContractError(
+                    "v2_present_baseline_fields_invalid"
+                )
+            baseline_sha256 = baseline.get("sha256")
+            if not (
+                type(baseline_sha256) is str
+                and _LOWER_SHA256_PATTERN.fullmatch(baseline_sha256)
+            ):
+                raise _ScopedDependencyContractError(
+                    "v2_present_baseline_digest_invalid"
+                )
+        elif baseline_state == "declared-output-absent":
+            if set(baseline) != _SCOPED_CONTRACT_V2_ABSENT_BASELINE_FIELDS:
+                raise _ScopedDependencyContractError(
+                    "v2_absent_baseline_fields_invalid"
+                )
+            baseline_sha256 = ""
+        else:
+            raise _ScopedDependencyContractError("v2_target_baseline_state_invalid")
+
+        parsed_targets.append(
+            {
+                "target": target,
+                "validation_command_sha256": command_sha256,
+                "requirements": requirements,
+                "board_namespace": board_namespace,
+                "canonical_task_cid": canonical_task_cid,
+                "declared_output": declared_output,
+                "baseline_state": baseline_state,
+                "baseline_sha256": baseline_sha256,
+            }
+        )
+
+    selected = [
+        entry
+        for entry in parsed_targets
+        if entry["validation_command_sha256"] == validation_command_sha256
+        and _command_is_exact_scoped_pytest_target(
+            validation_command,
+            relative_root=relative_root,
+            target=str(entry["target"]),
+        )
+    ]
+    if len(selected) != 1:
+        raise _ScopedDependencyContractError("v2_validation_command_not_declared")
+    result = selected[0]
+    if (
+        result["board_namespace"] != runtime_board_namespace
+        or result["canonical_task_cid"] != runtime_task_cid
+        or result["declared_output"] not in runtime_declared_outputs
+    ):
+        raise _ScopedDependencyContractError("v2_validation_task_authority_mismatch")
+    return result
+
+
+def _scoped_setup_extra_dependencies(
+    parsed: Mapping[str, Any],
+    project: Mapping[str, Any],
+    project_root: Path,
+    expected_project_root_snapshot: tuple[int, ...],
+    relative_root: str,
+    validation_commands: Sequence[str],
+    task_authority: Mapping[str, Any] | None = None,
+    prior_seed_authority: Mapping[str, Any] | None = None,
+) -> tuple[list[str], list[dict[str, Any]], dict[str, Any]]:
+    """Resolve one exact-target setup-extra contract without executing setup."""
+
+    contract = _scoped_dependency_contract_configuration(parsed)
+    if contract is None:
+        raise ValueError("scoped dependency contract is unavailable")
+    contract_schema = contract.get("schema")
+    if contract_schema not in {
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
+    }:
+        raise ValueError("scoped dependency contract schema is unsupported")
+
+    def contract_failure(reason: str, message: str) -> ValueError:
+        if contract_schema == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2:
+            return _ScopedDependencyContractError(reason)
+        return ValueError(message)
+
+    authority = contract.get("authority")
+    if not isinstance(authority, Mapping) or set(authority) != (
+        _SCOPED_CONTRACT_AUTHORITY_FIELDS
+    ):
+        raise contract_failure(
+            "v2_setup_authority_fields_invalid",
+            "scoped dependency authority fields are not closed",
+        )
+    if authority.get("file") != "setup.py" or authority.get("extra") != "test":
+        raise contract_failure(
+            "v2_setup_authority_unsupported",
+            "scoped dependency authority is unsupported",
+        )
+    authority_sha256 = authority.get("sha256")
+    extra_requirements_sha256 = authority.get("extra-requirements-sha256")
+    if not (
+        type(authority_sha256) is str
+        and _LOWER_SHA256_PATTERN.fullmatch(authority_sha256)
+        and type(extra_requirements_sha256) is str
+        and _LOWER_SHA256_PATTERN.fullmatch(extra_requirements_sha256)
+    ):
+        raise contract_failure(
+            "v2_setup_authority_digests_invalid",
+            "scoped dependency authority digests are invalid",
+        )
+
+    requires_python = contract.get("requires-python")
+    if type(requires_python) is not str or requires_python != project.get(
+        "requires-python"
+    ):
+        raise contract_failure(
+            "v2_interpreter_contract_mismatch",
+            "scoped dependency interpreter contract drifted",
+        )
+
+    target_file: Path | None = None
+    target_payload = b""
+    observed_target_sha256 = ""
+    target_materialization_state = "present"
+    prior_seed_authority_sha256 = ""
+    selected_v2_target: dict[str, Any] | None = None
+    if contract_schema == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA:
+        target = contract.get("covered-pytest-target")
+        if type(target) is not str:
+            raise ValueError("scoped dependency pytest target must be a string")
+        target_sha256 = contract.get("covered-pytest-target-sha256")
+        if not (
+            type(target_sha256) is str
+            and _LOWER_SHA256_PATTERN.fullmatch(target_sha256)
+        ):
+            raise ValueError("scoped dependency pytest target digest is invalid")
+        target_path = PurePosixPath(target)
+        if (
+            not target
+            or "\\" in target
+            or target_path.is_absolute()
+            or ".." in target_path.parts
+            or target_path.as_posix() != target
+            or not target.startswith("tests/")
+            or not target.endswith(".py")
+            or "::" in target
+        ):
+            raise ValueError("scoped dependency pytest target is unsafe")
+        if len(validation_commands) != 1 or not _command_is_exact_scoped_pytest_target(
+            validation_commands[0],
+            relative_root=relative_root,
+            target=target,
+        ):
+            raise ValueError("validation command is outside scoped dependency contract")
+
+        target_file, target_payload = _read_bounded_contained_regular_file(
+            project_root,
+            project_root / target,
+            maximum_bytes=MAX_DEPENDENCY_MANIFEST_BYTES,
+            expected_containment_root_snapshot=expected_project_root_snapshot,
+        )
+        observed_target_sha256 = hashlib.sha256(target_payload).hexdigest()
+        if observed_target_sha256 != target_sha256:
+            raise ValueError("scoped dependency pytest target digest drifted")
+
+        requirements = contract.get("requirements")
+        if not (
+            type(requirements) is list
+            and requirements
+            and all(
+                type(requirement) is str
+                and requirement
+                and requirement.strip() == requirement
+                for requirement in requirements
+            )
+            and len(requirements) == len(set(requirements))
+        ):
+            raise ValueError("scoped dependency requirements must be nonempty and unique")
+    else:
+        selected_v2_target = _scoped_v2_selected_target(
+            contract,
+            relative_root=relative_root,
+            validation_commands=validation_commands,
+            task_authority=task_authority,
+        )
+        target = str(selected_v2_target["target"])
+        requirements = list(selected_v2_target["requirements"])
+        if selected_v2_target["baseline_state"] == "present":
+            target_file, target_payload = _read_bounded_contained_regular_file(
+                project_root,
+                project_root / target,
+                maximum_bytes=MAX_DEPENDENCY_MANIFEST_BYTES,
+                expected_containment_root_snapshot=expected_project_root_snapshot,
+            )
+            observed_target_sha256 = hashlib.sha256(target_payload).hexdigest()
+            if observed_target_sha256 != selected_v2_target["baseline_sha256"]:
+                raise _ScopedDependencyContractError(
+                    "v2_present_target_digest_mismatch"
+                )
+        else:
+            try:
+                _require_absent_scoped_target(
+                    project_root,
+                    target,
+                    expected_project_root_snapshot,
+                )
+            except _ScopedDependencyContractError as exc:
+                if exc.reason != "v2_absent_target_is_present":
+                    raise
+                if prior_seed_authority is None:
+                    raise
+                expected_seeded_target_sha256 = (
+                    _scoped_prior_seed_target_sha256(
+                        prior_seed_authority,
+                        project_root=project_root,
+                        relative_root=relative_root,
+                        selected_target=selected_v2_target,
+                    )
+                )
+                target_file, target_payload = (
+                    _read_bounded_contained_regular_file(
+                        project_root,
+                        project_root / target,
+                        maximum_bytes=MAX_DEPENDENCY_MANIFEST_BYTES,
+                        expected_containment_root_snapshot=(
+                            expected_project_root_snapshot
+                        ),
+                    )
+                )
+                observed_target_sha256 = hashlib.sha256(
+                    target_payload
+                ).hexdigest()
+                if observed_target_sha256 != expected_seeded_target_sha256:
+                    raise _ScopedDependencyContractError(
+                        "v2_prior_seed_target_content_mismatch"
+                    )
+                target_materialization_state = "authenticated-prior-seed"
+                prior_seed_authority_sha256 = str(
+                    prior_seed_authority.get("authority_sha256")
+                )
+            else:
+                target_materialization_state = "absent"
+
+    # A malformed setuptools file declaration cannot be bypassed by adding a
+    # second supervisor-only source.  This contract is only for setup.py-backed
+    # projects that have no declarative setuptools dependency file.
+    tool = parsed.get("tool")
+    setuptools = tool.get("setuptools") if isinstance(tool, Mapping) else None
+    if setuptools is not None and not isinstance(setuptools, Mapping):
+        raise ValueError("tool.setuptools must be a table")
+    dynamic = setuptools.get("dynamic") if isinstance(setuptools, Mapping) else None
+    if dynamic is not None and not isinstance(dynamic, Mapping):
+        raise ValueError("tool.setuptools.dynamic must be a table")
+    if isinstance(dynamic, Mapping) and "dependencies" in dynamic:
+        raise ValueError("scoped and setuptools dependency sources conflict")
+
+    setup_path, setup_payload = _read_bounded_contained_regular_file(
+        project_root,
+        project_root / "setup.py",
+        maximum_bytes=(
+            MAX_DEPENDENCY_MANIFEST_BYTES - len(target_payload)
+        ),
+        expected_containment_root_snapshot=expected_project_root_snapshot,
+    )
+    observed_setup_sha256 = hashlib.sha256(setup_payload).hexdigest()
+    if observed_setup_sha256 != authority_sha256:
+        raise contract_failure(
+            "v2_setup_authority_digest_mismatch",
+            "setup.py authority digest drifted",
+        )
+    try:
+        authority_requirements = _setup_extra_literal_requirements(
+            setup_payload,
+            extra="test",
+        )
+    except ValueError as exc:
+        if contract_schema == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2:
+            raise _ScopedDependencyContractError(
+                "v2_setup_authority_not_static"
+            ) from exc
+        raise
+    if _content_sha256(authority_requirements) != extra_requirements_sha256:
+        raise contract_failure(
+            "v2_setup_extra_digest_mismatch",
+            "setup.py extra authority digest drifted",
+        )
+    if (
+        selected_v2_target is not None
+        and selected_v2_target["baseline_state"] == "declared-output-absent"
+        and target_materialization_state == "absent"
+    ):
+        _require_absent_scoped_target(
+            project_root,
+            target,
+            expected_project_root_snapshot,
+        )
+
+    authority_positions = {
+        requirement: index for index, requirement in enumerate(authority_requirements)
+    }
+    try:
+        selected_positions = [
+            authority_positions[requirement] for requirement in requirements
+        ]
+    except KeyError as exc:
+        raise contract_failure(
+            "v2_target_requirements_not_authorized",
+            "scoped dependency requirements are not an exact authority subset",
+        ) from exc
+    if selected_positions != sorted(selected_positions):
+        raise contract_failure(
+            "v2_target_requirement_order_mismatch",
+            "scoped dependency authority subset order drifted",
+        )
+    pytest_requirements = [
+        requirement
+        for requirement in requirements
+        if re.match(r"(?i)^pytest(?:$|\[|\s|[<>=!~;@])", requirement)
+    ]
+    if not pytest_requirements:
+        raise contract_failure(
+            "v2_target_requirements_omit_pytest",
+            "scoped pytest dependency contract omits pytest",
+        )
+    if not any(";" not in requirement for requirement in pytest_requirements):
+        raise contract_failure(
+            "v2_pytest_requirement_marker_only",
+            "scoped pytest runner requirement cannot have a marker",
+        )
+
+    manifests = [
+        {
+            "path": setup_path.relative_to(project_root).as_posix(),
+            "sha256": observed_setup_sha256,
+            "bytes": len(setup_payload),
+        }
+    ]
+    if target_file is not None:
+        manifests.append(
+            {
+                "path": target_file.relative_to(project_root).as_posix(),
+                "sha256": observed_target_sha256,
+                "bytes": len(target_payload),
+            }
+        )
+    metadata = {
+        "dependency_contract_schema": contract_schema,
+        "scoped_validation_target_sha256": hashlib.sha256(
+            target.encode("utf-8")
+        ).hexdigest(),
+        "setup_extra_requirements_sha256": extra_requirements_sha256,
+    }
+    if selected_v2_target is not None:
+        selected_task_authority = {
+            "board_namespace": selected_v2_target["board_namespace"],
+            "canonical_task_cid": selected_v2_target["canonical_task_cid"],
+            "declared_output": selected_v2_target["declared_output"],
+        }
+        metadata.update(
+            {
+                "scoped_validation_command_sha256": selected_v2_target[
+                    "validation_command_sha256"
+                ],
+                "scoped_validation_target_baseline_state": (
+                    selected_v2_target["baseline_state"]
+                ),
+                "scoped_validation_target_materialization_state": (
+                    target_materialization_state
+                ),
+                "scoped_validation_task_authority_sha256": _content_sha256(
+                    selected_task_authority
+                ),
+                "scoped_validation_target_contract_sha256": _content_sha256(
+                    selected_v2_target
+                ),
+            }
+        )
+        if prior_seed_authority_sha256:
+            metadata["scoped_validation_prior_seed_authority_sha256"] = (
+                prior_seed_authority_sha256
+            )
+    return list(requirements), manifests, metadata
+
+
 def _pytest_validation_dependencies(
     parsed: Mapping[str, Any],
     project: Mapping[str, Any],
@@ -559,8 +1698,11 @@ def _bounded_static_project(
     relative_root: str,
     *,
     pytest_invoked: bool = False,
+    validation_commands: Sequence[str] = (),
+    task_authority: Mapping[str, Any] | None = None,
+    prior_seed_authority: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Read one safe project root and return its static PEP-621 contract."""
+    """Read one safe project root and return its static dependency contract."""
 
     workspace = workspace_path.resolve(strict=True)
     candidate = workspace / relative_root
@@ -762,6 +1904,8 @@ def _bounded_static_project(
     dependencies = project.get("dependencies")
     dependency_source = "pep621_static"
     dependency_manifests: list[dict[str, Any]] = []
+    scoped_contract_metadata: dict[str, Any] = {}
+    scoped_contract_selected = False
     if "dependencies" in dynamic:
         if dependencies is not None:
             return {
@@ -778,17 +1922,39 @@ def _bounded_static_project(
                 project_root,
                 project_root_snapshot,
             )
-        except (OSError, UnicodeError, ValueError) as exc:
-            return {
-                "root": relative_root,
-                "project_name_sha256": _project_name_sha256(project),
-                "applicable": True,
-                "passed": False,
-                "reason": "dynamic_dependencies_unresolved",
-                "pyproject_sha256": pyproject_sha256,
-                "error_type": type(exc).__name__,
-            }
-        dependency_source = "setuptools_dynamic_file"
+        except (OSError, UnicodeError, ValueError):
+            try:
+                (
+                    dependencies,
+                    dependency_manifests,
+                    scoped_contract_metadata,
+                ) = _scoped_setup_extra_dependencies(
+                    parsed,
+                    project,
+                    project_root,
+                    project_root_snapshot,
+                    relative_root,
+                    validation_commands,
+                    task_authority,
+                    prior_seed_authority,
+                )
+            except (OSError, UnicodeError, ValueError) as exc:
+                failure = {
+                    "root": relative_root,
+                    "project_name_sha256": _project_name_sha256(project),
+                    "applicable": True,
+                    "passed": False,
+                    "reason": "dynamic_dependencies_unresolved",
+                    "pyproject_sha256": pyproject_sha256,
+                    "error_type": type(exc).__name__,
+                }
+                if isinstance(exc, _ScopedDependencyContractError):
+                    failure["contract_error_reason"] = exc.reason
+                return failure
+            dependency_source = "agent_supervisor_scoped_setup_extra"
+            scoped_contract_selected = True
+        else:
+            dependency_source = "setuptools_dynamic_file"
     elif dependencies is None:
         dependencies = []
     if not isinstance(dependencies, list) or not all(
@@ -802,40 +1968,52 @@ def _bounded_static_project(
             "reason": "pep621_dependencies_must_be_static_strings",
             "pyproject_sha256": pyproject_sha256,
         }
-    requirement_marker_extras = [""] * len(dependencies)
-    try:
-        (
-            validation_dependencies,
-            validation_marker_extras,
-            selected_extras,
-            validation_manifests,
-            validation_dependency_source,
-        ) = _pytest_validation_dependencies(
-            parsed,
-            project,
-            project_root,
-            project_root_snapshot,
-            dynamic,
-            pytest_invoked=pytest_invoked,
-            maximum_manifest_bytes=(
-                MAX_DEPENDENCY_MANIFEST_BYTES
-                - sum(int(manifest.get("bytes") or 0) for manifest in dependency_manifests)
-            ),
-            maximum_manifest_files=(
-                MAX_DEPENDENCY_MANIFEST_FILES
-                - len(dependency_manifests)
-            ),
-        )
-    except (OSError, ValueError) as exc:
-        return {
-            "root": relative_root,
-            "project_name_sha256": _project_name_sha256(project),
-            "applicable": True,
-            "passed": False,
-            "reason": "validation_dependencies_unresolved",
-            "pyproject_sha256": pyproject_sha256,
-            "error_type": type(exc).__name__,
-        }
+    requirement_marker_extras = [
+        "test" if scoped_contract_selected else ""
+    ] * len(dependencies)
+    if scoped_contract_selected:
+        validation_dependencies: list[str] = []
+        validation_marker_extras: list[str] = []
+        selected_extras = ["test"]
+        validation_manifests: list[dict[str, Any]] = []
+        validation_dependency_source = "scoped_dependency_contract"
+    else:
+        try:
+            (
+                validation_dependencies,
+                validation_marker_extras,
+                selected_extras,
+                validation_manifests,
+                validation_dependency_source,
+            ) = _pytest_validation_dependencies(
+                parsed,
+                project,
+                project_root,
+                project_root_snapshot,
+                dynamic,
+                pytest_invoked=pytest_invoked,
+                maximum_manifest_bytes=(
+                    MAX_DEPENDENCY_MANIFEST_BYTES
+                    - sum(
+                        int(manifest.get("bytes") or 0)
+                        for manifest in dependency_manifests
+                    )
+                ),
+                maximum_manifest_files=(
+                    MAX_DEPENDENCY_MANIFEST_FILES
+                    - len(dependency_manifests)
+                ),
+            )
+        except (OSError, ValueError) as exc:
+            return {
+                "root": relative_root,
+                "project_name_sha256": _project_name_sha256(project),
+                "applicable": True,
+                "passed": False,
+                "reason": "validation_dependencies_unresolved",
+                "pyproject_sha256": pyproject_sha256,
+                "error_type": type(exc).__name__,
+            }
     dependencies = [*dependencies, *validation_dependencies]
     requirement_marker_extras.extend(validation_marker_extras)
     dependency_manifests.extend(validation_manifests)
@@ -895,6 +2073,7 @@ def _bounded_static_project(
         "dependency_manifests": dependency_manifests,
         "pytest_invoked": pytest_invoked,
         "selected_validation_extras": selected_extras,
+        **scoped_contract_metadata,
     }
 
 
@@ -1922,13 +3101,16 @@ def _preflight_validation_project_dependencies(
     validation_commands: Sequence[str],
     *,
     environment: Mapping[str, object] | None = None,
+    task_authority: Mapping[str, Any] | None = None,
+    prior_seed_authority: Mapping[str, Any] | None = None,
     probe_runner: Callable[..., dict[str, Any]] = _run_dependency_probe,
 ) -> dict[str, Any]:
-    """Compare static PEP-621 requirements with the approved interpreter."""
+    """Compare static project requirements with the approved interpreter."""
 
     workspace = Path(workspace_path)
     validation_roots: list[str] = []
     project_roots: list[str] = []
+    project_validation_commands: dict[str, list[str]] = {}
     pytest_roots: set[str] = set()
     dependency_neutral_commands: list[dict[str, Any]] = []
     invalid_commands: list[dict[str, Any]] = []
@@ -1961,6 +3143,7 @@ def _preflight_validation_project_dependencies(
             continue
         if root not in project_roots:
             project_roots.append(root)
+        project_validation_commands.setdefault(root, []).append(command_text)
         if _validation_command_invokes_pytest(command_text):
             pytest_roots.add(root)
 
@@ -1969,6 +3152,9 @@ def _preflight_validation_project_dependencies(
             workspace,
             relative_root,
             pytest_invoked=relative_root in pytest_roots,
+            validation_commands=project_validation_commands.get(relative_root, ()),
+            task_authority=task_authority,
+            prior_seed_authority=prior_seed_authority,
         )
         for relative_root in project_roots
     ]
@@ -2185,6 +3371,8 @@ def preflight_validation_project_dependencies(
     validation_commands: Sequence[str],
     *,
     environment: Mapping[str, object] | None = None,
+    task_authority: Mapping[str, Any] | None = None,
+    prior_seed_authority: Mapping[str, Any] | None = None,
     probe_runner: Callable[..., dict[str, Any]] = _run_dependency_probe,
 ) -> dict[str, Any]:
     """Return a receipt on every path; unexpected failures also fail closed."""
@@ -2194,6 +3382,8 @@ def preflight_validation_project_dependencies(
             workspace_path,
             validation_commands,
             environment=environment,
+            task_authority=task_authority,
+            prior_seed_authority=prior_seed_authority,
             probe_runner=probe_runner,
         )
     except Exception as exc:

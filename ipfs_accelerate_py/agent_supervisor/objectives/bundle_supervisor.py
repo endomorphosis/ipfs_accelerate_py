@@ -2788,6 +2788,8 @@ def implementation_supervisor_command(
     production_provider_context_budget_tokens: int = 0,
     production_provider_timeout_seconds: float = 0.0,
     production_provider_review_authority_key_path: Path | None = None,
+    production_provider_launch_authority_receipt_path: Path | None = None,
+    production_provider_launch_authority_receipt_content_id: str = "",
     legacy_landed_review_policy_path: Path | None = None,
     legacy_landed_review_key_path: Path | None = None,
     merge_target_branch: str = "",
@@ -2806,6 +2808,12 @@ def implementation_supervisor_command(
     execution_slice_task_cids: Sequence[str] = (),
     log_level: str = "INFO",
 ) -> list[str]:
+    if bool(production_provider_launch_authority_receipt_path) != bool(
+        production_provider_launch_authority_receipt_content_id
+    ):
+        raise ValueError(
+            "production provider launch authority path/content identity are required together"
+        )
     command = [
         sys.executable,
         "-m",
@@ -2878,6 +2886,15 @@ def implementation_supervisor_command(
                 str(review_authority_key_path),
             ]
         )
+        if production_provider_launch_authority_receipt_path is not None:
+            command.extend(
+                [
+                    "--production-provider-launch-authority-receipt-path",
+                    str(production_provider_launch_authority_receipt_path),
+                    "--production-provider-launch-authority-receipt-content-id",
+                    str(production_provider_launch_authority_receipt_content_id),
+                ]
+            )
     if (legacy_landed_review_policy_path is None) != (
         legacy_landed_review_key_path is None
     ):
@@ -3190,6 +3207,8 @@ def plan_bundle_lanes(
     production_provider_context_budget_tokens: int = 0,
     production_provider_timeout_seconds: float = 0.0,
     production_provider_review_authority_key_path: Path | None = None,
+    production_provider_launch_authority_receipt_path: Path | None = None,
+    production_provider_launch_authority_receipt_content_id: str = "",
     legacy_landed_review_policy_path: Path | None = None,
     legacy_landed_review_key_path: Path | None = None,
     merge_target_branch: str = "",
@@ -3389,6 +3408,12 @@ def plan_bundle_lanes(
             ),
             production_provider_review_authority_key_path=(
                 production_provider_review_authority_key_path
+            ),
+            production_provider_launch_authority_receipt_path=(
+                production_provider_launch_authority_receipt_path
+            ),
+            production_provider_launch_authority_receipt_content_id=(
+                production_provider_launch_authority_receipt_content_id
             ),
             legacy_landed_review_policy_path=legacy_landed_review_policy_path,
             legacy_landed_review_key_path=legacy_landed_review_key_path,
@@ -4498,6 +4523,8 @@ class DynamicBundleScheduler:
                 "production_provider_context_budget_tokens",
                 "production_provider_timeout_seconds",
                 "production_provider_review_authority_key_path",
+                "production_provider_launch_authority_receipt_path",
+                "production_provider_launch_authority_receipt_content_id",
                 "legacy_landed_review_policy_path",
                 "legacy_landed_review_key_path",
                 "llm_merge_resolver_command",
@@ -6433,6 +6460,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--production-provider-launch-authority-receipt-path",
+        type=Path,
+        default=None,
+        help="Exact operator-owned admitted control-launch receipt.",
+    )
+    parser.add_argument(
+        "--production-provider-launch-authority-receipt-content-id",
+        default="",
+        help="Exact sha256 content identity of the admitted control-launch receipt.",
+    )
+    parser.add_argument(
         "--legacy-landed-review-policy-path",
         type=Path,
         default=None,
@@ -6559,10 +6597,23 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
     raw_review_authority_key_path = getattr(
         args, "production_provider_review_authority_key_path", None
     )
+    raw_launch_authority_path = getattr(
+        args, "production_provider_launch_authority_receipt_path", None
+    )
+    raw_launch_authority_content_id = str(
+        getattr(
+            args,
+            "production_provider_launch_authority_receipt_content_id",
+            "",
+        )
+        or ""
+    ).strip()
     if (
         raw_production_budget
         or raw_production_timeout
         or raw_review_authority_key_path is not None
+        or raw_launch_authority_path is not None
+        or raw_launch_authority_content_id
     ) and not production_provider_policy:
         raise ValueError(
             "production provider bounds/review authority require a production "
@@ -6571,6 +6622,12 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
     production_provider_context_budget_tokens = 0
     production_provider_timeout_seconds = 0.0
     production_provider_review_authority_key_path = None
+    production_provider_launch_authority_receipt_path = None
+    production_provider_launch_authority_receipt_content_id = ""
+    if bool(raw_launch_authority_path) != bool(raw_launch_authority_content_id):
+        raise ValueError(
+            "production provider launch authority path/content identity are required together"
+        )
     if production_provider_policy:
         production_policy = ProductionCLIProviderPolicy(
             name=production_provider_policy,
@@ -6593,6 +6650,19 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
             raw_review_authority_key_path
             or state_root / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
         )
+        if raw_launch_authority_path is not None:
+            if not re.fullmatch(
+                r"sha256:[0-9a-f]{64}", raw_launch_authority_content_id
+            ):
+                raise ValueError(
+                    "production provider launch authority content identity is malformed"
+                )
+            production_provider_launch_authority_receipt_path = Path(
+                raw_launch_authority_path
+            )
+            production_provider_launch_authority_receipt_content_id = (
+                raw_launch_authority_content_id
+            )
     legacy_landed_review_policy_path = getattr(
         args, "legacy_landed_review_policy_path", None
     )
@@ -6635,6 +6705,12 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         production_provider_timeout_seconds=production_provider_timeout_seconds,
         production_provider_review_authority_key_path=(
             production_provider_review_authority_key_path
+        ),
+        production_provider_launch_authority_receipt_path=(
+            production_provider_launch_authority_receipt_path
+        ),
+        production_provider_launch_authority_receipt_content_id=(
+            production_provider_launch_authority_receipt_content_id
         ),
         legacy_landed_review_policy_path=legacy_landed_review_policy_path,
         legacy_landed_review_key_path=legacy_landed_review_key_path,

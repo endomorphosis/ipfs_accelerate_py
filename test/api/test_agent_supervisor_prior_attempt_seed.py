@@ -13,6 +13,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalTask,
     PortalTaskState,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight import (
+    PROJECT_DEPENDENCY_PROBE_SCHEMA,
+    SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
+)
 
 
 def _daemon(tmp_path: Path) -> PortalImplementationDaemon:
@@ -404,6 +408,182 @@ def test_apply_prior_attempt_seed_replays_without_moving_head(
     assert result["applied"] is True, result
     assert result["reason"] == "replayed_prior_delta"
     assert not any(cmd[:2] in (["git", "reset"], ["git", "merge"]) for cmd in calls)
+
+
+def test_retry_seed_replays_absent_scoped_target_through_dual_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+
+    control = tmp_path / "control"
+    daemon = PortalImplementationDaemon(
+        todo_path=control / "tasks.todo.md",
+        state_path=control / "state.json",
+        strategy_path=control / "strategy.json",
+        events_path=control / "events.jsonl",
+        repo_root=repo,
+    )
+    target = "tests/unit/test_retry_seed_contract.py"
+    command = f"python3 -m pytest {target} -q"
+    task = PortalTask(
+        task_id="SEED-DEPENDENCY-001",
+        title="Replay dependency-scoped test output",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="test",
+        outputs=[target],
+        validation=[command],
+        board_namespace="seed-contract-board",
+        canonical_task_cid="seed-contract-task-cid",
+    )
+    identity = daemon._identity_for_task(task)
+    requirements = ["pytest>=9.0,<10"]
+    setup_source = (
+        "from setuptools import setup\n"
+        f"setup(extras_require={{'test': {requirements!r}}})\n"
+    )
+    setup_payload = setup_source.encode("utf-8")
+    (repo / "setup.py").write_bytes(setup_payload)
+    requirements_sha256 = hashlib.sha256(
+        json.dumps(
+            requirements,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    command_sha256 = hashlib.sha256(command.encode("utf-8")).hexdigest()
+    (repo / "pyproject.toml").write_text(
+        f"""
+[project]
+name = "retry-seed-contract"
+version = "1.0.0"
+requires-python = ">=3.12"
+dynamic = ["dependencies"]
+
+[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight]
+schema = {json.dumps(SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2)}
+requires-python = ">=3.12"
+authority = {{ file = "setup.py", sha256 = {json.dumps(hashlib.sha256(setup_payload).hexdigest())}, extra = "test", extra-requirements-sha256 = {json.dumps(requirements_sha256)} }}
+targets = [
+  {{ target = {json.dumps(target)}, validation-command-sha256 = {json.dumps(command_sha256)}, requirements = {json.dumps(requirements)}, task = {{ board-namespace = {json.dumps(identity.board_namespace)}, canonical-task-cid = {json.dumps(identity.canonical_task_cid)}, declared-output = {json.dumps(target)} }}, baseline = {{ state = "declared-output-absent" }} }},
+]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "pyproject.toml", "setup.py")
+    _git(repo, "commit", "-m", "absent scoped target baseline")
+    baseline = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "-b", "prior-attempt")
+    target_payload = b"def test_replayed_seed():\n    assert True\n"
+    target_path = repo / target
+    target_path.parent.mkdir(parents=True)
+    target_path.write_bytes(target_payload)
+    _git(repo, "add", target)
+    _git(repo, "commit", "-m", "prior attempt adds scoped target")
+    seed = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    worktree = tmp_path / "retry-worktree"
+    _git(
+        repo,
+        "worktree",
+        "add",
+        "-b",
+        "retry-seed-contract",
+        str(worktree),
+        baseline,
+    )
+    _authorize_seed(daemon, task, target)
+
+    actual_preflight = (
+        implementation_daemon_module.preflight_validation_project_dependencies
+    )
+
+    def deterministic_preflight(workspace, commands, **kwargs):
+        return actual_preflight(
+            workspace,
+            commands,
+            **kwargs,
+            probe_runner=lambda *_args, **_probe_kwargs: {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": True,
+                "reason": "project_dependencies_satisfied",
+                "projects": [],
+            },
+        )
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "preflight_validation_project_dependencies",
+        deterministic_preflight,
+    )
+
+    baseline_receipt = (
+        daemon._require_validation_project_dependency_preflight(
+            workspace_path=worktree,
+            task=task,
+            attempt=2,
+            branch_name="retry-seed-contract",
+        )
+    )
+    assert baseline_receipt["projects"][0][
+        "scoped_validation_target_materialization_state"
+    ] == "absent"
+
+    seed_apply = daemon._apply_prior_attempt_seed(
+        worktree,
+        task=task,
+        seed_plan={"reuse_prior_attempt": True, "seed_ref": seed},
+        baseline_ref=baseline,
+    )
+    assert seed_apply["applied"] is True, seed_apply
+    assert seed_apply["seeded_outputs"] == [
+        {
+            "path": target,
+            "sha256": hashlib.sha256(target_payload).hexdigest(),
+            "git_blob_id": _git(repo, "hash-object", str(worktree / target)),
+        }
+    ]
+
+    authority = daemon._dependency_prior_seed_authority(
+        task=task,
+        baseline_ref=baseline,
+        baseline_receipt=baseline_receipt,
+        seed_apply=seed_apply,
+    )
+    assert authority is not None
+    assert authority["baseline_commit_id"] == baseline
+    assert authority["repository_tree_id"] == (
+        "git-tree:" + _git(repo, "rev-parse", f"{baseline}^{{tree}}")
+    )
+    assert authority["proposal_repository_tree_id"] in {
+        authority["baseline_commit_id"],
+        authority["repository_tree_id"],
+    }
+
+    post_seed_receipt = (
+        daemon._require_validation_project_dependency_preflight(
+            workspace_path=worktree,
+            task=task,
+            attempt=2,
+            branch_name="retry-seed-contract",
+            prior_seed_authority=authority,
+        )
+    )
+    assert post_seed_receipt["passed"] is True
+    assert post_seed_receipt["projects"][0][
+        "scoped_validation_target_materialization_state"
+    ] == "authenticated-prior-seed"
 
 
 def test_prior_seed_root_replay_failure_rolls_back_to_baseline(

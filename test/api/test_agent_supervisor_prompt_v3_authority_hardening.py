@@ -6,13 +6,13 @@ import io
 import json
 import os
 import shutil
+import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-
 from ipfs_accelerate_py import llm_router
 from ipfs_accelerate_py.agent_supervisor.entrypoints import (
     local_profile as local_profile_module,
@@ -23,9 +23,11 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints import (
 from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
     LocalProfileRevoked,
     LocalProfileTampered,
+    LocalProfileWrongRepository,
     ed25519_public_key_from_did,
     initialize_local_profile,
     load_local_profile,
+    resolve_reviewer_local_profile_state,
     revoke_local_profile,
     rotate_local_profile,
 )
@@ -33,19 +35,19 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.provider_attempt_store impo
     DurableProviderAttemptCAS,
     ProviderAttemptStoreError,
 )
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     grok_cli_runner as grok_cli_runner_module,
 )
-from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
-    content_identity,
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
     PortalTaskState,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
-    implementation_daemon as implementation_daemon_module,
 )
 
 
@@ -240,6 +242,157 @@ def test_owned_log_tail_rejects_link_mode_and_stability_attacks(
         implementation_daemon_module._stable_owned_log_tail(log, 1024)
 
 
+def test_private_attempt_log_repairs_umask_0002_without_truncating_existing_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    log = tmp_path / "attempt.log"
+    created = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'umask 0002; printf stale-authority > "$1"',
+            "attempt-log",
+            str(log),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert created.returncode == 0, created.stderr
+    assert log.stat().st_mode & 0o777 == 0o664
+    original_inode = log.stat().st_ino
+
+    def forbidden_truncate(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("private log writes must never truncate an inode")
+
+    monkeypatch.setattr(
+        implementation_daemon_module.os,
+        "ftruncate",
+        forbidden_truncate,
+    )
+
+    with implementation_daemon_module._open_private_implementation_log(
+        log,
+        "w",
+    ) as stream:
+        stream.write("trusted-record\n")
+    assert log.stat().st_mode & 0o777 == 0o600
+    assert log.stat().st_ino != original_inode
+    with implementation_daemon_module._open_private_implementation_log(
+        log,
+        "a",
+    ) as stream:
+        stream.write("trusted-append\n")
+    text, receipt_text = implementation_daemon_module._stable_owned_log_tail(
+        log,
+        1024,
+    )
+    assert text == "trusted-record\ntrusted-append\n"
+    assert receipt_text == text
+
+    victim = tmp_path / "victim.log"
+    victim.write_text("must-survive\n", encoding="utf-8")
+    hardlink = tmp_path / "hardlink.log"
+    os.link(victim, hardlink)
+    with implementation_daemon_module._open_private_implementation_log(
+        hardlink,
+        "w",
+    ) as stream:
+        stream.write("replacement\n")
+    assert victim.read_text(encoding="utf-8") == "must-survive\n"
+    assert hardlink.read_text(encoding="utf-8") == "replacement\n"
+    assert hardlink.stat().st_ino != victim.stat().st_ino
+
+    symlink = tmp_path / "symlink.log"
+    symlink.symlink_to(victim)
+    with implementation_daemon_module._open_private_implementation_log(
+        symlink,
+        "w",
+    ) as stream:
+        stream.write("symlink-replacement\n")
+    assert victim.read_text(encoding="utf-8") == "must-survive\n"
+    assert not symlink.is_symlink()
+    assert symlink.read_text(encoding="utf-8") == "symlink-replacement\n"
+
+
+def test_private_attempt_log_fails_closed_on_hardlink_at_replace_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    log = tmp_path / "attempt.log"
+    log.write_text("old-record\n", encoding="utf-8")
+    protected_old_inode = tmp_path / "old-inode.log"
+    os.link(log, protected_old_inode)
+    real_replace = implementation_daemon_module.os.replace
+
+    def same_inode_rename_boundary(
+        source: str,
+        destination: str,
+        *,
+        src_dir_fd: int,
+        dst_dir_fd: int,
+    ) -> None:
+        os.unlink(destination, dir_fd=dst_dir_fd)
+        os.link(
+            source,
+            destination,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=False,
+        )
+        real_replace(
+            source,
+            destination,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+
+    monkeypatch.setattr(
+        implementation_daemon_module.os,
+        "replace",
+        same_inode_rename_boundary,
+    )
+    with pytest.raises(OSError, match="changed while opening"):
+        implementation_daemon_module._open_private_implementation_log(
+            log,
+            "w",
+        )
+
+    assert protected_old_inode.read_text(encoding="utf-8") == "old-record\n"
+    assert log.stat().st_nlink == 1
+    assert not list(tmp_path.glob(".implementation-log-*.tmp"))
+
+
+def test_private_attempt_log_append_rechecks_hardlink_after_mode_repair(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    log = tmp_path / "attempt.log"
+    log.write_text("trusted-record\n", encoding="utf-8")
+    log.chmod(0o664)
+    injected_alias = tmp_path / "injected-alias.log"
+    real_fchmod = implementation_daemon_module.os.fchmod
+
+    def hardlink_then_fchmod(descriptor: int, mode: int) -> None:
+        os.link(log, injected_alias)
+        real_fchmod(descriptor, mode)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.os,
+        "fchmod",
+        hardlink_then_fchmod,
+    )
+    with pytest.raises(OSError, match="identity changed before use"):
+        implementation_daemon_module._open_private_implementation_log(
+            log,
+            "a",
+        )
+
+    assert log.read_text(encoding="utf-8") == "trusted-record\n"
+    assert injected_alias.read_text(encoding="utf-8") == "trusted-record\n"
+
+
 def test_codex_effect_is_created_then_cas_claimed_before_start(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -427,6 +580,68 @@ def test_local_profile_key_must_remain_private_owned_regular_file(tmp_path: Path
             repository_cid="repository:one",
             profile_dir=profile_dir,
             lifecycle_dir=lifecycle_dir,
+        )
+
+
+def test_reviewer_profile_lookup_ignores_default_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    default_dir = tmp_path / "default-profile"
+    default_lifecycle = tmp_path / "default-lifecycle"
+    board_dir = tmp_path / "board-profile"
+    board_lifecycle = tmp_path / "board-lifecycle"
+    monkeypatch.setenv(
+        local_profile_module.DEFAULT_PROFILE_DIR_ENV,
+        str(default_dir),
+    )
+    monkeypatch.setenv(
+        local_profile_module.LIFECYCLE_DIR_ENV,
+        str(default_lifecycle),
+    )
+    default_profile = initialize_local_profile(
+        repository_cid="repository:default-board",
+        baseline_commit="a" * 40,
+        profile_dir=default_dir,
+        lifecycle_dir=default_lifecycle,
+    )
+    board_profile = initialize_local_profile(
+        repository_cid="repository:target-board",
+        baseline_commit="b" * 40,
+        profile_dir=board_dir,
+        lifecycle_dir=board_lifecycle,
+    )
+
+    with pytest.raises(LocalProfileWrongRepository):
+        load_local_profile(repository_cid=board_profile.repository_cid)
+
+    resolved, profile_dir, lifecycle_dir = resolve_reviewer_local_profile_state(
+        repository_cid=board_profile.repository_cid,
+        reviewer_identity=board_profile.identity_did,
+        expected_profile_id=board_profile.profile_id,
+        expected_profile_content_id=board_profile.content_id,
+        expected_lifecycle_anchor_id=board_profile.lifecycle_anchor_id,
+        expected_lifecycle_generation=board_profile.lifecycle_generation,
+    )
+
+    assert resolved.profile_id == board_profile.profile_id
+    assert resolved.identity_did == board_profile.identity_did
+    assert resolved.repository_cid == "repository:target-board"
+    assert resolved.profile_id != default_profile.profile_id
+    assert profile_dir == board_dir.resolve()
+    assert lifecycle_dir == board_lifecycle.resolve()
+
+
+def test_reviewer_profile_lookup_rejects_authorization_identity_drift(
+    tmp_path: Path,
+) -> None:
+    profile = _initialize(tmp_path)
+
+    with pytest.raises(LocalProfileTampered, match="DID registry"):
+        resolve_reviewer_local_profile_state(
+            repository_cid=profile.repository_cid,
+            reviewer_identity=profile.identity_did,
+            expected_profile_id="0" * 32,
         )
 
 

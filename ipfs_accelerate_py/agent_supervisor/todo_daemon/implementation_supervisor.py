@@ -133,8 +133,10 @@ from .supervisor_runtime import (
     SUPERVISED_CHILD_IDENTITY_PATH_ENV,
     SUPERVISED_CHILD_OWNER_SCOPE_ENV,
     OwnerLiveness,
+    ProcessBirthIdentity,
     RestartPolicy,
     load_supervised_child_identity,
+    owner_liveness,
     read_process_birth,
     read_process_command_argv,
     supervised_child_identity_liveness,
@@ -1318,7 +1320,27 @@ def _managed_daemon_child_environment() -> dict[str, str]:
         if entry
     )
     pythonpath = os.pathsep.join(dict.fromkeys(entries))
-    return {"PYTHONPATH": pythonpath} if pythonpath else {}
+    environment = (
+        dict(database_program.environment())
+        if database_program is not None
+        else {}
+    )
+    if pythonpath:
+        environment["PYTHONPATH"] = pythonpath
+    return environment
+
+
+def provider_environment_without_state_credentials(
+    environment: Mapping[str, str] | None = None,
+    *,
+    database_program: DatabaseProgramConfig | None = None,
+) -> dict[str, str]:
+    """Return an implementation-provider environment without state secrets."""
+
+    return provider_subprocess_environment(
+        environment,
+        program=database_program,
+    )
 
 
 # --- restored _normalize_disposition_token ---

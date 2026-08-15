@@ -3359,6 +3359,7 @@ def implementation_supervisor_common_args(
     codebase_refill_timeout_seconds: int = 600,
     llm_merge_resolver_timeout_seconds: int = 1800,
     strict_task_sharding: bool = False,
+    idle_lane_work_stealing: str = "",
 ) -> list[str]:
     """Return standard common args for long-running implementation supervisors."""
 
@@ -3403,6 +3404,10 @@ def implementation_supervisor_common_args(
         args.extend(["--llm-merge-resolver-command", llm_merge_resolver_command])
     if strict_task_sharding:
         args.append("--strict-task-sharding")
+    if idle_lane_work_stealing:
+        args.extend(
+            ["--idle-lane-work-stealing", idle_lane_work_stealing]
+        )
     return args
 
 
@@ -7212,6 +7217,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "lane, preventing lanes from borrowing the same retry work."
         ),
     )
+    parser.add_argument(
+        "--implementation-supervisor-idle-lane-work-stealing",
+        choices=["virgin-transfer"],
+        default="",
+        help=(
+            "Opt in every strict supervisor lane to exact-revision virgin "
+            "task transfers."
+        ),
+    )
     parser.add_argument("--detach", action="store_true")
     return parser
 
@@ -7324,6 +7338,14 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
                         False,
                     )
                 ),
+                idle_lane_work_stealing=str(
+                    getattr(
+                        args,
+                        "implementation_supervisor_idle_lane_work_stealing",
+                        "",
+                    )
+                    or ""
+                ),
             )
         )
     if (
@@ -7337,6 +7359,16 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
         and "--strict-task-sharding" not in common_args
     ):
         common_args.append("--strict-task-sharding")
+    work_stealing = str(
+        getattr(
+            args,
+            "implementation_supervisor_idle_lane_work_stealing",
+            "",
+        )
+        or ""
+    )
+    if work_stealing and "--idle-lane-work-stealing" not in common_args:
+        common_args.extend(["--idle-lane-work-stealing", work_stealing])
     common_args.extend(args.common_arg)
     return common_args
 
