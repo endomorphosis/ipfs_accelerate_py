@@ -1740,7 +1740,7 @@ W20 AAE-063
 
 ## AAE-063 Publish trust model, limitations, current-tree qualification, and final report
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
