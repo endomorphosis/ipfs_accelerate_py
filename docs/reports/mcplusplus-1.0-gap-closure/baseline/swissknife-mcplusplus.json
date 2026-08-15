@@ -1,0 +1,808 @@
+{
+  "schema": "BaselineReceipt@1",
+  "interface": "BaselineReceipt@1",
+  "schema_version": "mcplusplus-baseline-receipt/v1",
+  "task_id": "MCPP-009",
+  "goal_id": "MCPP-G010",
+  "track": "baseline-swissknife",
+  "bundle": "mcplusplus/1.0/baseline-swissknife",
+  "title": "Baseline SwissKnife MCP++ tests from the discovered checkout",
+  "generated_at": "2026-08-15T18:50:45.909Z",
+  "program": {
+    "board_namespace": "mcplusplus-1-0-gap-closure-v1",
+    "bundle": "mcplusplus/1.0/baseline-swissknife",
+    "program_branch": "codex/mcplusplus-1.0-gap-closure",
+    "forest_generated_at": "2026-08-15T18:36:13.970099+00:00",
+    "forest_schema": "RepositoryForestDescriptor@1",
+    "depends_on": [
+      "MCPP-001"
+    ]
+  },
+  "discovered_remote": {
+    "discovery_command": "git remote -v",
+    "discovery_cwd": "/home/barberb/lift_coding/swissknife",
+    "origin": "https://github.com/endomorphosis/swissknife",
+    "upstream": "https://github.com/dnakov/anon-kode.git",
+    "remotes": [
+      {
+        "name": "origin",
+        "url": "https://github.com/endomorphosis/swissknife",
+        "role": "fetch_push"
+      },
+      {
+        "name": "upstream",
+        "url": "https://github.com/dnakov/anon-kode.git",
+        "role": "fetch_push"
+      }
+    ],
+    "remote_v_output": [
+      "origin\thttps://github.com/endomorphosis/swissknife (fetch)",
+      "origin\thttps://github.com/endomorphosis/swissknife (push)",
+      "upstream\thttps://github.com/dnakov/anon-kode.git (fetch)",
+      "upstream\thttps://github.com/dnakov/anon-kode.git (push)"
+    ],
+    "invented": false,
+    "matches_mcpp001": true,
+    "canonical_origin_from_plan": "https://github.com/endomorphosis/swissknife",
+    "note": "Remote discovered via git remote -v in the live SwissKnife checkout; URL not invented."
+  },
+  "repository": {
+    "name": "swissknife",
+    "role": "runtime-swissknife",
+    "canonical_remote": "https://github.com/endomorphosis/swissknife",
+    "path": "/home/barberb/lift_coding/swissknife",
+    "plan_freeze_sha": "26f06277888b09a3e7c9b4a3b844001f1dbc0841",
+    "plan_freeze_sha_short": "26f06277",
+    "plan_freeze_subject": "chore: relocate root clutter to permanent project homes",
+    "plan_freeze_date": "2026-08-06T09:15:01+00:00",
+    "live_bound_sha": "afdbf885175fde34505ef05a2ea6aac5535ad03e",
+    "live_bound_sha_short": "afdbf885",
+    "live_bound_tree_sha": "6d73fab35179eac9edd87aa81bd7569414857d6b",
+    "live_bound_branch": "main",
+    "live_bound_subject": "Merge PR #54: fix CI Node policy and release-readiness ownership",
+    "live_bound_date": "2026-08-10T21:15:16-07:00",
+    "plan_sha_is_ancestor_of_live": true,
+    "commits_from_plan_to_live": {
+      "plan_not_in_live": 0,
+      "live_ahead_of_plan": 8
+    },
+    "behind_origin_main": {
+      "left_right_count": "0\t0",
+      "origin_main_sha": "afdbf885175fde34505ef05a2ea6aac5535ad03e",
+      "note": "Live HEAD matches origin/main; not auto-fast-forwarded in this task."
+    },
+    "operator_checkout": {
+      "path": "/home/barberb/lift_coding/swissknife",
+      "head": "afdbf885175fde34505ef05a2ea6aac5535ad03e",
+      "branch": "main",
+      "remotes": [
+        {
+          "name": "origin",
+          "url": "https://github.com/endomorphosis/swissknife",
+          "role": "fetch"
+        },
+        {
+          "name": "upstream",
+          "url": "https://github.com/dnakov/anon-kode.git",
+          "role": "fetch"
+        }
+      ],
+      "dirty": {
+        "count": 1,
+        "paths": [
+          "M test-results/virtual-desktop-ipfs-mcp-orb/svd-132.json"
+        ]
+      },
+      "source": "MCPP-001 RepositoryForestDescriptor@1 operator_checkouts.swissknife + live re-verification",
+      "mcpp001_snapshot": {
+        "path": "/home/barberb/lift_coding/swissknife",
+        "head": "afdbf885175fde34505ef05a2ea6aac5535ad03e",
+        "branch": "main",
+        "dirty_count": 1,
+        "dirty_paths": [
+          " M test-results/virtual-desktop-ipfs-mcp-orb/svd-132.json"
+        ],
+        "remotes": [
+          {
+            "name": "origin",
+            "url": "https://github.com/endomorphosis/swissknife",
+            "role": "fetch"
+          },
+          {
+            "name": "upstream",
+            "url": "https://github.com/dnakov/anon-kode.git",
+            "role": "fetch"
+          }
+        ],
+        "note": "MCPP-001 recorded HEAD afdbf885... with 1 dirty path. Plan freeze listed 26f06277 with 2 dirty paths; live bound SHA is afdbf885 (descendant of 26f06277)."
+      }
+    },
+    "sha_binding": {
+      "accepted_forms": [
+        "plan freeze SHA 26f06277",
+        "live bound SHA"
+      ],
+      "recorded_plan_sha": "26f06277888b09a3e7c9b4a3b844001f1dbc0841",
+      "recorded_live_bound_sha": "afdbf885175fde34505ef05a2ea6aac5535ad03e",
+      "primary_sha_for_receipt": "afdbf885175fde34505ef05a2ea6aac5535ad03e",
+      "primary_sha_role": "live_bound_sha",
+      "note": "Acceptance allows SHA 26f06277 or live bound SHA; both recorded. Primary validation ran on live bound HEAD."
+    }
+  },
+  "dirty_path_preservation": {
+    "preserved": true,
+    "operator_files_deleted_or_reset": false,
+    "actions_not_taken": [
+      "git reset --hard",
+      "git clean -fd",
+      "git checkout -- <dirty paths>",
+      "git stash drop",
+      "git push --force",
+      "discard of uncommitted SwissKnife work"
+    ],
+    "policy": "Do not discard the two dirty SwissKnife paths from the plan freeze. Discover remote; do not invent URL. Validation is read-only against the operator checkout.",
+    "plan_freeze_dirty_paths": [
+      "test-results/virtual-desktop-ipfs-mcp-orb/svd-132.json",
+      "test/mcp-plus-plus/dcr090-hermetic-fixtures.test.ts"
+    ],
+    "live_dirty_paths": [
+      "M test-results/virtual-desktop-ipfs-mcp-orb/svd-132.json"
+    ],
+    "before_validation_command": [
+      "M test-results/virtual-desktop-ipfs-mcp-orb/svd-132.json"
+    ],
+    "after_validation_command": [
+      "M test-results/virtual-desktop-ipfs-mcp-orb/svd-132.json"
+    ],
+    "dirty_unchanged_across_validation": true,
+    "paths": [
+      {
+        "path": "test-results/virtual-desktop-ipfs-mcp-orb/svd-132.json",
+        "exists": true,
+        "tracked": true,
+        "status_porcelain": "M test-results/virtual-desktop-ipfs-mcp-orb/svd-132.json",
+        "kind": "modified",
+        "preserved": true,
+        "planning_note": "Recorded dirty at plan freeze (SHA 26f06277, 2 dirty paths). "
+      },
+      {
+        "path": "test/mcp-plus-plus/dcr090-hermetic-fixtures.test.ts",
+        "exists": true,
+        "tracked": true,
+        "status_porcelain": "clean",
+        "kind": "tracked_clean",
+        "preserved": true,
+        "planning_note": "Recorded untracked at plan freeze; now tracked after DCR-090 commit 640c1beffcce0abdc3d1ccf5fd728b3848396210; not discarded."
+      }
+    ],
+    "dcr090_history": {
+      "path": "test/mcp-plus-plus/dcr090-hermetic-fixtures.test.ts",
+      "plan_freeze_status": "untracked",
+      "live_status": "tracked_clean",
+      "introduced_by": "640c1beffcce0abdc3d1ccf5fd728b3848396210 2026-08-11T03:52:45+00:00 DCR-090: hermetic cross-repository fixture tests for SwissKnife",
+      "not_discarded": true
+    },
+    "svd132_status": {
+      "path": "test-results/virtual-desktop-ipfs-mcp-orb/svd-132.json",
+      "plan_freeze_status": "modified",
+      "live_status": "modified",
+      "md5": "f07421367ddb25ce6b2ea40792522021",
+      "not_discarded": true
+    },
+    "source_artifacts": [
+      "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
+      "docs/reports/mcplusplus-1.0-gap-closure/baseline/dirty-overlay.md"
+    ]
+  },
+  "command": {
+    "official_validation": "npm run test:run -- test/mcp-plus-plus/ucan-auth.test.ts test/mcp-plus-plus/profile-c-ucan.test.ts test/mcp-plus-plus/delegation-manager.test.ts test/mcp-plus-plus/profile-d-policy.test.ts",
+    "working_directory": "/home/barberb/lift_coding/swissknife",
+    "package_script": "test:run",
+    "package_script_definition": "vitest run --config build-tools/configs/vitest.config.ts",
+    "argv_effective": [
+      "npm",
+      "run",
+      "test:run",
+      "--",
+      "test/mcp-plus-plus/ucan-auth.test.ts",
+      "test/mcp-plus-plus/profile-c-ucan.test.ts",
+      "test/mcp-plus-plus/delegation-manager.test.ts",
+      "test/mcp-plus-plus/profile-d-policy.test.ts"
+    ],
+    "filter_note": "Focused MCP++ UCAN/profile baseline covering evidence subset package.json test scripts, test/mcp-plus-plus, src/auth/ucan-auth.ts",
+    "started_at": "2026-08-15T18:49:21Z",
+    "ended_at": "2026-08-15T18:49:22Z",
+    "exit_code": 1,
+    "ok": false
+  },
+  "validation": {
+    "command": "npm run test:run -- test/mcp-plus-plus/ucan-auth.test.ts test/mcp-plus-plus/profile-c-ucan.test.ts test/mcp-plus-plus/delegation-manager.test.ts test/mcp-plus-plus/profile-d-policy.test.ts",
+    "working_directory": "/home/barberb/lift_coding/swissknife",
+    "exit_code": 1,
+    "ok": false,
+    "outcome": {
+      "test_files": 4,
+      "test_files_failed": 4,
+      "tests_total": 45,
+      "passed": 6,
+      "failed": 39,
+      "duration": "845ms",
+      "summary_line": "Test Files  4 failed (4); Tests  39 failed | 6 passed (45); Duration  845ms",
+      "result": "failed",
+      "dominant_failure": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite",
+      "failure_kind": "environment_or_test_isolation",
+      "load_errors": [
+        {
+          "file": "test/mcp-plus-plus/profile-c-ucan.test.ts",
+          "error": "Failed to resolve import \"@ucans/ucans\""
+        },
+        {
+          "file": "test/mcp-plus-plus/profile-d-policy.test.ts",
+          "error": "Failed to resolve import \"@ucans/ucans\""
+        }
+      ],
+      "dominant_failures": [
+        "Incomplete vitest crypto mock: generateKeyPairSync not exported (ucan-auth + delegation-manager)",
+        "Missing dependency resolve: @ucans/ucans (profile-c-ucan + profile-d-policy load errors)"
+      ]
+    },
+    "files": [
+      {
+        "path": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "tests": 20,
+        "failed": 19,
+        "passed": 1,
+        "duration_ms": 11,
+        "outcome": "failed",
+        "failure_class": "runtime",
+        "dominant_error": "crypto mock missing generateKeyPairSync"
+      },
+      {
+        "path": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "tests": 25,
+        "failed": 20,
+        "passed": 5,
+        "duration_ms": 37,
+        "outcome": "failed",
+        "failure_class": "runtime",
+        "dominant_error": "crypto mock missing generateKeyPairSync"
+      },
+      {
+        "path": "test/mcp-plus-plus/profile-c-ucan.test.ts",
+        "tests": 0,
+        "failed": 0,
+        "passed": 0,
+        "outcome": "failed",
+        "failure_class": "load_error",
+        "dominant_error": "Failed to resolve import \"@ucans/ucans\" from test/mcp-plus-plus/profile-c-ucan.test.ts"
+      },
+      {
+        "path": "test/mcp-plus-plus/profile-d-policy.test.ts",
+        "tests": 0,
+        "failed": 0,
+        "passed": 0,
+        "outcome": "failed",
+        "failure_class": "load_error",
+        "dominant_error": "Failed to resolve import \"@ucans/ucans\" from src/services/mcp/mcp-plus-plus-profile-c.ts"
+      }
+    ],
+    "passed_tests": [
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > DIDKeystore > throws for unknown DID",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "DIDKeystore > throws for unknown DID",
+        "outcome": "passed",
+        "duration_ms": 1
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 canInvoke > denies for an unknown CID",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 canInvoke > denies for an unknown CID",
+        "outcome": "passed",
+        "duration_ms": 2
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 save and loadFrom > throws on a missing file",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 save and loadFrom > throws on a missing file",
+        "outcome": "passed",
+        "duration_ms": 1
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 reloadFromIPFS > throws when storage client returns null",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 reloadFromIPFS > throws when storage client returns null",
+        "outcome": "passed",
+        "duration_ms": 1
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 singleton > getInstance() returns the same instance on repeated calls",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 singleton > getInstance() returns the same instance on repeated calls",
+        "outcome": "passed",
+        "duration_ms": 0
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 singleton > resetInstance() allows a fresh singleton",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 singleton > resetInstance() allows a fresh singleton",
+        "outcome": "passed",
+        "duration_ms": 0
+      }
+    ],
+    "failed_tests": [
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > DIDKeystore > generates a did:key DID",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "DIDKeystore > generates a did:key DID",
+        "outcome": "failed",
+        "duration_ms": 5,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > DIDKeystore > generated DIDs are unique",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "DIDKeystore > generated DIDs are unique",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > DIDKeystore > lists generated DIDs",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "DIDKeystore > lists generated DIDs",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > DIDKeystore > can retrieve public key bytes for a DID",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "DIDKeystore > can retrieve public key bytes for a DID",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > DIDKeystore > decodes the same DID back to the same public key",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "DIDKeystore > decodes the same DID back to the same public key",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > DIDKeystore > signs and verifies data",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "DIDKeystore > signs and verifies data",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > DIDKeystore > rejects a tampered signature",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "DIDKeystore > rejects a tampered signature",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > issues a 3-part UCAN token",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "UCANAuth > issues a 3-part UCAN token",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > encodes issuer DID in payload",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "UCANAuth > encodes issuer DID in payload",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > encodes capabilities in payload",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "UCANAuth > encodes capabilities in payload",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > validates a freshly issued token",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "UCANAuth > validates a freshly issued token",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > rejects a token with a tampered signature",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "UCANAuth > rejects a token with a tampered signature",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > rejects an expired token",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "UCANAuth > rejects an expired token",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > rejects a malformed token",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "UCANAuth > rejects a malformed token",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > validates a delegated proof chain",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "UCANAuth > validates a delegated proof chain",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > rejects a proof chain with broken delegation linkage",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "UCANAuth > rejects a proof chain with broken delegation linkage",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > grants capability when directly in att[]",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "UCANAuth > grants capability when directly in att[]",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > denies capability not in att[]",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "UCANAuth > denies capability not in att[]",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > grants wildcard resource",
+        "file": "test/mcp-plus-plus/ucan-auth.test.ts",
+        "name": "UCANAuth > grants wildcard resource",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 storage > adds a token and returns its CID",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 storage > adds a token and returns its CID",
+        "outcome": "failed",
+        "duration_ms": 14,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 storage > is idempotent: adding the same token twice returns the same CID",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 storage > is idempotent: adding the same token twice returns the same CID",
+        "outcome": "failed",
+        "duration_ms": 2,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 storage > remove() deletes a stored delegation by CID",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 storage > remove() deletes a stored delegation by CID",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 storage > listCids() returns all stored CIDs",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 storage > listCids() returns all stored CIDs",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 storage > decodes proof CIDs from the token proof chain",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 storage > decodes proof CIDs from the token proof chain",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 revocation > revoke() marks a CID as revoked",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 revocation > revoke() marks a CID as revoked",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 canInvoke > allows invocation when delegation covers resource + capability",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 canInvoke > allows invocation when delegation covers resource + capability",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 canInvoke > denies when the actor does not match the audience",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 canInvoke > denies when the actor does not match the audience",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 canInvoke > denies when the capability does not match",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 canInvoke > denies when the capability does not match",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 canInvoke > denies when the delegation has been revoked",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 canInvoke > denies when the delegation has been revoked",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 canInvoke > denies when the delegation has expired",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 canInvoke > denies when the delegation has expired",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 canInvoke > allows wildcard capability grants",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 canInvoke > allows wildcard capability grants",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 active token queries > activeByActor() returns only non-revoked, non-expired delegations for actor",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 active token queries > activeByActor() returns only non-revoked, non-expired delegations for actor",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 active token queries > activeByResource() returns delegations that cover the resource",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 active token queries > activeByResource() returns delegations that cover the resource",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 active token queries > activeAll() excludes revoked and expired tokens",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 active token queries > activeAll() excludes revoked and expired tokens",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 merge > merges delegations from another manager without duplicates",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 merge > merges delegations from another manager without duplicates",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 metrics > getMetrics() counts total, active, revoked, and expired",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 metrics > getMetrics() counts total, active, revoked, and expired",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 save and loadFrom > round-trips delegations through save/loadFrom",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 save and loadFrom > round-trips delegations through save/loadFrom",
+        "outcome": "failed",
+        "duration_ms": 1,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 save and loadFrom > loadFrom is idempotent when called twice on the same file",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 save and loadFrom > loadFrom is idempotent when called twice on the same file",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      },
+      {
+        "nodeid": "test/mcp-plus-plus/delegation-manager.test.ts > DelegationManager \u2014 reloadFromIPFS > loads delegations from a storage client that returns saved JSON",
+        "file": "test/mcp-plus-plus/delegation-manager.test.ts",
+        "name": "DelegationManager \u2014 reloadFromIPFS > loads delegations from a storage client that returns saved JSON",
+        "outcome": "failed",
+        "duration_ms": 0,
+        "message": "Vitest crypto mock does not export generateKeyPairSync; DIDKeystore.generateKey fails under test/mcp-plus-plus UCAN suite"
+      }
+    ],
+    "stdout_tail": " FAIL  test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > denies capability not in att[]\n FAIL  test/mcp-plus-plus/ucan-auth.test.ts > UCANAuth > grants wildcard resource\nError: [vitest] No \"generateKeyPairSync\" export is defined on the \"crypto\" mock. Did you forget to return it from \"vi.mock\"?\nIf you need to partially mock a module, you can use \"importOriginal\" helper inside:\n\nvi.mock(import(\"crypto\"), async (importOriginal) => {\n  const actual = await importOriginal()\n  return {\n    ...actual,\n    // your mocked methods\n  }\n})\n\n \u276f DIDKeystore.generateKey src/auth/did-keystore.ts:233:39\n    231|    */\n    232|   generateKey(): string {\n    233|     const { privateKey, publicKey } = generateKeyPairSync('ed25519');\n       |                                       ^\n    234|     const pubKeyDer = publicKey.export({ type: 'spki', format: 'der' }\u2026\n    235|     // The last 32 bytes of the 44-byte SPKI-DER for Ed25519 are the r\u2026\n \u276f test/mcp-plus-plus/ucan-auth.test.ts:86:26\n\n\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af[30/41]\u23af\n\n\n Test Files  4 failed (4)\n      Tests  39 failed | 6 passed (45)\n   Start at  18:49:21\n   Duration  845ms (transform 415ms, setup 83ms, collect 419ms, tests 48ms, environment 606ms, prepare 347ms)\n"
+  },
+  "environment": {
+    "node_version": "v18.19.1",
+    "npm_version": "9.2.0",
+    "vitest_version": "3.2.6",
+    "platform": "Linux 6.17.0-1014-nvidia aarch64",
+    "cwd": "/home/barberb/lift_coding/swissknife",
+    "ci": true,
+    "note": "Package CI Node policy was raised to >=22.19.0 in PR #54 (live HEAD); this host ran Node 18.19.1. Baseline records outcomes as observed."
+  },
+  "evidence_subset": {
+    "package_json_test_scripts": [
+      "evidence:mcp-glasses",
+      "performance-test",
+      "pretest:ai-inference",
+      "pretest:browser",
+      "pretest:browser-compat",
+      "pretest:e2e:playwright",
+      "test",
+      "test:ai-inference",
+      "test:all-phases",
+      "test:benchmark",
+      "test:benchmark:all",
+      "test:benchmark:phase1",
+      "test:benchmark:phase2",
+      "test:benchmark:phase3",
+      "test:benchmark:phase4",
+      "test:benchmark:phase5",
+      "test:browser",
+      "test:browser-compat",
+      "test:browser-compat:runtime",
+      "test:browser-compat:static",
+      "test:browser-proof-runtime",
+      "test:ci",
+      "test:ci-safe",
+      "test:cli",
+      "test:collaborative",
+      "test:coverage",
+      "test:e2e",
+      "test:e2e:accessibility",
+      "test:e2e:all-phases",
+      "test:e2e:app-audit-runner",
+      "test:e2e:app-improvement",
+      "test:e2e:libp2p-browser",
+      "test:e2e:live-behavior-proof",
+      "test:e2e:live-gateway",
+      "test:e2e:mcp",
+      "test:e2e:meta-glasses",
+      "test:e2e:playwright",
+      "test:fast",
+      "test:hybrid",
+      "test:integration",
+      "test:ipfs",
+      "test:p2p",
+      "test:performance",
+      "test:phase1",
+      "test:phase2",
+      "test:phase3",
+      "test:phase4",
+      "test:phase5",
+      "test:platform",
+      "test:production",
+      "test:production-full",
+      "test:release",
+      "test:run",
+      "test:security",
+      "test:service",
+      "test:staging",
+      "test:trace",
+      "test:unit",
+      "test:verify-build",
+      "test:vite",
+      "test:watch",
+      "test:web",
+      "test:workers",
+      "test:working"
+    ],
+    "package_json_test_script_count": 64,
+    "test_mcp_plus_plus_count": 217,
+    "test_mcp_plus_plus_sample": [
+      "test/mcp-plus-plus/agent-supervisor-console-evidence.test.ts",
+      "test/mcp-plus-plus/agent-supervisor-expanded-io-envelopes.test.ts",
+      "test/mcp-plus-plus/agent-supervisor-expanded-io-handoff.test.ts",
+      "test/mcp-plus-plus/agent-supervisor-expanded-io-map.test.ts",
+      "test/mcp-plus-plus/agent-supervisor-prompt-steering.test.ts",
+      "test/mcp-plus-plus/all-app-cross-service-proof.test.ts",
+      "test/mcp-plus-plus/all-app-executable-backend-contract.test.ts",
+      "test/mcp-plus-plus/all-app-live-orb-idl-handoff.test.ts",
+      "test/mcp-plus-plus/all-app-mcpplusplus-profile-interoperability.test.ts",
+      "test/mcp-plus-plus/all-app-orb-idl-action-handoff.test.ts",
+      "test/mcp-plus-plus/all-tools-app-binding-matrix.test.ts",
+      "test/mcp-plus-plus/all-tools-app-route-coverage.test.ts",
+      "test/mcp-plus-plus/all-tools-call-envelope-fixtures.test.ts",
+      "test/mcp-plus-plus/all-tools-composite-workflows.test.ts",
+      "test/mcp-plus-plus/all-tools-disposition-catalog.test.ts",
+      "test/mcp-plus-plus/all-tools-execution-fixtures.test.ts",
+      "test/mcp-plus-plus/all-tools-glasses-control-plane-handoff.test.ts",
+      "test/mcp-plus-plus/all-tools-glasses-handoff-packets.test.ts",
+      "test/mcp-plus-plus/all-tools-glasses-handoff-replay-bundles.test.ts",
+      "test/mcp-plus-plus/all-tools-glasses-projection.test.ts",
+      "test/mcp-plus-plus/all-tools-idl-generator.test.ts",
+      "test/mcp-plus-plus/all-tools-policy-classifier.test.ts",
+      "test/mcp-plus-plus/all-tools-release-policy-gates.test.ts",
+      "test/mcp-plus-plus/app-capability-gateway.test.ts",
+      "test/mcp-plus-plus/app-capability-policy.test.ts",
+      "test/mcp-plus-plus/browser-desktop-client.test.ts",
+      "test/mcp-plus-plus/compliance-audit.test.ts",
+      "test/mcp-plus-plus/composite-app-descriptors.test.ts",
+      "test/mcp-plus-plus/connector-adversarial.test.ts",
+      "test/mcp-plus-plus/connector-http.test.ts",
+      "test/mcp-plus-plus/connector-libp2p.test.ts",
+      "test/mcp-plus-plus/crypto-exchange-proof-artifacts.test.ts",
+      "test/mcp-plus-plus/dcr090-hermetic-fixtures.test.ts",
+      "test/mcp-plus-plus/delegation-manager.test.ts",
+      "test/mcp-plus-plus/deontic-query-engine-port141.test.ts",
+      "test/mcp-plus-plus/desktop-contract-repair.e2e.test.ts",
+      "test/mcp-plus-plus/desktop-orb-idl-contract.test.ts",
+      "test/mcp-plus-plus/event-dag.test.ts",
+      "test/mcp-plus-plus/glasses-manifest-coverage.test.ts",
+      "test/mcp-plus-plus/integration-pipeline.test.ts"
+    ],
+    "src_auth_ucan_auth_ts": {
+      "path": "src/auth/ucan-auth.ts",
+      "exists": true,
+      "bytes": 17450
+    },
+    "related_auth_modules": [
+      "src/auth/ucan-auth.ts",
+      "src/auth/did-keystore.ts",
+      "src/auth/delegation-manager.ts"
+    ],
+    "baseline_test_files_executed": [
+      "test/mcp-plus-plus/ucan-auth.test.ts",
+      "test/mcp-plus-plus/profile-c-ucan.test.ts",
+      "test/mcp-plus-plus/delegation-manager.test.ts",
+      "test/mcp-plus-plus/profile-d-policy.test.ts"
+    ]
+  },
+  "acceptance": {
+    "criteria": "Receipt includes discovered remote, SHA 26f06277 or live bound SHA, command, and dirty-path preservation.",
+    "discovered_remote_recorded": true,
+    "sha_recorded": true,
+    "plan_sha_26f06277_recorded": true,
+    "live_bound_sha_recorded": true,
+    "command_recorded": true,
+    "dirty_path_preservation_recorded": true,
+    "satisfied": true,
+    "validation_command_exit_code": 1,
+    "validation_failures_are_recorded_not_hidden": true
+  },
+  "observations": [
+    "Discovered origin via git remote -v: https://github.com/endomorphosis/swissknife (not invented).",
+    "Plan freeze SHA 26f06277 (26f06277888b09a3e7c9b4a3b844001f1dbc0841) is an ancestor of live bound SHA afdbf885175fde34505ef05a2ea6aac5535ad03e.",
+    "Live bound HEAD afdbf885175fde34505ef05a2ea6aac5535ad03e matches origin/main; branch main.",
+    "Dirty path preservation: modified test-results/virtual-desktop-ipfs-mcp-orb/svd-132.json still dirty after validation; dcr090-hermetic-fixtures.test.ts is tracked (no longer untracked) and was not discarded.",
+    "MCPP-001 forest already recorded SwissKnife at afdbf885 with 1 dirty path; this receipt re-verifies live binding and runs MCP++ UCAN baseline tests.",
+    "Baseline command exited 1: 39 failed / 6 passed of 45 tests across 4 files. Dominant failure is incomplete vitest crypto mock (generateKeyPairSync). Failures are baseline evidence, not repaired in this task.",
+    "Only allowed edit for this task is the declared receipt path under docs/reports/mcplusplus-1.0-gap-closure/baseline/.",
+    "profile-c-ucan.test.ts and profile-d-policy.test.ts failed to load because @ucans/ucans cannot be resolved in this checkout environment."
+  ]
+}
