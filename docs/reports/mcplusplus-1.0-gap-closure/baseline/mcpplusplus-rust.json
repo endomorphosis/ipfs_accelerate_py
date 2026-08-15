@@ -1,0 +1,503 @@
+{
+  "schema": "BaselineReceipt@1",
+  "interface": "BaselineReceipt@1",
+  "schema_version": "mcplusplus-baseline-receipt/v1",
+  "task_id": "MCPP-005",
+  "goal_id": "MCPP-G010",
+  "title": "Baseline Mcp-Plus-Plus Rust tests",
+  "track": "baseline-rust",
+  "bundle": "mcplusplus/1.0/baseline-rust",
+  "generated_at": "2026-08-15T19:00:11.588Z",
+  "program": {
+    "board_namespace": "mcplusplus-1-0-gap-closure-v1",
+    "bundle": "mcplusplus/1.0/baseline-rust",
+    "program_branch": "codex/mcplusplus-1.0-gap-closure",
+    "depends_on": [
+      "MCPP-001"
+    ],
+    "objective_id": "MCPP-005",
+    "forest_schema": "RepositoryForestDescriptor@1",
+    "forest_path": "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
+    "forest_nested_gitlink_head": "6965f89f066769f3b3ac7b5f753b1a0044562570"
+  },
+  "repository": {
+    "working_tree": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_91c775112d8e_f2c0a254d4e2",
+    "relative_suite_root": "ipfs_accelerate_py/mcplusplus",
+    "test_path": "tests-rs",
+    "package_name": "mcp-validators",
+    "package_version": "0.1.0",
+    "edition": "2021",
+    "rust_version_msrv": "1.75",
+    "commit_sha": "1a306be29d104331171198d2d7a8930622817775",
+    "branch": "implementation/mcpp-005-e29f5d7a2797-attempt-2-1786820106",
+    "program_branch": "codex/mcplusplus-1.0-gap-closure",
+    "tree_id": "1a306be29d104331171198d2d7a8930622817775",
+    "commit_subject": "MCPP-011: mark todo completed",
+    "commit_date": "2026-08-15T18:54:02+00:00",
+    "suite_submodule": {
+      "path": "ipfs_accelerate_py/mcplusplus",
+      "gitmode": "160000",
+      "commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+      "branch": "implementation/mcpp-005-e29f5d7a2797-attempt-2-1786820106-submodule-ipfs_accelerate_py-mcplusplus",
+      "commit_subject": "DCR-093: swissknife adversarial interop negatives in Mcp-Plus-Plus",
+      "commit_date": "2026-08-10T19:20:56+00:00",
+      "dirty_count": 0,
+      "dirty_paths": [],
+      "canonical_remote": "https://github.com/endomorphosis/Mcp-Plus-Plus.git",
+      "note": "Rust validators and tests live in this gitlink (Mcp-Plus-Plus). suite_commit_sha is the code under test."
+    },
+    "suite_commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "mcpp001_binding": {
+      "nested_gitlink": "ipfs_accelerate_py/mcplusplus",
+      "head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+      "matches_live_suite_head": true,
+      "operator_checkout_Mcp_Plus_Plus_head": "6965f89f066769f3b3ac7b5f753b1a0044562570"
+    }
+  },
+  "command": "cd ipfs_accelerate_py/mcplusplus/tests-rs && cargo test",
+  "commands": {
+    "validation": {
+      "command": "cd ipfs_accelerate_py/mcplusplus/tests-rs && cargo test",
+      "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_91c775112d8e_f2c0a254d4e2/ipfs_accelerate_py/mcplusplus/tests-rs",
+      "argv": [
+        "cargo",
+        "test"
+      ],
+      "exit_code": 0,
+      "started_at": "2026-08-15T18:57:51.466Z",
+      "ended_at": "2026-08-15T18:57:52.103Z",
+      "duration_seconds": 0.636,
+      "stdout_summary": "191 passed; 0 failed; 0 ignored across 6 cargo test targets (including doctests)",
+      "ok": true
+    },
+    "cold_compile_and_test": {
+      "started_at": "2026-08-15T18:56:41Z",
+      "ended_at": "2026-08-15T18:56:48Z",
+      "duration_seconds": 7,
+      "exit_code": 0,
+      "note": "First cargo test in this workspace compiled dependencies then ran the same 191 tests; exit 0."
+    },
+    "coverage_measurement": {
+      "attempted": true,
+      "produced": false,
+      "status": "unavailable",
+      "reason": "cargo-llvm-cov / cargo-tarpaulin and llvm-profdata are not installed in this host toolchain; official validation is cargo test only. Existing lcov*.info files under tests-rs are historical artifacts, not remeasured in this task.",
+      "tools_checked": {
+        "cargo-llvm-cov": false,
+        "cargo-tarpaulin": false,
+        "llvm-profdata": false,
+        "rustc_instrument_coverage": "not_run"
+      }
+    }
+  },
+  "commit_sha": "1a306be29d104331171198d2d7a8930622817775",
+  "suite_commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+  "pass_fail": "pass",
+  "result": "pass",
+  "exit_code": 0,
+  "test_count": {
+    "total": 191,
+    "passed": 191,
+    "failed": 0,
+    "ignored": 0,
+    "errors": 0,
+    "filtered_out": 0,
+    "suites": 6,
+    "by_suite": {
+      "unittests src/lib.rs": {
+        "passed": 151,
+        "failed": 0,
+        "ignored": 0,
+        "duration_seconds": 0.01
+      },
+      "tests/conformance_vectors_test.rs": {
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0,
+        "duration_seconds": 0.01
+      },
+      "tests/coverage_completion_test.rs": {
+        "passed": 18,
+        "failed": 0,
+        "ignored": 0,
+        "duration_seconds": 0.0
+      },
+      "tests/integration_test.rs": {
+        "passed": 17,
+        "failed": 0,
+        "ignored": 0,
+        "duration_seconds": 0.0
+      },
+      "tests/profile_g_codec_test.rs": {
+        "passed": 3,
+        "failed": 0,
+        "ignored": 0,
+        "duration_seconds": 0.0
+      },
+      "doc-tests mcp_validators": {
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0,
+        "duration_seconds": 0.44
+      }
+    },
+    "breakdown": {
+      "unit_tests_in_lib": 151,
+      "integration_conformance_vectors": 1,
+      "integration_coverage_completion": 18,
+      "integration_tests": 17,
+      "integration_profile_g_codec": 3,
+      "doctests": 1
+    }
+  },
+  "suites": [
+    {
+      "label": "unittests src/lib.rs",
+      "kind": "lib_or_integration",
+      "passed": 151,
+      "failed": 0,
+      "ignored": 0,
+      "duration_seconds": 0.01,
+      "result": "ok",
+      "summary_line": "test result: ok. 151 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+      "binary": "target/aarch64-unknown-linux-gnu/debug/deps/mcp_validators-79dabf7051893749"
+    },
+    {
+      "label": "tests/conformance_vectors_test.rs",
+      "kind": "lib_or_integration",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "duration_seconds": 0.01,
+      "result": "ok",
+      "summary_line": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+      "binary": "target/aarch64-unknown-linux-gnu/debug/deps/conformance_vectors_test-cabda5a497add385"
+    },
+    {
+      "label": "tests/coverage_completion_test.rs",
+      "kind": "lib_or_integration",
+      "passed": 18,
+      "failed": 0,
+      "ignored": 0,
+      "duration_seconds": 0.0,
+      "result": "ok",
+      "summary_line": "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "binary": "target/aarch64-unknown-linux-gnu/debug/deps/coverage_completion_test-77f2e3c64d2e954e"
+    },
+    {
+      "label": "tests/integration_test.rs",
+      "kind": "lib_or_integration",
+      "passed": 17,
+      "failed": 0,
+      "ignored": 0,
+      "duration_seconds": 0.0,
+      "result": "ok",
+      "summary_line": "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "binary": "target/aarch64-unknown-linux-gnu/debug/deps/integration_test-b7bc971a3b7982f8"
+    },
+    {
+      "label": "tests/profile_g_codec_test.rs",
+      "kind": "lib_or_integration",
+      "passed": 3,
+      "failed": 0,
+      "ignored": 0,
+      "duration_seconds": 0.0,
+      "result": "ok",
+      "summary_line": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "binary": "target/aarch64-unknown-linux-gnu/debug/deps/profile_g_codec_test-bd6ef573a1f39aec"
+    },
+    {
+      "label": "doc-tests mcp_validators",
+      "kind": "doctest",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "duration_seconds": 0.44,
+      "result": "ok",
+      "summary_line": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s"
+    }
+  ],
+  "coverage": {
+    "status": "unavailable",
+    "measured_this_run": false,
+    "tool": null,
+    "scope": "src/validators",
+    "scope_note": "No fresh line/region coverage was produced by this baseline run. Official task validation is cargo test. Historical LCOV dumps in the suite tree are recorded under historical_artifacts only.",
+    "percent_covered": null,
+    "stale_documents_not_used_as_measured_result": [
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/tests-rs/COVERAGE_100_PERCENT_ACHIEVED.md",
+        "role": "stale_document",
+        "claim": "Claims 100.00% line coverage (1958/1958 lines) and 100% function coverage.",
+        "used_as_measured_result": false,
+        "note": "Cited only as a stale narrative document. Acceptance requires this file never be treated as the measured coverage result."
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/tests-rs/coverage_100_percent_final.txt",
+        "role": "stale_document",
+        "claim": "Captured cargo-llvm-cov console transcript from a CI path (/home/runner/...) asserting 100% line coverage.",
+        "used_as_measured_result": false
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/tests-rs/COVERAGE_VERIFICATION.txt",
+        "role": "stale_document",
+        "used_as_measured_result": false
+      }
+    ],
+    "historical_artifacts": {
+      "note": "On-disk LCOV files shipped with the suite. They contradict the 100% markdown claim and are not a remeasurement from this baseline.",
+      "lcov_info": {
+        "path": "ipfs_accelerate_py/mcplusplus/tests-rs/lcov.info",
+        "bytes": 73064,
+        "mtime_utc": "2026-08-15T18:55:11Z",
+        "lines_hit": 1872,
+        "lines_found": 1884,
+        "missed_lines": 12,
+        "percent_covered": 99.36305732484077,
+        "percent_covered_display": "99.3631",
+        "files": [
+          {
+            "path": "src/validators/base_mcp.rs",
+            "lines_found": 597,
+            "lines_hit": 593,
+            "missed_lines_count": 4,
+            "missed_line_numbers": [
+              164,
+              400
+            ],
+            "percent_covered": 99.32998324958123
+          },
+          {
+            "path": "src/validators/cid_artifacts.rs",
+            "lines_found": 202,
+            "lines_hit": 199,
+            "missed_lines_count": 3,
+            "missed_line_numbers": [
+              167,
+              268,
+              301
+            ],
+            "percent_covered": 98.51485148514851
+          },
+          {
+            "path": "src/validators/event_dag.rs",
+            "lines_found": 299,
+            "lines_hit": 295,
+            "missed_lines_count": 4,
+            "missed_line_numbers": [
+              59,
+              80,
+              85,
+              207
+            ],
+            "percent_covered": 98.66220735785953
+          },
+          {
+            "path": "src/validators/mcp_idl.rs",
+            "lines_found": 148,
+            "lines_hit": 148,
+            "missed_lines_count": 0,
+            "missed_line_numbers": [],
+            "percent_covered": 100.0
+          },
+          {
+            "path": "src/validators/policy_evaluation.rs",
+            "lines_found": 205,
+            "lines_hit": 205,
+            "missed_lines_count": 0,
+            "missed_line_numbers": [],
+            "percent_covered": 100.0
+          },
+          {
+            "path": "src/validators/transport.rs",
+            "lines_found": 165,
+            "lines_hit": 165,
+            "missed_lines_count": 0,
+            "missed_line_numbers": [],
+            "percent_covered": 100.0
+          },
+          {
+            "path": "src/validators/ucan_delegation.rs",
+            "lines_found": 268,
+            "lines_hit": 267,
+            "missed_lines_count": 1,
+            "missed_line_numbers": [
+              322
+            ],
+            "percent_covered": 99.6268656716418
+          }
+        ]
+      },
+      "lcov_final_info": {
+        "path": "ipfs_accelerate_py/mcplusplus/tests-rs/lcov_final.info",
+        "bytes": 73867,
+        "mtime_utc": "2026-08-15T18:55:11Z",
+        "lines_hit": 1913,
+        "lines_found": 1919,
+        "missed_lines": 6,
+        "percent_covered": 99.6873371547681,
+        "percent_covered_display": "99.6873",
+        "files": [
+          {
+            "path": "src/validators/base_mcp.rs",
+            "lines_found": 608,
+            "lines_hit": 605,
+            "missed_lines_count": 3,
+            "missed_line_numbers": [
+              164
+            ],
+            "percent_covered": 99.50657894736842
+          },
+          {
+            "path": "src/validators/cid_artifacts.rs",
+            "lines_found": 199,
+            "lines_hit": 199,
+            "missed_lines_count": 0,
+            "missed_line_numbers": [],
+            "percent_covered": 100.0
+          },
+          {
+            "path": "src/validators/event_dag.rs",
+            "lines_found": 328,
+            "lines_hit": 325,
+            "missed_lines_count": 3,
+            "missed_line_numbers": [
+              59,
+              80,
+              85
+            ],
+            "percent_covered": 99.08536585365853
+          },
+          {
+            "path": "src/validators/mcp_idl.rs",
+            "lines_found": 148,
+            "lines_hit": 148,
+            "missed_lines_count": 0,
+            "missed_line_numbers": [],
+            "percent_covered": 100.0
+          },
+          {
+            "path": "src/validators/policy_evaluation.rs",
+            "lines_found": 205,
+            "lines_hit": 205,
+            "missed_lines_count": 0,
+            "missed_line_numbers": [],
+            "percent_covered": 100.0
+          },
+          {
+            "path": "src/validators/transport.rs",
+            "lines_found": 165,
+            "lines_hit": 165,
+            "missed_lines_count": 0,
+            "missed_line_numbers": [],
+            "percent_covered": 100.0
+          },
+          {
+            "path": "src/validators/ucan_delegation.rs",
+            "lines_found": 266,
+            "lines_hit": 266,
+            "missed_lines_count": 0,
+            "missed_line_numbers": [],
+            "percent_covered": 100.0
+          }
+        ]
+      },
+      "contradicts_coverage_100_percent_achieved_md": true
+    }
+  },
+  "skipped_names": [],
+  "ignored_names": [],
+  "failures": [],
+  "errors": [],
+  "env": {
+    "cargo_version": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+    "rustc_version": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "rustc_host": "aarch64-unknown-linux-gnu",
+    "cargo_build_target": "aarch64-unknown-linux-gnu",
+    "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+    "platform_system": "Linux",
+    "platform_machine": "aarch64",
+    "python_version_for_receipt_assembly": "3.12.3",
+    "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_91c775112d8e_f2c0a254d4e2/ipfs_accelerate_py/mcplusplus/tests-rs",
+    "USER": "barberb",
+    "LANG": "en_US.utf8",
+    "CI": "true",
+    "IPFS_ACCELERATE_AGENT_TASK_CHECKPOINT_DIR": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/lane-5/implementation_checkpoints/mcpp-005-e29f5d7a2797",
+    "package_dependencies_locked": {
+      "serde": "1.0.229",
+      "serde_json": "1.0.151",
+      "serde_valid": "0.20.0",
+      "thiserror": "1.0.69",
+      "regex": "1.13.1",
+      "lazy_static": "1.5.0",
+      "pretty_assertions": "1.4.1",
+      "sha2": "0.10.9"
+    },
+    "Cargo.toml": "ipfs_accelerate_py/mcplusplus/tests-rs/Cargo.toml",
+    "Cargo.lock_present": true
+  },
+  "evidence": {
+    "source_files": [
+      "src/lib.rs",
+      "src/models.rs",
+      "src/validators/base_mcp.rs",
+      "src/validators/cid_artifacts.rs",
+      "src/validators/event_dag.rs",
+      "src/validators/mcp_idl.rs",
+      "src/validators/mod.rs",
+      "src/validators/policy_evaluation.rs",
+      "src/validators/transport.rs",
+      "src/validators/ucan_delegation.rs"
+    ],
+    "integration_test_files": [
+      "tests/conformance_vectors_test.rs",
+      "tests/coverage_completion_test.rs",
+      "tests/integration_test.rs",
+      "tests/profile_g_codec_test.rs"
+    ],
+    "validation_command_exit_code": 0,
+    "stdout_tail": "test validators::ucan_delegation::tests::test_ucan_token_missing_expiry ... ok\ntest validators::ucan_delegation::tests::test_ucan_token_multiple_attenuations ... ok\ntest validators::ucan_delegation::tests::test_ucan_token_invalid_issuer ... ok\ntest validators::ucan_delegation::tests::test_ucan_token_with_proof ... ok\ntest validators::ucan_delegation::tests::test_valid_delegation_chain ... ok\ntest validators::ucan_delegation::tests::test_valid_ucan_token ... ok\ntest validators::ucan_delegation::tests::test_validator_default ... ok\n\ntest result: ok. 151 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n\n     Running tests/conformance_vectors_test.rs (target/aarch64-unknown-linux-gnu/debug/deps/conformance_vectors_test-cabda5a497add385)\n\nrunning 1 test\ntest test_conformance_vectors ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n\n     Running tests/coverage_completion_test.rs (target/aarch64-unknown-linux-gnu/debug/deps/coverage_completion_test-77f2e3c64d2e954e)\n\nrunning 18 tests\ntest test_event_dag_missing_parent_reference ... ok\ntest test_event_dag_cycle_detection ... ok\ntest test_event_dag_no_cycle_already_visited ... ok\ntest test_event_dag_parent_in_rec_stack ... ok\ntest test_event_dag_node_no_parents ... ok\ntest test_is_notification_helper ... ok\ntest test_is_request_helper ... ok\ntest test_is_response_helper ... ok\ntest test_resource_read_params_validation ... ok\ntest test_tool_call_params_validation ... ok\ntest test_validation_result_methods ... ok\ntest test_resource_read_params_validation_error ... ok\ntest test_prompt_get_params_validation_error ... ok\ntest test_prompt_get_params_validation ... ok\ntest test_validator_default ... ok\ntest test_tool_call_params_validation_error ... ok\ntest test_initialize_params_validation_error ... ok\ntest test_initialize_params_validation ... ok\n\ntest result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running tests/integration_test.rs (target/aarch64-unknown-linux-gnu/debug/deps/integration_test-b7bc971a3b7982f8)\n\nrunning 17 tests\ntest test_canonical_dag_event_both_timestamp_forms ... ok\ntest test_canonical_delegation_wire_shape ... ok\ntest test_canonical_error_codes ... ok\ntest test_base_mcp_valid_response ... ok\ntest test_base_mcp_valid_notification ... ok\ntest test_base_mcp_valid_request ... ok\ntest test_transport_valid_session ... ok\ntest test_transport_valid_message ... ok\ntest test_ucan_valid_token ... ok\ntest test_ucan_valid_delegation_chain ... ok\ntest test_policy_decision_with_obligations ... ok\ntest test_event_dag_valid_event ... ok\ntest test_policy_valid_decision ... ok\ntest test_policy_valid_definition ... ok\ntest test_cid_artifacts_valid_envelope ... ok\ntest test_mcp_idl_valid_descriptor ... ok\ntest test_cid_artifacts_valid_receipt ... ok\n\ntest result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running tests/profile_g_codec_test.rs (target/aarch64-unknown-linux-gnu/debug/deps/profile_g_codec_test-bd6ef573a1f39aec)\n\nrunning 3 tests\ntest profile_g_failures ... ok\ntest profile_g_priority ... ok\ntest profile_g_cids ... ok\n\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests mcp_validators\n\nrunning 1 test\ntest src/lib.rs - (line 15) ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s\n",
+    "notes": [
+      "Validation command completed with exit code 0 (191 passed, 0 failed, 0 ignored across 6 cargo targets including doctests).",
+      "Test totals: 151 unit + 1 conformance + 18 coverage_completion + 17 integration + 3 profile_g_codec + 1 doctest = 191.",
+      "No tests were ignored or filtered; skipped_names/ignored_names are empty by measurement.",
+      "failures and errors arrays are present and empty; failures would be recorded with name and message if any occurred.",
+      "COVERAGE_100_PERCENT_ACHIEVED.md is cited only as a stale document and is never used as the measured coverage result.",
+      "On-disk lcov.info reports ~99.36% line hits on src/validators; lcov_final.info reports ~99.69%. Both contradict the 100% markdown claim and were not remeasured.",
+      "Parent worktree commit_sha=1a306be29d104331171198d2d7a8930622817775; mcplusplus suite gitlink suite_commit_sha=6965f89f066769f3b3ac7b5f753b1a0044562570.",
+      "MCPP-001 repository forest nested gitlink ipfs_accelerate_py/mcplusplus HEAD matches suite_commit_sha 6965f89f066769f3b3ac7b5f753b1a0044562570."
+    ]
+  },
+  "acceptance": {
+    "criteria": "COVERAGE_100_PERCENT_ACHIEVED.md is cited only as a stale document, never as the measured result.",
+    "coverage_100_percent_achieved_md_cited_only_as_stale": true,
+    "coverage_100_percent_achieved_md_used_as_measured_result": false,
+    "command_recorded": true,
+    "env_recorded": true,
+    "commit_sha_recorded": true,
+    "suite_commit_sha_recorded": true,
+    "pass_fail_recorded": true,
+    "test_count_recorded": true,
+    "coverage_or_explicit_unavailable": true,
+    "skipped_names_recorded": true,
+    "failures_recorded_not_hidden": true,
+    "satisfied": true
+  },
+  "acceptance_fields": {
+    "command": true,
+    "env": true,
+    "commit_sha": true,
+    "pass_fail": true,
+    "test_count": true,
+    "coverage_or_explicit_unavailable": true,
+    "skipped_names": true,
+    "failures_recorded_not_hidden": true,
+    "stale_coverage_doc_not_as_measurement": true
+  },
+  "observations": [
+    "Rust baseline is green on this host: cargo test exit 0, 191/191 tests passed.",
+    "Coverage tooling for a fresh remeasurement is unavailable; receipt fails closed by recording coverage.status=unavailable rather than repeating COVERAGE_100_PERCENT_ACHIEVED.md.",
+    "Historical LCOV artifacts in the suite tree show sub-100% line coverage and therefore already falsify treating the 100% markdown as current measurement.",
+    "Only allowed edit for this task is docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-rust.json."
+  ]
+}
