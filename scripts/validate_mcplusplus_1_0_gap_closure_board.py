@@ -290,8 +290,15 @@ def validate() -> list[str]:
         deps = _csv(task.metadata.get("depends on", ""))
         if all(task_by_id[dep].status == "completed" for dep in deps if dep in task_by_id):
             ready.append(task_id)
-    if tuple(ready) != INITIAL_READY:
+    completed_ids = {
+        task_id
+        for task_id, task in task_by_id.items()
+        if task.status == "completed"
+    }
+    if completed_ids == {"MCPP-000"} and tuple(ready) != INITIAL_READY:
         errors.append(f"ready set {ready!r} != {list(INITIAL_READY)!r}")
+    elif not ready and TERMINAL_TASK not in completed_ids:
+        errors.append("no dependency-ready tasks remain before terminal completion")
 
     queue = deque([task_id for task_id, count in incoming.items() if count == 0])
     seen = 0
