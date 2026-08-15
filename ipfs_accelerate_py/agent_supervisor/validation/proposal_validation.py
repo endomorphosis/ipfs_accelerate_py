@@ -2947,9 +2947,11 @@ _SYNTHETIC_TEST_SECRET_REFERENCE_RE = re.compile(
     r"""(?x)^(?:env://[A-Z][A-Z0-9_]{1,127}|"""
     r"""vault://[A-Za-z0-9_.][A-Za-z0-9_./-]{0,255})$"""
 )
+# Exact documentation/redaction sentinel only.  Do not exempt
+# ``should-not-appear`` (and similar synthetic canaries) — those remain
+# concrete secret-like values in production sources and are rejected there.
 _NEVER_EXPOSE_SENTINEL_RE = re.compile(
-    r"""(?ix)^(?:should|must)[_-]?(?:never|not)[_-]?"""
-    r"""(?:appear|persist|log|store|commit)$"""
+    r"""(?ix)^(?:should|must)[_-]?never[_-]?(?:appear|persist|log|store|commit)$"""
 )
 _TEST_ONLY_NON_SECRET_SENTINEL_RE = re.compile(
     r"(?i)^sk[_-]live[_-]not[_-]a[_-]real[_-]key$"
@@ -3120,6 +3122,7 @@ def _is_concrete_secret_value(
     raw_value: str,
     *,
     allow_test_sentinel: bool = False,
+    allow_never_expose_sentinel: bool = False,
 ) -> bool:
     value = raw_value.strip()
     quoted = _QUOTED_SECRET_VALUE_RE.fullmatch(value)
@@ -3144,7 +3147,10 @@ def _is_concrete_secret_value(
     # material is rejected or redacted. Only accept an exact "never expose"
     # sentinel so a concrete credential containing those words still fails
     # closed.
-    if _NEVER_EXPOSE_SENTINEL_RE.fullmatch(value):
+    if (
+        allow_never_expose_sentinel
+        and _NEVER_EXPOSE_SENTINEL_RE.fullmatch(value)
+    ):
         return False
     # A focused security fixture uses this exact value to exercise rejection
     # of secret-bearing fields.  Admit it only in test files and only as the
@@ -3177,12 +3183,21 @@ def _entry_introduces_secret(
         return False
     if _PRIVATE_KEY_CONTENT_RE.search(introduced):
         return True
-    allow_test_sentinel = _is_test_path(entry.new_path or entry.old_path)
+    path = entry.new_path or entry.old_path
+    allow_test_sentinel = _is_test_path(path)
+    # The proposal gate must be able to define and maintain its own closed
+    # never-expose sentinel vocabulary.  Outside that authority module the
+    # same credential-shaped literals remain test-only canaries.
+    allow_never_expose_sentinel = (
+        allow_test_sentinel
+        or path.endswith("/proposal_validation.py")
+    )
     for match in _SECRET_ASSIGNMENT_RE.finditer(introduced):
         value = match.group("value")
         if not _is_concrete_secret_value(
             value,
             allow_test_sentinel=allow_test_sentinel,
+            allow_never_expose_sentinel=allow_never_expose_sentinel,
         ):
             continue
         if (
@@ -3303,7 +3318,16 @@ def _command_is_allowed(
     # Exact task-board allowlist hit: trust the reviewed command when the
     # executable itself is not a shell interpreter. This admits env-assignment
     # prefixes (PYTHONPATH=...) that are already on the task validation plan.
+    # Bare operator tokens and subshell expansion remain forbidden even when
+    # the exact argv is allowlisted (an allowlist cannot waive shell chaining).
     if command_t in prefixes_t and clause_executable_is_safe(command_t):
+        if any(
+            part in _SHELL_OPERATOR_TOKENS or part in {"&&", "||"}
+            for part in command_t
+        ):
+            return False
+        if any(_SHELL_EXPANSION_RE.search(part) for part in command_t):
+            return False
         return True
 
     if not clause_is_safe(command_t):

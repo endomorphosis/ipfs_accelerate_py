@@ -89,7 +89,7 @@ REPOSITORIES = (
     RepositorySpec(
         "ipfs_datasets",
         EXTERNAL_ROOT / "ipfs_datasets",
-        EXTERNAL_ROOT / "ipfs_datasets" / "tests" / "conftest.py",
+        EXTERNAL_ROOT / "ipfs_datasets" / "conftest.py",
         "ipfs-datasets-proof-reuse",
         "ipfs_datasets_py.pytest_proof_reuse",
         "ipfs-proof-reuse",
@@ -577,13 +577,14 @@ def test_repository_declares_entry_point_and_import_safe_fallback(
     )
 
     source = spec.bootstrap.read_text(encoding="utf-8")
-    assert PLUGIN_MODULE in source
-    if spec.name == "ipfs_datasets":
-        assert "_bootstrap_proof_reuse_plugin" in source
-        assert "pytest_plugins" in source
-    else:
-        assert "_optional_proof_reuse_plugin" in source
-        assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" in source
+    # Sibling repos load a package-owned bridge that re-exports the accelerator
+    # plugin; accelerate itself still references the plugin module directly.
+    assert spec.entry_point_target in source
+    assert "pytest_plugins" in source
+    assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" in source
+    if spec.name == "ipfs_accelerate":
+        assert PLUGIN_MODULE in source
+        assert "_optional_proof_reuse_plugin" in source or "importlib" in source
     # PTR-142: production bootstraps remain loader-only (no service injection).
     for forbidden in (
         "set_proof_reuse_services",

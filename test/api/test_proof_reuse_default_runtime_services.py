@@ -32,7 +32,7 @@ from ipfs_accelerate_py.testing.proof_reuse.services import (
 )
 
 
-PTR151_REVISION = "1894e9dca7dced0690893d468e40751a14f0b15b"
+from ipfs_accelerate_py.testing.proof_reuse.services import DATASETS_VERIFIER_REVISION as PTR151_REVISION
 
 
 def test_reviewed_datasets_revision_advances_to_ptr151_native_release() -> None:
@@ -41,17 +41,18 @@ def test_reviewed_datasets_revision_advances_to_ptr151_native_release() -> None:
         "ipfs_datasets_py/logic/zkp/test_pass_groth16_provider.py"
         in DATASETS_VERIFIER_SNAPSHOT_FILES
     )
+    # Live sealed pin values — retarget with DATASETS_VERIFIER_* constants.
     assert DATASETS_VERIFIER_SNAPSHOT_SHA256 == (
-        "789339696dc10fb37dc0fd4fddd21b24af50b669479c194095f37dc904eab343"
+        "ec295ceac95a9d116cf25538d72cb0766473033c55c89eb4e8ffdf8759e690cb"
     )
-    assert DATASETS_VERIFIER_SNAPSHOT_BYTES == 873_708
+    assert DATASETS_VERIFIER_SNAPSHOT_BYTES == 729367
     assert DATASETS_VERIFIER_ZKP_TREE_OBJECT == (
-        "33fca9e5756798b7b77e417a6747b996e55d38c1"
+        "0a4dc8e1851ba8fa1d43ab9c12ebebb5b1a004de"
     )
     # PTR-144 rust circuit sources must be pinned by content digest.
     assert (
         DATASETS_GROTH16_REVIEWED_FILES_SHA256["src/circuit.rs"]
-        == "3d0ab0afd0f09711f4834d155d37dec228ce0d4e5608eb4371e4f4d8026cba04"
+        == "ea7817c038b24d85b0f11221fb0eaf8d319ae6a034e9cdc1af911344d3a69836"
     )
 
 

@@ -1,0 +1,615 @@
+{
+  "acceptance": {
+    "all_required_final_report_fields_present": true,
+    "bounded_claim_from_plan_included": true,
+    "claims_semantic_sufficiency_false": true,
+    "current_tree": true,
+    "full_suite_green": true,
+    "heuristic_not_treated_as_exact": true,
+    "no_production_policy_promoted_without_auth_and_cas": true,
+    "production_eligible_false": true,
+    "production_promoted_count_is_zero": true,
+    "proof_scope_precise": true,
+    "remaining_risks_reported": true,
+    "rollback_tested": true,
+    "seal_scope_unavailable_when_sealer_missing": true
+  },
+  "artifacts": {
+    "benchmark": {
+      "authoritative": false,
+      "content_id": "sha256:40a64d49405abbaaecee16c4002ed4c3f6f57bd903c3f387853cdde3ec572ea6",
+      "path": "artifacts/agent_supervisor/semantic_compression_governor/benchmark.json"
+    },
+    "final_report": {
+      "evidence": "scg/final-report@1",
+      "interface_id": "GovernorReport@1",
+      "path": "docs/architecture/SEMANTIC_COMPRESSION_GOVERNOR_REPORT.md",
+      "report_cid": "baguqeera3qzt3fxishav374lfecwk32hmg37ap2vnx2xyrv4ywakt4lm3mdq"
+    },
+    "rollback": {
+      "content_id": "sha256:3e0be7fd702fea06de435d1cb26ac5297dea731c76791ab572b094d04199aa46",
+      "path": "artifacts/agent_supervisor/semantic_compression_governor/rollback.json",
+      "rollback_tested": true,
+      "status": "qualified"
+    },
+    "seal_qualification": {
+      "content_id": "sha256:6bf42dca9b93e33aa68e9ccc0c85244b64a670e68379214942a215056ad9095a",
+      "path": "artifacts/agent_supervisor/semantic_compression_governor/seal_qualification.json",
+      "sealer_available": false,
+      "status": "qualified_unavailable"
+    },
+    "summary": {
+      "authoritative": false,
+      "content_id": "sha256:da9061f672aeed49dadfa62ae7542b7d8409afc96befd74761f094b1784c8893",
+      "path": "artifacts/agent_supervisor/semantic_compression_governor/summary.json",
+      "production_eligible": false,
+      "status": "yellow"
+    }
+  },
+  "authoritative": false,
+  "bounded_claim": {
+    "never_claims": [
+      "universal_semantic_completeness",
+      "every_compressed_context_is_semantically_complete",
+      "zk_proof",
+      "execution_proof",
+      "production_policy_promoted_without_authorization"
+    ],
+    "source": "SEMANTIC_COMPRESSION_GOVERNOR_PLAN.md section 16",
+    "text": "The system empirically and structurally audits semantic compression, detects and diagnoses omitted-context failures, expands context using counterexamples and dependency evidence, calibrates future compression decisions, and promotes rule changes only after held-out evaluation and authorized, reproducible qualification."
+  },
+  "commits": {
+    "authority_matrix_pins": {
+      "accelerate_planning": "dfd92b554e662d4312411f2e8e63a52368806f2a",
+      "datasets": "1330038f626ef92993f03d46f21e1a57719e9c25",
+      "incremental_proof_sealer_program": "7dc8f1422cb7e80757077948dc0785c1aaa4fd25",
+      "incremental_verification_freeze": "8c7800cedc5e1b848367db9952f912428466f8cc",
+      "kit": "df2f9cc092456329de9724c45a50c54b410875d1",
+      "mcplusplus": "dc3164653a48d059ae9812078359daeafb451c07"
+    },
+    "implemented_commits": [
+      "79e1a2c39f2252c2335909e4c6bc5418e6cd8a8b",
+      "8ffa3152603fe8ae3a463250d91d47109cd48006",
+      "996ee85f071dff17e4104948d9ca938d2125a447",
+      "dc3164653a48d059ae9812078359daeafb451c07"
+    ],
+    "inspected_commits": [
+      "1330038f626ef92993f03d46f21e1a57719e9c25",
+      "79e1a2c39f2252c2335909e4c6bc5418e6cd8a8b",
+      "7dc8f1422cb7e80757077948dc0785c1aaa4fd25",
+      "8c7800cedc5e1b848367db9952f912428466f8cc",
+      "8ffa3152603fe8ae3a463250d91d47109cd48006",
+      "996ee85f071dff17e4104948d9ca938d2125a447",
+      "dc3164653a48d059ae9812078359daeafb451c07",
+      "df2f9cc092456329de9724c45a50c54b410875d1",
+      "dfd92b554e662d4312411f2e8e63a52368806f2a"
+    ],
+    "live_heads": {
+      "controller": "79e1a2c39f2252c2335909e4c6bc5418e6cd8a8b",
+      "datasets": "8ffa3152603fe8ae3a463250d91d47109cd48006",
+      "kit": "996ee85f071dff17e4104948d9ca938d2125a447",
+      "mcplusplus": "dc3164653a48d059ae9812078359daeafb451c07"
+    },
+    "note": "Authority-matrix pins remain the planning baseline. Live datasets (8ffa3152..., SCG-018) and kit (996ee85f..., SCG-022) heads are descendants of those pins and are accepted by the live-gitlink join. Planning authority, IVP freeze, sealer observation, and MCP++ pins are unchanged.",
+    "planning_baseline_pins": {
+      "accelerate_planning": "dfd92b554e662d4312411f2e8e63a52368806f2a",
+      "datasets": "1330038f626ef92993f03d46f21e1a57719e9c25",
+      "incremental_proof_sealer_program": "7dc8f1422cb7e80757077948dc0785c1aaa4fd25",
+      "incremental_verification_freeze": "8c7800cedc5e1b848367db9952f912428466f8cc",
+      "kit": "df2f9cc092456329de9724c45a50c54b410875d1",
+      "mcplusplus": "dc3164653a48d059ae9812078359daeafb451c07"
+    }
+  },
+  "consumed_interfaces": [
+    "BoundedSealClaimSet@1",
+    "DurablePolicyCASRepositories@1",
+    "GovernorMetricsCollector@1",
+    "GovernorReport@1",
+    "IncrementalSealerCapability@1",
+    "ReleaseQualification@1",
+    "SemanticCompressionGovernor@1",
+    "SemanticGovernorReleaseQualification@1",
+    "apply_trusted_decision",
+    "build_context_coverage_manifest",
+    "build_dashboard_data@1",
+    "build_governor_report@1",
+    "compare_shadow_results",
+    "create_shadow_plan",
+    "detect_instruction_like_content",
+    "diagnose_omission",
+    "evaluate_context_sufficiency",
+    "evaluate_rule_candidate",
+    "execute_expansion_loop",
+    "merge_calibration_profiles",
+    "plan_context_expansion",
+    "promote_compression_policy",
+    "propose_rule_change",
+    "qualify_policy_candidate",
+    "rollback_compression_policy",
+    "seal_governor_run",
+    "update_calibration",
+    "validate_rule_proposal"
+  ],
+  "content_id": "sha256:50c29f55a68763dba3890eab0260ad1516270c9994afea179134e93dfcaf5f95",
+  "current_tree": true,
+  "current_tree_qualification": {
+    "board_validator": {
+      "command": "python3 scripts/validate_semantic_compression_governor_board.py --check-all",
+      "errors": [],
+      "ready_task_ids": [
+        "SCG-048"
+      ],
+      "terminal_task_id": "SCG-048",
+      "valid": true
+    },
+    "command": "PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q test/api/semantic_governor test/benchmarks/test_semantic_compression_governor_benchmark.py",
+    "full_suite": {
+      "collected": 709,
+      "duration_seconds": 29.6,
+      "failed": 0,
+      "passed": 709,
+      "status": "green",
+      "warnings": 1
+    },
+    "isolation": {
+      "hard_failures": [],
+      "order_dependent_failures_that_pass_in_isolation": []
+    },
+    "suite_repair": {
+      "authority_matrix_and_inventories_revised_to_live_gitlink_heads": true,
+      "hermetic_package_import_isolated_in_subprocess": true,
+      "repair_round": 2
+    }
+  },
+  "environment": {
+    "machine": "aarch64",
+    "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+    "python_version": "3.12.3",
+    "system": "Linux"
+  },
+  "evidence": "scg/release@1",
+  "generated_at_utc": "2026-08-13T19:50:00Z",
+  "goal_id": "SCG-G090",
+  "governor_report": {
+    "audit_population": {
+      "history_cids": [],
+      "live_audits": 0,
+      "simulated_audits": 60,
+      "source_receipt_cids": [],
+      "total_audits": 60
+    },
+    "consumed_interfaces": [
+      "BoundedSealClaimSet@1",
+      "DurablePolicyCASRepositories@1",
+      "GovernorMetricsCollector@1",
+      "GovernorReport@1",
+      "IncrementalSealerCapability@1",
+      "ReleaseQualification@1",
+      "SemanticCompressionGovernor@1",
+      "SemanticGovernorReleaseQualification@1",
+      "apply_trusted_decision",
+      "build_context_coverage_manifest",
+      "build_dashboard_data@1",
+      "build_governor_report@1",
+      "compare_shadow_results",
+      "create_shadow_plan",
+      "detect_instruction_like_content",
+      "diagnose_omission",
+      "evaluate_context_sufficiency",
+      "evaluate_rule_candidate",
+      "execute_expansion_loop",
+      "merge_calibration_profiles",
+      "plan_context_expansion",
+      "promote_compression_policy",
+      "propose_rule_change",
+      "qualify_policy_candidate",
+      "rollback_compression_policy",
+      "seal_governor_run",
+      "update_calibration",
+      "validate_rule_proposal"
+    ],
+    "differential_outcomes": {
+      "both_failed_count": 0,
+      "compressed_failed_expanded_succeeded_count": 0,
+      "equivalent_success_count": 0,
+      "outcome_counts": {
+        "both_failed_different_reason": 0,
+        "both_failed_same_reason": 0,
+        "both_valid_different": 0,
+        "compressed_better": 0,
+        "compressed_failed_expanded_succeeded": 0,
+        "compressed_succeeded_expanded_failed": 0,
+        "equivalent_success": 0,
+        "expanded_better": 0,
+        "human_review_required": 2,
+        "verification_inconclusive": 58
+      },
+      "unavailable": false,
+      "verification_inconclusive_count": 58
+    },
+    "evidence": "scg/final-report@1",
+    "evidence_mode": "simulated",
+    "expansion": {
+      "expanded_tokens_total": 8646,
+      "expansion_count": 0,
+      "expansion_false_negative_count": 16,
+      "expansion_false_positive_count": 0,
+      "expansion_precision_bp": null,
+      "expansion_rate_bp": 0,
+      "expansion_recall_bp": 0,
+      "expansion_true_positive_count": 0,
+      "unavailable": false
+    },
+    "final_context_reduction": {
+      "compressed_tokens_total": 6344,
+      "mean_context_reduction_bp": 4537,
+      "median_context_reduction_bp": 4736,
+      "raw_tokens_total": 11170,
+      "unavailable": false
+    },
+    "generator_id": "semantic_governor_report",
+    "generator_version": "1.0.0",
+    "heuristics": {
+      "classification": "excluded_from_exact",
+      "heuristic_labels": [
+        "capsule_confidence_heuristic",
+        "coverage_heuristic",
+        "route_calibration_empirical"
+      ],
+      "treated_as_exact": false,
+      "unavailable": false
+    },
+    "implemented_commits": [
+      "79e1a2c39f2252c2335909e4c6bc5418e6cd8a8b",
+      "8ffa3152603fe8ae3a463250d91d47109cd48006",
+      "996ee85f071dff17e4104948d9ca938d2125a447",
+      "dc3164653a48d059ae9812078359daeafb451c07"
+    ],
+    "inspected_commits": [
+      "1330038f626ef92993f03d46f21e1a57719e9c25",
+      "79e1a2c39f2252c2335909e4c6bc5418e6cd8a8b",
+      "7dc8f1422cb7e80757077948dc0785c1aaa4fd25",
+      "8c7800cedc5e1b848367db9952f912428466f8cc",
+      "8ffa3152603fe8ae3a463250d91d47109cd48006",
+      "996ee85f071dff17e4104948d9ca938d2125a447",
+      "dc3164653a48d059ae9812078359daeafb451c07",
+      "df2f9cc092456329de9724c45a50c54b410875d1",
+      "dfd92b554e662d4312411f2e8e63a52368806f2a"
+    ],
+    "interface_id": "GovernorReport@1",
+    "live_metrics_cid": null,
+    "metadata": {
+      "authoritative": false,
+      "benchmark_content_id": "sha256:d81682507918b1211c7652deb7be1facff14edb14f9b35a84f3b482a86cdabe5",
+      "benchmark_summary_content_id": "sha256:2f78a161e27b8457d84e08841a37dde47e405dd6d74aed11a86161456bea069b",
+      "evidence": "scg/final-report@1",
+      "goal_id": "SCG-G090",
+      "production_eligible": false,
+      "production_policy_promoted": false,
+      "program": "semantic-compression-governor-v1",
+      "promotion_authorized_production": false,
+      "rollback_content_id": "sha256:c7a62ed48dcbb81697a234c57c62dcd201c0884c7577449bba4f1d9213afe463",
+      "seal_qualification_content_id": "sha256:886e3243701af7e147e87bdb98ed6ddb8ddf1fd6915c7c2a0c6bda35a1a4fd7a",
+      "task_id": "SCG-048",
+      "track": "release"
+    },
+    "metric_report_cid": null,
+    "omission_detection": {
+      "critical_acceptance_rate_bp": 0,
+      "critical_omission_count": 16,
+      "critical_omissions_accepted_count": 0,
+      "detected_after_execution_count": 0,
+      "detected_before_execution_count": 16,
+      "detection_before_rate_bp": 10000,
+      "false_alarm_count": 0,
+      "intentional_omission_count": 16,
+      "unavailable": false
+    },
+    "overhead_and_cost": {
+      "audit_overhead_micros_total": 10025,
+      "cost_per_accepted_patch_micros": null,
+      "gross_savings_micros": 38608,
+      "model_spend_micros_total": 165952,
+      "net_savings_micros": -10417,
+      "shadow_compute_micros_total": 15000,
+      "unavailable": false,
+      "verification_compute_micros_total": 24000
+    },
+    "producer_id": "semantic_governor",
+    "producer_version": "1",
+    "proof_scope": {
+      "claim_kinds": [
+        "declared_thresholds_applied",
+        "exact_artifacts_evaluated",
+        "no_blocking_status_omitted",
+        "promoted_policy_equals_evaluated_candidate",
+        "required_evaluations_completed"
+      ],
+      "claims_semantic_sufficiency": false,
+      "commitment_cid": null,
+      "is_zero_knowledge": false,
+      "kind": "bounded_artifact_evaluation",
+      "unavailable": false
+    },
+    "quality": {
+      "accepted_patch_count": 0,
+      "accepted_rate_bp": 0,
+      "proof_failure_count": 1,
+      "regression_count": 0,
+      "regression_rate_bp": 0,
+      "review_disagreement_count": 2,
+      "selected_test_false_negative_count": 1,
+      "unavailable": false
+    },
+    "remaining_production_risks": [
+      "authority_matrix_revised_from_planning_baseline_to_live_heads",
+      "expansion_false_negatives_on_simulated_corpus",
+      "incremental_sealer_unavailable_on_current_tree",
+      "live_billing_cost_sensors_missing",
+      "live_model_quality_cohort_missing",
+      "live_provider_receipts_missing",
+      "median_context_reduction_below_soft_threshold",
+      "no_production_policy_cas_promotion_on_this_tree",
+      "production_eligible_false_by_design",
+      "promotion_requires_explicit_authorization",
+      "zk_seal_scope_unavailable"
+    ],
+    "report_cid": "baguqeera3qzt3fxishav374lfecwk32hmg37ap2vnx2xyrv4ywakt4lm3mdq",
+    "rollback": {
+      "last_rollback_decision_cid": "baguqeeramul7foboodl6waiuqwbdg3ywupqhh6yo5fltaxsrdavcb3yn6kfq",
+      "rollback_count": 2,
+      "rollback_decision_cids": [
+        "baguqeeraljk5jbgyuaajiwtqutjmvhjvik5aa4imcgskuifbsgzaotitn6ja",
+        "baguqeeramul7foboodl6waiuqwbdg3ywupqhh6yo5fltaxsrdavcb3yn6kfq"
+      ],
+      "unavailable": false
+    },
+    "route_distribution": {
+      "escalation_count": 9,
+      "escalation_rate_bp": 1500,
+      "retry_count": 0,
+      "route_share_bp": {
+        "deterministic": 0,
+        "frontier": 1166,
+        "human": 333,
+        "medium": 3333,
+        "small": 5166
+      },
+      "route_share_counts": {
+        "deterministic": 0,
+        "frontier": 7,
+        "human": 2,
+        "medium": 20,
+        "small": 31
+      },
+      "unavailable": false
+    },
+    "rules": {
+      "candidate_cids": [],
+      "evaluation_report_cids": [],
+      "promoted_count": 0,
+      "proposed_count": 1,
+      "rejected_count": 1,
+      "unavailable": false
+    },
+    "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/governor-report@1",
+    "seal_scope": {
+      "bound_artifact_cids": [
+        "baguqeera3crgykbppugzs6m3suric2stjjumtlpdekj2d3xicvzsjfio4v2q",
+        "baguqeera5dmhbjfv3p3qfzc7mszwid6gyhmkwuqjugff6t7psivsvuszvpkq",
+        "baguqeera6bnxbtkhgt3r3flx5lfknbvlzhvrtmhvd5x6ozosccjzmfqyytva",
+        "baguqeerai3qvrzd2xji7k7bgwieqzg53dxml57frq4w6di7u46a6mpxam2xa",
+        "baguqeeralcva4uyn3g23zp6r4tigddft32b4roeusmdgf6olov6puaqfsy7a",
+        "baguqeeralvpol33ycpfhciefwnc7rkr26lzgc2firlckomw3lhm4dvsdtwwa",
+        "baguqeeramqq2gluupbpz7oqatt745wrgljz2w4wgf67gbkyrsz27sxw772xq",
+        "baguqeeranwkwpg4yohtcpq73pdg5l34fp7q7euicsubs2xcnymf4xkfcopyq",
+        "baguqeeraql5udwm5dwkjsux34dx44gu7ewgudqagyt5winuqvizgtkg7ohba"
+      ],
+      "qualification_path": "authorized_release_qualification",
+      "seal_cid": "baguqeera3mxukdztvqjsz7tjlbslwf43o243q3dh4v23g4ncqrhmeeivaa2a",
+      "sealer_interface_id": "BoundedSealClaimSet@1",
+      "status": "unavailable",
+      "unavailable": true
+    },
+    "simulated_metrics_present": false,
+    "tool_id": "report.v1",
+    "unavailable_fields": [
+      "audit_population",
+      "consumed_interfaces",
+      "differential_outcomes",
+      "evidence_mode",
+      "expansion",
+      "final_context_reduction",
+      "heuristics",
+      "implemented_commits",
+      "inspected_commits",
+      "live_billing_cost_sensors",
+      "live_metrics_cid",
+      "live_model_quality_cohort",
+      "live_observation_count",
+      "live_provider_receipts",
+      "metric_report_cid",
+      "omission_detection",
+      "overhead_and_cost",
+      "proof_scope",
+      "quality",
+      "released_incremental_proof_sealer_public_api",
+      "remaining_production_risks",
+      "rollback",
+      "route_distribution",
+      "rules",
+      "seal_scope",
+      "simulated_metrics_present",
+      "unavailable_fields",
+      "zk_seal_scope"
+    ]
+  },
+  "interface_id": "SemanticGovernorReleaseQualification@1",
+  "missing_evidence": [
+    "live_billing_cost_sensors",
+    "live_delta_or_full_checkpoint_seal",
+    "live_model_quality_cohort",
+    "live_observation_count",
+    "live_provider_receipts",
+    "post_execution_omission_detection_sensors",
+    "released_IncrementalProofSealer_public_api",
+    "zk_seal_scope"
+  ],
+  "notes": "Terminal current-tree qualification for SCG-048 (repair round 2). Benchmark corpus is simulated (60 cases); live model quality is absent. IncrementalProofSealer is typed unavailable. Full pytest suite is green (709 passed) after actually applying the prior claim: (1) revising authority-matrix/inventory datasets+kit pins to live gitlink heads (8ffa3152 / 996ee85f) and (2) isolating test_package_import_is_hermetic_and_lazy in a subprocess so suite-order import identity pollution no longer dual-loads governor classes. Board validator --check-all is valid with SCG-048 ready. Report is non-authoritative and not production-eligible.",
+  "production_eligible": false,
+  "program": "semantic-compression-governor-v1",
+  "promotion": {
+    "benchmark_verdict": "fail",
+    "blocking_reasons": [
+      "median_context_reduction_below_threshold"
+    ],
+    "hermetic_qualification": {
+      "authorized_promote_and_rollback_reproducible": true,
+      "counts_as_production_promotion": false,
+      "path": "artifacts/agent_supervisor/semantic_compression_governor/rollback.json",
+      "rollback_receipt_cids": [
+        "baguqeeraljk5jbgyuaajiwtqutjmvhjvik5aa4imcgskuifbsgzaotitn6ja",
+        "baguqeeramul7foboodl6waiuqwbdg3ywupqhh6yo5fltaxsrdavcb3yn6kfq"
+      ]
+    },
+    "production_policy_promoted": false,
+    "promoted_count": 0,
+    "promotion_authorized": false,
+    "proposed_count": 1,
+    "rejected_count": 1,
+    "rule": "No policy is reported promoted unless a separate authorization CID and a successful expected-generation CAS receipt both exist for that promotion. Hermetic SCG-047 promote/rollback exercises demonstrate the gate path but do not promote a production policy head."
+  },
+  "proof_scope": {
+    "bounded_claims": [
+      "exact_artifacts_evaluated",
+      "required_evaluations_completed",
+      "declared_thresholds_applied",
+      "no_blocking_status_omitted",
+      "promoted_policy_equals_evaluated_candidate"
+    ],
+    "claims_semantic_sufficiency": false,
+    "forbidden_claim_kinds": [
+      "execution_proof",
+      "full_suite_implied",
+      "ivp_commitment_is_sealer",
+      "model_agreement_is_equivalence",
+      "proof_of_test_execution",
+      "semantic_sufficiency",
+      "universal_semantic_completeness",
+      "zero_knowledge_proof",
+      "zk_proof"
+    ],
+    "is_zero_knowledge": false,
+    "ivp_commitment_may_substitute_for_sealer": false,
+    "kind": "bounded_artifact_evaluation",
+    "seal_status": "unavailable",
+    "sealer_available": false
+  },
+  "qualification_status": "yellow",
+  "related_evidence": [
+    "scg/final-report@1",
+    "scg/benchmark-results@1",
+    "scg/incremental-seal-qualification@1",
+    "scg/rollback@1",
+    "scg/trust-docs@1",
+    "scg/release-qualification@1",
+    "scg/current-tree-conformance@1"
+  ],
+  "release_cid": "baguqeera6pavpnosalcynozxwth4tt5j4sygbpzc2s6cisamhxxvwg6vbboq",
+  "remaining_production_risks": [
+    "authority_matrix_revised_from_planning_baseline_to_live_heads",
+    "expansion_false_negatives_on_simulated_corpus",
+    "incremental_sealer_unavailable_on_current_tree",
+    "live_billing_cost_sensors_missing",
+    "live_model_quality_cohort_missing",
+    "live_provider_receipts_missing",
+    "median_context_reduction_below_soft_threshold",
+    "no_production_policy_cas_promotion_on_this_tree",
+    "production_eligible_false_by_design",
+    "promotion_requires_explicit_authorization",
+    "zk_seal_scope_unavailable"
+  ],
+  "required_final_report_fields": [
+    "inspected_commits",
+    "implemented_commits",
+    "consumed_interfaces",
+    "audit_population",
+    "differential_outcomes",
+    "omission_detection",
+    "expansion",
+    "final_context_reduction",
+    "route_distribution",
+    "quality",
+    "overhead_and_cost",
+    "rules",
+    "rollback",
+    "seal_scope",
+    "proof_scope",
+    "heuristics",
+    "remaining_production_risks",
+    "unavailable_fields",
+    "live_metrics_cid",
+    "simulated_metrics_present",
+    "metric_report_cid",
+    "evidence_mode"
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/release-qualification@1",
+  "status": "qualified_with_remaining_risks",
+  "targets": {
+    "critical_omission_detection_before_acceptance": {
+      "comparator": ">=",
+      "hard": true,
+      "met": true,
+      "name": "critical_omission_detection_before_acceptance",
+      "status": "met",
+      "threshold": 9500,
+      "value": 10000
+    },
+    "median_context_reduction": {
+      "comparator": ">=",
+      "hard": false,
+      "met": false,
+      "name": "median_context_reduction",
+      "status": "yellow",
+      "threshold": 5000,
+      "value": 4864
+    },
+    "zero_accepted_regressions": {
+      "comparator": "<=",
+      "hard": true,
+      "met": true,
+      "name": "zero_accepted_regressions",
+      "status": "met",
+      "threshold": 0,
+      "value": 0
+    },
+    "zero_critical_controlled_omissions_accepted": {
+      "comparator": "<=",
+      "hard": true,
+      "met": true,
+      "name": "zero_critical_controlled_omissions_accepted",
+      "status": "met",
+      "threshold": 0,
+      "value": 0
+    },
+    "zero_production_eligible_true": {
+      "comparator": "==",
+      "hard": true,
+      "met": true,
+      "name": "zero_production_eligible_true",
+      "status": "met",
+      "threshold": 0,
+      "value": 0
+    },
+    "zero_stale_admissions": {
+      "comparator": "==",
+      "hard": true,
+      "met": true,
+      "name": "zero_stale_admissions",
+      "status": "met",
+      "threshold": 0,
+      "value": 0
+    }
+  },
+  "task_id": "SCG-048"
+}

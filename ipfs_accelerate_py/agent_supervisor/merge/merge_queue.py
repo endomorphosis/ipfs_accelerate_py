@@ -45,6 +45,7 @@ _CANONICAL_METADATA_KEYS = (
     "canonical_task_cid",
     "task_cid",
 )
+_LEGACY_JSON_IMPORT_MARKER = "merge_queue:legacy_json_import@1"
 MERGE_QUEUE_THROUGHPUT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/merge-queue-throughput@1"
 )
@@ -133,6 +134,10 @@ class MergeQueueFullError(RuntimeError):
 
 class MergeQueueFenceError(RuntimeError):
     """Raised when stale or non-owning work tries to mutate a claimed request."""
+
+
+class MergeQueueIntegrityError(RuntimeError):
+    """Raised when durable queue identities disagree with legacy projections."""
 
 
 @dataclass(frozen=True)
@@ -474,8 +479,56 @@ class MergeQueue:
                 return
             connection.execute("BEGIN IMMEDIATE")
             try:
+                metadata_rows = connection.execute(
+                    "SELECT key, value FROM agent_supervisor_store_metadata"
+                ).fetchall()
+                import_marker_values = [
+                    str(row["value"])
+                    for row in metadata_rows
+                    if str(row["key"]) == _LEGACY_JSON_IMPORT_MARKER
+                ]
+                if import_marker_values:
+                    if import_marker_values != ["complete"]:
+                        raise MergeQueueIntegrityError(
+                            "legacy merge receipt import marker is invalid"
+                        )
+                    connection.commit()
+                    return
+
+                existing_by_request_id: dict[str, str] = {}
+                existing_by_dedupe_key: dict[str, str] = {}
+                for row in connection.execute(
+                    "SELECT request_id, dedupe_key FROM merge_requests"
+                ).fetchall():
+                    request_id = str(row["request_id"])
+                    dedupe_key = str(row["dedupe_key"] or "")
+                    if (
+                        request_id in existing_by_request_id
+                        and existing_by_request_id[request_id] != dedupe_key
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "merge queue contains conflicting dedupe identities "
+                            f"for request_id {request_id!r}"
+                        )
+                    existing_by_request_id[request_id] = dedupe_key
+                    if not dedupe_key:
+                        continue
+                    previous_request_id = existing_by_dedupe_key.get(dedupe_key)
+                    if (
+                        previous_request_id is not None
+                        and previous_request_id != request_id
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "merge queue contains conflicting request identities "
+                            f"for dedupe_key {dedupe_key!r}"
+                        )
+                    existing_by_dedupe_key[dedupe_key] = request_id
+
                 for status, directory in stage_dirs:
-                    for path in directory.glob("*.json"):
+                    for path in sorted(
+                        directory.glob("*.json"),
+                        key=lambda candidate: candidate.name,
+                    ):
                         try:
                             payload = json.loads(path.read_text(encoding="utf-8"))
                             request = MergeRequest.from_dict(payload, file_path=path)
@@ -484,7 +537,43 @@ class MergeQueue:
                         if not request.request_id:
                             continue
                         request = replace(request, status=status)
-                        self._insert(connection, request, ignore=True)
+                        request_id = request.request_id
+                        dedupe_key = request.dedupe_key
+                        if request_id in existing_by_request_id:
+                            authoritative_dedupe_key = (
+                                existing_by_request_id[request_id]
+                            )
+                            if (
+                                authoritative_dedupe_key
+                                and dedupe_key
+                                and authoritative_dedupe_key != dedupe_key
+                            ):
+                                raise MergeQueueIntegrityError(
+                                    "legacy merge receipt conflicts with the "
+                                    "authoritative dedupe identity for "
+                                    f"request_id {request_id!r}"
+                                )
+                            continue
+                        if (
+                            dedupe_key
+                            and dedupe_key in existing_by_dedupe_key
+                        ):
+                            raise MergeQueueIntegrityError(
+                                "legacy merge receipt conflicts with the "
+                                "authoritative request identity for "
+                                f"dedupe_key {dedupe_key!r}"
+                            )
+                        self._insert(connection, request, ignore=False)
+                        existing_by_request_id[request_id] = dedupe_key
+                        if dedupe_key:
+                            existing_by_dedupe_key[dedupe_key] = request_id
+                connection.execute(
+                    """
+                    INSERT INTO agent_supervisor_store_metadata(key, value)
+                    VALUES (?, ?)
+                    """,
+                    (_LEGACY_JSON_IMPORT_MARKER, "complete"),
+                )
                 connection.commit()
             except Exception:
                 connection.rollback()
@@ -665,6 +754,30 @@ class MergeQueue:
             ),
         )
 
+    @staticmethod
+    def _find_by_dedupe_key(
+        connection: DuckDBConnection,
+        dedupe_key: str,
+    ) -> DuckDBRow | None:
+        """Find one dedupe identity without trusting a secondary ART index."""
+
+        expected = str(dedupe_key or "")
+        if not expected:
+            return None
+        matches = [
+            row
+            for row in connection.execute(
+                "SELECT * FROM merge_requests"
+            ).fetchall()
+            if str(row["dedupe_key"] or "") == expected
+        ]
+        if len(matches) > 1:
+            raise MergeQueueIntegrityError(
+                "merge queue contains multiple requests for dedupe_key "
+                f"{expected!r}"
+            )
+        return matches[0] if matches else None
+
     def enqueue(
         self,
         *,
@@ -758,10 +871,10 @@ class MergeQueue:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 if request.dedupe_key:
-                    row = connection.execute(
-                        "SELECT * FROM merge_requests WHERE dedupe_key = ?",
-                        (request.dedupe_key,),
-                    ).fetchone()
+                    row = self._find_by_dedupe_key(
+                        connection,
+                        request.dedupe_key,
+                    )
                     if row is not None:
                         connection.commit()
                         return self._request_from_row(row)
@@ -802,9 +915,10 @@ class MergeQueue:
                 connection.rollback()
                 if not request.dedupe_key:
                     raise
-                row = connection.execute(
-                    "SELECT * FROM merge_requests WHERE dedupe_key = ?", (request.dedupe_key,)
-                ).fetchone()
+                row = self._find_by_dedupe_key(
+                    connection,
+                    request.dedupe_key,
+                )
                 if row is None:
                     raise
                 return self._request_from_row(row)
@@ -2013,6 +2127,7 @@ __all__ = [
     "MergeQueue",
     "MergeQueueFullError",
     "MergeQueueFenceError",
+    "MergeQueueIntegrityError",
     "MergeRequest",
     "_PRIORITY_ORDER",
 ]

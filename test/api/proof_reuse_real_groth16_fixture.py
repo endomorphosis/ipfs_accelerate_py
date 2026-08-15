@@ -7,7 +7,7 @@ fake verifiers, or pseudo-certificates into the production plugin path.
 
 What it does provide:
 
-* discovery of the real test-pass v4 binary and key artifacts;
+* discovery of the real test-pass v5 binary and key artifacts;
 * environment fragments for ``IPFS_DATASETS_ENABLE_GROTH16`` / binary / artifacts;
 * a pure direct-node project builder (committed git tree, no service injection);
 * independent cold/warm subprocess runners with raw ``perf_counter`` samples;
@@ -21,6 +21,7 @@ pass and never authorize a false skip.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -134,10 +135,14 @@ def resolve_groth16_binary() -> Path | None:
     return None
 
 
-def v4_artifact_paths(artifacts_root: Path | None = None) -> tuple[Path, Path]:
+def v5_artifact_paths(artifacts_root: Path | None = None) -> tuple[Path, Path]:
     root = artifacts_root if artifacts_root is not None else default_artifacts_root()
-    version_dir = root / "v4"
+    version_dir = root / "v5"
     return version_dir / "proving_key.bin", version_dir / "verifying_key.bin"
+
+
+# Back-compat alias for call sites still naming v4 paths.
+v4_artifact_paths = v5_artifact_paths
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,7 +153,7 @@ class RealGroth16TestPassFixture:
     """
 
     interface: str = "RealGroth16TestPassFixture@1"
-    circuit_version: int = 4
+    circuit_version: int = 5
     binary_path: Path | None = None
     artifacts_root: Path | None = None
     proving_key_path: Path | None = None
@@ -160,7 +165,7 @@ class RealGroth16TestPassFixture:
     def discover(cls) -> "RealGroth16TestPassFixture":
         binary = resolve_groth16_binary()
         artifacts = default_artifacts_root()
-        pk, vk = v4_artifact_paths(artifacts)
+        pk, vk = v5_artifact_paths(artifacts)
         if binary is None:
             return cls(
                 binary_path=None,
@@ -203,7 +208,7 @@ class RealGroth16TestPassFixture:
         return fragment
 
     def issue_self_check(self) -> dict[str, Any]:
-        """Prove local real issuance + verification outside the plugin path.
+        """Prove local real V5 issuance + verification outside the plugin path.
 
         Used by fixture-level tests only.  Never called from generated project
         conftests and never substitutes a pseudo-certificate.
@@ -216,76 +221,105 @@ class RealGroth16TestPassFixture:
                 "verified_locally": False,
             }
         from ipfs_datasets_py.logic.zkp.statements.test_pass import (
-            build_statement_from_receipt_v2,
-            content_cid_for_dag_json,
-        )
-        from ipfs_datasets_py.logic.zkp.test_certificate_issuer import (
-            DeferredTestCertificateRequest,
+            build_statement_v5_from_openings,
+            canonical_dag_cbor_bytes,
+            canonical_dag_json_bytes,
         )
         from ipfs_datasets_py.logic.zkp.test_pass_groth16_provider import (
-            IssuedTestCertificateMaterial,
-            LazyGroth16TestCertificateProvider,
-            reviewed_circuit_cid,
-            verifying_key_cid_for_bytes,
+            NativeGroth16V5Proof,
+            NativeGroth16V5Provider,
+            NativeGroth16V5Status,
         )
 
-        provider = LazyGroth16TestCertificateProvider(
-            binary_path=self.binary_path,
+        backend = groth16_backend_root()
+        provider = NativeGroth16V5Provider(
+            root=backend,
+            manifest_path=backend / "bin" / "linux-aarch64" / "release-manifest.json",
             artifacts_root=self.artifacts_root,
+            binary_path=self.binary_path,
             require_enable_env=False,
-            seed=144,
         )
-        assert self.verifying_key_path is not None
-        vk_cid = verifying_key_cid_for_bytes(self.verifying_key_path.read_bytes())
-        circuit_cid = reviewed_circuit_cid()
-        receipt = {
-            "nodeid": "fixture::test_self_check",
-            "outcome": "passed",
-            "admitted": True,
-            "setup_outcome": "pass",
-            "call_outcome": "pass",
-            "teardown_outcome": "pass",
-            "disqualifying_bits": [],
-        }
-        candidate = {
-            "module": "fixture",
-            "qualname": "test_self_check",
-            "source_sha256": "c" * 64,
-        }
-        statement, witness = build_statement_from_receipt_v2(
+        # Keep openings under TEST_PASS_V5_CAPACITY (128 bytes).
+        receipt = canonical_dag_json_bytes(
+            {"interface": "TestPassReceipt@1", "execution_key_cid": "e", "policy_cid": "p"}
+        )
+        attestation = canonical_dag_cbor_bytes(
+            {
+                "interface": "RunnerPassAttestation@1",
+                "execution_key_cid": "e",
+                "policy_cid": "p",
+                "signer_key_cid": "k",
+                "key_epoch": "1",
+                "issuance_nonce": "n",
+            }
+        )
+        statement, witness = build_statement_v5_from_openings(
             receipt,
-            candidate_context=candidate,
-            policy_cid=content_cid_for_dag_json({"policy": "ptr-148-fixture"}),
-            statement_cid=content_cid_for_dag_json({"statement": "test-pass-v2"}),
-            circuit_cid=circuit_cid,
-            verifying_key_cid=vk_cid,
-            issuer_id="issuer:ptr-148-fixture",
-            epoch="epoch:ptr-148-fixture",
-            locator_cid=content_cid_for_dag_json({"locator": "fixture-self-check"}),
-            completeness_policy_cid=content_cid_for_dag_json(
-                {"completeness": "strict"}
-            ),
+            attestation,
+            candidate_context_cid="c",
+            phase_root_cid="h",
+            trace_root_cid="t",
+            trust_domain="d",
         )
-        request = DeferredTestCertificateRequest.bind(
-            statement,
-            backend_id="groth16",
-            proof_system_id="groth16",
-        )
-        material = provider.issue(request, local_witness=witness)
-        if not isinstance(material, IssuedTestCertificateMaterial):
+        proved = provider.prove(statement, witness, seed=144)
+        if not isinstance(proved, NativeGroth16V5Proof):
             return {
                 "available": True,
-                "reason": str(getattr(material, "reason", type(material).__name__)),
+                "reason": str(getattr(proved, "reason", type(proved).__name__)),
                 "verified_locally": False,
+                "status": str(getattr(proved, "status", "")),
             }
+        verified = provider.verify(statement, proved)
+        verified_locally = getattr(verified, "status", None) is NativeGroth16V5Status.READY
+        try:
+            from ipfs_accelerate_py.testing.proof_reuse.publication import _dag_json_cid
+            from ipfs_accelerate_py.testing.proof_reuse.services import (
+                TEST_PASS_GROTH16_CIRCUIT_CID,
+                TEST_PASS_GROTH16_CIRCUIT_VERSION,
+            )
+            circuit_cid = TEST_PASS_GROTH16_CIRCUIT_CID
+            vk_bytes = (
+                self.verifying_key_path.read_bytes()
+                if self.verifying_key_path is not None
+                else b""
+            )
+            verifying_key_cid = _dag_json_cid(
+                {
+                    "artifact": "groth16_verifying_key",
+                    "backend_circuit_version": TEST_PASS_GROTH16_CIRCUIT_VERSION,
+                    "sha256": hashlib.sha256(vk_bytes).hexdigest(),
+                    "size": len(vk_bytes),
+                }
+            ) if vk_bytes else ""
+            proof_digest = (
+                hashlib.sha256(proved.envelope).hexdigest() if proved.envelope else ""
+            )
+            proof_artifact_cid = _dag_json_cid(
+                {
+                    "artifact": "groth16_proof",
+                    "backend_circuit_version": TEST_PASS_GROTH16_CIRCUIT_VERSION,
+                    "sha256": proof_digest,
+                    "size": len(proved.envelope or b""),
+                }
+            ) if proof_digest else ""
+        except Exception:
+            circuit_cid = ""
+            verifying_key_cid = ""
+            proof_digest = (
+                hashlib.sha256(proved.envelope).hexdigest() if proved.envelope else ""
+            )
+            proof_artifact_cid = ""
         return {
             "available": True,
-            "reason": "ready",
-            "verified_locally": bool(material.verified_locally),
-            "circuit_cid": material.circuit_cid,
-            "verifying_key_cid": material.verifying_key_cid,
-            "proof_digest": material.proof_digest,
-            "proof_artifact_cid": material.proof_artifact_cid,
+            "reason": "ready"
+            if verified_locally
+            else str(getattr(verified, "reason", "verify_failed")),
+            "verified_locally": verified_locally,
+            "circuit_cid": circuit_cid,
+            "circuit_profile": proved.circuit_profile,
+            "verifying_key_cid": verifying_key_cid,
+            "proof_digest": proof_digest,
+            "proof_artifact_cid": proof_artifact_cid,
         }
 
 

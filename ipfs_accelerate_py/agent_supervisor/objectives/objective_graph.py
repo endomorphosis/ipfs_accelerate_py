@@ -27,7 +27,7 @@ from itertools import islice
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from ..validation.evidence_output_scope import (
+from ..evidence_output_scope import (
     EVIDENCE_OUTPUTS_METADATA_KEY,
     evidence_output_path_is_excluded,
     normalize_evidence_output_path,
@@ -1990,70 +1990,6 @@ class ObjectiveFinding:
             )
         )
         return payload
-
-
-@dataclass(frozen=True)
-class ObjectiveTaskRenderProfile:
-    """Opt-in strict metadata and execution policy for generated task cards.
-
-    Objective boards historically accepted the generic metadata emitted by
-    :func:`render_task_block`.  Sealed boards can require additional execution
-    fields and a narrower persisted status policy.  Keeping that policy in an
-    explicit profile preserves the legacy rendering contract for callers that
-    do not opt in while allowing configured refills to fail closed before a
-    non-conforming card reaches the taskboard.
-    """
-
-    resource_stage: str
-    implementation_timeout_seconds: int
-    symbolic_first: bool
-    llm_context_budget_bytes: int
-    estimated_tokens_default: int = 1
-    allowed_statuses: tuple[str, ...] = ()
-    require_schedulable: bool | None = None
-
-    def __post_init__(self) -> None:
-        resource_stage = str(self.resource_stage or "").strip()
-        if (
-            not resource_stage
-            or "\x00" in resource_stage
-            or "\n" in resource_stage
-            or "\r" in resource_stage
-        ):
-            raise ValueError("resource_stage must be nonempty single-line text")
-        object.__setattr__(self, "resource_stage", resource_stage)
-
-        for name in (
-            "implementation_timeout_seconds",
-            "llm_context_budget_bytes",
-            "estimated_tokens_default",
-        ):
-            value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-                raise ValueError(f"{name} must be a positive integer")
-        if not isinstance(self.symbolic_first, bool):
-            raise ValueError("symbolic_first must be boolean")
-        if self.require_schedulable is not None and not isinstance(
-            self.require_schedulable,
-            bool,
-        ):
-            raise ValueError("require_schedulable must be boolean or None")
-
-        raw_statuses = (
-            tuple(split_terms(self.allowed_statuses))
-            if isinstance(self.allowed_statuses, str)
-            else tuple(self.allowed_statuses)
-        )
-        statuses = tuple(
-            str(value).strip().casefold().replace("-", "_").replace(" ", "_")
-            for value in raw_statuses
-            if str(value).strip()
-        )
-        if len(statuses) != len(raw_statuses):
-            raise ValueError("allowed_statuses must contain nonempty values")
-        if len(statuses) != len(set(statuses)):
-            raise ValueError("allowed_statuses must not contain duplicates")
-        object.__setattr__(self, "allowed_statuses", statuses)
 
 
 @dataclass(frozen=True)
@@ -4725,8 +4661,6 @@ def parse_goal_heap(text: str) -> list[ObjectiveGoal]:
 
 def safe_bundle_key(value: str) -> str:
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip("/ ").lower()).strip("-")
-    if safe in {".", ".."}:
-        raise ValueError("bundle key must not resolve to a relative path component")
     return safe or "objective-general"
 
 
@@ -6658,88 +6592,20 @@ def priority_rank(value: str) -> int:
     return 9
 
 
-_TASK_SCHEDULING_POLICY_FIELDS = frozenset(
-    {"is_schedulable", "review_only"}
-)
-_AMBIGUOUS_TASK_SCHEDULING_POLICY = (
-    "<ambiguous-task-scheduling-policy>"
-)
-
-
 def _task_record_mapping(task: Any) -> dict[str, Any]:
-    result: dict[str, Any] | None = None
     if isinstance(task, Mapping):
-        result = dict(task)
-    elif hasattr(task, "to_dict"):
+        return dict(task)
+    if hasattr(task, "to_dict"):
         value = task.to_dict()
         if isinstance(value, Mapping):
-            result = dict(value)
-    if result is None and hasattr(task, "__dataclass_fields__"):
-        result = asdict(task)
-    if result is None:
-        result = {
-            name: getattr(task, name)
-            for name in dir(task)
-            if not name.startswith("_") and not callable(getattr(task, name, None))
-        }
-
-    # PortalTask deliberately retains the human Markdown labels in a nested
-    # metadata mapping.  Promote non-destructive wire-format aliases so the
-    # dependency scheduler sees the same goal, authority, and scheduling
-    # fields as task-source and daemon consumers.
-    #
-    # Scheduling booleans are an authorization boundary.  Preserve duplicate
-    # normalized aliases as an explicit ambiguity instead of making their
-    # meaning depend on mapping insertion order.  This mirrors the direct
-    # implementation daemon's fail-closed handling.
-    policy_values: dict[str, list[Any]] = {
-        name: [] for name in _TASK_SCHEDULING_POLICY_FIELDS
+            return dict(value)
+    if hasattr(task, "__dataclass_fields__"):
+        return asdict(task)
+    return {
+        name: getattr(task, name)
+        for name in dir(task)
+        if not name.startswith("_") and not callable(getattr(task, name, None))
     }
-    for key, value in tuple(result.items()):
-        normalized = normalize_field_key(str(key))
-        if normalized in policy_values:
-            policy_values[normalized].append(value)
-        elif normalized:
-            result.setdefault(normalized, value)
-    metadata = result.get("metadata")
-    if isinstance(metadata, Mapping):
-        for key, value in metadata.items():
-            normalized = normalize_field_key(str(key))
-            if normalized in policy_values:
-                policy_values[normalized].append(value)
-            elif normalized:
-                result.setdefault(normalized, value)
-    for name, values in policy_values.items():
-        if len(values) == 1:
-            result[name] = values[0]
-        elif len(values) > 1:
-            result[name] = _AMBIGUOUS_TASK_SCHEDULING_POLICY
-    return result
-
-
-def _task_record_flag_resolution(
-    task: Mapping[str, Any],
-    name: str,
-    default: bool,
-) -> tuple[bool, bool]:
-    """Return a strict scheduling boolean and whether it was well formed."""
-
-    if name not in task:
-        return default, True
-    value = task[name]
-    if value == _AMBIGUOUS_TASK_SCHEDULING_POLICY:
-        return default, False
-    if isinstance(value, bool):
-        return value, True
-    if isinstance(value, int) and value in {0, 1}:
-        return bool(value), True
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"0", "false", "no", "off"}:
-            return False, True
-        if normalized in {"1", "true", "yes", "on"}:
-            return True, True
-    return default, False
 
 
 def _task_record_flag(
@@ -6747,36 +6613,26 @@ def _task_record_flag(
     name: str,
     default: bool,
 ) -> bool:
-    """Read one policy boolean, projecting malformed values fail closed."""
+    """Read a persisted task boolean without treating ``"false"`` as true."""
 
-    value, valid = _task_record_flag_resolution(task, name, default)
-    if valid:
-        return value
-    # An invalid schedulable declaration cannot authorize execution.  An
-    # invalid review-only declaration is conservatively projected as review
-    # only for bundle/index consumers.
-    return name == "review_only"
+    value = task.get(name, default)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+    return bool(value)
 
 
 def _task_record_scheduling_allowed(task: Mapping[str, Any]) -> bool:
     """Return whether policy allows a task to participate in scheduling."""
 
-    is_schedulable, schedulable_valid = _task_record_flag_resolution(
+    return _task_record_flag(
         task,
         "is_schedulable",
         True,
-    )
-    review_only, review_only_valid = _task_record_flag_resolution(
-        task,
-        "review_only",
-        False,
-    )
-    return (
-        schedulable_valid
-        and review_only_valid
-        and is_schedulable
-        and not review_only
-    )
+    ) and not _task_record_flag(task, "review_only", False)
 
 
 def _task_record_is_schedulable(task: Mapping[str, Any]) -> bool:
@@ -9445,40 +9301,6 @@ def _objective_goal_task_ids_from_todo(
     return task_ids_by_goal
 
 
-def _project_objective_dependencies_to_task_ids(
-    dependencies: Iterable[str],
-    *,
-    known_goal_ids: Iterable[str],
-    task_ids_by_goal: Mapping[str, Sequence[str]],
-    materialized_task_ids: Iterable[str],
-) -> list[str]:
-    """Project objective-goal references onto executable task identities.
-
-    A known goal without a materialized task is an abstract planning node, not
-    an executable prerequisite, so it contributes no task-level edge.  Goal
-    references with materialized tasks expand to those task IDs.  Every other
-    reference is retained so concrete task IDs and unknown aliases continue to
-    fail closed in the task dependency graph instead of being silently lost.
-    """
-
-    known_goals = set(_unique_strings(known_goal_ids))
-    materialized_tasks = set(_unique_strings(materialized_task_ids))
-    projected: list[str] = []
-    for dependency in _unique_strings(dependencies):
-        if dependency in materialized_tasks:
-            projected.append(dependency)
-            continue
-        mapped_task_ids = _unique_strings(
-            task_ids_by_goal.get(dependency, ())
-        )
-        if mapped_task_ids:
-            projected.extend(mapped_task_ids)
-            continue
-        if dependency not in known_goals:
-            projected.append(dependency)
-    return _unique_strings(projected)
-
-
 def canonical_task_cids_from_todo(todo_text: str) -> set[str]:
     """Return canonical task identities already materialized on a board."""
 
@@ -9983,111 +9805,6 @@ def _objective_task_blocks(
     return blocks
 
 
-def _infer_objective_task_render_profile_from_todo(
-    todo_text: str,
-    *,
-    task_prefix: str,
-) -> ObjectiveTaskRenderProfile | None:
-    """Infer an opt-in profile from a board's canonical seed-card contract.
-
-    Legacy objective boards do not declare the four strict execution fields,
-    so their output remains unchanged.  When the first canonical task carries
-    the complete contract, existing complete cards provide deterministic
-    refill defaults.  Operational cards with a different schema can coexist
-    without weakening the inferred canonical profile.
-    """
-
-    blocks = _objective_task_blocks(todo_text, task_prefix=task_prefix)
-    if not blocks:
-        return None
-    strict_fields = (
-        "resource stage",
-        "implementation timeout seconds",
-        "symbolic first",
-        "llm context budget bytes",
-    )
-    first = blocks[0]
-    if any(not first.metadata.get(name) for name in strict_fields):
-        return None
-
-    strict_blocks = [
-        block
-        for block in blocks
-        if all(block.metadata.get(name) for name in strict_fields)
-    ]
-    for block in strict_blocks:
-        duplicated = [
-            name
-            for name in (*strict_fields, "estimated tokens")
-            if len(block.metadata.get(name, ())) != 1
-        ]
-        if duplicated:
-            raise ValueError(
-                f"{block.task_id} has ambiguous strict task metadata: "
-                f"{duplicated}"
-            )
-
-    def values(name: str) -> list[str]:
-        return [str(block.one(name) or "").strip() for block in strict_blocks]
-
-    def positive_values(name: str) -> list[int]:
-        parsed: list[int] = []
-        for block, raw_value in zip(
-            strict_blocks,
-            values(name),
-            strict=True,
-        ):
-            try:
-                value = int(raw_value)
-            except ValueError as exc:
-                raise ValueError(
-                    f"{block.task_id} has invalid strict task metadata: {name}"
-                ) from exc
-            if value < 1:
-                raise ValueError(
-                    f"{block.task_id} has invalid strict task metadata: {name}"
-                )
-            parsed.append(value)
-        return parsed
-
-    def stable_mode(items: Sequence[Any]) -> Any:
-        counts: dict[Any, tuple[int, int]] = {}
-        for index, item in enumerate(items):
-            count, first_index = counts.get(item, (0, index))
-            counts[item] = (count + 1, first_index)
-        return min(
-            counts,
-            key=lambda item: (-counts[item][0], counts[item][1]),
-        )
-
-    stages = values("resource stage")
-    if any(
-        not value or "\x00" in value or "\n" in value or "\r" in value
-        for value in stages
-    ):
-        raise ValueError("strict taskboard resource stages must be single-line")
-    symbolic_values = [value.casefold() for value in values("symbolic first")]
-    if set(symbolic_values) not in ({"true"}, {"false"}):
-        raise ValueError(
-            "strict taskboard must declare one consistent Symbolic first policy"
-        )
-    timeout_values = positive_values("implementation timeout seconds")
-    llm_budget_values = positive_values("llm context budget bytes")
-    estimated_values = positive_values("estimated tokens")
-    resource_stage = (
-        "implementation" if "implementation" in stages else stable_mode(stages)
-    )
-    return ObjectiveTaskRenderProfile(
-        resource_stage=resource_stage,
-        implementation_timeout_seconds=stable_mode(timeout_values),
-        symbolic_first=symbolic_values[0] == "true",
-        llm_context_budget_bytes=stable_mode(llm_budget_values),
-        estimated_tokens_default=stable_mode(estimated_values),
-        allowed_statuses=("todo", "completed"),
-        require_schedulable=True,
-    )
-
-
 def _normalized_requirement_set(value: str | Sequence[str]) -> frozenset[str] | None:
     raw_values = split_terms(value) if isinstance(value, str) else list(value)
     normalized = [
@@ -10322,40 +10039,6 @@ def _objective_reprojection_committed(
     return (
         text.count(f"Evidence outputs: {', '.join(evidence_outputs)}") == 1
         and text.count(f"Canonical task CID: {identity.canonical_task_cid}") == 1
-    )
-
-
-def _objective_discovery_receipt_matches(
-    discovery_path: Path,
-    *,
-    task_id: str,
-    finding: ObjectiveFinding,
-    identity: TaskIdentity,
-    evidence_outputs: Sequence[str],
-) -> bool:
-    """Verify that a recovery discovery receipt describes the exact finding."""
-
-    try:
-        text = discovery_path.read_text(encoding="utf-8")
-    except OSError:
-        return False
-
-    def exact_line(label: str, value: str) -> bool:
-        pattern = rf"^{re.escape(label)}:[ \t]*{re.escape(value)}[ \t]*$"
-        return len(re.findall(pattern, text, flags=re.MULTILINE)) == 1
-
-    if not text.startswith(f"# {task_id} Objective Goal Gap\n"):
-        return False
-    if not (
-        exact_line("Fingerprint", finding.fingerprint)
-        and exact_line("Goal id", finding.goal_id)
-        and exact_line("Bundle", finding.bundle_key)
-    ):
-        return False
-    return not evidence_outputs or _objective_reprojection_committed(
-        discovery_path,
-        identity=identity,
-        evidence_outputs=evidence_outputs,
     )
 
 
@@ -10670,88 +10353,26 @@ def apply_objective_finding_execution_policy(
     )
 
 
-def _coerce_objective_task_render_profile(
-    value: ObjectiveTaskRenderProfile | Mapping[str, Any] | None,
-) -> ObjectiveTaskRenderProfile | None:
-    if value is None or isinstance(value, ObjectiveTaskRenderProfile):
-        return value
-    if not isinstance(value, Mapping):
-        raise TypeError(
-            "task_render_profile must be an ObjectiveTaskRenderProfile, "
-            "mapping, or None"
-        )
-    normalized: dict[str, Any] = {}
-    for raw_name, field_value in value.items():
-        name = normalize_field_key(str(raw_name))
-        if name in normalized:
-            raise ValueError(
-                f"task_render_profile contains duplicate field {name!r}"
-            )
-        normalized[name] = field_value
-    allowed = {
-        "resource_stage",
-        "implementation_timeout_seconds",
-        "symbolic_first",
-        "llm_context_budget_bytes",
-        "estimated_tokens_default",
-        "allowed_statuses",
-        "require_schedulable",
-    }
-    unknown = sorted(set(normalized) - allowed)
-    if unknown:
-        raise ValueError(
-            f"task_render_profile contains unknown fields: {unknown}"
-        )
-    statuses = normalized.get("allowed_statuses", ())
-    if isinstance(statuses, str):
-        statuses = tuple(split_terms(statuses))
-    else:
-        statuses = tuple(statuses or ())
-    normalized["allowed_statuses"] = statuses
-    return ObjectiveTaskRenderProfile(**normalized)
-
-
-def _normalized_protected_output_paths(
-    values: Iterable[str | Path],
-) -> tuple[str, ...]:
-    return tuple(
-        dict.fromkeys(
-            normalized
-            for value in values
-            for normalized in [normalize_identity_path(value)]
-            if normalized
-        )
-    )
-
-
-def _objective_output_is_protected(
-    value: str | Path,
-    protected_output_paths: Iterable[str | Path],
-) -> bool:
-    candidate = normalize_identity_path(value)
-    return bool(candidate) and any(
-        candidate == protected or candidate.startswith(protected + "/")
-        for protected in _normalized_protected_output_paths(
-            protected_output_paths
-        )
-    )
-
-
 def project_protected_objective_outputs(
     finding: ObjectiveFinding,
     protected_output_paths: Iterable[str | Path] = (),
 ) -> ObjectiveFinding:
-    """Move protected edit targets onto the read-only context surface.
+    """Move exact protected edit targets onto the read-only context surface.
 
     Objective heaps are supervisor-owned control-plane inputs.  A goal can
     legitimately cite another protected control-plane file as evidence, but a
     generated implementation task must never advertise that file as an output
-    or predicted edit target.  A protected directory/prefix also protects every
-    descendant.  Keep normalized matches in ``context_paths`` so planners can
-    still read the evidence without crossing the implementation write boundary.
+    or predicted edit target.  Keep exact normalized matches in
+    ``context_paths`` so planners can still read the evidence without crossing
+    the implementation write boundary.
     """
 
-    protected = _normalized_protected_output_paths(protected_output_paths)
+    protected = {
+        normalized
+        for value in protected_output_paths
+        for normalized in [normalize_identity_path(value)]
+        if normalized
+    }
     if not protected:
         return finding
 
@@ -10764,7 +10385,7 @@ def project_protected_objective_outputs(
             normalized = normalize_identity_path(rendered)
             if not normalized:
                 continue
-            if _objective_output_is_protected(normalized, protected):
+            if normalized in protected:
                 if normalized not in protected_context:
                     protected_context.append(normalized)
                 continue
@@ -10792,134 +10413,6 @@ def project_protected_objective_outputs(
     )
 
 
-def admit_objective_task_block(
-    block: str,
-    *,
-    task_id: str,
-    task_render_profile: ObjectiveTaskRenderProfile
-    | Mapping[str, Any]
-    | None = None,
-    protected_output_paths: Iterable[str | Path] = (),
-) -> dict[str, str]:
-    """Validate one rendered objective task before taskboard append.
-
-    The admission boundary deliberately parses the rendered Markdown instead
-    of trusting its source objects.  This catches duplicate last-wins metadata,
-    verifies strict profile fields, and provides defense in depth against a
-    protected control path reappearing on any owned-path surface.
-    """
-
-    if not isinstance(block, str) or not block.strip():
-        raise ValueError("objective task block must be nonempty text")
-    normalized_task_id = str(task_id or "").strip()
-    if not normalized_task_id:
-        raise ValueError("task_id must be nonempty")
-    heading = re.compile(
-        rf"^##[ \t]+{re.escape(normalized_task_id)}(?=[ \t]|$).*$",
-        flags=re.MULTILINE,
-    )
-    markdown_task_headings = re.findall(
-        r"^##(?:[ \t]+.*)?$",
-        block,
-        flags=re.MULTILINE,
-    )
-    if len(markdown_task_headings) != 1 or len(heading.findall(block)) != 1:
-        raise ValueError(
-            "objective task block must contain exactly one Markdown task "
-            "heading, and it must match task_id"
-        )
-
-    metadata: dict[str, str] = {}
-    canonical_metadata: dict[str, str] = {}
-    for line in block.splitlines():
-        match = re.match(
-            r"^-[ \t]+(?P<name>[^:\r\n]+):(?P<value>.*)$",
-            line,
-        )
-        if match is None:
-            continue
-        name = " ".join(match.group("name").strip().casefold().split())
-        canonical_name = normalize_field_key(name)
-        if not canonical_name:
-            raise ValueError("objective task block contains an empty metadata field")
-        if canonical_name in canonical_metadata:
-            raise ValueError(
-                "objective task block contains duplicate metadata field "
-                f"{canonical_name.replace('_', ' ')!r}"
-            )
-        value = match.group("value").strip()
-        metadata[name] = value
-        canonical_metadata[canonical_name] = value
-
-    def field(name: str) -> str:
-        return canonical_metadata.get(normalize_field_key(name), "")
-
-    profile = _coerce_objective_task_render_profile(task_render_profile)
-    if profile is not None:
-        expected = {
-            "resource stage": profile.resource_stage,
-            "implementation timeout seconds": str(
-                profile.implementation_timeout_seconds
-            ),
-            "symbolic first": str(profile.symbolic_first).lower(),
-            "llm context budget bytes": str(profile.llm_context_budget_bytes),
-        }
-        for name, value in expected.items():
-            if field(name) != value:
-                raise ValueError(
-                    f"objective task block must declare {name}: {value}"
-                )
-        try:
-            estimated_tokens = int(field("estimated tokens"))
-        except ValueError as exc:
-            raise ValueError(
-                "objective task block must declare positive estimated tokens"
-            ) from exc
-        if estimated_tokens < 1:
-            raise ValueError(
-                "objective task block must declare positive estimated tokens"
-            )
-        if profile.allowed_statuses:
-            status = (
-                field("status")
-                .casefold()
-                .replace("-", "_")
-                .replace(" ", "_")
-            )
-            if status not in profile.allowed_statuses:
-                raise ValueError(
-                    "objective task block status is not admitted by the render "
-                    f"profile: {status!r}"
-                )
-        if profile.require_schedulable is not None:
-            expected_schedulable = str(profile.require_schedulable).lower()
-            if field("is schedulable") != expected_schedulable:
-                raise ValueError(
-                    "objective task block must declare Is schedulable: "
-                    f"{expected_schedulable}"
-                )
-
-    protected = _normalized_protected_output_paths(protected_output_paths)
-    for field_name in (
-        "outputs",
-        EVIDENCE_OUTPUTS_METADATA_KEY,
-        "predicted files",
-        "changed paths",
-    ):
-        for path in split_terms(field(field_name)):
-            if profile is not None and normalize_evidence_output_path(path) != path:
-                raise ValueError(
-                    f"objective task block {field_name} contains unsafe path "
-                    f"{path!r}"
-                )
-            if _objective_output_is_protected(path, protected):
-                raise ValueError(
-                    f"objective task block {field_name} owns protected path "
-                    f"{path!r}"
-                )
-    return metadata
-
-
 def render_task_block(
     *,
     task_id: str,
@@ -10931,14 +10424,7 @@ def render_task_block(
     evidence_outputs: Sequence[str] | None = None,
     board_namespace: str = "objective-graph",
     protected_output_paths: Iterable[str | Path] = (),
-    task_render_profile: ObjectiveTaskRenderProfile
-    | Mapping[str, Any]
-    | None = None,
 ) -> str:
-    profile = _coerce_objective_task_render_profile(task_render_profile)
-    protected_output_paths = _normalized_protected_output_paths(
-        (*tuple(protected_output_paths), discovery_output_path)
-    )
     finding = project_protected_objective_outputs(
         finding,
         protected_output_paths,
@@ -10966,21 +10452,9 @@ def render_task_block(
     if evidence_outputs is None:
         evidence_outputs = objective_finding_evidence_output_paths(
             finding,
-            excluded_paths=protected_output_paths,
+            excluded_paths=(discovery_output_path,),
         )
-    protected_evidence_outputs = [
-        path
-        for path in _unique_strings(evidence_outputs)
-        if _objective_output_is_protected(path, protected_output_paths)
-    ]
-    unique_evidence_outputs = [
-        path
-        for path in _unique_strings(evidence_outputs)
-        if path not in protected_evidence_outputs
-    ]
-    context_paths = _unique_strings(
-        [*finding.context_paths, *protected_evidence_outputs]
-    )
+    unique_evidence_outputs = _unique_strings(evidence_outputs)
     evidence_outputs_line = (
         f"\n- {EVIDENCE_OUTPUTS_METADATA_KEY.capitalize()}: "
         + ", ".join(unique_evidence_outputs)
@@ -11034,18 +10508,6 @@ def render_task_block(
     completion_task_bindings = _unique_strings(
         finding.completion_task_bindings
     )
-    estimated_tokens = max(0, _parse_int(finding.estimated_tokens, 0))
-    profile_metadata = ""
-    if profile is not None:
-        if estimated_tokens < 1:
-            estimated_tokens = profile.estimated_tokens_default
-        profile_metadata = (
-            f"\n- Resource stage: {profile.resource_stage}"
-            "\n- Implementation timeout seconds: "
-            f"{profile.implementation_timeout_seconds}"
-            f"\n- Symbolic first: {str(profile.symbolic_first).lower()}"
-            f"\n- LLM context budget bytes: {profile.llm_context_budget_bytes}"
-        )
     bundle_shard = bundle_shard or f"data/agent_supervisor/objective_bundles/{safe_bundle_key(finding.bundle_key)}.todo.md"
     acceptance = (
         (
@@ -11087,7 +10549,7 @@ def render_task_block(
 - Conflict policy: {finding.conflict_policy}
 - Predicted files: {", ".join(finding.predicted_files or finding.outputs)}
 - Changed paths: {", ".join(finding.changed_paths)}
-- Context paths: {", ".join(context_paths)}
+- Context paths: {", ".join(finding.context_paths)}
 - AST symbols: {", ".join(finding.ast_symbols)}
 - Interfaces: {", ".join(finding.interfaces)}
 - Submodules: {", ".join(finding.submodules)}
@@ -11103,11 +10565,9 @@ def render_task_block(
 - Preconditions: {", ".join(preconditions)}
 - Effects: {", ".join(effects)}
 - Evidence subset: {", ".join(evidence_subset)}
-- Resource class: {finding.resource_class or "cpu-medium"}{profile_metadata}
+- Resource class: {finding.resource_class or "cpu-medium"}
 - Token class: {finding.token_class or "medium"}
-- Estimated tokens: {estimated_tokens}
-- Context budget tokens: 4096
-- Provider role: grok, codex-review
+- Estimated tokens: {max(0, _parse_int(finding.estimated_tokens, 0))}
 - Resources: {", ".join(finding.resources or [finding.resource_class or "cpu-medium"])}
 - Merge fate: {finding.merge_fate or finding.merge_family or finding.merge_key}
 - Rejection reasons: {", ".join(finding.rejection_reasons) or "none (accepted)"}
@@ -11136,14 +10596,7 @@ def render_task_block(
     # mandatory ``git diff --check`` validation.  Normalize the complete block
     # rather than relying on every future interpolated field to special-case
     # an empty value.
-    rendered = "\n".join(line.rstrip() for line in block.splitlines()) + "\n"
-    admit_objective_task_block(
-        rendered,
-        task_id=task_id,
-        task_render_profile=profile,
-        protected_output_paths=protected_output_paths,
-    )
-    return rendered
+    return "\n".join(line.rstrip() for line in block.splitlines()) + "\n"
 
 
 def write_bundle_shards(
@@ -11391,23 +10844,7 @@ def write_bundle_shards(
         for item in (info.get("tasks") or [])
         if isinstance(item, Mapping)
     ]
-    # Bundle indexes retain the admitted work contract and also annotate its
-    # execution projection with resolved dependency CIDs.  On a later
-    # generation pass those two dependency representations must not be
-    # combined as though both were admission inputs: doing so makes a valid
-    # contract appear stale and prevents incremental bundle regeneration.
-    # Rehydrate contract-bearing rows before rebuilding the planning graph,
-    # matching the bundle supervisor's fail-closed projection boundary.
-    from ..core.conflict_graph import rehydrate_task_work_contract_projection
-
-    planning_index_tasks = [
-        rehydrate_task_work_contract_projection(item)
-        for item in all_index_tasks
-    ]
-    index_planning_graph = materialize_task_planning_graph(
-        planning_index_tasks,
-        repo_root=repo_root,
-    )
+    index_planning_graph = materialize_task_planning_graph(all_index_tasks, repo_root=repo_root)
     index_graph = index_planning_graph.dependency_graph
     index_incoming: dict[str, set[str]] = {cid: set() for cid in index_graph.nodes}
     for edge in index_graph.edges:
@@ -11482,9 +10919,6 @@ def generate_objective_todos(
     evidence_policy_id: str = "",
     trust_recorded_external_completion: bool = True,
     protected_output_paths: Iterable[str | Path] = (),
-    task_render_profile: ObjectiveTaskRenderProfile
-    | Mapping[str, Any]
-    | None = None,
 ) -> list[ObjectiveTaskRecord]:
     """Append generated objective gap tasks and write bundle shards."""
 
@@ -11492,15 +10926,12 @@ def generate_objective_todos(
     # pass a Markdown heading prefix (``"## AUTO-"``).  Everything below this
     # point deals only in canonical display-ID prefixes.
     task_prefix = normalize_task_id_prefix(task_prefix)
-    task_render_profile = _coerce_objective_task_render_profile(
-        task_render_profile
-    )
-    protected_output_paths = _normalized_protected_output_paths(
-        (
-            *tuple(protected_output_paths),
-            repo_relative_path(repo_root, todo_path),
-            repo_relative_path(repo_root, objective_path),
-            discovery_output_path,
+    protected_output_paths = tuple(
+        dict.fromkeys(
+            normalized
+            for value in protected_output_paths
+            for normalized in [normalize_identity_path(value)]
+            if normalized
         )
     )
     records: list[ObjectiveTaskRecord] = []
@@ -11622,12 +11053,7 @@ def generate_objective_todos(
     for finding in [*findings, *reprojection_findings]:
         if not execution_allowed(finding):
             continue
-        projected = apply_objective_finding_execution_policy(
-            project_protected_objective_outputs(
-                finding,
-                protected_output_paths,
-            )
-        )
+        projected = apply_objective_finding_execution_policy(finding)
         key = (
             projected.fingerprint,
             projected.dedupe_key,
@@ -11644,13 +11070,6 @@ def generate_objective_todos(
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read() or "# Objective Todo\n"
         board_namespace = taskboard_namespace_from_todo(todo_text, todo_path)
-        if task_render_profile is None:
-            task_render_profile = (
-                _infer_objective_task_render_profile_from_todo(
-                    todo_text,
-                    task_prefix=task_prefix,
-                )
-            )
         existing_canonical_task_cids = canonical_task_cids_from_todo(todo_text)
         objective_goals = parse_goal_heap(
             objective_path.read_text(encoding="utf-8")
@@ -11678,26 +11097,6 @@ def generate_objective_todos(
         materialized_task_ids = set(
             task_ids_from_todo(todo_text, task_prefix=task_prefix)
         )
-        indexed_task_ids: set[str] = set()
-        bundle_index_path = bundle_dir / "index.json"
-        if bundle_index_path.is_file():
-            try:
-                bundle_index_payload = json.loads(
-                    bundle_index_path.read_text(encoding="utf-8")
-                )
-            except (OSError, json.JSONDecodeError):
-                bundle_index_payload = {}
-            if isinstance(bundle_index_payload, Mapping):
-                indexed_task_ids = {
-                    str(item.get("task_id") or "").strip()
-                    for info in (
-                        bundle_index_payload.get("bundles") or {}
-                    ).values()
-                    if isinstance(info, Mapping)
-                    for item in (info.get("tasks") or [])
-                    if isinstance(item, Mapping)
-                    and str(item.get("task_id") or "").strip()
-                }
 
         # Objective cards written before typed evidence-output authority were
         # introduced are already covered by the obligation dedupe below.  A
@@ -11717,7 +11116,7 @@ def generate_objective_todos(
         for finding in reprojection_candidates:
             evidence_outputs = objective_finding_evidence_output_paths(
                 finding,
-                excluded_paths=protected_output_paths,
+                excluded_paths=(discovery_output_path,),
             )
             if not evidence_outputs:
                 continue
@@ -11849,140 +11248,6 @@ def generate_objective_todos(
                 )
             )
 
-        # A crash can occur after the locked source board and bundle shard are
-        # written but before the aggregate bundle index is replaced.  On the
-        # retry, ordinary obligation deduplication correctly prevents another
-        # card, but it must not leave the existing card absent from the index.
-        # Reconstruct only an exact idle generator card whose current finding,
-        # content identity, discovery receipt, and expected shard all bind.
-        # This is recovery of an already admitted task, not authority to admit
-        # a new or edited task from Markdown alone.
-        reprojected_task_ids = {
-            record.task_id for record in reprojected_records
-        }
-        task_blocks = _objective_task_blocks(
-            todo_text,
-            task_prefix=task_prefix,
-        )
-        for finding in reprojection_candidates:
-            if not finding.dedupe_key:
-                continue
-            matching_blocks = [
-                block
-                for block in task_blocks
-                if block.one("evidence obligation key")
-                == finding.dedupe_key
-                and block.one("goal id") == finding.goal_id
-                and block.one("bundle") == finding.bundle_key
-            ]
-            if len(matching_blocks) != 1:
-                continue
-            block = matching_blocks[0]
-            if (
-                block.task_id in indexed_task_ids
-                or block.task_id in reprojected_task_ids
-            ):
-                continue
-            status = (
-                str(block.one("status") or "")
-                .strip()
-                .casefold()
-                .replace("-", "_")
-                .replace(" ", "_")
-            )
-            if status not in _EVIDENCE_REPROJECTION_IDLE_STATUSES:
-                continue
-            evidence_output_fields = block.metadata.get(
-                EVIDENCE_OUTPUTS_METADATA_KEY,
-                (),
-            )
-            if len(evidence_output_fields) > 1:
-                continue
-            raw_evidence_outputs = (
-                split_evidence_output_values(evidence_output_fields[0])
-                if evidence_output_fields
-                else []
-            )
-            evidence_outputs = tuple(
-                normalize_evidence_output_path(value)
-                for value in raw_evidence_outputs
-            )
-            if (
-                any(not value for value in evidence_outputs)
-                or len(set(evidence_outputs)) != len(evidence_outputs)
-                or any(
-                    raw != normalized
-                    for raw, normalized in zip(
-                        raw_evidence_outputs,
-                        evidence_outputs,
-                    )
-                )
-            ):
-                continue
-            identity = objective_finding_task_identity(
-                block.task_id,
-                finding,
-                evidence_outputs=evidence_outputs,
-            )
-            if (
-                block.one("canonical task key")
-                != identity.canonical_task_key
-                or block.one("canonical task cid")
-                != identity.canonical_task_cid
-            ):
-                continue
-            discovery_path = _resolve_generated_artifact_path(
-                str(block.one("discovery evidence") or ""),
-                repo_root=repo_root,
-                artifact_root=discovery_dir,
-                require_file=True,
-            )
-            shard_path = _resolve_generated_artifact_path(
-                str(block.one("bundle shard") or ""),
-                repo_root=repo_root,
-                artifact_root=bundle_dir,
-                require_file=True,
-            )
-            expected_shard_path = bundle_path(
-                bundle_dir,
-                finding.bundle_key,
-            ).resolve()
-            if (
-                discovery_path is None
-                or shard_path is None
-                or shard_path != expected_shard_path
-                or not _objective_discovery_receipt_matches(
-                    discovery_path,
-                    task_id=block.task_id,
-                    finding=finding,
-                    identity=identity,
-                    evidence_outputs=evidence_outputs,
-                )
-            ):
-                continue
-            projected_dependencies = (
-                _normalized_exact_values(
-                    str(block.one("depends on") or "")
-                )
-                or ()
-            )
-            reprojected_records.append(
-                ObjectiveTaskRecord(
-                    task_id=block.task_id,
-                    task_block=block.text.rstrip() + "\n",
-                    finding=replace(
-                        finding,
-                        dependencies=list(projected_dependencies),
-                    ),
-                    discovery_path=discovery_path,
-                    depends_on=projected_dependencies,
-                    evidence_outputs=evidence_outputs,
-                    reprojected=True,
-                    board_namespace=board_namespace,
-                )
-            )
-            reprojected_task_ids.add(block.task_id)
-
         existing_canonical_task_cids = canonical_task_cids_from_todo(todo_text)
 
         def finding_obligation_segments(
@@ -12054,8 +11319,6 @@ def generate_objective_todos(
             discovery_dir,
             task_prefix=task_prefix,
         )
-        generated_todo_prefix = todo_text.rstrip()
-        dependency_refs_by_task_id: dict[str, tuple[str, ...]] = {}
         for finding in findings:
             task_id = next_task_id(
                 todo_text,
@@ -12064,7 +11327,7 @@ def generate_objective_todos(
             )
             evidence_outputs = objective_finding_evidence_output_paths(
                 finding,
-                excluded_paths=protected_output_paths,
+                excluded_paths=(discovery_output_path,),
             )
             identity = objective_finding_task_identity(
                 task_id,
@@ -12113,34 +11376,25 @@ def generate_objective_todos(
                     if goal_id in packet_goal_ids
                     and any(str(requirement).strip() for requirement in requirements)
                 }
-            # A packet aggregate is the execution unit which satisfies every
-            # explicitly bound packet goal.  Retaining one of those goals as
-            # its own prerequisite creates an impossible ``task -> goal ->
-            # task`` cycle.  Only bindings with concrete evidence requirements
-            # qualify; malformed or merely descriptive packet metadata remains
-            # fail-closed.
-            dependency_references = [
-                dependency
-                for dependency in _unique_strings(
-                    [*depends_on, *finding.dependencies]
-                )
-                if dependency not in packet_internal_goal_dependencies
-            ]
-            projected_dependencies = (
-                _project_objective_dependencies_to_task_ids(
-                    dependency_references,
-                    known_goal_ids=objective_goals_by_id,
-                    task_ids_by_goal=task_ids_by_goal,
-                    materialized_task_ids=materialized_task_ids,
-                )
-            )
-            dependency_refs_by_task_id[task_id] = tuple(
-                dependency
-                for dependency in _unique_strings(
-                    [*depends_on, *finding.dependencies]
-                )
-                if dependency not in packet_internal_goal_dependencies
-            )
+            projected_dependencies: list[str] = []
+            for dependency in _unique_strings(
+                [*depends_on, *finding.dependencies]
+            ):
+                # A packet aggregate is the execution unit which satisfies
+                # every explicitly bound packet goal.  Retaining one of those
+                # goals as its own prerequisite creates an impossible
+                # ``task -> goal -> task`` cycle.  Only bindings with concrete
+                # evidence requirements qualify; malformed or merely
+                # descriptive packet metadata remains fail-closed.
+                if dependency in packet_internal_goal_dependencies:
+                    continue
+                if dependency in materialized_task_ids:
+                    projected_dependencies.append(dependency)
+                else:
+                    projected_dependencies.extend(
+                        task_ids_by_goal.get(dependency) or [dependency]
+                    )
+            projected_dependencies = _unique_strings(projected_dependencies)
             projected_finding = replace(
                 finding,
                 dependencies=projected_dependencies,
@@ -12160,7 +11414,6 @@ def generate_objective_todos(
                 evidence_outputs=evidence_outputs,
                 board_namespace=board_namespace,
                 protected_output_paths=protected_output_paths,
-                task_render_profile=task_render_profile,
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
             materialized_task_ids.add(task_id)
@@ -12175,61 +11428,6 @@ def generate_objective_todos(
                     evidence_outputs=tuple(evidence_outputs),
                     board_namespace=board_namespace,
                 )
-            )
-
-        # Dependency goal projection must not depend on objective-heap scan
-        # order.  The first rendering pass allocates stable task IDs and
-        # records every newly materialized goal.  Re-render those new cards
-        # once against the complete same-cycle goal map so a dependent goal
-        # that happened to sort before its prerequisite binds the new task ID
-        # instead of retaining a stale historical task or an unresolved goal
-        # alias.  Canonical objective task identity intentionally excludes
-        # scheduling dependencies, so this projection does not rotate CIDs.
-        if records:
-            rerendered_records: list[ObjectiveTaskRecord] = []
-            rerendered_blocks: list[str] = []
-            for record in records:
-                projected_dependencies = (
-                    _project_objective_dependencies_to_task_ids(
-                        dependency_refs_by_task_id.get(record.task_id, ()),
-                        known_goal_ids=objective_goals_by_id,
-                        task_ids_by_goal=task_ids_by_goal,
-                        materialized_task_ids=materialized_task_ids,
-                    )
-                )
-                projected_finding = replace(
-                    record.finding,
-                    dependencies=projected_dependencies,
-                )
-                task_block = render_task_block(
-                    task_id=record.task_id,
-                    finding=projected_finding,
-                    discovery_path=record.discovery_path,
-                    bundle_shard=repo_relative_path(
-                        repo_root,
-                        bundle_path(bundle_dir, projected_finding.bundle_key),
-                    ),
-                    discovery_output_path=discovery_output_path,
-                    evidence_outputs=record.evidence_outputs or (),
-                    board_namespace=board_namespace,
-                    protected_output_paths=protected_output_paths,
-                    task_render_profile=task_render_profile,
-                )
-                rerendered_records.append(
-                    replace(
-                        record,
-                        task_block=task_block,
-                        finding=projected_finding,
-                        depends_on=tuple(projected_dependencies),
-                    )
-                )
-                rerendered_blocks.append(task_block.strip())
-            records[:] = rerendered_records
-            todo_text = (
-                generated_todo_prefix
-                + "\n\n"
-                + "\n\n".join(rerendered_blocks)
-                + "\n"
             )
 
         if records or reprojected_records:
@@ -12260,35 +11458,21 @@ def generate_objective_todos(
     ):
         try:
             from ..task_sources.todo_vector_index import (
-                _project_bundle_work_contracts_onto_records,
                 parse_todo_vector_records,
             )
 
             existing_vector_payload = json.loads(
                 index_path.read_text(encoding="utf-8")
             )
-            projected_records = parse_todo_vector_records(
-                repo_root=repo_root,
-                todo_path=todo_path,
-                task_header_prefix=task_markdown_heading_prefix(
-                    task_prefix
-                ),
-            )
-            if bundle_index_path.exists():
-                # The persisted vector projection is hydrated with the
-                # scheduler's admitted work contracts.  Compare like with
-                # like here; a raw Markdown parse deliberately lacks those
-                # contracts and otherwise makes every no-op refill look
-                # stale, rotating generated timestamps and DuckDB state.
-                projected_records = (
-                    _project_bundle_work_contracts_onto_records(
-                        bundle_index_path=bundle_index_path,
-                        records=projected_records,
-                    )
-                )
             projected_vector_records = [
                 record.to_dict()
-                for record in projected_records
+                for record in parse_todo_vector_records(
+                    repo_root=repo_root,
+                    todo_path=todo_path,
+                    task_header_prefix=task_markdown_heading_prefix(
+                        task_prefix
+                    ),
+                )
             ]
             vector_projection_stale = (
                 not isinstance(existing_vector_payload, Mapping)
@@ -12618,16 +11802,8 @@ def build_bundle_task_payloads(
             "tasks": raw_tasks,
             "source_todo": payload.get("source_todo", ""),
             "objective_bundle_index": str(bundle_index_path),
+            "max_attempts": selected_max_attempts,
         }
-        # Zero is the shared unlimited sentinel.  Preserve it explicitly so
-        # the queue payload and its embedded Profile-G TaskSpec cannot diverge
-        # by letting the adapter substitute its bounded default.
-        # Keep the worker, queue, and immutable Profile-G TaskSpec on one
-        # attempt policy.  Profile-G v1 permits zero as the unlimited sentinel;
-        # omitting it here would make the adapter silently substitute its
-        # finite compatibility default even though the worker remains
-        # unlimited.
-        task_payload["max_attempts"] = selected_max_attempts
         task_payloads.append(task_payload)
 
     flat_tasks = [

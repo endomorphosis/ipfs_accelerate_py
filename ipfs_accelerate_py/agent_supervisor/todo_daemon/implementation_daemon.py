@@ -3249,6 +3249,40 @@ class ValidationGeneratedArtifactRestoreError(RuntimeError):
         self.receipt = dict(receipt)
 
 
+class ReconciliationLifecycleBlockedError(RuntimeError):
+    """Fail closed when an orphan lifecycle claim cannot be adopted safely."""
+
+    def __init__(self, result: Mapping[str, Any]) -> None:
+        reason = str(result.get("reason") or "worktree_lifecycle_blocked")
+        super().__init__(reason)
+        self.result = dict(result)
+
+
+class ReconciliationHandoffPublishError(RuntimeError):
+    """The lifecycle handoff completed but queue publication did not."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        phase: str,
+        lifecycle_handoff: Mapping[str, Any],
+        pool_handoff: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.phase = str(phase)
+        self.lifecycle_handoff = dict(lifecycle_handoff)
+        self.pool_handoff = (
+            dict(pool_handoff)
+            if isinstance(pool_handoff, Mapping)
+            else {}
+        )
+
+
+class ReconciliationAdmissionReceiptError(RuntimeError):
+    """Proposal admission could not be durably bound to orphan recovery."""
+
+
 @dataclass(frozen=True)
 class PortalTask:
     task_id: str
@@ -57967,6 +58001,2276 @@ class PortalImplementationDaemon:
         append_jsonl_event(self.events_path, event_type, enriched)
         self._invalidate_event_cache()
 
+    def _prior_attempt_seed_recovery_slug(task: PortalTask) -> str:
+        return (
+            re.sub(r"[^a-z0-9._-]+", "-", task.task_id.lower()).strip("-")
+            or "task"
+        )
+
+
+    def _worktree_lifecycle_record_authority_cid(
+        record: WorkspaceLifecycleRecord,
+    ) -> str:
+        """Commit to a lifecycle capability without exposing its lease."""
+
+        return content_identity(
+            {
+                "schema": RECONCILIATION_LIFECYCLE_AUTHORITY_SCHEMA,
+                "record": {
+                    "schema": record.schema,
+                    "record_id": record.record_id,
+                    "task_id": record.task_id,
+                    "canonical_task_cid": record.canonical_task_cid,
+                    "attempt": record.attempt,
+                    "lane_id": record.lane_id,
+                    "state": record.state.value,
+                    "owner": record.owner.to_dict(),
+                    "lease_id": record.lease_id,
+                    "fence": record.fence,
+                    "workspace_path": record.workspace_path,
+                    "branch": record.branch,
+                    "merge_target": record.merge_target,
+                    "created_at_hex": record.created_at.hex(),
+                    "updated_at_hex": record.updated_at.hex(),
+                    "expires_at_hex": record.expires_at.hex(),
+                    "repo_root": record.repo_root,
+                    "state_dir": record.state_dir,
+                    "terminal_reason": record.terminal_reason,
+                },
+            }
+        )
+
+
+    def _reconciliation_proposal_admission_projection(
+        self,
+        context: Mapping[str, Any],
+        *,
+        task: PortalTask,
+        workspace_path: Path,
+        baseline_ref: str,
+        proposal_id: str,
+        receipt_id: str,
+        candidate_fingerprint: str,
+    ) -> dict[str, Any]:
+        """Build the capability-free durable projection for proposal admission."""
+
+        expected_context_fields = {
+            "schema",
+            "recovery_key",
+            "canonical_task_cid",
+            "branch",
+            "baseline_ref",
+            "candidate_commit",
+            "workspace_path",
+            "lifecycle_record",
+            "lifecycle_reconciliation",
+        }
+        if type(context) is not dict or set(context) != expected_context_fields:
+            raise ValueError("reconciliation admission context is malformed")
+        if context.get("schema") != RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA:
+            raise ValueError("reconciliation admission schema is invalid")
+
+        identity = self._identity_for_task(task)
+        task_cid = str(context.get("canonical_task_cid") or "").strip()
+        recovery_key = str(context.get("recovery_key") or "").strip()
+        branch = str(context.get("branch") or "").strip()
+        baseline = str(context.get("baseline_ref") or "").strip()
+        candidate_commit = str(
+            context.get("candidate_commit") or ""
+        ).strip()
+        normalized_workspace = normalize_workspace_path(workspace_path)
+        if not (
+            recovery_key
+            and proposal_id
+            and receipt_id
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                candidate_fingerprint,
+            )
+            and task_cid == identity.canonical_task_cid
+            and branch
+            and baseline
+            and baseline == str(baseline_ref).strip()
+            and candidate_commit
+            and candidate_commit
+            == self._resolved_commit_ref(workspace_path, "HEAD")
+            and branch == self._git_current_branch(workspace_path)
+            and str(context.get("workspace_path") or "")
+            == normalized_workspace
+        ):
+            raise ValueError(
+                "reconciliation admission candidate binding is invalid"
+            )
+
+        reconciliation = context.get("lifecycle_reconciliation")
+        if not isinstance(reconciliation, Mapping):
+            raise ValueError(
+                "reconciliation admission lifecycle result is missing"
+            )
+        record = context.get("lifecycle_record")
+        lifecycle_present = record is not None
+        if lifecycle_present:
+            if not isinstance(record, WorkspaceLifecycleRecord):
+                raise ValueError(
+                    "reconciliation admission lifecycle record is invalid"
+                )
+            persisted = self.worktree_lifecycle.load_workspace(
+                workspace_path
+            )
+            if not (
+                reconciliation.get("attempted") is True
+                and reconciliation.get("adopted") is True
+                and reconciliation.get("blocked") is False
+                and str(reconciliation.get("record_id") or "")
+                == record.record_id
+                and int(reconciliation.get("attempt") or 0)
+                == record.attempt
+                and int(reconciliation.get("adopted_fence") or 0)
+                == record.fence
+                and persisted is not None
+                and persisted.record_id == record.record_id
+                and persisted.fence == record.fence
+                and persisted.lease_id == record.lease_id
+                and persisted.owner == record.owner
+                and persisted.task_id == task.task_id
+                and persisted.canonical_task_cid == task_cid
+                and normalize_workspace_path(persisted.workspace_path)
+                == normalized_workspace
+                and persisted.branch == branch
+                and not persisted.is_terminal
+            ):
+                raise ValueError(
+                    "reconciliation admission lifecycle authority changed"
+                )
+            lifecycle_projection = {
+                "present": True,
+                "authority_mode": "record_bound",
+                "record_id": record.record_id,
+                "fence": record.fence,
+                "attempt": record.attempt,
+                "record_authority_cid": (
+                    self._worktree_lifecycle_record_authority_cid(record)
+                ),
+            }
+            lifecycle_authority = dict(lifecycle_projection)
+        else:
+            record_path = self.worktree_lifecycle.workspace_path_for(
+                workspace_path
+            )
+            absence_attempt = int(
+                reconciliation.get("attempt") or 0
+            )
+            index_path = (
+                self.worktree_lifecycle.task_index_path_for(
+                    canonical_task_cid=task_cid,
+                    task_id=task.task_id,
+                    attempt=absence_attempt,
+                )
+                if absence_attempt > 0
+                else None
+            )
+            indexed_absence = bool(
+                absence_attempt > 0
+                and reconciliation.get("task_index_absence_verified")
+                is True
+                and index_path is not None
+                and not index_path.exists()
+            )
+            if not (
+                reconciliation.get("attempted") is False
+                and reconciliation.get("adopted") is not True
+                and reconciliation.get("blocked") is False
+                and reconciliation.get("reason") == "no_lifecycle_record"
+                and reconciliation.get("record_absence_verified") is True
+                and not record_path.exists()
+                and indexed_absence
+            ):
+                raise ValueError(
+                    "reconciliation admission lifecycle absence is unproven"
+                )
+            lifecycle_projection = {
+                "present": False,
+                "authority_mode": (
+                    "indexed_absence"
+                ),
+                "record_id": "",
+                "fence": 0,
+                "attempt": int(reconciliation.get("attempt") or 0),
+                "record_authority_cid": "",
+            }
+            lifecycle_authority = dict(lifecycle_projection)
+
+        binding = {
+            "schema": RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA,
+            "task_id": task.task_id,
+            "canonical_task_cid": task_cid,
+            "recovery_key": recovery_key,
+            "proposal_id": proposal_id,
+            "receipt_id": receipt_id,
+            "candidate_fingerprint": candidate_fingerprint,
+            "baseline_ref": baseline,
+            "candidate_commit": candidate_commit,
+            "branch": branch,
+            "workspace_path": normalized_workspace,
+            "lifecycle_authority": lifecycle_authority,
+        }
+        # The CID commits to lease and owner birth identity, but neither
+        # mutation capability is persisted in the event.
+        lifecycle_projection["admission_authority_cid"] = (
+            content_identity(binding)
+        )
+        return {
+            "schema": RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA,
+            "task_id": task.task_id,
+            "canonical_task_cid": task_cid,
+            "recovery_key": recovery_key,
+            "proposal_id": proposal_id,
+            "receipt_id": receipt_id,
+            "candidate_fingerprint": candidate_fingerprint,
+            "baseline_ref": baseline,
+            "candidate_commit": candidate_commit,
+            "branch": branch,
+            "workspace_path": normalized_workspace,
+            "lifecycle": lifecycle_projection,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+        }
+
+
+    def _reconciliation_admission_matches_candidate(
+        self,
+        event: Mapping[str, Any],
+        *,
+        task_id: str,
+        canonical_task_cid: str,
+        recovery_key: str,
+        branch_name: str,
+        baseline_ref: str,
+        candidate_commit: str,
+        worktree_path: Path,
+        lifecycle_reconciliation: Mapping[str, Any],
+    ) -> str:
+        """Return an admitted proposal only for this exact recovered candidate."""
+
+        admission = event.get("reconciliation_admission")
+        expected_fields = {
+            "schema",
+            "task_id",
+            "canonical_task_cid",
+            "recovery_key",
+            "proposal_id",
+            "receipt_id",
+            "candidate_fingerprint",
+            "baseline_ref",
+            "candidate_commit",
+            "branch",
+            "workspace_path",
+            "lifecycle",
+            "provider_dispatched",
+            "attempt_consumed",
+        }
+        if (
+            event.get("type") != "implementation_proposal_validated"
+            or event.get("accepted") is not True
+            or type(admission) is not dict
+            or set(admission) != expected_fields
+            or admission.get("schema")
+            != RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA
+            or admission.get("provider_dispatched") is not False
+            or admission.get("attempt_consumed") is not False
+        ):
+            return ""
+        proposal_id = str(admission.get("proposal_id") or "").strip()
+        receipt_id = str(admission.get("receipt_id") or "").strip()
+        candidate_fingerprint = str(
+            admission.get("candidate_fingerprint") or ""
+        ).strip()
+        if not (
+            proposal_id
+            and receipt_id
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                candidate_fingerprint,
+            )
+            and str(event.get("proposal_id") or "") == proposal_id
+            and str(event.get("receipt_id") or "") == receipt_id
+            and str(event.get("candidate_fingerprint") or "")
+            == candidate_fingerprint
+            and str(event.get("task_id") or "") == task_id
+            and str(event.get("canonical_task_cid") or "")
+            == canonical_task_cid
+            and str(event.get("recovery_key") or "") == recovery_key
+            and str(event.get("branch") or "") == branch_name
+            and str(event.get("baseline_ref") or "") == baseline_ref
+            and str(event.get("candidate_commit") or "")
+            == candidate_commit
+            and str(event.get("workspace_path") or "")
+            == normalize_workspace_path(worktree_path)
+            and str(admission.get("task_id") or "") == task_id
+            and str(admission.get("canonical_task_cid") or "")
+            == canonical_task_cid
+            and str(admission.get("recovery_key") or "") == recovery_key
+            and str(admission.get("branch") or "") == branch_name
+            and str(admission.get("baseline_ref") or "") == baseline_ref
+            and str(admission.get("candidate_commit") or "")
+            == candidate_commit
+            and str(admission.get("workspace_path") or "")
+            == normalize_workspace_path(worktree_path)
+        ):
+            return ""
+        lifecycle = admission.get("lifecycle")
+        if (
+            type(lifecycle) is not dict
+            or set(lifecycle)
+            != {
+                "present",
+                "authority_mode",
+                "record_id",
+                "fence",
+                "attempt",
+                "record_authority_cid",
+                "admission_authority_cid",
+            }
+            or type(lifecycle.get("present")) is not bool
+            or lifecycle.get("authority_mode")
+            not in {
+                "record_bound",
+                "indexed_absence",
+            }
+            or type(lifecycle.get("record_id")) is not str
+            or type(lifecycle.get("fence")) is not int
+            or type(lifecycle.get("attempt")) is not int
+            or not re.fullmatch(
+                r"b[a-z2-7]+",
+                str(lifecycle.get("admission_authority_cid") or ""),
+            )
+        ):
+            return ""
+        record_authority_cid = str(
+            lifecycle.get("record_authority_cid") or ""
+        )
+        if lifecycle["present"] and not re.fullmatch(
+            r"b[a-z2-7]+",
+            record_authority_cid,
+        ):
+            return ""
+        recomputed_admission_cid = content_identity(
+            {
+                "schema": RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA,
+                "task_id": task_id,
+                "canonical_task_cid": canonical_task_cid,
+                "recovery_key": recovery_key,
+                "proposal_id": proposal_id,
+                "receipt_id": receipt_id,
+                "candidate_fingerprint": candidate_fingerprint,
+                "baseline_ref": baseline_ref,
+                "candidate_commit": candidate_commit,
+                "branch": branch_name,
+                "workspace_path": normalize_workspace_path(
+                    worktree_path
+                ),
+                "lifecycle_authority": {
+                    "present": lifecycle["present"],
+                    "authority_mode": lifecycle["authority_mode"],
+                    "record_id": lifecycle["record_id"],
+                    "fence": lifecycle["fence"],
+                    "attempt": lifecycle["attempt"],
+                    "record_authority_cid": (
+                        record_authority_cid
+                    ),
+                },
+            }
+        )
+        if (
+            recomputed_admission_cid
+            != lifecycle["admission_authority_cid"]
+        ):
+            return ""
+        if lifecycle_reconciliation.get("blocked") is True:
+            return ""
+        current_absent = (
+            lifecycle_reconciliation.get("attempted") is False
+            and lifecycle_reconciliation.get("adopted") is not True
+            and lifecycle_reconciliation.get("reason")
+            == "no_lifecycle_record"
+            and lifecycle_reconciliation.get("record_absence_verified")
+            is True
+        )
+        current_adopted = (
+            lifecycle_reconciliation.get("attempted") is True
+            and lifecycle_reconciliation.get("adopted") is True
+            and lifecycle_reconciliation.get("blocked") is False
+            and int(
+                lifecycle_reconciliation.get("adopted_fence") or 0
+            )
+            > 0
+            and bool(
+                str(
+                    lifecycle_reconciliation.get(
+                        "predecessor_authority_cid"
+                    )
+                    or ""
+                )
+            )
+        )
+        current_record = (
+            self.worktree_lifecycle.load_workspace(worktree_path)
+            if current_adopted
+            else None
+        )
+        if lifecycle["present"]:
+            if not (
+                lifecycle["record_id"]
+                and lifecycle["authority_mode"] == "record_bound"
+                and lifecycle["fence"] > 0
+                and lifecycle["attempt"] > 0
+                and (
+                    (
+                        current_absent
+                        and int(
+                            lifecycle_reconciliation.get("attempt") or 0
+                        )
+                        == lifecycle["attempt"]
+                        and lifecycle_reconciliation.get(
+                            "task_index_absence_verified"
+                        )
+                        is True
+                    )
+                    or (
+                        current_adopted
+                        and str(
+                            lifecycle_reconciliation.get("record_id")
+                            or ""
+                        )
+                        == lifecycle["record_id"]
+                        and int(
+                            lifecycle_reconciliation.get("attempt") or 0
+                        )
+                        == lifecycle["attempt"]
+                        and int(
+                            lifecycle_reconciliation.get("fence") or 0
+                        )
+                        == lifecycle["fence"]
+                        and str(
+                            lifecycle_reconciliation.get(
+                                "predecessor_authority_cid"
+                            )
+                            or ""
+                        )
+                        == record_authority_cid
+                        and current_record is not None
+                        and current_record.record_id
+                        == lifecycle["record_id"]
+                        and current_record.fence
+                        == int(
+                            lifecycle_reconciliation.get(
+                                "adopted_fence"
+                            )
+                            or 0
+                        )
+                        and current_record.attempt
+                        == lifecycle["attempt"]
+                        and current_record.task_id == task_id
+                        and current_record.canonical_task_cid
+                        == canonical_task_cid
+                        and current_record.branch == branch_name
+                        and normalize_workspace_path(
+                            current_record.workspace_path
+                        )
+                        == normalize_workspace_path(worktree_path)
+                        and not current_record.is_terminal
+                    )
+                )
+            ):
+                return ""
+        elif not (
+            lifecycle["record_id"] == ""
+            and lifecycle["authority_mode"]
+            in {
+                "indexed_absence",
+            }
+            and lifecycle["fence"] == 0
+            and lifecycle["record_authority_cid"] == ""
+            and current_absent
+            and int(lifecycle_reconciliation.get("attempt") or 0)
+            == lifecycle["attempt"]
+            and (
+                (
+                    lifecycle["authority_mode"] == "indexed_absence"
+                    and lifecycle["attempt"] > 0
+                    and lifecycle_reconciliation.get(
+                        "task_index_absence_verified"
+                    )
+                    is True
+                )
+            )
+        ):
+            return ""
+        if current_absent:
+            record_path = self.worktree_lifecycle.workspace_path_for(
+                worktree_path
+            )
+            index_path = (
+                self.worktree_lifecycle.task_index_path_for(
+                    canonical_task_cid=canonical_task_cid,
+                    task_id=task_id,
+                    attempt=lifecycle["attempt"],
+                )
+                if lifecycle["attempt"] > 0
+                else None
+            )
+            if (
+                record_path.exists()
+                or (
+                    lifecycle["authority_mode"]
+                    in {"record_bound", "indexed_absence"}
+                    and (
+                        index_path is None
+                        or index_path.exists()
+                    )
+                )
+            ):
+                return ""
+        return proposal_id
+
+
+    def _restore_out_of_scope_worktree_mutations(
+        self,
+        workspace_path: Path,
+        *,
+        scope_paths: Sequence[str],
+    ) -> tuple[str, ...]:
+        """Revert dirty worktree paths outside the task's declared scope.
+
+        Autonomous providers repeatedly thrash on accidental edits such as
+        ``tests/conftest.py``. Those paths must never enter the proposal gate:
+        they fail path_outside_scope and also collapse declared binary
+        envelopes back to defaults. Restoring them fail-closed before
+        collection keeps the gate focused on declared outputs.
+        """
+
+        if not scope_paths:
+            return ()
+        restored: list[str] = []
+        try:
+            status = subprocess.run(
+                ["git", "-C", str(workspace_path), "status", "--porcelain", "-uall"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ()
+        if status.returncode != 0:
+            return ()
+
+        def _in_scope(path: str) -> bool:
+            for scope in scope_paths:
+                scope_text = str(scope).strip().rstrip("/")
+                if not scope_text:
+                    continue
+                if path == scope_text or path.startswith(scope_text + "/"):
+                    return True
+            return False
+
+        for line in status.stdout.splitlines():
+            if len(line) < 4:
+                continue
+            entry = line[3:].strip()
+            if " -> " in entry:
+                entry = entry.split(" -> ", 1)[1].strip()
+            path = entry.strip().strip('"')
+            if not path or path.startswith(".git/") or _in_scope(path):
+                continue
+            # Prefer checkout for tracked mutations; clean for untracked noise.
+            xy = line[:2]
+            try:
+                if "?" in xy:
+                    target = workspace_path / path
+                    if target.is_file() or target.is_symlink():
+                        target.unlink(missing_ok=True)
+                    elif target.is_dir():
+                        shutil.rmtree(target, ignore_errors=True)
+                else:
+                    subprocess.run(
+                        [
+                            "git",
+                            "-C",
+                            str(workspace_path),
+                            "checkout",
+                            "--",
+                            path,
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                restored.append(path)
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+        if restored:
+            self._record_event(
+                "implementation_out_of_scope_mutations_restored",
+                {
+                    "workspace_path": str(workspace_path),
+                    "restored_paths": sorted(set(restored)),
+                    "restored_count": len(set(restored)),
+                },
+            )
+        return tuple(sorted(set(restored)))
+
+
+    def _sanitize_failed_validation_result(
+        self,
+        validation_result: Mapping[str, Any] | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Return one canonical, bounded terminal projection of a failure."""
+
+        # Provider results are untrusted at this boundary.  Copy only an exact
+        # built-in mapping so hostile ``__len__``/``__iter__``/``__bool__``
+        # hooks cannot turn a real validation failure into a setup exception.
+        result = dict(validation_result) if type(validation_result) is dict else {}
+        if result.get("passed") is True:
+            return result
+        failed_tests = result.get("failed_tests")
+        if type(failed_tests) in (list, tuple):
+            result["failed_tests"] = [
+                sanitized
+                for item in failed_tests
+                if (sanitized := self._sanitize_retry_test_node_id(item))
+            ]
+        if type(result.get("failure_head")) is str:
+            result["failure_head"] = self._sanitize_retry_failure_head(
+                result["failure_head"]
+            )
+        reviewed = self._normalize_implementation_failure(
+            {
+                "kind": "validation_failure",
+                "returncode": result.get("returncode", 1),
+                "failure_review": result.get("failure_review"),
+                "next_attempt_prompt_addendum": result.get(
+                    "next_attempt_prompt_addendum"
+                ),
+                "timeout_policy": result.get("timeout_policy"),
+                "checkpoint_manifest": result.get("checkpoint_manifest"),
+                "validation_result": result,
+            }
+        )
+        safe_validation = reviewed.get("validation")
+        safe_validation = (
+            safe_validation
+            if isinstance(safe_validation, Mapping)
+            else {}
+        )
+        safe_result: dict[str, Any] = {
+            "actionable_retry_evidence_schema": (
+                ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+            ),
+            # This is the single canonical projection consumed by terminal
+            # events and retry receipts.  Keeping it intact avoids recursively
+            # hashing an already-normalized omitted-tail marker on the retry
+            # boundary.
+            "actionable_retry_evidence": dict(reviewed),
+        }
+        for key in (
+            "attempted",
+            "passed",
+            "returncode",
+            "reason",
+            "error",
+            "failed_command",
+            "failed_commands",
+            "failed_tests",
+            "failed_test_paths",
+            "exception_types",
+            "exception_message",
+            "failure_head",
+        ):
+            if key in safe_validation:
+                safe_result[key] = safe_validation[key]
+        compact_review = reviewed.get("failure_review")
+        if isinstance(compact_review, Mapping) and compact_review:
+            safe_result["failure_review"] = dict(compact_review)
+        for key in (
+            "proposal_gate",
+            "scope_adjudication",
+            "timeout_policy",
+            "checkpoint_manifest",
+        ):
+            compact_value = reviewed.get(key)
+            if isinstance(compact_value, Mapping):
+                safe_result[key] = dict(compact_value)
+        safe_addendum = reviewed.get("next_attempt_prompt_addendum")
+        if isinstance(safe_addendum, str) and safe_addendum:
+            safe_result["next_attempt_prompt_addendum"] = safe_addendum
+        if reviewed.get("truncation"):
+            safe_result["failure_evidence_truncation"] = reviewed[
+                "truncation"
+            ]
+        if reviewed.get("deduplication"):
+            safe_result["failure_evidence_deduplication"] = reviewed[
+                "deduplication"
+            ]
+        raw_results = result.get("results")
+        if type(raw_results) in (list, tuple):
+            safe_commands = safe_validation.get("failed_commands")
+            safe_commands = (
+                safe_commands if type(safe_commands) is list else []
+            )
+            compact_results: list[dict[str, Any]] = []
+            for index, raw_result in enumerate(raw_results[:8]):
+                if type(raw_result) is not dict:
+                    continue
+                compact_result: dict[str, Any] = {}
+                passed = raw_result.get("passed")
+                if type(passed) is bool:
+                    compact_result["passed"] = passed
+                returncode = raw_result.get("returncode")
+                if type(returncode) is int and not isinstance(
+                    returncode, bool
+                ):
+                    compact_result["returncode"] = returncode
+                if index < len(safe_commands):
+                    command = safe_commands[index]
+                    if type(command) is str and not command.startswith(
+                        "[truncated "
+                    ):
+                        compact_result["command"] = command
+                if compact_result:
+                    compact_results.append(compact_result)
+            if compact_results:
+                safe_result["results"] = compact_results
+        accept_revalidation = result.get(
+            "failure_review_accept_revalidation"
+        )
+        if isinstance(accept_revalidation, Mapping):
+            compact_revalidation: dict[str, Any] = {}
+            accepted = accept_revalidation.get("accepted")
+            if isinstance(accepted, bool):
+                compact_revalidation["accepted"] = accepted
+            reason = accept_revalidation.get("reason")
+            if type(reason) is str and reason:
+                compact_revalidation["reason"] = reason[:256]
+            if compact_revalidation:
+                safe_result["failure_review_accept_revalidation"] = (
+                    compact_revalidation
+                )
+        return safe_result
+
+
+    def _sanitize_retry_test_node_id(node_id: Any) -> str:
+        """Hash dynamic pytest parameter IDs while retaining test identity."""
+
+        if type(node_id) is not str:
+            return ""
+        original = node_id.strip()
+        if not original:
+            return ""
+        if re.fullmatch(
+            r"\[test-node-omitted original_bytes=\d+ sha256=[0-9a-f]{64}\]",
+            original,
+        ):
+            return original
+
+        def replace_parameter(match: re.Match[str]) -> str:
+            parameter = match.group(1)
+            if re.fullmatch(r"param-sha256=[0-9a-f]{64}", parameter):
+                return f"[{parameter}]"
+            raw = parameter.encode("utf-8", errors="replace")
+            return (
+                "[param-sha256="
+                + hashlib.sha256(raw).hexdigest()
+                + "]"
+            )
+
+        sanitized = re.sub(r"\[([^\]\r\n]*)\]", replace_parameter, original)
+        encoded = sanitized.encode("utf-8", errors="replace")
+        if len(encoded) <= 768:
+            return sanitized
+        raw = original.encode("utf-8", errors="replace")
+        return (
+            f"[test-node-omitted original_bytes={len(raw)} "
+            f"sha256={hashlib.sha256(raw).hexdigest()}]"
+        )
+
+
+    def _sanitize_retry_failure_head(cls, failure_head: Any) -> str:
+        """Content-address raw failure prose and retain structural handles."""
+
+        if type(failure_head) is not str:
+            return ""
+        if re.match(
+            r"^\[failure-head-omitted original_bytes=\d+ "
+            r"sha256=[0-9a-f]{64}\](?:\n|$)",
+            failure_head,
+        ) and len(failure_head.encode("utf-8", errors="replace")) <= 2_048:
+            return failure_head
+        raw = failure_head.encode("utf-8", errors="replace")
+        if not raw:
+            return ""
+        lines = [
+            f"[failure-head-omitted original_bytes={len(raw)} "
+            f"sha256={hashlib.sha256(raw).hexdigest()}]"
+        ]
+        seen_nodes: set[str] = set()
+        for match in re.finditer(
+            r"(?:[A-Za-z0-9_./-]+\.py)(?:::[^\s\[\]\r\n]+)+"
+            r"(?:\[[^\]\r\n]*\])?",
+            failure_head,
+        ):
+            node = cls._sanitize_retry_test_node_id(match.group(0))
+            if node and node not in seen_nodes and len(seen_nodes) < 3:
+                seen_nodes.add(node)
+                lines.append(f"failed_test={node}")
+        seen_exceptions: set[str] = set()
+        for exception_type in re.findall(
+            r"\b[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception)\b",
+            failure_head,
+        ):
+            if (
+                exception_type not in seen_exceptions
+                and len(seen_exceptions) < 3
+            ):
+                seen_exceptions.add(exception_type)
+                lines.append(f"exception_type={exception_type}")
+        return "\n".join(lines)
+
+
+    def _validation_command_declares_pythonpath(command: str) -> bool:
+        """Return whether reviewed command text supplies its own PYTHONPATH."""
+
+        try:
+            lexer = shlex.shlex(
+                command,
+                posix=True,
+                punctuation_chars=";&|()<>",
+            )
+            lexer.whitespace_split = True
+            lexer.commenters = ""
+            tokens = lexer
+            return any(
+                re.match(r"^PYTHONPATH(?:\+)?=", token) is not None
+                for token in tokens
+            )
+        except ValueError:
+            # The sealed validation runtime reports malformed shell quoting.
+            # Do not turn normalization into a separate failure surface.
+            return False
+
+
+    def _validation_command_uses_python(command: str) -> bool:
+        """Return whether command text invokes a Python-family entry point."""
+
+        try:
+            lexer = shlex.shlex(
+                command,
+                posix=True,
+                punctuation_chars=";&|()<>",
+            )
+            lexer.whitespace_split = True
+            lexer.commenters = ""
+            return any(
+                re.fullmatch(
+                    r"(?:python(?:3(?:\.\d+)*)?|pytest)",
+                    Path(token).name,
+                )
+                is not None
+                for token in lexer
+            )
+        except ValueError:
+            return False
+
+
+    def _bind_workspace_validation_pythonpath(
+        self,
+        command: str,
+        workspace_path: Path,
+    ) -> tuple[str, list[str]]:
+        """Expose configured sibling repositories to sealed Python validation.
+
+        Validation intentionally drops the supervisor's inherited PYTHONPATH.
+        Worktree submodule roots are operator-reviewed, repo-relative inputs,
+        so bind them explicitly for each task command.  ``$PWD`` is expanded
+        before a command can change directory, while the rendered command text
+        remains stable across ephemeral worktree locations and cache keys.
+        """
+
+        if (
+            not self.worktree_submodule_paths
+            or not self._validation_command_uses_python(command)
+            or self._validation_command_declares_pythonpath(command)
+        ):
+            return command, []
+
+        try:
+            workspace_root = workspace_path.resolve(strict=True)
+        except OSError:
+            return command, []
+        relative_roots: list[str] = []
+        for relative in self.worktree_submodule_paths:
+            # A path-list separator is data to ``Path.resolve`` but syntax in
+            # PYTHONPATH.  Reject it before rendering so one contained root
+            # cannot smuggle an additional, unreviewed search path.
+            if os.pathsep in relative:
+                continue
+            try:
+                resolved = (workspace_root / relative).resolve(strict=True)
+                resolved.relative_to(workspace_root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if resolved.is_dir() and relative not in relative_roots:
+                relative_roots.append(relative)
+        if not relative_roots:
+            return command, []
+
+        roots = os.pathsep.join(
+            f'"$PWD"/{shlex.quote(relative)}'
+            for relative in relative_roots
+        )
+        bound = f"export PYTHONPATH={roots}; {command}"
+        return bound, [
+            "bound configured worktree submodule roots to validation PYTHONPATH"
+        ]
+
+
+    def _implementation_branch_attempt(branch_name: str) -> int | None:
+        """Return the attempt encoded by a managed implementation branch."""
+
+        match = re.search(
+            r"(?:^|[-/])attempt-([1-9][0-9]*)(?:-|$)",
+            str(branch_name or "").removeprefix("refs/heads/"),
+        )
+        return int(match.group(1)) if match is not None else None
+
+
+    def _reconcile_exact_quiesced_worktree_lifecycle(
+        self,
+        *,
+        worktree_path: Path,
+        task_id: str,
+        canonical_task_cid: str,
+        branch_name: str,
+        expected_attempt: int | None,
+        reason: str,
+        action: str = "verify",
+        expected_lifecycle_record: WorkspaceLifecycleRecord | None = None,
+    ) -> dict[str, Any]:
+        """Verify, adopt, or finalize one exactly bound dead-owner claim."""
+
+        record = self.worktree_lifecycle.load_workspace(worktree_path)
+        record_path = self.worktree_lifecycle.workspace_path_for(
+            worktree_path
+        )
+        if record is None:
+            index_path = (
+                self.worktree_lifecycle.task_index_path_for(
+                    canonical_task_cid=canonical_task_cid,
+                    task_id=task_id,
+                    attempt=expected_attempt,
+                )
+                if expected_attempt is not None and expected_attempt > 0
+                else None
+            )
+            if expected_lifecycle_record is not None or record_path.exists() or (
+                index_path is not None and index_path.exists()
+            ):
+                blocked = {
+                    "attempted": True,
+                    "finalized": False,
+                    "blocked": True,
+                    "reason": (
+                        "worktree_lifecycle_authority_disappeared"
+                        if expected_lifecycle_record is not None
+                        else "worktree_lifecycle_record_malformed"
+                    ),
+                    "worktree_path": str(worktree_path),
+                }
+                self._record_event(
+                    "quiesced_worktree_lifecycle_rejected",
+                    blocked,
+                )
+                raise ReconciliationLifecycleBlockedError(blocked)
+            return {
+                "attempted": False,
+                "finalized": False,
+                "blocked": False,
+                "reason": "no_lifecycle_record",
+                "attempt": int(expected_attempt or 0),
+                "record_absence_verified": not record_path.exists(),
+                "task_index_absence_verified": bool(
+                    index_path is not None and not index_path.exists()
+                ),
+            }
+
+        authority = expected_lifecycle_record or record
+        normalized_workspace = normalize_workspace_path(worktree_path)
+        base = {
+            "attempted": True,
+            "adopted": False,
+            "finalized": False,
+            "blocked": False,
+            "record_id": authority.record_id,
+            "attempt": int(authority.attempt),
+            "fence": int(authority.fence),
+        }
+
+        def reject(rejection_reason: str, **details: Any) -> None:
+            blocked = {
+                **base,
+                "blocked": True,
+                "reason": rejection_reason,
+                **details,
+            }
+            self._record_event(
+                "quiesced_worktree_lifecycle_rejected",
+                blocked,
+            )
+            raise ReconciliationLifecycleBlockedError(blocked)
+
+        if expected_attempt is None or int(expected_attempt) <= 0:
+            reject(
+                "worktree_lifecycle_identity_mismatch",
+                mismatched_fields=["attempt"],
+            )
+
+        expected = {
+            "expected_record_id": authority.record_id,
+            "expected_fence": authority.fence,
+            "expected_lease_id": authority.lease_id,
+            "expected_task_id": task_id,
+            "expected_canonical_task_cid": canonical_task_cid,
+            "expected_attempt": expected_attempt,
+            "expected_branch": branch_name,
+            "expected_merge_target": self.resolved_merge_target_branch,
+            "expected_repo_root": str(self.repo_root.resolve(strict=False)),
+            "expected_state_dir": str(
+                self.state_path.parent.resolve(strict=False)
+            ),
+        }
+        stage = "identity"
+        try:
+            verified = self.worktree_lifecycle.require_exact_dead_owner(
+                normalized_workspace,
+                allow_terminal=action != "adopt",
+                **expected,
+            )
+            if action == "adopt":
+                stage = "adoption"
+                predecessor_authority_cid = (
+                    self._worktree_lifecycle_record_authority_cid(
+                        verified
+                    )
+                )
+                adopted = self.worktree_lifecycle.adopt_dead_owner(
+                    normalized_workspace,
+                    lane_id=self._worktree_lifecycle_lane_id(),
+                    **expected,
+                )
+                self._active_worktree_lifecycle = adopted
+                outcome = {
+                    "adopted": True,
+                    "adopted_fence": int(adopted.fence),
+                    "predecessor_authority_cid": (
+                        predecessor_authority_cid
+                    ),
+                }
+            elif action == "finalize":
+                stage = "finalization"
+                if expected_lifecycle_record is None:
+                    raise WorktreeLifecycleError(
+                        "phase-pinned lifecycle authority is required"
+                    )
+                terminal = (
+                    self.worktree_lifecycle.finalize_exact_dead_owner(
+                        normalized_workspace,
+                        expected_owner=authority.owner,
+                        reason=reason,
+                        **expected,
+                    )
+                )
+                outcome = {
+                    "finalized": True,
+                    "reason": reason,
+                    "fence": int(terminal.fence),
+                    "state": terminal.state.value,
+                }
+            elif action == "verify":
+                outcome = {
+                    "reason": "worktree_lifecycle_quiescence_verified",
+                }
+            else:
+                raise ValueError(
+                    f"unknown lifecycle reconciliation action: {action}"
+                )
+        except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
+            error = str(exc)
+            rejection_reason = {
+                "adoption": "worktree_lifecycle_adoption_failed",
+                "finalization": "worktree_lifecycle_finalize_failed",
+                "identity": "worktree_lifecycle_identity_mismatch",
+            }[stage]
+            if "still alive" in error:
+                rejection_reason = "worktree_lifecycle_owner_alive"
+            elif "liveness is unknown" in error:
+                rejection_reason = (
+                    "worktree_lifecycle_owner_liveness_unknown"
+                )
+            reject(
+                rejection_reason,
+                error_type=type(exc).__name__,
+                error=error[-500:],
+            )
+
+        reconciled = {**base, **outcome}
+        if action != "verify":
+            reconciled["reason"] = reason
+        self._record_event(
+            "quiesced_worktree_lifecycle_"
+            + {
+                "verify": "verified",
+                "adopt": "adopted",
+                "finalize": "finalized",
+            }[action],
+            reconciled,
+        )
+        return reconciled
+
+
+    def _finalize_reconciled_worktree_lifecycle(
+        self,
+        worktree_path: Path,
+        reconciliation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Release an adopted orphan claim after validation or queue handoff."""
+
+        if reconciliation.get("adopted") is not True:
+            return {"finalized": None, "reason": "lifecycle_not_adopted"}
+        if reconciliation.get("blocked") is True:
+            return {
+                "finalized": False,
+                "reason": "lifecycle_reconciliation_blocked",
+                "failure_kind": (
+                    LifecycleFailureKind.LIFECYCLE_RACE.value
+                ),
+                "attempt_consumed": False,
+                "provider_call_allowed": False,
+            }
+        if self._active_worktree_lifecycle is None:
+            return {
+                "finalized": True,
+                "reason": "lifecycle_already_finalized_or_handed_off",
+            }
+        return self._finalize_worktree_lifecycle(
+            worktree_path,
+            reason="orphaned_candidate_reconciliation_finished",
+        )
+
+
+    def _provider_route_receipt_dir(self, task: PortalTask) -> Path:
+        stem = self._implementation_context_file_stem(task)
+        identity_suffix = self._identity_for_task(task).short_id
+        return (
+            self.state_path.parent
+            / "provider_route_receipts"
+            / f"{stem}-{identity_suffix}"
+        ).resolve()
+
+
+    def _ensure_provider_route_receipt_dir(
+        self,
+        task: PortalTask,
+    ) -> Path:
+        receipt_dir = self._provider_route_receipt_dir(task)
+        receipt_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            receipt_dir.chmod(0o700)
+        except OSError:
+            pass
+        return receipt_dir
+
+
+    def _normalize_implementation_failure_unchecked(
+        failure: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Return bounded, durable evidence for an implementation failure.
+
+        This method sits on the error path, so it must be total: malformed or
+        excessively large reviewer data cannot hide an already-observed
+        subprocess failure behind an ``implementation_setup`` exception.  In
+        particular, command output is intentionally not projected here.
+        """
+
+        omission_records: dict[tuple[int, str], dict[str, Any]] = {}
+        omission_order: list[tuple[int, str]] = []
+        private_identities: set[tuple[int, str]] = set()
+        private_sources: list[bytes] = []
+
+        def get(mapping: Any, key: str, default: Any = None) -> Any:
+            if type(mapping) is not dict or type(key) is not str:
+                return default
+            # A built-in dict may still contain an adversarial non-string key
+            # whose equality hook raises on a hash collision.  Iterating and
+            # accepting exact string keys avoids invoking that peer key while
+            # retaining authoritative fields from the same result.
+            for candidate_key, candidate_value in dict.items(mapping):
+                if type(candidate_key) is str and candidate_key == key:
+                    return candidate_value
+            return default
+
+        def raw_text(value: Any) -> bytes:
+            try:
+                if type(value) is bytes:
+                    return value
+                if type(value) is bytearray:
+                    return bytes(value)
+                if type(value) is str:
+                    return value.encode("utf-8", errors="replace")
+                if value is None:
+                    return b""
+                if type(value) in (bool, int, float):
+                    return str(value).encode("ascii", errors="replace")
+                return b"<unrenderable>"
+            except Exception:
+                return b"<unrenderable>"
+
+        def marker(original_bytes: int, digest: str) -> str:
+            return (
+                f"[truncated original_bytes={original_bytes} "
+                f"sha256={digest}]"
+            )
+
+        def remember_digest(
+            *,
+            original_bytes: int,
+            digest: str,
+            path: str,
+            omitted_items: int = 0,
+        ) -> str:
+            identity = (int(original_bytes), str(digest))
+            record = omission_records.get(identity)
+            if record is None:
+                record = {
+                    "original_bytes": identity[0],
+                    "sha256": identity[1],
+                    "marker": marker(*identity),
+                    "occurrence_count": 0,
+                    "paths": [],
+                }
+                omission_records[identity] = record
+                omission_order.append(identity)
+            record["occurrence_count"] = int(record["occurrence_count"]) + 1
+            paths = record["paths"]
+            if isinstance(paths, list) and path not in paths and len(paths) < 8:
+                paths.append(path)
+            if omitted_items:
+                record.setdefault("omitted_item_count", int(omitted_items))
+                record["total_omitted_item_count"] = (
+                    int(record.get("total_omitted_item_count") or 0)
+                    + int(omitted_items)
+                )
+            return str(record["marker"])
+
+        def remember_raw(value: Any, *, path: str) -> str:
+            raw = raw_text(value)
+            if not raw:
+                return ""
+            return remember_digest(
+                original_bytes=len(raw),
+                digest=hashlib.sha256(raw).hexdigest(),
+                path=path,
+            )
+
+        def mark_private(value: Any) -> None:
+            raw = raw_text(value)
+            if raw:
+                identity = (len(raw), hashlib.sha256(raw).hexdigest())
+                if identity not in private_identities:
+                    private_identities.add(identity)
+                    private_sources.append(raw)
+
+        def redact_sensitive(raw: bytes, *, path: str) -> bytes:
+            rendered = raw.decode("utf-8", errors="replace")
+            bearer_pattern = re.compile(
+                r"(?i)\b((?:authorization\s*[:=]\s*)?bearer)\s+"
+                r"([^\s,;\"']+)"
+            )
+
+            def bearer_replacement(match: re.Match[str]) -> str:
+                secret = match.group(2).encode("utf-8", errors="replace")
+                digest = hashlib.sha256(secret).hexdigest()
+                remember_digest(
+                    original_bytes=len(secret),
+                    digest=digest,
+                    path=f"{path}.redacted",
+                )
+                prefix = match.group(1)
+                if prefix.lower().lstrip().startswith("authorization"):
+                    return f"Authorization=<redacted sha256={digest}>"
+                return f"Bearer <redacted sha256={digest}>"
+
+            pattern = re.compile(
+                r"(?i)\b(password|passwd|token|secret|credential|"
+                r"api[_-]?key|authorization)(?:\s*[:=]\s*|\s+)"
+                r"([^\s,;]+)"
+            )
+
+            def replacement(match: re.Match[str]) -> str:
+                if match.group(2).startswith("<redacted"):
+                    return match.group(0)
+                secret = match.group(2).encode("utf-8", errors="replace")
+                digest = hashlib.sha256(secret).hexdigest()
+                remember_digest(
+                    original_bytes=len(secret),
+                    digest=digest,
+                    path=f"{path}.redacted",
+                )
+                return f"{match.group(1)}=<redacted sha256={digest}>"
+
+            try:
+                rendered = bearer_pattern.sub(bearer_replacement, rendered)
+                rendered = pattern.sub(replacement, rendered)
+                cli_pattern = re.compile(
+                    r"(?i)(--?(?:password|passwd|token|secret|credential|"
+                    r"api[_-]?key|authorization))(?:\s+|=)([^\s,;]+)"
+                )
+
+                def cli_replacement(match: re.Match[str]) -> str:
+                    if match.group(2).startswith("<redacted"):
+                        return match.group(0)
+                    secret = match.group(2).encode(
+                        "utf-8", errors="replace"
+                    )
+                    digest = hashlib.sha256(secret).hexdigest()
+                    remember_digest(
+                        original_bytes=len(secret),
+                        digest=digest,
+                        path=f"{path}.redacted",
+                    )
+                    return (
+                        f"{match.group(1)} <redacted sha256={digest}>"
+                    )
+
+                return cli_pattern.sub(
+                    cli_replacement, rendered
+                ).encode("utf-8")
+            except Exception:
+                return raw
+
+        def text(
+            value: Any,
+            *,
+            path: str,
+            limit: int,
+            retain_head: bool = True,
+            private_sensitive: bool = False,
+            redact_private_substrings: bool = False,
+        ) -> str:
+            original_raw = raw_text(value)
+            if not original_raw:
+                return ""
+            raw_identity = (
+                len(original_raw),
+                hashlib.sha256(original_raw).hexdigest(),
+            )
+            private_fragment = private_sensitive and (
+                raw_identity in private_identities
+            )
+            if private_sensitive and not private_fragment:
+                for private_source in private_sources:
+                    try:
+                        if (
+                            original_raw in private_source
+                            or (
+                                len(private_source) >= 8
+                                and private_source in original_raw
+                            )
+                        ):
+                            private_fragment = True
+                            break
+                    except Exception:
+                        private_fragment = True
+                        break
+            if private_fragment:
+                return remember_digest(
+                    original_bytes=raw_identity[0],
+                    digest=raw_identity[1],
+                    path=path,
+                )
+            structurally_redacted = original_raw
+            if redact_private_substrings:
+                for private_source in private_sources:
+                    if (
+                        len(private_source) >= 8
+                        and private_source in structurally_redacted
+                    ):
+                        digest = hashlib.sha256(private_source).hexdigest()
+                        remember_digest(
+                            original_bytes=len(private_source),
+                            digest=digest,
+                            path=f"{path}.private_fragment",
+                        )
+                        structurally_redacted = structurally_redacted.replace(
+                            private_source,
+                            f"<private sha256={digest}>".encode("ascii"),
+                        )
+            rendered_raw = redact_sensitive(
+                structurally_redacted,
+                path=path,
+            )
+            if (
+                len(original_raw) <= limit
+                and len(rendered_raw) <= limit
+            ):
+                return rendered_raw.decode("utf-8", errors="replace")
+            omission_marker = remember_digest(
+                original_bytes=len(original_raw),
+                digest=hashlib.sha256(original_raw).hexdigest(),
+                path=path,
+            )
+            if not retain_head:
+                return ""
+            marker_bytes = omission_marker.encode("utf-8")
+            head = rendered_raw[
+                : max(0, limit - len(marker_bytes) - 1)
+            ]
+            return (
+                head.decode("utf-8", errors="replace")
+                + "\n"
+                + omission_marker
+            )
+
+        def number(value: Any, default: int = 0) -> int:
+            if type(value) is int and -(2**31) <= value <= (2**31 - 1):
+                return value
+            return default
+
+        def canonical_item_bytes(value: Any) -> bytes:
+            def exact_json_value(candidate: Any, depth: int = 0) -> Any:
+                if depth > 8:
+                    return "<unrenderable>"
+                if candidate is None or type(candidate) in (str, bool, int):
+                    return candidate
+                if type(candidate) is float:
+                    return (
+                        candidate
+                        if math.isfinite(candidate)
+                        else "<unrenderable>"
+                    )
+                if type(candidate) in (list, tuple):
+                    return [
+                        exact_json_value(item, depth + 1)
+                        for item in candidate
+                    ]
+                if type(candidate) is dict:
+                    return {
+                        key: exact_json_value(
+                            get(candidate, key), depth + 1
+                        )
+                        for key in sorted(
+                            item_key
+                            for item_key in candidate
+                            if type(item_key) is str
+                        )
+                    }
+                return "<unrenderable>"
+
+            return canonical_json(exact_json_value(value)).encode("utf-8")
+
+        def sequence_items(value: Any) -> tuple[list[Any], bool]:
+            if type(value) in (str, bytes, bytearray):
+                return [value], False
+            if type(value) in (list, tuple):
+                return list(value), False
+            return ([] if value is None else ["<unrenderable>"]), (
+                value is not None
+            )
+
+        def values(
+            value: Any,
+            *,
+            path: str,
+            item_limit: int = 192,
+            max_items: int = 3,
+            render_item: Callable[[Any], Any] | None = None,
+        ) -> list[str]:
+            source, scan_truncated = sequence_items(value)
+            kept: list[str] = []
+            tail_hasher = hashlib.sha256()
+            tail_hasher.update(b"[")
+            tail_bytes = 1
+            omitted_count = 0
+            first_tail = True
+            for index, item in enumerate(source):
+                if len(kept) < max_items:
+                    rendered_item = (
+                        render_item(item)
+                        if render_item is not None
+                        else item
+                    )
+                    rendered = text(
+                        rendered_item,
+                        path=f"{path}[{index}]",
+                        limit=item_limit,
+                        redact_private_substrings=(
+                            path.endswith("failed_commands")
+                        ),
+                    ).strip()
+                    if rendered and rendered not in kept:
+                        kept.append(rendered)
+                        continue
+                item_bytes = canonical_item_bytes(item)
+                if not first_tail:
+                    tail_hasher.update(b",")
+                    tail_bytes += 1
+                tail_hasher.update(item_bytes)
+                tail_bytes += len(item_bytes)
+                omitted_count += 1
+                first_tail = False
+            if scan_truncated:
+                scan_marker = b'"<sequence-scan-limit>"'
+                if not first_tail:
+                    tail_hasher.update(b",")
+                    tail_bytes += 1
+                tail_hasher.update(scan_marker)
+                tail_bytes += len(scan_marker)
+                omitted_count += 1
+                first_tail = False
+            tail_hasher.update(b"]")
+            tail_bytes += 1
+            if omitted_count:
+                omitted_marker = remember_digest(
+                    original_bytes=tail_bytes,
+                    digest=tail_hasher.hexdigest(),
+                    path=path,
+                    omitted_items=omitted_count,
+                )
+                kept.append(
+                    f"{omitted_marker[:-1]} omitted_items={omitted_count}]"
+                )
+            return kept
+
+        def compact_review(value: Any, *, path: str) -> dict[str, Any]:
+            if type(value) is not dict:
+                return {}
+            review: dict[str, Any] = {}
+            for key in ("receipt_id", "decision", "policy_version"):
+                rendered = text(
+                    get(value, key),
+                    path=f"{path}.{key}",
+                    limit=256,
+                ).strip()
+                if rendered:
+                    review[key] = rendered
+            accepted = get(value, "accepted")
+            if isinstance(accepted, bool):
+                review["accepted"] = accepted
+            for key in (
+                "reason_codes",
+                "finding_codes",
+                "missing_expected_outputs",
+                "out_of_scope_paths",
+                "justified_paths",
+                "denied_paths",
+                "contract_gap_paths",
+                "failed_commands",
+            ):
+                compact = values(
+                    get(value, key),
+                    path=f"{path}.{key}",
+                    item_limit=128,
+                    max_items=2,
+                )
+                if compact:
+                    review[key] = compact
+            for key in (
+                "guidance_markdown",
+                "review_markdown",
+                "body",
+                "analysis",
+                "raw_response",
+                "next_attempt_prompt_addendum",
+            ):
+                remember_raw(get(value, key), path=f"{path}.{key}")
+            return review
+
+        def compact_mapping(
+            value: Any,
+            *,
+            path: str,
+            scalar_keys: Sequence[str],
+            list_keys: Sequence[str] = (),
+        ) -> dict[str, Any]:
+            if type(value) is not dict:
+                return {}
+            projected: dict[str, Any] = {}
+            for key in scalar_keys:
+                candidate = get(value, key)
+                if type(candidate) is bool:
+                    projected[key] = candidate
+                    continue
+                if type(candidate) is int:
+                    projected[key] = number(candidate)
+                    continue
+                rendered = text(
+                    candidate,
+                    path=f"{path}.{key}",
+                    limit=256,
+                ).strip()
+                if rendered:
+                    projected[key] = rendered
+            for key in list_keys:
+                compact = values(
+                    get(value, key),
+                    path=f"{path}.{key}",
+                    item_limit=128,
+                    max_items=2,
+                )
+                if compact:
+                    projected[key] = compact
+            return projected
+
+        def build() -> dict[str, Any]:
+            source: Mapping[str, Any] = (
+                failure if type(failure) is dict else {}
+            )
+            validation_value = get(source, "validation_result")
+            validation: Mapping[str, Any] = (
+                validation_value
+                if type(validation_value) is dict
+                else {}
+            )
+            source_returncode = get(source, "returncode")
+            if source_returncode is None:
+                source_returncode = get(validation, "returncode", 1)
+            source_review = get(source, "failure_review")
+            validation_review = get(validation, "failure_review")
+            for review_value in (source_review, validation_review):
+                if type(review_value) is not dict:
+                    continue
+                for key in (
+                    "guidance_markdown",
+                    "review_markdown",
+                    "body",
+                    "analysis",
+                    "raw_response",
+                ):
+                    mark_private(get(review_value, key))
+                review_addendum = get(
+                    review_value, "next_attempt_prompt_addendum"
+                )
+                if len(raw_text(review_addendum)) > 1_024:
+                    mark_private(review_addendum)
+            for key in ("output", "stdout", "stderr", "raw_output"):
+                mark_private(get(validation, key))
+            validation_addendum = get(
+                validation, "next_attempt_prompt_addendum"
+            )
+            if len(raw_text(validation_addendum)) > 1_024:
+                mark_private(validation_addendum)
+            selected: dict[str, Any] = {
+                "kind": text(
+                    get(source, "kind", "implementation_failure"),
+                    path="kind",
+                    limit=128,
+                    private_sensitive=False,
+                ).strip()
+                or "implementation_failure",
+                "returncode": number(source_returncode, 1),
+            }
+            scalar_specs = (
+                ("reason", 512),
+                ("exception_type", 256),
+                ("exception_message", 1_024),
+                ("message", 1_024),
+                ("phase", 256),
+                ("timeout_reason", 256),
+                ("counterexample_id", 256),
+            )
+            for key, limit in scalar_specs:
+                rendered = text(
+                    get(source, key),
+                    path=key,
+                    limit=limit,
+                    private_sensitive=key in {
+                        "exception_message",
+                        "message",
+                    },
+                ).strip()
+                if rendered:
+                    target_key = (
+                        "exception_message" if key == "message" else key
+                    )
+                    selected.setdefault(target_key, rendered)
+            for key in (
+                "reason_codes",
+                "failed_commands",
+                "failing_checks",
+                "missing_outputs",
+                "counterexample_ids",
+            ):
+                compact = values(get(source, key), path=key)
+                if compact:
+                    selected[key] = compact
+
+            review_source: Any = (
+                source_review
+                if type(source_review) is dict
+                else validation_review
+            )
+            primary_review = compact_review(
+                review_source,
+                path="failure_review",
+            )
+            if primary_review:
+                selected["failure_review"] = primary_review
+
+            source_addendum = get(source, "next_attempt_prompt_addendum")
+            if source_addendum is None and type(review_source) is dict:
+                source_addendum = get(
+                    review_source,
+                    "next_attempt_prompt_addendum",
+                )
+            safe_addendum = text(
+                source_addendum,
+                path="next_attempt_prompt_addendum",
+                limit=1_024,
+                retain_head=False,
+                private_sensitive=True,
+            ).strip()
+            if safe_addendum:
+                selected["next_attempt_prompt_addendum"] = safe_addendum
+
+            validation_projection: dict[str, Any] = {}
+            for key in ("attempted", "passed"):
+                candidate = get(validation, key)
+                if type(candidate) is bool:
+                    validation_projection[key] = candidate
+            validation_projection["returncode"] = number(
+                get(validation, "returncode", selected["returncode"]),
+                selected["returncode"],
+            )
+            for key, limit in (
+                ("reason", 512),
+                ("error", 512),
+                ("failed_command", 1_024),
+                ("exception_message", 1_024),
+                ("failure_head", MAX_ACTIONABLE_RETRY_TEXT_BYTES),
+            ):
+                candidate = get(validation, key)
+                if key == "failure_head":
+                    candidate = (
+                        PortalImplementationDaemon._sanitize_retry_failure_head(
+                            candidate
+                        )
+                    )
+                rendered = text(
+                    candidate,
+                    path=f"validation.{key}",
+                    limit=limit,
+                    private_sensitive=key == "exception_message",
+                    redact_private_substrings=key == "failed_command",
+                ).strip()
+                if rendered:
+                    validation_projection[key] = rendered
+            for key in (
+                "reason_codes",
+                "failed_commands",
+                "failed_tests",
+                "failed_test_paths",
+                "exception_types",
+            ):
+                candidate = get(validation, key)
+                compact = values(
+                    candidate,
+                    path=f"validation.{key}",
+                    render_item=(
+                        PortalImplementationDaemon._sanitize_retry_test_node_id
+                        if key == "failed_tests"
+                        else None
+                    ),
+                )
+                if compact:
+                    validation_projection[key] = compact
+            nested_review = compact_review(
+                validation_review,
+                path="validation.failure_review",
+            )
+            if nested_review:
+                validation_projection["failure_review"] = {
+                    key: nested_review[key]
+                    for key in ("receipt_id", "decision", "accepted")
+                    if key in nested_review
+                }
+            remember_raw(
+                validation_addendum,
+                path="validation.next_attempt_prompt_addendum",
+            )
+            for key in ("output", "stdout", "stderr", "raw_output"):
+                remember_raw(
+                    get(validation, key),
+                    path=f"validation.{key}",
+                )
+            selected["validation"] = validation_projection
+
+            proposal = compact_mapping(
+                get(validation, "proposal_gate"),
+                path="proposal_gate",
+                scalar_keys=(
+                    "accepted",
+                    "attempted",
+                    "proposal_id",
+                    "policy_id",
+                    "receipt_id",
+                    "repository_tree_id",
+                ),
+                list_keys=("reason_codes", "changed_paths"),
+            )
+            if proposal:
+                selected["proposal_gate"] = proposal
+            scope = compact_mapping(
+                get(validation, "scope_adjudication"),
+                path="scope_adjudication",
+                scalar_keys=("accepted", "receipt_id", "proposal_id"),
+                list_keys=("authorized_paths", "denied_paths"),
+            )
+            if scope:
+                selected["scope_adjudication"] = scope
+            for key, scalar_keys in (
+                (
+                    "timeout_policy",
+                    (
+                        "source",
+                        "configured_timeout_seconds",
+                        "progress_timeout_seconds",
+                        "max_timeout_seconds",
+                        "progress_aware",
+                    ),
+                ),
+                (
+                    "checkpoint_manifest",
+                    (
+                        "schema",
+                        "manifest_cid",
+                        "file_count",
+                        "total_size_bytes",
+                        "total_bytes",
+                    ),
+                ),
+            ):
+                compact = compact_mapping(
+                    get(source, key),
+                    path=key,
+                    scalar_keys=scalar_keys,
+                )
+                if compact:
+                    selected[key] = compact
+
+            records = [omission_records[item] for item in omission_order]
+            if records:
+                selected["truncation"] = {"records": records}
+                occurrences = sum(
+                    int(record.get("occurrence_count") or 0)
+                    for record in records
+                )
+                selected["deduplication"] = {
+                    "unique_omission_count": len(records),
+                    "occurrence_count": occurrences,
+                    "deduplicated_occurrence_count": max(
+                        0,
+                        occurrences - len(records),
+                    ),
+                }
+            return selected
+
+        try:
+            selected = build()
+        except Exception:
+            # Keep exactly one emergency implementation.  The public wrapper
+            # above is exact-container-only, privacy preserving and bounded;
+            # duplicating a weaker projection here previously reintroduced raw
+            # validation output and dropped authority maps on helper failures.
+            raise
+
+        try:
+            encoded = canonical_json(selected).encode("utf-8")
+        except Exception:
+            encoded = b""
+        if encoded and len(encoded) <= MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES:
+            return selected
+
+        original_digest = hashlib.sha256(encoded).hexdigest()
+        validation = selected.get("validation")
+        validation = validation if isinstance(validation, Mapping) else {}
+        review = selected.get("failure_review")
+        review = review if isinstance(review, Mapping) else {}
+
+        def fallback_text(value: Any, limit: int) -> str:
+            raw = raw_text(value)
+            if len(raw) <= limit:
+                return raw.decode("utf-8", errors="replace")
+            digest = hashlib.sha256(raw).hexdigest()
+            truncation_marker = marker(len(raw), digest)
+            marker_bytes = truncation_marker.encode("utf-8")
+            head = raw[: max(0, limit - len(marker_bytes) - 1)]
+            return (
+                head.decode("utf-8", errors="replace")
+                + "\n"
+                + truncation_marker
+            )
+
+        def fallback_list(
+            value: Any,
+            *,
+            path: str,
+            limit: int = 256,
+            count: int = 2,
+        ) -> list[str]:
+            if type(value) is not list:
+                return []
+            compact = [
+                fallback_text(item, limit)
+                for item in value[:count]
+                if raw_text(item)
+            ]
+            if len(value) > count:
+                tail_bytes = canonical_json(value[count:]).encode("utf-8")
+                compact.append(
+                    remember_digest(
+                        original_bytes=len(tail_bytes),
+                        digest=hashlib.sha256(tail_bytes).hexdigest(),
+                        path=path,
+                        omitted_items=len(value) - count,
+                    )
+                )
+            return compact
+
+        fallback_validation: dict[str, Any] = {}
+        for key in ("attempted", "passed"):
+            if isinstance(validation.get(key), bool):
+                fallback_validation[key] = validation[key]
+        fallback_validation["returncode"] = number(
+            validation.get("returncode"),
+            number(selected.get("returncode"), 1),
+        )
+        for key, limit in (
+            ("reason", 256),
+            ("failed_command", 768),
+            ("exception_message", 512),
+            ("failure_head", 1_024),
+        ):
+            if key in validation:
+                rendered = fallback_text(validation[key], limit).strip()
+                if rendered:
+                    fallback_validation[key] = rendered
+        for key, limit in (
+            ("failed_commands", 384),
+            ("failed_tests", 192),
+            ("failed_test_paths", 256),
+            ("exception_types", 128),
+        ):
+            compact = fallback_list(
+                validation.get(key),
+                path=f"fallback.validation.{key}",
+                limit=limit,
+            )
+            if compact:
+                fallback_validation[key] = compact
+        nested_review = validation.get("failure_review")
+        if isinstance(nested_review, Mapping):
+            fallback_nested_review: dict[str, Any] = {}
+            for key in ("receipt_id", "decision", "accepted"):
+                if key not in nested_review:
+                    continue
+                value = nested_review[key]
+                fallback_nested_review[key] = (
+                    value
+                    if isinstance(value, bool)
+                    else fallback_text(value, 256)
+                )
+            fallback_validation["failure_review"] = fallback_nested_review
+
+        # ``fallback_list`` may itself omit an item from the already-normalized
+        # projection.  Read the live ledger after those calls so that this new
+        # tail receives the same byte/digest/item-count evidence as source
+        # tails instead of being represented only by an inline marker.
+        truncation_records = [
+            omission_records[identity] for identity in omission_order
+        ]
+        compact_records: list[dict[str, Any]] = []
+        if isinstance(truncation_records, list):
+            for record in truncation_records:
+                if not isinstance(record, Mapping):
+                    continue
+                compact_record = {
+                    key: record[key]
+                    for key in (
+                        "original_bytes",
+                        "sha256",
+                        "marker",
+                        "occurrence_count",
+                        "omitted_item_count",
+                        "total_omitted_item_count",
+                    )
+                    if key in record
+                }
+                if compact_record:
+                    compact_records.append(compact_record)
+        live_occurrences = sum(
+            int(record.get("occurrence_count") or 0)
+            for record in truncation_records
+            if type(record) is dict
+        )
+        live_deduplication = {
+            "unique_omission_count": len(compact_records),
+            "occurrence_count": live_occurrences,
+            "deduplicated_occurrence_count": max(
+                0, live_occurrences - len(compact_records)
+            ),
+        }
+        fallback: dict[str, Any] = {
+            "kind": str(selected.get("kind") or "implementation_failure")[:128],
+            "returncode": number(selected.get("returncode"), 1),
+            "validation": fallback_validation,
+            "failure_review": {},
+            "truncation": {"records": compact_records},
+            "deduplication": live_deduplication,
+            "normalization_truncation": {
+                "original_bytes": len(encoded),
+                "sha256": original_digest,
+                "marker": marker(len(encoded), original_digest),
+            },
+        }
+        for key in ("receipt_id", "decision", "accepted"):
+            if key not in review:
+                continue
+            value = review[key]
+            fallback["failure_review"][key] = (
+                value
+                if isinstance(value, bool)
+                else fallback_text(value, 256)
+            )
+        for key in (
+            "proposal_gate",
+            "scope_adjudication",
+            "timeout_policy",
+            "checkpoint_manifest",
+        ):
+            value = selected.get(key)
+            if isinstance(value, Mapping):
+                fallback[key] = dict(value)
+        for key in (
+            "reason",
+            "exception_type",
+            "exception_message",
+            "phase",
+        ):
+            if key in selected:
+                fallback[key] = fallback_text(selected[key], 512)
+        try:
+            fallback_encoded = canonical_json(fallback).encode("utf-8")
+        except Exception:
+            fallback_encoded = b""
+        if len(fallback_encoded) <= MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES:
+            return fallback
+
+        # Preserve each omitted sequence tail as its own content-addressed
+        # record.  Non-tail scalar/reviewer omissions may be combined into one
+        # envelope, but aggregating list tails would lose the original count
+        # and digest that make the retry evidence actionable and auditable.
+        tail_records = [
+            record
+            for record in compact_records
+            if int(record.get("omitted_item_count") or 0) > 0
+        ]
+        non_tail_records = [
+            record
+            for record in compact_records
+            if int(record.get("omitted_item_count") or 0) == 0
+        ]
+        compact_truncation: dict[str, Any] = {"records": tail_records}
+        if non_tail_records:
+            record_set_bytes = canonical_json(non_tail_records).encode(
+                "utf-8"
+            )
+            record_set_digest = hashlib.sha256(record_set_bytes).hexdigest()
+            compact_truncation["record_set"] = {
+                "record_count": len(non_tail_records),
+                "original_bytes": len(record_set_bytes),
+                "sha256": record_set_digest,
+                "marker": marker(len(record_set_bytes), record_set_digest),
+            }
+        fallback["truncation"] = compact_truncation
+        try:
+            compact_fallback_encoded = canonical_json(fallback).encode(
+                "utf-8"
+            )
+        except Exception:
+            compact_fallback_encoded = b""
+        if (
+            compact_fallback_encoded
+            and len(compact_fallback_encoded)
+            <= MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES
+        ):
+            return fallback
+        # If the first compact projection is still too large, shrink only
+        # repeated actionable lists and prose.  Keep the independently bounded
+        # authority/timeout/checkpoint maps and every tail commitment.
+        minimal_validation = dict(fallback["validation"])
+        if isinstance(minimal_validation, dict):
+            for key, limit in (
+                ("reason", 128),
+                ("failed_command", 384),
+                ("exception_message", 256),
+                ("failure_head", 512),
+            ):
+                if key in minimal_validation:
+                    minimal_validation[key] = fallback_text(
+                        minimal_validation[key],
+                        limit,
+                    )
+            for key, limit in (
+                ("failed_commands", 256),
+                ("failed_tests", 128),
+                ("failed_test_paths", 192),
+                ("exception_types", 96),
+            ):
+                if key in minimal_validation:
+                    minimal_validation[key] = fallback_list(
+                        minimal_validation[key],
+                        path=f"fallback.minimal.validation.{key}",
+                        limit=limit,
+                        count=1,
+                    )
+        # Build a guaranteed-small terminal envelope.  Each tail record uses a
+        # compact explicit (byte-count, SHA-256, item-count) marker; prose and
+        # redaction records are represented by one aggregate commitment.  Add
+        # each already-bounded authority map only after proving it fits.
+        refreshed_records = [
+            omission_records[identity] for identity in omission_order
+        ]
+        refreshed_occurrences = sum(
+            int(record.get("occurrence_count") or 0)
+            for record in refreshed_records
+        )
+        refreshed_deduplication = {
+            "unique_omission_count": len(refreshed_records),
+            "occurrence_count": refreshed_occurrences,
+            "deduplicated_occurrence_count": max(
+                0, refreshed_occurrences - len(refreshed_records)
+            ),
+        }
+        essential_tail_records = [
+            {
+                key: record[key]
+                for key in (
+                    "original_bytes",
+                    "sha256",
+                    "occurrence_count",
+                    "omitted_item_count",
+                    "total_omitted_item_count",
+                )
+                if key in record
+            }
+            for record in refreshed_records
+            if int(record.get("omitted_item_count") or 0) > 0
+        ]
+        essential_validation: dict[str, Any] = {}
+        for key in ("attempted", "passed", "returncode"):
+            if key in minimal_validation:
+                essential_validation[key] = minimal_validation[key]
+        for key in (
+            "reason",
+            "failed_command",
+            "exception_message",
+            "failure_head",
+        ):
+            if key in minimal_validation:
+                essential_validation[key] = minimal_validation[key]
+        for key in (
+            "failed_commands",
+            "failed_tests",
+            "failed_test_paths",
+            "exception_types",
+        ):
+            value = minimal_validation.get(key)
+            if type(value) is list and value:
+                essential_validation[key] = value[:1]
+        nested_review = minimal_validation.get("failure_review")
+        if type(nested_review) is dict and nested_review:
+            essential_validation["failure_review"] = dict(nested_review)
+        essential: dict[str, Any] = {
+            "kind": fallback.get("kind", "implementation_failure"),
+            "returncode": fallback.get("returncode", 1),
+            "validation": essential_validation,
+            "failure_review": dict(fallback.get("failure_review") or {}),
+            "truncation": {"records": essential_tail_records},
+            "deduplication": refreshed_deduplication,
+            "normalization_truncation": dict(
+                fallback.get("normalization_truncation") or {}
+            ),
+        }
+        for key in (
+            "reason",
+            "exception_type",
+            "exception_message",
+            "phase",
+        ):
+            if key in fallback:
+                essential[key] = fallback[key]
+
+        non_tail_records = [
+            {
+                key: record[key]
+                for key in (
+                    "original_bytes",
+                    "sha256",
+                    "occurrence_count",
+                )
+                if key in record
+            }
+            for record in refreshed_records
+            if int(record.get("omitted_item_count") or 0) == 0
+        ]
+        if non_tail_records:
+            record_set_bytes = canonical_json(non_tail_records).encode(
+                "utf-8"
+            )
+            digest = hashlib.sha256(record_set_bytes).hexdigest()
+            essential["truncation"]["record_set"] = {
+                "record_count": len(non_tail_records),
+                "original_bytes": len(record_set_bytes),
+                "sha256": digest,
+            }
+
+        for key in (
+            "proposal_gate",
+            "scope_adjudication",
+            "timeout_policy",
+            "checkpoint_manifest",
+        ):
+            value = fallback.get(key)
+            if type(value) is not dict:
+                continue
+            candidate = {**essential, key: dict(value)}
+            if len(canonical_json(candidate).encode("utf-8")) <= (
+                MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES
+            ):
+                essential[key] = dict(value)
+        if len(canonical_json(essential).encode("utf-8")) <= (
+            MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES
+        ):
+            return essential
+
+        # The aggregate non-tail commitment is the only optional member.  The
+        # returned envelope always retains the actionable core, all original
+        # sequence-tail commitments, and deduplication counts.
+        essential["truncation"].pop("record_set", None)
+        return essential
+
+
+
 
 # ---------------------------------------------------------------------------
 # DatabaseImplementationDaemon@1 / DatabaseTaskAttempt@1 (DQP-018)
@@ -60141,3 +62445,409 @@ except (OSError, ValueError, subprocess.SubprocessError):
 
 if __name__ == "__main__":
     main()
+
+
+# --- merged from origin/main ---
+
+def _configured_provider_fallback_policy() -> str:
+    """Return the opt-in ordered-provider fallback policy."""
+
+    raw = os.environ.get(
+        PROVIDER_FALLBACK_POLICY_ENV,
+        GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY,
+    )
+    policy = str(raw).strip().lower().replace("-", "_")
+    if policy == GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY:
+        return policy
+    raise RuntimeError(
+        f"unsupported {PROVIDER_FALLBACK_POLICY_ENV} value {raw!r}; "
+        f"expected {GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY!r}"
+    )
+
+
+def _configured_legacy_quota_only_fallback_policy(provider: str) -> str:
+    """Translate the exact reviewed IVP route tuple to the new runner policy."""
+
+    fallback_provider = os.environ.get(
+        IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "",
+    ).strip().lower()
+    fallback_trigger = os.environ.get(
+        IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        "",
+    ).strip().lower()
+    if not fallback_provider and not fallback_trigger:
+        return ""
+
+    configured_policy = os.environ.get(
+        PROVIDER_FALLBACK_POLICY_ENV,
+        "",
+    ).strip().lower().replace("-", "_")
+    observed = (
+        str(provider).strip().lower(),
+        os.environ.get(_GROK_MODEL_ENV, "").strip(),
+        fallback_provider,
+        os.environ.get(_CODEX_MODEL_ENV, "").strip(),
+        fallback_trigger,
+        os.environ.get(_CODEX_REASONING_EFFORT_ENV, "").strip().lower(),
+    )
+    expected = (
+        "grok_cli",
+        "grok-4.5",
+        "codex",
+        "gpt-5.6-terra",
+        "primary_quota_exhausted",
+        "high",
+    )
+    if observed != expected or configured_policy not in {
+        "",
+        GROK_QUOTA_ONLY_FALLBACK_POLICY,
+    }:
+        raise RuntimeError(
+            "unsupported sealed legacy ordered provider route"
+        )
+    return GROK_QUOTA_ONLY_FALLBACK_POLICY
+
+
+def _grok_codex_agent_route_readiness(*, codex: str) -> Any:
+    """Use llm_router's public, body-free, side-effect-free route probe."""
+
+    from ...llm_router import probe_grok_codex_agent_route_readiness
+
+    return probe_grok_codex_agent_route_readiness(
+        grok_bin=_grok_binary(),
+        codex_bin=codex,
+        grok_model=(
+            os.environ.get(_GROK_MODEL_ENV, "").strip() or "grok-4.5"
+        ),
+        codex_model=(
+            os.environ.get(_CODEX_MODEL_ENV, "").strip()
+            or "gpt-5.6-terra"
+        ),
+        codex_reasoning_effort=(
+            os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
+            or "high"
+        ),
+    )
+
+
+def _ordered_provider_fallback_command(
+    *,
+    workspace_path: Path,
+    primary_provider: str,
+    primary_command: Sequence[str] | None,
+    fallback_provider: str,
+    fallback_command: Sequence[str],
+    fallback_policy: str = GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY,
+    primary_unavailable_kind: str = "",
+    route_receipt_path: Path | None = None,
+    route_task_id: str = "",
+    route_attempt: int | None = None,
+    route_stage: str = "implementation",
+) -> list[str]:
+    """Build the no-shell ordered provider runner command."""
+
+    runner_path = Path(__file__).resolve().parents[1] / "provider_fallback_runner.py"
+    if not runner_path.is_file():
+        raise RuntimeError(f"provider_fallback_runner missing at {runner_path}")
+    command = [
+        sys.executable,
+        str(runner_path),
+        "--workspace",
+        str(workspace_path.resolve()),
+        "--primary-provider",
+        primary_provider,
+        "--fallback-provider",
+        fallback_provider,
+        "--primary-command-json",
+        json.dumps(list(primary_command or ()), separators=(",", ":")),
+        "--fallback-command-json",
+        json.dumps(list(fallback_command), separators=(",", ":")),
+        "--fallback-policy",
+        fallback_policy,
+    ]
+    if primary_unavailable_kind:
+        command.extend(["--primary-unavailable-kind", primary_unavailable_kind])
+    if route_receipt_path is not None:
+        command.extend(["--route-receipt-path", str(route_receipt_path.resolve())])
+    if route_task_id:
+        command.extend(["--route-task-id", route_task_id])
+    if route_attempt is not None:
+        command.extend(["--route-attempt", str(route_attempt)])
+    if route_stage:
+        command.extend(["--route-stage", route_stage])
+    return command
+
+
+def _uses_packaged_provider_fallback_runner(command_template: str) -> bool:
+    """Return whether a command executes our route adapter directly or via Python."""
+
+    try:
+        command = shlex.split(command_template)
+    except ValueError:
+        return False
+    if not command:
+        return False
+    expected = (
+        Path(__file__).resolve().parents[1] / "provider_fallback_runner.py"
+    ).resolve()
+    try:
+        executable = Path(command[0]).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return False
+    if executable == expected:
+        return True
+    if len(command) < 2:
+        return False
+    try:
+        interpreter = Path(sys.executable).resolve(strict=True)
+        script = Path(command[1]).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return False
+    return executable == interpreter and script == expected
+
+
+def _provider_state_boundary_required() -> bool:
+    return bool(str(os.environ.get(PROOF_REUSE_STATE_ROOT_ENV) or "").strip())
+
+
+def _require_packaged_provider_fallback_runner(
+    command: Sequence[str] | str,
+) -> None:
+    template = command if isinstance(command, str) else shlex.join(command)
+    if (
+        _provider_state_boundary_required()
+        and not _uses_packaged_provider_fallback_runner(template)
+    ):
+        raise RuntimeError(
+            "protected proof-reuse provider execution requires the packaged "
+            "provider fallback runner"
+        )
+
+
+def _prepare_provider_route_receipt(path: Path) -> None:
+    """Remove only the exact stale attempt receipt before provider dispatch."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    for candidate in (path, _provider_filesystem_boundary_receipt_path(path)):
+        try:
+            metadata = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        if not stat_module.S_ISREG(metadata.st_mode) and not stat_module.S_ISLNK(
+            metadata.st_mode
+        ):
+            raise RuntimeError("provider receipt path is not replaceable")
+        candidate.unlink()
+
+
+def _provider_filesystem_boundary_receipt_path(route_path: Path) -> Path:
+    name = route_path.name
+    if name.startswith("provider-route-"):
+        name = "provider-filesystem-boundary-" + name[len("provider-route-") :]
+    else:
+        name = "provider-filesystem-boundary-" + name
+    return route_path.with_name(name)
+
+
+def _validated_provider_filesystem_boundary_receipt(
+    route_path: Path,
+    *,
+    task_id: str,
+    attempt: int,
+    stage: str = "implementation",
+    checkpoint_writable: bool,
+) -> dict[str, Any]:
+    """Read one exact-bound, body-free provider filesystem receipt."""
+
+    path = _provider_filesystem_boundary_receipt_path(route_path)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "provider filesystem boundary receipt is missing"
+        ) from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_size <= 0
+            or before.st_size > MAX_PROVIDER_ROUTE_RECEIPT_BYTES
+        ):
+            raise RuntimeError(
+                "provider filesystem boundary receipt is not bounded regular data"
+            )
+        raw = os.read(descriptor, MAX_PROVIDER_ROUTE_RECEIPT_BYTES + 1)
+        after = os.fstat(descriptor)
+        if (
+            len(raw) != before.st_size
+            or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+            != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+        ):
+            raise RuntimeError(
+                "provider filesystem boundary receipt changed while read"
+            )
+    finally:
+        os.close(descriptor)
+    try:
+        payload = json.loads(raw.decode("utf-8", errors="strict"))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
+        raise RuntimeError(
+            "provider filesystem boundary receipt is malformed"
+        ) from exc
+    expected_keys = {
+        "applied",
+        "attempt",
+        "completion_authority",
+        "landlock_abi",
+        "mode",
+        "policy_sha256",
+        "proof_authoritative",
+        "proof_reuse_authority_content_and_names_read_only",
+        "protected_hardlink_aliases_checked",
+        "provider_descendants_fenced",
+        "provider_private_home_writable",
+        "provider_profile_count",
+        "schema",
+        "shared_git_metadata_writable",
+        "stage",
+        "task_id",
+        "task_checkpoint_writable",
+    }
+    if not isinstance(payload, dict) or set(payload) != expected_keys:
+        raise RuntimeError(
+            "provider filesystem boundary receipt envelope is not body-free"
+        )
+    raw_abi = payload.get("landlock_abi")
+    raw_profile_count = payload.get("provider_profile_count")
+    if (
+        payload.get("schema") != PROVIDER_FILESYSTEM_BOUNDARY_SCHEMA
+        or payload.get("mode") != "landlock-provider-write-fence-v1"
+        or payload.get("task_id") != task_id
+        or type(payload.get("attempt")) is not int
+        or payload.get("attempt") != attempt
+        or payload.get("stage") != stage
+        or type(raw_abi) is not int
+        or not 3 <= raw_abi <= 100
+        or type(raw_profile_count) is not int
+        or not 0 <= raw_profile_count <= 2
+        or re.fullmatch(r"[0-9a-f]{64}", str(payload.get("policy_sha256") or ""))
+        is None
+        or payload.get("applied") is not True
+        or payload.get("provider_descendants_fenced") is not True
+        or payload.get("proof_reuse_authority_content_and_names_read_only")
+        is not True
+        or payload.get("task_checkpoint_writable") is not checkpoint_writable
+        or payload.get("provider_private_home_writable") is not True
+        or payload.get("shared_git_metadata_writable") is not False
+        or payload.get("protected_hardlink_aliases_checked") is not True
+        or payload.get("proof_authoritative") is not False
+        or payload.get("completion_authority") is not False
+    ):
+        raise RuntimeError(
+            "provider filesystem boundary receipt binding is invalid"
+        )
+    return dict(payload)
+
+
+def _provider_route_policy_allows_failure(
+    policy: object,
+    failure_kind: object,
+) -> bool:
+    if policy == GROK_QUOTA_ONLY_FALLBACK_POLICY:
+        return failure_kind == "grok_quota_exhausted"
+    if policy == GROK_QUOTA_AUTH_OR_UNAVAILABLE_FALLBACK_POLICY:
+        return failure_kind in {
+            "grok_quota_exhausted",
+            "authentication_failure",
+            "launch_failure",
+        }
+    return False
+
+
+def _validated_provider_route_receipt(
+    path: Path,
+    *,
+    task_id: str,
+    attempt: int,
+    stage: str = "implementation",
+) -> dict[str, Any]:
+    """Read one bounded, body-free, exact-bound provider route receipt."""
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except FileNotFoundError:
+        return {}
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_size <= 0
+            or before.st_size > MAX_PROVIDER_ROUTE_RECEIPT_BYTES
+        ):
+            raise RuntimeError("provider route receipt is not bounded regular data")
+        raw = os.read(descriptor, MAX_PROVIDER_ROUTE_RECEIPT_BYTES + 1)
+        after = os.fstat(descriptor)
+        if (
+            len(raw) != before.st_size
+            or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+            != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+        ):
+            raise RuntimeError("provider route receipt changed while read")
+    finally:
+        os.close(descriptor)
+    try:
+        payload = json.loads(raw.decode("utf-8", errors="strict"))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
+        raise RuntimeError("provider route receipt is malformed") from exc
+    expected_keys = {
+        "attempt",
+        "completion_authority",
+        "fallback_policy",
+        "fallback_provider",
+        "failure_kind",
+        "primary_provider",
+        "primary_returncode",
+        "reason_code",
+        "route",
+        "schema",
+        "side_effects_started",
+        "stage",
+        "task_id",
+    }
+    if not isinstance(payload, dict) or set(payload) != expected_keys:
+        raise RuntimeError("provider route receipt envelope is not body-free")
+    if (
+        payload.get("schema") != PROVIDER_ROUTE_RECEIPT_SCHEMA
+        or payload.get("route") != "fallback"
+        or payload.get("completion_authority") is not False
+        or not _provider_route_policy_allows_failure(
+            payload.get("fallback_policy"),
+            payload.get("failure_kind"),
+        )
+        or payload.get("primary_provider") != "grok"
+        or payload.get("fallback_provider") != "codex"
+        or (
+            payload.get("primary_returncode") is not None
+            and (
+                type(payload.get("primary_returncode")) is not int
+                or not -(2**31)
+                <= payload.get("primary_returncode")
+                < 2**31
+            )
+        )
+        or payload.get("side_effects_started") is not False
+        or payload.get("task_id") != task_id
+        or type(payload.get("attempt")) is not int
+        or payload.get("attempt") != attempt
+        or payload.get("stage") != stage
+        or type(payload.get("reason_code")) is not str
+        or re.fullmatch(
+            r"[a-z0-9_]{1,128}", payload.get("reason_code")
+        ) is None
+    ):
+        raise RuntimeError("provider route receipt binding is invalid")
+    return dict(payload)
+

@@ -1,0 +1,777 @@
+{
+  "schema": "scg/accelerate-inventory@1",
+  "evidence_id": "scg/accelerate-inventory@1",
+  "task_id": "SCG-001",
+  "goal_id": "SCG-G010",
+  "track": "inventory-accelerate",
+  "board_namespace": "semantic-compression-governor-v1",
+  "inventory_kind": "read_only_public_surface",
+  "generated_for_program": "semantic-compression-governor-v1",
+  "inspected_at": "2026-08-13",
+  "repository": {
+    "name": "endomorphosis/ipfs_accelerate_py",
+    "role": "accelerate_harness_and_verification",
+    "package_roots": [
+      "ipfs_accelerate_py/agent_supervisor/semantic_state",
+      "ipfs_accelerate_py/agent_supervisor/verification",
+      "ipfs_accelerate_py/agent_supervisor/runtime"
+    ],
+    "inventory_tree_revision": "a0b825d8cfa384c284d0e77fa5341571c40adfa8",
+    "inventory_tree_oid": "f5c9366a02e587275ec55a2beabf3a276197b666",
+    "planning_authority_revision": "dfd92b554e662d4312411f2e8e63a52368806f2a",
+    "incremental_verification_freeze_revision": "8c7800cedc5e1b848367db9952f912428466f8cc",
+    "notes": [
+      "Planning pin dfd92b554... is an ancestor of the inspected tree a0b825d8....",
+      "IVP public API freeze is commit 8c7800ced... under agent_supervisor.verification.",
+      "Each claimed interface records the last modifying commit of its defining source file as source_revision, and primary test path last-modifying commits as test_revisions."
+    ]
+  },
+  "nested_gitlinks_observed": {
+    "ipfs_datasets_py": "1330038f626ef92993f03d46f21e1a57719e9c25",
+    "ipfs_kit_py": "df2f9cc092456329de9724c45a50c54b410875d1",
+    "ipfs_accelerate_py/mcplusplus": "dc3164653a48d059ae9812078359daeafb451c07"
+  },
+  "claimed_interfaces": [
+    "SemanticCompressionHarness",
+    "ContextPacker",
+    "IncrementalVerificationPlanner",
+    "VerificationReceiptCache",
+    "ModelRoutePlanner"
+  ],
+  "interfaces": [
+    {
+      "name": "SemanticCompressionHarness",
+      "interface_id": "SemanticCompressionHarness@1",
+      "evidence": "sch/harness-loop@1",
+      "schema": "ipfs-accelerate.semantic-compression-harness@1",
+      "adapter_id": "ipfs-accelerate.semantic-state.harness",
+      "status": "available",
+      "import_path": "ipfs_accelerate_py.agent_supervisor.semantic_state",
+      "qualified_symbol": "ipfs_accelerate_py.agent_supervisor.semantic_state.harness.SemanticCompressionHarness",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py",
+      "source_revision": "aa0cc549dbd1e04583ca99ce0ac039760aa52b3d",
+      "contracts_source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py",
+      "contracts_source_revision": "bd5fad7ac854e3127e8aef4a5af58ee7f0748e29",
+      "export_surface_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py",
+      "public_exports": [
+        "SemanticCompressionHarness",
+        "run_semantic_patch_loop",
+        "HarnessPolicy",
+        "HarnessRequest",
+        "HarnessLoopOutcome",
+        "harness_loop_descriptor"
+      ],
+      "related_schemas": [
+        "ipfs-accelerate.semantic-harness-attempt@1",
+        "ipfs-accelerate.semantic-harness-candidate@1",
+        "ipfs-accelerate.semantic-obligation-set@1",
+        "ipfs-accelerate.semantic-capsule-index@1"
+      ],
+      "signatures": {
+        "class": "SemanticCompressionHarness",
+        "methods": [
+          "bootstrap_scan(request) -> HarnessLoopOutcome",
+          "run(request) -> HarnessLoopOutcome",
+          "run_semantic_patch_loop(request) -> HarnessLoopOutcome"
+        ],
+        "module_function": "run_semantic_patch_loop(request) -> HarnessLoopOutcome"
+      },
+      "harness_steps": [
+        "acquire_worktree",
+        "materialize_context_pack",
+        "invoke_model",
+        "validate_proposal",
+        "enforce_scope",
+        "apply_patch",
+        "rescan_changed_symbols",
+        "recompute_delta_invalidation",
+        "run_static_checks",
+        "run_selected_tests",
+        "run_proofs",
+        "optional_oracle",
+        "store_artifacts_and_manifest",
+        "compare_and_swap_root"
+      ],
+      "status_vocabularies": {
+        "HarnessMode": ["development", "production"],
+        "HarnessDisposition": ["accepted", "rejected", "unavailable"],
+        "AcceptanceDisposition": ["bootstrap", "accepted", "candidate", "rejected"],
+        "ModelRoute": [
+          "deterministic_only",
+          "small_local_model",
+          "medium_model",
+          "frontier_model",
+          "human_review_required"
+        ],
+        "provider_modes": ["production", "development", "simulated"]
+      },
+      "rules": [
+        "Rejection, unavailability, and cancellation may leave immutable candidate blocks but never advance RootRef.",
+        "Acceptance requires a real production provider when a model is needed and fresh, non-simulated, admission-eligible receipts.",
+        "human_review_required never invokes a provider and never publishes a root.",
+        "Exact attempt replay is idempotent and does not re-charge the provider.",
+        "Root CAS conflicts are reported; the prior root is never overwritten."
+      ],
+      "test_paths": [
+        "test/api/semantic_state/test_harness.py",
+        "test/api/semantic_state/test_acceptance.py",
+        "test/api/semantic_state/test_production_gates.py",
+        "test/api/semantic_state/test_concurrency_and_recovery.py",
+        "test/api/semantic_state/test_import_safety.py"
+      ],
+      "test_revisions": {
+        "test/api/semantic_state/test_harness.py": "aa0cc549dbd1e04583ca99ce0ac039760aa52b3d"
+      },
+      "collaborators": [
+        "ContextPacker / pack_context",
+        "route_model (semantic_state.routing)",
+        "invoke_model / ProductionProviderGate",
+        "IsolatedWorktree / apply_patch",
+        "SelectionExecutionAdapter",
+        "VerificationRunner / compare_full_suite",
+        "DurableSemanticStatePort root CAS"
+      ]
+    },
+    {
+      "name": "ContextPacker",
+      "interface_id": "ContextPack@1",
+      "evidence": "sch/context-pack@1",
+      "schemas": {
+        "result": "ipfs-accelerate.context-pack-result@1",
+        "coverage_policy": "ipfs-accelerate.context-coverage-policy@1",
+        "token_estimator_version": "context-compiler-calibrated_utf8@1"
+      },
+      "status": "available",
+      "import_path": "ipfs_accelerate_py.agent_supervisor.semantic_state.context_pack",
+      "qualified_symbol": "ipfs_accelerate_py.agent_supervisor.semantic_state.context_pack.ContextPacker",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py",
+      "source_revision": "69b8893087b491088a49bb53b8f256ec6fadcc3b",
+      "public_exports": [
+        "ContextPacker",
+        "pack_context",
+        "ContextCoveragePolicy",
+        "ContextTokenEstimate",
+        "ContextPackResult",
+        "project_admission_to_reference"
+      ],
+      "signatures": {
+        "class_method": "ContextPacker.pack(*, objective, target_source_cid, surrounding_source_cid, test_source_cid, dependency_admissions=(), obligation_cids=(), counterexample_cids=(), delta_cid, interface_cids=(), assumptions=(), exclusions=None, raw_source_regions=(), production_slice=None, production_slice_builder=None) -> ContextPackResult",
+        "module_function": "pack_context(*, objective, target_source_cid, surrounding_source_cid, test_source_cid, dependency_admissions=(), obligation_cids=(), counterexample_cids=(), delta_cid, interface_cids=(), assumptions=(), exclusions=None, raw_source_regions=(), budget=None, policy=None, production_slice=None, production_slice_builder=None, estimator_version=TOKEN_ESTIMATOR_VERSION) -> ContextPackResult"
+      },
+      "coverage_rules": {
+        "required_kinds_default": [
+          "target_source",
+          "surrounding_source",
+          "test_source"
+        ],
+        "never_compress_kinds_default": [
+          "target_source",
+          "surrounding_source",
+          "test_source"
+        ],
+        "allow_capsule_substitution_default": true,
+        "require_exclusion_explanations_default": true,
+        "budget_failure_behavior": "recommend_escalation_not_silent_truncation",
+        "capsule_facts_owner": "datasets (not reimplemented here)"
+      },
+      "test_paths": [
+        "test/api/semantic_state/test_context_pack.py",
+        "test/api/semantic_state/test_cli.py"
+      ],
+      "test_revisions": {
+        "test/api/semantic_state/test_context_pack.py": "69b8893087b491088a49bb53b8f256ec6fadcc3b"
+      }
+    },
+    {
+      "name": "IncrementalVerificationPlanner",
+      "interface_id": "IncrementalVerificationPlanner@1",
+      "evidence": "ivp/verification-plan@1",
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-planner@1",
+      "status": "available",
+      "import_path": "ipfs_accelerate_py.agent_supervisor.verification",
+      "qualified_symbol": "ipfs_accelerate_py.agent_supervisor.verification.planner.IncrementalVerificationPlanner",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/verification/planner.py",
+      "source_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+      "public_api_freeze_revision": "8c7800cedc5e1b848367db9952f912428466f8cc",
+      "public_api_evidence": "ivp/public-api@1",
+      "public_api_interface": "IncrementalVerificationPublicApi@1",
+      "export_surface_path": "ipfs_accelerate_py/agent_supervisor/verification/__init__.py",
+      "public_exports": [
+        "IncrementalVerificationPlanner",
+        "create_verification_plan",
+        "create_incremental_verification_planner"
+      ],
+      "related_schemas": [
+        "ipfs_accelerate_py/agent-supervisor/verification-planner-policy@1",
+        "ipfs_accelerate_py/agent-supervisor/verification-patch-delta@1",
+        "ipfs_accelerate_py/agent-supervisor/verification-check-tool-spec@1",
+        "ipfs_accelerate_py/agent-supervisor/verification-identity-binding@1",
+        "ipfs_accelerate_py/agent-supervisor/verification-plan@1"
+      ],
+      "signatures": {
+        "class_method": "IncrementalVerificationPlanner.create_plan(repository_state, invalidation_plan, context_pack, patch_delta, policy) -> VerificationPlan",
+        "module_function": "create_verification_plan(repository_state, invalidation_plan, context_pack, patch_delta, policy, *, cache=None, adapter=None) -> VerificationPlan"
+      },
+      "planning_properties": [
+        "Deterministic and side-effect free; never mutates receipt cache tombstones.",
+        "Exact-key cache lookup only; no semantic approximation.",
+        "Cross-checks patch base against repository/invalidation/context tree and semantic roots.",
+        "Broadens under uncertainty; forces human review for unbound sandbox, policy conflict, or scope crossing.",
+        "Importing the module performs no I/O."
+      ],
+      "test_paths": [
+        "test/api/test_agent_supervisor_incremental_verification_planner.py",
+        "test/api/test_agent_supervisor_incremental_verification_report.py",
+        "test/api/test_agent_supervisor_incremental_verification_conformance.py"
+      ],
+      "test_revisions": {
+        "test/api/test_agent_supervisor_incremental_verification_planner.py": "52e8fe17fdc7ac63f905872b194d930ae36ab1db"
+      }
+    },
+    {
+      "name": "VerificationReceiptCache",
+      "interface_id": "VerificationReceiptCache@1",
+      "evidence": "ivp/receipt-cache@1",
+      "status": "available",
+      "import_path": "ipfs_accelerate_py.agent_supervisor.verification",
+      "qualified_symbol": "ipfs_accelerate_py.agent_supervisor.verification.receipt_cache.VerificationReceiptCache",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/verification/receipt_cache.py",
+      "source_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+      "store_collaborator_path": "ipfs_accelerate_py/agent_supervisor/verification/receipt_store.py",
+      "public_exports": [
+        "VerificationReceiptCache",
+        "production_eligible"
+      ],
+      "signatures": {
+        "constructor": "VerificationReceiptCache(store, max_cas_retries=32, clock=None)",
+        "methods": [
+          "lookup(key, for_production=False, touch_access=True) -> CacheReuseDecision",
+          "lookup_many(keys, for_production=False) -> Mapping",
+          "admit(receipt, for_production=False, require_production_eligible=False, metadata=None) -> AdmitResult",
+          "mark_stale(key, reason=None, prior_receipt_cid=None, metadata=None)",
+          "tombstone(key, reason=None, prior_receipt_cid=None, metadata=None)",
+          "replay()",
+          "collect_gc_metadata() / gc_metadata()",
+          "current_index() / get_historical(key)"
+        ],
+        "module_function": "production_eligible(receipt) -> bool"
+      },
+      "production_admission_rules": [
+        "Exact VerificationReceiptKey lookup only.",
+        "Every hit re-derives key identity, content CID, kind, and terminal status.",
+        "Production success terminals are only passed and proved.",
+        "stale, simulated, timeout, unavailable, invalid, malformed, kind-mismatched, key-mismatched, and corrupt candidates never satisfy production.",
+        "Cache presence is never authority; immutable receipt bytes are never mutated in place.",
+        "Concurrent writers merge via generation CAS retry and never overwrite peers."
+      ],
+      "cache_reuse_dispositions": [
+        "reused",
+        "stale",
+        "missing",
+        "corrupt",
+        "mismatched",
+        "simulated",
+        "non_authoritative",
+        "policy_rejected",
+        "terminal_status_rejected"
+      ],
+      "test_paths": [
+        "test/api/test_agent_supervisor_verification_receipt_cache.py",
+        "test/api/test_agent_supervisor_verification_receipt_store.py",
+        "test/api/test_agent_supervisor_incremental_verification_planner.py",
+        "test/api/test_agent_supervisor_verification_executor.py"
+      ],
+      "test_revisions": {
+        "test/api/test_agent_supervisor_verification_receipt_cache.py": "52e8fe17fdc7ac63f905872b194d930ae36ab1db"
+      }
+    },
+    {
+      "name": "ModelRoutePlanner",
+      "interface_id": "ModelRoutePlanner@1",
+      "evidence": "ivp/model-route@1",
+      "schema": "ipfs_accelerate_py/agent-supervisor/verification-model-route-planner@1",
+      "status": "available",
+      "import_path": "ipfs_accelerate_py.agent_supervisor.verification",
+      "qualified_symbol": "ipfs_accelerate_py.agent_supervisor.verification.model_route.ModelRoutePlanner",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/verification/model_route.py",
+      "source_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+      "public_exports": [
+        "ModelRoutePlanner",
+        "choose_model_route",
+        "decide_model_route",
+        "derive_model_route_facts",
+        "default_inventory",
+        "apply_availability"
+      ],
+      "related_schemas": [
+        "ipfs_accelerate_py/agent-supervisor/verification-available-model-capability@1",
+        "ipfs_accelerate_py/agent-supervisor/verification-model-route-facts@1",
+        "ipfs_accelerate_py/agent-supervisor/verification-model-route-policy@1",
+        "ipfs_accelerate_py/agent-supervisor/verification-prior-repair-attempt@1",
+        "ipfs_accelerate_py/agent-supervisor/model-route-decision@1"
+      ],
+      "signatures": {
+        "class_methods": [
+          "ModelRoutePlanner.choose(context_pack, verification_plan, prior_attempts, available_models, policy, routing_hints=None) -> ModelRouteDecision",
+          "ModelRoutePlanner.decide(facts, prior_attempts=(), available_models=(), policy=None) -> ModelRouteDecision"
+        ],
+        "module_function": "choose_model_route(context_pack, verification_plan, prior_attempts, available_models, policy, *, routing_hints=None) -> ModelRouteDecision"
+      },
+      "closed_routes": [
+        "deterministic_only",
+        "small_local_model",
+        "medium_model",
+        "frontier_model",
+        "human_review_required"
+      ],
+      "routing_rules": [
+        "Selects capability class only; vendor/provider/model resolution is out of scope.",
+        "available_models is provider-neutral inventory of tier, context limit, locality, and availability.",
+        "Vendor/provider identity fields are rejected.",
+        "When the required tier is unavailable, routing does not downgrade; returns human_review_required.",
+        "Fail-closed human review precedes any model route for unresolved authority, unmodeled high-risk effects, scope crossings, proof/test conflict, unsafe context, non-reproducible environment, or pending mandatory full/broader suite.",
+        "Importing the module performs no I/O and never invokes a model provider."
+      ],
+      "analysis_kinds": [
+        "mechanical_formatting",
+        "mechanical_import",
+        "mechanical_codemod",
+        "mechanical_rename",
+        "localized_exact",
+        "localized_conservative",
+        "multi_file_synthesis",
+        "ambiguous",
+        "broad",
+        "opaque",
+        "conflicting",
+        "unknown"
+      ],
+      "risk_levels": ["low", "moderate", "high"],
+      "distinct_from": {
+        "semantic_state_model_routing": {
+          "interface_id": "ModelRouting@1",
+          "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/routing.py",
+          "source_revision": "644ad9dfa26c4fb6e0fd9f19a7c64a1458cad0dc",
+          "entrypoints": ["route_model", "route_requires_human_review", "route_allows_provider_dispatch"],
+          "role": "Harness pre-execution model routing over confidence/risk/context signals",
+          "test_paths": ["test/api/semantic_state/test_routing.py"],
+          "test_revisions": {
+            "test/api/semantic_state/test_routing.py": "644ad9dfa26c4fb6e0fd9f19a7c64a1458cad0dc"
+          }
+        }
+      },
+      "test_paths": [
+        "test/api/test_agent_supervisor_verification_model_route.py",
+        "test/api/test_agent_supervisor_incremental_verification_report.py"
+      ],
+      "test_revisions": {
+        "test/api/test_agent_supervisor_verification_model_route.py": "52e8fe17fdc7ac63f905872b194d930ae36ab1db"
+      }
+    }
+  ],
+  "supporting_surfaces": {
+    "verification_contracts": {
+      "source_path": "ipfs_accelerate_py/agent_supervisor/verification/contracts.py",
+      "source_revision": "0cdf81bdd283dad6c27c9d23bbb6637d7dd54cff",
+      "terminal_status_vocabulary": [
+        "passed",
+        "failed",
+        "proved",
+        "disproved",
+        "unknown",
+        "timeout",
+        "unavailable",
+        "not_modeled",
+        "stale",
+        "invalid",
+        "cancelled",
+        "simulated"
+      ],
+      "receipt_kinds": [
+        "static_analysis",
+        "type_check",
+        "test",
+        "proof"
+      ],
+      "canonical_types": [
+        "VerificationPlan",
+        "VerificationBundle",
+        "VerificationSummary",
+        "VerificationCommitment",
+        "TestReceipt",
+        "ProofReceipt",
+        "CounterexampleReceipt",
+        "StaticAnalysisReceipt",
+        "TypeCheckReceipt",
+        "ModelRouteDecision",
+        "CacheReuseDecision",
+        "VerificationReceiptKey"
+      ],
+      "commitment": {
+        "is_zero_knowledge_proof": false,
+        "hash_algorithm": "sha2-256",
+        "leaf_domain": "IVP-LEAF@1",
+        "node_domain": "IVP-NODE@1",
+        "empty_domain": "IVP-EMPTY@1",
+        "note": "IVP Merkle commitment is explicitly non-ZK and cannot substitute for a released full-checkpoint or delta proof sealer."
+      }
+    },
+    "verification_executor": {
+      "name": "VerificationExecutor",
+      "interface_id": "VerificationExecutor@1",
+      "evidence": "ivp/execution-bundle@1",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/verification/executor.py",
+      "source_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+      "entrypoints": [
+        "execute_verification_plan",
+        "create_verification_executor",
+        "compute_production_acceptance"
+      ],
+      "test_paths": [
+        "test/api/test_agent_supervisor_verification_executor.py"
+      ],
+      "test_revisions": {
+        "test/api/test_agent_supervisor_verification_executor.py": "52e8fe17fdc7ac63f905872b194d930ae36ab1db"
+      }
+    },
+    "verification_evaluation": {
+      "entrypoints": [
+        "compare_selected_with_full_suite",
+        "evaluate_controlled_fixture_corpus",
+        "evaluate_default_corpus"
+      ],
+      "source_path": "ipfs_accelerate_py/agent_supervisor/verification/evaluation.py",
+      "source_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+      "test_paths": [
+        "test/api/test_agent_supervisor_verification_selection_evaluation.py",
+        "test/api/test_agent_supervisor_incremental_verification_conformance.py"
+      ],
+      "test_revisions": {
+        "test/api/test_agent_supervisor_verification_selection_evaluation.py": "52e8fe17fdc7ac63f905872b194d930ae36ab1db"
+      },
+      "role": "Selected-versus-full-suite evaluation over controlled fixtures; not paired compressed/expanded semantic shadow execution."
+    },
+    "counterexample_minimizer": {
+      "name": "CounterexampleMinimizer",
+      "interface_id": "CounterexampleMinimizer@1",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/verification/counterexamples.py",
+      "source_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+      "entrypoints": [
+        "minimize_counterexample",
+        "CounterexampleMinimizer"
+      ],
+      "test_paths": [
+        "test/api/test_agent_supervisor_verification_counterexamples.py"
+      ]
+    },
+    "bundle_builders": {
+      "source_path": "ipfs_accelerate_py/agent_supervisor/verification/bundle.py",
+      "source_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+      "entrypoints": [
+        "build_verification_bundle",
+        "build_verification_summary",
+        "build_verification_commitment"
+      ],
+      "test_paths": [
+        "test/api/test_agent_supervisor_verification_bundle.py",
+        "test/api/test_agent_supervisor_verification_contracts.py"
+      ]
+    },
+    "isolated_worktree_execution": {
+      "interface_id": "IsolatedPatchWorktree@1",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/worktree.py",
+      "source_revision": "f1b5d1572be8537a138fa5ab1d69f120774664e2",
+      "entrypoints": [
+        "create_isolated_worktree",
+        "recover_isolated_worktree",
+        "validate_patch",
+        "apply_patch",
+        "IsolatedWorktree",
+        "PatchValidator"
+      ],
+      "test_paths": [
+        "test/api/semantic_state/test_worktree.py"
+      ],
+      "isolation_properties": [
+        "Detached worktree at a pinned base commit/tree.",
+        "Patch preimage validation and scope enforcement before apply.",
+        "Fence and phase journal for recovery; no ambient host checkout mutation of the operator tree."
+      ]
+    },
+    "semantic_scheduling": {
+      "interface_id": "SemanticSchedulingAdapter@1",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/scheduling.py",
+      "source_revision": "6715ac05736c63a1bffb158d6bce47396c60a102",
+      "entrypoints": [
+        "schedule_semantic_work",
+        "replay_semantic_work",
+        "SemanticSchedulingAdapter"
+      ],
+      "test_paths": [
+        "test/api/semantic_state/test_scheduling.py",
+        "test/api/semantic_state/test_scheduling_contracts.py"
+      ],
+      "resource_scheduler": {
+        "name": "ResourceScheduler",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+        "source_revision": "6d2c27b91e1d726d66af9d06f70bf5646dd5559c",
+        "role": "Host and provider capacity admission used by semantic scheduling and verification execution",
+        "methods": [
+          "evaluate",
+          "acquire",
+          "release",
+          "cancel",
+          "schedule",
+          "metrics_snapshot"
+        ]
+      }
+    },
+    "providers": {
+      "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/providers.py",
+      "source_revision": "644ad9dfa26c4fb6e0fd9f19a7c64a1458cad0dc",
+      "entrypoints": [
+        "invoke_model",
+        "select_provider_for_route",
+        "ProductionProviderGate",
+        "InjectedModelProvider",
+        "ModelProvider"
+      ],
+      "test_paths": [
+        "test/api/semantic_state/test_providers.py",
+        "test/api/semantic_state/test_provider_regressions.py",
+        "test/api/semantic_state/test_production_gates.py"
+      ],
+      "provider_modes": ["production", "development", "simulated"],
+      "rules": [
+        "sim:/degraded:/OFF/SIMULATED paths cannot report production verification.",
+        "human_review_required blocks provider dispatch.",
+        "Injected providers support hermetic tests; production gate rejects simulated attribution for root promotion."
+      ]
+    }
+  },
+  "benchmarks": {
+    "semantic_compression_harness": {
+      "interface_id": "SemanticStateBenchmark@1",
+      "bundle": "sch/benchmark@1",
+      "status": "measured_offline_controlled_oracle_replay",
+      "production_eligible": false,
+      "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/benchmark.py",
+      "source_revision": "e0a22ffceb9cdbdeb537f4ea1dea809fd8c38f92",
+      "runner_path": "benchmarks/semantic_state/run_benchmark.py",
+      "corpus_path": "benchmarks/semantic_state/tasks/corpus.py",
+      "checked_in_artifacts": [
+        {
+          "path": "docs/benchmarks/semantic_compression_harness_results.json",
+          "revision": "e0a22ffceb9cdbdeb537f4ea1dea809fd8c38f92"
+        },
+        {
+          "path": "docs/benchmarks/semantic_compression_harness_results.md",
+          "revision": "e0a22ffceb9cdbdeb537f4ea1dea809fd8c38f92"
+        }
+      ],
+      "test_paths": [
+        "test/api/semantic_state/test_benchmark.py",
+        "test/api/semantic_state/test_benchmark_corpus.py"
+      ],
+      "test_revisions": {
+        "test/api/semantic_state/test_benchmark.py": "e0a22ffceb9cdbdeb537f4ea1dea809fd8c38f92"
+      },
+      "metrics": {
+        "task_count": 40,
+        "corpus_id": "semantic-state-benchmark-corpus-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "median_context_reduction_percent": 58.9,
+        "mean_context_reduction_percent": 52.28,
+        "selection_precision_percent": 36.22,
+        "selection_recall_percent": 100.0,
+        "controlled_false_negatives": 0,
+        "false_positives_extras_kept_visible": 81,
+        "coverage_omissions": 0,
+        "stale_admissions": 0,
+        "simulated_admissions": 0,
+        "production_eligible_true_rows": 0,
+        "outcomes": {
+          "pass": 34,
+          "reject": 4,
+          "escalate": 2
+        },
+        "route_distribution": {
+          "deterministic_only": 10,
+          "medium_model": 16,
+          "frontier_model": 1,
+          "human_review_required": 13
+        },
+        "deterministic_digest": "sha256:15bddb87fcf7af223caaf43f579bbc6e38342356ec6d7ec7acc2c4f541823dd6"
+      },
+      "honest_limitations": [
+        "Offline controlled oracle/replay workload only.",
+        "No production-eligible result; checked-in candidates have production_eligible=false.",
+        "Must not be relabeled as live model quality."
+      ]
+    },
+    "incremental_verification": {
+      "interface_id": "IncrementalVerificationBenchmark@2",
+      "evidence": "ivp/benchmark@2",
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@2",
+      "status": "red_non_authoritative",
+      "measurement_status": "red",
+      "source_path": "benchmarks/agent_supervisor/incremental_verification.py",
+      "source_revision": "eb8e2a2f4402affa2b2ee2b30ca17d94ceab88c0",
+      "report_path": "docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md",
+      "report_revision": "8c7800cedc5e1b848367db9952f912428466f8cc",
+      "report_interface": "IncrementalVerificationReleaseReport@2",
+      "test_paths": [
+        "test/benchmarks/test_incremental_verification_planner_benchmark.py",
+        "test/api/test_agent_supervisor_incremental_verification_report.py"
+      ],
+      "metrics": {
+        "case_count": 20,
+        "measured_cases": 15,
+        "inconclusive_cases": 3,
+        "not_measured_cases": 2,
+        "tests_selected_total": 28,
+        "tests_full_total": 108,
+        "ground_truth_false_negatives": 1,
+        "ground_truth_false_positives": 7,
+        "cache_hit_rate": 0.5,
+        "route_counts": {
+          "small_local_model": 11,
+          "medium_model": 1,
+          "frontier_model": 3,
+          "human_review_required": 5
+        },
+        "frontier_or_human_escalation_rate": 0.4,
+        "frontier_or_human_escalation_count": "8/20",
+        "static_proof_status": "not_measured",
+        "real_provers": "unavailable",
+        "zero_stale_simulated_accepted": "met",
+        "zero_controlled_false_negatives": "red",
+        "cross_tree_unaffected_reuse": "unmet",
+        "benchmark_content_id": "baguqeeram6jtyce43lbhoazqxpw5zfltxu3qibiezbvzrsexfkxaidhksctq",
+        "source_snapshot_id": "sha256:32bf46ccd07392b0c1dd4b7006f21e67fad0f5e439b034a586ebb3610065939c"
+      },
+      "honest_limitations": [
+        "Explicitly RED and non-authoritative.",
+        "One seeded false negative and seven false positives in controlled corpus.",
+        "Real provers unavailable; static/type/proof execution typed not_measured where catalogs empty.",
+        "Never production-authoritative; target misses recorded without fabricating wins."
+      ]
+    }
+  },
+  "shadow_mode_disambiguation": {
+    "acceptance_requirement": "No rollout shadow mode is mistaken for paired semantic shadowing.",
+    "paired_semantic_shadowing": {
+      "definition": "SCG planned paired evaluation of a compressed ContextPack/route run against a separate expanded raw-cone ContextPack/route run in an isolated evaluation worktree, producing DifferentialPatchReport / semantic outcome comparison. Expanded results are oracle/candidate only and never silently replace the accepted patch.",
+      "planned_governor_apis": [
+        "create_shadow_plan",
+        "compare_shadow_results",
+        "execute_shadow_plan / ShadowExecutor"
+      ],
+      "current_tree_status": "not_implemented_as_public_governor_api",
+      "not_present_paths": [
+        "ipfs_accelerate_py/agent_supervisor/semantic_governor/shadow.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_governor/shadow_plan.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_governor/differential.py"
+      ],
+      "related_but_not_equivalent": [
+        {
+          "name": "selected_versus_full_suite_evaluation",
+          "source_path": "ipfs_accelerate_py/agent_supervisor/verification/evaluation.py",
+          "source_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+          "why_not_paired_semantic_shadowing": "Compares test-selection recall/precision against a full suite, not compressed vs expanded model executions."
+        },
+        {
+          "name": "benchmark_context_mode_comparison",
+          "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/benchmark.py",
+          "source_revision": "e0a22ffceb9cdbdeb537f4ea1dea809fd8c38f92",
+          "why_not_paired_semantic_shadowing": "Offline ContextModeComparison measures baseline vs semantic packing tokens/selection metrics under oracle/replay; it is not a live paired shadow execution of expanded patches."
+        }
+      ]
+    },
+    "rollout_shadow_modes": [
+      {
+        "name": "AssuranceRolloutMode.SHADOW",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/control/symbolic_assurance_rollout.py",
+        "role": "Assurance feature rollout gate (shadow/assist/enforce style); not compressed-vs-expanded semantic evaluation."
+      },
+      {
+        "name": "change_propagation RolloutMode.SHADOW",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/validation/change_propagation_rollout.py",
+        "role": "Change-propagation rollout mode that cannot authorize mutation; not paired semantic shadowing."
+      },
+      {
+        "name": "formal_planning_rollout shadow thresholds",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/planning/formal_planning_rollout.py",
+        "role": "Formal planning rollout stage thresholds; not ContextPack expansion shadowing."
+      },
+      {
+        "name": "DCR RepairShadowReport report_only",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_shadow.py",
+        "interface_id": "RepairShadowReport@1",
+        "role": "Deterministic contract repair shadow report-only mode; forbids source mutation/model calls beyond thresholds; not SCG paired semantic shadow."
+      },
+      {
+        "name": "autonomous_repair drift_monitor shadow stage",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/autonomous_repair/drift_monitor.py",
+        "role": "Repair canary/shadow pipeline stage label."
+      },
+      {
+        "name": "planner_doctor attestation SHADOW backend class",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/proof/planner_doctor_attestation.py",
+        "role": "Attestation backend classification; shadow/simulated backends cannot emit ATTESTED production receipts."
+      }
+    ],
+    "inventory_conclusion": "Rollout/canary/report-only shadow modes exist in accelerate control and repair surfaces. Paired semantic shadowing for the governor does not exist yet and must not be claimed by aliasing those rollout modes or the IVP selected-vs-full evaluation."
+  },
+  "execution_isolation_and_resource_seams": {
+    "worktree": "IsolatedWorktree in semantic_state/worktree.py creates detached evaluation worktrees; patch apply is fenced and scoped.",
+    "resource_admission": "ResourceScheduler in runtime/resource_scheduler.py admits host/provider capacity for semantic scheduling and verification execution.",
+    "provider_seam": "semantic_state/providers.py ProductionProviderGate + invoke_model; provider modes production|development|simulated.",
+    "verification_process_runner": "ipfs_accelerate_py/agent_supervisor/verification/process_runner.py runs fenced check processes under ResourceScheduler.",
+    "root_cas": "DurableSemanticStatePort compare-and-swap of generation-bearing RootRef; candidates may exist without advancing production root."
+  },
+  "known_failures_and_honest_statuses": {
+    "ivp_benchmark_red": true,
+    "ivp_seeded_false_negative": 1,
+    "ivp_false_positives": 7,
+    "ivp_provers_unavailable": true,
+    "ivp_frontier_or_human_escalation_percent": 40,
+    "harness_benchmark_not_production_eligible": true,
+    "harness_precision_low_but_recall_full": {
+      "precision_percent": 36.22,
+      "recall_percent": 100.0
+    },
+    "simulated_statuses_never_production": true,
+    "commitment_not_zk": true
+  },
+  "docs_authority": [
+    {
+      "path": "docs/architecture/SEMANTIC_COMPRESSION_GOVERNOR_PLAN.md",
+      "role": "SCG program plan (operator-protected)"
+    },
+    {
+      "path": "docs/semantic_state/SEMANTIC_COMPRESSION_HARNESS.md",
+      "role": "Harness release report"
+    },
+    {
+      "path": "docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md",
+      "revision": "8c7800cedc5e1b848367db9952f912428466f8cc",
+      "role": "IVP release report with RED binding"
+    },
+    {
+      "path": "docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md",
+      "role": "Harness control plan"
+    }
+  ],
+  "acceptance": {
+    "every_claimed_interface_has_source_test_path_and_revision": true,
+    "rollout_shadow_not_confused_with_paired_semantic_shadowing": true,
+    "claimed_interfaces_checked": [
+      "SemanticCompressionHarness",
+      "ContextPacker",
+      "IncrementalVerificationPlanner",
+      "VerificationReceiptCache",
+      "ModelRoutePlanner"
+    ]
+  }
+}

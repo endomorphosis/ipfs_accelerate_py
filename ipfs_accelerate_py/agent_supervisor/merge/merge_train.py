@@ -4449,7 +4449,7 @@ class MergeTrain:
                 "validated_commit": commit,
             }
         workspace = Path(
-            tempfile.mkdtemp(prefix="validation-", dir=self.worktree_dir)
+            tempfile.mkdtemp(prefix="validation_", dir=self.worktree_dir)
         )
         added = False
         try:
@@ -4501,7 +4501,7 @@ class MergeTrain:
         admission = self._worktree_admission_failure()
         if admission is not None:
             return admission
-        workspace = Path(tempfile.mkdtemp(prefix="candidate-", dir=self.worktree_dir))
+        workspace = Path(tempfile.mkdtemp(prefix="candidate_", dir=self.worktree_dir))
         added = False
         try:
             add = self._git("worktree", "add", "--detach", str(workspace), candidate)

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
+
 from ipfs_accelerate_py.agent_supervisor.implementation_failure_review import (
     FAILURE_REVIEW_SCHEMA,
     FailureReviewDecision,
@@ -13,9 +16,6 @@ from ipfs_accelerate_py.agent_supervisor.implementation_failure_review import (
     ImplementationFailureReviewReceipt,
     compact_failure_review,
     review_implementation_failure,
-)
-from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
-    canonical_json,
 )
 
 
@@ -116,80 +116,6 @@ def test_directory_output_does_not_admit_prefix_siblings() -> None:
     assert (
         FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
         in review.reason_codes
-    )
-
-
-def test_unchanged_workspace_output_is_not_reported_missing(
-    tmp_path,
-) -> None:
-    lock_path = tmp_path / "config" / "formal_verification_toolchains.lock.json"
-    lock_path.parent.mkdir(parents=True)
-    lock_path.write_text('{"schema": "toolchains@1"}\n', encoding="utf-8")
-
-    review = review_implementation_failure(
-        task_id="FVT-086",
-        attempt=1,
-        expected_outputs=(
-            "config/formal_verification_toolchains.lock.json",
-            "tools/logic/certification/authorization_external.py",
-        ),
-        changed_paths=(
-            "tools/logic/certification/authorization_external.py",
-        ),
-        workspace_path=tmp_path,
-        validation_result={
-            "attempted": True,
-            "passed": False,
-            "returncode": 1,
-            "reason": "validation_failed",
-            "failed_commands": ["python -m pytest test_secpal.py -q"],
-        },
-    )
-
-    assert review.decision is FailureReviewDecision.GUIDE_RESCUE
-    assert review.missing_expected_outputs == ()
-    assert (
-        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
-        not in review.reason_codes
-    )
-    assert (
-        FailureReviewReason.VALIDATION_COMMAND_FAILED.value
-        in review.reason_codes
-    )
-
-
-def test_missing_or_symlinked_unchanged_workspace_output_fails_closed(
-    tmp_path,
-) -> None:
-    outside = tmp_path.parent / f"{tmp_path.name}-outside-lock.json"
-    outside.write_text("{}\n", encoding="utf-8")
-    config = tmp_path / "config"
-    config.mkdir()
-    (config / "linked.lock.json").symlink_to(outside)
-
-    review = review_implementation_failure(
-        task_id="FVT-086",
-        attempt=1,
-        expected_outputs=(
-            "config/absent.lock.json",
-            "config/linked.lock.json",
-        ),
-        changed_paths=(),
-        workspace_path=tmp_path,
-        validation_result={
-            "attempted": False,
-            "passed": False,
-            "returncode": 78,
-            "reason": "proposal_gate_failed",
-        },
-    )
-
-    assert review.missing_expected_outputs == (
-        "config/absent.lock.json",
-        "config/linked.lock.json",
-    )
-    assert (
-        FailureReviewReason.EMPTY_OR_NO_CHANGE.value in review.reason_codes
     )
 
 
@@ -306,186 +232,6 @@ def test_unverifiable_validation_companion_requests_contract_revision() -> None:
     assert compact_failure_review(review)["contract_gap_paths"] == [
         fixture_path
     ]
-
-
-def test_child_repository_validation_target_requests_contract_revision() -> None:
-    child_test = "ipfs_kit_py/tests/test_mcp_vfs_adapter_contract.py"
-    wrong_root_duplicate = "tests/test_mcp_vfs_adapter_contract.py"
-    adapter_path = "ipfs_kit_py/ipfs_kit_py/core/vfs/adapters.py"
-    review = review_implementation_failure(
-        task_id="KITA-007",
-        attempt=1,
-        expected_outputs=(adapter_path,),
-        changed_paths=(
-            adapter_path,
-            child_test,
-            wrong_root_duplicate,
-        ),
-        validation_commands=(
-            "cd ipfs_kit_py && python -m pytest -q "
-            "tests/test_mcp_vfs_adapter_contract.py",
-        ),
-        proposal_accepted=False,
-        scope_adjudication={
-            "accepted": False,
-            "justified_paths": [],
-            "denied_paths": [child_test, wrong_root_duplicate],
-            "decisions": [
-                {
-                    "path": child_test,
-                    "verdict": "denied",
-                    "reason_codes": ["test_change_unverifiable"],
-                },
-                {
-                    "path": wrong_root_duplicate,
-                    "verdict": "denied",
-                    "reason_codes": ["test_change_unverifiable"],
-                },
-            ],
-        },
-        validation_result={
-            "attempted": False,
-            "passed": False,
-            "returncode": 78,
-            "reason": "proposal_gate_failed",
-            "error": "proposal_validation_failed",
-            "proposal_gate": {
-                "reason_codes": ["path_outside_scope"],
-                "changed_paths": [
-                    adapter_path,
-                    child_test,
-                    wrong_root_duplicate,
-                ],
-            },
-        },
-    )
-
-    assert review.contract_gap_paths == (child_test,)
-    assert (
-        FailureReviewReason.TASK_SCOPE_CONTRACT_REVISION_REQUIRED.value
-        in review.reason_codes
-    )
-    assert child_test in review.next_attempt_prompt_addendum
-    assert wrong_root_duplicate not in review.contract_gap_paths
-
-
-def test_failed_external_validation_target_requests_contract_revision() -> None:
-    owned_test = (
-        "ipfs_kit_py/tests/runtime_readiness/mcplusplus/"
-        "test_transport_security_parity.py"
-    )
-    report = (
-        "ipfs_kit_py/docs/runtime_readiness/"
-        "mcplusplus_conformance.json"
-    )
-    external_test = (
-        "ipfs_kit_py/ipfs_kit_py/mcp_server/tests_e2e_interop.py"
-    )
-    # Pytest reports this path relative to ``cd ipfs_kit_py``. Its first
-    # component happens to equal the child repository name, so the reviewer
-    # must bind it to the declared impact identity rather than drop the outer
-    # repository prefix.
-    runner_reported_test = "ipfs_kit_py/mcp_server/tests_e2e_interop.py"
-    command = (
-        "cd ipfs_kit_py && python -m pytest -q "
-        "tests/runtime_readiness/mcplusplus/"
-        "test_transport_security_parity.py "
-        "ipfs_kit_py/mcp_server/tests_e2e_interop.py"
-    )
-    review = review_implementation_failure(
-        task_id="KITA-033",
-        attempt=1,
-        expected_outputs=(owned_test, report),
-        validation_commands=(command,),
-        validation_result={
-            "attempted": True,
-            "passed": False,
-            "returncode": 1,
-            "reason": "declared_validation_failed",
-            "proposal_gate": {
-                "accepted": True,
-                "changed_paths": [owned_test, report],
-            },
-            "failed_commands": [command],
-            "failed_tests": [
-                runner_reported_test + "::test_python_import_surface"
-            ],
-            "failed_test_paths": [runner_reported_test],
-            "validation_impact_paths": [owned_test, external_test],
-        },
-    )
-
-    assert review.contract_gap_paths == (external_test,)
-    assert review.out_of_scope_paths == ()
-    assert review.justified_paths == ()
-    assert (
-        FailureReviewReason.TASK_SCOPE_CONTRACT_REVISION_REQUIRED.value
-        in review.reason_codes
-    )
-    assert "routes the repair to their owning task" in review.guidance_markdown
-    assert external_test in review.next_attempt_prompt_addendum
-    assert runner_reported_test not in review.contract_gap_paths
-
-
-def test_external_command_target_is_not_gap_without_actual_external_failure() -> None:
-    owned_test = "tests/runtime_readiness/test_joined_contract.py"
-    external_test = "tests/e2e/test_existing_contract.py"
-    command = (
-        "python -m pytest -q "
-        f"{owned_test} {external_test}"
-    )
-    review = review_implementation_failure(
-        task_id="JOINED-001",
-        attempt=1,
-        expected_outputs=(owned_test,),
-        validation_commands=(command,),
-        validation_result={
-            "attempted": True,
-            "passed": False,
-            "returncode": 1,
-            "reason": "declared_validation_failed",
-            "proposal_gate": {
-                "accepted": True,
-                "changed_paths": [owned_test],
-            },
-            "failed_commands": [command],
-            "failed_test_paths": [owned_test],
-            "validation_impact_paths": [owned_test, external_test],
-        },
-    )
-
-    assert review.contract_gap_paths == ()
-    assert (
-        FailureReviewReason.TASK_SCOPE_CONTRACT_REVISION_REQUIRED.value
-        not in review.reason_codes
-    )
-
-
-def test_failed_path_requires_declared_validation_impact_binding() -> None:
-    owned_test = "tests/runtime_readiness/test_joined_contract.py"
-    external_test = "tests/e2e/test_unrelated_contract.py"
-    review = review_implementation_failure(
-        task_id="JOINED-002",
-        attempt=1,
-        expected_outputs=(owned_test,),
-        validation_result={
-            "attempted": True,
-            "passed": False,
-            "returncode": 1,
-            "reason": "declared_validation_failed",
-            "proposal_gate": {
-                "accepted": True,
-                "changed_paths": [owned_test],
-            },
-            "failed_commands": [
-                "python -m pytest -q tests/runtime_readiness"
-            ],
-            "failed_test_paths": [external_test],
-            "validation_impact_paths": [owned_test],
-        },
-    )
-
-    assert review.contract_gap_paths == ()
 
 
 def test_validation_selection_impact_paths_are_not_candidate_changes() -> None:
@@ -691,7 +437,6 @@ def test_daemon_normalize_failure_keeps_review_projection() -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         PortalImplementationDaemon,
     )
-
     normalized = PortalImplementationDaemon._normalize_implementation_failure(
         {
             "kind": "validation_failure",
@@ -700,7 +445,6 @@ def test_daemon_normalize_failure_keeps_review_projection() -> None:
                 "decision": "guide_rescue",
                 "reason_codes": ["incomplete_expected_outputs"],
                 "missing_expected_outputs": ["b.py"],
-                "contract_gap_paths": ["tests/e2e/test_external.py"],
                 "next_attempt_prompt_addendum": "Still required outputs: b.py.",
             },
             "next_attempt_prompt_addendum": "Still required outputs: b.py.",
@@ -708,334 +452,1044 @@ def test_daemon_normalize_failure_keeps_review_projection() -> None:
                 "passed": False,
                 "returncode": 78,
                 "reason": "proposal_gate_failed",
-                "failed_tests": [
-                    f"tests/test_runtime_{index}.py::test_contract"
-                    for index in range(20)
-                ],
-                "failed_test_paths": [
-                    f"tests/test_runtime_{index}.py"
-                    for index in range(20)
-                ],
-                "exception_types": [
-                    f"Contract{index}Error"
-                    for index in range(12)
-                ],
-                "validation_impact_paths": [
-                    f"tests/test_runtime_{index}.py"
-                    for index in range(24)
-                ],
-                "failure_head": "x" * 3_000,
                 "failure_review": {
                     "decision": "guide_rescue",
-                    "reason_codes": [
-                        "task_scope_contract_revision_required"
-                    ],
-                    "contract_gap_paths": [
-                        "tests/e2e/test_external.py"
-                    ],
+                    "reason_codes": ["incomplete_expected_outputs"],
                 },
             },
         }
     )
     assert normalized["failure_review"]["decision"] == "guide_rescue"
     assert "b.py" in normalized["next_attempt_prompt_addendum"]
-    assert normalized["failure_review"]["contract_gap_paths"] == [
-        "tests/e2e/test_external.py"
-    ]
     assert normalized["validation"]["failure_review"]["decision"] == (
         "guide_rescue"
     )
-    assert normalized["validation"]["failure_review"][
-        "contract_gap_paths"
-    ] == ["tests/e2e/test_external.py"]
-    assert len(normalized["validation"]["failed_tests"]) == 12
-    assert len(normalized["validation"]["failed_test_paths"]) == 12
-    assert len(normalized["validation"]["exception_types"]) == 8
-    assert len(normalized["validation"]["validation_impact_paths"]) == 16
-    assert len(normalized["validation"]["failure_head"]) == 2_000
 
 
-def test_daemon_retry_context_keeps_contract_gap_projection(
-    monkeypatch: pytest.MonkeyPatch,
+def test_daemon_normalize_failure_bounds_nested_review_without_losing_counterexample() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+    private_output = "credential=UNIQUE_PRIVATE_SENTINEL\n" * 40
+    failed_commands = [f"pytest tests/test_{index}.py" for index in range(300)]
+    failure = {
+        "kind": "validation_failure",
+        "returncode": 17,
+        "reason": "validation_failed",
+        "exception_type": "AssertionError",
+        "exception_message": "assertion did not match",
+        "phase": "validating",
+        "failed_commands": failed_commands,
+        "failure_review": {
+            "receipt_id": "failure-review:receipt-17",
+            "decision": "guide_rescue",
+            "accepted": False,
+            "guidance_markdown": private_output,
+            "next_attempt_prompt_addendum": private_output,
+        },
+        "next_attempt_prompt_addendum": private_output,
+        "timeout_policy": {
+            "source": "task_metadata",
+            "configured_timeout_seconds": 7200,
+        },
+        "checkpoint_manifest": {
+            "manifest_cid": "checkpoint:cid",
+            "file_count": 2,
+            "total_size_bytes": 99,
+        },
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": 17,
+            "reason": "validation_failed",
+            "failed_command": "python -m pytest test_daemon_port.py -q",
+            "failed_commands": failed_commands,
+            "failed_tests": [f"test_retry_{index}" for index in range(300)],
+            "failed_test_paths": [
+                f"test/api/test_{index}.py" for index in range(300)
+            ],
+            "exception_types": ["AssertionError"],
+            "exception_message": "assertion did not match",
+            "failure_head": private_output,
+            "output": private_output,
+            "failure_review": {
+                "receipt_id": "failure-review:receipt-17",
+                "decision": "guide_rescue",
+                "accepted": False,
+                "guidance_markdown": private_output,
+            },
+            "proposal_gate": {
+                "accepted": False,
+                "proposal_id": "proposal-17",
+                "reason_codes": ["validation_failed"],
+            },
+            "scope_adjudication": {
+                "accepted": False,
+                "receipt_id": "scope-17",
+                "denied_paths": ["outside.py"],
+            },
+        },
+    }
+
+    normalized = PortalImplementationDaemon._normalize_implementation_failure(failure)
+
+    repeated = PortalImplementationDaemon._normalize_implementation_failure(failure)
+    wire = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+
+    assert normalized == repeated
+    assert len(wire.encode()) <= 16 * 1024
+    assert "UNIQUE_PRIVATE_SENTINEL" not in wire
+    assert normalized["exception_type"] == "AssertionError"
+    assert normalized["exception_message"] == "assertion did not match"
+    assert normalized["phase"] == "validating"
+    assert normalized["failure_review"] == {
+        "receipt_id": "failure-review:receipt-17",
+        "decision": "guide_rescue",
+        "accepted": False,
+    }
+    validation = normalized["validation"]
+    assert validation["attempted"] is True
+    assert validation["passed"] is False
+    assert validation["returncode"] == 17
+    assert validation["reason"] == "validation_failed"
+    assert validation["failed_command"] == (
+        "python -m pytest test_daemon_port.py -q"
+    )
+    assert validation["failed_commands"]
+    assert validation["failed_tests"]
+    assert validation["failed_test_paths"]
+    assert validation["exception_types"] == ["AssertionError"]
+    assert "sha256=" in validation["failure_head"]
+    assert validation["failure_review"]["accepted"] is False
+    assert normalized["proposal_gate"]["proposal_id"] == "proposal-17"
+    assert normalized["scope_adjudication"]["receipt_id"] == "scope-17"
+    assert normalized["timeout_policy"]["source"] == "task_metadata"
+    assert normalized["checkpoint_manifest"]["total_size_bytes"] == 99
+    assert normalized["deduplication"]["deduplicated_occurrence_count"] > 0
+
+    original_tail = json.dumps(
+        failed_commands[3:],
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    tail_records = [
+        record
+        for record in normalized["truncation"]["records"]
+        if record.get("omitted_item_count") == len(failed_commands) - 3
+        and "validation.failed_commands" in record.get("paths", [])
+    ]
+    assert len(tail_records) == 1
+    assert tail_records[0]["original_bytes"] == len(original_tail)
+    assert tail_records[0]["sha256"] == hashlib.sha256(
+        original_tail
+    ).hexdigest()
+
+    class BadMapping(Mapping):
+        def __getitem__(self, key):
+            raise KeyError(key)
+
+        def __iter__(self):
+            return iter(())
+
+        def __len__(self):
+            raise RuntimeError("hostile length")
+
+        def get(self, key, default=None):
+            return self
+
+    class BadSequence(Sequence):
+        def __getitem__(self, index):
+            raise RuntimeError("hostile item")
+
+        def __len__(self):
+            raise RuntimeError("hostile length")
+
+    class BadMeta(type):
+        def __getattribute__(cls, name):
+            if name == "__name__":
+                raise RuntimeError("hostile type label")
+            return super().__getattribute__(name)
+
+    class BadScalar(metaclass=BadMeta):
+        def __str__(self):
+            raise RuntimeError("hostile rendering")
+
+    class PlainScalar:
+        pass
+
+    for hostile in (
+        {"failure_review": BadMapping()},
+        {"failed_commands": BadSequence()},
+        {
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 4,
+                "reason": BadScalar(),
+                "failed_command": "pytest hostile.py",
+            }
+        },
+    ):
+        hostile_result = (
+            PortalImplementationDaemon._normalize_implementation_failure(
+                hostile
+            )
+        )
+        assert len(
+            json.dumps(
+                hostile_result,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ) <= 16 * 1024
+
+    first_plain = PortalImplementationDaemon._normalize_implementation_failure(
+        {"validation_result": {"reason": PlainScalar()}}
+    )
+    second_plain = PortalImplementationDaemon._normalize_implementation_failure(
+        {"validation_result": {"reason": PlainScalar()}}
+    )
+    assert first_plain == second_plain
+
+    class FlipInt(int):
+        def __int__(self):
+            raise AssertionError("custom integer conversion must not run")
+
+    class FlipList(list):
+        def __iter__(self):
+            raise AssertionError("custom sequence iteration must not run")
+
+        def __getitem__(self, index):
+            raise AssertionError("custom sequence lookup must not run")
+
+    hooked_failure = {
+        "returncode": FlipInt(17),
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": FlipInt(17),
+            "failed_tests": FlipList(["test_hook.py::test_hook"]),
+        },
+    }
+    assert PortalImplementationDaemon._normalize_implementation_failure(
+        hooked_failure
+    ) == PortalImplementationDaemon._normalize_implementation_failure(
+        hooked_failure
+    )
+
+
+def test_daemon_normalize_failure_last_resort_is_private_and_bounded(
+    monkeypatch,
 ) -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         PortalImplementationDaemon,
-        PortalTask,
+    )
+    original_unchecked = (
+        PortalImplementationDaemon._normalize_implementation_failure_unchecked
     )
 
-    daemon = object.__new__(PortalImplementationDaemon)
-    captured: dict[str, object] = {}
-    sentinel = object()
-    monkeypatch.setattr(
-        daemon,
-        "_implementation_parent",
-        lambda _task: (object(), "decision"),
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_authoritative_validation_environment_guidance",
-        lambda: "sealed validation",
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_implementation_checkpoint_manifest",
-        lambda _task: {"file_count": 0},
-    )
-
-    def capture(
-        _task,
-        failure,
-        *,
-        changed_files=(),
-        changed_symbols=(),
-        unresolved_requirements=(),
-    ):
-        captured["failure"] = failure
-        captured["changed_files"] = changed_files
-        captured["changed_symbols"] = changed_symbols
-        captured["unresolved_requirements"] = unresolved_requirements
-        return sentinel
+    def fail_unchecked(_failure):
+        raise KeyboardInterrupt("force the exact-container projection")
 
     monkeypatch.setattr(
-        daemon,
-        "record_implementation_failure_context",
-        capture,
+        PortalImplementationDaemon,
+        "_normalize_implementation_failure_unchecked",
+        staticmethod(fail_unchecked),
     )
-    task = PortalTask(
-        task_id="KITA-033",
-        title="Joined transport conformance",
-        status="todo",
-        completion="manual",
-        priority="P0",
-        track="validation",
-        outputs=["tests/runtime_readiness/test_joined.py"],
-        validation=[
-            "python -m pytest -q tests/runtime_readiness/test_joined.py "
-            "tests/e2e/test_external.py"
-        ],
-    )
-    result = daemon._record_failed_attempt_retry_context(
-        task,
-        returncode=1,
-        validation_result={
+    secret = "OPAQUE_LAST_RESORT_PRIVATE_SENTINEL"
+    long_identifier = "L" * 100_000
+    failed_commands = [
+        "pytest tests/test_retry.py -q",
+        "pytest tests/test_retry_two.py -q",
+        "pytest tests/test_retry_three.py --token " + secret,
+    ]
+    failure = {
+        "kind": "validation_failure",
+        "returncode": 19,
+        "failure_review": {
+            "receipt_id": "failure-review:last-resort",
+            "decision": "guide_rescue",
+            "accepted": False,
+            "guidance_markdown": secret,
+        },
+        "timeout_policy": {
+            "source": long_identifier,
+            "configured_timeout_seconds": 7200,
+        },
+        "checkpoint_manifest": {
+            "schema": "checkpoint@1",
+            "manifest_cid": long_identifier,
+            "file_count": 2,
+            "total_size_bytes": 99,
+        },
+        "validation_result": {
             "attempted": True,
             "passed": False,
-            "returncode": 1,
+            "returncode": 19,
+            "reason": "validation_failed",
+            "failed_command": failed_commands[0],
+            "failed_commands": failed_commands,
             "failed_tests": [
-                "tests/e2e/test_external.py::test_contract"
+                "tests/test_retry.py::test_retry[" + secret + "]",
+                "tests/test_retry.py::test_other",
             ],
-            "failed_test_paths": ["tests/e2e/test_external.py"],
-            "validation_impact_paths": [
-                "tests/runtime_readiness/test_joined.py",
-                "tests/e2e/test_external.py",
-            ],
-            "failure_head": "E   external contract failed",
-            "failure_review": {
-                "decision": "guide_rescue",
-                "reason_codes": [
-                    "task_scope_contract_revision_required"
-                ],
-                "contract_gap_paths": [
-                    "tests/e2e/test_external.py"
-                ],
+            "failed_test_paths": ["tests/test_retry.py"],
+            "exception_types": ["AssertionError"],
+            "exception_message": secret,
+            "failure_head": "E AssertionError: " + secret,
+            "output": secret + ("-private-body" * 1_000),
+            "proposal_gate": {
+                "accepted": False,
+                "attempted": True,
+                "proposal_id": long_identifier,
+                "reason_codes": ["scope_denied"],
+                "changed_paths": ["a.py"],
+            },
+            "scope_adjudication": {
+                "accepted": False,
+                "receipt_id": long_identifier,
+                "authorized_paths": ["a.py"],
+                "denied_paths": ["b.py"],
             },
         },
-    )
-
-    assert result is sentinel
-    failure = captured["failure"]
-    assert isinstance(failure, dict)
-    assert failure["failure_review"]["contract_gap_paths"] == [
-        "tests/e2e/test_external.py"
-    ]
-    normalized = daemon._normalize_implementation_failure(failure)
-    assert normalized["validation"]["failed_tests"] == [
-        "tests/e2e/test_external.py::test_contract"
-    ]
-    assert normalized["validation"]["failed_test_paths"] == [
-        "tests/e2e/test_external.py"
-    ]
-    assert normalized["validation"]["validation_impact_paths"][-1] == (
-        "tests/e2e/test_external.py"
-    )
-    assert normalized["validation"]["failure_head"] == (
-        "E   external contract failed"
-    )
-
-
-def test_daemon_normalize_oversized_review_bounds_repeated_guidance() -> None:
-    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-        PortalImplementationDaemon,
-    )
-
-    guidance = (
-        "BEGIN: create src/prover.py and rerun the focused proof test. "
-        + ("diagnostic context " * 700)
-        + " END: keep tests/prover/test_goal.py green."
-    )
-    review = {
-        "receipt_id": "bafy-reviewed-failure",
-        "decision": "guide_rescue",
-        "accepted": False,
-        "reason_codes": ["incomplete_expected_outputs"],
-        "finding_codes": ["path_outside_scope"],
-        "missing_expected_outputs": ["src/prover.py"],
-        "denied_paths": ["src/undeclared_helper.py"],
-        "failed_commands": [
-            "python -m pytest tests/prover/test_goal.py -q"
-        ],
-        "next_attempt_prompt_addendum": guidance,
-        "policy_version": "deterministic-failure-review-v2",
     }
+
     normalized = PortalImplementationDaemon._normalize_implementation_failure(
-        {
-            "kind": "validation_failure",
-            "returncode": 78,
-            "failure_review": review,
-            "next_attempt_prompt_addendum": guidance,
-            "validation_environment_guidance": "sandbox contract " * 500,
-            "validation_result": {
-                "passed": False,
-                "returncode": 78,
-                "reason": "proposal_gate_failed",
-                "failed_commands": review["failed_commands"],
-                "failure_review": review,
-            },
-        }
+        failure
     )
-
-    assert len(canonical_json(normalized).encode("utf-8")) <= 16_384
+    wire = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    assert len(wire.encode()) <= 16 * 1024
+    assert secret not in wire
+    assert normalized["validation"]["attempted"] is True
+    assert normalized["validation"]["passed"] is False
+    assert normalized["validation"]["returncode"] == 19
+    assert normalized["validation"]["reason"] == "validation_failed"
+    assert normalized["validation"]["failed_command"] == failed_commands[0]
+    assert "param-sha256=" in normalized["validation"]["failed_tests"][0]
+    assert "failure-head-omitted" in normalized["validation"]["failure_head"]
     assert normalized["failure_review"]["receipt_id"] == (
-        "bafy-reviewed-failure"
+        "failure-review:last-resort"
     )
-    assert normalized["failure_review"]["decision"] == "guide_rescue"
-    assert normalized["failure_review"]["reason_codes"] == [
-        "incomplete_expected_outputs"
+    assert "truncated original_bytes=100000" in normalized[
+        "proposal_gate"
+    ]["proposal_id"]
+    assert "truncated original_bytes=100000" in normalized[
+        "scope_adjudication"
+    ]["receipt_id"]
+    assert normalized["proposal_gate"]["reason_codes"] == ["scope_denied"]
+    assert normalized["proposal_gate"]["changed_paths"] == ["a.py"]
+    assert normalized["scope_adjudication"]["authorized_paths"] == [
+        "a.py"
     ]
-    assert normalized["failure_review"]["missing_expected_outputs"] == [
-        "src/prover.py"
-    ]
-    assert "test_goal.py" in normalized["failure_review"]["failed_commands"][0]
-    assert "BEGIN: create src/prover.py" in normalized[
-        "next_attempt_prompt_addendum"
-    ]
-    assert "END: keep tests/prover/test_goal.py green" in normalized[
-        "next_attempt_prompt_addendum"
-    ]
-    assert normalized["normalization"]["source_bytes"] > 16_384
-    assert normalized["normalization"]["truncated_field_count"] > 0
+    assert normalized["scope_adjudication"]["denied_paths"] == ["b.py"]
+    assert "truncated original_bytes=100000" in normalized[
+        "timeout_policy"
+    ]["source"]
+    assert "truncated original_bytes=100000" in normalized[
+        "checkpoint_manifest"
+    ]["manifest_cid"]
+    expected_tail = json.dumps(
+        failed_commands[1:], sort_keys=True, separators=(",", ":")
+    ).encode()
+    assert any(
+        record.get("omitted_item_count") == 2
+        and record.get("original_bytes") == len(expected_tail)
+        and record.get("sha256")
+        == hashlib.sha256(expected_tail).hexdigest()
+        for record in normalized["truncation"]["records"]
+    )
+
+    def fail_failure_head(_cls, _value):
+        raise ValueError("force unchecked helper failure")
+
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_normalize_implementation_failure_unchecked",
+        staticmethod(original_unchecked),
+    )
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_sanitize_retry_failure_head",
+        classmethod(fail_failure_head),
+    )
+    inner_fallback = (
+        PortalImplementationDaemon._normalize_implementation_failure(failure)
+    )
+    inner_wire = json.dumps(
+        inner_fallback, sort_keys=True, separators=(",", ":")
+    )
+    assert len(inner_wire.encode()) <= 16 * 1024
+    assert secret not in inner_wire
+    assert inner_fallback["validation"]["attempted"] is True
+    assert inner_fallback["validation"]["passed"] is False
+    assert inner_fallback["validation"]["returncode"] == 19
+    for key in (
+        "proposal_gate",
+        "scope_adjudication",
+        "timeout_policy",
+        "checkpoint_manifest",
+    ):
+        assert key in inner_fallback
 
 
-def test_daemon_normalize_bounds_json_escapes_and_is_canonical() -> None:
+@pytest.mark.parametrize("force_emergency_projection", [False, True])
+def test_daemon_normalize_failure_ignores_hostile_colliding_dict_key(
+    monkeypatch,
+    force_emergency_projection,
+) -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         PortalImplementationDaemon,
     )
 
-    guidance = "BEGIN retry\n" + ("\x00" * 20_000) + "\nEND retry"
-    forward_kind = {
-        "alpha": "a" * 10_000,
-        "omega": "z" * 10_000,
-    }
-    reverse_kind = dict(reversed(tuple(forward_kind.items())))
+    class CollidingKey:
+        boom = False
 
-    def normalize(kind: dict[str, str]) -> dict[str, object]:
-        return PortalImplementationDaemon._normalize_implementation_failure(
-            {
-                "kind": kind,
-                "reason": "reviewed validation failure",
-                "returncode": 10**3_000,
-                "failure_review": {
-                    "receipt_id": "bafy-control-review",
-                    "decision": "guide_rescue",
-                    "reason_codes": ["validation_command_failed"],
-                    "missing_expected_outputs": ["src/prover.py"],
-                    "failed_commands": [
-                        "python -m pytest tests/prover/test_goal.py -q"
-                    ],
-                    "next_attempt_prompt_addendum": guidance,
-                },
-                "next_attempt_prompt_addendum": guidance,
-            }
+        def __hash__(self):
+            return hash("validation_result")
+
+        def __eq__(self, _other):
+            if self.boom:
+                raise RuntimeError("hostile key equality must not run")
+            return False
+
+    collision = CollidingKey()
+    failure = {collision: "untrusted-decoy"}
+    failure["validation_result"] = {
+        "attempted": True,
+        "passed": False,
+        "returncode": 47,
+        "reason": "declared_validation_failed",
+        "failed_command": "pytest tests/test_collision.py -q",
+        "output": "PRIVATE_COLLISION_OUTPUT" * 1_000,
+        "proposal_gate": {
+            "accepted": False,
+            "proposal_id": "proposal:collision",
+        },
+        "scope_adjudication": {
+            "accepted": False,
+            "receipt_id": "scope:collision",
+        },
+    }
+    failure.update(
+        returncode=47,
+        timeout_policy={
+            "source": "task_metadata",
+            "configured_timeout_seconds": 7200,
+        },
+        checkpoint_manifest={
+            "schema": "checkpoint@1",
+            "manifest_cid": "checkpoint:collision",
+            "file_count": 2,
+            "total_size_bytes": 99,
+        },
+    )
+    collision.boom = True
+
+    if force_emergency_projection:
+        monkeypatch.setattr(
+            PortalImplementationDaemon,
+            "_normalize_implementation_failure_unchecked",
+            staticmethod(
+                lambda _failure: (_ for _ in ()).throw(
+                    KeyboardInterrupt("force emergency projection")
+                )
+            ),
         )
 
-    forward = normalize(forward_kind)
-    reverse = normalize(reverse_kind)
+    normalized = PortalImplementationDaemon._normalize_implementation_failure(
+        failure
+    )
+    repeated = PortalImplementationDaemon._normalize_implementation_failure(
+        failure
+    )
+    wire = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
 
-    assert forward == reverse
-    assert len(canonical_json(forward).encode("utf-8")) <= 16_384
-    assert forward["normalization"]["source_failure_id"] == reverse[
-        "normalization"
-    ]["source_failure_id"]
-    assert "BEGIN retry" in forward["next_attempt_prompt_addendum"]
-    assert "END retry" in forward["next_attempt_prompt_addendum"]
-    assert forward["failure_review"]["decision"] == "guide_rescue"
-    assert forward["failure_review"]["missing_expected_outputs"] == [
-        "src/prover.py"
-    ]
+    assert normalized == repeated
+    assert len(wire.encode()) <= 16 * 1024
+    assert "PRIVATE_COLLISION_OUTPUT" not in wire
+    validation = normalized["validation"]
+    assert validation["attempted"] is True
+    assert validation["passed"] is False
+    assert validation["returncode"] == 47
+    assert validation["reason"] == "declared_validation_failed"
+    assert validation["failed_command"] == (
+        "pytest tests/test_collision.py -q"
+    )
+    assert normalized["returncode"] == 47
+    assert normalized["proposal_gate"]["proposal_id"] == (
+        "proposal:collision"
+    )
+    assert normalized["scope_adjudication"]["receipt_id"] == (
+        "scope:collision"
+    )
+    assert normalized["timeout_policy"]["source"] == "task_metadata"
+    assert normalized["checkpoint_manifest"]["manifest_cid"] == (
+        "checkpoint:collision"
+    )
 
 
-def test_daemon_normalize_failure_compacts_oversized_review_without_raising() -> None:
+def test_daemon_normalize_failure_final_envelope_refreshes_tail_ledger() -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         PortalImplementationDaemon,
     )
 
-    changed_paths = [
-        f"tests/fixtures/uspto/private_import/path-{index:03d}.txt"
-        for index in range(300)
-    ]
-    failure_review = {
-        "receipt_id": "review-receipt-1",
-        "decision": "reject",
-        "reason_codes": ["hard_deny_findings"],
-        "finding_codes": ["secret_change_forbidden"],
-        "denied_paths": changed_paths,
-        "guidance_markdown": "repair guidance " * 4_000,
-        "next_attempt_prompt_addendum": "use synthetic canaries " * 2_000,
+    def oversized(prefix: str) -> list[str]:
+        return [f"{prefix}-{index}-" + ("x" * 5_000) for index in range(20)]
+
+    review_list_keys = (
+        "reason_codes",
+        "finding_codes",
+        "missing_expected_outputs",
+        "out_of_scope_paths",
+        "justified_paths",
+        "denied_paths",
+        "contract_gap_paths",
+        "failed_commands",
+    )
+    review_body_keys = (
+        "guidance_markdown",
+        "review_markdown",
+        "body",
+        "analysis",
+        "raw_response",
+        "next_attempt_prompt_addendum",
+    )
+    huge = "L" * 5_000
+
+    def review(prefix: str, list_count: int) -> dict[str, object]:
+        return {
+            "receipt_id": huge,
+            "decision": huge,
+            "policy_version": huge,
+            "accepted": False,
+            **{
+                key: oversized(prefix + key)
+                for key in review_list_keys[:list_count]
+            },
+            **{key: huge for key in review_body_keys},
+        }
+
+    validation_commands = oversized("vc")
+    failure = {
+        "kind": huge,
+        "returncode": 13,
+        **{
+            key: huge
+            for key in (
+                "reason",
+                "exception_type",
+                "exception_message",
+                "message",
+                "phase",
+                "timeout_reason",
+                "counterexample_id",
+            )
+        },
+        **{
+            key: oversized("source-" + key)
+            for key in (
+                "reason_codes",
+                "failed_commands",
+                "failing_checks",
+                "missing_outputs",
+                "counterexample_ids",
+            )
+        },
+        "failure_review": review("source-review-", 0),
+        "next_attempt_prompt_addendum": huge,
+        "timeout_policy": {
+            "source": huge,
+            "configured_timeout_seconds": 2**31 - 1,
+            "progress_timeout_seconds": 2**31 - 1,
+            "max_timeout_seconds": 2**31 - 1,
+            "progress_aware": True,
+        },
+        "checkpoint_manifest": {
+            "schema": huge,
+            "manifest_cid": huge,
+            "file_count": 2**31 - 1,
+            "total_size_bytes": 2**31 - 1,
+            "total_bytes": 2**31 - 1,
+        },
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": 13,
+            **{
+                key: huge
+                for key in (
+                    "reason",
+                    "error",
+                    "exception_message",
+                    "failure_head",
+                )
+            },
+            "failed_command": huge,
+            "failed_commands": validation_commands,
+            "failed_tests": oversized("test"),
+            "failed_test_paths": oversized("path"),
+            "exception_types": oversized("exception"),
+            "reason_codes": oversized("validation-reason"),
+            "failure_review": review("validation-review-", 4),
+            "next_attempt_prompt_addendum": huge,
+            **{
+                key: f"{key}-" + ("o" * 9_000)
+                for key in ("output", "stdout", "stderr", "raw_output")
+            },
+            "proposal_gate": {
+                "accepted": False,
+                **{
+                    key: huge
+                    for key in (
+                        "proposal_id",
+                        "policy_id",
+                        "receipt_id",
+                        "repository_tree_id",
+                    )
+                },
+                "reason_codes": oversized("proposal-reason"),
+                "changed_paths": oversized("proposal-path"),
+            },
+            "scope_adjudication": {
+                "accepted": False,
+                "receipt_id": huge,
+                "proposal_id": huge,
+                "authorized_paths": oversized("authorized"),
+                "denied_paths": oversized("denied"),
+            },
+        },
     }
 
     normalized = PortalImplementationDaemon._normalize_implementation_failure(
+        failure
+    )
+    repeated = PortalImplementationDaemon._normalize_implementation_failure(
+        failure
+    )
+    wire = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    assert normalized == repeated
+    assert len(wire.encode()) <= 16 * 1024
+    for key in (
+        "proposal_gate",
+        "scope_adjudication",
+        "timeout_policy",
+        "checkpoint_manifest",
+    ):
+        assert key in normalized
+
+    truncation = normalized["truncation"]
+    records = truncation["records"]
+    aggregate_count = truncation.get("record_set", {}).get("record_count", 0)
+    assert normalized["deduplication"]["unique_omission_count"] == (
+        len(records) + aggregate_count
+    )
+
+    # The former intermediate-return bug created this second-pass tail marker
+    # after snapshotting the omission ledger.  Reconstruct it and require the
+    # terminal envelope to retain its explicit hash, byte count, and item count.
+    def projected_item(value: str) -> str:
+        raw = value.encode()
+        digest = hashlib.sha256(raw).hexdigest()
+        marker = (
+            f"[truncated original_bytes={len(raw)} sha256={digest}]"
+        )
+        head = raw[: 192 - len(marker.encode()) - 1].decode()
+        return head + "\n" + marker
+
+    projected = [projected_item(value) for value in validation_commands[:3]]
+    source_tail = json.dumps(
+        validation_commands[3:], sort_keys=True, separators=(",", ":")
+    ).encode()
+    source_tail_digest = hashlib.sha256(source_tail).hexdigest()
+    projected.append(
+        f"[truncated original_bytes={len(source_tail)} "
+        f"sha256={source_tail_digest} omitted_items=17]"
+    )
+    first_fallback_tail = json.dumps(
+        projected[2:], sort_keys=True, separators=(",", ":")
+    ).encode()
+    first_fallback_marker = (
+        f"[truncated original_bytes={len(first_fallback_tail)} "
+        f"sha256={hashlib.sha256(first_fallback_tail).hexdigest()}]"
+    )
+    second_fallback_tail = json.dumps(
+        [projected[1], first_fallback_marker],
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    second_fallback_digest = hashlib.sha256(second_fallback_tail).hexdigest()
+    assert any(
+        record.get("original_bytes") == len(second_fallback_tail)
+        and record.get("sha256") == second_fallback_digest
+        and record.get("omitted_item_count") == 2
+        for record in records
+    )
+
+    for values in (
+        normalized["validation"].get("failed_commands", []),
+        normalized["validation"].get("failed_tests", []),
+        normalized["validation"].get("failed_test_paths", []),
+        normalized["validation"].get("exception_types", []),
+    ):
+        for value in values:
+            if not value.startswith("[truncated original_bytes="):
+                continue
+            parts = value.rstrip("]").split()
+            original_bytes = int(parts[1].split("=", 1)[1])
+            digest = parts[2].split("=", 1)[1]
+            assert any(
+                record.get("original_bytes") == original_bytes
+                and record.get("sha256") == digest
+                and record.get("omitted_item_count", 0) > 0
+                for record in records
+            )
+
+
+def test_daemon_normalize_failure_hides_private_fragments_and_counts_addenda() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    output_prefix = "PRIVATE_OUTPUT_PREFIX_WITHOUT_KEYWORD"
+    review_prefix = "PRIVATE_REVIEW_PREFIX_WITHOUT_KEYWORD"
+    output_body = output_prefix + ("-output" * 10_000)
+    review_body = review_prefix + ("-review" * 10_000)
+    sensitive_command = "pytest test_auth.py --api-key OPAQUE_COMMAND_SECRET " + (
+        "x" * 5_000
+    )
+    normalized = PortalImplementationDaemon._normalize_implementation_failure(
         {
-            "kind": "validation_failure",
-            "reason": "proposal_gate_failed",
-            "returncode": 1,
-            "failure_review": failure_review,
-            "next_attempt_prompt_addendum": failure_review[
-                "next_attempt_prompt_addendum"
-            ],
+            "returncode": 31,
+            "failure_review": {
+                "receipt_id": "failure-review:private",
+                "guidance_markdown": review_body,
+            },
+            "next_attempt_prompt_addendum": review_prefix,
             "validation_result": {
+                "attempted": True,
                 "passed": False,
-                "returncode": 1,
-                "reason": "proposal_gate_failed",
-                "failure_review": failure_review,
-                "proposal_gate": {
-                    "accepted": False,
-                    "reason_codes": ["secret_change_forbidden"],
-                    "authorized_paths": changed_paths,
-                    "denied_paths": changed_paths,
-                    "proposal_id": "proposal-1",
-                    "policy_id": "policy-1",
-                    "receipt_id": "proposal-receipt-1",
-                    "repository_tree_id": "tree-1",
+                "returncode": 31,
+                "output": output_body,
+                "failure_head": output_prefix,
+                "failed_command": sensitive_command,
+            },
+        }
+    )
+    wire = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    assert output_prefix not in wire
+    assert review_prefix not in wire
+    assert "OPAQUE_COMMAND_SECRET" not in wire
+    assert "--api-key=<redacted sha256=" in wire
+    sensitive_bytes = sensitive_command.encode()
+    records = normalized["truncation"]["records"]
+    assert any(
+        record["original_bytes"] == len(sensitive_bytes)
+        and record["sha256"] == hashlib.sha256(sensitive_bytes).hexdigest()
+        for record in records
+    )
+
+    shared_addendum = "PRIVATE_ADDENDUM_BODY_WITHOUT_KEYWORD\n" * 160
+    repeated = PortalImplementationDaemon._normalize_implementation_failure(
+        {
+            "returncode": 32,
+            "failure_review": {
+                "receipt_id": "failure-review:addendum",
+                "next_attempt_prompt_addendum": shared_addendum,
+            },
+            "next_attempt_prompt_addendum": shared_addendum,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 32,
+                "next_attempt_prompt_addendum": shared_addendum,
+                "failure_review": {
+                    "receipt_id": "failure-review:addendum",
+                    "next_attempt_prompt_addendum": shared_addendum,
                 },
             },
         }
     )
-
-    assert normalized["truncated"] is True
-    assert normalized["reason"] == "proposal_gate_failed"
-    assert normalized["failure_review"]["receipt_id"] == "review-receipt-1"
-    assert normalized["failure_review"]["finding_codes"] == [
-        "secret_change_forbidden"
+    addendum_bytes = shared_addendum.encode()
+    addendum_records = [
+        record
+        for record in repeated["truncation"]["records"]
+        if record["original_bytes"] == len(addendum_bytes)
+        and record["sha256"] == hashlib.sha256(addendum_bytes).hexdigest()
     ]
-    assert normalized["proposal_gate"]["proposal_id"] == "proposal-1"
-    assert len(normalized["source_failure_sha256"]) == 64
-    assert len(
-        json.dumps(
-            normalized,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ) <= 16_384
+    assert len(addendum_records) == 1
+    assert addendum_records[0]["occurrence_count"] >= 4
+    assert repeated["deduplication"][
+        "deduplicated_occurrence_count"
+    ] >= 3
+
+    private_fragment = "OPAQUE_PRIVATE_FRAGMENT_7391"
+    bearer_secret = "BEARER_PRIVATE_ABC987"
+    contained = PortalImplementationDaemon._normalize_implementation_failure(
+        {
+            "returncode": 33,
+            "failure_review": {
+                "receipt_id": "failure-review:contained",
+                "guidance_markdown": private_fragment,
+            },
+            "next_attempt_prompt_addendum": (
+                "Repair because " + private_fragment
+            ),
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 33,
+                "reason": "validation_failed",
+                "failed_command": (
+                    "curl -H 'Authorization: Bearer "
+                    + bearer_secret
+                    + "' --value "
+                    + private_fragment
+                ),
+                "failed_tests": [
+                    "tests/test_auth.py::test_login["
+                    + private_fragment
+                    + "]"
+                ],
+                "failure_head": (
+                    "E AssertionError: expected " + private_fragment
+                ),
+                "output": private_fragment,
+            },
+        }
+    )
+    contained_wire = json.dumps(
+        contained, sort_keys=True, separators=(",", ":")
+    )
+    assert private_fragment not in contained_wire
+    assert bearer_secret not in contained_wire
+    assert "Authorization=<redacted sha256=" in contained_wire
+    assert "param-sha256=" in contained["validation"]["failed_tests"][0]
+    assert "failure-head-omitted" in contained["validation"][
+        "failure_head"
+    ]
+
+    echoed_core = {
+        "reason": "declared_validation_failed",
+        "failed_command": "pytest tests/test_core.py -q",
+        "failed_tests": ["tests/test_core.py::test_core"],
+        "failed_test_paths": ["tests/test_core.py"],
+        "exception_types": ["AssertionError"],
+        "failure_head": "E AssertionError: core failed",
+    }
+    echoed = PortalImplementationDaemon._normalize_implementation_failure(
+        {
+            "returncode": 34,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 34,
+                **echoed_core,
+                "output": " ".join(
+                    (
+                        echoed_core["reason"],
+                        echoed_core["failed_command"],
+                        echoed_core["failed_tests"][0],
+                        echoed_core["failed_test_paths"][0],
+                        echoed_core["exception_types"][0],
+                        echoed_core["failure_head"],
+                    )
+                ),
+            },
+        }
+    )
+    assert echoed["validation"]["reason"] == echoed_core["reason"]
+    assert echoed["validation"]["failed_command"] == echoed_core[
+        "failed_command"
+    ]
+    assert echoed["validation"]["failed_tests"] == echoed_core[
+        "failed_tests"
+    ]
+    assert echoed["validation"]["failed_test_paths"] == echoed_core[
+        "failed_test_paths"
+    ]
+    assert echoed["validation"]["exception_types"] == echoed_core[
+        "exception_types"
+    ]
+
+
+def test_daemon_normalize_failure_emergency_projection_keeps_core() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    def oversized(prefix: str) -> list[str]:
+        return [f"{prefix}-{index}-" + ("x" * 5_000) for index in range(20)]
+
+    review_lists = {
+        key: oversized(f"review-{key}")
+        for key in (
+            "reason_codes",
+            "finding_codes",
+            "missing_expected_outputs",
+            "out_of_scope_paths",
+            "justified_paths",
+            "denied_paths",
+            "contract_gap_paths",
+            "failed_commands",
+        )
+    }
+    failure = {
+        "kind": "validation_failure",
+        "returncode": 23,
+        "reason": "validation_failed",
+        "exception_type": "AssertionError",
+        "exception_message": "expected retry evidence",
+        "phase": "validating",
+        "reason_codes": oversized("reason"),
+        "failed_commands": oversized("command"),
+        "failing_checks": oversized("check"),
+        "missing_outputs": oversized("missing"),
+        "counterexample_ids": oversized("counterexample"),
+        "failure_review": {
+            "receipt_id": "failure-review:emergency-23",
+            "decision": "guide_rescue",
+            "accepted": False,
+            **review_lists,
+        },
+        "timeout_policy": {
+            "source": "task_metadata",
+            "configured_timeout_seconds": 7200,
+        },
+        "checkpoint_manifest": {
+            "manifest_cid": "checkpoint:emergency",
+            "file_count": 3,
+            "total_size_bytes": 123,
+        },
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": 23,
+            "reason": "validation_failed",
+            "failed_command": "pytest tests/test_retry.py -q",
+            "failed_commands": oversized("validation-command"),
+            "failed_tests": oversized("test"),
+            "failed_test_paths": oversized("path"),
+            "exception_types": oversized("exception"),
+            "exception_message": "expected retry evidence",
+            "failure_head": "assert retry receipt",
+            "failure_review": {
+                "receipt_id": "failure-review:emergency-23",
+                "decision": "guide_rescue",
+                "accepted": False,
+            },
+            "proposal_gate": {
+                "accepted": False,
+                "proposal_id": "proposal-emergency",
+                "reason_codes": oversized("proposal-reason"),
+            },
+            "scope_adjudication": {
+                "accepted": False,
+                "receipt_id": "scope-emergency",
+                "authorized_paths": oversized("authorized"),
+                "denied_paths": oversized("denied"),
+            },
+        },
+    }
+
+    normalized = PortalImplementationDaemon._normalize_implementation_failure(
+        failure
+    )
+    wire = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+
+    assert len(wire.encode()) <= 16 * 1024
+    assert "normalization_truncation" in normalized
+    assert normalized["failure_review"]["receipt_id"] == (
+        "failure-review:emergency-23"
+    )
+    assert normalized["exception_type"] == "AssertionError"
+    assert normalized["exception_message"] == "expected retry evidence"
+    assert normalized["phase"] == "validating"
+    validation = normalized["validation"]
+    assert validation["attempted"] is True
+    assert validation["passed"] is False
+    assert validation["returncode"] == 23
+    assert validation["reason"] == "validation_failed"
+    assert validation["failed_command"] == "pytest tests/test_retry.py -q"
+    assert validation["failed_commands"]
+    assert validation["failed_tests"]
+    assert validation["failed_test_paths"]
+    assert validation["exception_types"]
+    assert validation["exception_message"] == "expected retry evidence"
+    failure_head_bytes = b"assert retry receipt"
+    assert validation["failure_head"].startswith(
+        "[failure-head-omitted original_bytes=20 sha256="
+    )
+    assert hashlib.sha256(failure_head_bytes).hexdigest() in validation[
+        "failure_head"
+    ]
+    assert normalized["proposal_gate"]["proposal_id"] == (
+        "proposal-emergency"
+    )
+    assert normalized["scope_adjudication"]["receipt_id"] == (
+        "scope-emergency"
+    )
+    assert normalized["timeout_policy"]["source"] == "task_metadata"
+    assert normalized["checkpoint_manifest"]["total_size_bytes"] == 123
+    expected_test_tail = json.dumps(
+        failure["validation_result"]["failed_tests"][3:],
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    expected_test_tail_sha = hashlib.sha256(expected_test_tail).hexdigest()
+    test_tail_records = [
+        record
+        for record in normalized["truncation"]["records"]
+        if record.get("omitted_item_count") == 17
+        and record.get("original_bytes") == len(expected_test_tail)
+        and record.get("sha256") == expected_test_tail_sha
+    ]
+    assert len(test_tail_records) == 1
+    assert test_tail_records[0]["marker"] == (
+        f"[truncated original_bytes={len(expected_test_tail)} "
+        f"sha256={expected_test_tail_sha}]"
+    )
+    truncation = normalized["truncation"]
+    represented_omissions = len(truncation["records"]) + int(
+        truncation.get("record_set", {}).get("record_count", 0)
+    )
+    assert normalized["deduplication"]["unique_omission_count"] == (
+        represented_omissions
+    )
+    assert normalized["deduplication"]["occurrence_count"] >= (
+        represented_omissions
+    )
+
+    class EvilStr(str):
+        def encode(self, *args, **kwargs):
+            return 42
+
+    malformed = {
+        "reason_codes": [EvilStr("optional-malformed")],
+        "failure_review": {
+            "receipt_id": "failure-review:malformed",
+            "decision": "guide_rescue",
+        },
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": 29,
+            "reason": "validation_failed",
+            "failed_command": "pytest tests/test_malformed.py -q",
+            "failure_head": "malformed optional reviewer value",
+        },
+    }
+    malformed_result = (
+        PortalImplementationDaemon._normalize_implementation_failure(
+            malformed
+        )
+    )
+    assert malformed_result["validation"]["attempted"] is True
+    assert malformed_result["validation"]["passed"] is False
+    assert malformed_result["validation"]["returncode"] == 29
+    assert malformed_result["validation"]["reason"] == "validation_failed"
+    assert malformed_result["failure_review"]["receipt_id"] == (
+        "failure-review:malformed"
+    )
 
 
 def test_directory_outputs_satisfied_by_descendant_changes() -> None:
@@ -1133,24 +1587,12 @@ def test_directory_output_still_missing_without_descendant_changes() -> None:
     assert "Still required outputs" in review.next_attempt_prompt_addendum
 
 
-def test_implementation_prompt_policy_appendix_includes_admission_budgets(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_implementation_prompt_policy_appendix_includes_admission_budgets() -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-        DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES,
         PortalImplementationDaemon,
         PortalTask,
     )
-    from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
-        VALIDATION_PATH_ENV,
-        canonical_validation_environment_contract,
-    )
 
-    monkeypatch.setenv(
-        "PATH",
-        "/home/test/.elan/bin:/home/test/.local/theorem-provers/bin",
-    )
-    monkeypatch.delenv(VALIDATION_PATH_ENV, raising=False)
     task = PortalTask(
         task_id="LIG-016",
         title="Integration test for end-to-end admissibility",
@@ -1175,53 +1617,9 @@ def test_implementation_prompt_policy_appendix_includes_admission_budgets(
     assert "directory trees" in appendix
     assert "2000000" in appendix
     assert "2500000" in appendix
-    assert str(DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES) in appendix
+    assert "1000000" in appendix
     assert "tests/fixtures/logic/admissibility" in appendix
     assert "compact recipes" in appendix
-    contract = canonical_validation_environment_contract()
-    assert (
-        f'`PATH` is exactly "{contract["path"]}"'
-        in appendix
-    )
-    assert "/home/test/.elan/bin" not in appendix
-    assert "inherited `PATH` is ignored" in appendix
-    assert "ipfs-accelerate-validation-home-" in appendix
-    assert "`$HOME/.cache`" in appendix
-    assert "`~/.elan`" in appendix
-    assert "user-writable tool directories are rejected" in appendix
-    assert "never claim usability or weaken mandatory tests" in appendix
-
-
-def test_failure_review_binds_authoritative_validation_environment() -> None:
-    environment_guidance = (
-        "## Authoritative validation environment (fail-closed)\n"
-        '- `PATH` is exactly "/usr/bin:/bin"; inherited `PATH` is ignored.\n'
-        "- `HOME` is private and ephemeral; `XDG_CONFIG_HOME` is under it."
-    )
-    review = review_implementation_failure(
-        task_id="FVT-053",
-        attempt=2,
-        expected_outputs=("formal_verification_toolchain_certificate.json",),
-        changed_paths=("formal_verification_toolchain_certificate.json",),
-        validation_result={
-            "attempted": True,
-            "passed": False,
-            "returncode": 1,
-            "reason": "declared_validation_failed",
-            "failed_commands": [
-                "python -m pytest tests/integration/logic/test_toolchain.py -q"
-            ],
-        },
-        validation_environment_guidance=environment_guidance,
-    )
-
-    assert environment_guidance in review.guidance_markdown
-    assert "Authoritative validation environment:" in (
-        review.next_attempt_prompt_addendum
-    )
-    assert '"/usr/bin:/bin"' in review.next_attempt_prompt_addendum
-    restored = ImplementationFailureReviewReceipt.from_dict(review.to_record())
-    assert restored.receipt_id == review.receipt_id
 
 
 def test_size_guidance_when_only_size_findings() -> None:

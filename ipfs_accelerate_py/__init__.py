@@ -312,6 +312,27 @@ _GROUP_MEMBERS: dict[str, dict[str, tuple[str, str | None]]] = {
         ),
         "TTSProvider": (".voice_router", "TTSProvider"),
     },
+    # Narrow proof-reuse bootstrap facade (PTR-139).  Resolved only on
+    # explicit attribute access; never imports the supervisor, datasets ZK
+    # stack, kit daemons, or installer machinery at package import time.
+    "proof_reuse_bootstrap": {
+        "AcceleratorProofReuseBootstrap": (
+            ".testing.proof_reuse.lazy_dependencies",
+            "AcceleratorProofReuseBootstrap",
+        ),
+        "ProofReuseLazyDependencyInstaller": (
+            ".testing.proof_reuse.lazy_dependencies",
+            "ProofReuseLazyDependencyInstaller",
+        ),
+        "ProofReuseCapabilityResolution": (
+            ".testing.proof_reuse.lazy_dependencies",
+            "ProofReuseCapabilityResolution",
+        ),
+        "get_proof_reuse_bootstrap": (
+            ".testing.proof_reuse.lazy_dependencies",
+            "get_proof_reuse_bootstrap",
+        ),
+    },
 }
 
 _GROUP_AVAILABILITY: dict[str, tuple[str, ...]] = {
@@ -975,49 +996,11 @@ __all__ = [
 ]
 
 
-def _load_supervisor_facade(name: str) -> Any:
-    """ASE3-009 lazy product facade (cold-safe; no process start)."""
-
-    from .agent_supervisor.entrypoints.facade import (
-        Supervisor,
-        SupervisorAmbiguityError,
-        SupervisorConfigurationError,
-        SupervisorError,
-        SupervisorObservation,
-        SupervisorRun,
-        SupervisorUnavailableError,
-    )
-
-    exports = {
-        "Supervisor": Supervisor,
-        "SupervisorRun": SupervisorRun,
-        "SupervisorObservation": SupervisorObservation,
-        "SupervisorError": SupervisorError,
-        "SupervisorConfigurationError": SupervisorConfigurationError,
-        "SupervisorAmbiguityError": SupervisorAmbiguityError,
-        "SupervisorUnavailableError": SupervisorUnavailableError,
-    }
-    if name not in exports:
-        raise AttributeError(name)
-    value = exports[name]
-    _PUBLIC_VALUES[name] = value
-    _PUBLIC_RESOLVED.add(name)
-    # Cache on the module so subsequent ModuleType lookups succeed.
-    globals()[name] = value
-    return value
-
-
-_SUPERVISOR_FACADE_EXPORTS = frozenset(
-    {
-        "Supervisor",
-        "SupervisorRun",
-        "SupervisorObservation",
-        "SupervisorError",
-        "SupervisorConfigurationError",
-        "SupervisorAmbiguityError",
-        "SupervisorUnavailableError",
-    }
-)
+# Narrow proof-reuse bootstrap names are intentionally *not* part of the
+# historical ``export`` / ``__all__`` accelerator surface.  They remain
+# available through lazy ``__getattr__`` so direct-node zero-config code can
+# request them without pulling the rest of the package.
+_PROOF_REUSE_BOOTSTRAP_EXPORTS = frozenset(_GROUP_MEMBERS["proof_reuse_bootstrap"])
 
 
 def __getattr__(name: str) -> Any:
@@ -1025,8 +1008,6 @@ def __getattr__(name: str) -> Any:
         return _load_legacy_worker()
     if name in _NAME_TO_GROUP:
         return _resolve_public(name)
-    if name in _SUPERVISOR_FACADE_EXPORTS:
-        return _load_supervisor_facade(name)
     if name == "cli_main" and SKIP_CORE:
         return None
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -1042,11 +1023,6 @@ class _IPFSAccelerateModule(ModuleType):
         namespace = ModuleType.__getattribute__(self, "__dict__")
         if name in namespace.get("_NAME_TO_GROUP", ()):
             return namespace["_resolve_public"](name)
-        if name in namespace.get("_SUPERVISOR_FACADE_EXPORTS", ()):
-            try:
-                return ModuleType.__getattribute__(self, name)
-            except AttributeError:
-                return namespace["_load_supervisor_facade"](name)
         return ModuleType.__getattribute__(self, name)
 
     def __setattr__(self, name: str, value: Any) -> None:
