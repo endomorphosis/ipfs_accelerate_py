@@ -277,6 +277,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check-all", action="store_true")
     parser.add_argument("--check-inventory", action="store_true")
     parser.add_argument("--check-test-matrix", action="store_true")
+    parser.add_argument("--check-packaging", action="store_true")
     parser.add_argument("--check-ci", action="store_true")
     parser.add_argument("--check-docs", action="store_true")
     parser.add_argument("--check-final-report", action="store_true")
@@ -287,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
             args.check_all,
             args.check_inventory,
             args.check_test_matrix,
+            args.check_packaging,
             args.check_ci,
             args.check_docs,
             args.check_final_report,
@@ -310,13 +312,14 @@ def main(argv: list[str] | None = None) -> int:
                 "test matrix",
             )
         )
-    if args.check_ci:
+    if args.check_packaging:
         errors.extend(
             _check_note(
                 "data/agent_supervisor/logic_platform_canonicalization/notes/packaging_ci.md",
-                "packaging/CI note",
+                "packaging note",
             )
         )
+    if args.check_ci:
         errors.extend(
             _check_note(
                 "data/agent_supervisor/logic_platform_canonicalization/notes/ci_lanes.md",

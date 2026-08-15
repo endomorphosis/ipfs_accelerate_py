@@ -589,7 +589,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-071 Separate advisor proposals from proof authority
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: tactician
@@ -844,7 +844,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-150 Clean-install and no-sibling packaging tests
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: packaging
@@ -854,7 +854,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 - Parallel lane: lpc-packaging
 - Outputs: data/agent_supervisor/logic_platform_canonicalization/notes/packaging_ci.md
 - Predicted files: data/agent_supervisor/logic_platform_canonicalization/notes/packaging_ci.md
-- Validation: python scripts/validate_logic_platform_canonicalization_board.py --check-ci
+- Validation: python scripts/validate_logic_platform_canonicalization_board.py --check-packaging
 - Conflict policy: Own packaging tests and notes.
 - Resource class: cpu-validation
 - Is schedulable: true
@@ -863,7 +863,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-151 Make required CI lanes fail on failure
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: packaging
@@ -882,7 +882,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-160 Generate verified documentation and migration guide
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P1
 - Track: docs
@@ -902,7 +902,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-170 Write the 21-section evidence-based final report
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: report
