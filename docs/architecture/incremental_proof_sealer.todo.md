@@ -1780,7 +1780,7 @@ Global invariants for every task:
 
 ## IPS-056 Run terminal current-tree validation and publish the final report
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
