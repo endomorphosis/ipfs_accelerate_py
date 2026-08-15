@@ -212,6 +212,7 @@ state/**/*.out
 !config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json
 !config/agent_supervisor_semantic_compression_harness_scheduler.json
 !config/agent_supervisor_mcplusplus_1_0_gap_closure_scheduler.json
+/data/agent_supervisor/mcplusplus_1_0_gap_closure/
 # Delegated/manual completion seals for Planner/Doctor program gates.
 !config/agent_supervisor_planner_doctor_attestation.seal.json
 !config/agent_supervisor_planner_doctor_quality_oracle.seal.json
