@@ -468,7 +468,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-051 Keep v1 generic payloads from bypassing BackendRequest@2
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: provider
