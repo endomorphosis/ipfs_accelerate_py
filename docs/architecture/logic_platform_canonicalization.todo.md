@@ -548,7 +548,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-062 Thin compatibility facades for logic.api and logic.__init__
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P1
 - Track: api
