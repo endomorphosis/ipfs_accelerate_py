@@ -1335,7 +1335,7 @@ W20 AAE-063
 
 ## AAE-048 Compose the complete public Python campaign API
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
