@@ -2625,11 +2625,17 @@ overlays. Never force-push.
 
 ## MCPP-084 Resolve validation retry-budget failure for MCPP-001
 
-- Status: todo
+- Status: completed
 - Completion: manual
+- Completion evidence: Provider route required fallback_reasoning_effort=high; scheduler updated and MCPP-001 released from strategy blocked_tasks
+- Canonical board task: false
+- Is schedulable: true
+- Review only: true
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-000
+- Goal id: MCPP-G010
+- Board namespace: mcplusplus-1-0-gap-closure-v1
 - Outputs: docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json, docs/reports/mcplusplus-1.0-gap-closure/baseline/dirty-overlay.md, data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery
 - Validation: test -f /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-084-mcpp-001-retry-budget.md
 

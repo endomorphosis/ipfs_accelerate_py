@@ -33,7 +33,12 @@ PLAN_PATH = REPO_ROOT / "docs/architecture/MCPPLUSPLUS_1_0_GAP_CLOSURE_PLAN.md"
 
 
 def test_production_parsers_consume_exact_task_and_goal_populations() -> None:
-    tasks = parse_task_file(TODO_PATH, task_header_prefix="## MCPP-")
+    parsed = parse_task_file(TODO_PATH, task_header_prefix="## MCPP-")
+    tasks = [
+        task
+        for task in parsed
+        if task.metadata.get("canonical board task") != "false"
+    ]
     goals = parse_goal_heap(OBJECTIVE_PATH.read_text(encoding="utf-8"))
 
     assert [task.task_id for task in tasks] == [

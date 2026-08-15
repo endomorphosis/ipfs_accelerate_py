@@ -251,7 +251,7 @@
     "fallback_provider_id": "codex",
     "fallback_model_id": "gpt-5.6-terra",
     "fallback_trigger": "primary_quota_exhausted",
-    "fallback_reasoning_effort": "medium",
+    "fallback_reasoning_effort": "high",
     "max_concurrency": 6,
     "secrets_from_environment_only": true,
     "secrets_in_argv_prompts_logs_or_receipts": false

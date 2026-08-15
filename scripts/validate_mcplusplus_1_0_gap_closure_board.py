@@ -200,11 +200,23 @@ def validate() -> list[str]:
         if goal.goal_id == "MCPP-G000" and str(goal.fields.get("review_only", "")).lower() != "true":
             errors.append("root goal must be review only")
 
-    tasks = parse_task_text(
+    parsed_tasks = parse_task_text(
         TODO_PATH.read_text(encoding="utf-8"),
         path=TODO_PATH,
         task_header_prefix="## MCPP-",
     )
+    tasks = [
+        task
+        for task in parsed_tasks
+        if str(task.metadata.get("canonical board task", "")).strip().lower()
+        != "false"
+    ]
+    operational = [
+        task
+        for task in parsed_tasks
+        if str(task.metadata.get("canonical board task", "")).strip().lower()
+        == "false"
+    ]
     if [task.task_id for task in tasks] != list(TASK_IDS):
         errors.append(
             "task ids drifted count="
@@ -214,6 +226,8 @@ def validate() -> list[str]:
             + " last="
             + (tasks[-1].task_id if tasks else "?")
         )
+    if len(operational) > 16:
+        errors.append(f"too many operational repair tasks: {len(operational)}")
 
     task_by_id = {task.task_id: task for task in tasks}
     adjacency: dict[str, list[str]] = defaultdict(list)
@@ -306,6 +320,7 @@ def validate() -> list[str]:
         "taskboard_sha256": f"sha256:{digest}",
         "goals": len(goals) if "goals" in locals() else 0,
         "tasks": len(tasks) if "tasks" in locals() else 0,
+        "operational_tasks": len(operational) if "operational" in locals() else 0,
         "ready": ready if "ready" in locals() else [],
     }
     print(json.dumps(report, indent=2, sort_keys=True))
