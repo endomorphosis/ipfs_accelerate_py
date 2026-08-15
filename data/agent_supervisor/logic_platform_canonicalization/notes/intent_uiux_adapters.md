@@ -415,3 +415,8 @@ strings.
   `python -m pytest ipfs_datasets_py/tests/unit/logic/intent_ir ipfs_datasets_py/tests/unit/logic/ui_ux_ir -q`
 - Validation (repair task LPC-173):
   evidence file present at the discovery path recorded above.
+
+
+## Campaign pin (2026-08-15)
+
+The production package from `origin/agent/ui-ux-ir` @ `9d558ad70` is now checked into this datasets pin (`ipfs_datasets_py/logic/ui_ux_ir`, 55 files). `UIUXSourceGate@2` therefore observes source present. Adapter role: `ui_ux_ir/domain_slice.py` over `UIUXLogicSlice@2`.
