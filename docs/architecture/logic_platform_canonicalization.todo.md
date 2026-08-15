@@ -963,7 +963,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-173 Resolve validation retry-budget failure for LPC-043
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
