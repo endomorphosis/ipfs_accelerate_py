@@ -522,7 +522,7 @@ overlays. Never force-push.
 
 ## MCPP-016 Record ADR for state modes and Automerge CRDT
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
