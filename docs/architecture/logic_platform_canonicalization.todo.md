@@ -767,7 +767,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-130 Python, CLI, and MCP parity tests
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: parity
