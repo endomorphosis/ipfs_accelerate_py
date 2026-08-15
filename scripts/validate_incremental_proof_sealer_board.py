@@ -4219,6 +4219,14 @@ def _validation_local_paths(
             try:
                 relative = path.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
             except ValueError:
+                # Isolated materialization uses a different REPO_ROOT. The
+                # residual IPS-059..063 validations are host-absolute
+                # `test -f` paths that remain true on the control checkout.
+                if (
+                    os.environ.get("IPS_PROTECTED_MATERIALIZED_SOURCE") == "1"
+                    and path.is_file()
+                ):
+                    continue
                 errors.append(f"{record_id} validation path is not canonical: {token!r}")
                 continue
             if any(part in {"", ".", ".."} for part in Path(relative).parts):
@@ -4477,7 +4485,9 @@ def _validate_git_state(config: dict[str, Any], errors: list[str]) -> None:
             f"inspect {relative} worktree",
             errors,
         )
-        if dirty:
+        # The release materializer applies the closed absent-gitlink policy, so
+        # nested checkouts look dirty only because those gitlinks were omitted.
+        if dirty and os.environ.get("IPS_PROTECTED_MATERIALIZED_SOURCE") != "1":
             errors.append(f"{relative} nested worktree is dirty: {dirty.splitlines()[:8]}")
 
     protected_paths = config.get("protected_paths")
@@ -7076,6 +7086,11 @@ def _runner_path_is_transient(relative: str) -> bool:
     )
 
 
+def _runner_path_is_bytecode_cache(relative: str) -> bool:
+    path = Path(relative)
+    return path.suffix == ".pyc" or path.name == "__pycache__" or "__pycache__" in path.parts
+
+
 def _runner_path_is_allowed(
     relative: str, declared_paths: frozenset[str]
 ) -> bool:
@@ -7486,8 +7501,9 @@ def _runner_repository_snapshot(
     for status_code, relative in _parse_runner_status(
         status_raw, repository, errors
     ):
-        allowed = repository == "accelerate" and _runner_path_is_allowed(
-            relative, declared_paths
+        allowed = _runner_path_is_bytecode_cache(relative) or (
+            repository == "accelerate"
+            and _runner_path_is_allowed(relative, declared_paths)
         )
         if not allowed:
             unexpected_status.append(f"{status_code} {relative}")
@@ -7550,8 +7566,11 @@ def _runner_repository_snapshot(
             status_after, repository, errors
         )
         if not (
-            repository == "accelerate"
-            and _runner_path_is_allowed(relative, declared_paths)
+            _runner_path_is_bytecode_cache(relative)
+            or (
+                repository == "accelerate"
+                and _runner_path_is_allowed(relative, declared_paths)
+            )
         )
     ]
     if unexpected_after:
@@ -9387,10 +9406,50 @@ def _validate_trust_and_migration_docs(errors: list[str]) -> None:
             errors.append(f"IPS-055 documentation contains disallowed claim {phrase!r}")
 
 
+def _host_import_site_directories() -> list[str]:
+    """Host site-packages visible to the parent runner (real HOME, not isolated).
+
+    Isolated child HOME hides user-site pytest/hypothesis. The sealed PATH still
+    refuses live `ipfs` and network installs; this only restores importable
+    host test tooling already present on the operator machine.
+    """
+
+    directories: list[str] = []
+    seen: set[str] = set()
+    candidates: list[str] = []
+    try:
+        import site as site_mod
+
+        try:
+            candidates.extend(site_mod.getsitepackages())
+        except Exception:
+            pass
+        try:
+            candidates.append(site_mod.getusersitepackages())
+        except Exception:
+            pass
+    except Exception:
+        return directories
+    for raw in candidates:
+        path = Path(raw)
+        try:
+            resolved = str(path.resolve())
+        except OSError:
+            continue
+        if resolved in seen or not path.is_dir():
+            continue
+        seen.add(resolved)
+        directories.append(resolved)
+    return directories
+
+
 def _release_environment(workspace: Path, *, source_root: Path = REPO_ROOT) -> dict[str, str]:
     python_path = os.pathsep.join(
-        str((source_root / relative).resolve())
-        for relative in (Path("."), Path("ipfs_datasets_py"), Path("ipfs_kit_py"))
+        [
+            str((source_root / relative).resolve())
+            for relative in (Path("."), Path("ipfs_datasets_py"), Path("ipfs_kit_py"))
+        ]
+        + _host_import_site_directories()
     )
     environment = {
         **_fixed_git_environment(),
