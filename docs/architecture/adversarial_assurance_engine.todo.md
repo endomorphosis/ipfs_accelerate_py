@@ -1551,7 +1551,7 @@ W20 AAE-063
 
 ## AAE-056 Add mutate plan, run, target, explain, and report CLI commands
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
