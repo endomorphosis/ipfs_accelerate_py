@@ -984,7 +984,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-174 Resolve validation retry-budget failure for LPC-110
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
