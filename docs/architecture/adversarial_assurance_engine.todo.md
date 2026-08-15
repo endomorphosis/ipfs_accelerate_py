@@ -1173,7 +1173,7 @@ W20 AAE-063
 
 ## AAE-042 Implement parallel mutation workers, resource admission, timeout, and cancellation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
