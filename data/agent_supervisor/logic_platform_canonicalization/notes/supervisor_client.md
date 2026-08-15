@@ -4,19 +4,12 @@
 **Goal:** LPC-G110  
 **Depends on:** LPC-052 (provider responses), LPC-090 (canonical adapter maps), LPC-100 (manifest handshake)  
 **Interface:** `SupervisorLogicPlatformClient@1`  
-**Evidence module (LPC-110 owned):** `ipfs_accelerate_py/agent_supervisor/proof/logic_platform_client.py`  
-**Tests (LPC-110 owned):** `test/api/test_supervisor_logic_platform_client.py`  
+**Evidence module:** `ipfs_accelerate_py/agent_supervisor/proof/logic_platform_client.py`  
+**Tests:** `test/api/test_supervisor_logic_platform_client.py`  
 **Acceptance:** Client supports handshake, catalog, formalization, slice/obligation/plan, capability discovery, typed invocation, reconstruction, verification, receipts, counterexamples, and cache freshness.  
 **Conflict policy:** Own the client module and tests. Do not create another supervisor.  
-**Repair context:** LPC-174 resolves the validation retry-budget blocker filed after
-repeated LPC-110 `proposal_gate_failed` attempts (validation never ran; rc 78)
-that expanded beyond the task-owned path envelope or omitted this declared
-note. This note freezes the client contract so LPC-110 can re-admit against an
-exact ownership and non-overclaim surface without weakening production policy.  
-**Validation (LPC-110):**  
-`python -m pytest test/api/test_supervisor_logic_platform_client.py -q`  
-**Validation (LPC-174 repair gate):**  
-`test -f data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-174-lpc-110-retry-budget.md`
+**Validation:**  
+`python -m pytest test/api/test_supervisor_logic_platform_client.py -q`
 
 ## Purpose
 
@@ -35,11 +28,8 @@ is the single supervisor-side entry that:
    cancellation / deadline / correlation / evidence / authority so callers
    cannot overclaim.
 
-This note is the durable LPC-110 / LPC-174 declared output. It freezes the
-interface, request-binding rules, authority floors, ownership envelope, and
-non-goals. Module and test implementation remain under LPC-110 predicted files
-when the source task is re-dispatched after this repair releases it from
-strategy `blocked_tasks`.
+This note freezes the interface, request-binding rules, authority floors,
+ownership envelope, and non-goals for the landed client.
 
 ## Canonical call path
 
@@ -68,16 +58,36 @@ datasets package load until an explicit boundary call (same lazy rule as
 | `SupervisorLogicPlatformClient` | Lazy supervisor-side client; stable declared identity before datasets load |
 | `SUPERVISOR_LOGIC_PLATFORM_CLIENT_INTERFACE` | Exact interface id `SupervisorLogicPlatformClient@1` |
 | `ClientRequestContext` | Immutable binding of task/tree/policy/plan/budget/network/cancellation/deadline/correlation/evidence/authority |
-| `ClientOperation` | Closed operation vocabulary matching manifest `operation_versions` plus catalog/formalization/slice/plan helpers |
+| `ClientOperation` | Closed operation vocabulary matching manifest operations plus catalog/formalization/slice/plan helpers |
 | `ClientResult` | Typed envelope: ok/error, residual identity, authority ceiling, freshness, non-simulated flag |
 | `handshake(...)` | First step; delegates to platform `handshake` / default manifest |
-| `get_supervisor_logic_platform_client(...)` | Process-local factory (optional); does not create a second supervisor |
+| `get_supervisor_logic_platform_client(...)` | Process-local factory; does not create a second supervisor |
 
 Interface / schema constants:
 
 * `SupervisorLogicPlatformClient@1`
+* Schema: `ipfs_accelerate_py/agent-supervisor/logic-platform-client@1`
+* Result schema: `ipfs_accelerate_py/agent-supervisor/logic-platform-client-result@1`
 * Listed in `LogicPlatformManifest.compatible_adapter_versions` (LPC-100)
 * Task / goal binding: `LPC-110` / `LPC-G110`
+
+### Public methods
+
+| Method | Operation |
+| --- | --- |
+| `handshake(requirements?, *, manifest=...)` | Manifest compatibility |
+| `catalog(context, *, payload=...)` | Sealed catalog root/digest (declaration only) |
+| `formalize(context, payload?)` | Formalization artifact path |
+| `slice(context, payload?)` | Domain logic slice |
+| `obligation(context, payload?)` | Logic obligation |
+| `plan(context, payload?)` | Goal-directed proof plan |
+| `capability(context, payload?)` | Capability discovery via provider facade |
+| `translate` / `prove` / `reconstruct` / `verify` / `attest` | Typed provider invocation |
+| `invoke(context, operation, payload?)` | Closed-vocabulary dispatch |
+| `receipts(context, payload?)` | Untrusted receipt projection |
+| `counterexamples(context, payload?)` | Counterexample projection |
+| `cache_freshness(context, payload?)` | Freshness / invalidation signals |
+| `project_residual(domain, value)` | Residual → canonical via LPC-090 adapter |
 
 ## Request binding (fail closed)
 
@@ -91,10 +101,10 @@ contradictory bindings raise a typed client error; they do not soft-succeed.
 | Policy | yes | `policy_id` / policy revision cannot be caller-forged above the bound policy |
 | Plan | when planned work | `plan_id` / accepted plan when the operation is plan-scoped |
 | Resource budget | yes | Cannot exceed supervisor-granted budget |
-| Network policy | yes | Default deny; network only when explicitly allowed |
+| Network policy | yes | Default deny; network only when explicitly allowed; budget cannot grant network alone |
 | Cancellation | yes | Snapshot or live token; cancelled work fails closed |
 | Deadline | yes | Unix-ms or equivalent; expired work fails closed |
-| Correlation | yes | Correlation / request id for receipt lineage |
+| Correlation | yes | Correlation / request id for receipt lineage (auto-assigned when empty) |
 | Evidence kind | when claiming results | Kind must support the claimed verdict (LPC-032) |
 | Authority ceiling | yes | Caller cannot request a ceiling above the bound policy / evidence |
 
@@ -107,12 +117,14 @@ Authority non-overclaim:
 4. Handshake compatibility never implies proof authority.
 5. Residual map projection never invents canonical identities for unknown
    supervisor values (LPC-090 fail-closed).
+6. Provider-claimed authority fields are stripped from client payloads.
+7. Simulated provider results are capped at `candidate` authority.
 
 ## Operation matrix
 
-Operations the client must expose (acceptance surface). Implementations may
-forward to platform services / facades; they must not reimplement family provers
-or open a parallel supervisor.
+Operations the client exposes (acceptance surface). Implementations forward to
+platform services / facades; they do not reimplement family provers or open a
+parallel supervisor.
 
 | Operation | Purpose | Authority notes |
 | --- | --- | --- |
@@ -121,7 +133,7 @@ or open a parallel supervisor.
 | `formalize` | FormalizationArtifact@3 / domain slice path | Through admitted typed write path (LPC-040+) |
 | `slice` / `obligation` / `plan` | Create admitted slices, obligations, plans | No free-form bypass of BackendRequest@2 |
 | `capability` | Capability discovery | Non-executable; does not install or probe |
-| `translate` / `prove` / `reconstruct` / `verify` / `attest` | Typed provider invocation | Via provider facade + protocol @2 elevation |
+| `translate` / `prove` / `reconstruct` / `verify` / `attest` | Typed provider invocation | Via provider facade + protocol elevation |
 | `receipts` | Fetch / project receipt envelopes | Untrusted until LPC-111 admission |
 | `counterexamples` | Counterexample projection | Evidence kind constrained |
 | `cache_freshness` | Freshness / invalidation signals | Supervisor owns placement/single-flight (LPC-080); datasets owns semantic keys |
@@ -143,10 +155,11 @@ ten-point floor (must all hold before influence on completion/merge):
 9. It is not simulated.
 10. Supervisor policy admits that authority for the requested operation.
 
-Until LPC-111 lands, the client returns receipts as untrusted envelopes and
-labels authority ceilings honestly.
+Until LPC-111 lands, the client returns receipts as untrusted envelopes
+(`admitted=False`, `trusted=False`) and labels authority ceilings honestly.
+Simulated receipts that claim kernel authority are reduced to `candidate`.
 
-## Dependency surfaces (already landed)
+## Dependency surfaces
 
 | Task | Surface | Client consumption |
 | --- | --- | --- |
@@ -165,19 +178,20 @@ labels authority ceilings honestly.
 | No second supervisor | Client does not own scheduling, merge, or daemon loops |
 | No sibling/Git requirement | Handshake follows LPC-100 wheel / no-Git rules |
 | Facade reuse | Provider wire conversion reuses `SupervisorLogicProviderFacade` |
+| Handshake gate | Semantic ops require a prior compatible handshake (configurable for tests) |
 
 ## File ownership
 
 | Path | Role |
 | --- | --- |
-| `data/agent_supervisor/logic_platform_canonicalization/notes/supervisor_client.md` | This contract note (LPC-110 / LPC-174 declared output) |
-| `ipfs_accelerate_py/agent_supervisor/proof/logic_platform_client.py` | Client module (LPC-110 predicted; implement on source-task re-dispatch) |
-| `test/api/test_supervisor_logic_platform_client.py` | Focused regression suite (LPC-110 predicted; create with the module) |
+| `data/agent_supervisor/logic_platform_canonicalization/notes/supervisor_client.md` | This contract note (declared output) |
+| `ipfs_accelerate_py/agent_supervisor/proof/logic_platform_client.py` | Client module (evidence / predicted) |
+| `test/api/test_supervisor_logic_platform_client.py` | Focused regression suite (implied validation) |
 
 Task-owned proposal envelope for LPC-110 (fail closed):
 
-* **Declared Outputs:** this note only.
-* **Predicted files (write-eligible with the note):** client module + client tests + this note.
+* **Declared Outputs:** this note.
+* **Predicted / validation files:** client module + client tests + this note.
 * Paths outside that envelope (other proof modules, daemon code, protected plan
   files, undeclared companions) are **out of scope** for LPC-110 admission.
 * LPC-111 owns `logic_platform_admission.py` and its tests; do not absorb
@@ -193,7 +207,6 @@ Task-owned proposal envelope for LPC-110 (fail closed):
 | LPC-052 | Provider response contract |
 | LPC-062 | Outer facades remain the public datasets surface |
 | LPC-111 | Receipt admission (ten-point) after client returns envelopes |
-| LPC-174 | This repair: emit declared note; release LPC-110 from `blocked_tasks` |
 
 ## What this task does **not** do
 
@@ -205,17 +218,6 @@ Task-owned proposal envelope for LPC-110 (fail closed):
   handshake compatibility alone.
 * Does not implement LPC-111 admission helpers (separate predicted files).
 * Does not edit protected board/plan/validator files.
-
-## LPC-174 repair notes
-
-| Finding | Resolution |
-| --- | --- |
-| Failure kind | `proposal_validation_failed` / `proposal_gate_failed` (validation never ran; rc 78) |
-| Observed attempts | 4 consecutive LPC-110 failures (retry budget 3) |
-| Evidence | `data/agent_supervisor/logic_platform_canonicalization/state/discovery/2026-08-15-lpc-174-lpc-110-retry-budget.md` |
-| Root cause | Pre-dispatch proposal gate rejected LPC-110 candidates that left the task-owned envelope (declared note + predicted client/test paths) or omitted the declared note output, so expensive validation never started |
-| Repair | Emit this declared note only under `retry_repair_output_exact`; freeze the client contract, ownership envelope, and non-overclaim rules; preserve production policy and tests |
-| Release effect | Completing LPC-174 releases LPC-110 from strategy `blocked_tasks` so the supervisor can re-admit the source task against the documented contract and predicted module/test paths |
 
 ## Acceptance
 
@@ -230,7 +232,5 @@ Task-owned proposal envelope for LPC-110 (fail closed):
   counterexamples, and cache freshness.
 - Success never upgrades authority; simulated/stale/advisory evidence stays
   below kernel floors.
-- LPC-110 validation (source task):  
+- Validation:  
   `python -m pytest test/api/test_supervisor_logic_platform_client.py -q`
-- LPC-174 validation (repair task): evidence file present at the discovery path
-  recorded above.
