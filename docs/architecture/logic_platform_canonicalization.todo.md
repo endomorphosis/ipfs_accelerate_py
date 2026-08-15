@@ -44,7 +44,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-001 Record exact source revisions and intervening changes
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: inventory
