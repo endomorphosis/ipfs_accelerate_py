@@ -244,7 +244,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-022 Document registry v2/v3 semantic roles
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P1
 - Track: catalog
