@@ -8198,6 +8198,7 @@ class PortalImplementationSupervisor:
             latest_log_path=self.config.state_dir / f"{prefix}_managed_daemon.latest.log",
             daemon_process_match_all=command,
             worktree_root=self.config.worktree_root,
+            launch_env=_managed_daemon_child_environment(),
         )
         return SupervisorLoopConfig(
             spec=spec,
@@ -17167,7 +17168,14 @@ class PortalImplementationSupervisor:
     def _start_daemon(self) -> subprocess.Popen[str]:
         self.ensure_managed_daemon_pid_file()
         command = self._build_daemon_command()
-        process = subprocess.Popen(command, cwd=self.config.repo_root, text=True)
+        env = os.environ.copy()
+        env.update(_managed_daemon_child_environment())
+        process = subprocess.Popen(
+            command,
+            cwd=self.config.repo_root,
+            text=True,
+            env=env,
+        )
         write_text_atomic(self._managed_daemon_pid_path(), f"{process.pid}\n")
         return process
 
