@@ -2,19 +2,18 @@
   "schema": "BaselineReceipt@1",
   "interface": "BaselineReceipt@1",
   "schema_version": "baseline-receipt/v1",
-  "task_id": "MCPP-086",
-  "source_task_id": "MCPP-005",
+  "task_id": "MCPP-005",
   "goal_id": "MCPP-G010",
-  "objective_id": "MCPP-086",
-  "track": "ops",
+  "objective_id": "MCPP-005",
+  "track": "baseline-rust",
   "program": "mcplusplus-1.0-gap-closure",
   "board_namespace": "mcplusplus-1-0-gap-closure-v1",
   "bundle": "mcplusplus/1.0/baseline-rust",
-  "description": "Retry-budget repair for MCPP-005: baseline Mcp-Plus-Plus Rust cargo test receipt for the current tree after hermetic cargo target fix.",
-  "title": "Resolve validation retry-budget failure for MCPP-005",
-  "observed_at": "2026-08-15T19:30:17.349Z",
-  "generated_at": "2026-08-15T19:30:17.349Z",
-  "attempt": 2,
+  "description": "Baseline Mcp-Plus-Plus Rust tests and coverage for the current tree.",
+  "title": "Baseline Mcp-Plus-Plus Rust tests",
+  "observed_at": "2026-08-15T19:56:20Z",
+  "generated_at": "2026-08-15T19:56:20Z",
+  "attempt": 3,
   "binding": {
     "commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
     "tree_sha": "fd328606da5dae3314a87365987f5052180eb807",
@@ -27,12 +26,12 @@
     "resolved_runner": "cargo test",
     "resolved_runner_version": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
     "exit_code": 0,
-    "output_sha256": "sha256:f3071af5cc28883b37787b0cb1beb567c4297d3fddba144354ae56f8e5bb9b68",
+    "output_sha256": "sha256:4333215dba8fbf37263bbf3623c7cd33d8f26bb4c3010f703779e54eee7a8528",
     "binds": [
       "commit_sha",
       "command"
     ],
-    "program_worktree_head": "fa01db7792f4222b4efa0f62f92339b8905f4e2c",
+    "program_worktree_head": "c366ea1d3a2c5b98e0c33b0dd7f60524d38229d9",
     "suite_gitlink": "ipfs_accelerate_py/mcplusplus"
   },
   "repository": {
@@ -41,7 +40,7 @@
     "remote": "https://github.com/endomorphosis/Mcp-Plus-Plus.git",
     "head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
     "tree": "fd328606da5dae3314a87365987f5052180eb807",
-    "branch_observed": "implementation/mcpp-086-80d1e921902b-attempt-2-1786821802-submodule-ipfs_accelerate_py-mcplusplus",
+    "branch_observed": "implementation/mcpp-005-e29f5d7a2797-attempt-3-1786823684-submodule-ipfs_accelerate_py-mcplusplus",
     "upstream_main_equivalent_head": "6965f89f066769f3b3ac7b5f753b1a0044562570",
     "dirty": false,
     "dirty_paths": [],
@@ -73,27 +72,27 @@
     }
   },
   "program_worktree": {
-    "path": "data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_525c71a672c6_0be61df9f967",
-    "absolute_path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_525c71a672c6_0be61df9f967",
-    "head": "fa01db7792f4222b4efa0f62f92339b8905f4e2c",
-    "tree": "b1cf9343bf1dc930b96a3c65765d5c813d64ddee",
-    "branch": "implementation/mcpp-086-80d1e921902b-attempt-2-1786821802",
+    "path": "data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_2cdca8628c21_c840cf61ee63",
+    "absolute_path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_2cdca8628c21_c840cf61ee63",
+    "head": "c366ea1d3a2c5b98e0c33b0dd7f60524d38229d9",
+    "tree": "c3953626b9e0577547c89285a52c15fc70de9f01",
+    "branch": "implementation/mcpp-005-e29f5d7a2797-attempt-3-1786823684",
     "forest_reference": "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
-    "tree_id_task": "fa01db7792f4222b4efa0f62f92339b8905f4e2c",
+    "tree_id_task": "c366ea1d3a2c5b98e0c33b0dd7f60524d38229d9",
     "commit_subject": "Agent: record retry-budget guardrail outputs [agent-supervisor:generated-protected-board]",
-    "commit_date": "2026-08-15T19:11:22+00:00"
+    "commit_date": "2026-08-15T19:32:25+00:00"
   },
   "environment": {
     "os": "Linux",
     "kernel": "6.17.0-1014-nvidia",
     "arch": "aarch64",
-    "rustc": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
     "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
-    "cargo_path": "cargo",
+    "cargo_path": "/home/barberb/.local/bin/cargo",
     "cargo_build_target": "aarch64-unknown-linux-gnu",
     "host_triple": "aarch64-unknown-linux-gnu",
     "repo_cargo_config_default_target": "aarch64-pc-windows-msvc",
-    "note": "Repository .cargo/config.toml defaults build.target to aarch64-pc-windows-msvc. Hermetic validation relies on the host cargo wrapper defaulting CARGO_BUILD_TARGET=aarch64-unknown-linux-gnu when unset."
+    "note": "Repository .cargo/config.toml defaults build.target to aarch64-pc-windows-msvc. Hermetic validation relies on the host cargo wrapper defaulting CARGO_BUILD_TARGET=aarch64-unknown-linux-gnu when unset (MCPP-086 repair)."
   },
   "command": {
     "shell": "cd ipfs_accelerate_py/mcplusplus/tests-rs && cargo test",
@@ -103,28 +102,28 @@
       "test"
     ],
     "exit_code": 0,
-    "started_at": "2026-08-15T19:30:17.349Z",
-    "ended_at": "2026-08-15T19:30:17.349Z",
-    "duration_seconds": 0.49,
+    "started_at": "2026-08-15T19:56:13Z",
+    "ended_at": "2026-08-15T19:56:20Z",
+    "duration_seconds": 6.277,
     "stdout_summary": "191 passed; 0 failed; 0 ignored across 6 cargo test targets (including doctests)",
     "ok": true,
-    "output_sha256": "sha256:f3071af5cc28883b37787b0cb1beb567c4297d3fddba144354ae56f8e5bb9b68"
+    "output_sha256": "sha256:4333215dba8fbf37263bbf3623c7cd33d8f26bb4c3010f703779e54eee7a8528"
   },
   "commands": {
     "validation": {
       "command": "cd ipfs_accelerate_py/mcplusplus/tests-rs && cargo test",
-      "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_525c71a672c6_0be61df9f967/ipfs_accelerate_py/mcplusplus/tests-rs",
+      "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_2cdca8628c21_c840cf61ee63/ipfs_accelerate_py/mcplusplus/tests-rs",
       "argv": [
         "cargo",
         "test"
       ],
       "exit_code": 0,
-      "started_at": "2026-08-15T19:30:17.349Z",
-      "ended_at": "2026-08-15T19:30:17.349Z",
-      "duration_seconds": 0.49,
+      "started_at": "2026-08-15T19:56:13Z",
+      "ended_at": "2026-08-15T19:56:20Z",
+      "duration_seconds": 6.277,
       "stdout_summary": "191 passed; 0 failed; 0 ignored across 6 cargo test targets (including doctests)",
       "ok": true,
-      "output_sha256": "sha256:f3071af5cc28883b37787b0cb1beb567c4297d3fddba144354ae56f8e5bb9b68"
+      "output_sha256": "sha256:4333215dba8fbf37263bbf3623c7cd33d8f26bb4c3010f703779e54eee7a8528"
     },
     "coverage_measurement": {
       "attempted": true,
@@ -139,7 +138,7 @@
       }
     }
   },
-  "commit_sha": "fa01db7792f4222b4efa0f62f92339b8905f4e2c",
+  "commit_sha": "c366ea1d3a2c5b98e0c33b0dd7f60524d38229d9",
   "suite_commit_sha": "6965f89f066769f3b3ac7b5f753b1a0044562570",
   "pass_fail": "pass",
   "result": {
@@ -158,13 +157,13 @@
           "passed": 151,
           "failed": 0,
           "ignored": 0,
-          "duration_seconds": 0.02
+          "duration_seconds": 0.01
         },
         "tests/conformance_vectors_test.rs": {
           "passed": 1,
           "failed": 0,
           "ignored": 0,
-          "duration_seconds": 0.02
+          "duration_seconds": 0.01
         },
         "tests/coverage_completion_test.rs": {
           "passed": 18,
@@ -208,9 +207,9 @@
         "passed": 151,
         "failed": 0,
         "ignored": 0,
-        "duration_seconds": 0.02,
+        "duration_seconds": 0.01,
         "result": "ok",
-        "summary_line": "test result: ok. 151 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "summary_line": "test result: ok. 151 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
         "binary": "target/aarch64-unknown-linux-gnu/debug/deps/mcp_validators-79dabf7051893749"
       },
       {
@@ -219,9 +218,9 @@
         "passed": 1,
         "failed": 0,
         "ignored": 0,
-        "duration_seconds": 0.02,
+        "duration_seconds": 0.01,
         "result": "ok",
-        "summary_line": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "summary_line": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
         "binary": "target/aarch64-unknown-linux-gnu/debug/deps/conformance_vectors_test-cabda5a497add385"
       },
       {
@@ -284,13 +283,13 @@
         "passed": 151,
         "failed": 0,
         "ignored": 0,
-        "duration_seconds": 0.02
+        "duration_seconds": 0.01
       },
       "tests/conformance_vectors_test.rs": {
         "passed": 1,
         "failed": 0,
         "ignored": 0,
-        "duration_seconds": 0.02
+        "duration_seconds": 0.01
       },
       "tests/coverage_completion_test.rs": {
         "passed": 18,
@@ -333,9 +332,9 @@
       "passed": 151,
       "failed": 0,
       "ignored": 0,
-      "duration_seconds": 0.02,
+      "duration_seconds": 0.01,
       "result": "ok",
-      "summary_line": "test result: ok. 151 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+      "summary_line": "test result: ok. 151 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
       "binary": "target/aarch64-unknown-linux-gnu/debug/deps/mcp_validators-79dabf7051893749"
     },
     {
@@ -344,9 +343,9 @@
       "passed": 1,
       "failed": 0,
       "ignored": 0,
-      "duration_seconds": 0.02,
+      "duration_seconds": 0.01,
       "result": "ok",
-      "summary_line": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+      "summary_line": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
       "binary": "target/aarch64-unknown-linux-gnu/debug/deps/conformance_vectors_test-cabda5a497add385"
     },
     {
@@ -415,22 +414,22 @@
     "coverage_100_percent_achieved_md_used_as_measured_result": false,
     "declared_validation_command": "cd ipfs_accelerate_py/mcplusplus/tests-rs && cargo test",
     "declared_validation_passed": true,
-    "repair_for": "MCPP-005",
     "satisfied": true
   },
-  "repair": {
+  "prior_repair": {
     "task_id": "MCPP-086",
     "source_task_id": "MCPP-005",
-    "root_cause": "Hermetic cargo selected aarch64-pc-windows-msvc from repository .cargo/config.toml when CARGO_BUILD_TARGET was unset, failing with missing core crate for the Windows target.",
-    "host_fix": "Toolchain cargo wrapper defaults CARGO_BUILD_TARGET=aarch64-unknown-linux-gnu when unset (explicit CARGO_BUILD_TARGET / --target still override).",
-    "repo_production_files_changed": false,
-    "commit_handoff_note": "Declared discovery output is gitignored; files under data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery are force-added so the daemon declared-output tracking invariant can pass at commit handoff."
-  },
-  "evidence": {
-    "cargo_test_log_sha256": "sha256:f3071af5cc28883b37787b0cb1beb567c4297d3fddba144354ae56f8e5bb9b68",
+    "note": "MCPP-086 previously unblocked hermetic cargo (CARGO_BUILD_TARGET host default) and produced an interim receipt; this receipt is the authoritative MCPP-005 baseline from attempt 3.",
     "discovery": [
       "data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-086-mcpp-005-retry-budget.md",
       "data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-15-mcpp-086-repair-complete.md"
+    ]
+  },
+  "evidence": {
+    "cargo_test_log_sha256": "sha256:4333215dba8fbf37263bbf3623c7cd33d8f26bb4c3010f703779e54eee7a8528",
+    "evidence_subset": [
+      "cargo test output",
+      "lcov if produced (not remeasured)"
     ]
   },
   "skipped": false,
