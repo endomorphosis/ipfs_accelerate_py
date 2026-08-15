@@ -1764,3 +1764,24 @@ W20 AAE-063
 - Evidence subset: aae-063 current-tree source, focused tests, and negative cases
 - Symbolic first: true
 - Acceptance: Report contains exact commits/reuse/operators/counts/scores/survivors/vacuity/gaps/detection/cost/cache/remediation/promotion/regression/seal/improvement/limits/next steps and only the prescribed bounded final claim; terminal evidence reruns the focused pre-change matrix, all four MCP++ conformance harnesses, released proof-sealer/ZK qualification, and unrelated behavior checks.
+
+## AAE-064 Resolve 1 preflight-conflicting backlogged worktree merges
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: 3cccb13978d133f4981e414da8462b0d5d3e8b0d
+- Dedupe key: reconciliation_guardrail:preflight_merge_conflict
+- Depends on:
+- Outputs: data/agent_supervisor/adversarial_assurance_engine/run-aae-v1/state/discovery, docs/architecture/adversarial_assurance_engine.todo.md
+- Board namespace: adversarial-assurance-engine-v1
+- Goal id: AAE-G000
+- Bundle: adversarial-assurance/control
+- Parallel lane: control
+- Resource class: cpu-small
+- Validation: test -f /home/barberb/lift_coding/.worktrees/ipfs-accelerate-adversarial-assurance-engine/data/agent_supervisor/adversarial_assurance_engine/run-aae-v1/state/discovery/2026-08-15-aae-064-reconciliation-3cccb13978d1.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by preflight_merge_conflict. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/ipfs-accelerate-adversarial-assurance-engine/data/agent_supervisor/adversarial_assurance_engine/run-aae-v1/state/discovery/2026-08-15-aae-064-reconciliation-3cccb13978d1.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
