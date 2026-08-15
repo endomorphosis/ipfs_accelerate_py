@@ -1659,7 +1659,7 @@ W20 AAE-063
 
 ## AAE-060 Qualify crash recovery, deterministic replay, cancellation, and concurrent stale writers
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
