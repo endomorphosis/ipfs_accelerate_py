@@ -1,0 +1,305 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.mcplusplus_1_0_gap_closure.scheduler_config@1",
+  "taskboard_path": "docs/architecture/mcplusplus_1_0_gap_closure.todo.md",
+  "objectives_path": "docs/architecture/mcplusplus_1_0_gap_closure.objectives.md",
+  "plan_path": "docs/architecture/MCPPLUSPLUS_1_0_GAP_CLOSURE_PLAN.md",
+  "validator_path": "scripts/validate_mcplusplus_1_0_gap_closure_board.py",
+  "task_prefix": "MCPP-",
+  "goal_prefix": "MCPP-G",
+  "board_namespace": "mcplusplus-1-0-gap-closure-v1",
+  "merge_target_branch": "codex/mcplusplus-1.0-gap-closure",
+  "source_binding": {
+    "accelerator_required_branch": "codex/mcplusplus-1.0-gap-closure",
+    "mcplusplus_submodule_path": "ipfs_accelerate_py/mcplusplus",
+    "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+    "ipfs_kit_submodule_path": "ipfs_kit_py",
+    "swissknife_remote_must_be_discovered": true,
+    "swissknife_canonical_origin": "https://github.com/endomorphosis/swissknife",
+    "require_initialized_gitlinks": true,
+    "require_clean_operator_checkout": false,
+    "never_discard_operator_overlays": true,
+    "never_force_push": true,
+    "planning_revision_is_runtime_completion_evidence": false,
+    "prefer_newer_mcpplusplus_tree_as_spec_authority": true,
+    "accelerator_required_ancestor": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+    "mcplusplus_planning_revision": "6965f89f066769f3b3ac7b5f753b1a0044562570",
+    "ipfs_datasets_planning_revision": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "ipfs_kit_planning_revision": "6196017ca3df016c7159dce43af60f2a0d96a9ae"
+  },
+  "initial_projection": {
+    "task_count": 84,
+    "completed_task_ids": [
+      "MCPP-000"
+    ],
+    "ready_task_ids": [
+      "MCPP-001"
+    ],
+    "blocked_task_ids": [],
+    "terminal_task_id": "MCPP-083",
+    "goal_count": 18,
+    "root_goal_id": "MCPP-G000"
+  },
+  "max_lanes": 6,
+  "strict_task_sharding": true,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 60,
+  "check_interval_seconds": 30,
+  "stale_seconds": 1800,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 3,
+  "max_task_attempts": 3,
+  "implementation_retry_budget": 3,
+  "validation_retry_budget": 3,
+  "merge_retry_budget": 3,
+  "implementation_timeout_seconds": 7200,
+  "implementation_max_timeout_seconds": 21600,
+  "implementation_log_stall_seconds": 1200,
+  "worktree_submodule_paths": [
+    "ipfs_accelerate_py/mcplusplus",
+    "ipfs_datasets_py",
+    "ipfs_kit_py"
+  ],
+  "protected_paths": [
+    "docs/architecture/MCPPLUSPLUS_1_0_GAP_CLOSURE_PLAN.md",
+    "docs/architecture/mcplusplus_1_0_gap_closure.objectives.md",
+    "docs/architecture/mcplusplus_1_0_gap_closure.todo.md",
+    "config/agent_supervisor_mcplusplus_1_0_gap_closure_scheduler.json",
+    "scripts/validate_mcplusplus_1_0_gap_closure_board.py",
+    "test/api/test_mcplusplus_1_0_gap_closure_board.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/mcplusplus_1_0_gap_closure",
+    "state": "data/agent_supervisor/mcplusplus_1_0_gap_closure/state",
+    "worktrees": "data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees",
+    "merge_queue": "data/agent_supervisor/mcplusplus_1_0_gap_closure/merge-queue",
+    "logs": "data/agent_supervisor/mcplusplus_1_0_gap_closure/logs"
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "mcpp-lane-spec",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [],
+      "initial_focus": "bindings-docs-ci-report"
+    },
+    {
+      "index": 1,
+      "name": "mcpp-lane-schema",
+      "strict_shard_remainder": 1,
+      "initial_task_ids": [
+        "MCPP-001"
+      ],
+      "initial_focus": "forest-canonical-envelope-confidential"
+    },
+    {
+      "index": 2,
+      "name": "mcpp-lane-crypto",
+      "strict_shard_remainder": 2,
+      "initial_task_ids": [],
+      "initial_focus": "crypto-policy-payments"
+    },
+    {
+      "index": 3,
+      "name": "mcpp-lane-state",
+      "strict_shard_remainder": 3,
+      "initial_task_ids": [],
+      "initial_focus": "state-durable-profile-g"
+    },
+    {
+      "index": 4,
+      "name": "mcpp-lane-transport",
+      "strict_shard_remainder": 4,
+      "initial_task_ids": [],
+      "initial_focus": "a2a-discovery-p2p"
+    },
+    {
+      "index": 5,
+      "name": "mcpp-lane-runtime",
+      "strict_shard_remainder": 5,
+      "initial_task_ids": [],
+      "initial_focus": "runtime-adapters-cli-demo"
+    }
+  ],
+  "task_groups": {
+    "MCPP-G000": [
+      "MCPP-000"
+    ],
+    "MCPP-G010": [
+      "MCPP-001",
+      "MCPP-002",
+      "MCPP-003",
+      "MCPP-004",
+      "MCPP-005",
+      "MCPP-006",
+      "MCPP-007",
+      "MCPP-008",
+      "MCPP-009",
+      "MCPP-010",
+      "MCPP-011",
+      "MCPP-012"
+    ],
+    "MCPP-G020": [
+      "MCPP-013",
+      "MCPP-014",
+      "MCPP-015",
+      "MCPP-016",
+      "MCPP-017",
+      "MCPP-018"
+    ],
+    "MCPP-G030": [
+      "MCPP-019",
+      "MCPP-020",
+      "MCPP-021",
+      "MCPP-022",
+      "MCPP-023"
+    ],
+    "MCPP-G040": [
+      "MCPP-024",
+      "MCPP-025",
+      "MCPP-026",
+      "MCPP-027",
+      "MCPP-028",
+      "MCPP-029"
+    ],
+    "MCPP-G050": [
+      "MCPP-030",
+      "MCPP-031",
+      "MCPP-032",
+      "MCPP-033",
+      "MCPP-034"
+    ],
+    "MCPP-G060": [
+      "MCPP-035",
+      "MCPP-036",
+      "MCPP-037",
+      "MCPP-038",
+      "MCPP-039",
+      "MCPP-040"
+    ],
+    "MCPP-G070": [
+      "MCPP-041",
+      "MCPP-042",
+      "MCPP-043",
+      "MCPP-044",
+      "MCPP-045"
+    ],
+    "MCPP-G080": [
+      "MCPP-046",
+      "MCPP-047",
+      "MCPP-048",
+      "MCPP-049"
+    ],
+    "MCPP-G090": [
+      "MCPP-050",
+      "MCPP-051",
+      "MCPP-052",
+      "MCPP-053"
+    ],
+    "MCPP-G100": [
+      "MCPP-054",
+      "MCPP-055",
+      "MCPP-056",
+      "MCPP-057"
+    ],
+    "MCPP-G110": [
+      "MCPP-058",
+      "MCPP-059",
+      "MCPP-060",
+      "MCPP-061"
+    ],
+    "MCPP-G120": [
+      "MCPP-062",
+      "MCPP-063",
+      "MCPP-064",
+      "MCPP-065"
+    ],
+    "MCPP-G130": [
+      "MCPP-066",
+      "MCPP-067",
+      "MCPP-068",
+      "MCPP-069"
+    ],
+    "MCPP-G140": [
+      "MCPP-070",
+      "MCPP-071",
+      "MCPP-072"
+    ],
+    "MCPP-G150": [
+      "MCPP-073",
+      "MCPP-074"
+    ],
+    "MCPP-G160": [
+      "MCPP-075",
+      "MCPP-076",
+      "MCPP-077"
+    ],
+    "MCPP-G170": [
+      "MCPP-078",
+      "MCPP-079",
+      "MCPP-080",
+      "MCPP-081",
+      "MCPP-082",
+      "MCPP-083"
+    ]
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "medium",
+    "max_concurrency": 6,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "nested_repository_policy": {
+    "task_specific_nested_branch_required": true,
+    "nested_commit_before_parent_gitlink_update": true,
+    "parent_gitlink_updates_serialized_by_merge_queue": true,
+    "rebase_nested_change_on_latest_accepted_gitlink": true,
+    "rerun_nested_validation_after_rebase": true,
+    "dirty_or_detached_nested_completion_allowed": false,
+    "broad_snapshot_merge_allowed": false,
+    "cross_repository_tasks_require_independent_commits_and_receipts": true,
+    "operator_overlay_discard_allowed": false
+  },
+  "authority_policy": {
+    "reviewed_contract_primary": true,
+    "schema_acceptance_is_implementation": false,
+    "static_documentation_is_coverage_evidence": false,
+    "mock_security_validation_allowed": false,
+    "vector_semantic_authority": false,
+    "embedding_semantic_authority": false,
+    "llm_router_semantic_authority": false,
+    "llm_router_write_authority": false,
+    "unknown_ambiguous_stale_or_unsupported_disposition": "abstain_or_require_approval"
+  },
+  "security_policy": {
+    "fail_closed_for_authorization_policy_signature_proof_lease_fence_payment": true,
+    "transport_identity_is_execution_authority": false,
+    "payment_is_authorization": false,
+    "registry_presence_is_authorization": false,
+    "signed_ucan_required_for_protected_dispatch": true,
+    "delegation_attenuation_required": true,
+    "authorization_bypass_floor": 0,
+    "secret_leak_floor": 0
+  },
+  "durability_policy": {
+    "duplicate_non_idempotent_effect_floor": 0,
+    "acknowledged_data_loss_floor": 0,
+    "stale_fence_completion_allowed": false,
+    "exclusive_task_authoritative_completion_count": 1
+  },
+  "completion_policy": {
+    "terminal_task_id": "MCPP-083",
+    "all_task_and_goal_dependencies_terminal_required": true,
+    "current_tree_evidence_required": true,
+    "stale_partial_simulated_skipped_or_print_only_evidence_satisfies_release": false,
+    "independent_joined_release_receipt_required": true,
+    "automatic_merge_of_draft_pull_requests": false
+  }
+}

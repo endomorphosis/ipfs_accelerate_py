@@ -15,6 +15,7 @@ when operating a board or citing evidence.
 | `PLAT-` / `PLAT2-` | **SRT plateau holdout** | Semantic-roundtrip plateau break / blind holdout promotion | SRT taskboards under datasets/benchmark worktrees |
 | `GOOSE-` | **Goose CLI integration** | Goose / Meta Spark CLI integration | `goose_cli_integration.*` |
 | `IRF-` | **IR family refactor** | Intent-IR family refactor (often datasets-adjacent boards) | IR family todos under `ipfs_datasets_py` |
+| `MCPP-` | **MCP++ 1.0 gap closure** | Turn MCP++ into a current-spec, cryptographically enforceable, state-aware, durable, independently verifiable agent-mesh framework | `mcplusplus_1_0_gap_closure.*`, `MCPPLUSPLUS_1_0_GAP_CLOSURE_PLAN.md` |
 | `REF-` | **Formal-planning evidence tags** (historical) | Older formal planning / prover matrix evidence labels | Formal planning plans; prefer module names in new prose |
 
 ## How to write about a program
