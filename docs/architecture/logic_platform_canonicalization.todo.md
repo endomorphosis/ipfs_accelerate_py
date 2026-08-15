@@ -344,7 +344,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-040 Enforce FormalizationArtifact@3 and DomainLogicSlice@2 on new writes
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: formalization
