@@ -1,0 +1,497 @@
+# Dirty overlay inventory
+
+Generated: 2026-08-15T18:36:13.970099+00:00
+
+No uncommitted operator files were deleted, reset, or force-pushed.
+
+## lift_coding
+
+- Path: `/home/barberb/lift_coding`
+- HEAD: `b6f40c05e0884867eb8557f8882cd25cb760ca2f`
+- Branch: `chore/fmt-check-main`
+- Remotes:
+  - `origin` https://github.com/endomorphosis/lift_coding.git
+  - `wt` /home/barberb/.local/state/ipfs_accelerate_py/proof-backed-test-reuse-v9/worktrees/ptr_lane_1/workspace-01d0ca0bb69f-d3043386de3c/external/ipfs_datasets
+- Dirty path count: 4723
+- Dirty paths (capped at 200):
+  - ` M external/ipfs_accelerate`
+  - ` M external/ipfs_datasets`
+  - ` M hallucinate_app`
+  - ` M swissknife`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/.implementation.lock.update.lock`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/.uiir_lane_2_events.jsonl.lock`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/.uiir_lane_2_supervisor_events.jsonl.lock`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/.uiir_lane_2_task_state.event-driven-checkpoint.json.lock`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/implementation_checkpoints/uir-002-2682c0899c7c/uir-002-complete.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/implementation_logs/uir-002-attempt-1-context-receipt.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/implementation_logs/uir-002-attempt-1-post-merge-validation.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/implementation_logs/uir-002-attempt-1.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/implementation_logs/uir-002-attempt-2-context-receipt.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/implementation_logs/uir-002-attempt-2.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/implementation_logs/uir-002-base-context-capsule.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/implementation_logs/uir-002-base-context-receipt.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/implementation_logs/uir-002-diagnostic-receipt.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/implementation_logs/uir-002-diagnostic-state.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/post_merge_review_receipts/uir-002-queue-1-post-merge-review-baguqeera6olbtmzty4yidx6sj5g4dd6qyyxzokhiklg3uci6636d7qoh2fpa.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/task_queue.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_events.jsonl`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_events.jsonl.manifest.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260731T224845Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T090121Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T095509Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T100110Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T100710Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T101311Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T101912Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T102513Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T103114Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T103714Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T104315Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T104916Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T105517Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T110117Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T110718Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T111319Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T111920Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T112520Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T113121Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T113722Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T114323Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T114924Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T115525Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T120126Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T120726Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T121327Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T121928Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T122529Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T123129Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T123730Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T124331Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T124932Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T125532Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T130133Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T130734Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T131334Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T131935Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T132536Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T133137Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T133737Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T134338Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T134939Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T135540Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T140141Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T140742Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T141343Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T141943Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T142544Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T143145Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T143745Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T144346Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T144947Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T145548Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T150148Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T150749Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T151350Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T151950Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T152551Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T153152Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T153753Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T154353Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T154954Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T155555Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T160156Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T160756Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T161357Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T161958Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T162559Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T163159Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T163800Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T164401Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T165002Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T165602Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T170203Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T170804Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T171405Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T172005Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T172606Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T173207Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T173807Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T174408Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T175010Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T175611Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T180211Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T180812Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T181413Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T182013Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T182703Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T182823Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260801T193237Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_daemon_20260803T013838Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_implementation_supervisor_20260803T0136Z.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_managed_daemon.latest.log`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera23okhh66up5yjd2g65i2qjymhjcmhpmxesdop7af7b5gv6xbvtbq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera2cz66xkweb2a3chniikn3h6jabgtixkvysqz7yjmjvayob2bmrfa.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera2hbk6we6ewui3bo3wx4ecjeykbk23vyfyrcrwcr4rwkah5ia3ftq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera2nca7nnj5wtolpliwglhamwoxj7zes2qbzrymrgaztlppksun6uq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera2op3wgqrbnr2y6kxzy5x2ufhmbk62erotesgyhborpwfxklvsl7q.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera2tsg5vfgf3lbbnww6gumohtsag423bk76xfwuiy22zqmfiklbkja.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera3ieiomsat7vwbdptriclfmf3cdd5znlrarmdjfl3c34skaxt26da.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera3ilhhtmrnlobjt3ibxqkzowb7chopiuabv6kkhjkcsszhjjmfwva.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera3px6fqgvlr3pnb2tvxmc2jzdp7ellpxnwozseie7bgox62qqfkuq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera3zaw4gp46jt6h7osjxq5twtnvkmvhlyuhy6e3i2x3s4vrtf7ftya.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera46ivw6vra4ofqv4zkfl3qx2tqwvf4g4eblorwzxkl4nys2kx7a6q.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera4cdtxubckuin4c6zvgem3c5ljtezc56ljtiaj2h6buvaugq7mila.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera4gxwmvqwzectayfpai546yp3zfc32acsiukd2dx2zthy7l3nhwcq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera4ihj4ro2e5fr52leds4k4fei34l2fyacbl3ph7ohcietb4px43ia.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera4mppbzmz23xr5wfrehej6dq4qwi4s544jyqfofca4cqbnpzxawsa.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera4pxg5xddpcce2i7n7in2anus24py77jrnv6bkvniwmhnrzq73ffq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera4qwdxpfxma4xmk6uzxkuqiktn2boyw3or3slofhcmzfrolra6vfq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera4urlwg34trr4c2swhjoheeyftzlh6vrmr4uh5xrqrhzco2l3n55q.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera4vwb5w7u3ctyswjpqcrn4t5dzqou7l6f4gha4nsh7hrfyjwfghbq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera5l6da7t2pvfy5cci35naqcsqi2dgt7rkcrspyqoeijjdvjpivogq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera65myhjqbyxijqe5ab2ujx2oauaavubf2r7ouefaafczyjb5rjl7a.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera6ssapfqh5loium6upsqv6lf7adixewyqxiq6wrheeg3eagwxzp4q.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeera7z7k63njjozdrv5qjmss5lur5atufbfdk3q7f3qpehaao3hrwkqq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraa53h6p543yc5liuxbv3ajhqbgluhiqywa4ihdw4gpvrcfdfr7t7q.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraangquf7h4fap5tutedxfkbfvih53dftrd5dnkjslpm3lhquhf4oq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraapqjendbp7xo7ahbp3am5wceenvmrlo5fce5scrpu7wvpnmejlra.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerabbbdjp7g66v4atfy5eazqpswegpdddtval7abnq5srcuqqv7yhga.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerabfq2arudwa53cgsxe4ypxzsd6si2revu23uvr4yyslhrau36mesq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerac2micqydtjxl6ol3fadjggla3r4ggv3ric7md3uomhbq5prvk4rq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeracypxt3q4sexd6ka5vq7phstv4bns7uoasj4nxjpxunqraxomlsfq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeradk45s7d5fr7767ewabj44fdzbjqlrqxqfhrg47z4ytwyqwpr5dqq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeradvsyf5wwg6jqc2orbs46ywg25b74bokeninrmwy6olvt3y3df2wq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeradwy3nzuzhnf7r6tufs33uf6ifbyjl5dano3eyhs5ygcqug2cqela.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraesxdxwk2e4hnyzys7r3b42xv2zguo26qc4vehscclouegg2f2r5a.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerafkiaaqayj7pconoq6riu5wkc2lvfwd6wdg3zsldksyc4euuiioma.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerag24tnopxwzaktq5d7hmcyqhtabzwxtaar5mbwhvs4kx7o5v23v4a.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeragkxx67suq3htxivvtncork42ssm2tab7le2n7jxxglh4yhrnfkla.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeragrfgxk4q3uayb3mltyjagipuik2glgvtdpmolf5ztj3nanklroua.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerah2b6o2fz4yl22hoarng4g7vjxsu6dh5lo43amolvm5jx5k3hewka.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerah2jkmbpcidujjlxfuvgrvdkkx47zrjpouqvx66ev2ea2mb4uud3a.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerahdkbljxsmq5optazsat22ehczjpqze4wp3oalvan4xihh6ynq6la.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerahf6qtuhqe75fg45salyv5diekfilrmuny3xtvk37wgkjnxmboeia.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerahji5asdjsfef4hvjqmh32vl76qbrlok6zj72t7472lzo7oc24weq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerahveow5djhj6b4cnx7mgootr6cqhj7suy2snwcqu45l7cslyj6bpa.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerahxb2puqoumeg32nvmdgvxoghzzruuaebj764bzsx3pyh2vh27nga.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerai4cjvxqydnasrv6yuhworsp6lyrz3xijvbuewzavgel4vpqbla7a.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerai56rp7l3gs3crghgba32jyxggwspuiktr3zw6z2gdwycwaft4lyq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraipbfprvztdyqcj6bg4sxajze3zeyciyexmsh2opuy72fl6klttaq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraiqtiji4c6cgi4mvztwyaec74xwhz22h4lyegnbix6ycqko4bcqca.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraislwiknhdvvw25xn5tgykdqjrqk2m5cnxqaoh5jxp4kqfpzzovhq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraitkw2yqdr3jh33576obg432he7vu63p2e26o74uvhgdejn2lje3a.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraiz23tt57s6dw2gdwylpfoxtg4ctooyljibtit7preawor3g7w4va.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerajemdxxnyhnbnnwowl2az25frxsmfcobtr4tkscrz56cpnw2fqsma.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerajjxomwusgbc2b5tld7xb62s5vol43izzsorddtg67udgtrqjl5rq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerak3imbpya7wn2ac6jzv235ofwgc24p2uagg7gugln2nl3byfc4wsa.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerakp36x7vq2uhpvxtqefdc4upinjsa3pdcyrsz4ollx2b4w57ttnoq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeralj3nc4o2o2cekf5kpnh2nhi2hlebkygvjkfbtmaql6l3u4shn4wa.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeralmqpobhqbvn6hvzfn2cg3r7s7r2kxjrmahl4yofksrs6uicaogfq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeralvompcbgty2xi3xn3feepjpw2nrfqcl6oh6cmskxxnqn7tp4rjqq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeralysjfo2cj3rsozjvfz7gskybvxyjwm2p3xrdi7e7o3wu7qlafpiq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeramco4hmcz5fvefiids4jgktp53bhe5q2ne6vfarz7r56u65bd4gga.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerampfwjixxrgdsmfjm6it2qhpi76hvwdcvf45ztsb6h333vnkigeya.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeramtmy7nnbjc22m6mfxollr2bjqaqcjxzb54pkqz2oyiofd2hbcu6a.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeramya4nukazb7ow4xglzegcn24advuemdldi2tfuysddyywgnegpva.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeramzkbwqgzwzjtz4y5ipmtgbltxaaupi3sixktuztr4pbze2pkbtqa.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeran4jnk7fffnp5uj43bb5bvc7jz4svge5uvbigoxzfxziwfodb36wq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerangqw3qxqnltuit2keeemakjqavvamsaldrmh6abo5najr46erfba.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeranqdi2lohzqmazefqs6ihf2f2r4s7ew66jgxqhlerxcdgogfsepcq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerao7hfof65yki6etg5bz7kxne4ahym6zgwr2w4bpzeeu7oqmdidciq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraohtzrfvqtccfipjfb2ktokzbdxwafyujy46pq2xubzl44qwmo2ha.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraorykn5uiuwxrftvtlygc3i3nwpvlkw6kfshs6hscb6r6rxolx46a.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraoxdwaru5it7dzen3ravyvsi6lnmhjtjqbf35n4em6lh2h3tola7a.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerapofihicbjeaxhfh3o4xmzqwr2pwkl3squkmjyadjd545x6433tzq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerapsukjuu7tbl3fhnf66qwam453fgxxi2c6csyc6cnbpnrf75agdfq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerapv43vjn6lijauzoiasihjm2aogbr2yqyxknp4jneejbxhdms6bqa.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraq65puf2n3m7ytilinvc6aegq2rkxcavwbwhq6itahdfoc6pysf3a.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraq6ierkal5txgckonouxdq4mcwohhjzgovj777nc6zos6dwzwraoa.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraqed2m7r7l2hpyffkcn7fxvjkjnpvnwolbwf6ktaytx7qjgvfkbia.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraqngw7c7ry4xtx7yli2mn73bsn3kduaxxpjwtqywkgn4iqysvh7va.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraqqf3jt5vxlxvmw4y3ddpz5ecvmhicryrsq6pjjadgfxc2s75xtka.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraqusa3mzdzfk3h777pat4aw4dvk4kuvp274vhhtxpjyzfjz4rm6cq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerar4syuzeyfjwekd5zowtnl4pdeu2gvnbc7armszd4motob56huijq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeeraruz7gxdfcey3obhgbg356rfduwb2lylolmt7o2r3xlckssl4omoa.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerary33be5y7p25e6g6o52tnzc47t2lv7svid6a77msqhrrgkev67pq.json`
+  - `?? .backups/uiir-preflight-20260803T0334Z-A2sD8h/lane-2/uiir_lane_2_scan_receipts/baguqeerasrlwt4r7kj227fchytbiwhhyzc34jareeqf5h4kpsgvj5j5vf5ka.json`
+
+## Mcp-Plus-Plus
+
+- Path: `/home/barberb/lift_coding/Mcp-Plus-Plus`
+- HEAD: `6965f89f066769f3b3ac7b5f753b1a0044562570`
+- Branch: `main`
+- Remotes:
+  - `origin` https://github.com/endomorphosis/Mcp-Plus-Plus.git
+- Dirty path count: 0
+
+## ipfs_accelerate_py
+
+- Path: `/home/barberb/lift_coding/external/ipfs_accelerate`
+- HEAD: `ea11293bb996f052d620eae989f5377a956764b1`
+- Branch: `fix/implementation-auto-rescue-20260809`
+- Remotes:
+  - `origin` https://github.com/endomorphosis/ipfs_accelerate_py
+- Dirty path count: 172
+- Dirty paths (capped at 200):
+  - ` M docs/architecture/agent_supervisor/PROGRAMS.md`
+  - ` M ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/analysis/runtime_contract_evidence_compiler.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/control/default_doctor_factory.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/planning/default_planner_factory.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_synthesis.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/planning/formal_plan_validator.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/planning/symbolic_candidate_planner.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/proof/code_proof_obligations.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/proof/ir_adapters.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/proof/ir_registry.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/proof/mcp_contract_obligations.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/proof/prover_matrix_registry.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/runtime/deterministic_doctor_runtime.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/runtime/event_log.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/todo_daemon/pre_implementation_kernel.py`
+  - ` M ipfs_accelerate_py/agent_supervisor/todo_daemon/pre_implementation_provider_gate.py`
+  - ` M ipfs_accelerate_py/mcp/tests/test_mcp_server_uni158_embedding_tools.py`
+  - ` M ipfs_accelerate_py/mcp/tests/test_mcp_server_uni184_embedding_dispatch_compat.py`
+  - ` M ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
+  - ` M ipfs_accelerate_py/mcp_server/server.py`
+  - ` M ipfs_accelerate_py/mcp_server/tools/backend_management_tools/native_backend_management_tools.py`
+  - ` M ipfs_accelerate_py/mcp_server/tools/embedding_tools/native_embedding_tools.py`
+  - ` M ipfs_accelerate_py/mcp_server/tools/ipfs/native_ipfs_tools.py`
+  - ` M ipfs_accelerate_py/mcp_server/tools/ipfs_cluster_tools/native_ipfs_cluster_tools.py`
+  - ` M ipfs_accelerate_py/mcp_server/tools/workflow/native_workflow_tools.py`
+  - ` M scripts/index_repository_contracts.py`
+  - ` M test/api/test_agent_supervisor_configured_board_scheduler.py`
+  - ` M test/api/test_agent_supervisor_deterministic_doctor_fixed_point.py`
+  - ` M test/api/test_agent_supervisor_grok_quota_terra_gate.py`
+  - ` M test/api/test_agent_supervisor_implementation_daemon_planner_doctor_hook.py`
+  - ` M test/api/test_agent_supervisor_mcp_contract_catalog.py`
+  - ` M test/api/test_agent_supervisor_pre_implementation_kernel.py`
+  - `?? data/agent_supervisor/.control-transaction.lock`
+  - `?? data/agent_supervisor/control-audit.jsonl`
+  - `?? docs/architecture/AGENT_SUPERVISOR_PROMPT_ONLY_SELF_IMPROVEMENT_V3_PLAN.md`
+  - `?? docs/architecture/MCPPLUSPLUS_1_0_GAP_CLOSURE_PLAN.md`
+  - `?? docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.objectives.md`
+  - `?? docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md`
+  - `?? docs/architecture/mcplusplus_1_0_gap_closure.objectives.md`
+  - `?? docs/architecture/mcplusplus_1_0_gap_closure.todo.md`
+  - `?? ipfs_accelerate_py/agent_supervisor/analysis/deterministic_desktop_expectations.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/analysis/deterministic_repair_analyzer_health.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/analysis/deterministic_repair_current_state.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/analysis/deterministic_repair_forest.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/analysis/hermetic_conformance.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/analysis/live_service_conformance.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_graph.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_identity.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_mismatch.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/analysis/mcp_live_observer.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/analysis/provider_surface_health.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/analysis/runtime_service_identity.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/__init__.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/capabilities.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/contracts.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/deterministic_artifacts.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/drift_monitor.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/edit_plan.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/engine.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/interface_alias_registry.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/materialize.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/mcp_surface_resolution.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/no_llm_policy.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/operators/__init__.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/operators/codegen_repairs.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/operators/dispatch_repairs.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/operators/protocol_repairs.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/operators/registry.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/operators/registry_repairs.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/operators/security_repairs.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/operators/transport_repairs.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/operators/ui_projection_repairs.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/publish.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/root_ownership.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/self_improvement.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/transaction.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/autonomous_repair/validation.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/evaluation/__init__.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/evaluation/dcr_adversarial.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/objectives/deterministic_repair_selection.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/objectives/repair_authority_projection.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/planning/deterministic_candidate_portfolio.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/planning/deterministic_failure_memory.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/planning/ir_logic_consumers.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/planning/ir_logic_hooks.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/planning/proof_carrying_repair_dag.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/planning/repair_resource_scheduler.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/proof/dcr_proof_cache.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/proof/ir_integration.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/proof/ir_logic_application.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/proof/ir_structural_application.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/proof/kernel_reconstruction.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/runtime/deterministic_repair_provider.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/sca_doctor_bridge.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/sca_ir_integration.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/sca_ir_logic_applicator.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/sca_rpr_admission.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/sca_structural_ir_applicator.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/sca_symbolic_planning.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/sca_symbolic_repair.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/todo_daemon/deterministic_repair_composition.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/todo_daemon/deterministic_repair_recovery.py`
+  - `?? ipfs_accelerate_py/agent_supervisor/validation/runtime_contract_evaluation.py`
+  - `?? ipfs_accelerate_py/mcp_server/package_mcp_interop.py`
+  - `?? ipfs_accelerate_py/mcp_server/surface_identity_bindings.py`
+  - `?? scripts/generate_mcplusplus_1_0_gap_closure_board.py`
+  - `?? scripts/validate_mcplusplus_1_0_gap_closure_board.py`
+  - `?? test/api/test_agent_supervisor_autonomous_repair_source_edit_gate.py`
+  - `?? test/api/test_agent_supervisor_datasets_logic_ir_integration.py`
+  - `?? test/api/test_agent_supervisor_dcr031_mcp_contract_obligations.py`
+  - `?? test/api/test_agent_supervisor_dcr032_multi_prover_router.py`
+  - `?? test/api/test_agent_supervisor_dcr033_kernel_reconstruction.py`
+  - `?? test/api/test_agent_supervisor_dcr042_protocol_repairs.py`
+  - `?? test/api/test_agent_supervisor_dcr045_ui_projection_repairs.py`
+  - `?? test/api/test_agent_supervisor_dcr_adversarial.py`
+  - `?? test/api/test_agent_supervisor_dcr_analyzer_health.py`
+  - `?? test/api/test_agent_supervisor_dcr_candidate_portfolio.py`
+  - `?? test/api/test_agent_supervisor_dcr_codegen_roundtrip.py`
+  - `?? test/api/test_agent_supervisor_dcr_current_evidence.py`
+  - `?? test/api/test_agent_supervisor_dcr_desktop_expectations.py`
+  - `?? test/api/test_agent_supervisor_dcr_doctor_composition.py`
+  - `?? test/api/test_agent_supervisor_dcr_doctor_diagnosis.py`
+  - `?? test/api/test_agent_supervisor_dcr_doctor_transform.py`
+  - `?? test/api/test_agent_supervisor_dcr_drift_monitor.py`
+  - `?? test/api/test_agent_supervisor_dcr_forest.py`
+  - `?? test/api/test_agent_supervisor_dcr_merge_provenance.py`
+  - `?? test/api/test_agent_supervisor_dcr_ordered_provider_fallback.py`
+  - `?? test/api/test_agent_supervisor_dcr_plan_dag.py`
+  - `?? test/api/test_agent_supervisor_dcr_planner_factory.py`
+  - `?? test/api/test_agent_supervisor_dcr_post_repair_validation.py`
+  - `?? test/api/test_agent_supervisor_dcr_proof_cache.py`
+  - `?? test/api/test_agent_supervisor_dcr_provider_surface_health.py`
+  - `?? test/api/test_agent_supervisor_dcr_recovery.py`
+  - `?? test/api/test_agent_supervisor_dcr_repair_admission.py`
+  - `?? test/api/test_agent_supervisor_dcr_replan_memory.py`
+  - `?? test/api/test_agent_supervisor_dcr_resource_scheduler.py`
+  - `?? test/api/test_agent_supervisor_dcr_runtime_service_identity.py`
+  - `?? test/api/test_agent_supervisor_dcr_security_operators.py`
+  - `?? test/api/test_agent_supervisor_dcr_selection_refill.py`
+  - `?? test/api/test_agent_supervisor_dcr_self_improvement.py`
+  - `?? test/api/test_agent_supervisor_dcr_transaction.py`
+  - `?? test/api/test_agent_supervisor_deterministic_contract_dispatch_repairs.py`
+  - `?? test/api/test_agent_supervisor_deterministic_contract_operator_repairs.py`
+  - `?? test/api/test_agent_supervisor_deterministic_contract_operators.py`
+  - `?? test/api/test_agent_supervisor_deterministic_repair_artifacts.py`
+  - `?? test/api/test_agent_supervisor_deterministic_repair_capabilities.py`
+  - `?? test/api/test_agent_supervisor_deterministic_repair_contracts.py`
+  - `?? test/api/test_agent_supervisor_deterministic_repair_daemon_composition.py`
+  - `?? test/api/test_agent_supervisor_deterministic_repair_no_llm.py`
+  - `?? test/api/test_agent_supervisor_deterministic_repair_provider.py`
+  - `?? test/api/test_agent_supervisor_deterministic_repair_root_ownership.py`
+  - `?? test/api/test_agent_supervisor_hermetic_conformance.py`
+  - `?? test/api/test_agent_supervisor_ir_logic_required_fail_closed.py`
+  - `?? test/api/test_agent_supervisor_mcp_contract_graph.py`
+  - `?? test/api/test_agent_supervisor_mcp_contract_identity.py`
+  - `?? test/api/test_agent_supervisor_mcp_contract_mismatch.py`
+  - `?? test/api/test_agent_supervisor_mcp_live_observer.py`
+  - `?? test/api/test_agent_supervisor_no_llm_runtime_barrier.py`
+  - `?? test/api/test_agent_supervisor_runtime_contract_evaluation.py`
+  - `?? test/api/test_agent_supervisor_runtime_integrity_repair_projection.py`
+  - `?? test/api/test_agent_supervisor_sca_doctor_bridge.py`
+  - `?? test/api/test_agent_supervisor_sca_rpr_admission.py`
+  - `?? test/api/test_agent_supervisor_swissknife_mcplusplus_live_services.py`
+  - `?? test/api/test_agent_supervisor_transport_repairs.py`
+  - `?? test/api/test_agent_supervisor_ui_ir_projection_integration.py`
+  - `?? test/api/test_mcplusplus_1_0_gap_closure_board.py`
+
+## ipfs_datasets_py
+
+- Path: `/home/barberb/lift_coding/external/ipfs_datasets`
+- HEAD: `ac82107e246b30e35a2bbdcf75e01370d22350c6`
+- Branch: `main`
+- Remotes:
+  - `origin` https://github.com/endomorphosis/ipfs_datasets_py
+- Dirty path count: 31
+- Dirty paths (capped at 200):
+  - ` M .tools/ipfs_kit_py`
+  - ` M ipfs_datasets_py/core_operations/logic_processor.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/__init__.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/canonicalize.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/decoder.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/formalize/__init__.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/formalize/compiler.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/formalize/contracts.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/formalize/dcec.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/formalize/decompiler.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/formalize/event_calculus.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/formalize/flogic.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/formalize/ontology.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/formalize/roundtrip.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/formalize/tdfol.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/migrations.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/projection/__init__.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/projection/glasses.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/projection/mobile.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/projection/semantic_items.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/projection/solver.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/projection/web.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/projections.py`
+  - `?? ipfs_datasets_py/logic/ui_ux_ir/schema.py`
+  - `?? ipfs_datasets_py/mcp_server/mcplusplus/p2p_libp2p_transport.py`
+  - `?? tests/fixtures/ui_ux_ir/v1/golden_vectors.json`
+  - `?? tests/unit/logic/ui_ux_ir/formalize/test_compiler.py`
+  - `?? tests/unit/logic/ui_ux_ir/test_projections.py`
+  - `?? tests/unit/logic/ui_ux_ir/test_schema_decode.py`
+  - `?? tests/unit/mcp_server/test_mcplusplus_capability_truthfulness.py`
+  - `?? tests/unit/mcp_server/test_mcplusplus_p2p_tool_parity.py`
+
+## ipfs_kit_py
+
+- Path: `/home/barberb/lift_coding/external/ipfs_kit`
+- HEAD: `6196017ca3df016c7159dce43af60f2a0d96a9ae`
+- Branch: `main`
+- Remotes:
+  - `origin` https://github.com/endomorphosis/ipfs_kit_py
+- Dirty path count: 0
+
+## swissknife
+
+- Path: `/home/barberb/lift_coding/swissknife`
+- HEAD: `afdbf885175fde34505ef05a2ea6aac5535ad03e`
+- Branch: `main`
+- Remotes:
+  - `origin` https://github.com/endomorphosis/swissknife
+  - `upstream` https://github.com/dnakov/anon-kode.git
+- Dirty path count: 1
+- Dirty paths (capped at 200):
+  - ` M test-results/virtual-desktop-ipfs-mcp-orb/svd-132.json`
+- Stash:
+  - stash@{0}: On main: mcpp-1.0-preserve-before-origin-main-swissknife
+  - stash@{1}: WIP on (no branch): 95a8b02f MGW-590: Close objective gap: Hallucinate App daemon launch orchestration
+  - stash@{2}: WIP on main: 06889432 Merge commit 'f76e6ee6' into merge/swissknife-into-origin-main
+  - stash@{3}: WIP on main: f591ce37 Merge branch 'implementation/mgw-566-attempt-4-1783490526-submodule-swissknife'
+  - stash@{4}: WIP on main: 82c9204 Merge commit '474905fb0f73f83c37f2e5cd28bf435b67973451'
+  - stash@{5}: WIP on merge-resolution: ea900c4 Merge commit 'ffd2e3687a383f9989ab9ecc742039d0ed8de89b'
+
+## Program worktree
+
+- Path: `/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure`
+- Branch: `codex/mcplusplus-1.0-gap-closure`
+- HEAD: `e01a7f4ec4ac2275f64a8f980ee614c10ebaae5e`
+
+## Nested gitlinks in program worktree
+
+- `ipfs_accelerate_py/mcplusplus` HEAD `6965f89f066769f3b3ac7b5f753b1a0044562570` branch `main` remotes https://github.com/endomorphosis/Mcp-Plus-Plus.git
+- `ipfs_datasets_py` HEAD `ac82107e246b30e35a2bbdcf75e01370d22350c6` branch `main` remotes https://github.com/endomorphosis/ipfs_datasets_py.git
+- `ipfs_kit_py` HEAD `6196017ca3df016c7159dce43af60f2a0d96a9ae` branch `main` remotes https://github.com/endomorphosis/ipfs_kit_py.git
+
+## SwissKnife remote discovery
+
+Discovered via `git remote -v` in `/home/barberb/lift_coding/swissknife`: `https://github.com/endomorphosis/swissknife`.
+Do not invent a SwissKnife URL.
+
+## Spec authority
+
+Newer Mcp-Plus-Plus operator checkout and nested `ipfs_accelerate_py/mcplusplus` both record their SHAs above. Prefer the newer spec tree as protocol authority.
