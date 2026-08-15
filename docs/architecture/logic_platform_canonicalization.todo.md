@@ -164,7 +164,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-007 Inventory tests, MCP, CLI, and deprecated modules
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: inventory
