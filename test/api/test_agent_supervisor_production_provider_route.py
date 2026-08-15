@@ -1050,6 +1050,298 @@ def test_daemon_builds_bounded_production_packet(
     assert "repository_corpus" not in json.dumps(payload)
 
 
+def test_all_new_inventory_output_requires_explicit_source_grounding_before_spend(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(
+        task_id="PCCE-003-LIKE",
+        outputs=["artifacts/inventory.json", "artifacts/receipt.json"],
+        metadata={
+            "Provider role": "grok-implement, codex-review",
+            "Context budget tokens": "32768",
+            "Evidence inputs": str(Path(PATH).parent),
+        },
+    )
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=_snapshot(daemon),
+        attempt=1,
+    )
+    payload = dict(packet.provider_input_payload)
+    assert payload["scope"]["write_paths"] == task.outputs
+    assert payload["scope"]["read_paths"] == []
+    assert payload["evidence_authority"]["sources"]
+    assert payload["evidence_authority"]["readiness"]["provider_ready"] is True
+    assert "write_paths" not in payload["evidence_authority"]
+
+    seen: list[tuple[str, str]] = []
+
+    def grounded_grok(request):
+        authority = request["provider_input"]["contract_packet"][
+            "evidence_authority"
+        ]
+        seen.append(("grok", authority["evidence_cid"]))
+        return {
+            "evidence_acknowledgement": {
+                "evidence_cid": authority["evidence_cid"],
+                "expansion_chain_cid": authority["expansion_chain"]["chain_cid"],
+                "sufficiency": "sufficient",
+            },
+            "proposal": {
+                "declared_paths": task.outputs,
+                "files": [
+                    {"path": path, "content": "{}\n"} for path in task.outputs
+                ],
+            }
+        }
+
+    def grounded_codex(request):
+        authority = request["provider_input"]["evidence_slice"][
+            "evidence_authority"
+        ]
+        seen.append(("codex", authority["evidence_cid"]))
+        return {"decision": "approve", "findings": []}
+
+    routed = daemon.run_production_model_assisted_route(
+        task,
+        attempt=1,
+        workspace_path=daemon.repo_root,
+        snapshot_id=_snapshot(daemon),
+        apply=False,
+        grok_provider=grounded_grok,
+        codex_provider=grounded_codex,
+        admission_gate=_accept,
+    )
+    assert routed["route_result"].status is RouteStatus.SUCCEEDED
+    assert [role for role, _cid in seen] == ["grok", "codex"]
+    assert seen[0][1] == seen[1][1]
+
+    calls: list[str] = []
+    ungrounded = _task(
+        task_id="PCCE-003-UNGROUNDED",
+        outputs=["artifacts/new-inventory.json"],
+        metadata={
+            "Provider role": "grok-implement, codex-review",
+            "Context budget tokens": "32768",
+        },
+    )
+    with pytest.raises(ProviderRoutingError) as captured:
+        daemon.run_production_model_assisted_route(
+            ungrounded,
+            attempt=1,
+            workspace_path=daemon.repo_root,
+            snapshot_id=_snapshot(daemon),
+            apply=False,
+            grok_provider=lambda _request: calls.append("grok"),
+            codex_provider=lambda _request: calls.append("codex"),
+            admission_gate=_accept,
+        )
+    assert captured.value.reason_code == "evidence_input_required"
+    assert calls == []
+
+
+def test_daemon_attempt_retry_keeps_initial_evidence_byte_identical(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    evidence = daemon.repo_root / "inventory_sources"
+    evidence.mkdir()
+    for index in range(12):
+        (evidence / f"authority_{index:02d}.py").write_text(
+            f"import dependency_{index}\nAUTHORITY_{index} = {index}\n",
+            encoding="utf-8",
+        )
+    _git(daemon.repo_root, "add", "inventory_sources")
+    _git(daemon.repo_root, "commit", "-m", "inventory evidence")
+    task = _task(
+        task_id="PCCE-003-EXPANSION",
+        outputs=["artifacts/inventory.json"],
+        metadata={
+            "Provider role": "grok-implement, codex-review",
+            "Context budget tokens": "32768",
+            "Evidence inputs": "inventory_sources",
+        },
+    )
+    snapshot = _snapshot(daemon)
+    first = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=snapshot,
+        attempt=1,
+    )
+    second = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=snapshot,
+        attempt=2,
+    )
+    first_evidence = first.provider_input_payload["evidence_authority"]
+    second_evidence = second.provider_input_payload["evidence_authority"]
+    first_paths = {item["path"] for item in first_evidence["sources"]}
+    second_paths = {item["path"] for item in second_evidence["sources"]}
+    assert len(first_paths) == 8
+    assert len(second_paths) == 8
+    assert first_paths == second_paths
+    assert first_evidence["evidence_cid"] == second_evidence["evidence_cid"]
+    assert first_evidence["selection"]["context_round"] == 0
+    assert second_evidence["selection"]["context_round"] == 0
+    daemon._verify_production_packet_context(
+        task,
+        second,
+        workspace_path=daemon.repo_root,
+    )
+
+
+def test_typed_context_expansion_is_cumulative_receipted_and_one_attempt(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    evidence = daemon.repo_root / "inventory_sources"
+    evidence.mkdir()
+    for index in range(20):
+        (evidence / f"authority_{index:02d}.py").write_text(
+            f"import dependency_{index}\nAUTHORITY_{index} = {index}\n",
+            encoding="utf-8",
+        )
+    _git(daemon.repo_root, "add", "inventory_sources")
+    _git(daemon.repo_root, "commit", "-m", "inventory expansion evidence")
+    task = _task(
+        task_id="PCCE-003-TYPED-EXPANSION",
+        outputs=["artifacts/inventory.json"],
+        metadata={
+            "Provider role": "grok-implement, codex-review",
+            "Context budget tokens": "32768",
+            "Evidence inputs": "inventory_sources",
+        },
+    )
+    observed: list[dict[str, Any]] = []
+    codex_calls: list[str] = []
+
+    def grok(request):
+        authority = request["provider_input"]["contract_packet"][
+            "evidence_authority"
+        ]
+        observed.append(authority)
+        if len(observed) <= 2:
+            handle = next(
+                item
+                for item in authority["expansion_handles"]
+                if item.get("omitted_source_count")
+            )
+            return {
+                "insufficient_evidence": {
+                    "evidence_cid": authority["evidence_cid"],
+                    "expansion_cids": [handle["expansion_cid"]],
+                }
+            }
+        return {
+            "evidence_acknowledgement": {
+                "evidence_cid": authority["evidence_cid"],
+                "expansion_chain_cid": authority["expansion_chain"]["chain_cid"],
+                "sufficiency": "sufficient",
+            },
+            "proposal": {
+                "declared_paths": task.outputs,
+                "files": [{"path": task.outputs[0], "content": "{}\n"}],
+            },
+        }
+
+    def codex(request):
+        authority = request["provider_input"]["evidence_slice"][
+            "evidence_authority"
+        ]
+        codex_calls.append(authority["evidence_cid"])
+        return {"decision": "approve", "findings": []}
+
+    result = daemon.run_production_model_assisted_route(
+        task,
+        attempt=1,
+        workspace_path=daemon.repo_root,
+        snapshot_id=_snapshot(daemon),
+        apply=False,
+        grok_provider=grok,
+        codex_provider=codex,
+        admission_gate=_accept,
+    )
+
+    assert result["route_result"].status is RouteStatus.SUCCEEDED
+    assert [len(item["sources"]) for item in observed] == [8, 16, 20]
+    assert {
+        item["path"] for item in observed[0]["sources"]
+    } < {item["path"] for item in observed[1]["sources"]}
+    assert observed[1]["expansion_chain"]["parent_evidence_cid"] == observed[0][
+        "evidence_cid"
+    ]
+    assert observed[2]["expansion_chain"]["parent_evidence_cid"] == observed[1][
+        "evidence_cid"
+    ]
+    assert codex_calls == [observed[2]["evidence_cid"]]
+    assert len(result["context_expansion_receipts"]) == 2
+    expansion_receipt = result["context_expansion_receipts"][0]
+    assert expansion_receipt["write_performed"] is False
+    assert expansion_receipt["evidence_cid"] == observed[0]["evidence_cid"]
+    assert expansion_receipt["result_evidence_cid"] == observed[1]["evidence_cid"]
+    assert expansion_receipt["result_packet_cid"]
+    assert result["context_expansion_receipts"][1]["result_evidence_cid"] == observed[
+        2
+    ]["evidence_cid"]
+    assert result["event"]["attempt"] == 1
+
+
+def test_daemon_rejects_task_metadata_ref_without_signed_launch_appendix(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    baseline_branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=daemon.repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    _git(daemon.repo_root, "checkout", "-b", "wip/inventory")
+    target = daemon.repo_root / PATH
+    target.write_text("import candidate_dependency\n", encoding="utf-8")
+    (target.parent / "unrelated.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(daemon.repo_root, "add", ".")
+    _git(daemon.repo_root, "commit", "-m", "candidate inventory authority")
+    ref_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=daemon.repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    _git(daemon.repo_root, "checkout", baseline_branch)
+    preserved_ref = (
+        "refs/pcce-candidates/proof-carrying-context-engine-v0.1/r6/"
+        "source-task/outer/inventory"
+    )
+    _git(daemon.repo_root, "update-ref", preserved_ref, ref_commit)
+
+    task = _task(
+        task_id="PCCE-003-REF",
+        outputs=["artifacts/inventory.json"],
+        metadata={
+            "Provider role": "grok-implement, codex-review",
+            "Context budget tokens": "32768",
+            "Evidence inputs": str(Path(PATH).parent),
+            "Evidence refs": f".::{preserved_ref}={ref_commit}",
+            "Predicted files": PATH,
+        },
+    )
+    with pytest.raises(ProviderRoutingError) as captured:
+        daemon.build_production_contract_packet_for_task(
+            task,
+            snapshot_id=_snapshot(daemon),
+            attempt=1,
+        )
+    assert captured.value.reason_code == "evidence_ref_authority_missing"
+
+
 def test_build_production_provider_route_evaluation_helper() -> None:
     packet = build_production_contract_packet(
         task_id="SCA-615",

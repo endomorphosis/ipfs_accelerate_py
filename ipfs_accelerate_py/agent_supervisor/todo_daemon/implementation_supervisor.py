@@ -6162,6 +6162,8 @@ class PortalSupervisorConfig:
     production_provider_context_budget_tokens: int = 0
     production_provider_timeout_seconds: float = 0.0
     production_provider_review_authority_key_path: Path | None = None
+    production_provider_launch_authority_receipt_path: Path | None = None
+    production_provider_launch_authority_receipt_content_id: str = ""
     legacy_landed_review_policy_path: Path | None = None
     legacy_landed_review_key_path: Path | None = None
     llm_merge_resolver_command: str = ""
@@ -18010,6 +18012,17 @@ class PortalImplementationSupervisor:
                             str(review_authority_key_path),
                         ]
                     )
+                    if self.config.production_provider_launch_authority_receipt_path:
+                        command.extend(
+                            [
+                                "--production-provider-launch-authority-receipt-path",
+                                str(
+                                    self.config.production_provider_launch_authority_receipt_path
+                                ),
+                                "--production-provider-launch-authority-receipt-content-id",
+                                self.config.production_provider_launch_authority_receipt_content_id,
+                            ]
+                        )
                 if (self.config.legacy_landed_review_policy_path is None) != (
                     self.config.legacy_landed_review_key_path is None
                 ):
@@ -18447,6 +18460,33 @@ class PortalImplementationSupervisor:
             != expected_review_authority_key_paths
         ):
             return False
+        expected_launch_authority_paths = (
+            {str(self.config.production_provider_launch_authority_receipt_path)}
+            if expected_provider_policies
+            and self.config.production_provider_launch_authority_receipt_path
+            else set()
+        )
+        if (
+            option_values(
+                "--production-provider-launch-authority-receipt-path"
+            )
+            != expected_launch_authority_paths
+        ):
+            return False
+        expected_launch_authority_content_ids = (
+            {
+                self.config.production_provider_launch_authority_receipt_content_id
+            }
+            if expected_launch_authority_paths
+            else set()
+        )
+        if (
+            option_values(
+                "--production-provider-launch-authority-receipt-content-id"
+            )
+            != expected_launch_authority_content_ids
+        ):
+            return False
         expected_legacy_policy_paths = (
             {str(self.config.legacy_landed_review_policy_path)}
             if self.config.implement
@@ -18607,6 +18647,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "to the managed daemon. Bundle supervisors use one shared path "
             "for every lane."
         ),
+    )
+    parser.add_argument(
+        "--production-provider-launch-authority-receipt-path",
+        type=Path,
+        default=None,
+        help="Exact operator-owned admitted control-launch receipt.",
+    )
+    parser.add_argument(
+        "--production-provider-launch-authority-receipt-content-id",
+        default="",
+        help="Exact sha256 content identity of the admitted control-launch receipt.",
     )
     parser.add_argument(
         "--legacy-landed-review-policy-path",
@@ -19292,10 +19343,23 @@ def supervisor_config_from_args(
     raw_review_authority_key_path = getattr(
         args, "production_provider_review_authority_key_path", None
     )
+    raw_launch_authority_path = getattr(
+        args, "production_provider_launch_authority_receipt_path", None
+    )
+    raw_launch_authority_content_id = str(
+        getattr(
+            args,
+            "production_provider_launch_authority_receipt_content_id",
+            "",
+        )
+        or ""
+    ).strip()
     if (
         raw_production_budget
         or raw_production_timeout
         or raw_review_authority_key_path is not None
+        or raw_launch_authority_path is not None
+        or raw_launch_authority_content_id
     ) and not production_provider_policy:
         raise ValueError(
             "production provider bounds/review authority require a production "
@@ -19304,6 +19368,12 @@ def supervisor_config_from_args(
     production_provider_context_budget_tokens = 0
     production_provider_timeout_seconds = 0.0
     production_provider_review_authority_key_path = None
+    production_provider_launch_authority_receipt_path = None
+    production_provider_launch_authority_receipt_content_id = ""
+    if bool(raw_launch_authority_path) != bool(raw_launch_authority_content_id):
+        raise ValueError(
+            "production provider launch authority path/content identity are required together"
+        )
     if production_provider_policy:
         production_policy = ProductionCLIProviderPolicy(
             name=production_provider_policy,
@@ -19326,6 +19396,19 @@ def supervisor_config_from_args(
             raw_review_authority_key_path
             or args.state_dir / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
         )
+        if raw_launch_authority_path is not None:
+            if not re.fullmatch(
+                r"sha256:[0-9a-f]{64}", raw_launch_authority_content_id
+            ):
+                raise ValueError(
+                    "production provider launch authority content identity is malformed"
+                )
+            production_provider_launch_authority_receipt_path = Path(
+                raw_launch_authority_path
+            )
+            production_provider_launch_authority_receipt_content_id = (
+                raw_launch_authority_content_id
+            )
     legacy_landed_review_policy_path = getattr(
         args, "legacy_landed_review_policy_path", None
     )
@@ -19376,6 +19459,12 @@ def supervisor_config_from_args(
         production_provider_timeout_seconds=production_provider_timeout_seconds,
         production_provider_review_authority_key_path=(
             production_provider_review_authority_key_path
+        ),
+        production_provider_launch_authority_receipt_path=(
+            production_provider_launch_authority_receipt_path
+        ),
+        production_provider_launch_authority_receipt_content_id=(
+            production_provider_launch_authority_receipt_content_id
         ),
         legacy_landed_review_policy_path=legacy_landed_review_policy_path,
         legacy_landed_review_key_path=legacy_landed_review_key_path,

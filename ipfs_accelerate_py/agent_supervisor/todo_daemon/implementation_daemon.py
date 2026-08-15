@@ -234,12 +234,20 @@ from .production_provider_cli import (
     production_landed_task_guard,
 )
 from .production_context_slice import (
+    DEFAULT_MAX_EVIDENCE_EXPANSION_ROUND,
+    DEFAULT_MAX_EVIDENCE_SOURCE_BYTES,
     DEFAULT_RESERVED_PROMPT_TOKENS,
     MAX_PROVIDER_PROMPT_TOKENS,
+    PRODUCTION_GIT_EXECUTABLE,
     ProductionContextSliceError,
     assert_proposal_covered_by_context,
+    build_production_evidence_authority,
     build_production_context_slice,
     derive_production_context_read_paths,
+    load_production_candidate_ref_authority_appendix,
+    load_verified_production_provider_launch_authority,
+    production_evidence_scan_budgeted,
+    verify_production_evidence_authority,
     verify_production_context_slice,
 )
 from .production_reviewed_effect import (
@@ -606,6 +614,9 @@ DETERMINISTIC_TASK_EXECUTION_RECEIPT_SCHEMA = (
 MODEL_ASSISTED_PROVIDER_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "model-assisted-provider-route-integration@1"
+)
+CONTEXT_EXPANSION_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/production-context-expansion-receipt@1"
 )
 MODEL_ASSISTED_PROVIDER_ROUTE_EVENT = "model_assisted_provider_route"
 PRODUCTION_PROVIDER_ROUTE_EVENT = "production_model_assisted_provider_route"
@@ -2549,6 +2560,89 @@ class PortalTask:
     board_namespace: str = "default"
 
 
+def task_production_evidence_inputs(task: PortalTask) -> tuple[str, ...]:
+    """Return the task's explicit production read/evidence declarations.
+
+    This field grants read authority only.  It is never unioned into Outputs,
+    predicted files, proposal scope, or the writer allowlist.  The context
+    compiler resolves file-versus-directory kind at the immutable Git tree.
+    """
+
+    normalized = {
+        str(key).strip().casefold().replace("_", " ").replace("-", " "): str(
+            value or ""
+        ).strip()
+        for key, value in dict(task.metadata or {}).items()
+    }
+    present = [
+        normalized[key]
+        for key in ("production evidence inputs", "evidence inputs")
+        if key in normalized
+    ]
+    if not present:
+        return ()
+    if len(set(present)) != 1:
+        raise ProviderRoutingError(
+            "production evidence input aliases disagree",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        )
+    paths = tuple(split_csv(present[0]))
+    if not paths:
+        raise ProviderRoutingError(
+            "production evidence inputs are declared but empty",
+            reason_code="evidence_input_empty",
+        )
+    if len(paths) != len(set(paths)):
+        raise ProviderRoutingError(
+            "production evidence inputs contain duplicates",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        )
+    return paths
+
+
+def task_production_evidence_refs(task: PortalTask) -> tuple[str, ...]:
+    """Return exact content-bound ref declarations; bare/mutable refs fail later."""
+
+    normalized = {
+        str(key).strip().casefold().replace("_", " ").replace("-", " "): str(
+            value or ""
+        ).strip()
+        for key, value in dict(task.metadata or {}).items()
+    }
+    present = [
+        normalized[key]
+        for key in ("production evidence refs", "evidence refs")
+        if key in normalized
+    ]
+    if not present:
+        return ()
+    if len(set(present)) != 1:
+        raise ProviderRoutingError(
+            "production evidence ref aliases disagree",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        )
+    refs = tuple(split_csv(present[0]))
+    if not refs or len(refs) != len(set(refs)):
+        raise ProviderRoutingError(
+            "production evidence refs are empty or duplicated",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        )
+    return refs
+
+
+def task_production_evidence_priority_paths(task: PortalTask) -> tuple[str, ...]:
+    """Return exact Owned/Predicted paths used only to rank WIP ref evidence."""
+
+    normalized = {
+        str(key).strip().casefold().replace("_", " ").replace("-", " "): str(
+            value or ""
+        ).strip()
+        for key, value in dict(task.metadata or {}).items()
+    }
+    predicted = split_csv(normalized.get("predicted files", ""))
+    return tuple(dict.fromkeys([*(task.outputs or ()), *predicted]))
+
+
 def _task_evidence_output_paths_from_metadata(
     metadata: Mapping[str, Any],
 ) -> tuple[str, ...]:
@@ -3312,6 +3406,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         production_provider_context_budget_tokens: int = 0,
         production_provider_timeout_seconds: float = 0.0,
         production_provider_review_authority_key_path: Path | str | None = None,
+        production_provider_launch_authority_receipt_path: Path | str | None = None,
+        production_provider_launch_authority_receipt_content_id: str = "",
         legacy_landed_review_policy_path: Path | str | None = None,
         legacy_landed_review_key_path: Path | str | None = None,
         max_task_attempts: int = 0,
@@ -3423,6 +3519,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self.implementation_protected_paths = normalize_implementation_protected_paths(
             implementation_protected_paths,
             repo_root=self.repo_root,
+        )
+        launch_authority_path = str(
+            production_provider_launch_authority_receipt_path or ""
+        ).strip()
+        launch_authority_content_id = str(
+            production_provider_launch_authority_receipt_content_id or ""
+        ).strip()
+        if bool(launch_authority_path) != bool(launch_authority_content_id):
+            raise ValueError(
+                "production provider launch authority path and CID are required together"
+            )
+        if launch_authority_path and (
+            not Path(launch_authority_path).is_absolute()
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}", launch_authority_content_id
+            )
+        ):
+            raise ValueError("production provider launch authority is malformed")
+        self.production_provider_launch_authority_receipt_path = (
+            launch_authority_path
+        )
+        self.production_provider_launch_authority_receipt_content_id = (
+            launch_authority_content_id
         )
         self.manual_completion_authority_required_task_ids = frozenset(
             str(task_id).strip()
@@ -19739,8 +19858,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         reason="pre_dispatch_lifecycle_deferral",
                     )
                 )
+        context_expansion_only_deferral = bool(
+            use_production_route
+            and production_route_payload.get("context_expansion_only") is True
+            and not bool(
+                (production_route_payload.get("event") or {}).get(
+                    "write_performed"
+                )
+            )
+        )
         attempt_consumed = not (
-            protected_path_external_deferral or lifecycle_setup_deferral
+            protected_path_external_deferral
+            or lifecycle_setup_deferral
+            or context_expansion_only_deferral
         )
         if attempt_consumed:
             self._record_task_attempt(state, task, attempt)
@@ -21555,21 +21685,43 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         task: PortalTask,
         attempt: int,
         route_result: ImplementationRoutingResult,
+        context_round: int = 0,
+        parent_evidence_cid: str = "",
+        selected_expansion_cids: Sequence[str] = (),
+        expansion_selections: Mapping[str, int] | None = None,
     ) -> tuple[Path, dict[str, Any]]:
         """Persist a content-addressed provider execution receipt for a route."""
 
         receipt = route_result.provider_receipt
-        payload = receipt.to_dict()
-        payload["daemon_integration"] = {
-            "schema": MODEL_ASSISTED_PROVIDER_RECEIPT_SCHEMA,
-            "task_id": task.task_id,
-            "canonical_task_cid": self._canonical_ref(task),
-            "attempt": int(attempt),
-            "router_interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
-            "receipt_interface": PROVIDER_EXECUTION_RECEIPT_INTERFACE,
-            "lane_label_is_not_receipt": True,
+        router_payload = receipt.to_dict()
+        router_receipt_id = str(router_payload.pop("receipt_id", ""))
+        if (
+            not router_receipt_id
+            or content_identity(router_payload) != router_receipt_id
+        ):
+            raise RuntimeError("model-assisted router receipt identity is invalid")
+        core = {
+            **router_payload,
+            "router_receipt_id": router_receipt_id,
+            "daemon_integration": {
+                "schema": MODEL_ASSISTED_PROVIDER_RECEIPT_SCHEMA,
+                "task_id": task.task_id,
+                "canonical_task_cid": self._canonical_ref(task),
+                "attempt": int(attempt),
+                "context_round": int(context_round),
+                "parent_evidence_cid": str(parent_evidence_cid),
+                "selected_expansion_cids": sorted(
+                    str(item) for item in selected_expansion_cids
+                ),
+                "expansion_selections": dict(
+                    sorted(dict(expansion_selections or {}).items())
+                ),
+                "router_interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
+                "receipt_interface": PROVIDER_EXECUTION_RECEIPT_INTERFACE,
+                "lane_label_is_not_receipt": True,
+            },
         }
-        payload["receipt_id"] = content_identity(payload)
+        payload = {**core, "receipt_id": content_identity(core)}
         safe_task_id = re.sub(
             r"[^a-z0-9._-]+",
             "-",
@@ -21577,11 +21729,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ).strip("-") or "task"
         path = (
             self.implementation_log_dir
-            / f"{safe_task_id}-attempt-{int(attempt)}-provider-receipt.json"
+            / (
+                f"{safe_task_id}-attempt-{int(attempt)}-context-round-"
+                f"{int(context_round)}-{payload['receipt_id']}-provider-receipt.json"
+            )
         )
 
         def persist() -> Path:
             self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
+            if path.exists():
+                existing = json.loads(path.read_text(encoding="utf-8"))
+                if existing != payload:
+                    raise RuntimeError("model-assisted provider receipt conflicts")
+                return path
             _shared_atomic_write_json(path, payload)
             return path
 
@@ -21591,11 +21751,126 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "operation": "persist_model_assisted_provider_receipt",
                 "task_id": task.task_id,
                 "attempt": int(attempt),
+                "context_round": int(context_round),
                 "receipt_id": payload["receipt_id"],
                 "path": str(path),
             },
             persist,
         )
+        self._verify_persisted_model_assisted_provider_receipt(
+            persisted,
+            expected_receipt_id=payload["receipt_id"],
+            expected_router_receipt_id=router_receipt_id,
+        )
+        return persisted, payload
+
+    @staticmethod
+    def _verify_persisted_model_assisted_provider_receipt(
+        path: Path,
+        *,
+        expected_receipt_id: str,
+        expected_router_receipt_id: str = "",
+    ) -> dict[str, Any]:
+        """Re-read one daemon receipt and verify its canonical byte identity."""
+
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("model-assisted provider receipt is unreadable") from exc
+        if not isinstance(raw, dict):
+            raise RuntimeError("model-assisted provider receipt is malformed")
+        receipt_id = str(raw.get("receipt_id") or "")
+        core = dict(raw)
+        core.pop("receipt_id", None)
+        if (
+            not receipt_id
+            or receipt_id != expected_receipt_id
+            or content_identity(core) != receipt_id
+        ):
+            raise RuntimeError("model-assisted provider receipt identity is invalid")
+        if expected_router_receipt_id and (
+            raw.get("router_receipt_id") != expected_router_receipt_id
+        ):
+            raise RuntimeError("model-assisted provider receipt router binding differs")
+        return raw
+
+    def _persist_context_expansion_receipt(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        context_round: int,
+        evidence_cid: str,
+        expansion_cids: Sequence[str],
+        provider_receipt_id: str,
+        provider_receipt_path: Path,
+        result_evidence_cid: str,
+        result_packet_cid: str,
+    ) -> tuple[Path, dict[str, Any]]:
+        """Persist the one-shot authority for the next bounded context round."""
+
+        provider_receipt = self._verify_persisted_model_assisted_provider_receipt(
+            provider_receipt_path,
+            expected_receipt_id=str(provider_receipt_id),
+        )
+        if (
+            provider_receipt.get("daemon_integration", {}).get("task_id")
+            != task.task_id
+            or provider_receipt.get("daemon_integration", {}).get("attempt")
+            != int(attempt)
+            or provider_receipt.get("daemon_integration", {}).get("context_round")
+            != int(context_round)
+        ):
+            raise RuntimeError("context expansion provider receipt binding differs")
+        selected = sorted(str(item) for item in expansion_cids)
+        core = {
+            "schema": CONTEXT_EXPANSION_RECEIPT_SCHEMA,
+            "task_id": task.task_id,
+            "canonical_task_cid": self._canonical_ref(task),
+            "attempt": int(attempt),
+            "context_round": int(context_round),
+            "evidence_cid": str(evidence_cid),
+            "selected_expansion_cids": selected,
+            "provider_receipt_id": str(provider_receipt_id),
+            "provider_receipt_path": str(provider_receipt_path),
+            "result_evidence_cid": str(result_evidence_cid),
+            "result_packet_cid": str(result_packet_cid),
+            "write_performed": False,
+            "completion_authoritative": False,
+            "proof_authoritative": False,
+        }
+        payload = {**core, "receipt_id": content_identity(core)}
+        safe_task_id = re.sub(
+            r"[^a-z0-9._-]+", "-", task.task_id.lower()
+        ).strip("-") or "task"
+        path = self.implementation_log_dir / (
+            f"{safe_task_id}-attempt-{int(attempt)}-context-round-"
+            f"{int(context_round)}-expansion-receipt.json"
+        )
+
+        def persist() -> Path:
+            self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
+            if path.exists():
+                existing = json.loads(path.read_text(encoding="utf-8"))
+                if existing != payload:
+                    raise RuntimeError("context expansion receipt conflicts")
+                return path
+            _shared_atomic_write_json(path, payload)
+            return path
+
+        persisted = self._decision_runtime_mutation(
+            "file_mutation",
+            {
+                "operation": "persist_context_expansion_receipt",
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "context_round": int(context_round),
+                "receipt_id": payload["receipt_id"],
+                "path": str(path),
+            },
+            persist,
+        )
+        self._record_event("production_context_expansion_authorized", payload)
         return persisted, payload
 
     def _model_assisted_provider_event_payload(
@@ -21682,6 +21957,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         bounds: Any = None,
         grok_quota: Any = None,
         codex_quota: Any = None,
+        evidence_verifier: Callable[[Any, str], bool] | None = None,
     ) -> tuple[ImplementationRoutingResult, dict[str, Any], Path]:
         """Route a bounded packet through Grok then independent Codex review.
 
@@ -21697,6 +21973,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "deterministic_provider": deterministic_provider,
             "admission_gate": admission_gate,
             "writer": writer,
+            "evidence_verifier": evidence_verifier,
         }
         if bounds is not None:
             router_kwargs["bounds"] = bounds
@@ -21712,10 +21989,51 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             apply=apply,
             writer_lease_id=writer_lease_id,
         )
+        packet_payload = getattr(packet, "provider_input_payload", None)
+        if callable(packet_payload):
+            packet_payload = packet_payload()
+        packet_goal = (
+            packet_payload.get("goal")
+            if isinstance(packet_payload, Mapping)
+            else None
+        )
+        context_round = (
+            packet_goal.get("context_round")
+            if isinstance(packet_goal, Mapping)
+            else 0
+        )
+        parent_evidence_cid = (
+            packet_goal.get("parent_evidence_cid")
+            if isinstance(packet_goal, Mapping)
+            else ""
+        )
+        selected_expansion_cids = (
+            packet_goal.get("selected_expansion_cids")
+            if isinstance(packet_goal, Mapping)
+            else ()
+        )
+        expansion_selections = (
+            packet_goal.get("expansion_selections")
+            if isinstance(packet_goal, Mapping)
+            else {}
+        )
+        if (
+            isinstance(context_round, bool)
+            or not isinstance(context_round, int)
+            or context_round < 0
+            or not isinstance(parent_evidence_cid, str)
+            or not isinstance(selected_expansion_cids, (list, tuple))
+            or not isinstance(expansion_selections, Mapping)
+        ):
+            raise RuntimeError("provider packet context expansion metadata is malformed")
         receipt_path, receipt_payload = self._persist_model_assisted_provider_receipt(
             task=task,
             attempt=attempt,
             route_result=route_result,
+            context_round=context_round,
+            parent_evidence_cid=parent_evidence_cid,
+            selected_expansion_cids=selected_expansion_cids,
+            expansion_selections=expansion_selections,
         )
         event = self._model_assisted_provider_event_payload(
             task=task,
@@ -22134,6 +22452,81 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         return contract
 
+    def _production_candidate_ref_authority(
+        self,
+        task: PortalTask,
+        *,
+        workspace_path: Path,
+        baseline_ref: str,
+        required: bool,
+    ) -> tuple[Mapping[str, Any] | None, str, str, str]:
+        """Load only the launch-selected, baseline-tracked candidate appendix."""
+
+        if not required:
+            return None, "", "", ""
+        receipt_path = str(
+            getattr(
+                self,
+                "production_provider_launch_authority_receipt_path",
+                "",
+            )
+            or ""
+        )
+        receipt_content_id = str(
+            getattr(
+                self,
+                "production_provider_launch_authority_receipt_content_id",
+                "",
+            )
+            or ""
+        )
+        if not receipt_path or not receipt_content_id:
+            raise ProviderRoutingError(
+                "candidate evidence lacks external launch authority",
+                reason_code="evidence_ref_authority_missing",
+            )
+        try:
+            launch_authority = (
+                load_verified_production_provider_launch_authority(
+                    receipt_path=receipt_path,
+                    expected_receipt_content_id=receipt_content_id,
+                    repo_root=workspace_path,
+                    governed_repository_roots=self.worktree_submodule_paths,
+                    baseline_ref=baseline_ref,
+                )
+            )
+            authority_path = launch_authority["appendix_path"]
+            authority_cid = launch_authority["appendix_cid"]
+            signer_did = launch_authority["signer_identity_did"]
+            board_projection_id = launch_authority["board_projection_id"]
+            board_namespace = launch_authority["board_namespace"]
+            if authority_path not in set(self.implementation_protected_paths):
+                raise ProductionContextSliceError(
+                    "candidate appendix is not an exact protected file",
+                    reason_code="evidence_ref_authority_mismatch",
+                )
+            appendix = load_production_candidate_ref_authority_appendix(
+                repo_root=workspace_path,
+                authority_path=authority_path,
+                expected_appendix_cid=authority_cid,
+                baseline_ref=baseline_ref,
+            )
+        except ProductionContextSliceError as exc:
+            raise ProviderRoutingError(
+                "candidate evidence appendix is unavailable or stale",
+                reason_code=exc.reason_code,
+            ) from exc
+        expected_board_namespace = str(
+            task.board_namespace or self.todo_path.name or ""
+        ).strip()
+        if board_namespace != expected_board_namespace:
+            raise ProviderRoutingError(
+                "candidate launch board namespace differs from the task",
+                reason_code="evidence_ref_authority_mismatch",
+            )
+        return appendix, board_namespace, board_projection_id, signer_did
+
+    @production_evidence_scan_budgeted
     def build_production_contract_packet_for_task(
         self,
         task: PortalTask,
@@ -22142,6 +22535,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         attempt: int = 0,
         workspace_path: Path | None = None,
         baseline_ref: str = "",
+        context_round: int = 0,
+        parent_evidence_cid: str = "",
+        selected_expansion_cids: Sequence[str] = (),
+        expansion_selections: Mapping[str, int] | None = None,
     ) -> ProductionContractPacket:
         """Compile one task-bound packet with exact bounded source context."""
 
@@ -22164,6 +22561,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         snapshot_commit = current_snapshot.removeprefix("git-commit:").strip()
         context_baseline = str(baseline_ref or snapshot_commit).strip()
         workspace = Path(workspace_path or self.repo_root)
+        evidence_inputs = task_production_evidence_inputs(task)
+        evidence_refs = task_production_evidence_refs(task)
+        evidence_priority_paths = task_production_evidence_priority_paths(task)
+        (
+            candidate_ref_appendix,
+            candidate_board_namespace,
+            candidate_board_projection_id,
+            candidate_signer_did,
+        ) = self._production_candidate_ref_authority(
+            task,
+            workspace_path=workspace,
+            baseline_ref=context_baseline,
+            required=bool(evidence_refs),
+        )
 
         raw_symbol_hints = self._production_context_symbol_hints(
             task,
@@ -22233,6 +22644,59 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 max_provider_prompt_tokens=context_budget,
                 whole_file_bytes=whole_file_bytes,
             )
+            if not context_read_paths and not evidence_inputs:
+                raise ProductionContextSliceError(
+                    "all-new production outputs require explicit evidence inputs",
+                    reason_code="evidence_input_required",
+                )
+            evidence_manifest = None
+            if evidence_inputs:
+                context_tokens = int(
+                    context_manifest.to_dict()["budget"][
+                        "context_manifest_tokens"
+                    ]
+                )
+                evidence_tokens = (
+                    context_budget
+                    - DEFAULT_RESERVED_PROMPT_TOKENS
+                    - context_tokens
+                    - 512
+                )
+                if evidence_tokens < 1:
+                    raise ProductionContextSliceError(
+                        "task context budget leaves no evidence allocation",
+                        reason_code="evidence_budget_exceeded",
+                    )
+                evidence_source_bytes = min(
+                    DEFAULT_MAX_EVIDENCE_SOURCE_BYTES,
+                    max(1, (evidence_tokens - 512) * 2),
+                )
+                evidence_manifest = build_production_evidence_authority(
+                    repo_root=workspace,
+                    task_id=task.task_id,
+                    task_payload=task_contract,
+                    evidence_inputs=evidence_inputs,
+                    evidence_refs=evidence_refs,
+                    candidate_ref_authority_appendix=candidate_ref_appendix,
+                    board_namespace=candidate_board_namespace,
+                    board_projection_id=candidate_board_projection_id,
+                    candidate_authority_signer_did=candidate_signer_did,
+                    priority_paths=evidence_priority_paths,
+                    governed_repository_roots=self.worktree_submodule_paths,
+                    protected_paths=self.implementation_protected_paths,
+                    baseline_ref=context_baseline,
+                    max_evidence_tokens=evidence_tokens,
+                    max_source_bytes=evidence_source_bytes,
+                    context_round=context_round,
+                    parent_evidence_cid=parent_evidence_cid,
+                    selected_expansion_cids=selected_expansion_cids,
+                    expansion_selections=expansion_selections,
+                )
+                if not evidence_manifest.provider_ready:
+                    raise ProductionContextSliceError(
+                        "required evidence needs bounded context expansion",
+                        reason_code="context_expansion_required",
+                    )
         except ProductionContextSliceError as exc:
             raise ProviderRoutingError(
                 "production source context is unavailable or insufficient",
@@ -22243,6 +22707,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "priority": str(task.priority or ""),
             "track": str(task.track or ""),
             "attempt": int(attempt),
+            "context_round": int(context_round),
+            "parent_evidence_cid": str(parent_evidence_cid),
+            "selected_expansion_cids": sorted(
+                str(item) for item in selected_expansion_cids
+            ),
+            "expansion_selections": dict(
+                sorted(dict(expansion_selections or {}).items())
+            ),
         }
         packet = build_production_contract_packet(
             task_id=task.task_id,
@@ -22253,12 +22725,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             acceptance_criteria=str(task.acceptance or ""),
             contract_ids=(),
             obligation_ids=(),
-            expansion_handles=(),
+            expansion_handles=(
+                tuple(evidence_manifest.expansion_handles)
+                if evidence_manifest is not None
+                else ()
+            ),
             packet_id=f"packet:production:{task.task_id}:attempt-{int(attempt)}",
             extra_goal=extra_goal,
         )
         payload = dict(packet.payload)
         payload["context_slice"] = context_manifest.to_dict()
+        authority = dict(payload.get("authority") or {})
+        authority["read_evidence_required"] = True
+        payload["authority"] = authority
+        if evidence_manifest is not None:
+            payload["evidence_authority"] = evidence_manifest.to_dict()
         return ProductionContractPacket(
             packet_id=packet.packet_id,
             snapshot_id=packet.snapshot_id,
@@ -22267,6 +22748,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             payload=MappingProxyType(payload),
         )
 
+    @production_evidence_scan_budgeted
     def _verify_production_packet_context(
         self,
         task: PortalTask,
@@ -22274,6 +22756,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         workspace_path: Path,
         baseline_ref: str = "",
+        expected_attempt: int | None = None,
+        expected_context_round: int | None = None,
+        expected_parent_evidence_cid: str | None = None,
+        expected_selected_expansion_cids: Sequence[str] | None = None,
+        expected_expansion_selections: Mapping[str, int] | None = None,
     ) -> tuple[Any, dict[str, Any], tuple[str, ...], tuple[str, ...], Any, str]:
         """Reconstruct operator scope and reject stale/caller-widened packets."""
 
@@ -22311,6 +22798,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 baseline_ref=context_baseline,
                 effect_paths=effect_paths,
             )
+            evidence_inputs = task_production_evidence_inputs(task)
+            evidence_refs = task_production_evidence_refs(task)
+            evidence_priority_paths = task_production_evidence_priority_paths(task)
+            (
+                candidate_ref_appendix,
+                candidate_board_namespace,
+                candidate_board_projection_id,
+                candidate_signer_did,
+            ) = self._production_candidate_ref_authority(
+                task,
+                workspace_path=workspace_path,
+                baseline_ref=context_baseline,
+                required=bool(evidence_refs),
+            )
+            if not read_paths and not evidence_inputs:
+                raise ProductionContextSliceError(
+                    "all-new production outputs require explicit evidence inputs",
+                    reason_code="evidence_input_required",
+                )
         except ProductionContextSliceError as exc:
             raise ProviderRoutingError(
                 "production context scope is stale or unsafe",
@@ -22322,6 +22828,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "production packet payload is malformed",
                 reason_code=ProviderReason.PACKET_MALFORMED,
             )
+        context = payload.get("context_slice")
+        if not isinstance(context, Mapping):
+            raise ProviderRoutingError(
+                "production packet requires a bounded context manifest",
+                reason_code="context_manifest_missing",
+            )
+        packet_authority = payload.get("authority")
+        if not isinstance(packet_authority, Mapping) or (
+            packet_authority.get("read_evidence_required") is not True
+        ):
+            raise ProviderRoutingError(
+                "production packet lacks its read-evidence requirement",
+                reason_code="evidence_authority_missing",
+            )
         packet_scope = payload.get("scope")
         if not isinstance(packet_scope, Mapping) or (
             list(packet_scope.get("read_paths") or ()) != list(read_paths)
@@ -22331,11 +22851,99 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "production packet scope differs from operator task scope",
                 reason_code="scope_authority_mismatch",
             )
-        context = payload.get("context_slice")
-        if not isinstance(context, Mapping):
+        packet_goal = payload.get("goal")
+        packet_attempt = (
+            packet_goal.get("attempt")
+            if isinstance(packet_goal, Mapping)
+            else None
+        )
+        if (
+            isinstance(packet_attempt, bool)
+            or not isinstance(packet_attempt, int)
+            or packet_attempt < 0
+        ):
             raise ProviderRoutingError(
-                "production packet requires a bounded context manifest",
-                reason_code="context_manifest_missing",
+                "production packet attempt is malformed",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        if expected_attempt is not None and packet_attempt != int(expected_attempt):
+            raise ProviderRoutingError(
+                "production packet attempt differs from the execution attempt",
+                reason_code="scope_authority_mismatch",
+            )
+        packet_context_round = (
+            packet_goal.get("context_round")
+            if isinstance(packet_goal, Mapping)
+            else None
+        )
+        packet_parent_evidence_cid = (
+            packet_goal.get("parent_evidence_cid")
+            if isinstance(packet_goal, Mapping)
+            else None
+        )
+        packet_selected_expansion_cids = (
+            packet_goal.get("selected_expansion_cids")
+            if isinstance(packet_goal, Mapping)
+            else None
+        )
+        packet_expansion_selections = (
+            packet_goal.get("expansion_selections")
+            if isinstance(packet_goal, Mapping)
+            else None
+        )
+        if (
+            isinstance(packet_context_round, bool)
+            or not isinstance(packet_context_round, int)
+            or packet_context_round < 0
+            or not isinstance(packet_parent_evidence_cid, str)
+            or not isinstance(packet_selected_expansion_cids, list)
+            or not isinstance(packet_expansion_selections, Mapping)
+            or any(
+                not isinstance(item, str)
+                for item in packet_selected_expansion_cids
+            )
+        ):
+            raise ProviderRoutingError(
+                "production packet context expansion authority is malformed",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        if (
+            expected_context_round is not None
+            and packet_context_round != int(expected_context_round)
+        ):
+            raise ProviderRoutingError(
+                "production packet context round differs from execution authority",
+                reason_code="scope_authority_mismatch",
+            )
+        if (
+            expected_expansion_selections is not None
+            and dict(packet_expansion_selections)
+            != dict(expected_expansion_selections)
+        ):
+            raise ProviderRoutingError(
+                "production packet evidence selections differ from authority",
+                reason_code="scope_authority_mismatch",
+            )
+        if (
+            expected_parent_evidence_cid is not None
+            and packet_parent_evidence_cid != expected_parent_evidence_cid
+        ):
+            raise ProviderRoutingError(
+                "production packet evidence parent differs from execution authority",
+                reason_code="scope_authority_mismatch",
+            )
+        expected_selected = (
+            sorted(str(item) for item in expected_selected_expansion_cids)
+            if expected_selected_expansion_cids is not None
+            else None
+        )
+        if (
+            expected_selected is not None
+            and packet_selected_expansion_cids != expected_selected
+        ):
+            raise ProviderRoutingError(
+                "production packet selected evidence differs from execution authority",
+                reason_code="scope_authority_mismatch",
             )
         try:
             manifest = verify_production_context_slice(
@@ -22348,6 +22956,66 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 expected_symbol_hints=symbol_hints,
                 baseline_ref=context_baseline,
             )
+            evidence = payload.get("evidence_authority")
+            if evidence_inputs:
+                if not isinstance(evidence, Mapping):
+                    raise ProductionContextSliceError(
+                        "production evidence authority is missing",
+                        reason_code="evidence_manifest_missing",
+                    )
+                evidence_manifest = verify_production_evidence_authority(
+                    evidence,
+                    repo_root=workspace_path,
+                    current_task_id=task.task_id,
+                    current_task_payload=task_contract,
+                    expected_evidence_inputs=evidence_inputs,
+                    expected_evidence_refs=evidence_refs,
+                    expected_candidate_ref_authority_appendix=(
+                        candidate_ref_appendix
+                    ),
+                    expected_board_namespace=candidate_board_namespace,
+                    expected_board_projection_id=candidate_board_projection_id,
+                    expected_candidate_authority_signer_did=(
+                        candidate_signer_did
+                    ),
+                    expected_priority_paths=evidence_priority_paths,
+                    governed_repository_roots=self.worktree_submodule_paths,
+                    expected_protected_paths=self.implementation_protected_paths,
+                    baseline_ref=context_baseline,
+                    expected_context_round=packet_context_round,
+                    expected_parent_evidence_cid=packet_parent_evidence_cid,
+                    expected_selected_expansion_cids=(
+                        packet_selected_expansion_cids
+                    ),
+                    expected_expansion_selections=packet_expansion_selections,
+                )
+                if evidence_manifest.source_count < 1:
+                    raise ProductionContextSliceError(
+                        "production evidence authority has no visible source",
+                        reason_code="evidence_context_empty",
+                    )
+                if not evidence_manifest.provider_ready:
+                    raise ProductionContextSliceError(
+                        "required evidence needs bounded context expansion",
+                        reason_code="context_expansion_required",
+                    )
+                if list(payload.get("expansion_handles") or ()) != [
+                    dict(item) for item in evidence_manifest.expansion_handles
+                ]:
+                    raise ProductionContextSliceError(
+                        "packet expansion handles differ from evidence authority",
+                        reason_code="scope_authority_mismatch",
+                    )
+            elif evidence is not None:
+                raise ProductionContextSliceError(
+                    "packet contains undeclared evidence authority",
+                    reason_code="scope_authority_mismatch",
+                )
+            elif payload.get("expansion_handles") not in (None, [], ()):
+                raise ProductionContextSliceError(
+                    "packet has expansion handles without declared evidence",
+                    reason_code="scope_authority_mismatch",
+                )
         except ProductionContextSliceError as exc:
             raise ProviderRoutingError(
                 "production packet context is stale, widened, or insufficient",
@@ -22820,12 +23488,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 safe_target(rel)
             # Bounded unified-diff apply; reject paths outside task scope.
             proc = subprocess.run(
-                ["git", "apply", "--check", "--whitespace=nowarn", "-"],
+                [
+                    PRODUCTION_GIT_EXECUTABLE,
+                    "--literal-pathspecs",
+                    "apply",
+                    "--check",
+                    "--whitespace=nowarn",
+                    "-",
+                ],
                 cwd=workspace,
+                env=sanitized_git_environment(),
                 input=patch,
                 text=True,
                 capture_output=True,
                 check=False,
+                timeout=15,
             )
             if proc.returncode != 0:
                 raise RuntimeError(
@@ -22833,21 +23510,39 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
             # Enumerate paths from the patch and enforce scope.
             path_proc = subprocess.run(
-                ["git", "apply", "--numstat", "--whitespace=nowarn", "-"],
+                [
+                    PRODUCTION_GIT_EXECUTABLE,
+                    "--literal-pathspecs",
+                    "apply",
+                    "--numstat",
+                    "--whitespace=nowarn",
+                    "-",
+                ],
                 cwd=workspace,
+                env=sanitized_git_environment(),
                 input=patch,
                 text=True,
                 capture_output=True,
                 check=False,
+                timeout=15,
             )
             # Prefer --name-only listing when available.
             name_proc = subprocess.run(
-                ["git", "apply", "--name-only", "--whitespace=nowarn", "-"],
+                [
+                    PRODUCTION_GIT_EXECUTABLE,
+                    "--literal-pathspecs",
+                    "apply",
+                    "--name-only",
+                    "--whitespace=nowarn",
+                    "-",
+                ],
                 cwd=workspace,
+                env=sanitized_git_environment(),
                 input=patch,
                 text=True,
                 capture_output=True,
                 check=False,
+                timeout=15,
             )
             names = [
                 canonical_relative_path(line, label="git-reported patch path")
@@ -22887,14 +23582,32 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             transactional_paths = tuple(dict.fromkeys((*parsed_names, *names)))
             snapshots = snapshot_targets(transactional_paths)
             absent_parent_dirs = missing_parent_dirs(transactional_paths)
-            apply_proc = subprocess.run(
-                ["git", "apply", "--whitespace=nowarn", "-"],
-                cwd=workspace,
-                input=patch,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
+            try:
+                apply_proc = subprocess.run(
+                    [
+                        PRODUCTION_GIT_EXECUTABLE,
+                        "--literal-pathspecs",
+                        "apply",
+                        "--whitespace=nowarn",
+                        "-",
+                    ],
+                    cwd=workspace,
+                    env=sanitized_git_environment(),
+                    input=patch,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=15,
+                )
+            except subprocess.TimeoutExpired as exc:
+                rollback_failures = restore_targets(snapshots)
+                rollback_failures.extend(clean_created_dirs(absent_parent_dirs))
+                detail = (
+                    "; rollback failures: " + "; ".join(rollback_failures)
+                    if rollback_failures
+                    else ""
+                )
+                raise RuntimeError(f"patch apply timed out{detail}") from exc
             if apply_proc.returncode != 0:
                 rollback_failures = restore_targets(snapshots)
                 rollback_failures.extend(clean_created_dirs(absent_parent_dirs))
@@ -23031,7 +23744,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             route_packet,
             workspace_path=context_workspace,
             baseline_ref=baseline_ref,
+            expected_attempt=attempt,
         )
+
+        def verify_route_evidence(candidate: Any, observed_snapshot: str) -> bool:
+            if candidate is not route_packet or observed_snapshot != current_snapshot:
+                return False
+            self._verify_production_packet_context(
+                task,
+                candidate,
+                workspace_path=context_workspace,
+                baseline_ref=baseline_ref,
+                expected_attempt=attempt,
+            )
+            return True
 
         lease = str(writer_lease_id or "").strip()
         if apply and not lease:
@@ -23058,6 +23784,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     route_packet,
                     workspace_path=context_workspace,
                     baseline_ref=baseline_ref,
+                    expected_attempt=attempt,
                 )
                 (
                     context_manifest,
@@ -23091,12 +23818,95 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             effective_writer = context_guarded_writer
         effective_admission = admission_gate or self._production_admission_gate
 
-        # Independence: never pass the same callable as both providers.
-        if (
-            grok_provider is not None
-            and codex_provider is not None
-            and grok_provider is codex_provider
-        ):
+        # Context acquisition is a separate bounded protocol, not an
+        # implementation retry.  Only a typed Grok request naming handles from
+        # the current evidence CID can advance the generation; each generation
+        # has its own durable receipt and remains within this one task attempt.
+        context_expansion_receipts: list[dict[str, Any]] = []
+        consumed_expansion_cids: set[str] = set()
+        active_expansion_selections: dict[str, int] = {}
+        maximum_context_round = min(4, DEFAULT_MAX_EVIDENCE_EXPANSION_ROUND)
+
+        def persist_context_terminal(
+            terminal_result: ImplementationRoutingResult,
+            *,
+            fallback_round: int,
+        ) -> tuple[dict[str, Any], Path]:
+            """Publish a receipt matching the supervisor's terminal disposition.
+
+            The provider's insufficient-evidence receipt remains immutable.  If
+            its request is stale, replayed, exhausted, or cannot be rebuilt, the
+            supervisor creates a distinct rejected receipt instead of returning
+            a mutated in-memory result that still points at the earlier deferred
+            receipt/event.
+            """
+
+            terminal_payload = getattr(route_packet, "provider_input_payload", None)
+            if callable(terminal_payload):
+                terminal_payload = terminal_payload()
+            terminal_goal = (
+                terminal_payload.get("goal")
+                if isinstance(terminal_payload, Mapping)
+                else None
+            )
+            terminal_round = (
+                terminal_goal.get("context_round")
+                if isinstance(terminal_goal, Mapping)
+                else fallback_round
+            )
+            if (
+                isinstance(terminal_round, bool)
+                or not isinstance(terminal_round, int)
+                or terminal_round < 0
+            ):
+                terminal_round = max(0, int(fallback_round))
+            terminal_parent = (
+                terminal_goal.get("parent_evidence_cid")
+                if isinstance(terminal_goal, Mapping)
+                and isinstance(terminal_goal.get("parent_evidence_cid"), str)
+                else ""
+            )
+            terminal_selected = (
+                terminal_goal.get("selected_expansion_cids")
+                if isinstance(terminal_goal, Mapping)
+                and isinstance(
+                    terminal_goal.get("selected_expansion_cids"), (list, tuple)
+                )
+                else ()
+            )
+            terminal_selections = (
+                terminal_goal.get("expansion_selections")
+                if isinstance(terminal_goal, Mapping)
+                and isinstance(terminal_goal.get("expansion_selections"), Mapping)
+                else active_expansion_selections
+            )
+            terminal_path, terminal_receipt = (
+                self._persist_model_assisted_provider_receipt(
+                    task=task,
+                    attempt=attempt,
+                    route_result=terminal_result,
+                    context_round=terminal_round,
+                    parent_evidence_cid=terminal_parent,
+                    selected_expansion_cids=terminal_selected,
+                    expansion_selections=terminal_selections,
+                )
+            )
+            terminal_event = self._model_assisted_provider_event_payload(
+                task=task,
+                attempt=attempt,
+                route_result=terminal_result,
+                receipt_payload=terminal_receipt,
+                receipt_path=terminal_path,
+            )
+            self._record_event(MODEL_ASSISTED_PROVIDER_ROUTE_EVENT, terminal_event)
+            return terminal_event, terminal_path
+
+        while True:
+            same_provider = (
+                grok_provider is not None
+                and codex_provider is not None
+                and grok_provider is codex_provider
+            )
             route_result, event, receipt_path = self.route_model_assisted_contract_packet(
                 route_packet,
                 current_snapshot_id=current_snapshot,
@@ -23107,31 +23917,261 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 deterministic_provider=deterministic_provider,
                 admission_gate=effective_admission,
                 writer=effective_writer,
-                apply=False,
-                writer_lease_id="",
+                apply=False if same_provider else apply,
+                writer_lease_id=(
+                    "" if same_provider or not apply else lease
+                ),
                 local_only=local_only,
                 bounds=bounds,
                 grok_quota=grok_quota,
                 codex_quota=codex_quota,
+                evidence_verifier=verify_route_evidence,
             )
-        else:
-            route_result, event, receipt_path = self.route_model_assisted_contract_packet(
-                route_packet,
-                current_snapshot_id=current_snapshot,
-                task=task,
-                attempt=attempt,
-                grok_provider=grok_provider,
-                codex_provider=codex_provider,
-                deterministic_provider=deterministic_provider,
-                admission_gate=effective_admission,
-                writer=effective_writer,
-                apply=apply,
-                writer_lease_id=lease if apply else "",
-                local_only=local_only,
-                bounds=bounds,
-                grok_quota=grok_quota,
-                codex_quota=codex_quota,
+            if route_result.reason_code != ProviderReason.CONTEXT_INSUFFICIENT.value:
+                break
+            proposal_payload = (
+                route_result.implementation_proposal.payload
+                if route_result.implementation_proposal is not None
+                else None
             )
+            request = (
+                proposal_payload.get("insufficient_evidence")
+                if isinstance(proposal_payload, Mapping)
+                else None
+            )
+            if request is None and route_result.review_proposal is not None:
+                review_payload = route_result.review_proposal.payload
+                findings = review_payload.get("findings")
+                finding = (
+                    findings[0]
+                    if isinstance(findings, list) and len(findings) == 1
+                    else None
+                )
+                if (
+                    isinstance(finding, Mapping)
+                    and finding.get("code") == "insufficient_evidence"
+                ):
+                    request = {
+                        "evidence_cid": finding.get("evidence_cid"),
+                        "expansion_cids": finding.get(
+                            "requested_expansion_cids"
+                        ),
+                    }
+            route_payload = getattr(route_packet, "provider_input_payload", None)
+            if callable(route_payload):
+                route_payload = route_payload()
+            evidence = (
+                route_payload.get("evidence_authority")
+                if isinstance(route_payload, Mapping)
+                else None
+            )
+            current_evidence_cid = (
+                str(evidence.get("evidence_cid") or "")
+                if isinstance(evidence, Mapping)
+                else ""
+            )
+            requested = (
+                tuple(sorted(str(item) for item in request.get("expansion_cids", ())))
+                if isinstance(request, Mapping)
+                else ()
+            )
+            raw_handles = (
+                evidence.get("expansion_handles")
+                if isinstance(evidence, Mapping)
+                else None
+            )
+            handle_by_cid = {
+                str(item.get("expansion_cid") or ""): item
+                for item in raw_handles
+                if isinstance(item, Mapping)
+                and str(item.get("expansion_cid") or "")
+            } if isinstance(raw_handles, list) else {}
+            requested_authority_keys = tuple(
+                sorted(
+                    str(handle_by_cid[item].get("authority_key") or "")
+                    for item in requested
+                    if item in handle_by_cid
+                )
+            )
+            goal = (
+                route_payload.get("goal")
+                if isinstance(route_payload, Mapping)
+                else None
+            )
+            current_round = (
+                goal.get("context_round") if isinstance(goal, Mapping) else None
+            )
+            invalid_request = (
+                not current_evidence_cid
+                or request is None
+                or request.get("evidence_cid") != current_evidence_cid
+                or not requested
+                or bool(set(requested) & consumed_expansion_cids)
+                or len(requested_authority_keys) != len(requested)
+                or any(not item for item in requested_authority_keys)
+                or isinstance(current_round, bool)
+                or not isinstance(current_round, int)
+                or current_round >= maximum_context_round
+                or packet is not None
+            )
+            if invalid_request:
+                route_result = replace(
+                    route_result,
+                    status=RouteStatus.REJECTED,
+                    reason_code=ProviderReason.REPAIR_REQUIRED.value,
+                )
+                self._record_event(
+                    "production_context_expansion_rejected",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "context_round": current_round,
+                        "reason_code": ProviderReason.REPAIR_REQUIRED.value,
+                        "write_performed": False,
+                        "requested_expansion_cids": list(requested),
+                    },
+                )
+                event, receipt_path = persist_context_terminal(
+                    route_result,
+                    fallback_round=(
+                        current_round
+                        if isinstance(current_round, int)
+                        and not isinstance(current_round, bool)
+                        else 0
+                    ),
+                )
+                break
+            next_expansion_selections = dict(active_expansion_selections)
+            for authority_key in requested_authority_keys:
+                next_expansion_selections[authority_key] = (
+                    next_expansion_selections.get(authority_key, 0) + 1
+                )
+            try:
+                rebuilt_packet = self.build_production_contract_packet_for_task(
+                    task,
+                    snapshot_id=current_snapshot,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    baseline_ref=baseline_ref,
+                    context_round=current_round + 1,
+                    parent_evidence_cid=current_evidence_cid,
+                    selected_expansion_cids=requested,
+                    expansion_selections=next_expansion_selections,
+                )
+                self._verify_production_packet_context(
+                    task,
+                    rebuilt_packet,
+                    workspace_path=context_workspace,
+                    baseline_ref=baseline_ref,
+                    expected_attempt=attempt,
+                    expected_context_round=current_round + 1,
+                    expected_parent_evidence_cid=current_evidence_cid,
+                    expected_selected_expansion_cids=requested,
+                    expected_expansion_selections=next_expansion_selections,
+                )
+                rebuilt_payload = dict(rebuilt_packet.provider_input_payload)
+                rebuilt_evidence = rebuilt_payload.get("evidence_authority")
+                if not isinstance(rebuilt_evidence, Mapping):
+                    raise ProviderRoutingError(
+                        "expanded packet lost its evidence authority",
+                        reason_code=ProviderReason.REPAIR_REQUIRED,
+                    )
+                result_evidence_cid = str(
+                    rebuilt_evidence.get("evidence_cid") or ""
+                )
+                result_packet_cid = content_identity(rebuilt_payload)
+                if not result_evidence_cid:
+                    raise ProviderRoutingError(
+                        "expanded packet lacks a result evidence CID",
+                        reason_code=ProviderReason.REPAIR_REQUIRED,
+                    )
+                current_visible = {
+                    ("source", str(item.get("path") or ""), str(item.get("file_cid") or ""))
+                    for item in evidence.get("sources", ())
+                    if isinstance(item, Mapping)
+                }
+                current_visible.update(
+                    (
+                        "diff",
+                        str(binding.get("candidate_id") or ""),
+                        str(item.get("path") or ""),
+                        str(item.get("diff_cid") or ""),
+                    )
+                    for binding in evidence.get("ref_bindings", ())
+                    if isinstance(binding, Mapping)
+                    for item in binding.get("diffs", ())
+                    if isinstance(item, Mapping)
+                )
+                rebuilt_visible = {
+                    ("source", str(item.get("path") or ""), str(item.get("file_cid") or ""))
+                    for item in rebuilt_evidence.get("sources", ())
+                    if isinstance(item, Mapping)
+                }
+                rebuilt_visible.update(
+                    (
+                        "diff",
+                        str(binding.get("candidate_id") or ""),
+                        str(item.get("path") or ""),
+                        str(item.get("diff_cid") or ""),
+                    )
+                    for binding in rebuilt_evidence.get("ref_bindings", ())
+                    if isinstance(binding, Mapping)
+                    for item in binding.get("diffs", ())
+                    if isinstance(item, Mapping)
+                )
+                if not current_visible < rebuilt_visible:
+                    raise ProviderRoutingError(
+                        "context expansion did not strictly grow visible evidence",
+                        reason_code=ProviderReason.REPAIR_REQUIRED,
+                    )
+                durable_provider_receipt_id = str(event.get("receipt_id") or "")
+                durable_provider_receipt_path = Path(receipt_path)
+                if not durable_provider_receipt_id:
+                    raise ProviderRoutingError(
+                        "context expansion lacks its durable provider receipt",
+                        reason_code=ProviderReason.REPAIR_REQUIRED,
+                    )
+                expansion_path, expansion_receipt = (
+                    self._persist_context_expansion_receipt(
+                        task=task,
+                        attempt=attempt,
+                        context_round=current_round,
+                        evidence_cid=current_evidence_cid,
+                        expansion_cids=requested,
+                        provider_receipt_id=durable_provider_receipt_id,
+                        provider_receipt_path=durable_provider_receipt_path,
+                        result_evidence_cid=result_evidence_cid,
+                        result_packet_cid=result_packet_cid,
+                    )
+                )
+                context_expansion_receipts.append(
+                    {**expansion_receipt, "receipt_path": str(expansion_path)}
+                )
+                route_packet = rebuilt_packet
+            except (ProductionContextSliceError, ProviderRoutingError) as exc:
+                route_result = replace(
+                    route_result,
+                    status=RouteStatus.REJECTED,
+                    reason_code=ProviderReason.REPAIR_REQUIRED.value,
+                )
+                self._record_event(
+                    "production_context_expansion_rejected",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "context_round": current_round + 1,
+                        "reason_code": ProviderReason.REPAIR_REQUIRED.value,
+                        "detail": str(getattr(exc, "reason_code", "") or "")[:200],
+                        "write_performed": False,
+                    },
+                )
+                event, receipt_path = persist_context_terminal(
+                    route_result,
+                    fallback_round=current_round,
+                )
+                break
+            consumed_expansion_cids.update(requested)
+            active_expansion_selections = next_expansion_selections
 
         receipt = route_result.provider_receipt
         self._last_production_provider_receipt = receipt
@@ -23235,6 +24275,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "raw_model_command_invoked": False,
             "typed_packet_route_only": True,
             "receipt_path": str(receipt_path),
+            "context_expansion_receipts": context_expansion_receipts,
+            "context_round": int(
+                (
+                    getattr(route_packet, "provider_input_payload")().get("goal", {})
+                    if callable(getattr(route_packet, "provider_input_payload", None))
+                    else getattr(route_packet, "provider_input_payload", {}).get(
+                        "goal", {}
+                    )
+                ).get("context_round", 0)
+            ),
             "pending": pending,
         }
         self._record_event(PRODUCTION_PROVIDER_ROUTE_EVENT, production_event)
@@ -23284,6 +24334,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "event": production_event,
             "receipt_path": receipt_path,
             "receipt": receipt,
+            "context_expansion_receipts": context_expansion_receipts,
+            "context_round": production_event["context_round"],
             "disposition": disposition,
             "disposition_reason": disposition_reason,
             "binding": binding,
@@ -23307,6 +24359,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             # Surface infrastructure deferrals so the implement path can avoid
             # charging the task attempt budget for provider capacity stalls.
             "provider_capacity_exhausted": bool(deferred_infra),
+            "context_expansion_only": bool(
+                not route_result.write_performed
+                and route_result.reason_code
+                == ProviderReason.CONTEXT_INSUFFICIENT.value
+            ),
             "reason": (
                 "provider_capacity_exhausted" if deferred_infra else ""
             ),
@@ -50590,6 +51647,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--production-provider-launch-authority-receipt-path",
+        type=Path,
+        default=None,
+        help=(
+            "Operator-owned mode-0600 admitted launch receipt selecting any "
+            "candidate evidence appendix; requires the exact receipt CID."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-launch-authority-receipt-content-id",
+        default="",
+        help="Exact sha256 content identity of the launch authority receipt.",
+    )
+    parser.add_argument(
         "--legacy-landed-review-policy-path",
         type=Path,
         default=None,
@@ -50935,6 +52006,12 @@ def main(argv: list[str] | None = None) -> None:
         ),
         production_provider_review_authority_key_path=(
             args.production_provider_review_authority_key_path
+        ),
+        production_provider_launch_authority_receipt_path=(
+            args.production_provider_launch_authority_receipt_path
+        ),
+        production_provider_launch_authority_receipt_content_id=(
+            args.production_provider_launch_authority_receipt_content_id
         ),
         legacy_landed_review_policy_path=(
             args.legacy_landed_review_policy_path
