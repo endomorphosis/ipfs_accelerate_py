@@ -52,8 +52,9 @@ overlays. Never force-push.
 
 ## MCPP-001 Preserve dirty overlays and create codex/mcplusplus-1.0-gap-closure branches
 
-- Status: todo
-- Completion: authoritative
+- Status: completed
+- Completion: manual
+- Completion evidence: docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json and dirty-overlay.md; json.tool validation passed; operator overlays preserved; SwissKnife origin discovered via git remote -v
 - Is schedulable: true
 - Review only: false
 - Priority: P0
