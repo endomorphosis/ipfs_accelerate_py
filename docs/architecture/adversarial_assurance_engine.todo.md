@@ -1308,7 +1308,7 @@ W20 AAE-063
 
 ## AAE-047 Orchestrate authorized assurance-policy promotion, CAS, and new seal
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
