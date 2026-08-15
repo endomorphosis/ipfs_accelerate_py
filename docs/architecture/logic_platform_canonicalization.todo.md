@@ -84,7 +84,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-003 Inventory registries, namespaces, aliases, and generated catalogs
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: inventory
