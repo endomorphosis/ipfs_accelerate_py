@@ -1,0 +1,92 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.logic_platform_canonicalization.scheduler_config@1",
+  "taskboard_path": "docs/architecture/logic_platform_canonicalization.todo.md",
+  "objectives_path": "docs/architecture/logic_platform_canonicalization.objectives.md",
+  "plan_path": "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md",
+  "validator_path": "scripts/validate_logic_platform_canonicalization_board.py",
+  "task_prefix": "LPC-",
+  "board_namespace": "logic-platform-canonicalization-v1",
+  "merge_target_branch": "agent/logic-platform-canonicalization",
+  "source_binding": {
+    "accelerator_required_branch": "agent/logic-platform-canonicalization",
+    "accelerator_required_ancestor": "ea11293bb996f052d620eae989f5377a956764b1",
+    "record_accelerator_and_datasets_revisions_at_launch": true
+  },
+  "max_lanes": 6,
+  "strict_task_sharding": true,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 45,
+  "check_interval_seconds": 20,
+  "stale_seconds": 1800,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 4,
+  "max_task_attempts": 4,
+  "implementation_retry_budget": 3,
+  "validation_retry_budget": 3,
+  "merge_retry_budget": 3,
+  "implementation_timeout_seconds": 7200,
+  "implementation_max_timeout_seconds": 10800,
+  "implementation_log_stall_seconds": 1200,
+  "worktree_submodule_paths": [],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/logic_platform_canonicalization",
+    "state": "data/agent_supervisor/logic_platform_canonicalization/state",
+    "worktrees": "data/agent_supervisor/logic_platform_canonicalization/worktrees",
+    "merge_queue": "data/agent_supervisor/logic_platform_canonicalization/merge-queue",
+    "logs": "data/agent_supervisor/logic_platform_canonicalization/logs"
+  },
+  "protected_paths": [
+    "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md",
+    "docs/architecture/logic_platform_canonicalization.objectives.md",
+    "docs/architecture/logic_platform_canonicalization.todo.md",
+    "config/agent_supervisor_logic_platform_canonicalization_scheduler.json",
+    "scripts/validate_logic_platform_canonicalization_board.py",
+    "scripts/emit_logic_platform_canonicalization_formal_plan.py"
+  ],
+  "lanes": [
+    {
+      "index": 0,
+      "name": "lpc-lane-0",
+      "strict_shard_remainder": 0
+    },
+    {
+      "index": 1,
+      "name": "lpc-lane-1",
+      "strict_shard_remainder": 1
+    },
+    {
+      "index": 2,
+      "name": "lpc-lane-2",
+      "strict_shard_remainder": 2
+    },
+    {
+      "index": 3,
+      "name": "lpc-lane-3",
+      "strict_shard_remainder": 3
+    },
+    {
+      "index": 4,
+      "name": "lpc-lane-4",
+      "strict_shard_remainder": 4
+    },
+    {
+      "index": 5,
+      "name": "lpc-lane-5",
+      "strict_shard_remainder": 5
+    }
+  ],
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "medium",
+    "max_concurrency": 6,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_or_logs": false
+  }
+}

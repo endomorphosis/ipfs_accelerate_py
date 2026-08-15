@@ -196,6 +196,9 @@ state/**/*.out
 !config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json
 # Stable machine-ingestible supervisor program profile (CPD-000).
 !config/agent_supervisor_control_plane_planner_doctor_v2_scheduler.json
+# Logic-platform canonicalization campaign (LPC) sealed sources.
+!config/agent_supervisor_logic_platform_canonicalization_scheduler.json
+!data/agent_supervisor/logic_platform_canonicalization/formal_work_plan.json
 # Delegated/manual completion seals for Planner/Doctor program gates.
 !config/agent_supervisor_planner_doctor_attestation.seal.json
 !config/agent_supervisor_planner_doctor_quality_oracle.seal.json
