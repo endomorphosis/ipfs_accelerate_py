@@ -84,6 +84,21 @@ MAX_PROVIDER_TIMEOUT_SECONDS: Final = 600.0
 MAX_PROVIDER_JSON_DEPTH: Final = 24
 MAX_PROVIDER_JSON_ITEMS: Final = 8_192
 REDACTION_MARKER: Final = "[REDACTED]"
+_DAG_JSON_CID_RE: Final = re.compile(r"\Abaguqeera[a-z2-7]{52}\Z")
+# Independent review may return only these machine-readable rejection codes.
+# Free-form reviewer prose is deliberately excluded: retry context is a
+# privileged input to the next implementation attempt and must not become a
+# prompt-injection channel.
+PRODUCTION_REVIEW_FINDING_CODES: Final[tuple[str, ...]] = (
+    "acceptance_unsatisfied",
+    "insufficient_evidence",
+    "invalid_patch",
+    "scope_violation",
+    "security_violation",
+    "tests_missing",
+    "unverifiable_claim",
+)
+MAX_PRODUCTION_REVIEW_FINDINGS: Final = 4
 
 
 class ProviderRole(str, Enum):
@@ -126,6 +141,9 @@ class ProviderReason(str, Enum):
     PROMPT_TOO_LARGE = "provider_prompt_too_large"
     PROMPT_TOKEN_BUDGET = "provider_prompt_token_budget_exceeded"
     BROAD_CONTEXT_FORBIDDEN = "broad_repository_context_forbidden"
+    SECRET_DETECTED = "provider_secret_detected"
+    CONTEXT_INSUFFICIENT = "insufficient_evidence"
+    REPAIR_REQUIRED = "repair_required"
     PACKET_STALE = "packet_stale"
     PACKET_NOT_IMPLEMENTABLE = "packet_not_implementable"
     PACKET_MALFORMED = "packet_malformed"
@@ -169,6 +187,51 @@ class ProviderRoutingError(ValueError):
     def __init__(self, message: str, *, reason_code: ProviderReason | str) -> None:
         super().__init__(message)
         self.reason_code = str(getattr(reason_code, "value", reason_code))
+
+
+def validate_production_review_decision(
+    decision: Any,
+    findings: Any,
+) -> tuple[str, ...]:
+    """Validate one closed, non-prose independent-review disposition.
+
+    Approval is necessarily finding-free.  Rejection must explain itself with
+    one to four distinct codes from the closed catalog.  This gives retry and
+    escalation policy actionable evidence without persisting model-authored
+    prose.
+    """
+
+    if type(decision) is not str or decision not in {"approve", "reject"}:
+        raise ProviderRoutingError(
+            "production review decision must be approve or reject",
+            reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+        )
+    if type(findings) is not list:
+        raise ProviderRoutingError(
+            "production review findings must be a list",
+            reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+        )
+    if (
+        len(findings) > MAX_PRODUCTION_REVIEW_FINDINGS
+        or any(type(code) is not str for code in findings)
+        or len(findings) != len(set(findings))
+        or any(code not in PRODUCTION_REVIEW_FINDING_CODES for code in findings)
+    ):
+        raise ProviderRoutingError(
+            "production review findings are outside the closed catalog",
+            reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+        )
+    if decision == "approve" and findings:
+        raise ProviderRoutingError(
+            "production review approval cannot carry findings",
+            reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+        )
+    if decision == "reject" and not findings:
+        raise ProviderRoutingError(
+            "production review rejection requires a finding code",
+            reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+        )
+    return tuple(findings)
 
 
 class ProviderQuotaError(RuntimeError):
@@ -325,6 +388,72 @@ def _canonical_bytes(value: Any) -> bytes:
         ) from exc
 
 
+def _json_detach(value: Any) -> Any:
+    """Return a recursively detached canonical JSON value."""
+
+    return json.loads(_canonical_bytes(_deep_thaw(value)).decode("utf-8"))
+
+
+def _deep_freeze(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {str(key): _deep_freeze(item) for key, item in value.items()}
+        )
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray, memoryview)
+    ):
+        return tuple(_deep_freeze(item) for item in value)
+    return value
+
+
+def _deep_thaw(value: Any, _active: set[int] | None = None) -> Any:
+    active = _active if _active is not None else set()
+    if isinstance(value, Mapping):
+        identity = id(value)
+        if identity in active:
+            raise ProviderRoutingError(
+                "provider data contains a recursive mapping",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        active.add(identity)
+        try:
+            result: dict[str, Any] = {}
+            for key, item in value.items():
+                if not isinstance(key, str) or key in result:
+                    raise ProviderRoutingError(
+                        "provider data keys must be unique strings",
+                        reason_code=ProviderReason.PACKET_MALFORMED,
+                    )
+                result[key] = _deep_thaw(item, active)
+            return result
+        finally:
+            active.remove(identity)
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray, memoryview)
+    ):
+        identity = id(value)
+        if identity in active:
+            raise ProviderRoutingError(
+                "provider data contains a recursive sequence",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        active.add(identity)
+        try:
+            return [_deep_thaw(item, active) for item in value]
+        finally:
+            active.remove(identity)
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    raise ProviderRoutingError(
+        "provider data contains a non-JSON value",
+        reason_code=ProviderReason.PACKET_MALFORMED,
+    )
+
+
+def _canonical_frozen(value: Any) -> Any:
+    return _deep_freeze(_json_detach(value))
+
+
 def _sha256(value: bytes) -> str:
     return "sha256:" + hashlib.sha256(value).hexdigest()
 
@@ -359,7 +488,8 @@ _TEXT_SECRET_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(
         r"(?i)\b(api[_ -]?key|access[_ -]?token|auth[_ -]?token|"
         r"client[_ -]?secret|password|passphrase|secret|token)"
-        r"(\s*[:=]\s*)[^\s,;]{4,}"
+        r"(\s*[:=]\s*)(?:['\"][^'\"]{6,}['\"]|"
+        r"[A-Za-z0-9._~+/=-]{8,})"
     ),
     re.compile(
         r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?"
@@ -556,6 +686,19 @@ class ProviderRequest(Mapping[str, Any]):
     prompt_tokens: int
     response_contract: Mapping[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+            raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": IMPLEMENTATION_PROVIDER_REQUEST_SCHEMA,
@@ -564,9 +707,9 @@ class ProviderRequest(Mapping[str, Any]):
             "packet_id": self.packet_id,
             "snapshot_id": self.snapshot_id,
             "task_id": self.task_id,
-            "provider_input": dict(self.payload),
+            "provider_input": _deep_thaw(self.payload),
             "bounds": self.bounds.to_dict(),
-            "response_contract": dict(self.response_contract),
+            "response_contract": _deep_thaw(self.response_contract),
             "authority": {
                 "provider_output_tier": "proposal",
                 "repository_write_allowed": False,
@@ -598,6 +741,23 @@ class ProviderProposal:
     response_digest: str
     admitted: bool = False
     admission_reason: str = ""
+    payload_digest: str = ""
+
+    def __post_init__(self) -> None:
+        detached = _json_detach(self.payload)
+        if not isinstance(detached, dict):
+            raise ProviderRoutingError(
+                "provider proposal payload must be an object",
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+            )
+        digest = _sha256(_canonical_bytes(detached))
+        if self.payload_digest and self.payload_digest != digest:
+            raise ProviderRoutingError(
+                "provider proposal payload changed after capture",
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+            )
+        object.__setattr__(self, "payload", MappingProxyType(detached))
+        object.__setattr__(self, "payload_digest", digest)
 
     @property
     def provider(self) -> str:
@@ -622,6 +782,7 @@ class ProviderProposal:
             response_digest=self.response_digest,
             admitted=bool(accepted),
             admission_reason=str(reason or ""),
+            payload_digest=self.payload_digest,
         )
 
     def to_dict(self, *, include_payload: bool = True) -> dict[str, Any]:
@@ -639,7 +800,7 @@ class ProviderProposal:
             "completion_authoritative": False,
         }
         if include_payload:
-            result["proposal"] = dict(self.payload)
+            result["proposal"] = _deep_thaw(self.payload)
         return result
 
 
@@ -835,9 +996,18 @@ def _packet_content_id(payload: Mapping[str, Any]) -> str:
     try:
         from ..proof.formal_verification_contracts import content_identity
 
-        return str(content_identity(dict(payload)))
-    except Exception:
-        return _sha256(_canonical_bytes(payload))
+        identity = str(content_identity(dict(payload)))
+    except Exception as exc:
+        raise ProviderRoutingError(
+            "canonical DAG-JSON packet identity is unavailable",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        ) from exc
+    if not _DAG_JSON_CID_RE.fullmatch(identity):
+        raise ProviderRoutingError(
+            "packet identity is not the required CIDv1 dag-json/sha2-256 form",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        )
+    return identity
 
 
 def _bounded_evidence_slice(
@@ -863,6 +1033,7 @@ def _bounded_evidence_slice(
             break
     goal = provider_input.get("goal")
     context_slice = provider_input.get("context_slice")
+    evidence_authority = provider_input.get("evidence_authority")
     goal_ids: dict[str, Any] = {}
     if isinstance(goal, Mapping):
         for key in (
@@ -898,6 +1069,8 @@ def _bounded_evidence_slice(
     # ``_request`` (at least large enough for a max-size admitted proposal).
     if isinstance(context_slice, Mapping):
         evidence["context_slice"] = dict(context_slice)
+    if isinstance(evidence_authority, Mapping):
+        evidence["evidence_authority"] = dict(evidence_authority)
     return evidence
 
 
@@ -906,21 +1079,39 @@ def _provider_response_contract(role: ProviderRole) -> dict[str, Any]:
 
     if role is ProviderRole.GROK_IMPLEMENT:
         shape: dict[str, Any] = {
-            "proposal": {
-                "declared_paths": ["repo/relative/path"],
-                "files": [
-                    {
-                        "path": "repo/relative/path",
-                        "content": "complete replacement text",
+            "one_of": [
+                {
+                    "proposal": {
+                        "declared_paths": ["repo/relative/path"],
+                        "files": [
+                            {
+                                "path": "repo/relative/path",
+                                "content": "complete replacement text",
+                            }
+                        ],
+                        "patch": "optional unified diff instead of files",
+                    },
+                    "evidence_acknowledgement": {
+                        "evidence_cid": "exact supplied evidence CID",
+                        "expansion_chain_cid": "exact supplied chain CID",
+                        "sufficiency": "sufficient",
+                    },
+                },
+                {
+                    "insufficient_evidence": {
+                        "evidence_cid": "exact supplied evidence CID",
+                        "expansion_cids": ["one or more supplied expansion CIDs"],
                     }
-                ],
-                "patch": "optional unified diff instead of files",
-            }
+                },
+            ]
         }
     elif role is ProviderRole.CODEX_REVIEW:
         shape = {
             "decision": "approve|reject",
-            "findings": [],
+            "findings": (
+                "[] or exactly one {code: insufficient_evidence, evidence_cid: "
+                "<exact>, requested_expansion_cids: [<supplied handle CID>]}"
+            ),
             "proposal": "forbidden; Codex is an independent reviewer only",
         }
     else:
@@ -1489,6 +1680,7 @@ class ImplementationProviderRouter:
     deterministic_provider: ProviderCallable | None = None
     admission_gate: AdmissionCallable | None = None
     writer: WriterCallable | None = None
+    evidence_verifier: Callable[[Any, str], bool] | None = None
     bounds: ProviderBounds = field(default_factory=ProviderBounds)
     grok_quota: ProviderQuotaLatch = field(default_factory=ProviderQuotaLatch)
     codex_quota: ProviderQuotaLatch = field(default_factory=ProviderQuotaLatch)
@@ -1513,6 +1705,8 @@ class ImplementationProviderRouter:
                 raise TypeError(f"{name} must be ProviderQuotaLatch or an integer")
         if not callable(self.token_counter):
             raise TypeError("token_counter must be callable")
+        if self.evidence_verifier is not None and not callable(self.evidence_verifier):
+            raise TypeError("evidence_verifier must be callable")
 
     @property
     def quota_state(self) -> Mapping[str, Mapping[str, Any]]:
@@ -1575,8 +1769,67 @@ class ImplementationProviderRouter:
                 "packet_id, task_id, and provider_input_payload are required",
                 reason_code=ProviderReason.PACKET_MALFORMED,
             )
+        raw_authority = raw_payload.get("authority")
+        if isinstance(raw_authority, Mapping) and (
+            raw_authority.get("read_evidence_required") is True
+        ):
+            if self.evidence_verifier is None:
+                raise ProviderRoutingError(
+                    "CID-bound evidence lacks a supervisor freshness verifier",
+                    reason_code=ProviderReason.PACKET_STALE,
+                )
+            try:
+                verified = self.evidence_verifier(packet, current_snapshot_id)
+            except ProviderRoutingError:
+                raise
+            except Exception as exc:
+                raise ProviderRoutingError(
+                    "CID-bound evidence freshness verification failed",
+                    reason_code=ProviderReason.PACKET_STALE,
+                ) from exc
+            if verified is not True:
+                raise ProviderRoutingError(
+                    "CID-bound evidence freshness verification was not admitted",
+                    reason_code=ProviderReason.PACKET_STALE,
+                )
+            context = raw_payload.get("context_slice")
+            evidence = raw_payload.get("evidence_authority")
+            context_sources = (
+                context.get("sources") if isinstance(context, Mapping) else None
+            )
+            evidence_sources = (
+                evidence.get("sources") if isinstance(evidence, Mapping) else None
+            )
+            if not (
+                isinstance(context_sources, list)
+                and (evidence is None or isinstance(evidence_sources, list))
+                and (context_sources or (evidence_sources or []))
+            ):
+                raise ProviderRoutingError(
+                    "production packet has no provider-visible read evidence",
+                    reason_code="evidence_context_empty",
+                )
+            if evidence is not None and (
+                not isinstance(evidence, Mapping)
+                or not str(evidence.get("evidence_cid") or "").strip()
+                or not isinstance(evidence.get("readiness"), Mapping)
+                or evidence["readiness"].get("provider_ready") is not True
+            ):
+                raise ProviderRoutingError(
+                    "production evidence authority is malformed",
+                    reason_code=ProviderReason.PACKET_MALFORMED,
+                )
         _check_structure(raw_payload, forbid_broad_context=True)
         payload = redact_provider_data(raw_payload)
+        if (
+            isinstance(raw_authority, Mapping)
+            and raw_authority.get("read_evidence_required") is True
+            and payload != raw_payload
+        ):
+            raise ProviderRoutingError(
+                "CID-bound production evidence requires redaction-free bytes",
+                reason_code=ProviderReason.SECRET_DETECTED,
+            )
         _canonical_bytes(payload)
         return packet_id, snapshot_id, task_id, payload
 
@@ -1604,11 +1857,12 @@ class ImplementationProviderRouter:
                     "independent Codex review requires an admitted Grok proposal",
                     reason_code=ProviderReason.PROVIDERS_NOT_INDEPENDENT,
                 )
+            self._assert_proposal_stable(admitted_proposal)
             payload = {
                 "admitted_implementation_proposal": {
                     "role": admitted_proposal.role.value,
                     "response_digest": admitted_proposal.response_digest,
-                    "proposal": dict(admitted_proposal.payload),
+                    "proposal": _deep_thaw(admitted_proposal.payload),
                     "proof_authoritative": False,
                     "completion_authoritative": False,
                 },
@@ -1630,34 +1884,15 @@ class ImplementationProviderRouter:
                 payload["admitted_implementation_proposal"] = {
                     "role": admitted_proposal.role.value,
                     "response_digest": admitted_proposal.response_digest,
-                    "proposal": dict(admitted_proposal.payload),
+                    "proposal": _deep_thaw(admitted_proposal.payload),
                     "proof_authoritative": False,
                     "completion_authoritative": False,
                 }
         response_contract = _provider_response_contract(role)
-        envelope = {
-            "schema": IMPLEMENTATION_PROVIDER_REQUEST_SCHEMA,
-            "interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
-            "role": role.value,
-            "packet_id": packet_id,
-            "snapshot_id": snapshot_id,
-            "task_id": task_id,
-            "provider_input": payload,
-            "bounds": self.bounds.to_dict(),
-            "response_contract": response_contract,
-            "authority": {
-                "provider_output_tier": "proposal",
-                "repository_write_allowed": False,
-                "proof_authoritative": False,
-                "completion_authoritative": False,
-            },
-        }
-        prompt = _canonical_bytes(envelope)
         # Independent review must be able to see the admitted proposal even
-        # when that proposal approaches MAX_PROVIDER_RESPONSE_BYTES.  Operator
-        # context budgets still bound the implement step; review uses at least
-        # the protocol maximum so admission is not followed by an automatic
-        # prompt-too-large degradation.
+        # when that proposal approaches MAX_PROVIDER_RESPONSE_BYTES.  Compute
+        # the effective bound before serializing so prompt bytes and the frozen
+        # ProviderRequest envelope are exactly identical.
         if role is ProviderRole.CODEX_REVIEW:
             effective_bounds = ProviderBounds(
                 max_prompt_tokens=max(
@@ -1673,6 +1908,24 @@ class ImplementationProviderRouter:
             )
         else:
             effective_bounds = self.bounds
+        envelope = {
+            "schema": IMPLEMENTATION_PROVIDER_REQUEST_SCHEMA,
+            "interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
+            "role": role.value,
+            "packet_id": packet_id,
+            "snapshot_id": snapshot_id,
+            "task_id": task_id,
+            "provider_input": payload,
+            "bounds": effective_bounds.to_dict(),
+            "response_contract": response_contract,
+            "authority": {
+                "provider_output_tier": "proposal",
+                "repository_write_allowed": False,
+                "proof_authoritative": False,
+                "completion_authoritative": False,
+            },
+        }
+        prompt = _canonical_bytes(envelope)
         try:
             prompt_tokens = self.token_counter(prompt)
         except Exception as exc:
@@ -1840,11 +2093,16 @@ class ImplementationProviderRouter:
         *,
         apply: bool,
         writer_lease_id: str,
+        freshness_gate: Callable[[], bool] | None = None,
     ) -> tuple[bool, str]:
         if not apply:
             return False, ""
         if not proposal.admitted:
             return False, ProviderReason.ADMISSION_REQUIRED.value
+        try:
+            self._assert_proposal_stable(proposal)
+        except ProviderRoutingError as exc:
+            return False, exc.reason_code
         if self.writer is None:
             return False, ProviderReason.WRITER_NOT_CONFIGURED.value
         if (
@@ -1857,11 +2115,16 @@ class ImplementationProviderRouter:
             # This router never owns the durable lease, but it does preserve
             # its single-writer property inside one router instance.
             with self._writer_lock:
+                if freshness_gate is not None and freshness_gate() is not True:
+                    return False, ProviderReason.PACKET_STALE.value
+                self._assert_proposal_stable(proposal)
                 _call_with_supported_arguments(
                     self.writer,
                     proposal,
                     writer_lease_id,
                 )
+        except ProviderRoutingError as exc:
+            return False, exc.reason_code
         except Exception as exc:
             # Preserve a bounded secret-free operator note so capacity-recovery
             # write failures (context reject, path fence, apply error) are
@@ -1881,6 +2144,15 @@ class ImplementationProviderRouter:
                 )
             return False, ProviderReason.WRITE_FAILED.value
         return True, ""
+
+    @staticmethod
+    def _assert_proposal_stable(proposal: ProviderProposal) -> None:
+        observed = _sha256(_canonical_bytes(_deep_thaw(proposal.payload)))
+        if observed != proposal.payload_digest:
+            raise ProviderRoutingError(
+                "provider proposal payload changed after capture",
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+            )
 
     @staticmethod
     def _error_attempt(
@@ -1930,6 +2202,7 @@ class ImplementationProviderRouter:
         fallback_reason: str,
         apply: bool,
         writer_lease_id: str,
+        freshness_gate: Callable[[], bool] | None = None,
     ) -> ImplementationRoutingResult:
         packet_identity = packet or self._packet_identity(
             packet_id=packet_id,
@@ -1953,11 +2226,15 @@ class ImplementationProviderRouter:
                 task_id=task_id,
                 provider_input=payload,
             )
+            if freshness_gate is not None:
+                freshness_gate()
             proposal, attempt = self._invoke(
                 self.deterministic_provider,
                 self.deterministic_quota,
                 request,
             )
+            if freshness_gate is not None:
+                freshness_gate()
             attempts.append(attempt)
             admitted = self._admit(proposal)
             if not admitted.admitted:
@@ -1974,6 +2251,7 @@ class ImplementationProviderRouter:
                 admitted,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
+                freshness_gate=freshness_gate,
             )
             if apply and not wrote:
                 return self._result(
@@ -2043,6 +2321,152 @@ class ImplementationProviderRouter:
             task_id=task_id,
         )
 
+    @staticmethod
+    def _grok_evidence_disposition(
+        proposal: ProviderProposal,
+        provider_input: Mapping[str, Any],
+    ) -> tuple[str, tuple[str, ...]]:
+        """Validate Grok's typed evidence acknowledgement or expansion request.
+
+        The supervisor, not the model, owns context expansion.  A request can
+        name only handles present in the exact CID-bound packet generation.
+        It grants no write authority and is deliberately handled before the
+        proposal admission gate or independent reviewer.
+        """
+
+        evidence = provider_input.get("evidence_authority")
+        if not isinstance(evidence, Mapping):
+            return "proposal", ()
+        evidence_cid = str(evidence.get("evidence_cid") or "")
+        chain = evidence.get("expansion_chain")
+        chain_cid = (
+            str(chain.get("chain_cid") or "")
+            if isinstance(chain, Mapping)
+            else ""
+        )
+        handles = evidence.get("expansion_handles")
+        known_handles: set[str] = set()
+        if isinstance(handles, list):
+            for item in handles:
+                if not isinstance(item, Mapping):
+                    continue
+                cid = str(item.get("expansion_cid") or "")
+                omitted = item.get(
+                    "omitted_source_count",
+                    item.get("omitted_diff_count", 0),
+                )
+                if (
+                    cid
+                    and isinstance(omitted, int)
+                    and not isinstance(omitted, bool)
+                    and omitted > 0
+                ):
+                    known_handles.add(cid)
+        body = proposal.payload
+        request = body.get("insufficient_evidence")
+        acknowledgement = body.get("evidence_acknowledgement")
+        if request is not None:
+            if acknowledgement is not None or body.get("proposal") is not None:
+                raise ProviderRoutingError(
+                    "evidence request cannot also propose repository effects",
+                    reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+                )
+            if not isinstance(request, Mapping) or set(request) != {
+                "evidence_cid",
+                "expansion_cids",
+            }:
+                raise ProviderRoutingError(
+                    "insufficient-evidence response is malformed",
+                    reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+                )
+            requested = request.get("expansion_cids")
+            if (
+                request.get("evidence_cid") != evidence_cid
+                or not isinstance(requested, list)
+                or not requested
+                or any(not isinstance(item, str) for item in requested)
+                or len(requested) != len(set(requested))
+                or not set(requested).issubset(known_handles)
+            ):
+                raise ProviderRoutingError(
+                    "insufficient-evidence response names stale or unknown authority",
+                    reason_code=ProviderReason.REPAIR_REQUIRED,
+                )
+            return "insufficient_evidence", tuple(sorted(requested))
+        if not isinstance(acknowledgement, Mapping) or set(acknowledgement) != {
+            "evidence_cid",
+            "expansion_chain_cid",
+            "sufficiency",
+        } or acknowledgement != {
+            "evidence_cid": evidence_cid,
+            "expansion_chain_cid": chain_cid,
+            "sufficiency": "sufficient",
+        }:
+            raise ProviderRoutingError(
+                "implementation proposal lacks exact evidence acknowledgement",
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+            )
+        return "proposal", ()
+
+    @staticmethod
+    def _codex_evidence_expansion_request(
+        proposal: ProviderProposal,
+        provider_input: Mapping[str, Any],
+    ) -> tuple[str, ...]:
+        evidence = provider_input.get("evidence_authority")
+        if not isinstance(evidence, Mapping):
+            return ()
+        if proposal.payload.get("decision") != "reject":
+            return ()
+        findings = proposal.payload.get("findings")
+        if not isinstance(findings, list) or len(findings) != 1:
+            return ()
+        finding = findings[0]
+        if not isinstance(finding, Mapping) or finding.get("code") != "insufficient_evidence":
+            return ()
+        if set(finding) != {
+            "code",
+            "evidence_cid",
+            "requested_expansion_cids",
+        }:
+            raise ProviderRoutingError(
+                "Codex insufficient-evidence finding is malformed",
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+            )
+        requested = finding.get("requested_expansion_cids")
+        handles = evidence.get("expansion_handles")
+        known = {
+            str(item.get("expansion_cid") or "")
+            for item in handles
+            if isinstance(item, Mapping)
+            and str(item.get("expansion_cid") or "")
+            and isinstance(
+                item.get(
+                    "omitted_source_count",
+                    item.get("omitted_diff_count", 0),
+                ),
+                int,
+            )
+            and item.get(
+                "omitted_source_count",
+                item.get("omitted_diff_count", 0),
+            )
+            > 0
+        } if isinstance(handles, list) else set()
+        if (
+            finding.get("evidence_cid") != evidence.get("evidence_cid")
+            or not isinstance(requested, list)
+            or not requested
+            or any(not isinstance(item, str) for item in requested)
+            or len(requested) != len(set(requested))
+            or not set(requested).issubset(known)
+        ):
+            raise ProviderRoutingError(
+                "Codex requested stale or unknown evidence",
+                reason_code=ProviderReason.REPAIR_REQUIRED,
+            )
+        return tuple(sorted(requested))
+
     def _result(
         self,
         *,
@@ -2096,12 +2520,39 @@ class ImplementationProviderRouter:
                 reason_code=exc.reason_code,
             )
 
-        packet_identity = self._packet_identity(
-            packet_id=packet_id,
-            snapshot_id=snapshot_id,
-            task_id=task_id,
-            payload=payload,
-        )
+        try:
+            packet_identity = self._packet_identity(
+                packet_id=packet_id,
+                snapshot_id=snapshot_id,
+                task_id=task_id,
+                payload=payload,
+            )
+        except ProviderRoutingError as exc:
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=exc.reason_code,
+                packet_id=packet_id,
+            )
+
+        initial_payload_bytes = _canonical_bytes(payload)
+
+        def verify_current_packet() -> bool:
+            try:
+                observed = self._packet_fields(packet, current_snapshot_id)
+            except Exception as exc:
+                raise ProviderRoutingError(
+                    "contract packet/evidence changed after admission",
+                    reason_code=ProviderReason.PACKET_STALE,
+                ) from exc
+            if (
+                observed[:3] != (packet_id, snapshot_id, task_id)
+                or _canonical_bytes(observed[3]) != initial_payload_bytes
+            ):
+                raise ProviderRoutingError(
+                    "contract packet bytes changed after admission",
+                    reason_code=ProviderReason.PACKET_STALE,
+                )
+            return True
 
         if local_only:
             return self._local_fallback(
@@ -2114,6 +2565,7 @@ class ImplementationProviderRouter:
                 fallback_reason=ProviderReason.LOCAL_ONLY.value,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
+                freshness_gate=verify_current_packet,
             )
         if self.grok_provider is None:
             return self._local_fallback(
@@ -2126,6 +2578,7 @@ class ImplementationProviderRouter:
                 fallback_reason=ProviderReason.GROK_UNAVAILABLE.value,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
+                freshness_gate=verify_current_packet,
             )
 
         # Grok cannot self-review: implementer and reviewer must be independent
@@ -2150,10 +2603,24 @@ class ImplementationProviderRouter:
                 task_id=task_id,
                 provider_input=payload,
             )
+            verify_current_packet()
             grok, attempt = self._invoke(
                 self.grok_provider, self.grok_quota, grok_request
             )
+            verify_current_packet()
             attempts.append(attempt)
+            evidence_disposition, _requested_handles = (
+                self._grok_evidence_disposition(grok, payload)
+            )
+            if evidence_disposition == "insufficient_evidence":
+                return self._result(
+                    status=RouteStatus.DEFERRED,
+                    reason_code=ProviderReason.CONTEXT_INSUFFICIENT.value,
+                    packet_id=packet_id,
+                    packet=packet_identity,
+                    implementation_proposal=grok,
+                    attempts=attempts,
+                )
             grok = self._admit(grok)
         except ProviderQuotaError as exc:
             attempts.append(
@@ -2171,6 +2638,7 @@ class ImplementationProviderRouter:
                 fallback_reason=ProviderReason.GROK_QUOTA_EXHAUSTED.value,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
+                freshness_gate=verify_current_packet,
             )
         except ProviderRoutingError as exc:
             attempts.append(
@@ -2236,6 +2704,7 @@ class ImplementationProviderRouter:
                 reason_code=ProviderReason.CODEX_UNAVAILABLE.value,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
+                freshness_gate=verify_current_packet,
             )
 
         codex_request: ProviderRequest | None = None
@@ -2248,10 +2717,26 @@ class ImplementationProviderRouter:
                 provider_input=payload,
                 admitted_proposal=grok,
             )
+            verify_current_packet()
             review, attempt = self._invoke(
                 self.codex_provider, self.codex_quota, codex_request
             )
+            verify_current_packet()
             attempts.append(attempt)
+            requested_review_evidence = self._codex_evidence_expansion_request(
+                review,
+                payload,
+            )
+            if requested_review_evidence:
+                return self._result(
+                    status=RouteStatus.DEFERRED,
+                    reason_code=ProviderReason.CONTEXT_INSUFFICIENT.value,
+                    packet_id=packet_id,
+                    packet=packet_identity,
+                    implementation_proposal=grok,
+                    review_proposal=review,
+                    attempts=attempts,
+                )
             review = self._admit(review)
         except ProviderQuotaError as exc:
             attempts.append(
@@ -2269,6 +2754,7 @@ class ImplementationProviderRouter:
                 reason_code=ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
+                freshness_gate=verify_current_packet,
             )
         except ProviderRoutingError as exc:
             attempts.append(
@@ -2282,6 +2768,15 @@ class ImplementationProviderRouter:
             # Grok has already passed the supervisor gate.  Review degradation
             # does not invalidate that admission, but it remains explicit and
             # cannot satisfy authoritative completion.
+            if exc.reason_code == ProviderReason.PACKET_STALE.value:
+                return self._result(
+                    status=RouteStatus.REJECTED,
+                    reason_code=exc.reason_code,
+                    packet_id=packet_id,
+                    packet=packet_identity,
+                    implementation_proposal=grok,
+                    attempts=attempts,
+                )
             return self._finish_with_grok(
                 grok,
                 attempts,
@@ -2289,6 +2784,7 @@ class ImplementationProviderRouter:
                 reason_code=exc.reason_code,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
+                freshness_gate=verify_current_packet,
             )
         if not review.admitted:
             return self._finish_with_grok(
@@ -2300,6 +2796,7 @@ class ImplementationProviderRouter:
                 apply=apply,
                 writer_lease_id=writer_lease_id,
                 review=review,
+                freshness_gate=verify_current_packet,
             )
 
         decision = review.payload.get("decision")
@@ -2370,6 +2867,7 @@ class ImplementationProviderRouter:
             selected,
             apply=apply,
             writer_lease_id=writer_lease_id,
+            freshness_gate=verify_current_packet,
         )
         if apply and not wrote:
             return self._result(
@@ -2405,6 +2903,7 @@ class ImplementationProviderRouter:
         apply: bool,
         writer_lease_id: str,
         review: ProviderProposal | None = None,
+        freshness_gate: Callable[[], bool] | None = None,
     ) -> ImplementationRoutingResult:
         # Independent Codex review is the normal write gate. When Codex cannot
         # run for capacity reasons (quota / binary unavailable) after Grok has
@@ -2420,6 +2919,7 @@ class ImplementationProviderRouter:
                 grok,
                 apply=True,
                 writer_lease_id=writer_lease_id,
+                freshness_gate=freshness_gate,
             )
             if not wrote:
                 return self._result(
@@ -2475,13 +2975,22 @@ class ProductionContractPacket:
     implementable: bool = True
     payload: Mapping[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        detached = _json_detach(self.payload)
+        if not isinstance(detached, dict):
+            raise ProviderRoutingError(
+                "production packet payload must be an object",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        object.__setattr__(self, "payload", MappingProxyType(detached))
+
     def assert_current(self, current_snapshot_id: str) -> None:
         if str(current_snapshot_id or "") != self.snapshot_id:
             raise ValueError("production contract packet is stale")
 
     @property
     def provider_input_payload(self) -> Mapping[str, Any]:
-        return MappingProxyType(dict(self.payload))
+        return _json_detach(self.payload)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -2489,7 +2998,7 @@ class ProductionContractPacket:
             "snapshot_id": self.snapshot_id,
             "task_id": self.task_id,
             "implementable": self.implementable,
-            "payload": dict(self.payload),
+            "payload": _deep_thaw(self.payload),
         }
 
 

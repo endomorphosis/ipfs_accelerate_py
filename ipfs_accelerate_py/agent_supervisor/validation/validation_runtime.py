@@ -3052,3 +3052,60 @@ def run_hermetic_validation_process(
         "cancellation_id": runtime.cancellation_id,
         "execution_elapsed_seconds": max(0.0, time.time() - started_at),
     }
+
+
+VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/validation-environment-contract@1"
+)
+
+
+def canonical_validation_environment_contract(
+    environment: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Describe the exact sanitized environment without changing its policy."""
+
+    source = os.environ if environment is None else environment
+    child = build_validation_environment(source)
+    path = str(child["PATH"])
+    formal_toolchain = formal_toolchain_deployment_manifest(source)
+    return {
+        "schema": VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA,
+        "path": path,
+        "path_entries": tuple(path.split(os.pathsep)),
+        "path_source": (
+            VALIDATION_PATH_ENV
+            if str(source.get(VALIDATION_PATH_ENV) or "").strip()
+            else "trusted_system_directories"
+        ),
+        "path_override_environment_variable": VALIDATION_PATH_ENV,
+        "path_override_active": bool(
+            str(source.get(VALIDATION_PATH_ENV) or "").strip()
+        ),
+        "inherited_path_ignored": True,
+        "writable_toolchain_paths_rejected": True,
+        "python_interpreter": child["PYTHON"],
+        "required_python_modules": (),
+        "formal_toolchain_contract_sha256": formal_toolchain.get(
+            "manifest_sha256", ""
+        ),
+        "formal_toolchain_required_executables": {
+            command: identity["sha256"]
+            for command, identity in dict(
+                formal_toolchain.get("required_executables") or {}
+            ).items()
+        },
+        "formal_toolchain_managed_roots": dict(
+            formal_toolchain.get("managed_roots") or {}
+        ),
+        "base_home": child["HOME"],
+        "base_xdg": {
+            key: child[key]
+            for key in (
+                "XDG_CACHE_HOME",
+                "XDG_CONFIG_HOME",
+                "XDG_DATA_HOME",
+                "XDG_STATE_HOME",
+            )
+            if key in child
+        },
+    }

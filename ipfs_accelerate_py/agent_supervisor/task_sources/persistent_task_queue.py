@@ -469,31 +469,31 @@ class PersistentTaskQueue:
         entry = self.get_or_create(task_id)
         entry.record_selection()
         self._dirty = True
-        self._maybe_save()
+        self.save()
 
     def record_success(self, task_id: str) -> None:
         entry = self.get_or_create(task_id)
         entry.record_success()
         self._dirty = True
-        self._maybe_save()
+        self.save()
 
     def record_failure(self, task_id: str, reason: str = "") -> None:
         entry = self.get_or_create(task_id)
         entry.record_failure(reason)
         self._dirty = True
-        self._maybe_save()
+        self.save()
 
     def record_no_change(self, task_id: str) -> None:
         entry = self.get_or_create(task_id)
         entry.record_no_change()
         self._dirty = True
-        self._maybe_save()
+        self.save()
 
     def record_merge_failure(self, task_id: str) -> None:
         entry = self.get_or_create(task_id)
         entry.record_merge_failure()
         self._dirty = True
-        self._maybe_save()
+        self.save()
 
     def reset_retry_state(self, task_id: str) -> bool:
         """Clear retry penalties while preserving lifetime selection history."""
