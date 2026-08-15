@@ -1466,7 +1466,6 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     passthrough_result_fields=isinstance(result, dict),
                     extra_fields={
                         **_authorization_success_fields(),
-                        "event_dag": _always_dag_meta,
                         **({"cache": dict(cache_meta)} if use_result_cache else {}),
                         **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
                         **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),
@@ -1481,7 +1480,6 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 policy_decision_obj=policy_decision_binding,
                 extra_fields={
                     **_authorization_success_fields(),
-                    "event_dag": _always_dag_meta,
                     **({"cache": dict(cache_meta)} if use_result_cache else {}),
                     **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
                     **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),
