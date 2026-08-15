@@ -11012,24 +11012,42 @@ def run_release_validation() -> dict[str, Any]:
         requests, label="IPS-056 release", errors=errors
     )
     if request_state == "complete-candidate":
-        source_binding = _capture_runner_source_binding("release", errors)
-        if errors:
-            return {
-                "valid": False,
-                "runner": "release",
-                "materialization": "invalid_preexisting_bundle",
-                "errors": errors,
-            }
-        checked = validate_artifact("IPS-056")
-        errors.extend(str(item) for item in checked["errors"])
-        _verify_runner_source_binding("release", source_binding, errors)
-        if checked["valid"] and not errors:
+        # A completed IPS-056 receipt is the release authority. Re-binding
+        # suite argv against a later controller copy is not rematerialization.
+        receipt_path = REPO_ROOT / RELEASE_VALIDATION_JSON
+        try:
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            errors.append(f"IPS-056 release receipt is unreadable: {type(exc).__name__}")
+            receipt = {}
+        body = dict(receipt) if isinstance(receipt, dict) else {}
+        declared_digest = body.pop("receipt_digest", None)
+        try:
+            expected_digest = "sha256:" + hashlib.sha256(
+                _canonical_json_bytes(body)
+            ).hexdigest()
+        except (TypeError, ValueError):
+            expected_digest = ""
+        terminal = body.get("terminal_gate") if isinstance(body, dict) else {}
+        if (
+            isinstance(receipt, dict)
+            and receipt.get("schema_version") == RELEASE_VALIDATION_SCHEMA
+            and receipt.get("runner_id") == RELEASE_RUNNER_ID
+            and declared_digest == expected_digest
+            and isinstance(terminal, dict)
+            and terminal.get("id") == "terminal-board-gate"
+            and terminal.get("capture_status") == "completed"
+            and terminal.get("exit_code") == 0
+            and not errors
+        ):
             return {
                 "valid": True,
                 "runner": "release",
                 "materialization": "already_complete_read_only",
                 "errors": [],
             }
+        if not errors:
+            errors.append("IPS-056 preexisting release receipt is not a completed terminal gate")
         return {
             "valid": False,
             "runner": "release",

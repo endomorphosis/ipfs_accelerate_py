@@ -1639,7 +1639,7 @@ def _prerequisite_release_report(
                 sealer_body,
                 sort_keys=True,
                 separators=(",", ":"),
-                ensure_ascii=True,
+                ensure_ascii=False,
                 allow_nan=False,
             ).encode("utf-8")
         ).hexdigest()

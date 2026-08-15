@@ -1,0 +1,32 @@
+{
+  "schema": "ipfs_accelerate_py/adversarial-assurance/focused-baseline-receipt@1",
+  "runner_id": "protected-aae-focused-baseline-runner@1",
+  "repository": "datasets",
+  "repository_state_root": "38cfb624e617fc878e627c3ef66d92a4d8817e59",
+  "started_at": "2026-08-15T09:36:09Z",
+  "finished_at": "2026-08-15T09:42:32Z",
+  "duration_ns": 383141390000,
+  "command_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "--override-ini=addopts=--import-mode=importlib",
+    "--override-ini=log_cli=false",
+    "--color=no",
+    "-q",
+    "--tb=line",
+    "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_index",
+    "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state",
+    "ipfs_datasets_py/tests/unit/logic/software_contracts/test_content_identity.py"
+  ],
+  "returncode": 0,
+  "terminal_status": "passed",
+  "passed": 503,
+  "failed": 0,
+  "skipped": 0,
+  "environment_identity": "baguqeerawkerztr763vndvfoqxzbxgqvadaimcvqqwafjgm4oe6zuqnesqea",
+  "dependency_lock_identity": "baguqeerabvrzm6rjtsamqkj67bj7ugdebdwwx43djti5eafr7cngbvcpsowa",
+  "bounded_log_digest": "sha256:71fb9fe74e0264ae460921f0c0e19d4b6e1efa81957116a4554c76b2b3870149",
+  "network_access": "disabled",
+  "production_credentials_available": false
+}

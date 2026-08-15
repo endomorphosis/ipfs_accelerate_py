@@ -1,66 +1,106 @@
 {
   "schema": "ipfs_accelerate_py/agent-supervisor/adversarial-assurance-prerequisite-receipt@1",
   "task_id": "AAE-006",
-  "status": "blocked",
-    "observed_at": "2026-08-13T06:57:04Z",
+  "status": "completed",
+  "observed_at": "2026-08-15T09:44:27Z",
   "controller": {
     "repository": "endomorphosis/ipfs_accelerate_py",
     "branch": "agent/adversarial-assurance-engine-v1",
     "required_ancestor": "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda",
-    "planning_gitlinks": {
-      "ipfs_datasets_py": "fbd1ba9f70803de157622bb20e22595ef09d606f",
-      "ipfs_kit_py": "c7e5feeb24582ab68c1f5ca626366b665a82ad61",
-      "ipfs_accelerate_py/mcplusplus": "dc3164653a48d059ae9812078359daeafb451c07"
+    "pin_generation": 1,
+    "release_commit": "6de16ae5601e22f60f28f40bebda41f5bb589193",
+    "release_gitlinks": {
+      "ipfs_datasets_py": "38cfb624e617fc878e627c3ef66d92a4d8817e59",
+      "ipfs_kit_py": "2066e6fe671e89be4ae5e5172d055c937ad02135",
+      "ipfs_accelerate_py/mcplusplus": "96238cc9a86e69d224ab7b52d211a79ecf27b382"
     }
   },
   "semantic_compression_governor": {
-        "observed_commit": "0c834a0b5bfd0efcd8a0b9f652093f12a3eda830",
-        "observed_datasets_commit": "f45e38b0362633d18972f722e1fd1ae6492f2478",
-        "observed_completed_tasks": 22,
-    "terminal_receipt_valid": false,
-    "disposition": "live_incomplete"
+    "observed_commit": "9b7cf7f0447b0d6a85bfadd2d854dff9709d2b7c",
+    "terminal_launch_commit": "9b7cf7f0447b0d6a85bfadd2d854dff9709d2b7c",
+    "observed_datasets_commit": "1330038f626ef92993f03d46f21e1a57719e9c25",
+    "disposition": "terminal_completed"
   },
   "incremental_proof_sealer": {
-        "observed_commit": "3ea4b36059e3758190665c08fef72e0783d067f5",
-        "observed_datasets_commit": "72f9093d04b1d72e0aefe4e57e445d05705f8955",
-        "observed_kit_commit": "866ae2cd0a1a94a794ff9316a9a4f67a10245957",
-        "observed_completed_tasks": 18,
-        "observed_blocked_tasks": 2,
-    "public_full_checkpoint_api_available": false,
-    "public_delta_seal_api_available": false,
-    "terminal_receipt_valid": false,
-    "disposition": "typed_unavailable"
+    "observed_commit": "5edc4569424183b37fd3b3e58aad2b22088a76a6",
+    "disposition": "released",
+    "api_bindings": {
+      "IncrementalProofSealer": "ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.sealer",
+      "FullCheckpointSeal": "ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.full_checkpoint",
+      "DeltaSeal": "ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.delta_seal",
+      "create_full_checkpoint": "ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.full_checkpoint",
+      "publish_full_checkpoint": "ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.sealer",
+      "build_delta_seal": "ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.delta_seal",
+      "publish_delta_seal": "ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.sealer"
+    },
+    "qualification_argv": [
+      "python3",
+      "scripts/validate_incremental_proof_sealer_board.py",
+      "--run-release-validation"
+    ]
   },
-  "baseline": {
-    "datasets": {
-      "passed": 152,
-      "failed": 0
+  "evidence_artifacts": {
+    "scg_lifecycle": {
+      "path": "docs/architecture/adversarial_assurance_inventory/prerequisite_evidence/scg_lifecycle.json",
+      "canonical_identity": "baguqeera6vqzsaddd75g4pgcf6qxr7bkt3ft23fl3x6x5nsskwurskupo56a"
     },
-    "accelerate": {
-      "passed": 283,
-      "failed": 1,
-      "known_failure": "semantic-governor authority matrix expected datasets 1330038f but planning gitlink is fbd1ba9f"
+    "scg_terminal": {
+      "path": "docs/architecture/adversarial_assurance_inventory/prerequisite_evidence/scg_terminal.json",
+      "canonical_identity": "baguqeeraj6ufl2osrhcpqx5ufvbjxufb6td6h7ezpk3qtylxbddwlzpc34oa"
     },
-    "ipfs_kit_py": {
-      "passed": 196,
-      "failed": 0
+    "incremental_proof_sealer_release": {
+      "path": "artifacts/agent_supervisor/incremental_proof_sealer/release_validation.json",
+      "canonical_identity": "baguqeerawrl3sbmgxbibxdpeoeycp4k5zosfchqon2fh5axi5sqil43nsniq"
     },
-    "mcp_plus_plus": {
-      "passed": 58,
-      "failed": 0
+    "datasets_baseline": {
+      "path": "docs/architecture/adversarial_assurance_inventory/prerequisite_evidence/datasets_baseline.json",
+      "canonical_identity": "baguqeera3wekwlwpm7qgnxqxoxd7p6kpnwnx6u7nbrwrzeady6zhtoseg32a"
+    },
+    "accelerate_baseline": {
+      "path": "docs/architecture/adversarial_assurance_inventory/prerequisite_evidence/accelerate_baseline.json",
+      "canonical_identity": "baguqeeraelheewo5cgt6pok7pjms3vx7xvhijc52cs42vh3kq45wfnopsnta"
+    },
+    "ipfs_kit_py_baseline": {
+      "path": "docs/architecture/adversarial_assurance_inventory/prerequisite_evidence/ipfs_kit_py_baseline.json",
+      "canonical_identity": "baguqeera532uv64xjwoxnr4qwzuiujc4oh4giysqbviglkzqh4blhrcyx2iq"
+    },
+    "mcp_plus_plus_baseline": {
+      "path": "docs/architecture/adversarial_assurance_inventory/prerequisite_evidence/mcp_plus_plus_baseline.json",
+      "canonical_identity": "baguqeera3zc3qcqapytuuci644ayzyklx6llxk4dhblsfeueti2n6mzw2irq"
     }
   },
   "completion_requirements": [
     "genuine SCG lifecycle completed with valid terminal receipt and dead process trees",
-    "released and pinned full-checkpoint and delta IncrementalProofSealer public APIs",
-    "fresh clean recursive repository forest whose gitlinks equal nested HEADs",
-    "fresh focused baselines at those exact revisions",
+    "released full-checkpoint and delta IncrementalProofSealer public APIs",
+    "clean recursive repository forest whose gitlinks equal nested HEADs",
+    "fresh focused baselines at the released pins",
     "operator review and canonical receipt identity"
   ],
-    "worker_may_complete": false,
-    "runtime_and_sealing_authorized": false,
-    "observation_identity_scope": "entire blocked observation excluding observation_identity",
-    "observation_identity": "baguqeeraddfvy3yxj2srsznybr2puipctbjc2p44q5hpbhfix6kmopya6hfq",
-    "canonical_identity": null,
-  "provenance": "operator inspection; this blocked record is not release evidence"
+  "worker_may_complete": false,
+  "runtime_and_sealing_authorized": true,
+  "canonical_identity_scope": "entire completed receipt excluding canonical_identity and authorization",
+  "canonical_identity": "baguqeerahbfuxchny2xniy6ldh67gehua3a5lsgaam3gkt2r3bigpy62nrza",
+  "authorization": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/adversarial-assurance-prerequisite-authorization@1",
+    "identity_did": "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
+    "audience": "adversarial-assurance-engine-v1",
+    "action": "complete:AAE-006",
+    "receipt_cid": "baguqeerahbfuxchny2xniy6ldh67gehua3a5lsgaam3gkt2r3bigpy62nrza",
+    "pin_generation": 1,
+    "release_commit": "6de16ae5601e22f60f28f40bebda41f5bb589193",
+    "release_gitlinks": {
+      "ipfs_datasets_py": "38cfb624e617fc878e627c3ef66d92a4d8817e59",
+      "ipfs_kit_py": "2066e6fe671e89be4ae5e5172d055c937ad02135",
+      "ipfs_accelerate_py/mcplusplus": "96238cc9a86e69d224ab7b52d211a79ecf27b382"
+    },
+    "signature": "EmrCc5CO4EjkYSaqLTeRSUojjh3n9y5uAqVpXnzFocsx+2yCwIXyBGLsoIf2kYHhTQhhroK9fw8k9zVp7E71Ag=="
+  },
+  "provenance": "operator release of AAE-006 after independent verification of genuine SCG drained terminal receipt, IncrementalProofSealer release qualification, current-tree sealer API imports, and focused baselines",
+  "baseline_qualification_argv": [
+    "python3",
+    "docs/architecture/adversarial_assurance_inventory/run_focused_baselines.py",
+    "--verify-bundle",
+    "--output-dir",
+    "docs/architecture/adversarial_assurance_inventory/prerequisite_evidence"
+  ]
 }

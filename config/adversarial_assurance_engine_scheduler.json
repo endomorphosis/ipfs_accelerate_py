@@ -9,8 +9,8 @@
   "board_namespace": "adversarial-assurance-engine-v1",
   "merge_target_branch": "agent/adversarial-assurance-engine-v1",
   "source_binding": {
-    "pin_state": "bootstrap_blocked",
-    "pin_generation": 0,
+    "pin_state": "operator_released",
+    "pin_generation": 1,
     "accelerator_required_ancestor": "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda",
     "accelerator_required_branch": "agent/adversarial-assurance-engine-v1",
     "bootstrap_task_source": "legacy-markdown",

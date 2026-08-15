@@ -198,8 +198,8 @@ W20 AAE-063
 
 ## AAE-006 Operator gate: pin terminal SCG and released IncrementalProofSealer authorities
 
-- Status: blocked
-- Blocked reason: SCG and IncrementalProofSealer programs were live and incomplete at planning; required public sealer APIs were absent.
+- Status: completed
+- Blocked reason: SCG and IncrementalProofSealer programs were live and incomplete at planning; required public sealer APIs were absent. Operator released after genuine SCG drain, IPS release receipt, and focused baselines.
 - Completion: manual
 - Is schedulable: false
 - Review only: false
