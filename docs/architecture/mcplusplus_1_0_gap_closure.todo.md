@@ -770,7 +770,7 @@ overlays. Never force-push.
 
 ## MCPP-024 Specify mcpp-jcs-v1 without changing historical artifact CIDs
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
