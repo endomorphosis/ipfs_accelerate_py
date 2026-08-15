@@ -364,7 +364,7 @@ against production sources. Broad refactors wait until LPC-G010 is closed.
 
 ## LPC-041 Legal domain adapter conformance (TDFOL, DCEC, frame logic)
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: formalization
