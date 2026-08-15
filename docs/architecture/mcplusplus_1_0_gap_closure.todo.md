@@ -615,7 +615,7 @@ overlays. Never force-push.
 
 ## MCPP-019 Refactor Profiles A-H to be MCP-version and transport independent
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
