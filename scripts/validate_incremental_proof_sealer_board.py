@@ -7091,6 +7091,23 @@ def _runner_path_is_bytecode_cache(relative: str) -> bool:
     return path.suffix == ".pyc" or path.name == "__pycache__" or "__pycache__" in path.parts
 
 
+def _runner_status_is_irrelevant(repository: str, relative: str) -> bool:
+    """Ignore host caches already classified as non-source by the scanner."""
+
+    if _runner_path_is_bytecode_cache(relative):
+        return True
+    path = Path(relative)
+    prefixes = [
+        Path(*path.parts[: index + 1]).as_posix()
+        for index in range(len(path.parts))
+    ]
+    return any(
+        _is_explicit_irrelevant_ignored_root(repository, prefix)
+        or _is_allowed_ignored_container(repository, prefix)
+        for prefix in prefixes
+    )
+
+
 def _runner_path_is_allowed(
     relative: str, declared_paths: frozenset[str]
 ) -> bool:
@@ -7501,7 +7518,7 @@ def _runner_repository_snapshot(
     for status_code, relative in _parse_runner_status(
         status_raw, repository, errors
     ):
-        allowed = _runner_path_is_bytecode_cache(relative) or (
+        allowed = _runner_status_is_irrelevant(repository, relative) or (
             repository == "accelerate"
             and _runner_path_is_allowed(relative, declared_paths)
         )
@@ -7566,7 +7583,7 @@ def _runner_repository_snapshot(
             status_after, repository, errors
         )
         if not (
-            _runner_path_is_bytecode_cache(relative)
+            _runner_status_is_irrelevant(repository, relative)
             or (
                 repository == "accelerate"
                 and _runner_path_is_allowed(relative, declared_paths)
