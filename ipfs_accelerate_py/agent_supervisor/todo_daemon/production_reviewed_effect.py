@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 import subprocess
 import tempfile
@@ -24,6 +25,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
 from ..proof.formal_verification_contracts import content_identity
+from ..task_sources.task_identity import governed_task_intent_material
 from .contract_packet_provider_router import (
     PROVIDER_EXECUTION_RECEIPT_INTERFACE,
     PROVIDER_EXECUTION_RECEIPT_SCHEMA,
@@ -36,6 +38,14 @@ from .contract_packet_provider_router import (
     review_chain_content_digest,
 )
 from .llm import LLM_CHILD_RESULT_SCHEMA
+from .governed_task_contract import (
+    task_authority_partition,
+    task_dependency_completion_receipts,
+    task_executor_kind,
+    task_expected_baseline_failure,
+    task_phase_commands,
+    task_pre_change_policy,
+)
 from .production_context_slice import (
     PRODUCTION_CONTEXT_SLICE_INTERFACE,
     PRODUCTION_CONTEXT_SLICE_SCHEMA,
@@ -272,34 +282,187 @@ def _task_identity_payload(value: Any) -> dict[str, str]:
     result = {
         "canonical_task_key": _text(payload.get("canonical_task_key")),
         "canonical_task_cid": _text(payload.get("canonical_task_cid")),
+        "task_intent_cid": _text(payload.get("task_intent_cid")),
         "display_task_id": _text(payload.get("display_task_id")),
         "board_namespace": _text(payload.get("board_namespace")) or "default",
     }
-    if not result["canonical_task_key"] or not result["canonical_task_cid"]:
-        raise ValueError("canonical task key and CID are required")
+    if (
+        not result["canonical_task_key"]
+        or not result["canonical_task_cid"]
+        or not result["task_intent_cid"]
+    ):
+        raise ValueError("canonical task key, CID, and task intent CID are required")
     return result
 
 
 def production_task_contract(task: Any, task_identity: Any) -> dict[str, Any]:
-    """Return the immutable task facts which authorize a reviewed write."""
+    """Return the closed immutable intent which authorizes a reviewed write.
+
+    Board projection state (status, completion bookkeeping, assignment, final
+    result, worktree, and retry fields) is intentionally absent.  Those values
+    change as the supervisor advances a task and must never readdress the
+    provider/reviewer contract.  Every action, evidence, and acceptance field
+    is named explicitly so adding arbitrary metadata cannot silently widen
+    authority.
+    """
 
     identity = _task_identity_payload(task_identity)
+    task_intent = governed_task_intent_material(task)
+    if task_intent is None:
+        raise ValueError("production task requires governed intent material")
+    task_intent_cid = content_identity(task_intent)
+    if identity["task_intent_cid"] != task_intent_cid:
+        raise ValueError("canonical task identity does not bind the governed intent")
     metadata = getattr(task, "metadata", {}) or {}
     if not isinstance(metadata, Mapping):
         raise ValueError("task metadata must be a mapping")
+    normalized_metadata = {
+        str(key).strip().casefold().replace("_", " ").replace("-", " "): str(
+            value or ""
+        ).strip()
+        for key, value in metadata.items()
+    }
     outputs = [_canonical_path(path) for path in (getattr(task, "outputs", ()) or ())]
     if not outputs or len(outputs) != len(set(outputs)):
         raise ValueError("task outputs must be explicit and unique")
+    authority_partition = task_authority_partition(task)
+    if outputs != list(authority_partition.outputs):
+        raise ValueError("task output authority partition is not canonical")
+    intent_metadata_fields = (
+        "objective",
+        "acceptance criteria",
+        "owning repository",
+        "owned paths",
+        "allowed paths",
+        "allowed effects",
+        "prohibited effects",
+        "required evidence",
+        "required evidence ids",
+        "required tests",
+        "required test ids",
+        "execution mode",
+        "executor kind",
+        "execution plan id",
+        "repository plan id",
+        "risk classification",
+        "rollback procedure",
+        "rollback",
+        "evidence inputs",
+        "evidence refs",
+        "evidence subset",
+        "missing evidence",
+        "goal id",
+        "goal cid",
+        "objective id",
+        "objective cid",
+        "provider role",
+        "context budget tokens",
+        "resource class",
+        "timeout seconds",
+        "implementation timeout seconds",
+        "max task attempts",
+        "context symbol hints",
+        "interfaces",
+        "ast symbols",
+    )
+    intent_metadata = {
+        key.replace(" ", "_"): normalized_metadata.get(key, "")
+        for key in intent_metadata_fields
+    }
+
+    def typed_records(
+        raw: str,
+        *,
+        prefix: str,
+        fallback: Sequence[str],
+        value_key: str,
+    ) -> list[dict[str, str]]:
+        """Normalize legacy prose into enumerable IDs; preserve explicit IDs."""
+
+        values: list[Any]
+        if raw.startswith("["):
+            try:
+                parsed = json.loads(raw)
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise ValueError(f"{prefix} records must be canonical JSON") from exc
+            if (
+                not isinstance(parsed, list)
+                or json.dumps(
+                    parsed,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                )
+                != raw
+            ):
+                raise ValueError(f"{prefix} records must be compact canonical JSON")
+            values = parsed
+        else:
+            if raw:
+                values = [item.strip() for item in re.split(r"[,;\n]+", raw) if item.strip()]
+            else:
+                values = [item for item in fallback if str(item).strip()]
+        result: list[dict[str, str]] = []
+        for index, item in enumerate(values, start=1):
+            if isinstance(item, Mapping):
+                if set(item) != {"id", value_key}:
+                    raise ValueError(f"{prefix} record shape is invalid")
+                record_id = str(item.get("id") or "")
+                statement = str(item.get(value_key) or "")
+            else:
+                record_id = f"{prefix.lower()}-{index:03d}"
+                statement = str(item or "").strip()
+            if (
+                not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", record_id)
+                or not statement
+            ):
+                raise ValueError(f"{prefix} record is invalid")
+            result.append({"id": record_id, value_key: statement})
+        if len(result) != len({item["id"] for item in result}):
+            raise ValueError(f"{prefix} record ids must be unique")
+        return result
+
+    acceptance_records = typed_records(
+        normalized_metadata.get("acceptance criteria", ""),
+        prefix="AC",
+        fallback=(str(getattr(task, "acceptance", "") or ""),),
+        value_key="statement",
+    )
+    required_test_records = typed_records(
+        normalized_metadata.get("required tests", ""),
+        prefix="TEST",
+        fallback=tuple(str(item) for item in (getattr(task, "validation", ()) or ())),
+        value_key="spec",
+    )
+    required_evidence_records = typed_records(
+        normalized_metadata.get("required evidence", ""),
+        prefix="EVIDENCE",
+        fallback=(),
+        value_key="spec",
+    )
     contract = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/production-task-intent@1",
+        "task_intent": task_intent,
+        "task_intent_cid": task_intent_cid,
         "task_id": _text(getattr(task, "task_id", "")),
         "title": str(getattr(task, "title", "") or ""),
-        "priority": str(getattr(task, "priority", "") or ""),
-        "track": str(getattr(task, "track", "") or ""),
+        "priority": str(getattr(task, "priority", "") or "").strip().upper(),
         "depends_on": [str(value) for value in (getattr(task, "depends_on", ()) or ())],
         "outputs": outputs,
         "validation": [str(value) for value in (getattr(task, "validation", ()) or ())],
         "acceptance": str(getattr(task, "acceptance", "") or ""),
-        "metadata": _json_detach(dict(metadata)),
+        "acceptance_criteria": acceptance_records,
+        "required_tests": required_test_records,
+        "required_evidence": required_evidence_records,
+        "executor_kind": task_executor_kind(task),
+        "intent": intent_metadata,
+        "authority_partition": authority_partition.to_dict(),
+        "pre_change_validation": list(task_phase_commands(task, "pre_change")),
+        "pre_change_validation_policy": task_pre_change_policy(task),
+        "expected_baseline_failure": task_expected_baseline_failure(task),
+        "post_change_validation": list(task_phase_commands(task, "post_change")),
+        "acceptance_validation": list(task_phase_commands(task, "acceptance")),
+        "dependency_completion_receipts": task_dependency_completion_receipts(task),
         "canonical_task_key": identity["canonical_task_key"],
         "canonical_task_cid": identity["canonical_task_cid"],
         "board_namespace": identity["board_namespace"],
@@ -1316,23 +1479,33 @@ def _packet_contract_failures(
     payload = dict(binding.packet_payload)
     if binding.packet_cid != content_identity(payload):
         failures.append("reviewed_effect_packet_cid_mismatch")
+    packet_contract = payload.get("task_contract")
+    if not isinstance(packet_contract, Mapping) or dict(packet_contract) != contract:
+        failures.append("reviewed_effect_packet_task_contract_mismatch")
+    if payload.get("task_contract_cid") != content_identity(contract):
+        failures.append("reviewed_effect_packet_task_contract_cid_mismatch")
     if binding.snapshot_id != f"git-commit:{binding.baseline_commit}":
         failures.append("reviewed_effect_snapshot_baseline_mismatch")
     goal = payload.get("goal") if isinstance(payload.get("goal"), Mapping) else {}
     scope = payload.get("scope") if isinstance(payload.get("scope"), Mapping) else {}
     acceptance = payload.get("acceptance") if isinstance(payload.get("acceptance"), Mapping) else {}
+    partition = contract.get("authority_partition")
+    provider_effects = (
+        list(partition.get("provider_effects") or ())
+        if isinstance(partition, Mapping)
+        else []
+    )
     if goal.get("task_id") != contract["task_id"]:
         failures.append("reviewed_effect_packet_task_mismatch")
-    for key in ("title", "priority", "track"):
-        if goal.get(key) != contract[key]:
-            failures.append(f"reviewed_effect_packet_goal_mismatch:{key}")
-    if scope.get("write_paths") != contract["outputs"]:
+    if goal.get("title") != contract["title"]:
+        failures.append("reviewed_effect_packet_goal_mismatch:title")
+    if scope.get("write_paths") != provider_effects:
         failures.append("reviewed_effect_packet_write_scope_mismatch")
     if acceptance.get("validation_commands") != contract["validation"]:
         failures.append("reviewed_effect_packet_validation_mismatch")
     if acceptance.get("criteria") != contract["acceptance"]:
         failures.append("reviewed_effect_packet_acceptance_mismatch")
-    if not set(binding.changed_paths).issubset(contract["outputs"]):
+    if not set(binding.changed_paths).issubset(provider_effects):
         failures.append("reviewed_effect_changed_paths_outside_task_scope")
     failures.extend(_context_binding_failures(binding))
     failures.extend(_provider_receipt_failures(binding))

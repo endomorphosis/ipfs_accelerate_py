@@ -51,6 +51,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalTask,
     TodoImplementationDaemon,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_reviewed_effect import (
+    production_task_contract,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EVALUATION_PATH = (
@@ -64,9 +67,37 @@ EVALUATION_PATH = (
 
 SNAPSHOT = "git-commit:sca-615-fixture"
 PATH = (
-    "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/todo_daemon/"
-    "implementation_daemon.py"
+    "src/implementation_daemon.py"
 )
+
+
+def _phase_command_set(command_id: str) -> str:
+    check = (
+        "from pathlib import Path; import sys; "
+        "p=Path(sys.argv[1]); "
+        "raise SystemExit(0 if p.is_file() and p.read_bytes() else 1)"
+    )
+    return json.dumps(
+        {
+            "commands": [
+                {
+                    "argv": ["python", "-c", check, PATH],
+                    "cwd": ".",
+                    "env": {},
+                    "id": command_id,
+                    "repository": "control",
+                    "repository_root": ".",
+                    "timeout_seconds": 60,
+                }
+            ],
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "governed-phase-command-set@1"
+            ),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 def _git(repo: Path, *arguments: str) -> None:
@@ -152,7 +183,10 @@ def _task(**overrides: Any) -> PortalTask:
         ),
         "metadata": {
             "Provider role": "grok-implement, codex-review",
-            "Context budget tokens": "4096",
+            "Context budget tokens": "8192",
+            "Pre-change validation": _phase_command_set("pre-change"),
+            "Pre-change validation policy": "require-pass",
+            "Post-change validation": _phase_command_set("post-change"),
         },
     }
     payload.update(overrides)
@@ -237,7 +271,7 @@ def test_production_model_assisted_invokes_only_typed_packet_route(
 
     assert result["raw_model_command_invoked"] is False
     assert result["typed_packet_route_only"] is True
-    assert result["returncode"] == 0
+    assert result["returncode"] == 0, json.dumps(result, default=str, indent=2)
     assert result["route_result"].status is RouteStatus.SUCCEEDED
     assert result["binding"] is not None
     assert result["pending"] is False
@@ -481,7 +515,7 @@ def test_codex_receives_only_bounded_proposal_evidence_slice(
         assert "goal_ids" in slice_
         assert "context_slice" in slice_
         assert slice_["context_slice"]["manifest_cid"].startswith("b")
-        assert request.prompt_tokens <= 4096
+        assert request.prompt_tokens <= 8192
         # Full goal corpus / counterexample bodies must not appear.
         encoded = json.dumps(request["provider_input"], sort_keys=True)
         assert "counterexample" not in encoded
@@ -500,7 +534,7 @@ def test_codex_receives_only_bounded_proposal_evidence_slice(
     )
     assert result["route_result"].status is RouteStatus.SUCCEEDED
     assert "admitted_implementation_proposal" in seen["input"]
-    assert all(attempt.prompt_tokens <= 4096 for attempt in result["route_result"].attempts)
+    assert all(attempt.prompt_tokens <= 8192 for attempt in result["route_result"].attempts)
 
 
 def test_review_decline_codes_become_bounded_retry_evidence(
@@ -567,6 +601,10 @@ def test_caller_packet_without_context_fails_before_any_provider(
         snapshot_id=snapshot,
         write_paths=task.outputs,
         read_paths=task.outputs,
+        task_contract=production_task_contract(
+            task,
+            daemon._identity_for_task(task),  # noqa: SLF001
+        ),
     )
     calls: list[str] = []
 
@@ -583,7 +621,7 @@ def test_caller_packet_without_context_fails_before_any_provider(
             admission_gate=_accept,
         )
 
-    assert captured.value.reason_code == "context_manifest_missing"
+    assert captured.value.reason_code == "execution_plan_stale"
     assert calls == []
 
 
@@ -1084,10 +1122,19 @@ def test_daemon_builds_bounded_production_packet(
 ) -> None:
     daemon = _daemon(tmp_path, monkeypatch)
     snapshot = _snapshot(daemon)
+    task = _task()
+    baseline = snapshot.removeprefix("git-commit:")
+    pre_change = daemon._run_pre_change_validation_phase(
+        task,
+        workspace_path=daemon.repo_root,
+        baseline_ref=baseline,
+    )
     packet = daemon.build_production_contract_packet_for_task(
-        _task(),
+        task,
         snapshot_id=snapshot,
         attempt=2,
+        baseline_ref=baseline,
+        pre_change_validation=pre_change,
     )
     assert isinstance(packet, ProductionContractPacket)
     assert packet.task_id == "SCA-615"
@@ -1099,7 +1146,126 @@ def test_daemon_builds_bounded_production_packet(
     assert payload["context_slice"]["repository_binding"]["snapshot_id"] == snapshot
     assert payload["context_slice"]["scope"]["effect_paths"] == [PATH]
     assert payload["context_slice"]["scope"]["read_paths"] == [PATH]
+    assert payload["task_contract"]["task_id"] == "SCA-615"
+    assert payload["task_contract_cid"] == content_identity(
+        payload["task_contract"]
+    )
+    assert payload["authority"]["independent_review_required_for_write"] is True
     assert "repository_corpus" not in json.dumps(payload)
+
+
+def test_pre_change_infrastructure_failure_stops_before_provider_dispatch(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    calls: list[str] = []
+    task = _task(
+        metadata={
+            **_task().metadata,
+            "Pre-change validation": json.dumps(
+                {
+                    "commands": [
+                        {
+                            "argv": [
+                                "python",
+                                "-m",
+                                "pytest",
+                                "tests/test_baseline.py",
+                                "-q",
+                            ],
+                            "cwd": ".",
+                            "env": {},
+                            "id": "baseline",
+                            "repository": "control",
+                            "repository_root": ".",
+                            "timeout_seconds": 120,
+                        }
+                    ],
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "governed-phase-command-set@1"
+                    ),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            "Pre-change validation policy": "require-pass",
+        }
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_governed_phase_commands",
+        lambda *_args, **_kwargs: {
+            "attempted": False,
+            "passed": False,
+            "returncode": 75,
+            "reason": "proposal_scheduler_unavailable",
+            "infrastructure_failure": True,
+            "validated_commit": _snapshot(daemon).removeprefix("git-commit:"),
+            "stale": False,
+            "results": [],
+        },
+    )
+
+    result = daemon.run_production_model_assisted_route(
+        task,
+        attempt=1,
+        workspace_path=daemon.repo_root,
+        snapshot_id=_snapshot(daemon),
+        apply=True,
+        grok_provider=lambda _request: calls.append("grok"),
+        codex_provider=lambda _request: calls.append("codex"),
+        admission_gate=_accept,
+    )
+
+    assert result["deferred"] is True
+    assert result["repair_required"] is True
+    assert result["model_invocation_observed"] is False
+    assert result["event"]["write_performed"] is False
+    assert calls == []
+
+
+def test_missing_completed_dependency_receipt_stops_before_provider_dispatch(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    dependency = _task(
+        task_id="SCA-614",
+        status="completed",
+        depends_on=[],
+        metadata={
+            **_task().metadata,
+            "Provider effects": PATH,
+            "Supervisor outputs": (
+                "artifacts/proof_carrying_context_engine/receipts/SCA-614.json"
+            ),
+        },
+        outputs=[
+            PATH,
+            "artifacts/proof_carrying_context_engine/receipts/SCA-614.json",
+        ],
+    )
+    task = _task(depends_on=[dependency.task_id])
+    monkeypatch.setattr(daemon, "_load_tasks", lambda: [dependency, task])
+    calls: list[str] = []
+
+    result = daemon.run_production_model_assisted_route(
+        task,
+        attempt=1,
+        workspace_path=daemon.repo_root,
+        snapshot_id=_snapshot(daemon),
+        apply=True,
+        grok_provider=lambda _request: calls.append("grok"),
+        codex_provider=lambda _request: calls.append("codex"),
+        admission_gate=_accept,
+    )
+
+    assert result["deferred"] is True
+    assert result["reason_code"] == "dependency_evidence_missing"
+    assert result["model_invocation_observed"] is False
+    assert calls == []
 
 
 def test_build_production_provider_route_evaluation_helper() -> None:

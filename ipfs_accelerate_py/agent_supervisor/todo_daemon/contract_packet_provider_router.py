@@ -9,11 +9,11 @@ The route is strictly sequential:
 
 ``packet -> Grok proposal -> admission -> Codex review/repair -> admission``
 
-An optional writer receives only the final admitted proposal and an explicit
-writer lease ID.  Grok and Codex have independent quota latches, so exhaustion
-of the review provider can safely fall back to the already-admitted Grok
-proposal.  A caller may also configure a deterministic, no-model proposal
-provider for local fallback.
+An optional writer receives only the final independently reviewed proposal and
+an explicit writer lease ID.  Grok and Codex have independent quota latches;
+review-provider exhaustion preserves proposal evidence but cannot authorize a
+governed repository write.  A caller may explicitly opt a non-production
+legacy packet into the historical unreviewed recovery behavior.
 """
 
 from __future__ import annotations
@@ -958,6 +958,19 @@ def _bounded_evidence_slice(
     # ``_request`` (at least large enough for a max-size admitted proposal).
     if isinstance(context_slice, Mapping):
         evidence["context_slice"] = dict(context_slice)
+    # The reviewer receives the same immutable task/phase/dependency contract
+    # as the implementer.  These are bounded identities and declarations, not
+    # repository corpus or raw provider prose.
+    for key in (
+        "task_contract",
+        "task_contract_cid",
+        "execution_plan",
+        "pre_change_validation",
+        "dependency_evidence",
+    ):
+        if key in provider_input:
+            value = provider_input[key]
+            evidence[key] = dict(value) if isinstance(value, Mapping) else value
     return evidence
 
 
@@ -2182,6 +2195,24 @@ class ImplementationProviderRouter:
             payload=payload,
         )
 
+        # This router is the production governed route.  Review-degraded
+        # writes belong to a distinct explicitly non-production integration,
+        # never to caller/task-controlled packet metadata.  Reject a missing
+        # or false gate before invoking any provider so a forged packet cannot
+        # recover unreviewed Grok bytes during Codex capacity failures.
+        packet_authority = payload.get("authority")
+        if (
+            not isinstance(packet_authority, Mapping)
+            or packet_authority.get("independent_review_required_for_write")
+            is not True
+        ):
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=ProviderReason.PACKET_MALFORMED.value,
+                packet_id=packet_id,
+                packet=packet_identity,
+            )
+
         if local_only:
             return self._local_fallback(
                 packet_id=packet_id,
@@ -2307,6 +2338,8 @@ class ImplementationProviderRouter:
                 attempts=attempts,
             )
 
+        independent_review_required_for_write = True
+
         if self.codex_provider is None:
             return self._finish_with_grok(
                 grok,
@@ -2315,6 +2348,9 @@ class ImplementationProviderRouter:
                 reason_code=ProviderReason.CODEX_UNAVAILABLE.value,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
+                independent_review_required_for_write=(
+                    independent_review_required_for_write
+                ),
             )
 
         codex_request: ProviderRequest | None = None
@@ -2348,6 +2384,9 @@ class ImplementationProviderRouter:
                 reason_code=ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
+                independent_review_required_for_write=(
+                    independent_review_required_for_write
+                ),
             )
         except ProviderRoutingError as exc:
             attempts.append(
@@ -2368,6 +2407,9 @@ class ImplementationProviderRouter:
                 reason_code=exc.reason_code,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
+                independent_review_required_for_write=(
+                    independent_review_required_for_write
+                ),
             )
         if not review.admitted:
             return self._finish_with_grok(
@@ -2379,6 +2421,9 @@ class ImplementationProviderRouter:
                 apply=apply,
                 writer_lease_id=writer_lease_id,
                 review=review,
+                independent_review_required_for_write=(
+                    independent_review_required_for_write
+                ),
             )
 
         decision = review.payload.get("decision")
@@ -2457,6 +2502,7 @@ class ImplementationProviderRouter:
         apply: bool,
         writer_lease_id: str,
         review: ProviderProposal | None = None,
+        independent_review_required_for_write: bool = True,
     ) -> ImplementationRoutingResult:
         # Independent Codex review is the normal write gate. When Codex cannot
         # run for capacity reasons (quota / binary unavailable) after Grok has
@@ -2467,7 +2513,12 @@ class ImplementationProviderRouter:
             ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
             ProviderReason.CODEX_UNAVAILABLE.value,
         }
-        if apply and capacity_recovery and grok.admitted:
+        if (
+            apply
+            and capacity_recovery
+            and grok.admitted
+            and not independent_review_required_for_write
+        ):
             wrote, write_reason = self._write(
                 grok,
                 apply=True,
@@ -2497,9 +2548,15 @@ class ImplementationProviderRouter:
                 write_performed=True,
                 writer_lease_id=writer_lease_id,
             )
-        # Other review degradation stays evidence-only (no write).
+        # Governed review-capacity failures are typed pre-write deferrals.  The
+        # admitted Grok proposal and its digest remain in the receipt so a
+        # later independent reviewer can resume without inventing evidence.
         return self._result(
-            status=RouteStatus.FALLBACK,
+            status=(
+                RouteStatus.DEFERRED
+                if capacity_recovery and independent_review_required_for_write
+                else RouteStatus.FALLBACK
+            ),
             reason_code=reason_code,
             packet_id=grok.packet_id,
             packet=packet,
@@ -3049,8 +3106,19 @@ def build_production_contract_packet(
     expansion_handles: Sequence[Any] = (),
     packet_id: str = "",
     extra_goal: Mapping[str, Any] | None = None,
+    task_contract: Mapping[str, Any] | None = None,
+    pre_change_validation: Mapping[str, Any] | None = None,
+    execution_plan: Mapping[str, Any] | None = None,
+    dependency_evidence: Sequence[Mapping[str, Any]] = (),
+    independent_review_required_for_write: bool = True,
 ) -> ProductionContractPacket:
     """Build a bounded production packet that never embeds repository corpus."""
+
+    if independent_review_required_for_write is not True:
+        raise ProviderRoutingError(
+            "production packets always require independent review before write",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        )
 
     tid = str(task_id or "").strip()
     snap = str(snapshot_id or "").strip()
@@ -3091,6 +3159,7 @@ def build_production_contract_packet(
             "provider_semantic_authority": False,
             "proof_authoritative": False,
             "completion_authoritative": False,
+            "independent_review_required_for_write": True,
         },
         "scope": {
             "read_paths": reads,
@@ -3104,6 +3173,18 @@ def build_production_contract_packet(
         },
         "expansion_handles": list(expansion_handles),
     }
+    if task_contract is not None:
+        contract = dict(task_contract)
+        payload["task_contract"] = contract
+        payload["task_contract_cid"] = _packet_content_id(contract)
+    if pre_change_validation is not None:
+        payload["pre_change_validation"] = dict(pre_change_validation)
+    if execution_plan is not None:
+        payload["execution_plan"] = dict(execution_plan)
+    if dependency_evidence:
+        payload["dependency_evidence"] = [
+            dict(item) for item in dependency_evidence
+        ]
     _check_structure(payload, forbid_broad_context=True)
     pid = str(packet_id or "").strip() or f"packet:production:{tid}"
     return ProductionContractPacket(

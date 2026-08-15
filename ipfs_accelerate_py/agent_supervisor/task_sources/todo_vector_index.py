@@ -765,7 +765,13 @@ def parse_todo_vector_records(
             {
                 "task_id": task_id,
                 "title": title,
+                "priority": str(fields.get("priority") or "P2").strip().upper(),
+                "completion": str(fields.get("completion") or "manual").strip().lower(),
+                "depends_on": _all_csv(fields, "dependencies", "depends_on"),
                 "outputs": outputs,
+                "validation": split_validation_commands(
+                    str(fields.get("validation") or "")
+                ),
                 "acceptance": acceptance,
                 "metadata": fields,
             },

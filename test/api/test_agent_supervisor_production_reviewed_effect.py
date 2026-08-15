@@ -39,6 +39,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_reviewed_effect 
     verify_finalized_production_reviewed_effect,
     verify_production_reviewed_workspace,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
+    canonical_task_identity,
+)
 from pytest import MonkeyPatch
 
 TASK_ID = "ASE-EFFECT-001"
@@ -67,12 +70,7 @@ class _Task:
             object.__setattr__(self, "metadata", {"providers": "grok,codex"})
 
 
-IDENTITY = {
-    "canonical_task_key": "default:ase-effect-001",
-    "canonical_task_cid": "cidv1:task-revision:ase-effect-001",
-    "display_task_id": TASK_ID,
-    "board_namespace": "default",
-}
+IDENTITY = canonical_task_identity(_Task(), board_namespace="default").to_dict()
 
 
 def _git(repo: Path, *arguments: str) -> str:
@@ -138,6 +136,7 @@ def _route(repo: Path, *, content: str = PROPOSAL_A, patch: str = ""):
             "priority": task.priority,
             "track": task.track,
         },
+        task_contract=contract,
     )
     packet = ProductionContractPacket(
         packet_id=base_packet.packet_id,

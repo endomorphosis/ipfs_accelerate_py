@@ -57,6 +57,39 @@ SNAPSHOT = "git-commit:provider-security-fixture"
 TARGET_PATH = "src/target.py"
 
 
+def _phase_command_set(command_id: str) -> str:
+    check = (
+        "from pathlib import Path; import sys; "
+        "p=Path(sys.argv[1]); "
+        "raise SystemExit(0 if p.is_file() and p.read_bytes() else 1)"
+    )
+    return json.dumps(
+        {
+            "commands": [
+                {
+                    "argv": ["python", "-c", check, TARGET_PATH],
+                    "cwd": ".",
+                    "env": {},
+                    "id": command_id,
+                    "repository": "control",
+                    "repository_root": ".",
+                    "timeout_seconds": 60,
+                }
+            ],
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "governed-phase-command-set@1"
+            ),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+PRE_CHANGE_VALIDATION = _phase_command_set("pre-change")
+POST_CHANGE_VALIDATION = _phase_command_set("post-change")
+
+
 def _packet(*, task_id: str = "SEC-001", path: str = TARGET_PATH):
     return build_production_contract_packet(
         task_id=task_id,
@@ -156,13 +189,8 @@ def test_codex_authored_repair_requires_another_independent_review_before_write(
     assert bind_applied_patch_to_review_chain(result) is None
 
 
-def test_codex_quota_exhaustion_applies_admitted_grok_proposal() -> None:
-    """When independent Codex review cannot run for capacity, apply Grok.
-
-    Completions remain non-authoritative; independent review is still required
-    for formal merge admission. Repository effects may still land so the
-    supervisor can complete implement/validate work while Codex is offline.
-    """
+def test_codex_quota_exhaustion_defers_without_writing_grok_proposal() -> None:
+    """Independent-review capacity is a zero-write governed deferral."""
 
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
         ProviderQuotaError,
@@ -190,29 +218,25 @@ def test_codex_quota_exhaustion_applies_admitted_grok_proposal() -> None:
         writer_lease_id="lease:security:codex-quota",
     )
 
-    assert result.status is RouteStatus.SUCCEEDED
+    assert result.status is RouteStatus.DEFERRED
     assert (
         result.reason_code == ProviderReason.CODEX_QUOTA_EXHAUSTED.value
     )
-    assert result.write_performed is True
-    assert result.provider_result_admitted is True
+    assert result.write_performed is False
+    assert result.provider_result_admitted is False
+    assert result.implementation_proposal is not None
+    assert result.implementation_proposal.admitted is True
     assert result.completion_authoritative is False
-    assert len(writes) == 1
+    assert writes == []
     # Formal merge binding still requires independent review.
     assert bind_applied_patch_to_review_chain(result) is None
 
 
-def test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff(
+def test_codex_quota_defers_before_validation_commit_or_handoff(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Capacity-recovery writes must not fail on reviewed-effect capture.
-
-    Live wave0 previously admitted Grok, wrote files, then raised
-    ``production reviewed effect capture failed`` because capture hard-requires
-    Codex approve. That aborted the attempt and cleaned the worktree. Capture
-    must be skipped so validation/commit can complete non-authoritatively.
-    """
+    """A governed Codex outage cannot reach validation, commit, or enqueue."""
 
     daemon = _daemon_for_ephemeral_handoff(tmp_path, monkeypatch)
     task = _production_task()
@@ -350,26 +374,25 @@ def test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff(
         prompt="capacity recovery production route",
     )
 
-    assert result["returncode"] == 0
-    assert result["implementation_commit"] == committed[-1]
-    assert _git(daemon.repo_root, "cat-file", "-t", committed[-1]) == "commit"
-    assert result["merge_result"]["queued"] is True
-    assert calls == ["validation", "commit", "enqueue"]
-    assert len(queued_requests) == 1
-    queued_metadata = queued_requests[0].metadata
-    # Non-authoritative capacity recovery: no reviewed-effect / attestation.
-    assert "production_reviewed_effect_binding" not in queued_metadata
-    assert "provider_review_attestation" not in queued_metadata
-    assert daemon._production_capacity_recovery_write_active() is True
+    assert result["returncode"] != 0
+    assert result["deferred"] is True
+    assert result["attempt_consumed"] is False
+    assert result["provider_dispatched"] is True
+    assert result.get("implementation_commit", "") == ""
+    assert (result.get("merge_result") or {}).get("queued") is not True
+    assert calls == []
+    assert committed == []
+    assert queued_requests == []
+    assert daemon._production_capacity_recovery_write_active() is False
     events = [
         json.loads(line)
         for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert any(
+    assert not any(
         "production_reviewed_effect_skipped_capacity_recovery" in json.dumps(event)
         for event in events
-    ), "expected capacity-recovery skip event"
+    )
 
 
 def test_grok_json_quota_defers_without_review_write_or_attempt_charge(
@@ -660,6 +683,9 @@ def _production_task() -> PortalTask:
         metadata={
             "Provider role": "grok-implement, codex-review",
             "Context budget tokens": "4096",
+            "Pre-change validation": PRE_CHANGE_VALIDATION,
+            "Pre-change validation policy": "require-pass",
+            "Post-change validation": POST_CHANGE_VALIDATION,
         },
     )
 
@@ -972,6 +998,9 @@ def test_existing_file_without_source_or_ast_binding_fails_before_provider_write
         metadata={
             "Provider role": "grok-implement, codex-review",
             "Context budget tokens": "4096",
+            "Pre-change validation": PRE_CHANGE_VALIDATION,
+            "Pre-change validation policy": "require-pass",
+            "Post-change validation": POST_CHANGE_VALIDATION,
             # Deliberately no qualified-symbol hints are supplied for the
             # large existing Python source.
         },

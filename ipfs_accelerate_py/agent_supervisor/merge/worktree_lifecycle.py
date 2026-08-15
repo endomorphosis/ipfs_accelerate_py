@@ -32,6 +32,9 @@ from ..proof.formal_verification_contracts import content_identity
 WORKTREE_LIFECYCLE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/worktree-lifecycle-record@1"
 )
+WORKTREE_LIFECYCLE_SCHEMA_V2 = (
+    "ipfs_accelerate_py/agent-supervisor/worktree-lifecycle-record@2"
+)
 WORKTREE_LIFECYCLE_DIRNAME = "agent-worktree-lifecycle"
 FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID = (
     "asi-171:fenced-cross-lane-worktree-lifecycle"
@@ -180,6 +183,7 @@ class WorkspaceLifecycleRecord:
     repo_root: str = ""
     state_dir: str = ""
     terminal_reason: str = ""
+    task_contract_cid: str = ""
     record_id: str = ""
     schema: str = WORKTREE_LIFECYCLE_SCHEMA
 
@@ -205,9 +209,11 @@ class WorkspaceLifecycleRecord:
     def compute_record_id_for(
         *,
         canonical_task_cid: str,
+        task_contract_cid: str = "",
         task_id: str,
         attempt: int,
         workspace_path: str,
+        schema: str = WORKTREE_LIFECYCLE_SCHEMA,
     ) -> str:
         identity = {
             "kind": "worktree-lifecycle-record",
@@ -216,14 +222,18 @@ class WorkspaceLifecycleRecord:
             "attempt": int(attempt),
             "workspace_path": str(workspace_path or ""),
         }
+        if schema == WORKTREE_LIFECYCLE_SCHEMA_V2:
+            identity["task_contract_cid"] = str(task_contract_cid or "")
         return content_identity(identity)
 
     def compute_record_id(self) -> str:
         return self.compute_record_id_for(
             canonical_task_cid=self.canonical_task_cid,
+            task_contract_cid=self.task_contract_cid,
             task_id=self.task_id,
             attempt=self.attempt,
             workspace_path=self.workspace_path,
+            schema=self.schema,
         )
 
     @property
@@ -235,7 +245,7 @@ class WorkspaceLifecycleRecord:
         return self.state.is_nonterminal
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": self.schema,
             "record_id": self.record_id,
             "task_id": self.task_id,
@@ -256,11 +266,14 @@ class WorkspaceLifecycleRecord:
             "state_dir": self.state_dir,
             "terminal_reason": self.terminal_reason,
         }
+        if self.schema == WORKTREE_LIFECYCLE_SCHEMA_V2:
+            payload["task_contract_cid"] = self.task_contract_cid
+        return payload
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "WorkspaceLifecycleRecord":
         schema = str(payload.get("schema") or WORKTREE_LIFECYCLE_SCHEMA)
-        if schema not in (WORKTREE_LIFECYCLE_SCHEMA,):
+        if schema not in (WORKTREE_LIFECYCLE_SCHEMA, WORKTREE_LIFECYCLE_SCHEMA_V2):
             raise WorktreeLifecycleError(f"unsupported lifecycle schema: {schema}")
         state_raw = str(payload.get("state") or WorkspaceLifecycleState.PREPARING.value)
         try:
@@ -283,6 +296,7 @@ class WorkspaceLifecycleRecord:
             record_id=str(payload.get("record_id") or ""),
             task_id=str(payload.get("task_id") or ""),
             canonical_task_cid=str(payload.get("canonical_task_cid") or ""),
+            task_contract_cid=str(payload.get("task_contract_cid") or ""),
             attempt=int(payload.get("attempt") or 0),
             lane_id=str(payload.get("lane_id") or ""),
             state=state,
@@ -299,6 +313,29 @@ class WorkspaceLifecycleRecord:
             state_dir=str(payload.get("state_dir") or ""),
             terminal_reason=str(payload.get("terminal_reason") or ""),
         )
+
+
+def _task_index_payload(
+    record: WorkspaceLifecycleRecord,
+    *,
+    workspace_path: str | None = None,
+) -> dict[str, Any]:
+    """Canonical task-index projection, preserving legacy @1 identities."""
+
+    payload = {
+        "schema": record.schema,
+        "workspace_path": str(workspace_path or record.workspace_path),
+        "record_id": record.record_id,
+        "task_id": record.task_id,
+        "canonical_task_cid": record.canonical_task_cid,
+        "attempt": int(record.attempt),
+        "fence": int(record.fence),
+        "lease_id": record.lease_id,
+        "state": record.state.value,
+    }
+    if record.schema == WORKTREE_LIFECYCLE_SCHEMA_V2:
+        payload["task_contract_cid"] = record.task_contract_cid
+    return payload
 
 
 def _read_boot_id(*, proc_root: Path = Path("/proc")) -> str:
@@ -637,6 +674,7 @@ class WorktreeLifecycleStore:
         *,
         task_id: str,
         canonical_task_cid: str = "",
+        task_contract_cid: str = "",
         attempt: int,
         lane_id: str,
         workspace_path: str | Path,
@@ -661,7 +699,10 @@ class WorktreeLifecycleStore:
         now = float(self.clock())
         owner_identity = owner or current_process_birth(proc_root=self.proc_root)
         lease = lease_id or new_lease_id(
-            seed=f"{task_id}:{canonical_task_cid}:{attempt}:{lane_id}"
+            seed=(
+                f"{task_id}:{canonical_task_cid}:{task_contract_cid}:"
+                f"{attempt}:{lane_id}"
+            )
         )
         record_path = self.workspace_path_for(workspace)
         index_path = self.task_index_path_for(
@@ -736,8 +777,14 @@ class WorktreeLifecycleStore:
                 # and legacy writers may update the index without this guard.
                 _reject_other_task_attempt_claim()
                 record = WorkspaceLifecycleRecord(
+                    schema=(
+                        WORKTREE_LIFECYCLE_SCHEMA_V2
+                        if task_contract_cid
+                        else WORKTREE_LIFECYCLE_SCHEMA
+                    ),
                     task_id=str(task_id),
                     canonical_task_cid=str(canonical_task_cid or ""),
+                    task_contract_cid=str(task_contract_cid or ""),
                     attempt=int(attempt),
                     lane_id=str(lane_id or ""),
                     state=WorkspaceLifecycleState.PREPARING,
@@ -757,20 +804,7 @@ class WorktreeLifecycleStore:
                     terminal_reason="",
                 )
                 _atomic_write_json(record_path, record.to_dict())
-                _atomic_write_json(
-                    index_path,
-                    {
-                        "schema": WORKTREE_LIFECYCLE_SCHEMA,
-                        "workspace_path": workspace,
-                        "record_id": record.record_id,
-                        "task_id": record.task_id,
-                        "canonical_task_cid": record.canonical_task_cid,
-                        "attempt": record.attempt,
-                        "fence": record.fence,
-                        "lease_id": record.lease_id,
-                        "state": record.state.value,
-                    },
-                )
+                _atomic_write_json(index_path, _task_index_payload(record))
                 return record
 
     @staticmethod
@@ -778,6 +812,7 @@ class WorktreeLifecycleStore:
         *,
         task_id: str,
         canonical_task_cid: str,
+        task_contract_cid: str = "",
         attempt: int,
         workspace_path: str | Path,
         branch: str,
@@ -788,6 +823,7 @@ class WorktreeLifecycleStore:
         return {
             "task_id": str(task_id or ""),
             "canonical_task_cid": str(canonical_task_cid or ""),
+            "task_contract_cid": str(task_contract_cid or ""),
             "attempt": int(attempt),
             "workspace_path": normalize_workspace_path(workspace_path),
             "branch": str(branch or "").removeprefix("refs/heads/"),
@@ -835,6 +871,7 @@ class WorktreeLifecycleStore:
         actual_binding = self._normalized_binding(
             task_id=current.task_id,
             canonical_task_cid=current.canonical_task_cid,
+            task_contract_cid=current.task_contract_cid,
             attempt=current.attempt,
             workspace_path=current.workspace_path,
             branch=current.branch,
@@ -852,17 +889,7 @@ class WorktreeLifecycleStore:
                 "orphan lifecycle binding mismatch: " + ", ".join(mismatches)
             )
 
-        expected_index = {
-            "schema": WORKTREE_LIFECYCLE_SCHEMA,
-            "workspace_path": current.workspace_path,
-            "record_id": current.record_id,
-            "task_id": current.task_id,
-            "canonical_task_cid": current.canonical_task_cid,
-            "attempt": int(current.attempt),
-            "fence": int(current.fence),
-            "lease_id": current.lease_id,
-            "state": current.state.value,
-        }
+        expected_index = _task_index_payload(current)
         index_payload = _load_json_dict(index_path)
         if (
             index_payload is None
@@ -871,15 +898,8 @@ class WorktreeLifecycleStore:
             or type(index_payload.get("fence")) is not int
             or any(
                 type(index_payload.get(key)) is not str
-                for key in (
-                    "schema",
-                    "workspace_path",
-                    "record_id",
-                    "task_id",
-                    "canonical_task_cid",
-                    "lease_id",
-                    "state",
-                )
+                for key in expected_index
+                if key not in {"attempt", "fence"}
             )
             or index_payload != expected_index
         ):
@@ -911,6 +931,7 @@ class WorktreeLifecycleStore:
             raise WorktreeLifecycleError(
                 "orphan lifecycle record missing or malformed"
             )
+        schema = str(payload.get("schema") or "")
         required_fields = {
             "schema",
             "record_id",
@@ -932,13 +953,16 @@ class WorktreeLifecycleStore:
             "state_dir",
             "terminal_reason",
         }
+        if schema == WORKTREE_LIFECYCLE_SCHEMA_V2:
+            required_fields.add("task_contract_cid")
         if set(payload) != required_fields:
             raise WorktreeLifecycleError(
                 "orphan lifecycle persisted record shape is invalid"
             )
         if (
             type(payload["schema"]) is not str
-            or payload["schema"] != WORKTREE_LIFECYCLE_SCHEMA
+            or payload["schema"]
+            not in {WORKTREE_LIFECYCLE_SCHEMA, WORKTREE_LIFECYCLE_SCHEMA_V2}
         ):
             raise WorktreeLifecycleError(
                 "orphan lifecycle persisted schema is invalid"
@@ -950,7 +974,7 @@ class WorktreeLifecycleStore:
             raise WorktreeLifecycleError(
                 "orphan lifecycle persisted record id is invalid"
             )
-        for field_name in (
+        string_fields = [
             "task_id",
             "canonical_task_cid",
             "lane_id",
@@ -962,7 +986,10 @@ class WorktreeLifecycleStore:
             "repo_root",
             "state_dir",
             "terminal_reason",
-        ):
+        ]
+        if schema == WORKTREE_LIFECYCLE_SCHEMA_V2:
+            string_fields.append("task_contract_cid")
+        for field_name in string_fields:
             if type(payload[field_name]) is not str:
                 raise WorktreeLifecycleError(
                     "orphan lifecycle persisted field type is invalid: "
@@ -1036,6 +1063,7 @@ class WorktreeLifecycleStore:
         expected_lease_id: str,
         expected_task_id: str,
         expected_canonical_task_cid: str,
+        expected_task_contract_cid: str = "",
         expected_attempt: int,
         expected_branch: str,
         expected_merge_target: str,
@@ -1054,6 +1082,7 @@ class WorktreeLifecycleStore:
         expected_binding = self._normalized_binding(
             task_id=expected_task_id,
             canonical_task_cid=expected_canonical_task_cid,
+            task_contract_cid=expected_task_contract_cid,
             attempt=expected_attempt,
             workspace_path=workspace,
             branch=expected_branch,
@@ -1086,6 +1115,7 @@ class WorktreeLifecycleStore:
         expected_lease_id: str,
         expected_task_id: str,
         expected_canonical_task_cid: str,
+        expected_task_contract_cid: str = "",
         expected_attempt: int,
         expected_branch: str,
         expected_merge_target: str,
@@ -1106,6 +1136,7 @@ class WorktreeLifecycleStore:
         expected_binding = self._normalized_binding(
             task_id=expected_task_id,
             canonical_task_cid=expected_canonical_task_cid,
+            task_contract_cid=expected_task_contract_cid,
             attempt=expected_attempt,
             workspace_path=workspace,
             branch=expected_branch,
@@ -1122,6 +1153,7 @@ class WorktreeLifecycleStore:
             expected_lease_id=expected_lease_id,
             expected_task_id=expected_task_id,
             expected_canonical_task_cid=expected_canonical_task_cid,
+            expected_task_contract_cid=expected_task_contract_cid,
             expected_attempt=expected_attempt,
             expected_branch=expected_branch,
             expected_merge_target=expected_merge_target,
@@ -1186,22 +1218,7 @@ class WorktreeLifecycleStore:
                     terminal_reason="",
                 )
                 _atomic_write_json(record_path, adopted.to_dict())
-                _atomic_write_json(
-                    index_path,
-                    {
-                        "schema": WORKTREE_LIFECYCLE_SCHEMA,
-                        "workspace_path": adopted.workspace_path,
-                        "record_id": adopted.record_id,
-                        "task_id": adopted.task_id,
-                        "canonical_task_cid": (
-                            adopted.canonical_task_cid
-                        ),
-                        "attempt": adopted.attempt,
-                        "fence": adopted.fence,
-                        "lease_id": adopted.lease_id,
-                        "state": adopted.state.value,
-                    },
-                )
+                _atomic_write_json(index_path, _task_index_payload(adopted))
                 return adopted
 
     def finalize_exact_dead_owner(
@@ -1214,6 +1231,7 @@ class WorktreeLifecycleStore:
         expected_owner: ProcessBirthIdentity,
         expected_task_id: str,
         expected_canonical_task_cid: str,
+        expected_task_contract_cid: str = "",
         expected_attempt: int,
         expected_branch: str,
         expected_merge_target: str,
@@ -1232,6 +1250,7 @@ class WorktreeLifecycleStore:
         expected_binding = self._normalized_binding(
             task_id=expected_task_id,
             canonical_task_cid=expected_canonical_task_cid,
+            task_contract_cid=expected_task_contract_cid,
             attempt=expected_attempt,
             workspace_path=workspace,
             branch=expected_branch,
@@ -1273,22 +1292,7 @@ class WorktreeLifecycleStore:
                         terminal_reason=str(reason or "finalized"),
                     )
                     _atomic_write_json(record_path, terminal.to_dict())
-                    _atomic_write_json(
-                        index_path,
-                        {
-                            "schema": WORKTREE_LIFECYCLE_SCHEMA,
-                            "workspace_path": terminal.workspace_path,
-                            "record_id": terminal.record_id,
-                            "task_id": terminal.task_id,
-                            "canonical_task_cid": (
-                                terminal.canonical_task_cid
-                            ),
-                            "attempt": terminal.attempt,
-                            "fence": terminal.fence,
-                            "lease_id": terminal.lease_id,
-                            "state": terminal.state.value,
-                        },
-                    )
+                    _atomic_write_json(index_path, _task_index_payload(terminal))
                 record_path.unlink()
                 index_path.unlink()
                 return terminal
@@ -1357,20 +1361,7 @@ class WorktreeLifecycleStore:
                 task_id=updated.task_id,
                 attempt=updated.attempt,
             )
-            _atomic_write_json(
-                index_path,
-                {
-                    "schema": WORKTREE_LIFECYCLE_SCHEMA,
-                    "workspace_path": updated.workspace_path,
-                    "record_id": updated.record_id,
-                    "task_id": updated.task_id,
-                    "canonical_task_cid": updated.canonical_task_cid,
-                    "attempt": updated.attempt,
-                    "fence": updated.fence,
-                    "lease_id": updated.lease_id,
-                    "state": updated.state.value,
-                },
-            )
+            _atomic_write_json(index_path, _task_index_payload(updated))
             return updated
 
     def rebind_workspace(
@@ -1437,9 +1428,11 @@ class WorktreeLifecycleStore:
                 expires_at=now + self.lease_seconds,
                 record_id=WorkspaceLifecycleRecord.compute_record_id_for(
                     canonical_task_cid=current.canonical_task_cid,
+                    task_contract_cid=current.task_contract_cid,
                     task_id=current.task_id,
                     attempt=current.attempt,
                     workspace_path=new_normalized,
+                    schema=current.schema,
                 ),
             )
             _atomic_write_json(new_path, updated.to_dict())
@@ -1450,17 +1443,7 @@ class WorktreeLifecycleStore:
             )
             _atomic_write_json(
                 index_path,
-                {
-                    "schema": WORKTREE_LIFECYCLE_SCHEMA,
-                    "workspace_path": new_normalized,
-                    "record_id": updated.record_id,
-                    "task_id": updated.task_id,
-                    "canonical_task_cid": updated.canonical_task_cid,
-                    "attempt": updated.attempt,
-                    "fence": updated.fence,
-                    "lease_id": updated.lease_id,
-                    "state": updated.state.value,
-                },
+                _task_index_payload(updated, workspace_path=new_normalized),
             )
             if old_path != new_path:
                 try:

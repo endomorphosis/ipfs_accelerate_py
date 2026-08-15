@@ -13,7 +13,61 @@ from typing import Any
 
 
 TASK_IDENTITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/task-identity@1"
+GOVERNED_TASK_IDENTITY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/task-identity@2"
+)
+GOVERNED_TASK_INTENT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/governed-task-intent-material@1"
+)
 _GLOB_MAGIC = frozenset("*?[")
+
+_GOVERNED_INTENT_METADATA_FIELDS = (
+    "objective",
+    "acceptance criteria",
+    "owning repository",
+    "owned paths",
+    "allowed paths",
+    "allowed effects",
+    "prohibited effects",
+    "provider effects",
+    "supervisor outputs",
+    "required evidence",
+    "required evidence ids",
+    "required tests",
+    "required test ids",
+    "execution mode",
+    "executor kind",
+    "execution plan id",
+    "repository plan id",
+    "risk classification",
+    "rollback procedure",
+    "rollback",
+    "evidence inputs",
+    "evidence refs",
+    "evidence subset",
+    "missing evidence",
+    "goal id",
+    "goal cid",
+    "objective id",
+    "objective cid",
+    "provider role",
+    "providers",
+    "context budget tokens",
+    "resource class",
+    "timeout seconds",
+    "implementation timeout seconds",
+    "max task attempts",
+    "context symbol hints",
+    "interfaces",
+    "ast symbols",
+    "pre change validation",
+    "pre change validation policy",
+    "expected baseline failure",
+    "post change validation",
+    "acceptance validation",
+    "dependency completion receipts",
+    "dependency completion generation",
+)
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -63,7 +117,7 @@ def canonical_task_identity_claim_is_consistent(
 
     key = str(canonical_task_key or "").strip()
     cid = str(canonical_task_cid or "").strip()
-    match = re.fullmatch(r"task/v1/([0-9a-f]{64})", key)
+    match = re.fullmatch(r"task/v(?:1|2)/([0-9a-f]{64})", key)
     if match is None:
         return False
     digest = bytes.fromhex(match.group(1))
@@ -154,7 +208,11 @@ def _task_mapping(task: Any) -> tuple[dict[str, Any], dict[str, Any]]:
                 "title",
                 "outputs",
                 "acceptance",
+                "completion",
+                "depends_on",
+                "priority",
                 "track",
+                "validation",
                 "metadata",
             )
             if hasattr(task, name)
@@ -162,6 +220,75 @@ def _task_mapping(task: Any) -> tuple[dict[str, Any], dict[str, Any]]:
     raw_metadata = source.get("metadata")
     metadata = dict(raw_metadata) if isinstance(raw_metadata, Mapping) else {}
     return source, metadata
+
+
+def _normalized_metadata(metadata: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        str(key).strip().casefold().replace("_", " ").replace("-", " "): str(
+            value or ""
+        ).strip()
+        for key, value in metadata.items()
+    }
+
+
+def governed_task_intent_material(task: Any) -> dict[str, Any] | None:
+    """Return the acyclic immutable authority material for a governed task.
+
+    The material deliberately excludes the canonical task identity and mutable
+    scheduling projections (status, track, assignment, worktree, final result,
+    and retry state).  Its CID can therefore be included in the canonical task
+    identity, while the higher-level production contract can safely bind both
+    that identity and this exact body without creating a content-address cycle.
+    """
+
+    source, metadata = _task_mapping(task)
+    normalized = _normalized_metadata(metadata)
+    governed = bool(
+        normalized.get("provider role")
+        or normalized.get("providers")
+        or normalized.get("executor kind")
+        or normalized.get("provider effects")
+        or normalized.get("supervisor outputs")
+        or normalized.get("pre change validation")
+        or normalized.get("post change validation")
+        or normalized.get("acceptance validation")
+    )
+    if not governed:
+        return None
+
+    def value(*keys: str) -> Any:
+        direct = _mapping_value(source, *keys)
+        if direct not in (None, "", [], ()):
+            return direct
+        return _mapping_value(normalized, *keys)
+
+    outputs = [str(item).strip() for item in _sequence(value("outputs"))]
+    dependencies = [
+        str(item).strip()
+        for item in _sequence(value("depends on", "dependencies", "depends_on"))
+    ]
+    validation = [str(item).strip() for item in _sequence(value("validation"))]
+    intent_metadata = {
+        key.replace(" ", "_"): normalized.get(key, "")
+        for key in _GOVERNED_INTENT_METADATA_FIELDS
+    }
+    return {
+        "schema": GOVERNED_TASK_INTENT_SCHEMA,
+        "title": str(value("title", "summary") or "").strip(),
+        "priority": str(value("priority") or "").strip().upper(),
+        "depends_on": dependencies,
+        "outputs": outputs,
+        "validation": validation,
+        "acceptance": str(value("acceptance") or "").strip(),
+        "intent": intent_metadata,
+    }
+
+
+def governed_task_intent_cid(task: Any) -> str:
+    """Return the governed intent CID, or ``""`` for an ordinary task."""
+
+    material = governed_task_intent_material(task)
+    return canonical_content_cid(material) if material is not None else ""
 
 
 @dataclass(frozen=True)
@@ -175,6 +302,7 @@ class TaskIdentity:
     board_namespace: str = "default"
     source_path: str = ""
     identity_version: int = 1
+    task_intent_cid: str = ""
 
     @property
     def namespaced_alias(self) -> str:
@@ -218,7 +346,7 @@ def canonical_task_identity(
     if (
         provided_key
         and provided_cid
-        and provided_key.startswith("task/v1/")
+        and provided_key.startswith("task/v")
         and not canonical_task_identity_claim_is_consistent(
             provided_key,
             provided_cid,
@@ -231,34 +359,15 @@ def canonical_task_identity(
         _mapping_value(source, "allowed paths")
         or _mapping_value(metadata, "allowed paths")
     )
-    if provided_key and provided_cid:
-        if allowed_paths:
-            material = {
-                "schema": TASK_IDENTITY_SCHEMA,
-                "provided_identity": {
-                    "canonical_task_key": provided_key,
-                    "canonical_task_cid": provided_cid,
-                },
-                "authority": {
-                    "additional_allowed_paths": list(allowed_paths),
-                },
-            }
-            fingerprint = hashlib.sha256(
-                canonical_json_bytes(material)
-            ).hexdigest()
-            return TaskIdentity(
-                canonical_task_key=f"task/v1/{fingerprint}",
-                canonical_task_cid=canonical_content_cid(material),
-                semantic_fingerprint=fingerprint,
-                display_task_id=display_task_id,
-                board_namespace=namespace,
-                source_path=normalize_identity_path(source_path),
-            )
+    task_intent_cid = governed_task_intent_cid(source)
+    if provided_key and provided_cid and not task_intent_cid and not allowed_paths:
         key_suffix = provided_key.rsplit("/", 1)[-1].casefold()
         fingerprint = (
             key_suffix
             if re.fullmatch(r"[0-9a-f]{64}", key_suffix)
-            else hashlib.sha256(canonical_json_bytes([provided_key, provided_cid])).hexdigest()
+            else hashlib.sha256(
+                canonical_json_bytes([provided_key, provided_cid])
+            ).hexdigest()
         )
         return TaskIdentity(
             canonical_task_key=provided_key,
@@ -268,16 +377,22 @@ def canonical_task_identity(
             board_namespace=namespace,
             source_path=normalize_identity_path(source_path),
         )
+
     explicit_key = normalize_identity_text(
-        provided_key
-        or _mapping_value(source, "dedupe key")
+        _mapping_value(source, "dedupe key")
         or _mapping_value(metadata, "dedupe key")
     )
     if explicit_key:
         material: dict[str, Any] = {
-            "schema": TASK_IDENTITY_SCHEMA,
+            "schema": (
+                GOVERNED_TASK_IDENTITY_SCHEMA
+                if task_intent_cid
+                else TASK_IDENTITY_SCHEMA
+            ),
             "explicit_key": explicit_key,
         }
+        if task_intent_cid:
+            material["task_intent_cid"] = task_intent_cid
     else:
         title = normalize_identity_text(
             _mapping_value(source, "title", "summary")
@@ -339,25 +454,92 @@ def canonical_task_identity(
                 "evidence_outputs": evidence_outputs,
                 "goal": goal,
                 "semantic_hint": semantic_hint,
+                "task_intent_cid": task_intent_cid,
             }.items()
             if value
         }
         if not semantic:
             raise ValueError("task identity requires semantic work metadata")
-        material = {"schema": TASK_IDENTITY_SCHEMA, "semantic": semantic}
+        material = {
+            "schema": (
+                GOVERNED_TASK_IDENTITY_SCHEMA
+                if task_intent_cid
+                else TASK_IDENTITY_SCHEMA
+            ),
+            "semantic": semantic,
+        }
     if allowed_paths:
         material["authority"] = {
             "additional_allowed_paths": list(allowed_paths),
         }
 
     semantic_fingerprint = hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+    identity_version = 2 if task_intent_cid else 1
+    derived_key = f"task/v{identity_version}/{semantic_fingerprint}"
+    derived_cid = canonical_content_cid(material)
+    if provided_key and provided_cid:
+        if task_intent_cid:
+            if provided_key != derived_key or provided_cid != derived_cid:
+                raise ValueError(
+                    "provided governed task identity does not bind current intent"
+                )
+            return TaskIdentity(
+                canonical_task_key=derived_key,
+                canonical_task_cid=derived_cid,
+                semantic_fingerprint=semantic_fingerprint,
+                display_task_id=display_task_id,
+                board_namespace=namespace,
+                source_path=normalize_identity_path(source_path),
+                identity_version=2,
+                task_intent_cid=task_intent_cid,
+            )
+        if allowed_paths:
+            widened_material = {
+                "schema": TASK_IDENTITY_SCHEMA,
+                "provided_identity": {
+                    "canonical_task_key": provided_key,
+                    "canonical_task_cid": provided_cid,
+                },
+                "authority": {
+                    "additional_allowed_paths": list(allowed_paths),
+                },
+            }
+            fingerprint = hashlib.sha256(
+                canonical_json_bytes(widened_material)
+            ).hexdigest()
+            return TaskIdentity(
+                canonical_task_key=f"task/v1/{fingerprint}",
+                canonical_task_cid=canonical_content_cid(widened_material),
+                semantic_fingerprint=fingerprint,
+                display_task_id=display_task_id,
+                board_namespace=namespace,
+                source_path=normalize_identity_path(source_path),
+                task_intent_cid=task_intent_cid,
+            )
+        key_suffix = provided_key.rsplit("/", 1)[-1].casefold()
+        fingerprint = (
+            key_suffix
+            if re.fullmatch(r"[0-9a-f]{64}", key_suffix)
+            else hashlib.sha256(canonical_json_bytes([provided_key, provided_cid])).hexdigest()
+        )
+        return TaskIdentity(
+            canonical_task_key=provided_key,
+            canonical_task_cid=provided_cid,
+            semantic_fingerprint=fingerprint,
+            display_task_id=display_task_id,
+            board_namespace=namespace,
+            source_path=normalize_identity_path(source_path),
+            task_intent_cid=task_intent_cid,
+        )
     return TaskIdentity(
-        canonical_task_key=f"task/v1/{semantic_fingerprint}",
-        canonical_task_cid=canonical_content_cid(material),
+        canonical_task_key=derived_key,
+        canonical_task_cid=derived_cid,
         semantic_fingerprint=semantic_fingerprint,
         display_task_id=display_task_id,
         board_namespace=namespace,
         source_path=normalize_identity_path(source_path),
+        identity_version=identity_version,
+        task_intent_cid=task_intent_cid,
     )
 
 

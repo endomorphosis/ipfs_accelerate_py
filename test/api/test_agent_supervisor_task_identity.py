@@ -60,6 +60,121 @@ def _identity_daemon(todo_path, tmp_path) -> PortalImplementationDaemon:
     )
 
 
+def _write_governed_board(path) -> None:
+    command_set = json.dumps(
+        {
+            "commands": [
+                {
+                    "argv": ["python", "-m", "pytest", "tests/test_inventory.py", "-q"],
+                    "cwd": ".",
+                    "env": {},
+                    "id": "inventory-smoke",
+                    "repository": "control",
+                    "repository_root": ".",
+                    "timeout_seconds": 120,
+                }
+            ],
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "governed-phase-command-set@1"
+            ),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    path.write_text(
+        f"""# Governed tasks
+
+## REF-010 Inventory governed runtime authority
+
+- Status: todo
+- Priority: P0
+- Track: inventory
+- Outputs: artifacts/inventory.json, artifacts/receipts/REF-010.json
+- Provider effects: artifacts/inventory.json
+- Supervisor outputs: artifacts/receipts/REF-010.json
+- Objective: Inspect canonical runtime implementations.
+- Acceptance criteria: Inventory rows cite exact code and tests.
+- Required evidence: inventory artifact identity
+- Required tests: inventory-smoke
+- Rollback procedure: Revert the exact candidate commit.
+- Provider role: grok-implement, codex-review
+- Pre-change validation: {command_set}
+- Pre-change validation policy: require-pass
+- Post-change validation: {command_set}
+- Acceptance: Inventory evidence is retained.
+""",
+        encoding="utf-8",
+    )
+
+
+def test_governed_v2_identity_is_parse_to_daemon_idempotent(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_governed_board(todo_path)
+    [task] = parse_task_file(todo_path, "## REF-")
+    daemon = _identity_daemon(todo_path, tmp_path)
+
+    runtime_identity = daemon._identity_for_task(task)
+
+    assert task.canonical_task_key.startswith("task/v2/")
+    assert runtime_identity.to_dict() == canonical_task_identity(
+        task,
+        board_namespace=task.board_namespace,
+        source_path=todo_path,
+    ).to_dict()
+    assert runtime_identity.canonical_task_key == task.canonical_task_key
+    assert runtime_identity.canonical_task_cid == task.canonical_task_cid
+    assert runtime_identity.task_intent_cid
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("Objective", "Trust an unverified model assertion."),
+        ("Provider effects", "artifacts/widened.json"),
+        ("Rollback procedure", "No rollback is required."),
+        ("Pre-change validation policy", "record-baseline"),
+    ],
+)
+def test_governed_v2_rejects_stale_supplied_identity_after_intent_change(
+    tmp_path,
+    field: str,
+    replacement: str,
+) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_governed_board(todo_path)
+    [task] = parse_task_file(todo_path, "## REF-")
+    daemon = _identity_daemon(todo_path, tmp_path)
+    stale_claim = replace(
+        task,
+        metadata={**task.metadata, field: replacement},
+    )
+
+    with pytest.raises(ValueError, match="does not bind current intent"):
+        daemon._identity_for_task(stale_claim)
+
+
+def test_daemon_rejects_forged_v2_native_key_cid_pair(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_governed_board(todo_path)
+    [task] = parse_task_file(todo_path, "## REF-")
+    daemon = _identity_daemon(todo_path, tmp_path)
+    other = canonical_task_identity(
+        {
+            **_task("REF-OTHER"),
+            "metadata": {
+                "Provider role": "grok-implement, codex-review",
+                "Objective": "A different governed objective.",
+            },
+        }
+    )
+    assert other.canonical_task_key.startswith("task/v2/")
+    forged = replace(task, canonical_task_cid=other.canonical_task_cid)
+
+    with pytest.raises(ValueError, match="key/CID claim is inconsistent"):
+        daemon._identity_for_task(forged)
+
+
 def test_parser_identity_is_daemon_idempotent_with_allowed_paths(tmp_path) -> None:
     todo_path = tmp_path / "tasks.todo.md"
     _write_allowed_path_board(todo_path)

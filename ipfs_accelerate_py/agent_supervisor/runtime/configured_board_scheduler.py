@@ -434,11 +434,19 @@ def _configured_board_task_records(
         predicted = tuple(
             split_csv(fields.get("predicted_files", "") or fields.get("files", ""))
         )
+        dependencies = tuple(split_csv(fields.get("depends_on", "")))
+        validation_commands = tuple(
+            split_validation_commands(str(fields.get("validation") or ""))
+        )
         task_identity = canonical_task_identity(
             {
                 "task_id": task_id,
                 "title": title,
+                "priority": str(fields.get("priority") or "P2").strip().upper(),
+                "completion": str(fields.get("completion") or "manual").strip().lower(),
+                "depends_on": dependencies,
                 "outputs": outputs,
+                "validation": validation_commands,
                 "acceptance": str(fields.get("acceptance") or ""),
                 "metadata": fields,
             },
@@ -448,20 +456,24 @@ def _configured_board_task_records(
         records.append(
             {
                 "task_id": task_id,
+                "title": title,
                 "canonical_task_cid": task_identity.canonical_task_cid,
+                "task_intent_cid": task_identity.task_intent_cid,
                 "status": (
                     str(fields.get("status") or "todo").strip().lower()
                     if str(fields.get("is_schedulable") or "true").strip().lower()
                     in {"1", "true", "yes"}
                     else "blocked"
                 ),
-                "depends_on": tuple(split_csv(fields.get("depends_on", ""))),
+                "depends_on": dependencies,
                 "outputs": outputs,
                 "predicted_files": predicted,
-                "validation_commands": tuple(
-                    split_validation_commands(str(fields.get("validation") or ""))
-                ),
+                "validation_commands": validation_commands,
+                "validation": validation_commands,
+                "acceptance": str(fields.get("acceptance") or ""),
                 "priority": str(fields.get("priority") or "P2"),
+                "completion": str(fields.get("completion") or "manual"),
+                "metadata": dict(fields),
                 "resource_class": str(fields.get("resource_class") or "cpu-small"),
                 "provider_id": provider_id,
                 "exclusive_group": str(fields.get("exclusive_group") or ""),

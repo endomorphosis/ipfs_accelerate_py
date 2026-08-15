@@ -12,6 +12,7 @@ import math
 import os
 import posixpath
 import re
+import select
 import signal
 import shlex
 import shutil
@@ -174,6 +175,7 @@ from ..validation.validation_runtime import (
     ValidationFilesystemBoundaryReceipt,
     ValidationPythonLauncherReceipt,
     ValidationRuntimeError,
+    build_validation_environment,
     sealed_validation_python_runner,
     validation_python_launcher_environment,
     validation_readonly_state_command,
@@ -208,6 +210,7 @@ from .contract_packet_provider_router import (
     build_production_contract_packet,
     build_production_provider_route_evaluation,
     evaluate_production_provider_receipt,
+    redact_provider_data,
     validate_production_review_decision,
 )
 from .diagnostics import summarize_test_failure
@@ -249,7 +252,23 @@ from .production_reviewed_effect import (
     capture_production_reviewed_effect,
     finalize_production_reviewed_effect,
     production_task_contract,
+    production_task_contract_cid,
     verify_production_reviewed_workspace,
+)
+from .governed_task_contract import (
+    GOVERNED_REPOSITORY_ROOTS,
+    build_governed_execution_plan,
+    build_governed_validation_receipt,
+    build_supervisor_task_receipt,
+    task_authority_partition,
+    task_dependency_completion_receipts,
+    task_executor_kind,
+    task_expected_baseline_failure,
+    task_phase_commands,
+    task_pre_change_policy,
+    verify_governed_validation_receipt,
+    verify_governed_execution_plan,
+    verify_supervisor_task_receipt,
 )
 from .authoritative_completion import *  # noqa: F403
 from .post_merge_validation import build_post_merge_validation_evidence
@@ -1856,7 +1875,7 @@ def normalize_status(value: str) -> str:
         return "blocked"
     if lowered in {"active", "in_progress"}:
         return "in_progress"
-    if lowered in {"ready", "todo", "queued", ""}:
+    if lowered in {"ready", "todo", "queued", "pending", ""}:
         return "todo"
     return lowered
 
@@ -2634,6 +2653,18 @@ def task_declared_output_paths(task: PortalTask) -> tuple[str, ...]:
     )
 
 
+def task_provider_effect_paths(task: PortalTask) -> tuple[str, ...]:
+    """Return exact provider write authority, never supervisor outputs."""
+
+    return task_authority_partition(task).provider_effects
+
+
+def task_supervisor_output_paths(task: PortalTask) -> tuple[str, ...]:
+    """Return exact trusted-code output authority for one task."""
+
+    return task_authority_partition(task).supervisor_outputs
+
+
 @dataclass(frozen=True)
 class ImplementationTimeoutPolicy:
     """One task's bounded implementation lease and progress-idle deadline."""
@@ -2800,6 +2831,7 @@ class PortalTaskState:
     active_task_id: str = ""
     active_task_key: str = ""
     active_task_cid: str = ""
+    active_task_contract_cid: str = ""
     active_task_title: str = ""
     active_task_track: str = ""
     active_task_started_at: str = ""
@@ -2828,10 +2860,12 @@ class PortalTaskState:
     task_identities: dict[str, dict[str, Any]] = field(default_factory=dict)
     implementation_attempts: dict[str, int] = field(default_factory=dict)
     implementation_attempts_by_cid: dict[str, int] = field(default_factory=dict)
+    implementation_attempts_by_contract_cid: dict[str, int] = field(default_factory=dict)
     retry_budget_repair_receipts: dict[str, str] = field(default_factory=dict)
     last_implementation_task_id: str = ""
     last_implementation_task_key: str = ""
     last_implementation_task_cid: str = ""
+    last_implementation_task_contract_cid: str = ""
     last_implementation_started_at: str = ""
     last_implementation_finished_at: str = ""
     last_implementation_returncode: int | None = None
@@ -2887,6 +2921,9 @@ class PortalTaskState:
                 active_task_id=str(payload.get("active_task_id") or ""),
                 active_task_key=str(payload.get("active_task_key") or ""),
                 active_task_cid=str(payload.get("active_task_cid") or ""),
+                active_task_contract_cid=str(
+                    payload.get("active_task_contract_cid") or ""
+                ),
                 active_task_title=str(payload.get("active_task_title") or ""),
                 active_task_track=str(payload.get("active_task_track") or ""),
                 active_task_started_at=str(payload.get("active_task_started_at") or ""),
@@ -2951,6 +2988,13 @@ class PortalTaskState:
                     for key, value in (payload.get("implementation_attempts_by_cid") or {}).items()
                     if str(value).isdigit()
                 },
+                implementation_attempts_by_contract_cid={
+                    str(key): int(value)
+                    for key, value in (
+                        payload.get("implementation_attempts_by_contract_cid") or {}
+                    ).items()
+                    if str(value).isdigit()
+                },
                 retry_budget_repair_receipts={
                     str(key): str(value)
                     for key, value in (payload.get("retry_budget_repair_receipts") or {}).items()
@@ -2959,6 +3003,9 @@ class PortalTaskState:
                 last_implementation_task_id=str(payload.get("last_implementation_task_id") or ""),
                 last_implementation_task_key=str(payload.get("last_implementation_task_key") or ""),
                 last_implementation_task_cid=str(payload.get("last_implementation_task_cid") or ""),
+                last_implementation_task_contract_cid=str(
+                    payload.get("last_implementation_task_contract_cid") or ""
+                ),
                 last_implementation_started_at=str(payload.get("last_implementation_started_at") or ""),
                 last_implementation_finished_at=str(payload.get("last_implementation_finished_at") or ""),
                 last_implementation_returncode=(
@@ -3015,6 +3062,11 @@ def consume_stale_active_attempt(state: PortalTaskState) -> dict[str, Any]:
     task_id = str(state.active_task_id or state.last_implementation_task_id or "")
     task_key = str(state.active_task_key or state.last_implementation_task_key or "")
     task_cid = str(state.active_task_cid or state.last_implementation_task_cid or "")
+    task_contract_cid = str(
+        state.active_task_contract_cid
+        or state.last_implementation_task_contract_cid
+        or ""
+    )
     if task_id and not task_cid:
         identity = state.task_identities.get(task_id, {})
         task_key = task_key or str(identity.get("canonical_task_key") or "")
@@ -3037,19 +3089,36 @@ def consume_stale_active_attempt(state: PortalTaskState) -> dict[str, Any]:
         previous_cid_count,
         attempt,
     )
+    previous_contract_count = 0
+    if task_contract_cid:
+        previous_contract_count = int(
+            state.implementation_attempts_by_contract_cid.get(
+                task_contract_cid,
+                0,
+            )
+            or 0
+        )
+        state.implementation_attempts_by_contract_cid[task_contract_cid] = max(
+            previous_contract_count,
+            attempt,
+        )
     state.last_implementation_task_id = task_id
     state.last_implementation_task_key = task_key
     state.last_implementation_task_cid = task_cid
     return {
         "consumed": (
-            previous_display_count < attempt or previous_cid_count < attempt
+            previous_display_count < attempt
+            or previous_cid_count < attempt
+            or bool(task_contract_cid and previous_contract_count < attempt)
         ),
         "attempt": attempt,
         "task_id": task_id,
         "canonical_task_key": task_key,
         "canonical_task_cid": task_cid,
+        "task_contract_cid": task_contract_cid,
         "previous_display_count": previous_display_count,
         "previous_cid_count": previous_cid_count,
+        "previous_contract_count": previous_contract_count,
     }
 
 
@@ -3096,6 +3165,7 @@ def state_file_repair_reason(path: Path) -> str:
         "task_identities",
         "implementation_attempts",
         "implementation_attempts_by_cid",
+        "implementation_attempts_by_contract_cid",
         "last_proof_workflow",
     ):
         value = payload.get(field_name)
@@ -3141,11 +3211,17 @@ def parse_task_text(
         outputs = split_csv(metadata.get("outputs", ""))
         evidence_outputs = _task_evidence_output_paths_from_metadata(metadata)
         identity_outputs = list(dict.fromkeys([*outputs, *evidence_outputs]))
+        dependencies = split_csv(metadata.get("depends on", ""))
+        validation = split_validation_commands(metadata.get("validation", ""))
         identity = canonical_task_identity(
             {
                 "task_id": current_id,
                 "title": current_title,
+                "priority": str(metadata.get("priority", "P2")).strip().upper(),
+                "completion": str(metadata.get("completion", "manual")).strip().lower(),
+                "depends_on": dependencies,
                 "outputs": identity_outputs,
+                "validation": validation,
                 "acceptance": str(metadata.get("acceptance", "")).strip(),
                 "metadata": metadata,
             },
@@ -3160,9 +3236,9 @@ def parse_task_text(
                 completion=str(metadata.get("completion", "manual")).strip().lower(),
                 priority=str(metadata.get("priority", "P2")).strip().upper(),
                 track=str(metadata.get("track", "ops")).strip().lower(),
-                depends_on=split_csv(metadata.get("depends on", "")),
+                depends_on=dependencies,
                 outputs=outputs,
-                validation=split_validation_commands(metadata.get("validation", "")),
+                validation=validation,
                 acceptance=str(metadata.get("acceptance", "")).strip(),
                 source_line=current_line,
                 metadata=dict(metadata),
@@ -4262,10 +4338,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             # before the claim is published.  Actual workspace creation remains on
             # the existing fenced worktree lifecycle path (ASI-171).
             self._compiled_claim_preconditions = preconditions
+            task_contract_cid = self._governed_task_contract_cid(task)
+            if task_contract_cid:
+                self._require_current_governed_task_contract(
+                    task,
+                    task_contract_cid,
+                )
+            self._compiled_task_contract_cid = task_contract_cid
             self._record_event(
                 "plan_runtime_admitted",
                 {
                     "task_id": task.task_id,
+                    "task_contract_cid": task_contract_cid,
                     "revision_cid": binding.revision_cid,
                     "plan_id": binding.plan_id,
                     "lease_id": preconditions.lease_id,
@@ -4304,6 +4388,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     preconditions.post_merge_validation
                 ),
                 "compiled_claim_acquired_before_publish": True,
+                "task_contract_cid": str(
+                    getattr(self, "_compiled_task_contract_cid", "") or ""
+                ),
             }
 
 
@@ -4543,6 +4630,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> Any:
         """Admit completion only from a fresh merged-tree decision."""
 
+        task_contract_cid = self._governed_task_contract_cid(task)
+        if task_contract_cid:
+            self._require_current_governed_task_contract(
+                task,
+                task_contract_cid,
+            )
         previous = getattr(self._last_runtime_decision, "receipt", None)
         observation = self._last_runtime_effect_observation
         return self._decision_runtime_route(
@@ -4550,6 +4643,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             {
                 "task_id": task.task_id,
                 "task_cid": self._canonical_ref(task),
+                "task_contract_cid": task_contract_cid,
                 "merged_tree_id": merged_tree_id,
                 "prior_decision_receipt_id": str(
                     getattr(previous, "receipt_id", "")
@@ -4571,11 +4665,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> dict[str, Any]:
         """Capture restart-stable inputs for terminal completion publication."""
 
+        task_contract_cid = self._governed_task_contract_cid(task)
+        if task_contract_cid:
+            self._require_current_governed_task_contract(
+                task,
+                task_contract_cid,
+            )
         previous = getattr(self._last_runtime_decision, "receipt", None)
         observation = self._last_runtime_effect_observation
         completion_payload = {
             "task_id": task.task_id,
             "task_cid": self._canonical_ref(task),
+            "task_contract_cid": task_contract_cid,
             "merged_tree_id": merged_tree_id,
             "prior_decision_receipt_id": str(
                 getattr(previous, "receipt_id", "")
@@ -7920,7 +8021,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             {
                 "task_id": task.task_id,
                 "title": task.title,
+                "priority": task.priority,
+                "completion": task.completion,
+                "depends_on": task.depends_on,
                 "outputs": task_declared_output_paths(task),
+                "validation": task.validation,
                 "acceptance": task.acceptance,
                 "metadata": metadata,
             },
@@ -7930,7 +8035,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         provided_key = str(task.canonical_task_key or "").strip()
         provided_cid = str(task.canonical_task_cid or "").strip()
         if provided_key and provided_cid:
-            if provided_key.startswith("task/v1/") and not (
+            if provided_key.startswith("task/v") and not (
                 canonical_task_identity_claim_is_consistent(
                     provided_key,
                     provided_cid,
@@ -7956,7 +8061,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             {
                 "task_id": task.task_id,
                 "title": task.title,
+                "priority": task.priority,
+                "completion": task.completion,
+                "depends_on": task.depends_on,
                 "outputs": task_declared_output_paths(task),
+                "validation": task.validation,
                 "acceptance": task.acceptance,
                 "metadata": metadata,
             },
@@ -7988,6 +8097,63 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _canonical_ref(self, task: PortalTask) -> str:
         return self._identity_for_task(task).canonical_task_cid
 
+    def _governed_task_contract_cid(self, task: PortalTask) -> str:
+        """Return the immutable intent CID when this task declares governance."""
+
+        raw_role = self._task_metadata_value(task, "provider role")
+        roles = {
+            item.strip().lower()
+            for item in re.split(r"[,;]", raw_role)
+            if item.strip()
+        }
+        governed = bool(
+            self.production_provider_policy is not None
+            or roles
+            & {
+                ProviderRole.GROK_IMPLEMENT.value,
+                ProviderRole.CODEX_REVIEW.value,
+                "codex-review",
+            }
+        )
+        if not governed:
+            return ""
+        identity = self._identity_for_task(task)
+        return production_task_contract_cid(task, identity)
+
+    def _require_current_governed_task_contract(
+        self,
+        task: PortalTask,
+        expected_task_contract_cid: str,
+    ) -> str:
+        """Reject same-task board drift before every governed authority step."""
+
+        expected = str(expected_task_contract_cid or "")
+        if not expected:
+            return ""
+        if self._governed_task_contract_cid(task) != expected:
+            raise RuntimeError("governed task contract changed in memory")
+        try:
+            same_display_id = [
+                candidate
+                for candidate in self._load_tasks()
+                if candidate.task_id == task.task_id
+            ]
+        except (OSError, TaskSourceError, ValueError) as exc:
+            raise RuntimeError("governed task contract source is unavailable") from exc
+        # Provider-neutral direct callers may supply a detached task.  Once a
+        # board row with the same display ID exists it becomes authoritative.
+        if not same_display_id:
+            return expected
+        if len(same_display_id) != 1:
+            raise RuntimeError("governed task contract source is ambiguous")
+        current = same_display_id[0]
+        if (
+            self._canonical_ref(current) != self._canonical_ref(task)
+            or self._governed_task_contract_cid(current) != expected
+        ):
+            raise RuntimeError("governed task contract changed after selection")
+        return expected
+
     def _task_attempt_count(self, state: PortalTaskState, task: PortalTask) -> int:
         """Return the durable attempt count for this task's canonical identity."""
 
@@ -7996,15 +8162,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             canonical_task_cid,
             0,
         )
+        task_contract_cid = self._governed_task_contract_cid(task)
+        contract_count = (
+            state.implementation_attempts_by_contract_cid.get(
+                task_contract_cid,
+                0,
+            )
+            if task_contract_cid
+            else 0
+        )
         stored_identity = state.task_identities.get(task.task_id, {})
         stored_cid = str(stored_identity.get("canonical_task_cid") or "")
         # The display-ID map predates revision-bound canonical identities.
         # Use it only for migration when no identity was recorded, or when it
         # is known to describe this exact canonical revision.
         if stored_cid and stored_cid != canonical_task_cid:
-            return canonical_count
+            return max(canonical_count, contract_count)
         return max(
             canonical_count,
+            contract_count,
             state.implementation_attempts.get(task.task_id, 0),
         )
 
@@ -8077,6 +8253,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 for canonical_task_cid in sorted(canonical_task_cids)
             }
+            previous_contract_counts: dict[str, int] = {}
+            if source_task is not None:
+                source_contract_cid = self._governed_task_contract_cid(
+                    source_task
+                )
+                if source_contract_cid:
+                    previous_contract_counts[source_contract_cid] = int(
+                        state.implementation_attempts_by_contract_cid.pop(
+                            source_contract_cid,
+                            0,
+                        )
+                        or 0
+                    )
             for canonical_task_cid in canonical_task_cids:
                 queue_changed = (
                     self.task_queue.reset_retry_state(canonical_task_cid)
@@ -8090,6 +8279,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "failure_kind": failure_kind,
                     "previous_display_attempt_count": previous_display_count,
                     "previous_canonical_attempt_counts": previous_cid_counts,
+                    "previous_contract_attempt_counts": previous_contract_counts,
                 }
             )
 
@@ -8149,9 +8339,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         identity = self._identity_for_task(task)
         state.implementation_attempts[task.task_id] = attempt
         state.implementation_attempts_by_cid[identity.canonical_task_cid] = attempt
+        task_contract_cid = self._governed_task_contract_cid(task)
+        if task_contract_cid:
+            state.implementation_attempts_by_contract_cid[task_contract_cid] = attempt
         state.last_implementation_task_id = task.task_id
         state.last_implementation_task_key = identity.canonical_task_key
         state.last_implementation_task_cid = identity.canonical_task_cid
+        state.last_implementation_task_contract_cid = task_contract_cid
 
     def _restore_task_attempt(
         self,
@@ -8162,17 +8356,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """Restore the pre-launch count for a confirmed non-consuming deferral."""
 
         identity = self._identity_for_task(task)
+        task_contract_cid = self._governed_task_contract_cid(task)
         if attempt > 0:
             state.implementation_attempts[task.task_id] = attempt
             state.implementation_attempts_by_cid[identity.canonical_task_cid] = (
                 attempt
             )
+            if task_contract_cid:
+                state.implementation_attempts_by_contract_cid[
+                    task_contract_cid
+                ] = attempt
         else:
             state.implementation_attempts.pop(task.task_id, None)
             state.implementation_attempts_by_cid.pop(
                 identity.canonical_task_cid,
                 None,
             )
+            if task_contract_cid:
+                state.implementation_attempts_by_contract_cid.pop(
+                    task_contract_cid,
+                    None,
+                )
 
     def _record_task_queue_outcome(self, task: PortalTask, returncode: int, reason: str = "") -> None:
         canonical_task_cid = self._canonical_ref(task)
@@ -9421,6 +9625,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             selected_identity = self._identity_for_task(selected)
             state.active_task_key = selected_identity.canonical_task_key
             state.active_task_cid = selected_identity.canonical_task_cid
+            state.active_task_contract_cid = self._governed_task_contract_cid(
+                selected
+            )
             state.active_task_title = selected.title
             state.active_task_track = selected.track
             state.recommended_task_id = selected.task_id
@@ -9884,6 +10091,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "retry_at": retry_at,
             "retry_at_source": retry_at_source,
             "attempt_consumed": False,
+            "provider_dispatched": bool(
+                failure.get("provider_dispatched")
+            ),
         }
         if worktree_path is not None:
             result["worktree_path"] = str(worktree_path)
@@ -14172,6 +14382,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """
 
         identity = self._identity_for_task(task)
+        task_contract_cid = self._governed_task_contract_cid(task)
+        if task_contract_cid:
+            self._require_current_governed_task_contract(
+                task,
+                task_contract_cid,
+            )
         work_order = self._bundle_work_order_for_task(task)
         completion_task_ids = (
             work_order.task_ids if work_order is not None else [task.task_id]
@@ -14245,6 +14461,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "repo_root": str(self.repo_root),
             "task_header_prefix": self.task_header_prefix,
             "task": asdict(task),
+            "task_contract_cid": task_contract_cid,
             "model_invocation_observed": not self._task_uses_typed_local_execution(task),
             "completion_task_cids": completion_task_cids,
             # An explicit empty declaration is authoritative.  Omitting this
@@ -14255,6 +14472,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 self.implementation_protected_paths
             ),
         }
+        raw_pre_change = getattr(
+            self, "_last_pre_change_validation_receipt", None
+        )
+        if isinstance(raw_pre_change, Mapping):
+            metadata["pre_change_validation_receipt"] = dict(raw_pre_change)
+        raw_dependencies = getattr(
+            self, "_last_production_dependency_evidence", None
+        )
+        if isinstance(raw_dependencies, Sequence) and not isinstance(
+            raw_dependencies, (str, bytes, bytearray)
+        ):
+            metadata["dependency_evidence"] = [
+                dict(item) for item in raw_dependencies if isinstance(item, Mapping)
+            ]
         finalized_reviewed_effect: ProductionReviewedEffectBinding | None = None
         if production_reviewed_effect_binding is not None:
             try:
@@ -14467,6 +14698,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "implementation_commit": implementation_commit,
             "canonical_task_key": identity.canonical_task_key,
             "canonical_task_cid": identity.canonical_task_cid,
+            "task_contract_cid": task_contract_cid,
             "completion_task_cids": completion_task_cids,
             "queue_dir": str(self.merge_queue_dir),
             "target_repository_id": self.merge_target_repository_id,
@@ -15828,6 +16060,36 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     ),
                 }
         task = self._portal_task_from_merge_request(request)
+        queued_task_contract_cid = self._governed_task_contract_cid(task)
+        expected_task_contract_cid = str(
+            metadata.get("task_contract_cid") or ""
+        )
+        if queued_task_contract_cid or expected_task_contract_cid:
+            if (
+                not expected_task_contract_cid
+                or queued_task_contract_cid != expected_task_contract_cid
+            ):
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "merge_candidate_task_contract_mismatch",
+                    "expected_task_contract_cid": expected_task_contract_cid,
+                    "queued_task_contract_cid": queued_task_contract_cid,
+                }
+            try:
+                self._require_current_governed_task_contract(
+                    task,
+                    expected_task_contract_cid,
+                )
+            except RuntimeError:
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "merge_candidate_task_contract_stale",
+                    "task_contract_cid": expected_task_contract_cid,
+                }
         branch_name = str(request.branch_name or "")
         implementation_commit = str(
             request.commit_sha or metadata.get("implementation_commit") or ""
@@ -16754,6 +17016,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> dict[str, Any]:
         """Hand a validated implementation commit to the durable merge train."""
 
+        task_contract_cid = self._governed_task_contract_cid(task)
+        if task_contract_cid:
+            self._require_current_governed_task_contract(
+                task,
+                task_contract_cid,
+            )
+            lifecycle_contract_cid = str(
+                getattr(self._active_worktree_lifecycle, "task_contract_cid", "")
+                or ""
+            )
+            if lifecycle_contract_cid != task_contract_cid:
+                raise RuntimeError(
+                    "validated production candidate lifecycle contract changed"
+                )
         finalized_reviewed_effect: ProductionReviewedEffectBinding | None = None
         requires_reviewed_effect = self._production_reviewed_effect_required(task)
         raw_reviewed_effect = getattr(
@@ -17052,6 +17328,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # _record_task_attempt and every event explicitly marks it unconsumed.
         attempt = 1
         identity = self._identity_for_task(task)
+        task_contract_cid = self._governed_task_contract_cid(task)
+        if task_contract_cid:
+            self._require_current_governed_task_contract(
+                task,
+                task_contract_cid,
+            )
         task_claim_path = self._implementation_task_claim_path(
             task.task_id,
             canonical_task_cid=identity.canonical_task_cid,
@@ -17323,6 +17605,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "worktree_path": str(worktree_path),
                     "branch": branch_name,
                     "baseline_ref": baseline_ref,
+                    "task_contract_cid": task_contract_cid,
                     "implementation_commit": candidate_commit,
                     "recovery_key": recovery_key,
                 }
@@ -17365,6 +17648,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             state.active_task_id = task.task_id
             state.active_task_key = identity.canonical_task_key
             state.active_task_cid = identity.canonical_task_cid
+            state.active_task_contract_cid = self._governed_task_contract_cid(
+                task
+            )
             state.active_task_title = task.title
             state.active_task_track = task.track
             state.active_task_started_at = started_at
@@ -18025,6 +18311,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_root.mkdir(parents=True, exist_ok=True)
         deterministic_only = self._task_uses_typed_local_execution(task)
+        use_production_route = (
+            not deterministic_only
+            and self._production_provider_route_enabled(task)
+        )
+        task_contract_cid = (
+            self._governed_task_contract_cid(task)
+            if use_production_route
+            else ""
+        )
+        if task_contract_cid:
+            self._require_current_governed_task_contract(
+                task,
+                task_contract_cid,
+            )
         safe_task_id = task.task_id.lower().replace("/", "-")
         identity_suffix = self._identity_for_task(task).short_id
         execution_id = f"{safe_task_id}-{identity_suffix}"
@@ -18064,7 +18364,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         provider_route_receipt: dict[str, Any] = {}
         provider_filesystem_boundary_receipt: dict[str, Any] = {}
         provider_dispatched = False
-        use_production_route = False
         production_route_payload: dict[str, Any] = {}
         production_landed_guard: dict[str, Any] = {}
         seed_replayable_proposal_ids: tuple[str, ...] = ()
@@ -18085,6 +18384,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 lifecycle_record = self.worktree_lifecycle.begin_preparing(
                     task_id=task.task_id,
                     canonical_task_cid=self._canonical_ref(task),
+                    task_contract_cid=task_contract_cid,
                     attempt=attempt,
                     lane_id=self._worktree_lifecycle_lane_id(),
                     workspace_path=worktree_path,
@@ -18169,10 +18469,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
             workspace_setup = self._worktree_setup_result(worktree_path)
             workspace_setup["prior_attempt_seed"] = dict(seed_apply)
-            use_production_route = (
-                not deterministic_only
-                and self._production_provider_route_enabled(task)
-            )
             if deterministic_only:
                 command = []
             elif use_production_route:
@@ -18270,6 +18566,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "state": lifecycle_record.state.value,
                             "fence": lifecycle_record.fence,
                             "lease_id": lifecycle_record.lease_id,
+                            "task_contract_cid": lifecycle_record.task_contract_cid,
                             "requirement_id": FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
                         }
                     ),
@@ -18383,7 +18680,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                     production_route_payload["returncode"]
                                 ),
                             )
-                        provider_dispatched = True
                         production_route_payload = (
                             self.run_production_model_assisted_route(
                                 task,
@@ -18405,6 +18701,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 bounds=getattr(
                                     self, "_production_provider_bounds", None
                                 ),
+                            )
+                        )
+                        provider_dispatched = bool(
+                            production_route_payload.get(
+                                "model_invocation_observed"
                             )
                         )
                         production_returncode = production_route_payload.get(
@@ -18485,6 +18786,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             else "implementation_provider"
                         ),
                         "task_id": task.task_id,
+                        "task_contract_cid": task_contract_cid,
                         "attempt": int(attempt),
                         "command": tuple(command),
                         "workspace_path": str(worktree_path),
@@ -19549,6 +19851,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and not timeout_result
             and not protected_path_violation
         ):
+            provider_failure["provider_dispatched"] = bool(
+                provider_dispatched
+            )
             def _capacity_lifecycle_race_cleanup(
                 value: Mapping[str, Any],
             ) -> dict[str, Any]:
@@ -19764,6 +20069,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and cleanup_result.get("failure_kind")
             == LifecycleFailureKind.LIFECYCLE_RACE.value
         )
+        pre_change_infrastructure_deferral = bool(
+            use_production_route
+            and not provider_dispatched
+            and production_route_payload.get("deferred") is True
+            and str(production_route_payload.get("reason_code") or "")
+            in {
+                "pre_change_validation_unavailable",
+                "dependency_evidence_missing",
+                "dependency_evidence_stale",
+                "dependency_receipt_declaration_invalid",
+                "dependency_not_completed",
+            }
+        )
         if lifecycle_setup_deferral:
             active_lifecycle = self._active_worktree_lifecycle
             if (
@@ -19783,7 +20101,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     )
                 )
         attempt_consumed = not (
-            protected_path_external_deferral or lifecycle_setup_deferral
+            protected_path_external_deferral
+            or lifecycle_setup_deferral
+            or pre_change_infrastructure_deferral
         )
         if attempt_consumed:
             self._record_task_attempt(state, task, attempt)
@@ -20328,6 +20648,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             result["protected_path_violation"] = protected_path_violation
             result["deferred"] = protected_path_external_deferral
+        elif pre_change_infrastructure_deferral:
+            result.update(
+                {
+                    "reason": str(
+                        production_route_payload.get("reason")
+                        or production_route_payload.get("reason_code")
+                        or "pre_change_validation_unavailable"
+                    ),
+                    "deferred": True,
+                    "repair_required": bool(
+                        production_route_payload.get("repair_required")
+                    ),
+                    "pre_change_validation": dict(
+                        production_route_payload.get("pre_change_validation")
+                        or {}
+                    ),
+                }
+            )
         result["cache_hit"] = result["workspace_setup"]["cache_hit"]
         result["setup_duration_seconds"] = result["workspace_setup"]["setup_duration_seconds"]
         result["saved_duration_seconds"] = result["workspace_setup"]["saved_duration_seconds"]
@@ -20807,6 +21145,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         receipt_id = str(value.get("provider_review_receipt_id") or "")
         if receipt_id:
             evidence["provider_review_receipt_id"] = receipt_id
+        raw_pre_change = value.get("pre_change_validation_receipt")
+        if isinstance(raw_pre_change, Mapping):
+            evidence["pre_change_validation_receipt"] = dict(raw_pre_change)
+        raw_dependencies = value.get("dependency_evidence")
+        if isinstance(raw_dependencies, Sequence) and not isinstance(
+            raw_dependencies, (str, bytes, bytearray)
+        ):
+            evidence["dependency_evidence"] = [
+                dict(item) for item in raw_dependencies if isinstance(item, Mapping)
+            ]
         return evidence
 
     def _validated_recovered_implementation_binding(
@@ -21300,12 +21648,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
 
     def _production_capacity_recovery_write_active(self) -> bool:
-        """True when the latest production route wrote without independent review.
-
-        Codex quota/unavailability may still land admitted Grok bytes so
-        implement/validate/commit can complete. Formal reviewed-effect capture
-        and authoritative completion remain gated on independent review.
-        """
+        """Legacy diagnostic only; governed production never permits this."""
 
         return bool(
             getattr(self, "_last_production_capacity_recovery_write", False)
@@ -21313,11 +21656,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
     def _production_reviewed_effect_required(self, task: PortalTask) -> bool:
         if self._verified_current_legacy_landed_review_result(task) is not None:
-            return False
-        # Capacity-recovery writes land repository effects without Codex
-        # approval; reviewed-effect capture cannot bind and must not block
-        # non-authoritative validate/commit completion.
-        if self._production_capacity_recovery_write_active():
             return False
         return bool(
             isinstance(
@@ -21503,6 +21841,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         if not self._production_reviewed_effect_required(task):
             return {"admitted": True, "not_applicable": True}
+        task_contract_cid = self._governed_task_contract_cid(task)
+        self._require_current_governed_task_contract(task, task_contract_cid)
         raw_binding = getattr(
             self,
             "_last_production_reviewed_effect_binding",
@@ -21538,6 +21878,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "production_reviewed_effect_post_validation",
             {
                 "task_id": task.task_id,
+                "task_contract_cid": task_contract_cid,
                 "attempt": int(attempt),
                 **result,
             },
@@ -21601,12 +21942,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> tuple[Path, dict[str, Any]]:
         """Persist a content-addressed provider execution receipt for a route."""
 
+        task_contract_cid = self._governed_task_contract_cid(task)
         receipt = route_result.provider_receipt
         payload = receipt.to_dict()
         payload["daemon_integration"] = {
             "schema": MODEL_ASSISTED_PROVIDER_RECEIPT_SCHEMA,
             "task_id": task.task_id,
             "canonical_task_cid": self._canonical_ref(task),
+            "task_contract_cid": task_contract_cid,
             "attempt": int(attempt),
             "router_interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
             "receipt_interface": PROVIDER_EXECUTION_RECEIPT_INTERFACE,
@@ -21634,6 +21977,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             {
                 "operation": "persist_model_assisted_provider_receipt",
                 "task_id": task.task_id,
+                "task_contract_cid": task_contract_cid,
                 "attempt": int(attempt),
                 "receipt_id": payload["receipt_id"],
                 "path": str(path),
@@ -21653,6 +21997,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> dict[str, Any]:
         """Build the required nonempty fields for model-assisted events."""
 
+        task_contract_cid = self._governed_task_contract_cid(task)
         packet = (
             route_result.packet.to_dict()
             if route_result.packet is not None
@@ -21686,6 +22031,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ]
         return {
             "task_id": task.task_id,
+            "task_contract_cid": task_contract_cid,
             "attempt": int(attempt),
             "status": route_result.status.value,
             "reason_code": route_result.reason_code,
@@ -21846,6 +22192,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         the only downgrade path and remains non-production.
         """
 
+        if task is not None and task_executor_kind(task) in {
+            "execution_job",
+            "gate_job",
+        }:
+            raise ImplementationRetryDeferred(
+                "governed command/gate Executor kind requires its trusted "
+                "supervisor-owned executor; provider patch dispatch is forbidden",
+                backoff_seconds=300,
+            )
+
         allow_raw = os.environ.get(
             PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV, ""
         ).strip().lower()
@@ -21886,6 +22242,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             missing_fields.append("validation")
         if not str(task.acceptance or "").strip():
             missing_fields.append("acceptance")
+        try:
+            pre_change_commands = task_phase_commands(task, "pre_change")
+            post_change_commands = task_phase_commands(task, "post_change")
+        except ValueError as exc:
+            raise ImplementationRetryDeferred(
+                "typed production post-change validation is malformed",
+                backoff_seconds=300,
+            ) from exc
+        if not pre_change_commands:
+            missing_fields.append("typed pre-change validation")
+        if not post_change_commands:
+            missing_fields.append("typed post-change validation")
         raw_context_budget = self._task_metadata_value(task, "context budget tokens")
         if operator_policy is not None and not raw_context_budget:
             context_budget = operator_policy.context_budget_tokens
@@ -22172,12 +22540,1009 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         identity = self._identity_for_task(task)
         contract = production_task_contract(task, identity)
-        if contract["outputs"] != list(write_paths):
+        partition = contract.get("authority_partition")
+        if (
+            not isinstance(partition, Mapping)
+            or partition.get("provider_effects") != list(write_paths)
+            or partition.get("outputs") != contract["outputs"]
+        ):
             raise ProviderRoutingError(
                 "production task output scope is not canonical",
                 reason_code=ProviderReason.PACKET_MALFORMED,
             )
+        if redact_provider_data(contract) != contract:
+            raise ProviderRoutingError(
+                "production task contract contains provider-sensitive fields",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
         return contract
+
+    def _production_dependency_evidence(
+        self,
+        task: PortalTask,
+        *,
+        baseline_ref: str,
+    ) -> list[dict[str, Any]]:
+        """Load exact trusted receipts for every completed predecessor.
+
+        The packet carries only a bounded projection.  Receipt bytes are read
+        and verified by the supervisor; missing, forged, stale, or off-history
+        evidence never becomes a provider assertion.
+        """
+
+        if not task.depends_on:
+            return []
+        selectors = task_dependency_completion_receipts(task)
+        tasks = list(self._load_tasks())
+        by_id = {candidate.task_id: candidate for candidate in tasks}
+        selected: list[PortalTask] = []
+        for reference in task.depends_on:
+            dependency = by_id.get(reference)
+            if dependency is not None:
+                selected.append(dependency)
+                continue
+            goal_members = [
+                candidate
+                for candidate in tasks
+                if reference in split_csv(candidate.metadata.get("goal id", ""))
+            ]
+            if not goal_members:
+                raise ProviderRoutingError(
+                    f"declared dependency is unresolved: {reference}",
+                    reason_code="dependency_evidence_missing",
+                )
+            selected.extend(goal_members)
+
+        evidence: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for dependency in selected:
+            if dependency.task_id in seen:
+                continue
+            seen.add(dependency.task_id)
+            if normalize_status(dependency.status) != "completed":
+                raise ProviderRoutingError(
+                    f"dependency is not complete: {dependency.task_id}",
+                    reason_code="dependency_not_completed",
+                )
+            identity = self._identity_for_task(dependency)
+            output_paths = task_supervisor_output_paths(dependency)
+            selector = selectors.get(dependency.task_id)
+            if not isinstance(selector, Mapping):
+                raise ProviderRoutingError(
+                    f"dependency completion receipt selector is missing: {dependency.task_id}",
+                    reason_code="dependency_evidence_missing",
+                )
+            receipt_relative = str(selector.get("path") or "")
+            if (
+                receipt_relative not in output_paths
+                or selector.get("producer_task_cid")
+                != identity.canonical_task_cid
+            ):
+                raise ProviderRoutingError(
+                    f"dependency completion receipt selector is stale: {dependency.task_id}",
+                    reason_code="dependency_evidence_stale",
+                )
+            final_result_identity = str(
+                self._task_metadata_value(
+                    dependency,
+                    "final result cid or artifact identity",
+                )
+                or self._task_metadata_value(dependency, "final result cid")
+                or self._task_metadata_value(dependency, "final result")
+                or ""
+            ).strip()
+            try:
+                receipt, receipt_blob_oid = (
+                    self._read_governed_dependency_receipt_blob(
+                        baseline_ref=baseline_ref,
+                        receipt_relative=receipt_relative,
+                    )
+                )
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                raise ProviderRoutingError(
+                    f"dependency supervisor receipt is unavailable: {dependency.task_id}",
+                    reason_code="dependency_evidence_missing",
+                ) from exc
+            verified, reasons = verify_supervisor_task_receipt(
+                receipt if isinstance(receipt, Mapping) else None,
+                task_id=dependency.task_id,
+                task_cid=identity.canonical_task_cid,
+            )
+            expected_contract_cid = content_identity(
+                production_task_contract(dependency, identity)
+            )
+            integration_commit = str(
+                receipt.get("integration_commit")
+                if isinstance(receipt, Mapping)
+                else ""
+            )
+            baseline_commit = str(
+                receipt.get("baseline_commit")
+                if isinstance(receipt, Mapping)
+                else ""
+            )
+            candidate_commit = str(
+                receipt.get("candidate_commit")
+                if isinstance(receipt, Mapping)
+                else ""
+            )
+            commit_tree_bindings_valid = all(
+                self._governed_commit_matches_tree(commit, tree_id)
+                for commit, tree_id in (
+                    (baseline_commit, str(receipt.get("baseline_tree_id") or "")),
+                    (candidate_commit, str(receipt.get("candidate_tree_id") or "")),
+                    (integration_commit, str(receipt.get("integration_tree_id") or "")),
+                )
+            )
+            ancestry = (
+                self._run_governed_snapshot_git(
+                    ("merge-base", "--is-ancestor", integration_commit, baseline_ref),
+                    cwd=self.repo_root,
+                )
+                if integration_commit
+                else {"returncode": 1}
+            )
+            if (
+                not verified
+                or receipt.get("schema") != selector.get("schema")
+                or receipt.get("completion_generation")
+                != selector.get("completion_generation")
+                or (
+                    final_result_identity
+                    and final_result_identity
+                    != str(receipt.get("receipt_cid") or "")
+                )
+                or receipt.get("task_contract_cid") != expected_contract_cid
+                or not integration_commit
+                or not commit_tree_bindings_valid
+                or ancestry["returncode"] != 0
+            ):
+                detail = reasons[0] if reasons else "stale_or_off_history"
+                raise ProviderRoutingError(
+                    f"dependency supervisor receipt is stale: {dependency.task_id}:{detail}",
+                    reason_code="dependency_evidence_stale",
+                )
+            evidence.append(
+                {
+                    "task_id": dependency.task_id,
+                    "task_cid": identity.canonical_task_cid,
+                    "task_contract_cid": expected_contract_cid,
+                    "receipt_path": receipt_relative,
+                    "receipt_cid": str(receipt.get("receipt_cid") or ""),
+                    "receipt_blob_oid": receipt_blob_oid,
+                    "final_result_identity": str(
+                        receipt.get("receipt_cid") or ""
+                    ),
+                    "completion_generation": str(
+                        receipt.get("completion_generation") or ""
+                    ),
+                    "candidate_commit": str(
+                        receipt.get("candidate_commit") or ""
+                    ),
+                    "candidate_tree_id": str(
+                        receipt.get("candidate_tree_id") or ""
+                    ),
+                    "integration_commit": integration_commit,
+                    "integration_tree_id": str(
+                        receipt.get("integration_tree_id") or ""
+                    ),
+                    "effect_identities": list(
+                        receipt.get("effect_identities") or []
+                    ),
+                    "supervisor_outputs": list(
+                        receipt.get("supervisor_outputs") or []
+                    ),
+                }
+            )
+        return evidence
+
+    def _read_governed_dependency_receipt_blob(
+        self,
+        *,
+        baseline_ref: str,
+        receipt_relative: str,
+    ) -> tuple[dict[str, Any], str]:
+        """Read a dependency receipt from the exact baseline tree, never the worktree."""
+
+        relative = str(receipt_relative or "")
+        entry = self._run_governed_snapshot_git(
+            ("ls-tree", baseline_ref, "--", relative),
+            cwd=self.repo_root,
+        )
+        match = re.fullmatch(
+            rf"100644 blob ([0-9a-f]{{40,64}})\t{re.escape(relative)}\n?",
+            str(entry.get("stdout") or ""),
+        )
+        if entry.get("returncode") != 0 or match is None:
+            raise ValueError("dependency receipt is not an exact regular baseline blob")
+        blob_oid = match.group(1)
+        blob = self._run_governed_snapshot_git(
+            ("cat-file", "blob", blob_oid),
+            cwd=self.repo_root,
+        )
+        if blob.get("returncode") != 0:
+            raise ValueError("dependency receipt blob is unavailable")
+        raw = str(blob.get("stdout") or "")
+        if not raw or "\ufffd" in raw or len(raw.encode("utf-8")) > 1024 * 1024:
+            raise ValueError("dependency receipt blob encoding/size is invalid")
+
+        def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("dependency receipt contains duplicate JSON keys")
+                result[key] = value
+            return result
+
+        parsed = json.loads(raw, object_pairs_hook=unique_object)
+        if not isinstance(parsed, dict):
+            raise ValueError("dependency receipt must be a JSON object")
+        return parsed, blob_oid
+
+    def _governed_commit_matches_tree(
+        self,
+        commit: str,
+        tree_id: str,
+    ) -> bool:
+        """Return whether one exact local commit has the declared tree identity."""
+
+        if not commit or not str(tree_id or "").startswith("git-tree:"):
+            return False
+        try:
+            result = self._run_governed_snapshot_git(
+                ("rev-parse", "--verify", f"{commit}^{{tree}}"),
+                cwd=self.repo_root,
+            )
+        except (OSError, RuntimeError, ValueError):
+            return False
+        return bool(
+            result.get("returncode") == 0
+            and f"git-tree:{str(result.get('stdout') or '').strip()}" == tree_id
+        )
+
+    @staticmethod
+    def _governed_network_denied_command(argv: Sequence[str]) -> list[str]:
+        """Wrap an argv vector in an inherited no-network seccomp policy."""
+
+        source = r'''\
+import ctypes
+import errno
+import os
+import sys
+
+lib = ctypes.CDLL("libseccomp.so.2", use_errno=True)
+lib.seccomp_init.argtypes = [ctypes.c_uint32]
+lib.seccomp_init.restype = ctypes.c_void_p
+lib.seccomp_syscall_resolve_name.argtypes = [ctypes.c_char_p]
+lib.seccomp_syscall_resolve_name.restype = ctypes.c_int
+lib.seccomp_rule_add.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_int, ctypes.c_uint]
+lib.seccomp_rule_add.restype = ctypes.c_int
+lib.seccomp_load.argtypes = [ctypes.c_void_p]
+lib.seccomp_load.restype = ctypes.c_int
+lib.seccomp_release.argtypes = [ctypes.c_void_p]
+ALLOW = 0x7fff0000
+ERRNO = 0x00050000 | errno.EPERM
+ctx = lib.seccomp_init(ALLOW)
+if not ctx:
+    raise SystemExit(75)
+added = 0
+try:
+    for name in (
+        b"socket", b"socketpair", b"connect", b"bind", b"listen",
+        b"accept", b"accept4", b"sendto", b"recvfrom", b"sendmsg",
+        b"recvmsg", b"sendmmsg", b"recvmmsg", b"shutdown",
+        b"getsockname", b"getpeername", b"setsockopt", b"getsockopt",
+    ):
+        number = lib.seccomp_syscall_resolve_name(name)
+        if number >= 0:
+            if lib.seccomp_rule_add(ctx, ERRNO, number, 0) != 0:
+                raise SystemExit(75)
+            added += 1
+    if added < 2 or lib.seccomp_load(ctx) != 0:
+        raise SystemExit(75)
+finally:
+    lib.seccomp_release(ctx)
+if len(sys.argv) < 2:
+    raise SystemExit(75)
+os.execvpe(sys.argv[1], sys.argv[1:], os.environ)
+'''
+        return [sys.executable, "-I", "-c", source, *map(str, argv)]
+
+    @staticmethod
+    def _normalize_governed_command_output(
+        output: str,
+        *,
+        workspace_path: Path,
+        private_home_path: Path,
+    ) -> str:
+        """Normalize volatile paths/timings before deriving known-red CIDs."""
+
+        value = str(output or "").replace("\r\n", "\n").replace("\r", "\n")
+        value = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", value)
+        for path, marker in (
+            (workspace_path, "<workspace>"),
+            (private_home_path, "<private-home>"),
+        ):
+            value = value.replace(str(path), marker)
+        value = re.sub(
+            r"(?i)(\b(?:in|duration[:=]?)\s+)\d+(?:\.\d+)?s\b",
+            r"\1<duration>s",
+            value,
+        )
+        return "\n".join(line.rstrip() for line in value.splitlines()).strip()
+
+    def _run_bounded_governed_process(
+        self,
+        argv: Sequence[str],
+        *,
+        cwd: Path,
+        environment: Mapping[str, str],
+        timeout_seconds: int,
+        max_output_bytes: int = 2 * 1024 * 1024,
+        combine_stderr: bool = True,
+    ) -> dict[str, Any]:
+        """Capture a process group incrementally and kill it at hard bounds."""
+
+        process = subprocess.Popen(
+            [str(item) for item in argv],
+            cwd=cwd,
+            env={str(key): str(value) for key, value in environment.items()},
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT if combine_stderr else subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        if process.stdout is None:  # pragma: no cover - PIPE is mandatory
+            raise RuntimeError("governed process capture is unavailable")
+        descriptor = process.stdout.fileno()
+        deadline = time.monotonic() + float(timeout_seconds)
+        captured = bytearray()
+        timed_out = False
+        output_limit_exceeded = False
+        cancelled = False
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            if self._implementation_cancel_requested():
+                cancelled = True
+                break
+            ready, _write, _errors = select.select(
+                [descriptor], [], [], min(0.1, remaining)
+            )
+            if ready:
+                chunk = os.read(descriptor, 65536)
+                if chunk:
+                    available = max_output_bytes - len(captured)
+                    captured.extend(chunk[: max(0, available)])
+                    if len(chunk) > available:
+                        output_limit_exceeded = True
+                        break
+                elif process.poll() is not None:
+                    break
+            # Do not stop merely because the direct child exited: a descendant
+            # may still own the pipe.  EOF is the authoritative completion
+            # signal and the same deadline bounds the whole process group.
+        if timed_out or output_limit_exceeded or cancelled:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except (OSError, ProcessLookupError):
+                pass
+            try:
+                process.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except (OSError, ProcessLookupError):
+                    pass
+                process.wait(timeout=1.0)
+        else:
+            try:
+                process.wait(timeout=max(0.1, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except OSError:
+                    pass
+                try:
+                    process.wait(timeout=0.5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except OSError:
+                        pass
+                    process.wait(timeout=1.0)
+        if timed_out:
+            returncode = 124
+        elif output_limit_exceeded:
+            returncode = 74
+        elif cancelled:
+            returncode = 130
+        else:
+            returncode = int(process.returncode or 0)
+        return {
+            "cancelled": cancelled,
+            "output": bytes(captured).decode("utf-8", errors="replace"),
+            "output_limit_bytes": max_output_bytes,
+            "output_limit_exceeded": output_limit_exceeded,
+            "returncode": returncode,
+            "timed_out": timed_out,
+        }
+
+    def _governed_forest_snapshot(
+        self,
+        commands: Sequence[Mapping[str, Any]],
+        *,
+        workspace_path: Path,
+        baseline_ref: str,
+    ) -> list[dict[str, Any]]:
+        """Bind every referenced governed root without init/fetch traversal."""
+
+        outer = workspace_path.resolve(strict=True)
+
+        def git(cwd: Path, *arguments: str) -> dict[str, Any]:
+            return self._run_governed_snapshot_git(
+                arguments,
+                cwd=cwd,
+            )
+
+        roots: dict[str, tuple[str, bool]] = {".": ("control", True)}
+        # The immutable outer baseline is the forest plan.  Include every
+        # allowlisted governed root represented by a gitlink even when no
+        # command targets it, so drift in an unreferenced peer cannot pass.
+        for repository, root in GOVERNED_REPOSITORY_ROOTS.items():
+            if root == ".":
+                continue
+            binding = git(outer, "ls-tree", baseline_ref, "--", root)
+            if binding["returncode"] != 0:
+                raise ValueError("governed repository forest plan is unavailable")
+            listing = str(binding["stdout"] or "")
+            if listing.strip():
+                if re.fullmatch(
+                    rf"160000 commit [0-9a-f]{{40,64}}\t{re.escape(root)}\n?",
+                    listing,
+                ) is None:
+                    raise ValueError("governed repository root is not a gitlink")
+                roots[root] = (repository, True)
+            else:
+                roots[root] = (repository, False)
+        for command in commands:
+            root = str(command.get("repository_root") or "")
+            repository = str(command.get("repository") or "")
+            if root in roots and roots[root][0] != repository:
+                raise ValueError("governed repository root has conflicting labels")
+            if not roots.get(root, (repository, False))[1]:
+                raise ValueError("governed command targets an absent repository root")
+        records: list[dict[str, Any]] = []
+        for relative in sorted(roots):
+            repository, present = roots[relative]
+            candidate = outer if relative == "." else outer / relative
+            if not present:
+                if candidate.exists() or candidate.is_symlink():
+                    raise ValueError("absent governed repository root exists in workspace")
+                records.append(
+                    {
+                        "commit": "",
+                        "present": False,
+                        "repository": repository,
+                        "repository_id": "",
+                        "repository_root": relative,
+                        "tree_id": "",
+                        "workspace_clean": True,
+                    }
+                )
+                continue
+            absolute = Path(os.path.abspath(candidate))
+            resolved = candidate.resolve(strict=True)
+            if resolved != absolute or not resolved.is_dir():
+                raise ValueError("governed repository root is unavailable or symlinked")
+            if relative == ".":
+                expected_commit = baseline_ref
+            else:
+                binding = git(outer, "ls-tree", baseline_ref, "--", relative)
+                match = re.fullmatch(
+                    rf"160000 commit ([0-9a-f]{{40,64}})\t{re.escape(relative)}\n?",
+                    str(binding["stdout"] or ""),
+                )
+                if binding["returncode"] != 0 or match is None:
+                    raise ValueError("governed repository root is not an exact baseline gitlink")
+                expected_commit = match.group(1)
+            top = git(resolved, "rev-parse", "--show-toplevel")
+            head = git(resolved, "rev-parse", "--verify", "HEAD^{commit}")
+            tree = git(resolved, "rev-parse", "--verify", "HEAD^{tree}")
+            status = git(
+                resolved,
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+            )
+            if (
+                top["returncode"] != 0
+                or Path(str(top["stdout"]).strip()).resolve(strict=True) != resolved
+                or head["returncode"] != 0
+                or str(head["stdout"]).strip() != expected_commit
+                or tree["returncode"] != 0
+                or status["returncode"] != 0
+                or bool(str(status["stdout"]).strip())
+            ):
+                raise ValueError("governed repository forest is stale or dirty")
+            records.append(
+                {
+                    "commit": expected_commit,
+                    "present": True,
+                    "repository": repository,
+                    "repository_id": checkout_repository_id(resolved),
+                    "repository_root": relative,
+                    "tree_id": f"git-tree:{str(tree['stdout']).strip()}",
+                    "workspace_clean": True,
+                }
+            )
+        return records
+
+    def _run_governed_snapshot_git(
+        self,
+        arguments: Sequence[str],
+        *,
+        cwd: Path,
+    ) -> dict[str, Any]:
+        """Run one literal, local-only Git query with hard time/output bounds."""
+
+        git_executable = next(
+            (
+                candidate
+                for candidate in (Path("/usr/bin/git"), Path("/bin/git"))
+                if candidate.is_file() and not candidate.is_symlink()
+            ),
+            None,
+        )
+        if git_executable is None:
+            raise ValueError("fixed governed Git executable is unavailable")
+        environment = sanitized_git_environment()
+        environment.update(
+            {
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_TERMINAL_PROMPT": "0",
+            }
+        )
+        completed = self._run_bounded_governed_process(
+            [
+                str(git_executable),
+                "--literal-pathspecs",
+                "--no-optional-locks",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "credential.helper=",
+                "-c",
+                "protocol.allow=never",
+                "-c",
+                "advice.graftFileDeprecated=false",
+                *[str(item) for item in arguments],
+            ],
+            cwd=cwd,
+            environment=environment,
+            timeout_seconds=10,
+            max_output_bytes=1024 * 1024,
+            combine_stderr=False,
+        )
+        if (
+            completed.get("timed_out") is True
+            or completed.get("cancelled") is True
+            or completed.get("output_limit_exceeded") is True
+        ):
+            raise ValueError("bounded governed Git query is unavailable")
+        return {
+            "returncode": int(completed.get("returncode") or 0),
+            "stdout": str(completed.get("output") or ""),
+        }
+
+    def _run_governed_phase_commands(
+        self,
+        commands: Sequence[Mapping[str, Any]],
+        *,
+        workspace_path: Path,
+        baseline_ref: str,
+    ) -> dict[str, Any]:
+        """Execute exact argv specs with repo/CWD/env and forest fencing."""
+
+        forest_before = self._governed_forest_snapshot(
+            commands,
+            workspace_path=workspace_path,
+            baseline_ref=baseline_ref,
+        )
+        results: list[dict[str, Any]] = []
+        infrastructure_failure = False
+        output_limit_exceeded = False
+        timed_out = False
+        cancelled = False
+        with tempfile.TemporaryDirectory(
+            prefix="ipfs-accelerate-governed-home-"
+        ) as raw_home, tempfile.TemporaryDirectory(
+            prefix="ipfs-accelerate-governed-state-"
+        ) as raw_state:
+            private_home = Path(raw_home).resolve(strict=True)
+            private_tmp = private_home / "tmp"
+            private_tmp.mkdir(mode=0o700)
+            for command in commands:
+                repository_root = str(command["repository_root"])
+                repository_path = (
+                    workspace_path
+                    if repository_root == "."
+                    else workspace_path / repository_root
+                ).resolve(strict=True)
+                cwd_relative = str(command["cwd"])
+                cwd = (
+                    repository_path
+                    if cwd_relative == "."
+                    else repository_path / cwd_relative
+                )
+                cwd_resolved = cwd.resolve(strict=True)
+                try:
+                    cwd_resolved.relative_to(repository_path)
+                except ValueError as exc:
+                    raise ValueError("governed command CWD escapes repository") from exc
+                if cwd_resolved != Path(os.path.abspath(cwd)) or not cwd_resolved.is_dir():
+                    raise ValueError("governed command CWD is unavailable or symlinked")
+                environment = build_validation_environment()
+                environment.update(
+                    {
+                        "HF_DATASETS_OFFLINE": "1",
+                        "HF_HUB_OFFLINE": "1",
+                        "HOME": str(private_home),
+                        "PIP_NO_INDEX": "1",
+                        "PYTHONDONTWRITEBYTECODE": "1",
+                        "TMP": str(private_tmp),
+                        "TEMP": str(private_tmp),
+                        "TMPDIR": str(private_tmp),
+                        "TRANSFORMERS_OFFLINE": "1",
+                        "XDG_CACHE_HOME": str(private_home / ".cache"),
+                        "XDG_CONFIG_HOME": str(private_home / ".config"),
+                        "XDG_DATA_HOME": str(private_home / ".local" / "share"),
+                        "XDG_STATE_HOME": str(private_home / ".local" / "state"),
+                        PROOF_REUSE_STATE_ROOT_ENV: str(Path(raw_state).resolve(strict=True)),
+                    }
+                )
+                for path_key in (
+                    "XDG_CACHE_HOME",
+                    "XDG_CONFIG_HOME",
+                    "XDG_DATA_HOME",
+                    "XDG_STATE_HOME",
+                ):
+                    Path(environment[path_key]).mkdir(mode=0o700, parents=True)
+                environment.update(
+                    {
+                        str(key): str(value)
+                        for key, value in dict(command["env"]).items()
+                    }
+                )
+                argv = [str(item) for item in command["argv"]]
+                if argv[0] in {"python", "python3"}:
+                    argv[0] = environment["PYTHON"]
+                started = time.monotonic()
+                output = ""
+                returncode = 75
+                command_timed_out = False
+                command_infrastructure_failure = False
+                try:
+                    bounded_argv, filesystem_receipt = validation_readonly_state_command(
+                        argv,
+                        # Only the private home is writable; the governed Git
+                        # root remains read-only under the inherited Landlock
+                        # policy and is independently checked after execution.
+                        workspace_path=private_home,
+                        private_home_path=private_home,
+                        environment=environment,
+                    )
+                    completed = self._run_bounded_governed_process(
+                        self._governed_network_denied_command(bounded_argv),
+                        cwd=cwd_resolved,
+                        environment=environment,
+                        timeout_seconds=int(command["timeout_seconds"]),
+                    )
+                    returncode = int(completed["returncode"])
+                    output = str(completed["output"] or "")
+                    command_timed_out = completed["timed_out"] is True
+                    command_output_limit_exceeded = (
+                        completed["output_limit_exceeded"] is True
+                    )
+                    command_cancelled = completed["cancelled"] is True
+                    command_infrastructure_failure = bool(
+                        returncode == 75 or command_output_limit_exceeded
+                    )
+                except (OSError, ValidationRuntimeError) as exc:
+                    command_infrastructure_failure = True
+                    command_output_limit_exceeded = False
+                    command_cancelled = False
+                    output = f"{type(exc).__name__}: governed validation unavailable"
+                    returncode = 75
+                    filesystem_receipt = None
+                normalized_output = self._normalize_governed_command_output(
+                    output,
+                    workspace_path=workspace_path,
+                    private_home_path=private_home,
+                )
+                summary = summarize_test_failure(normalized_output)
+                results.append(
+                    {
+                        "argv": list(command["argv"]),
+                        "cancelled": command_cancelled,
+                        "cwd": cwd_relative,
+                        "duration_milliseconds": int(
+                            max(0.0, time.monotonic() - started) * 1000
+                        ),
+                        "env": dict(command["env"]),
+                        "failed_test_ids": sorted(
+                            {
+                                str(item)
+                                for item in summary.get("failed_tests", ())
+                                if str(item)
+                            }
+                        )[:64],
+                        "filesystem_boundary": (
+                            filesystem_receipt.to_dict(applied=True)
+                            if filesystem_receipt is not None
+                            else {}
+                        ),
+                        "id": str(command["id"]),
+                        "infrastructure_failure": command_infrastructure_failure,
+                        "network_mode": "seccomp-deny-sockets",
+                        "normalized_output_cid": content_identity(
+                            {"normalized_output": normalized_output}
+                        ),
+                        "output_limit_bytes": 2 * 1024 * 1024,
+                        "output_limit_exceeded": command_output_limit_exceeded,
+                        "repository": str(command["repository"]),
+                        "repository_root": repository_root,
+                        "returncode": returncode,
+                        "timed_out": command_timed_out,
+                        "timeout_seconds": int(command["timeout_seconds"]),
+                    }
+                )
+                infrastructure_failure = (
+                    infrastructure_failure or command_infrastructure_failure
+                )
+                timed_out = timed_out or command_timed_out
+                output_limit_exceeded = (
+                    output_limit_exceeded or command_output_limit_exceeded
+                )
+                cancelled = cancelled or command_cancelled
+                if returncode != 0:
+                    break
+        try:
+            forest_after = self._governed_forest_snapshot(
+                commands,
+                workspace_path=workspace_path,
+                baseline_ref=baseline_ref,
+            )
+            forest_stale = forest_after != forest_before
+        except (OSError, RuntimeError, ValueError):
+            forest_after = []
+            forest_stale = True
+        first_failure = next(
+            (int(item["returncode"]) for item in results if item["returncode"] != 0),
+            0,
+        )
+        passed = bool(
+            len(results) == len(commands)
+            and first_failure == 0
+            and not infrastructure_failure
+            and not timed_out
+            and not forest_stale
+        )
+        return {
+            "attempted": bool(results),
+            "forest_after": forest_after,
+            "forest_before": forest_before,
+            "infrastructure_failure": infrastructure_failure,
+            "passed": passed,
+            "reason": (
+                "governed_validation_passed"
+                if passed
+                else "governed_validation_forest_stale"
+                if forest_stale
+                else "governed_validation_output_limit"
+                if output_limit_exceeded
+                else "governed_validation_cancelled"
+                if cancelled
+                else "governed_validation_timeout"
+                if timed_out
+                else "governed_validation_unavailable"
+                if infrastructure_failure
+                else "governed_validation_failed"
+            ),
+            "cancelled": cancelled,
+            "results": results,
+            "returncode": first_failure,
+            "output_limit_exceeded": output_limit_exceeded,
+            "stale": forest_stale,
+            "timed_out": timed_out,
+            "unavailable": infrastructure_failure,
+            "validated_commit": baseline_ref,
+        }
+
+    def _run_pre_change_validation_phase(
+        self,
+        task: PortalTask,
+        *,
+        workspace_path: Path,
+        baseline_ref: str,
+    ) -> dict[str, Any]:
+        """Run the typed baseline gate before any provider request."""
+
+        commands = task_phase_commands(task, "pre_change")
+        if not commands:
+            raise ValueError("governed pre-change validation is required")
+        policy = task_pre_change_policy(task)
+        tree = self._candidate_repository_tree(baseline_ref)
+        tree_id = f"git-tree:{tree}" if tree else ""
+        identity = self._identity_for_task(task)
+        task_contract_cid = self._governed_task_contract_cid(task)
+        self._require_current_governed_task_contract(task, task_contract_cid)
+        task_contract = production_task_contract(task, identity)
+        baseline_forest = self._governed_forest_snapshot(
+            commands,
+            workspace_path=workspace_path,
+            baseline_ref=baseline_ref,
+        )
+        execution_plan = build_governed_execution_plan(
+            task_contract=task_contract,
+            baseline_commit=baseline_ref,
+            baseline_forest=baseline_forest,
+        )
+        self._active_governed_execution_plan = dict(execution_plan)
+        if not tree_id:
+            raw_result: dict[str, Any] = {
+                "attempted": False,
+                "passed": False,
+                "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                "reason": "pre_change_validation_tree_unavailable",
+                "results": [],
+                "validated_commit": "",
+                "stale": True,
+                "unavailable": True,
+                "infrastructure_failure": True,
+            }
+        else:
+            try:
+                raw_result = self._run_governed_phase_commands(
+                    commands,
+                    workspace_path=workspace_path,
+                    baseline_ref=baseline_ref,
+                )
+            except Exception as exc:
+                raw_result = {
+                    "attempted": False,
+                    "passed": False,
+                    "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                    "reason": "pre_change_validation_execution_exception",
+                    "exception_type": type(exc).__name__,
+                    "results": [],
+                    "validated_commit": baseline_ref,
+                    "stale": False,
+                    "unavailable": True,
+                    "infrastructure_failure": True,
+                }
+        receipt = build_governed_validation_receipt(
+            phase="pre_change",
+            task_id=task.task_id,
+            task_cid=identity.canonical_task_cid,
+            task_contract_cid=task_contract_cid,
+            execution_plan_cid=str(execution_plan["execution_plan_cid"]),
+            target_commit=baseline_ref,
+            repository_tree_id=tree_id,
+            repository_id=self.merge_target_repository_id,
+            commands=commands,
+            validation_result=raw_result,
+            policy=policy,
+            expected_baseline_failure=task_expected_baseline_failure(task),
+        )
+        self._last_pre_change_validation_receipt = dict(receipt)
+        self._record_event(
+            "pre_change_validation_finished",
+            {
+                "task_id": task.task_id,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "task_contract_cid": task_contract_cid,
+                "execution_plan_cid": execution_plan["execution_plan_cid"],
+                "target_commit": baseline_ref,
+                "repository_tree_id": tree_id,
+                "receipt_cid": receipt["receipt_cid"],
+                "policy": policy,
+                "admitted": bool(receipt["admitted"]),
+                "unavailable": bool(receipt["unavailable"]),
+                "provider_dispatched": False,
+            },
+        )
+        return receipt
+
+    def _run_post_change_validation_phase(
+        self,
+        task: PortalTask,
+        *,
+        workspace_path: Path,
+        candidate_commit: str,
+    ) -> dict[str, Any]:
+        """Run the typed read-only gate against one committed candidate tree."""
+
+        commands = task_phase_commands(task, "post_change")
+        if not commands:
+            raise ValueError("governed post-change validation is required")
+        identity = self._identity_for_task(task)
+        task_contract_cid = self._governed_task_contract_cid(task)
+        self._require_current_governed_task_contract(task, task_contract_cid)
+        execution_plan = getattr(self, "_active_governed_execution_plan", None)
+        verified_plan, _plan_reasons = verify_governed_execution_plan(
+            execution_plan if isinstance(execution_plan, Mapping) else None,
+            task_contract_cid=task_contract_cid,
+        )
+        if not verified_plan:
+            raise ValueError("governed execution plan is absent or stale")
+        tree = self._candidate_repository_tree(candidate_commit)
+        tree_id = f"git-tree:{tree}" if tree else ""
+        try:
+            raw_result = (
+                self._run_governed_phase_commands(
+                    commands,
+                    workspace_path=workspace_path,
+                    baseline_ref=candidate_commit,
+                )
+                if tree_id
+                else {
+                    "attempted": False,
+                    "passed": False,
+                    "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                    "reason": "post_change_validation_tree_unavailable",
+                    "results": [],
+                    "validated_commit": "",
+                    "stale": True,
+                    "unavailable": True,
+                    "infrastructure_failure": True,
+                }
+            )
+        except Exception as exc:
+            raw_result = {
+                "attempted": False,
+                "passed": False,
+                "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                "reason": "post_change_validation_execution_exception",
+                "exception_type": type(exc).__name__,
+                "results": [],
+                "validated_commit": candidate_commit,
+                "stale": False,
+                "unavailable": True,
+                "infrastructure_failure": True,
+            }
+        receipt = build_governed_validation_receipt(
+            phase="post_change",
+            task_id=task.task_id,
+            task_cid=identity.canonical_task_cid,
+            task_contract_cid=task_contract_cid,
+            execution_plan_cid=str(execution_plan["execution_plan_cid"]),
+            target_commit=candidate_commit,
+            repository_tree_id=tree_id,
+            repository_id=self.merge_target_repository_id,
+            commands=commands,
+            validation_result=raw_result,
+            policy="require-pass",
+        )
+        self._last_post_change_validation_receipt = dict(receipt)
+        self._record_event(
+            "post_change_validation_finished",
+            {
+                "task_id": task.task_id,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "task_contract_cid": task_contract_cid,
+                "execution_plan_cid": execution_plan["execution_plan_cid"],
+                "target_commit": candidate_commit,
+                "repository_tree_id": tree_id,
+                "receipt_cid": receipt["receipt_cid"],
+                "admitted": bool(receipt["admitted"]),
+                "unavailable": bool(receipt["unavailable"]),
+            },
+        )
+        return receipt
 
     def build_production_contract_packet_for_task(
         self,
@@ -22187,14 +23552,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         attempt: int = 0,
         workspace_path: Path | None = None,
         baseline_ref: str = "",
+        pre_change_validation: Mapping[str, Any] | None = None,
+        dependency_evidence: Sequence[Mapping[str, Any]] | None = None,
     ) -> ProductionContractPacket:
         """Compile one task-bound packet with exact bounded source context."""
 
-        write_paths = [
-            str(path).strip()
-            for path in (task.outputs or ())
-            if str(path).strip()
-        ]
+        try:
+            write_paths = list(task_provider_effect_paths(task))
+        except ValueError as exc:
+            raise ProviderRoutingError(
+                "production task authority partition is invalid",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            ) from exc
         if not write_paths:
             raise ProviderRoutingError(
                 "production model-assisted route requires declared outputs",
@@ -22209,6 +23578,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         snapshot_commit = current_snapshot.removeprefix("git-commit:").strip()
         context_baseline = str(baseline_ref or snapshot_commit).strip()
         workspace = Path(workspace_path or self.repo_root)
+        for relative in write_paths:
+            candidate = workspace / relative
+            try:
+                if candidate.is_dir():
+                    raise ProviderRoutingError(
+                        "production provider effects must name exact regular files",
+                        reason_code=ProviderReason.PACKET_MALFORMED,
+                    )
+            except OSError as exc:
+                raise ProviderRoutingError(
+                    "production provider effect type is unavailable",
+                    reason_code=ProviderReason.PACKET_MALFORMED,
+                ) from exc
 
         raw_symbol_hints = self._production_context_symbol_hints(
             task,
@@ -22220,6 +23602,60 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             task,
             write_paths=write_paths,
         )
+        task_contract_cid = content_identity(task_contract)
+        self._require_current_governed_task_contract(task, task_contract_cid)
+        execution_plan = getattr(self, "_active_governed_execution_plan", None)
+        verified_plan, _plan_reasons = verify_governed_execution_plan(
+            execution_plan if isinstance(execution_plan, Mapping) else None,
+            task_contract_cid=task_contract_cid,
+            baseline_commit=context_baseline,
+        )
+        if not verified_plan:
+            raise ProviderRoutingError(
+                "production execution plan is absent or stale",
+                reason_code="execution_plan_stale",
+            )
+        expected_pre_commands = task_phase_commands(task, "pre_change")
+        if not expected_pre_commands:
+            raise ProviderRoutingError(
+                "production pre-change validation declaration is missing",
+                reason_code="pre_change_validation_not_declared",
+            )
+        verified_pre, _pre_reasons = verify_governed_validation_receipt(
+            pre_change_validation,
+            phase="pre_change",
+            task_id=task.task_id,
+            task_cid=str(task_contract["canonical_task_cid"]),
+            task_contract_cid=task_contract_cid,
+            execution_plan_cid=str(execution_plan["execution_plan_cid"]),
+            target_commit=context_baseline,
+            repository_tree_id=(
+                f"git-tree:{self._candidate_repository_tree(context_baseline)}"
+            ),
+            repository_id=self.merge_target_repository_id,
+            forest_before=list(execution_plan["baseline_forest"]),
+            forest_after=list(execution_plan["baseline_forest"]),
+        )
+        if (
+            not verified_pre
+            or not isinstance(pre_change_validation, Mapping)
+            or pre_change_validation.get("admitted") is not True
+        ):
+            raise ProviderRoutingError(
+                "production pre-change validation receipt is absent or invalid",
+                reason_code="pre_change_validation_not_admitted",
+            )
+        dependency_closure = (
+            [dict(item) for item in dependency_evidence]
+            if dependency_evidence is not None
+            else self._production_dependency_evidence(
+                task,
+                baseline_ref=context_baseline,
+            )
+        )
+        self._last_production_dependency_evidence = [
+            dict(item) for item in dependency_closure
+        ]
         raw_context_budget = self._task_metadata_value(
             task,
             "context budget tokens",
@@ -22301,6 +23737,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             expansion_handles=(),
             packet_id=f"packet:production:{task.task_id}:attempt-{int(attempt)}",
             extra_goal=extra_goal,
+            task_contract=task_contract,
+            pre_change_validation=pre_change_validation,
+            execution_plan=execution_plan,
+            dependency_evidence=dependency_closure,
+            independent_review_required_for_write=True,
         )
         payload = dict(packet.payload)
         payload["context_slice"] = context_manifest.to_dict()
@@ -22330,11 +23771,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         snapshot_commit = snapshot_id.removeprefix("git-commit:").strip()
         context_baseline = str(baseline_ref or snapshot_commit).strip()
-        effect_paths = tuple(
-            str(path).strip()
-            for path in (task.outputs or ())
-            if str(path).strip()
-        )
+        try:
+            effect_paths = task_provider_effect_paths(task)
+        except ValueError as exc:
+            raise ProviderRoutingError(
+                "production task authority partition is invalid",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            ) from exc
         if not effect_paths:
             raise ProviderRoutingError(
                 "production context requires explicit task outputs",
@@ -22375,6 +23818,86 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             raise ProviderRoutingError(
                 "production packet scope differs from operator task scope",
                 reason_code="scope_authority_mismatch",
+            )
+        packet_contract = payload.get("task_contract")
+        if (
+            not isinstance(packet_contract, Mapping)
+            or dict(packet_contract) != task_contract
+            or payload.get("task_contract_cid") != content_identity(task_contract)
+        ):
+            raise ProviderRoutingError(
+                "production packet task contract is missing or stale",
+                reason_code="task_contract_mismatch",
+            )
+        packet_execution_plan = payload.get("execution_plan")
+        verified_plan, _plan_reasons = verify_governed_execution_plan(
+            packet_execution_plan
+            if isinstance(packet_execution_plan, Mapping)
+            else None,
+            task_contract_cid=content_identity(task_contract),
+            baseline_commit=context_baseline,
+        )
+        packet_pre = payload.get("pre_change_validation")
+        if (
+            not verified_plan
+            or not isinstance(packet_pre, Mapping)
+            or packet_pre.get("execution_plan_cid")
+            != packet_execution_plan.get("execution_plan_cid")
+        ):
+            raise ProviderRoutingError(
+                "production packet execution plan is missing or stale",
+                reason_code="execution_plan_stale",
+            )
+        packet_authority = payload.get("authority")
+        if (
+            not isinstance(packet_authority, Mapping)
+            or packet_authority.get("independent_review_required_for_write")
+            is not True
+        ):
+            raise ProviderRoutingError(
+                "production packet permits an unreviewed write",
+                reason_code="independent_review_write_gate_missing",
+            )
+        expected_pre_commands = task_phase_commands(task, "pre_change")
+        packet_pre = payload.get("pre_change_validation")
+        if not expected_pre_commands:
+            raise ProviderRoutingError(
+                "production packet task has no pre-change validation",
+                reason_code="pre_change_validation_not_declared",
+            )
+        verified_pre, _pre_reasons = verify_governed_validation_receipt(
+            packet_pre if isinstance(packet_pre, Mapping) else None,
+            phase="pre_change",
+            task_id=task.task_id,
+            task_cid=str(task_contract["canonical_task_cid"]),
+            task_contract_cid=content_identity(task_contract),
+            execution_plan_cid=str(packet_execution_plan["execution_plan_cid"]),
+            target_commit=context_baseline,
+            repository_tree_id=(
+                f"git-tree:{self._candidate_repository_tree(context_baseline)}"
+            ),
+            repository_id=self.merge_target_repository_id,
+            forest_before=list(packet_execution_plan["baseline_forest"]),
+            forest_after=list(packet_execution_plan["baseline_forest"]),
+        )
+        if (
+            not verified_pre
+            or not isinstance(packet_pre, Mapping)
+            or packet_pre.get("admitted") is not True
+        ):
+            raise ProviderRoutingError(
+                "production pre-change validation receipt is stale",
+                reason_code="pre_change_validation_not_admitted",
+            )
+        expected_dependencies = self._production_dependency_evidence(
+            task,
+            baseline_ref=context_baseline,
+        )
+        packet_dependencies = payload.get("dependency_evidence", [])
+        if packet_dependencies != expected_dependencies:
+            raise ProviderRoutingError(
+                "production packet dependency evidence is missing or stale",
+                reason_code="dependency_evidence_stale",
             )
         context = payload.get("context_slice")
         if not isinstance(context, Mapping):
@@ -22565,6 +24088,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         workspace = workspace_path.resolve()
         if not workspace.is_dir():
             raise RuntimeError("production workspace must be an existing directory")
+        task_contract_cid = self._governed_task_contract_cid(task)
+        self._require_current_governed_task_contract(task, task_contract_cid)
 
         def canonical_relative_path(value: Any, *, label: str) -> str:
             if not isinstance(value, str):
@@ -22590,7 +24115,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         allowed_paths = [
             canonical_relative_path(path, label="task output path")
-            for path in (task.outputs or ())
+            for path in task_provider_effect_paths(task)
         ]
         if len(allowed_paths) != len(set(allowed_paths)):
             raise RuntimeError("duplicate task output path")
@@ -22801,6 +24326,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return tuple(paths)
 
         def writer(proposal: Any, lease_id: str) -> None:
+            self._require_current_governed_task_contract(
+                task,
+                task_contract_cid,
+            )
             if str(lease_id or "") != str(expected_lease_id or ""):
                 raise RuntimeError("writer lease mismatch")
             if not getattr(proposal, "admitted", False):
@@ -23074,6 +24603,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 if not self._production_provider_route_enabled()
                 else "production provider route disabled"
             )
+        task_contract_cid = self._governed_task_contract_cid(task)
+        self._require_current_governed_task_contract(task, task_contract_cid)
 
         operator_policy = getattr(self, "production_provider_policy", None)
         if isinstance(operator_policy, ProductionCLIProviderPolicy):
@@ -23121,22 +24652,116 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 baseline_ref=baseline_ref,
             )
         )
-        route_packet = packet
-        if route_packet is None:
-            route_packet = self.build_production_contract_packet_for_task(
-                task,
-                snapshot_id=current_snapshot,
-                attempt=attempt,
-                workspace_path=workspace_path,
-                baseline_ref=baseline_ref,
-            )
         context_workspace = Path(workspace_path or self.repo_root)
+        snapshot_commit = (
+            current_snapshot.removeprefix("git-commit:").strip()
+            if current_snapshot.startswith("git-commit:")
+            else ""
+        )
+        context_baseline = str(baseline_ref or snapshot_commit).strip()
+        route_packet = packet
+        pre_change_receipt: Mapping[str, Any] | None = None
+        if route_packet is None:
+            try:
+                pre_change_receipt = self._run_pre_change_validation_phase(
+                    task,
+                    workspace_path=context_workspace,
+                    baseline_ref=context_baseline,
+                )
+            except (TypeError, ValueError) as exc:
+                return {
+                    "returncode": 75,
+                    "pending": True,
+                    "deferred": True,
+                    "repair_required": True,
+                    "reason": "pre_change_validation_contract_invalid",
+                    "reason_code": "pre_change_validation_contract_invalid",
+                    "model_invocation_observed": False,
+                    "provider_capacity_exhausted": False,
+                    "raw_model_command_invoked": False,
+                    "typed_packet_route_only": True,
+                    "event": {
+                        "write_performed": False,
+                        "provider_result_admitted": False,
+                        "pre_change_validation_error_type": type(exc).__name__,
+                    },
+                }
+            if pre_change_receipt.get("admitted") is not True:
+                unavailable = pre_change_receipt.get("unavailable") is True
+                return {
+                    "returncode": 75 if unavailable else 1,
+                    "pending": True,
+                    "deferred": unavailable,
+                    "repair_required": True,
+                    "reason": (
+                        "pre_change_validation_unavailable"
+                        if unavailable
+                        else "pre_change_validation_failed"
+                    ),
+                    "reason_code": (
+                        "pre_change_validation_unavailable"
+                        if unavailable
+                        else "pre_change_validation_failed"
+                    ),
+                    "pre_change_validation": dict(pre_change_receipt),
+                    "model_invocation_observed": False,
+                    "provider_capacity_exhausted": False,
+                    "raw_model_command_invoked": False,
+                    "typed_packet_route_only": True,
+                    "event": {
+                        "write_performed": False,
+                        "provider_result_admitted": False,
+                        "pre_change_validation_receipt_cid": str(
+                            pre_change_receipt.get("receipt_cid") or ""
+                        ),
+                    },
+                }
+            try:
+                route_packet = self.build_production_contract_packet_for_task(
+                    task,
+                    snapshot_id=current_snapshot,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    baseline_ref=baseline_ref,
+                    pre_change_validation=pre_change_receipt,
+                )
+            except ProviderRoutingError as exc:
+                if exc.reason_code not in {
+                    "dependency_evidence_missing",
+                    "dependency_evidence_stale",
+                    "dependency_receipt_declaration_invalid",
+                    "dependency_not_completed",
+                }:
+                    raise
+                return {
+                    "returncode": 75,
+                    "pending": True,
+                    "deferred": True,
+                    "repair_required": True,
+                    "reason": str(exc.reason_code),
+                    "reason_code": str(exc.reason_code),
+                    "pre_change_validation": dict(pre_change_receipt),
+                    "model_invocation_observed": False,
+                    "provider_capacity_exhausted": False,
+                    "raw_model_command_invoked": False,
+                    "typed_packet_route_only": True,
+                    "event": {
+                        "write_performed": False,
+                        "provider_result_admitted": False,
+                        "dependency_evidence_verified": False,
+                    },
+                }
         self._verify_production_packet_context(
             task,
             route_packet,
             workspace_path=context_workspace,
             baseline_ref=baseline_ref,
         )
+        packet_pre_change = getattr(route_packet, "payload", {}).get(
+            "pre_change_validation"
+        )
+        if isinstance(packet_pre_change, Mapping):
+            pre_change_receipt = dict(packet_pre_change)
 
         lease = str(writer_lease_id or "").strip()
         if apply and not lease:
@@ -23259,24 +24884,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and apply
             and route_result.write_performed
         ):
-            # Reviewed-effect capture binds Grok final bytes to an admitted
-            # Codex approve. Capacity recovery applies Grok without that
-            # independent review so capture cannot succeed; skip it and keep
-            # completions non-authoritative while still returning success so
-            # validation/commit can land the written files.
-            if capacity_recovery_write or not self._route_has_independent_codex_approval(
-                route_result
-            ):
-                self._record_event(
-                    "production_reviewed_effect_skipped_capacity_recovery",
-                    {
-                        "task_id": task.task_id,
-                        "attempt": int(attempt),
-                        "reason_code": str(route_result.reason_code or ""),
-                        "write_performed": True,
-                        "completion_authoritative": False,
-                        "proof_authoritative": False,
-                    },
+            if not self._route_has_independent_codex_approval(route_result):
+                raise RuntimeError(
+                    "governed production writer observed bytes without "
+                    "independent admitted review"
                 )
             else:
                 if workspace_path is None or not str(baseline_ref or "").strip():
@@ -23315,6 +24926,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "schema": PRODUCTION_PROVIDER_ROUTE_SCHEMA,
             "interface": PRODUCTION_PROVIDER_ROUTE_INTERFACE,
             "task_id": task.task_id,
+            "task_contract_cid": task_contract_cid,
             "attempt": int(attempt),
             "snapshot_id": current_snapshot,
             "status": route_result.status.value,
@@ -23341,6 +24953,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "raw_model_command_invoked": False,
             "typed_packet_route_only": True,
             "receipt_path": str(receipt_path),
+            "pre_change_validation_receipt_cid": str(
+                (pre_change_receipt or {}).get("receipt_cid") or ""
+            ),
             "pending": pending,
         }
         self._record_event(PRODUCTION_PROVIDER_ROUTE_EVENT, production_event)
@@ -23410,6 +25025,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ),
             "writer_lease_id": lease if route_result.write_performed else "",
             "snapshot_id": current_snapshot,
+            "pre_change_validation": dict(pre_change_receipt or {}),
             # Surface infrastructure deferrals so the implement path can avoid
             # charging the task attempt budget for provider capacity stalls.
             "provider_capacity_exhausted": bool(deferred_infra),
@@ -23550,6 +25166,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             state.active_task_id = ""
             state.active_task_key = ""
             state.active_task_cid = ""
+            state.active_task_contract_cid = ""
             state.active_task_title = ""
             state.active_task_track = ""
             state.active_task_started_at = ""
@@ -23579,6 +25196,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         identity = self._identity_for_task(task)
         state.active_task_key = identity.canonical_task_key
         state.active_task_cid = identity.canonical_task_cid
+        task_contract_cid = self._governed_task_contract_cid(task)
+        state.active_task_contract_cid = task_contract_cid
         state.active_task_title = task.title
         state.active_task_track = task.track
         if not state.active_task_started_at:
@@ -23594,6 +25213,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         state.last_implementation_task_id = task.task_id
         state.last_implementation_task_key = identity.canonical_task_key
         state.last_implementation_task_cid = identity.canonical_task_cid
+        state.last_implementation_task_contract_cid = task_contract_cid
         state.last_implementation_started_at = started_at
         state.last_implementation_finished_at = ""
         state.last_implementation_returncode = None
@@ -26483,11 +28103,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         baseline_ref: str = "",
     ) -> dict[str, Any]:
+        task_contract_cid = self._governed_task_contract_cid(task)
+        if task_contract_cid:
+            self._require_current_governed_task_contract(
+                task,
+                task_contract_cid,
+            )
         return self._decision_runtime_mutation(
             "commit",
             {
                 "operation": "commit_worktree_changes",
                 "task_id": task.task_id,
+                "task_contract_cid": task_contract_cid,
                 "attempt": int(attempt),
                 "worktree_path": str(worktree_path),
             },
@@ -27635,9 +29262,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _proposal_scope_paths(task: PortalTask) -> tuple[str, ...]:
         """Return exact repository paths owned by a task's output declaration."""
 
-        raw_paths: list[str] = list(task_declared_output_paths(task))
-        for metadata_name in ("predicted files", "allowed paths"):
-            raw_paths.extend(split_csv(task.metadata.get(metadata_name, "")))
+        try:
+            partition = task_authority_partition(task)
+        except ValueError:
+            return ()
+        raw_paths: list[str] = (
+            list(partition.provider_effects)
+            if partition.explicit
+            else list(task_declared_output_paths(task))
+        )
+        if not partition.explicit:
+            for metadata_name in ("predicted files", "allowed paths"):
+                raw_paths.extend(split_csv(task.metadata.get(metadata_name, "")))
         normalized: set[str] = set()
         for raw_path in raw_paths:
             path = str(raw_path).strip().replace("\\", "/")
@@ -37304,6 +38940,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "expected_lease_id": authority.lease_id,
             "expected_task_id": task_id,
             "expected_canonical_task_cid": canonical_task_cid,
+            "expected_task_contract_cid": authority.task_contract_cid,
             "expected_attempt": expected_attempt,
             "expected_branch": branch_name,
             "expected_merge_target": self.resolved_merge_target_branch,
@@ -40862,6 +42499,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
     def _build_implementation_lock_metadata(self, task: PortalTask, attempt: int, started_at: str) -> dict[str, Any]:
         identity = self._identity_for_task(task)
+        task_contract_cid = self._governed_task_contract_cid(task)
         lease_seed = (
             f"{os.getpid()}:{threading.get_ident()}:{time.time_ns()}:"
             f"{task.task_id}:{attempt}"
@@ -40876,6 +42514,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "task_id": task.task_id,
             "canonical_task_key": identity.canonical_task_key,
             "canonical_task_cid": identity.canonical_task_cid,
+            "task_contract_cid": task_contract_cid,
             "board_namespace": identity.board_namespace,
             "attempt": attempt,
             "started_at": started_at,
@@ -40888,6 +42527,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         started_at: str,
     ) -> dict[str, Any]:
         identity = self._identity_for_task(task)
+        task_contract_cid = self._governed_task_contract_cid(task)
         lease_seed = (
             f"task-claim:{os.getpid()}:{threading.get_ident()}:{time.time_ns()}:"
             f"{task.task_id}:{attempt}"
@@ -40904,6 +42544,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "started_at": started_at,
                 "canonical_task_key": identity.canonical_task_key,
                 "canonical_task_cid": identity.canonical_task_cid,
+                "task_contract_cid": task_contract_cid,
                 "board_namespace": identity.board_namespace,
                 "task_shard_count": self.task_shard_count,
                 "task_shard_index": self.task_shard_index,
@@ -40919,6 +42560,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         resource_path: str,
     ) -> dict[str, Any]:
         identity = self._identity_for_task(task)
+        task_contract_cid = self._governed_task_contract_cid(task)
         lease_seed = (
             f"resource-claim:{os.getpid()}:{threading.get_ident()}:"
             f"{time.time_ns()}:{resource_path}:{task.task_id}:{attempt}"
@@ -40936,6 +42578,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "repository_id": self.merge_target_repository_id,
                 "canonical_task_key": identity.canonical_task_key,
                 "canonical_task_cid": identity.canonical_task_cid,
+                "task_contract_cid": task_contract_cid,
                 "board_namespace": identity.board_namespace,
                 "resource_kind": "submodule",
                 "resource_path": resource_path,
@@ -40953,6 +42596,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         started_at: str,
     ) -> dict[str, Any]:
         identity = self._identity_for_task(task)
+        task_contract_cid = self._governed_task_contract_cid(task)
         return {
             "kind": "merge",
             "pid": os.getpid(),
@@ -40963,6 +42607,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "task_id": task.task_id,
             "canonical_task_key": identity.canonical_task_key,
             "canonical_task_cid": identity.canonical_task_cid,
+            "task_contract_cid": task_contract_cid,
             "board_namespace": identity.board_namespace,
             "attempt": attempt,
             "branch": branch_name,
