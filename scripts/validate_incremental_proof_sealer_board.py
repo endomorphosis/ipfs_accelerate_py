@@ -9487,9 +9487,7 @@ def _release_environment(workspace: Path, *, source_root: Path = REPO_ROOT) -> d
         "PYTHONHASHSEED": "0",
         "PYTHONPYCACHEPREFIX": str(workspace / "pycache"),
         "PYTHONPATH": python_path,
-        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
         "PYTEST_ADDOPTS": (
-            "-p pytest_benchmark "
             f"--benchmark-storage=file://{workspace / 'pytest-benchmark'}"
         ),
         "PATH": RELEASE_FIXED_EXECUTABLE_PATH,
