@@ -1092,7 +1092,7 @@ W20 AAE-063
 
 ## AAE-039 Bind released canonical authorities and create assurance manifests
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
