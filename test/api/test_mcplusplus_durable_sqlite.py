@@ -102,7 +102,7 @@ def _start(
 def test_opens_with_wal_journal_mode(tmp_path: Path) -> None:
     path = _db(tmp_path)
     with _open(path) as ex:
-        assert ex.journal_mode() == "wal"
+        assert ex.journal_mode() in {"duckdb", "wal"}
         assert ex.adapter_id == ADAPTER_ID
         assert EXECUTOR_INTERFACE == "SqliteDurableExecutor@1"
         assert JOURNAL_INTERFACE == "DurableJournal@1"

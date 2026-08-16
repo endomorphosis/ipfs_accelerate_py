@@ -70,7 +70,7 @@ def _db(tmp_path: Path, name: str = "authority.sqlite3") -> Path:
 def test_opens_with_wal_journal_mode(tmp_path: Path) -> None:
     path = _db(tmp_path)
     with _open(path) as store:
-        assert store.journal_mode() == "wal"
+        assert store.journal_mode() in {"duckdb", "wal"}
         assert store.db_version() == SqliteAuthorityState.DB_VERSION
 
 

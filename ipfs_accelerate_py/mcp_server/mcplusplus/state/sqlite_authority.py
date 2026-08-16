@@ -1,19 +1,20 @@
-"""Durable single-authority SQLite state with CAS, leases, fencing, and restart.
+"""Durable single-authority DuckDB/Quack state with CAS, leases, fencing, and restart.
 
-Interface label: ``SqliteAuthorityState@1``
+Interface label: ``SqliteAuthorityState@1`` (stable wire name)
 
-This module is the mandatory MCP++ 1.0 backend for ``StateRef@1`` mode
-``single_authority`` (ADR-0004 §2 / plan KD-9):
+This module is the primary MCP++ 1.0 backend for ``StateRef@1`` mode
+``single_authority`` (ADR-0004 §2 / 2026-08-16 correction of plan KD-9):
 
-* SQLite with WAL and ``PRAGMA synchronous=FULL``
+* DuckDB file store, with best-effort local Quack/DuckLake ``LOAD``
 * Compare-and-swap on a monotonic ``version``
 * Exclusive leases and monotonic fencing tokens
 * Restart recovery of every acknowledged committed write
+* SQLite WAL fallback via ``MCPPLUSPLUS_SQL_ENGINE=sqlite``
 
-The SQLite database is the authority for this mode's live keyspace (distinct
-from kit coordination storage, where immutable blocks are authority and SQLite
-is a rebuildable index). Concurrent writers without a valid lease/fence produce
-an explicit conflict — never a silent merge.
+The DuckDB database is the authority for this mode's live keyspace (distinct
+from kit coordination storage, where immutable blocks are authority and a
+local SQL index is rebuildable). Concurrent writers without a valid lease/fence
+produce an explicit conflict — never a silent merge.
 
 Crash-injection boundaries (``CAS_INTERRUPTION_POINTS``) exist only so restart
 tests can model process death at durable seams. Production callers leave
@@ -24,17 +25,23 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
+from ipfs_accelerate_py.mcp_server.mcplusplus.storage.engine import (
+    EngineConnection,
+    EngineError,
+    connect_sql_engine,
+)
+
 
 SCHEMA_MARKER = "mcp++/state/state-ref@1"
 CONSISTENCY_MODE = "single_authority"
-PROVIDER_ID = "sqlite-authority"
+PROVIDER_ID = "duckdb-authority"
+SQLITE_PROVIDER_ID = "sqlite-authority"
 INTERFACE_LABEL = "SqliteAuthorityState@1"
 
 # Named seams for the declared crash matrix (MCPP-037 acceptance).
@@ -271,18 +278,20 @@ class CasWriteResult:
 
 
 class SqliteAuthorityState:
-    """Single-authority StateRef store backed by SQLite WAL + CAS.
+    """Single-authority StateRef store backed by DuckDB (primary) or SQLite.
 
     Parameters
     ----------
     db_path:
-        Path to the SQLite database file. Parent directories are created.
+        Path to the database file. Parent directories are created.
     clock_ms:
         Optional callable returning unix epoch milliseconds (injectable for tests).
     crash_injector:
         Optional ``callable(boundary: str) -> None`` invoked at named durable
         seams. Raising from the injector models process death; recovery is the
         reopen path, not cleanup in the injector.
+    engine:
+        ``duckdb`` (default) or ``sqlite``.
     """
 
     DB_VERSION = 1
@@ -293,6 +302,7 @@ class SqliteAuthorityState:
         *,
         clock_ms: Optional[Callable[[], int]] = None,
         crash_injector: Optional[Callable[[str], None]] = None,
+        engine: Optional[str] = None,
     ) -> None:
         self.db_path = Path(db_path)
         if self.db_path.parent and str(self.db_path.parent) not in ("", "."):
@@ -300,23 +310,14 @@ class SqliteAuthorityState:
         self._clock_ms = clock_ms or (lambda: int(time.time() * 1000))
         self._crash_injector = crash_injector
         self._lock = threading.RLock()
+        self._requested_engine = engine
         self._connection = self._open_database()
 
     # -- lifecycle ---------------------------------------------------------
 
-    def _open_database(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(
-            str(self.db_path),
-            timeout=30,
-            check_same_thread=False,
-            isolation_level=None,  # manage transactions explicitly
-        )
+    def _open_database(self) -> EngineConnection:
+        connection = connect_sql_engine(self.db_path, engine=self._requested_engine)
         try:
-            connection.row_factory = sqlite3.Row
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.execute("PRAGMA synchronous=FULL")
-            connection.execute("PRAGMA foreign_keys=ON")
-            connection.execute("PRAGMA busy_timeout=30000")
             self._create_schema(connection)
             return connection
         except Exception:
@@ -324,7 +325,7 @@ class SqliteAuthorityState:
             raise
 
     @classmethod
-    def _create_schema(cls, connection: sqlite3.Connection) -> None:
+    def _create_schema(cls, connection: EngineConnection) -> None:
         connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS metadata (
@@ -376,7 +377,11 @@ class SqliteAuthorityState:
         )
         connection.execute(
             "INSERT OR REPLACE INTO metadata(key, value) VALUES('provider', ?)",
-            (PROVIDER_ID,),
+            (
+                PROVIDER_ID
+                if getattr(connection, "engine", "duckdb") == "duckdb"
+                else SQLITE_PROVIDER_ID,
+            ),
         )
         connection.execute(
             "INSERT OR REPLACE INTO metadata(key, value) VALUES('mode', ?)",
@@ -385,11 +390,6 @@ class SqliteAuthorityState:
 
     def close(self) -> None:
         with self._lock:
-            try:
-                # Checkpoint WAL so a clean close leaves a consistent main file.
-                self._connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            except sqlite3.Error:
-                pass
             self._connection.close()
 
     def __enter__(self) -> "SqliteAuthorityState":
@@ -405,10 +405,16 @@ class SqliteAuthorityState:
         *,
         clock_ms: Optional[Callable[[], int]] = None,
         crash_injector: Optional[Callable[[str], None]] = None,
+        engine: Optional[str] = None,
     ) -> "SqliteAuthorityState":
         """Open or re-open a durable store (restart recovery path)."""
 
-        return cls(db_path, clock_ms=clock_ms, crash_injector=crash_injector)
+        return cls(
+            db_path,
+            clock_ms=clock_ms,
+            crash_injector=crash_injector,
+            engine=engine,
+        )
 
     def _interrupt(self, boundary: str) -> None:
         if self._crash_injector is not None:
@@ -450,20 +456,25 @@ class SqliteAuthorityState:
             ).fetchall()
         return tuple(str(r["state_id"]) for r in rows)
 
-    def _row_to_record(self, row: sqlite3.Row) -> Dict[str, Any]:
+    def _row_to_record(self, row: Any) -> Dict[str, Any]:
         value = json.loads(row["value_json"])
         lease = _loads_optional(row["lease_json"])
         fence = _loads_optional(row["fence_json"])
         authority = _loads_optional(row["authority_json"])
         parents = _loads_optional(row["parents_json"]) or []
         metadata = _loads_optional(row["metadata_json"])
+        provider = (
+            PROVIDER_ID
+            if self._connection.engine == "duckdb"
+            else SQLITE_PROVIDER_ID
+        )
         state_ref: Dict[str, Any] = {
             "schema": SCHEMA_MARKER,
             "id": row["state_id"],
             "mode": CONSISTENCY_MODE,
             "version": int(row["version"]),
             "epoch": int(row["epoch"]),
-            "provider": PROVIDER_ID,
+            "provider": provider,
             "root_cid": row["root_cid"],
             "parents": list(parents),
         }
@@ -586,7 +597,7 @@ class SqliteAuthorityState:
             except Exception:
                 try:
                     conn.execute("ROLLBACK")
-                except sqlite3.Error:
+                except EngineError:
                     pass
                 raise
         return self.get(state_id)
@@ -766,7 +777,7 @@ class SqliteAuthorityState:
                 )
                 new_root_cid = root_cid if root_cid is not None else row["root_cid"]
 
-                conn.execute(
+                updated = conn.execute(
                     """
                     UPDATE state_entries SET
                       version = ?,
@@ -778,6 +789,7 @@ class SqliteAuthorityState:
                       metadata_json = ?,
                       updated_at_ms = ?
                     WHERE state_id = ? AND version = ?
+                    RETURNING state_id
                     """,
                     (
                         new_version,
@@ -791,8 +803,8 @@ class SqliteAuthorityState:
                         state_id,
                         expected_version,
                     ),
-                )
-                if conn.execute("SELECT changes()").fetchone()[0] != 1:
+                ).fetchone()
+                if updated is None:
                     conn.execute("ROLLBACK")
                     # Lost the row-level race inside the transaction (should be
                     # rare under BEGIN IMMEDIATE); surface as CAS mismatch.
@@ -832,7 +844,7 @@ class SqliteAuthorityState:
             except Exception:
                 try:
                     conn.execute("ROLLBACK")
-                except sqlite3.Error:
+                except EngineError:
                     pass
                 raise
 
@@ -966,7 +978,7 @@ class SqliteAuthorityState:
             except Exception:
                 try:
                     conn.execute("ROLLBACK")
-                except sqlite3.Error:
+                except EngineError:
                     pass
                 raise
         return self.get(state_id)
@@ -1038,7 +1050,7 @@ class SqliteAuthorityState:
             except Exception:
                 try:
                     conn.execute("ROLLBACK")
-                except sqlite3.Error:
+                except EngineError:
                     pass
                 raise
         return self.get(state_id)
@@ -1098,7 +1110,7 @@ class SqliteAuthorityState:
             except Exception:
                 try:
                     conn.execute("ROLLBACK")
-                except sqlite3.Error:
+                except EngineError:
                     pass
                 raise
         return self.get(state_id)
@@ -1154,7 +1166,7 @@ class SqliteAuthorityState:
             except Exception:
                 try:
                     conn.execute("ROLLBACK")
-                except sqlite3.Error:
+                except EngineError:
                     pass
                 raise
         return self.get(state_id)
@@ -1162,11 +1174,21 @@ class SqliteAuthorityState:
     # -- diagnostics -------------------------------------------------------
 
     def journal_mode(self) -> str:
-        """Return the active SQLite journal mode (expected: ``wal``)."""
+        """Return ``duckdb`` for the primary engine, else SQLite ``wal``."""
 
         with self._lock:
+            if self._connection.engine == "duckdb":
+                return "duckdb"
             row = self._connection.execute("PRAGMA journal_mode").fetchone()
         return str(row[0]).lower()
+
+    @property
+    def engine(self) -> str:
+        return self._connection.engine
+
+    @property
+    def loaded_extensions(self) -> tuple[str, ...]:
+        return self._connection.loaded_extensions
 
     def db_version(self) -> int:
         with self._lock:
@@ -1190,6 +1212,10 @@ __all__ = [
     "LeaseError",
     "SqliteAuthorityError",
     "SqliteAuthorityState",
+    "DuckDBAuthorityState",
     "StateNotFoundError",
     "StaleFenceError",
 ]
+
+
+DuckDBAuthorityState = SqliteAuthorityState

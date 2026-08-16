@@ -1,10 +1,10 @@
 """Accelerate runtime binding to DurableExecutor@1 (RuntimeDurableAdapter@1).
 
 MCPP-053 / track durable-accelerate: the accelerate MCP server dispatches
-multi-step tasks through the mandatory SQLite journaled DurableExecutor
+multi-step tasks through the primary DuckDB/Quack journaled DurableExecutor
 adapter. This module is **wiring only** — it does not implement a second
 journal, crash-recovery store, or private durable contract (ADR-0005 /
-durable-execution.md §10.3).
+durable-execution.md §10.3). SQLite remains an explicit fallback.
 
 Lifecycle:
 
@@ -67,7 +67,7 @@ class RuntimeDurableAdapter:
     Parameters
     ----------
     db_path:
-        SQLite journal path owned by :class:`SqliteDurableExecutor` /
+        DuckDB (primary) journal path owned by :class:`SqliteDurableExecutor` /
         :class:`DurableJournal`. This adapter never opens a second journal.
     clock_ms:
         Injectable clock (unix ms) forwarded to the executor.

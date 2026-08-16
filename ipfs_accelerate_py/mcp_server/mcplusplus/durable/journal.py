@@ -1,11 +1,13 @@
-"""SQLite durable execution journal (DurableJournalRecord@1 authority).
+"""DuckDB/Quack primary durable execution journal (DurableJournalRecord@1).
 
 Interface label: ``DurableJournal@1``
 
-This module owns the append-only journal store used by the mandatory
-``SqliteDurableExecutor@1`` adapter (ADR-0005 / MCPP-051):
+This module owns the append-only journal store used by the primary
+``SqliteDurableExecutor@1`` adapter (ADR-0005 / MCPP-051), now backed by
+**DuckDB** with best-effort **Quack** and **DuckLake** ``LOAD`` (never
+network ``INSTALL``). SQLite remains an explicit fallback:
 
-* SQLite with WAL and ``PRAGMA synchronous=FULL``
+* DuckDB file store (default); SQLite WAL if DuckDB cannot open
 * Monotonic per-execution ``journal_seq`` starting at 1
 * Content-addressed journal records (``mcpp-jcs-v1`` / Kubo CIDv1)
 * Idempotency-key index for committed side effects
@@ -20,7 +22,6 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import threading
 import time
 from dataclasses import dataclass
@@ -28,11 +29,17 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from ipfs_accelerate_py.mcp_server.mcplusplus.kubo_cid import cid_for_bytes
+from ipfs_accelerate_py.mcp_server.mcplusplus.storage.engine import (
+    EngineConnection,
+    EngineError,
+    connect_sql_engine,
+)
 
 JOURNAL_RECORD_SCHEMA = "mcp++/durable/journal-record@1"
 CANONICALIZATION = "mcpp-jcs-v1"
 INTERFACE_LABEL = "DurableJournal@1"
-ADAPTER_ID = "sqlite-journal@1"
+ADAPTER_ID = "duckdb-quack-journal@1"
+SQLITE_ADAPTER_ID = "sqlite-journal@1"
 SCHEMA_MARKER = "mcp++/durable/journal@1"
 
 JOURNAL_TRANSITIONS = frozenset(
@@ -238,14 +245,16 @@ class AppendResult:
 
 
 class DurableJournal:
-    """Append-only SQLite journal for DurableExecutor executions.
+    """Append-only DuckDB (primary) / SQLite (fallback) durable journal.
 
     Parameters
     ----------
     db_path:
-        Path to the SQLite database file. Parent directories are created.
+        Path to the database file. Parent directories are created.
     clock_ms:
         Optional callable returning unix epoch milliseconds (injectable for tests).
+    engine:
+        ``duckdb`` (default) or ``sqlite``. ``None`` uses the MCP++ resolver.
     """
 
     DB_VERSION = 1
@@ -255,29 +264,21 @@ class DurableJournal:
         db_path: os.PathLike[str] | str,
         *,
         clock_ms: Optional[Callable[[], int]] = None,
+        engine: Optional[str] = None,
     ) -> None:
         self.db_path = Path(db_path)
         if self.db_path.parent and str(self.db_path.parent) not in ("", "."):
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._clock_ms = clock_ms or (lambda: int(time.time() * 1000))
         self._lock = threading.RLock()
+        self._requested_engine = engine
         self._connection = self._open_database()
 
     # -- lifecycle ---------------------------------------------------------
 
-    def _open_database(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(
-            str(self.db_path),
-            timeout=30,
-            check_same_thread=False,
-            isolation_level=None,
-        )
+    def _open_database(self) -> EngineConnection:
+        connection = connect_sql_engine(self.db_path, engine=self._requested_engine)
         try:
-            connection.row_factory = sqlite3.Row
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.execute("PRAGMA synchronous=FULL")
-            connection.execute("PRAGMA foreign_keys=ON")
-            connection.execute("PRAGMA busy_timeout=30000")
             self._create_schema(connection)
             return connection
         except Exception:
@@ -285,7 +286,7 @@ class DurableJournal:
             raise
 
     @classmethod
-    def _create_schema(cls, connection: sqlite3.Connection) -> None:
+    def _create_schema(cls, connection: EngineConnection) -> None:
         connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS metadata (
@@ -394,7 +395,11 @@ class DurableJournal:
         )
         connection.execute(
             "INSERT OR REPLACE INTO metadata(key, value) VALUES('adapter', ?)",
-            (ADAPTER_ID,),
+            (
+                ADAPTER_ID
+                if getattr(connection, "engine", "duckdb") == "duckdb"
+                else SQLITE_ADAPTER_ID,
+            ),
         )
         connection.execute(
             "INSERT OR REPLACE INTO metadata(key, value) VALUES('schema', ?)",
@@ -403,10 +408,6 @@ class DurableJournal:
 
     def close(self) -> None:
         with self._lock:
-            try:
-                self._connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            except sqlite3.Error:
-                pass
             self._connection.close()
 
     def __enter__(self) -> "DurableJournal":
@@ -421,17 +422,28 @@ class DurableJournal:
         db_path: os.PathLike[str] | str,
         *,
         clock_ms: Optional[Callable[[], int]] = None,
+        engine: Optional[str] = None,
     ) -> "DurableJournal":
         """Open or create a durable journal database."""
 
-        return cls(db_path, clock_ms=clock_ms)
+        return cls(db_path, clock_ms=clock_ms, engine=engine)
 
     def journal_mode(self) -> str:
-        """Return the active SQLite journal_mode (expect ``wal``)."""
+        """Return ``duckdb`` for the primary engine, else SQLite ``wal``."""
 
         with self._lock:
+            if self._connection.engine == "duckdb":
+                return "duckdb"
             row = self._connection.execute("PRAGMA journal_mode").fetchone()
             return str(row[0]).lower()
+
+    @property
+    def engine(self) -> str:
+        return self._connection.engine
+
+    @property
+    def loaded_extensions(self) -> tuple[str, ...]:
+        return self._connection.loaded_extensions
 
     def db_version(self) -> int:
         with self._lock:
@@ -757,7 +769,7 @@ class DurableJournal:
             except Exception:
                 try:
                     self._connection.execute("ROLLBACK")
-                except sqlite3.Error:
+                except EngineError:
                     pass
                 raise
             return self._get_execution_unlocked(eid)
@@ -1067,7 +1079,7 @@ class DurableJournal:
             except Exception:
                 try:
                     self._connection.execute("ROLLBACK")
-                except sqlite3.Error:
+                except EngineError:
                     pass
                 raise
 
@@ -1145,7 +1157,7 @@ class DurableJournal:
             except Exception:
                 try:
                     self._connection.execute("ROLLBACK")
-                except sqlite3.Error:
+                except EngineError:
                     pass
                 raise
             return self._get_execution_unlocked(eid)
@@ -1201,7 +1213,7 @@ class DurableJournal:
             except Exception:
                 try:
                     self._connection.execute("ROLLBACK")
-                except sqlite3.Error:
+                except EngineError:
                     pass
                 raise
 
@@ -1297,7 +1309,7 @@ class DurableJournal:
             raise ExecutionNotFoundError(execution_id)
         return execution
 
-    def _row_to_execution(self, row: sqlite3.Row) -> Dict[str, Any]:
+    def _row_to_execution(self, row: Any) -> Dict[str, Any]:
         return {
             "execution_id": row["execution_id"],
             "envelope_cid": row["envelope_cid"],

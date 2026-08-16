@@ -1,11 +1,11 @@
-"""SQLite journaled DurableExecutor@1 adapter (mandatory MCP++ 1.0 path).
+"""DuckDB/Quack journaled DurableExecutor@1 adapter (primary MCP++ 1.0 path).
 
-Interface label: ``SqliteDurableExecutor@1``
+Interface label: ``SqliteDurableExecutor@1`` (stable wire name)
 
 Implements the DurableExecutor@1 method surface from
 ``mcplusplus/docs/architecture/durable-execution.md`` and
-``schemas/durable/durable-executor-1.schema.json`` using a local SQLite
-journal (see :mod:`journal`).
+``schemas/durable/durable-executor-1.schema.json`` using the local
+DuckDB/Quack journal (see :mod:`journal`). SQLite is an explicit fallback.
 
 Durability properties (MCPP-051 acceptance):
 
@@ -101,7 +101,7 @@ class SqliteDurableExecutor:
     Parameters
     ----------
     db_path:
-        SQLite database path for the journal.
+        DuckDB (primary) or SQLite journal path.
     clock_ms:
         Injectable clock (unix ms).
     event_dag:
@@ -167,7 +167,8 @@ class SqliteDurableExecutor:
 
     @property
     def adapter_id(self) -> str:
-        return ADAPTER_ID
+        engine = getattr(self._journal, "engine", "duckdb")
+        return ADAPTER_ID if engine == "duckdb" else "sqlite-journal@1"
 
     def journal_mode(self) -> str:
         return self._journal.journal_mode()
@@ -2115,5 +2116,8 @@ class SqliteDurableExecutor:
 # Module-level note for evidence scanners / acceptance text search:
 RESTATE_DAPR_NON_BLOCKER = (
     "Restate and Dapr absence is a documented non-blocker for MCPP-051 and gate 17 "
-    "(ADR-0005). The mandatory adapter is this SQLite journaled DurableExecutor."
+    "(ADR-0005). The primary adapter is this DuckDB/Quack journaled DurableExecutor; "
+    "SQLite is an explicit fallback."
 )
+
+DuckDBDurableExecutor = SqliteDurableExecutor
