@@ -1,0 +1,250 @@
+{
+  "authority_summary": {
+    "current_probe": {
+      "available": false,
+      "duckdb_version": "1.5.2",
+      "quack_status": "install-required",
+      "reason": "import_only_insufficient",
+      "unsafe_to_call_multi_writer": true
+    },
+    "duckdb_role": "authoritative transactional records, schema, CAS, fencing",
+    "ducklake": {
+      "authority": false,
+      "classification": "optional non-authoritative projection/query storage",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/ducklake",
+      "present": true
+    },
+    "operational_control_plane": "DuckDB + Quack",
+    "quack_role": "mandatory multi-reader/multi-writer transport and exclusive state-owner"
+  },
+  "rows": [
+    {
+      "classification": "canonical authority",
+      "concern": "semantic_index",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "semantic_state",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "semantic_governor",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_governor"
+    },
+    {
+      "classification": "absent",
+      "concern": "adversarial_assurance",
+      "exists": false,
+      "notes": "path absent from this snapshot; classified absent, not unresolved",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/adversarial_assurance"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "software_verification",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "formalization",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/formalization"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "logic_backends",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/backends"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "logic_families",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/families"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "verification_api",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "ducklake",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/ducklake"
+    },
+    {
+      "classification": "absent",
+      "concern": "supervisor_semantic_state",
+      "exists": false,
+      "notes": "path absent from this snapshot; classified absent, not unresolved",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state"
+    },
+    {
+      "classification": "canonical consumer",
+      "concern": "supervisor_analysis",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis"
+    },
+    {
+      "classification": "canonical consumer",
+      "concern": "supervisor_context",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/context"
+    },
+    {
+      "classification": "canonical consumer",
+      "concern": "supervisor_proof",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "supervisor_objectives",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/objectives"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "supervisor_planning",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "supervisor_task_sources",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "supervisor_runtime",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "supervisor_todo_daemon",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "supervisor_validation",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/validation"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "supervisor_merge",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/merge"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "supervisor_rescue",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/rescue"
+    },
+    {
+      "classification": "canonical consumer",
+      "concern": "supervisor_self_improvement",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/self_improvement"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "supervisor_entrypoints",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints"
+    },
+    {
+      "classification": "canonical consumer",
+      "concern": "supervisor_integrations",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/integrations"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "duckdb_control",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py"
+    },
+    {
+      "classification": "canonical authority",
+      "concern": "quack_transport",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py"
+    },
+    {
+      "classification": "projection",
+      "concern": "artifact_store_export",
+      "exists": true,
+      "notes": "present in the isolated execution snapshot",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/database_evidence_store.py"
+    }
+  ],
+  "schema": "lgswf/inventory@1",
+  "source_head": "521bbc494a6e00280e1e376c23adbdc7a9e8b643",
+  "source_tree": "f58de82f07b573eae48265648159d34a32eb5351",
+  "unresolved_unclassified_rows": []
+}
