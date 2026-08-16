@@ -1672,7 +1672,7 @@ overlays. Never force-push.
 
 ## MCPP-053 Bind the accelerate runtime to DurableExecutor
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
