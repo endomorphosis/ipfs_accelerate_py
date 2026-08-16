@@ -2812,8 +2812,10 @@ overlays. Never force-push.
 
 ## MCPP-097 Resolve validation retry-budget failure for MCPP-080
 
-- Status: todo
+- Status: completed
 - Completion: manual
+- Completion evidence: Proposal gate rejected board-declared `.github/workflows/` ADD as validation_weakening_forbidden; task-owned workflow adds are now admitted; both CiWorkflow@1 files landed; MCPP-080 released from strategy blocked_tasks
+- Canonical board task: false
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-028, MCPP-044, MCPP-064, MCPP-077
