@@ -1609,15 +1609,16 @@ overlays. Never force-push.
 
 ## MCPP-051 Implement the SQLite journaled DurableExecutor adapter
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
+- Completion evidence: SqliteDurableExecutor@1 + DurableJournal@1 and test/api/test_mcplusplus_durable_sqlite.py landed by MCPP-096; python -m pytest -q test/api/test_mcplusplus_durable_sqlite.py — 16 passed. Prior rc 4 was undeclared-test snapshot debt, not an adapter regression.
 - Is schedulable: true
 - Review only: false
 - Priority: P0
 - Track: durable-sqlite
 - Depends on: MCPP-050
 - Goal id: MCPP-G090
-- Outputs: ipfs_accelerate_py/mcp_server/mcplusplus/durable/sqlite_executor.py, ipfs_accelerate_py/mcp_server/mcplusplus/durable/journal.py
+- Outputs: ipfs_accelerate_py/mcp_server/mcplusplus/durable/sqlite_executor.py, ipfs_accelerate_py/mcp_server/mcplusplus/durable/journal.py, test/api/test_mcplusplus_durable_sqlite.py
 - Validation: python -m pytest -q test/api/test_mcplusplus_durable_sqlite.py
 - Board namespace: mcplusplus-1-0-gap-closure-v1
 - Bundle: mcplusplus/1.0/durable-sqlite
@@ -1626,7 +1627,7 @@ overlays. Never force-push.
 - Resource stage: implementation
 - Estimated tokens: 22000
 - Implementation timeout seconds: 7200
-- Predicted files: ipfs_accelerate_py/mcp_server/mcplusplus/durable/sqlite_executor.py, ipfs_accelerate_py/mcp_server/mcplusplus/durable/journal.py
+- Predicted files: ipfs_accelerate_py/mcp_server/mcplusplus/durable/sqlite_executor.py, ipfs_accelerate_py/mcp_server/mcplusplus/durable/journal.py, test/api/test_mcplusplus_durable_sqlite.py
 - Interfaces: SqliteDurableExecutor@1
 - Allow concurrent with: 
 - Conflict policy: New durable package. Optional Restate/Dapr adapter only if local compose works.
@@ -2800,6 +2801,7 @@ overlays. Never force-push.
 
 - Status: completed
 - Completion: manual
+- Canonical board task: false
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-050
