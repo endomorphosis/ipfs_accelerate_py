@@ -2417,7 +2417,7 @@ overlays. Never force-push.
 
 ## MCPP-077 Emit a machine-readable evidence bundle and independent verifier
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
