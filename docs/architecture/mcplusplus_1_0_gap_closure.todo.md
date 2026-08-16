@@ -1206,7 +1206,7 @@ overlays. Never force-push.
 
 ## MCPP-038 Implement a real Automerge CRDT state adapter
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
