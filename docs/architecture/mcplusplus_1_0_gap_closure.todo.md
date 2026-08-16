@@ -2261,7 +2261,7 @@ overlays. Never force-push.
 
 ## MCPP-072 Add Profile H negative tests and SwissKnife/accelerate adapters
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
