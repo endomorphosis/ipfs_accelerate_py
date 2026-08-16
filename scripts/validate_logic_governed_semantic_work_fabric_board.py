@@ -383,8 +383,17 @@ def validate() -> dict[str, Any]:
     if config.get("objective_refill_enabled") is not False or config.get("codebase_refill_enabled") is not False:
         errors.append("bootstrap refill must remain disabled until Epic I acceptance")
     provider = config.get("provider") if isinstance(config.get("provider"), dict) else {}
-    if provider.get("provider_id") != "codex" or provider.get("model_id") != "gpt-5.6-terra" or provider.get("max_concurrency") != 3:
-        errors.append("provider must be direct bounded codex/gpt-5.6-terra concurrency 3")
+    expected_route = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.5",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": "primary_quota_or_auth_unavailable",
+        "fallback_reasoning_effort": "high",
+        "max_concurrency": 3,
+    }
+    if any(provider.get(key) != value for key, value in expected_route.items()):
+        errors.append("provider must use the sealed Grok 4.5 to Codex GPT-5.6-Terra auth-or-quota/high route at concurrency 3")
 
     expected_control_paths = {
         PLAN.relative_to(ROOT).as_posix(), OBJECTIVES.relative_to(ROOT).as_posix(),
