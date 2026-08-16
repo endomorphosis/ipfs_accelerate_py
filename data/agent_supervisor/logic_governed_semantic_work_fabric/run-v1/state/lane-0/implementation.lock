@@ -1,11 +1,11 @@
 {
   "kind": "implementation",
-  "lease_id": "16e335bf665f219987eba56036700907b90b1b8f",
+  "lease_id": "94d0a0fe3ff7932cd55a7f38df04c39ab651aa35",
   "lease_role": "supervisor_maintenance",
   "owner_script": "implementation_supervisor_entry.py",
   "pid": 478397,
   "repo_root": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-logic-governed-semantic-work-fabric",
-  "started_at": "2026-08-16T02:00:21.430889+00:00",
+  "started_at": "2026-08-16T02:00:54.681592+00:00",
   "state_dir": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-logic-governed-semantic-work-fabric/data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1/state/lane-0",
   "state_path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-logic-governed-semantic-work-fabric/data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1/state/lane-0/lgswf_lane_0_task_state.json"
 }
