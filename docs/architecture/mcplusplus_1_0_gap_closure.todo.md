@@ -1733,7 +1733,7 @@ overlays. Never force-push.
 
 ## MCPP-055 Add A2A extension schemas and positive/negative vectors
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
