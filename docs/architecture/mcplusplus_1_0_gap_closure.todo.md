@@ -2041,7 +2041,7 @@ overlays. Never force-push.
 
 ## MCPP-065 Bind datasets and kit P2P runtimes to the hardened Profile E
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
