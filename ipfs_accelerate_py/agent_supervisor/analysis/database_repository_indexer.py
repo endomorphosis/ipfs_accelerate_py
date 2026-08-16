@@ -39,6 +39,7 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Callable, ClassVar, Final
 
+from ..task_sources.duckdb_state import open_duckdb_connection
 from .duckdb_ast_index import (
     AUTHORITY_CLASS,
     DEFAULT_PARSER_ID,
@@ -57,7 +58,6 @@ from .duckdb_ast_index import (
 from .semantic_truth_authority import (
     assert_accelerator_semantic_writer_permitted,
 )
-from ..task_sources.duckdb_state import open_duckdb_connection
 
 # ---------------------------------------------------------------------------
 # Contract identity

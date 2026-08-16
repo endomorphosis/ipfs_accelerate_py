@@ -43,10 +43,10 @@ from ..core.conflict_graph import (
     build_python_ast_blob_record,
     coerce_ast_blob_record,
 )
+from ..task_sources.duckdb_state import open_duckdb_connection
 from .semantic_truth_authority import (
     assert_accelerator_semantic_writer_permitted,
 )
-from ..task_sources.duckdb_state import open_duckdb_connection
 
 # ---------------------------------------------------------------------------
 # Contract identity
