@@ -988,7 +988,7 @@ overlays. Never force-push.
 
 ## MCPP-031 Adapt existing Profile B artifacts to ExecutionEnvelope@1
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
