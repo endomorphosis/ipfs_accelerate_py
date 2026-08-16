@@ -1,0 +1,553 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcp-plus-plus.dev/schemas/demo/evidence-bundle-1.schema.json",
+  "title": "MCP++ DemoEvidenceBundle@1",
+  "description": "Machine-readable evidence bundle produced by the three-peer demonstration (MCPP-G160 / MCPP-077). Captures commit SHAs, schema versions, content-addressed CIDs (interface/envelope/policy/proof/decision/state/output/receipt/event), detached Ed25519 signatures, test results, and external dependency status. Validated by an independent verifier process (IndependentVerifier@1) that is not one of the demo peers. A scripted happy-path printout is not an evidence bundle.",
+  "$comment": "Interface: DemoEvidenceBundle@1. Schema marker: mcp++/demo/evidence-bundle@1. Verifier: ipfs_accelerate_py/mcplusplus/cli/verify_bundle.py. Authority: KD-16, plan gate 26, MCPP-077.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "interface",
+    "schema_version",
+    "task_id",
+    "goal_id",
+    "generated_at",
+    "canonicalization",
+    "commits",
+    "schema_versions",
+    "cids",
+    "signatures",
+    "test_results",
+    "external_dependencies"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "mcp++/demo/evidence-bundle@1",
+      "description": "Closed schema marker for DemoEvidenceBundle@1."
+    },
+    "interface": {
+      "type": "string",
+      "const": "DemoEvidenceBundle@1",
+      "description": "Interface label for the evidence bundle."
+    },
+    "schema_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Bundle document version (semver or monorepo pin)."
+    },
+    "task_id": {
+      "type": "string",
+      "const": "MCPP-077",
+      "description": "Backlog task that defines this evidence shape."
+    },
+    "goal_id": {
+      "type": "string",
+      "const": "MCPP-G160",
+      "description": "Goal tree node for installable CLI and three-peer demonstration."
+    },
+    "bundle": {
+      "type": "string",
+      "const": "mcplusplus/1.0/demo-verifier",
+      "description": "Program bundle id for the demo-verifier track."
+    },
+    "generated_at": {
+      "$ref": "#/$defs/iso8601",
+      "description": "UTC timestamp when the bundle was minted."
+    },
+    "canonicalization": {
+      "type": "string",
+      "const": "mcpp-jcs-v1",
+      "description": "Canonicalization algorithm used for CID and signature inputs (ADR-0002 / KD-5)."
+    },
+    "commits": {
+      "$ref": "#/$defs/commits",
+      "description": "Git commit SHAs and repository pins that produced this evidence."
+    },
+    "schema_versions": {
+      "$ref": "#/$defs/schemaVersions",
+      "description": "Schema markers / interface versions referenced by the demo artifacts."
+    },
+    "cids": {
+      "$ref": "#/$defs/cidMap",
+      "description": "Declared content addresses for demo-critical artifacts. Independent verification recomputes these when payloads are present."
+    },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/artifactEntry" },
+      "description": "Optional embedded payloads used by the independent verifier to recompute CIDs. Roles MUST match keys in cids when both are present."
+    },
+    "signatures": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/signatureEntry" },
+      "description": "Detached Ed25519 signatures over mcpp-jcs-v1 canonical bytes. At least one entry is required so the verifier can exercise cryptographic checks."
+    },
+    "test_results": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 512,
+      "items": { "$ref": "#/$defs/testResult" },
+      "description": "Machine-readable demo / harness / conformance outcomes that this bundle claims."
+    },
+    "external_dependencies": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/externalDependency" },
+      "description": "External services and optional components (e.g. circuit relays) with required vs documented-blocker status. Missing optional relays MUST NOT be silently skipped."
+    },
+    "demo": {
+      "$ref": "#/$defs/demoSummary",
+      "description": "Optional summary of ThreePeerDemo@1 step outcomes."
+    },
+    "bundle_cid": {
+      "anyOf": [
+        { "$ref": "#/$defs/cid" },
+        { "type": "null" }
+      ],
+      "description": "Self-address of this bundle under mcpp-jcs-v1 of the document excluding bundle_cid (and excluding the top-level signature field when present). Assigned after hashing."
+    },
+    "signature": {
+      "anyOf": [
+        { "$ref": "#/$defs/topLevelSignature" },
+        { "type": "null" }
+      ],
+      "description": "Optional top-level bundle signature over the detached body (excludes signature and bundle_cid). Prefer the signatures[] array; this field is a convenience for single-signer bundles."
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "did": { "$ref": "#/$defs/did" },
+        "peer_id": { "type": ["string", "null"], "maxLength": 256 }
+      },
+      "description": "Optional producer identity. MUST NOT be a demo peer process used as the independent verifier."
+    },
+    "notes": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "type": "string", "maxLength": 1024 },
+      "description": "Human-readable operator notes (not security-critical)."
+    }
+  },
+  "$defs": {
+    "cid": {
+      "type": "string",
+      "description": "IPFS CID. CIDv1 base32 (b…) preferred for new mints; CIDv0 (Qm…) remains readable when historical.",
+      "pattern": "^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58,})$",
+      "minLength": 46,
+      "maxLength": 128
+    },
+    "did": {
+      "type": "string",
+      "pattern": "^did:[a-z0-9]+:[A-Za-z0-9._:%-]+(?:[/?#][^\\u0000]*)?$",
+      "minLength": 7,
+      "maxLength": 512
+    },
+    "iso8601": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 64,
+      "description": "UTC timestamp in ISO-8601 form."
+    },
+    "hexSha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,64}$",
+      "description": "Git commit SHA (abbreviated or full, lowercase hex)."
+    },
+    "commits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["head"],
+      "properties": {
+        "head": {
+          "$ref": "#/$defs/hexSha",
+          "description": "Primary repository HEAD commit for the evidence tree."
+        },
+        "branch": {
+          "type": ["string", "null"],
+          "maxLength": 256
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the producing tree had uncommitted changes."
+        },
+        "repositories": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "sha"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Repository logical id (e.g. ipfs-accelerate, mcpplusplus-python)."
+              },
+              "sha": { "$ref": "#/$defs/hexSha" },
+              "ref": { "type": ["string", "null"], "maxLength": 256 },
+              "path": { "type": ["string", "null"], "maxLength": 512 }
+            }
+          }
+        }
+      }
+    },
+    "schemaVersions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "minProperties": 1,
+      "properties": {
+        "execution_envelope": {
+          "type": "string",
+          "const": "mcp++/execution/envelope@1"
+        },
+        "execution_receipt": {
+          "type": "string",
+          "const": "mcp++/execution/receipt@1"
+        },
+        "execution_result": {
+          "type": "string",
+          "const": "mcp++/execution/result@1"
+        },
+        "portable_error": {
+          "type": "string",
+          "const": "mcp++/execution/portable-error@1"
+        },
+        "canonicalization": {
+          "type": "string",
+          "const": "mcp++/canonicalization/mcpp-jcs-v1@1"
+        },
+        "evidence_bundle": {
+          "type": "string",
+          "const": "mcp++/demo/evidence-bundle@1"
+        },
+        "three_peer_demo": {
+          "type": "string",
+          "const": "ThreePeerDemo@1"
+        },
+        "state_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "policy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "crypto_suite": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "description": "Map of logical name → schema marker or interface pin."
+    },
+    "cidMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "interface_cid",
+        "envelope_cid",
+        "output_cid",
+        "receipt_cid",
+        "event_cid"
+      ],
+      "properties": {
+        "interface_cid": {
+          "$ref": "#/$defs/cid",
+          "description": "CID of the executed interface / tool descriptor."
+        },
+        "envelope_cid": {
+          "$ref": "#/$defs/cid",
+          "description": "CID of ExecutionEnvelope@1."
+        },
+        "policy_cid": {
+          "anyOf": [{ "$ref": "#/$defs/cid" }, { "type": "null" }],
+          "description": "Policy document CID when policy evaluation applied."
+        },
+        "proof_cid": {
+          "anyOf": [{ "$ref": "#/$defs/cid" }, { "type": "null" }],
+          "description": "Primary proof / UCAN / attestation CID."
+        },
+        "decision_cid": {
+          "anyOf": [{ "$ref": "#/$defs/cid" }, { "type": "null" }],
+          "description": "Policy decision CID."
+        },
+        "state_cid": {
+          "anyOf": [{ "$ref": "#/$defs/cid" }, { "type": "null" }],
+          "description": "Shared-state root or StateRef@1 CID after execution."
+        },
+        "output_cid": {
+          "$ref": "#/$defs/cid",
+          "description": "Primary output artifact CID."
+        },
+        "receipt_cid": {
+          "$ref": "#/$defs/cid",
+          "description": "ExecutionReceipt@1 CID."
+        },
+        "event_cid": {
+          "$ref": "#/$defs/cid",
+          "description": "Event DAG node CID linking envelope/result/receipt."
+        },
+        "delegation_cid": {
+          "anyOf": [{ "$ref": "#/$defs/cid" }, { "type": "null" }],
+          "description": "Effective delegation CID when distinct from proof_cid."
+        },
+        "result_cid": {
+          "anyOf": [{ "$ref": "#/$defs/cid" }, { "type": "null" }],
+          "description": "ExecutionResult@1 CID when distinct from output_cid."
+        }
+      }
+    },
+    "artifactEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "cid", "payload"],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "interface",
+            "envelope",
+            "policy",
+            "proof",
+            "decision",
+            "state",
+            "output",
+            "receipt",
+            "event",
+            "delegation",
+            "result",
+            "other"
+          ],
+          "description": "Logical role; maps to cids.<role>_cid when role is not other."
+        },
+        "cid": {
+          "$ref": "#/$defs/cid",
+          "description": "Declared CID of payload under mcpp-jcs-v1 + CIDv1 raw sha2-256."
+        },
+        "payload": {
+          "description": "JSON payload that was content-addressed. Verifier recomputes CID(payload) and fails closed on mismatch.",
+          "type": ["object", "array", "string", "number", "boolean", "null"]
+        },
+        "media_type": {
+          "type": ["string", "null"],
+          "maxLength": 128
+        },
+        "notes": {
+          "type": ["string", "null"],
+          "maxLength": 512
+        }
+      }
+    },
+    "signatureEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "algorithm",
+        "kid",
+        "public_key_b64url",
+        "signature_b64url"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["bundle", "receipt", "envelope", "artifact", "event", "demo"],
+          "description": "What this signature attests."
+        },
+        "algorithm": {
+          "type": "string",
+          "const": "Ed25519",
+          "description": "Mandatory MCP++ signature algorithm (ADR-0002)."
+        },
+        "kid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Explicit key identifier."
+        },
+        "signer_did": {
+          "anyOf": [{ "$ref": "#/$defs/did" }, { "type": "null" }],
+          "description": "Optional DID of the signing principal."
+        },
+        "public_key_b64url": {
+          "type": "string",
+          "minLength": 40,
+          "maxLength": 128,
+          "description": "32-byte Ed25519 public key, base64url without padding."
+        },
+        "signature_b64url": {
+          "type": "string",
+          "minLength": 80,
+          "maxLength": 256,
+          "description": "64-byte Ed25519 signature, base64url without padding, over mcpp-jcs-v1 of the detached signed body."
+        },
+        "signed_over": {
+          "type": "string",
+          "enum": [
+            "bundle_body",
+            "artifact_payload",
+            "embedded_payload",
+            "raw_bytes_sha256"
+          ],
+          "description": "How the verifier reconstructs the signed message. Default: bundle_body for role=bundle; artifact_payload when artifact_role is set."
+        },
+        "artifact_role": {
+          "type": ["string", "null"],
+          "maxLength": 64,
+          "description": "When signed_over=artifact_payload, the artifacts[].role whose payload was signed (signature meta excluded if present on payload)."
+        },
+        "payload": {
+          "description": "Embedded JSON body that was signed when signed_over=embedded_payload.",
+          "type": ["object", "array", "string", "number", "boolean", "null"]
+        },
+        "message_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Optional lowercase hex sha2-256 of the canonical signed message for independent auditing."
+        }
+      }
+    },
+    "topLevelSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "kid", "public_key_b64url", "signature_b64url"],
+      "properties": {
+        "algorithm": { "type": "string", "const": "Ed25519" },
+        "kid": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "signer_did": {
+          "anyOf": [{ "$ref": "#/$defs/did" }, { "type": "null" }]
+        },
+        "public_key_b64url": {
+          "type": "string",
+          "minLength": 40,
+          "maxLength": 128
+        },
+        "signature_b64url": {
+          "type": "string",
+          "minLength": 80,
+          "maxLength": 256
+        }
+      }
+    },
+    "testResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "status"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pass", "fail", "skip", "blocked"]
+        },
+        "command": {
+          "type": ["string", "null"],
+          "maxLength": 1024
+        },
+        "exit_code": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 255
+        },
+        "suite": {
+          "type": ["string", "null"],
+          "maxLength": 128
+        },
+        "detail": {
+          "type": ["string", "object", "null"]
+        }
+      }
+    },
+    "externalDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "required", "status"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "version": {
+          "type": ["string", "null"],
+          "maxLength": 128
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the happy path requires this dependency."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "present",
+            "absent",
+            "documented-not-required",
+            "documented-blocker",
+            "unknown"
+          ],
+          "description": "Presence classification. Optional circuit relays are documented-not-required on the happy path."
+        },
+        "notes": {
+          "type": ["string", "null"],
+          "maxLength": 1024
+        }
+      }
+    },
+    "demoSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "interface": {
+          "type": "string",
+          "const": "ThreePeerDemo@1"
+        },
+        "peers": {
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 16
+        },
+        "steps_total": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "steps_passed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pass", "fail", "partial"]
+        },
+        "optional_relays": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Relay policy object from the Compose demo (never silently skip)."
+        },
+        "steps_evidence_path": {
+          "type": ["string", "null"],
+          "maxLength": 512
+        }
+      }
+    }
+  }
+}
