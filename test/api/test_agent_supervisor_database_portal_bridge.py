@@ -16,9 +16,13 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalExecutionBridge,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION,
+    SEMANTIC_TRUTH_AUTHORITY_ENV,
+    SEMANTIC_WRITER_POLICY_ENV,
     DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
+    PortalImplementationDaemon,
     parse_args,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
@@ -64,6 +68,48 @@ def _record() -> SimpleNamespace:
             "completion_contract": "Focused validation passes",
         },
     )
+
+
+def test_datasets_authority_marker_reaches_provider_without_state_secrets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION",
+        DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION,
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON",
+        '{"credential":"must-not-propagate"}',
+    )
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "secret-token")
+    portal = SimpleNamespace(_canonical_ref=lambda task: "task:cid:004")
+    task = SimpleNamespace(task_id="LGSWF-004")
+
+    environment = PortalImplementationDaemon._implementation_process_environment(
+        portal,
+        task,
+        attempt=2,
+        checkpoint_dir=tmp_path / "checkpoint",
+    )
+
+    assert environment[SEMANTIC_TRUTH_AUTHORITY_ENV] == "ipfs_datasets_py"
+    assert environment[SEMANTIC_WRITER_POLICY_ENV] == "reference_only"
+    assert "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION" not in environment
+    assert "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON" not in environment
+    assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in environment
+
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION", "schema-v1")
+    ordinary_environment = (
+        PortalImplementationDaemon._implementation_process_environment(
+            portal,
+            task,
+            attempt=3,
+            checkpoint_dir=tmp_path / "ordinary-checkpoint",
+        )
+    )
+    assert SEMANTIC_TRUTH_AUTHORITY_ENV not in ordinary_environment
+    assert SEMANTIC_WRITER_POLICY_ENV not in ordinary_environment
 
 
 class _TaskSource:

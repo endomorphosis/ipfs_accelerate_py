@@ -300,6 +300,13 @@ IMPLEMENTATION_CHECKPOINT_DIR_ENV = (
 IMPLEMENTATION_TASK_ID_ENV = "IPFS_ACCELERATE_AGENT_TASK_ID"
 IMPLEMENTATION_TASK_CID_ENV = "IPFS_ACCELERATE_AGENT_TASK_CID"
 IMPLEMENTATION_ATTEMPT_ENV = "IPFS_ACCELERATE_AGENT_TASK_ATTEMPT"
+DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION = (
+    "datasets-authoritative-operational-v1"
+)
+SEMANTIC_TRUTH_AUTHORITY_ENV = (
+    "IPFS_ACCELERATE_AGENT_SEMANTIC_TRUTH_AUTHORITY"
+)
+SEMANTIC_WRITER_POLICY_ENV = "IPFS_ACCELERATE_AGENT_SEMANTIC_WRITER_POLICY"
 IMPLEMENTATION_CHECKPOINT_MANIFEST_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "implementation-checkpoint-manifest@1"
@@ -52512,12 +52519,29 @@ class PortalImplementationDaemon:
         attempt: int,
         checkpoint_dir: Path,
     ) -> dict[str, str]:
-        return {
+        environment = {
             IMPLEMENTATION_CHECKPOINT_DIR_ENV: str(checkpoint_dir),
             IMPLEMENTATION_TASK_ID_ENV: task.task_id,
             IMPLEMENTATION_TASK_CID_ENV: self._canonical_ref(task),
             IMPLEMENTATION_ATTEMPT_ENV: str(int(attempt)),
         }
+        if (
+            str(
+                os.environ.get(
+                    "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION",
+                    "",
+                )
+                or ""
+            ).strip()
+            == DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
+        ):
+            # Provider and validation children intentionally do not inherit
+            # the database program or its credentials.  These task-scoped,
+            # non-secret markers preserve the semantic-writer boundary after
+            # that redaction.
+            environment[SEMANTIC_TRUTH_AUTHORITY_ENV] = "ipfs_datasets_py"
+            environment[SEMANTIC_WRITER_POLICY_ENV] = "reference_only"
+        return environment
 
     def _implementation_progress_observer(
         self,
@@ -56108,6 +56132,27 @@ def _database_daemon_new_id(prefix: str) -> str:
     return f"{prefix}:{secrets.token_hex(12)}"
 
 
+def _database_daemon_logical_owner_id(
+    *,
+    database_path: Path,
+    coordination_path: Path,
+    execution_path: Path,
+) -> str:
+    """Return the restart-stable identity of one embedded database writer.
+
+    This is a logical daemon identity, not a process identity.  The embedded
+    writer lock prevents two live processes from using it concurrently, while
+    a replacement process can recover the exact attempts left in these three
+    stores after a crash.
+    """
+
+    payload = "\n".join(
+        str(path.absolute())
+        for path in (database_path, coordination_path, execution_path)
+    ).encode("utf-8")
+    return f"embedded-store:{hashlib.sha256(payload).hexdigest()[:32]}"
+
+
 def _phase_rank(phase: str) -> int:
     try:
         return _ATTEMPT_PHASE_ORDER.index(str(phase or "").strip())
@@ -56256,8 +56301,18 @@ class DatabaseImplementationDaemon:
         ).absolute()
         self.authority_mode = normalized_authority_mode
         self.task_source_kind = str(task_source_kind or "duckdb").strip().lower()
+        self.process_instance_id = _database_daemon_new_id("process")
         self.owner_session_id = str(
-            owner_session_id or _database_daemon_new_id("session")
+            owner_session_id
+            or _database_daemon_logical_owner_id(
+                database_path=self.database_path,
+                coordination_path=self.coordination_path,
+                execution_path=self.execution_path,
+            )
+        ).strip()
+        self.state_schema_revision = str(
+            os.environ.get("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION", "")
+            or ""
         ).strip()
         self.markdown_path = Path(markdown_path).absolute() if markdown_path else None
         # Optional projections — never required under database authority.
@@ -56278,12 +56333,87 @@ class DatabaseImplementationDaemon:
         self._owns_coordinator = coordinator is None
         self._task_source = task_source
         self._coordinator = coordinator
+        self._control_schema_verification: dict[str, Any] = {}
+        self._embedded_writer_lock_path = self.execution_path.with_name(
+            f".{self.execution_path.name}.writer.lock"
+        )
+        self._embedded_writer_lock_handle: Any = None
         self._markdown_status_writes = 0
+        # Renew long-running provider/effect/validation calls well before the
+        # task lease expires.  Tests may shorten this private interval without
+        # weakening the production lease duration.
+        self._lease_heartbeat_interval_seconds = max(
+            0.1,
+            min(float(self.lease_ms) / 3000.0, 30.0),
+        )
         self._closed = False
         if install_schema:
             self.open()
 
     # -- lifecycle -----------------------------------------------------------
+
+    def _verify_control_schema_for_open(self) -> None:
+        """Fail closed at the datasets-authoritative runtime boundary.
+
+        The trusted materializer owns operational-profile installation.  A
+        daemon may only verify and open that already-installed profile; it
+        must never fall through to IntentRepository's full-schema installer.
+        """
+
+        if (
+            self.state_schema_revision
+            != DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
+        ):
+            self._control_schema_verification = {}
+            return
+        if not self.database_path.is_file():
+            raise DatabaseImplementationAuthorityError(
+                "datasets-authoritative operational control database must be "
+                "preinstalled by the trusted materializer"
+            )
+        from ..task_sources.control_plane_schema import (
+            verify_datasets_authoritative_operational_schema,
+        )
+
+        try:
+            verification = verify_datasets_authoritative_operational_schema(
+                self.database_path
+            )
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "refusing database daemon open: control database is not the "
+                "verified datasets-authoritative operational profile"
+            ) from exc
+        if verification.get("valid") is not True:
+            raise DatabaseImplementationAuthorityError(
+                "refusing database daemon open: operational-profile "
+                "verification did not return valid=true"
+            )
+        self._control_schema_verification = dict(verification)
+
+    def _acquire_embedded_writer_lock(self) -> None:
+        if self._embedded_writer_lock_handle is not None:
+            return
+        self._embedded_writer_lock_path.parent.mkdir(parents=True, exist_ok=True)
+        handle = self._embedded_writer_lock_path.open("a+b")
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError) as exc:
+            handle.close()
+            raise DatabaseImplementationAuthorityError(
+                "embedded execution store already has an active database writer"
+            ) from exc
+        self._embedded_writer_lock_handle = handle
+
+    def _release_embedded_writer_lock(self) -> None:
+        handle = self._embedded_writer_lock_handle
+        self._embedded_writer_lock_handle = None
+        if handle is None:
+            return
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
 
     def open(self) -> "DatabaseImplementationDaemon":
         """Open execution store and bind task-source / coordinator adapters."""
@@ -56291,59 +56421,93 @@ class DatabaseImplementationDaemon:
         with self._lock:
             if self._connection is not None:
                 return self
-            from ..task_sources.duckdb_state import open_duckdb_connection
             from ..merge.database_coordination import open_database_coordinator
             from ..task_sources.database_task_source import DatabaseTaskSource
+            from ..task_sources.duckdb_state import open_duckdb_connection
 
-            self.execution_path.parent.mkdir(parents=True, exist_ok=True)
-            self._connection = open_duckdb_connection(self.execution_path)
-            for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
-                self._connection.execute(statement)
-            for key, value in (
-                ("interface", self.INTERFACE),
-                ("schema", self.SCHEMA),
-                ("authority_mode", self.authority_mode),
-            ):
-                self._connection.execute(
-                    """
-                    INSERT OR REPLACE INTO daemon_execution_metadata(key, value)
-                    VALUES (?, ?)
-                    """,
-                    [key, value],
-                )
-            if self._task_source is None:
-                self._task_source = DatabaseTaskSource(
-                    self.database_path,
-                    owner_id=f"database-implementation-daemon:{self.owner_session_id}",
-                    install_schema=True,
-                )
-            if self._coordinator is None:
-                self._coordinator = open_database_coordinator(
-                    self.coordination_path,
-                    clock_ms=self._clock_ms,
-                    default_lease_ms=self.lease_ms,
-                )
-            self._closed = False
-            return self
+            self._verify_control_schema_for_open()
+            self._acquire_embedded_writer_lock()
+            try:
+                self.execution_path.parent.mkdir(parents=True, exist_ok=True)
+                self._connection = open_duckdb_connection(self.execution_path)
+                for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
+                    self._connection.execute(statement)
+                for key, value in (
+                    ("interface", self.INTERFACE),
+                    ("schema", self.SCHEMA),
+                    ("authority_mode", self.authority_mode),
+                    ("logical_owner_session_id", self.owner_session_id),
+                    ("process_instance_id", self.process_instance_id),
+                    ("state_schema_revision", self.state_schema_revision),
+                    (
+                        "control_schema_profile_id",
+                        str(
+                            self._control_schema_verification.get("profile_id")
+                            or ""
+                        ),
+                    ),
+                    (
+                        "control_schema_fingerprint",
+                        str(
+                            self._control_schema_verification.get(
+                                "schema_fingerprint"
+                            )
+                            or ""
+                        ),
+                    ),
+                ):
+                    self._connection.execute(
+                        """
+                        INSERT OR REPLACE INTO daemon_execution_metadata(key, value)
+                        VALUES (?, ?)
+                        """,
+                        [key, value],
+                    )
+                if self._task_source is None:
+                    self._task_source = DatabaseTaskSource(
+                        self.database_path,
+                        owner_id=(
+                            "database-implementation-daemon:"
+                            f"{self.owner_session_id}"
+                        ),
+                        install_schema=(
+                            self.state_schema_revision
+                            != DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
+                        ),
+                    )
+                if self._coordinator is None:
+                    self._coordinator = open_database_coordinator(
+                        self.coordination_path,
+                        clock_ms=self._clock_ms,
+                        default_lease_ms=self.lease_ms,
+                    )
+                self._closed = False
+                return self
+            except Exception:
+                self.close()
+                raise
 
     def close(self) -> None:
         with self._lock:
-            if self._owns_coordinator and self._coordinator is not None:
-                close = getattr(self._coordinator, "close", None)
-                if callable(close):
-                    close()
-                self._coordinator = None
-            if self._owns_task_source and self._task_source is not None:
-                close = getattr(self._task_source, "close", None)
-                if callable(close):
-                    close()
-                self._task_source = None
-            if self._connection is not None:
-                close = getattr(self._connection, "close", None)
-                if callable(close):
-                    close()
-            self._connection = None
-            self._closed = True
+            try:
+                if self._owns_coordinator and self._coordinator is not None:
+                    close = getattr(self._coordinator, "close", None)
+                    if callable(close):
+                        close()
+                    self._coordinator = None
+                if self._owns_task_source and self._task_source is not None:
+                    close = getattr(self._task_source, "close", None)
+                    if callable(close):
+                        close()
+                    self._task_source = None
+                if self._connection is not None:
+                    close = getattr(self._connection, "close", None)
+                    if callable(close):
+                        close()
+                self._connection = None
+                self._closed = True
+            finally:
+                self._release_embedded_writer_lock()
 
     def __enter__(self) -> "DatabaseImplementationDaemon":
         return self.open()
@@ -56364,6 +56528,22 @@ class DatabaseImplementationDaemon:
     @property
     def markdown_status_write_count(self) -> int:
         return int(self._markdown_status_writes)
+
+    @property
+    def control_schema_evidence(self) -> Mapping[str, Any]:
+        return MappingProxyType(
+            {
+                "state_schema_revision": self.state_schema_revision,
+                "profile_id": str(
+                    self._control_schema_verification.get("profile_id") or ""
+                ),
+                "schema_fingerprint": str(
+                    self._control_schema_verification.get("schema_fingerprint")
+                    or ""
+                ),
+                "verified": self._control_schema_verification.get("valid") is True,
+            }
+        )
 
     @property
     def execution_callbacks_bound(self) -> bool:
@@ -56427,6 +56607,182 @@ class DatabaseImplementationDaemon:
 
     def _now_ms(self) -> int:
         return int(self._clock_ms())
+
+    def _attempt_claim(self, attempt: DatabaseTaskAttempt) -> Any:
+        """Return the exact live coordination claim bound to ``attempt``.
+
+        An execution-store attempt is only a durable replay cursor.  It never
+        grants mutation authority by itself; every accepted write must still
+        be backed by the matching live coordination claim and fence.
+        """
+
+        stored = self.get_attempt(attempt.attempt_id)
+        if stored is None:
+            raise DatabaseImplementationConflictError(
+                f"unknown execution attempt {attempt.attempt_id!r}"
+            )
+        immutable_fields = (
+            "claim_id",
+            "task_cid",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "lease_id",
+        )
+        mismatched = [
+            field_name
+            for field_name in immutable_fields
+            if getattr(stored, field_name) != getattr(attempt, field_name)
+        ]
+        if mismatched:
+            raise DatabaseImplementationConflictError(
+                f"attempt {attempt.attempt_id} does not match its durable "
+                f"identity ({', '.join(mismatched)})"
+            )
+        if stored.owner_session_id != self.owner_session_id:
+            raise DatabaseImplementationAuthorityError(
+                f"attempt {stored.attempt_id} belongs to session "
+                f"{stored.owner_session_id!r}, not {self.owner_session_id!r}"
+            )
+        if stored.status != "running":
+            raise DatabaseImplementationConflictError(
+                f"attempt {stored.attempt_id} is not running"
+            )
+        claim = self.coordinator.get_task_claim(stored.claim_id)
+        if claim is None:
+            raise DatabaseImplementationAuthorityError(
+                f"attempt {stored.attempt_id} has no coordination claim"
+            )
+        return claim
+
+    def _protect_attempt_claim(
+        self,
+        attempt: DatabaseTaskAttempt,
+        claim: Any,
+        *,
+        allow_logically_completed: bool = False,
+    ) -> Any:
+        """Protect a write using a previously identity-checked task claim."""
+
+        protect = getattr(self.coordinator, "protect_task_claim", None)
+        if not callable(protect):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator does not implement exact task-claim protection"
+            )
+        return protect(
+            claim,
+            expected_task_cid=attempt.task_cid,
+            expected_attempt_id=attempt.attempt_id,
+            expected_owner_session_id=self.owner_session_id,
+            expected_fencing_token=int(attempt.fencing_token),
+            expected_fence_epoch=int(attempt.fence_epoch),
+            allow_logically_completed=bool(allow_logically_completed),
+            now_ms=self._now_ms(),
+        )
+
+    def _protect_new_claim(self, claim: Any) -> Any:
+        """Protect the claim before its first task/execution-store writes."""
+
+        protect = getattr(self.coordinator, "protect_task_claim", None)
+        if not callable(protect):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator does not implement exact task-claim protection"
+            )
+        return protect(
+            claim,
+            expected_task_cid=str(claim.task_cid),
+            expected_attempt_id=str(claim.attempt_id),
+            expected_owner_session_id=self.owner_session_id,
+            expected_fencing_token=int(claim.fencing_token),
+            expected_fence_epoch=int(claim.fence_epoch),
+            now_ms=self._now_ms(),
+        )
+
+    def _protect_attempt_write(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        allow_logically_completed: bool = False,
+    ) -> Any:
+        """Require the exact live claim/lease/fence before a durable write."""
+
+        return self._protect_attempt_claim(
+            attempt,
+            self._attempt_claim(attempt),
+            allow_logically_completed=allow_logically_completed,
+        )
+
+    def _renew_attempt_lease(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        claim: Any | None = None,
+    ) -> Any:
+        """Renew only the lease proven to belong to this exact attempt."""
+
+        bound_claim = self._attempt_claim(attempt) if claim is None else claim
+        lease = self._protect_attempt_claim(attempt, bound_claim)
+        return self.coordinator.renew(
+            lease,
+            lease_ms=self.lease_ms,
+            expected_fencing_token=int(attempt.fencing_token),
+            expected_fence_epoch=int(attempt.fence_epoch),
+            now_ms=self._now_ms(),
+        )
+
+    def _run_with_attempt_heartbeat(
+        self,
+        attempt: DatabaseTaskAttempt,
+        callback: Callable[[], Mapping[str, Any]],
+    ) -> Mapping[str, Any]:
+        """Run external work while renewing its exact fenced task lease.
+
+        A callback cannot be forcibly unwound safely, so a renewal failure is
+        latched and checked as soon as it returns.  No callback result is then
+        accepted into any durable store.
+        """
+
+        # Establish current authority synchronously before dispatch.  This
+        # also gives the callback a full lease window before the first beat.
+        claim = self._attempt_claim(attempt)
+        self._renew_attempt_lease(attempt, claim=claim)
+        stop = threading.Event()
+        renewal_failures: list[BaseException] = []
+
+        def heartbeat() -> None:
+            interval = float(self._lease_heartbeat_interval_seconds)
+            while not stop.wait(interval):
+                try:
+                    self._renew_attempt_lease(attempt, claim=claim)
+                except BaseException as exc:  # fail closed after callback exit
+                    renewal_failures.append(exc)
+                    stop.set()
+                    return
+
+        thread = threading.Thread(
+            target=heartbeat,
+            name=f"database-attempt-heartbeat-{attempt.attempt_id}",
+            daemon=True,
+        )
+        thread.start()
+        callback_error: BaseException | None = None
+        result: Mapping[str, Any] = {}
+        try:
+            result = callback()
+        except BaseException as exc:
+            callback_error = exc
+        finally:
+            stop.set()
+            thread.join()
+        if renewal_failures:
+            raise DatabaseImplementationAuthorityError(
+                f"attempt {attempt.attempt_id} lost lease authority during execution"
+            ) from renewal_failures[0]
+        if callback_error is not None:
+            raise callback_error
+        # Close the race between the final heartbeat and receipt acceptance.
+        self._protect_attempt_write(attempt)
+        return result
 
     def _record_event(
         self,
@@ -56523,6 +56879,33 @@ class DatabaseImplementationDaemon:
             registered.append(task.task_cid)
         return registered
 
+    @staticmethod
+    def _automatic_claim_forbidden(task: Any) -> bool:
+        """Return whether a canonical task requires trusted manual sealing."""
+
+        body = getattr(task, "body", None)
+        if not isinstance(body, Mapping):
+            return False
+        completion = body.get("completion")
+        if isinstance(completion, Mapping):
+            completion = completion.get("mode") or completion.get("kind")
+        manual_completion = str(completion or "").strip().lower() == "manual"
+        review_raw = body.get("review_only")
+        review_only = review_raw is True or str(review_raw or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        return manual_completion or review_only
+
+    def _automatic_claim_exclusions(self) -> set[str]:
+        ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        return {
+            str(task.task_cid)
+            for task in ready.tasks
+            if self._automatic_claim_forbidden(task)
+        }
+
     # -- claim / attempt ----------------------------------------------------
 
     def claim_next(
@@ -56534,10 +56917,16 @@ class DatabaseImplementationDaemon:
         """Claim one ready task for this session; four sessions never share work."""
 
         self.sync_ready_tasks_into_coordination()
+        excluded = {
+            str(task_cid)
+            for task_cid in exclude_task_cids
+            if str(task_cid)
+        }
+        excluded.update(self._automatic_claim_exclusions())
         claim = self.coordinator.claim_ready_task(
             owner_session_id=self.owner_session_id,
             lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
-            exclude_task_cids=exclude_task_cids,
+            exclude_task_cids=excluded,
             now_ms=self._now_ms(),
         )
         if claim is None:
@@ -56554,6 +56943,7 @@ class DatabaseImplementationDaemon:
             "ready",
             "open",
         }:
+            self._protect_new_claim(claim)
             self._cas_task_status_database(
                 task.task_cid,
                 expected_revision=int(task.revision),
@@ -56580,6 +56970,7 @@ class DatabaseImplementationDaemon:
         *,
         task_alias: str,
     ) -> DatabaseTaskAttempt:
+        self._protect_new_claim(claim)
         now = self._now_ms()
         attempt = DatabaseTaskAttempt(
             attempt_id=str(claim.attempt_id),
@@ -56776,42 +57167,55 @@ class DatabaseImplementationDaemon:
         elif phase_text == ATTEMPT_PHASE_BLOCKED:
             status = "blocked"
             finished_at = now
-        connection.execute(
-            """
-            INSERT OR REPLACE INTO attempt_phases(
-                attempt_id, phase, committed_at_ms, fencing_token, fence_epoch,
-                revision, body_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                current.attempt_id,
-                phase_text,
-                now,
-                int(current.fencing_token),
-                int(current.fence_epoch),
-                revision,
-                _database_daemon_json(dict(body or {})),
-            ],
+        self._protect_attempt_write(
+            current,
+            allow_logically_completed=phase_text == ATTEMPT_PHASE_COMPLETE,
         )
-        connection.execute(
-            """
-            UPDATE database_task_attempts
-            SET committed_phase = ?, status = ?, finished_at_ms = ?, revision = ?
-            WHERE attempt_id = ? AND revision = ?
-            """,
-            [
-                phase_text
-                if phase_text in _ATTEMPT_PHASE_ORDER
-                or phase_text
-                in {ATTEMPT_PHASE_FAILED, ATTEMPT_PHASE_BLOCKED}
-                else current.committed_phase,
-                status,
-                finished_at,
-                revision,
-                current.attempt_id,
-                int(current.revision),
-            ],
-        )
+        with self._lock:
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                updated_row = connection.execute(
+                    """
+                    UPDATE database_task_attempts
+                    SET committed_phase = ?, status = ?, finished_at_ms = ?, revision = ?
+                    WHERE attempt_id = ? AND revision = ?
+                    RETURNING attempt_id
+                    """,
+                    [
+                        phase_text,
+                        status,
+                        finished_at,
+                        revision,
+                        current.attempt_id,
+                        int(current.revision),
+                    ],
+                ).fetchone()
+                if updated_row is None:
+                    raise DatabaseImplementationConflictError(
+                        f"attempt {current.attempt_id} revision changed before "
+                        f"phase {phase_text!r} committed"
+                    )
+                connection.execute(
+                    """
+                    INSERT OR REPLACE INTO attempt_phases(
+                        attempt_id, phase, committed_at_ms, fencing_token, fence_epoch,
+                        revision, body_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        current.attempt_id,
+                        phase_text,
+                        now,
+                        int(current.fencing_token),
+                        int(current.fence_epoch),
+                        revision,
+                        _database_daemon_json(dict(body or {})),
+                    ],
+                )
+                connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
         updated = self.get_attempt(current.attempt_id)
         if updated is None:
             raise DatabaseImplementationDaemonError("attempt disappeared after phase commit")
@@ -56912,6 +57316,7 @@ class DatabaseImplementationDaemon:
         when a prior committed provider invocation was replayed.
         """
 
+        self._protect_attempt_write(attempt)
         key = str(idempotency_key or f"provider:{attempt.attempt_id}").strip()
         prior = self.provider_invocation_recorded(
             attempt.attempt_id, idempotency_key=key
@@ -56954,7 +57359,12 @@ class DatabaseImplementationDaemon:
                 "task_cid": attempt.task_cid,
             }
         else:
-            result = dict(callback(attempt))
+            result = dict(
+                self._run_with_attempt_heartbeat(
+                    attempt,
+                    lambda: callback(attempt),
+                )
+            )
         if self.require_real_execution and (
             str(result.get("status") or "").strip().lower() in {"", "noop"}
             or result.get("accepted") is not True
@@ -56962,6 +57372,7 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "production database provider result is not accepted real-execution evidence"
             )
+        self._protect_attempt_write(attempt)
         connection = self._require_connection()
         connection.execute(
             """
@@ -57006,6 +57417,7 @@ class DatabaseImplementationDaemon:
     ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
         """Apply effect work once per attempt idempotency key."""
 
+        self._protect_attempt_write(attempt)
         key = str(idempotency_key or f"effect:{attempt.attempt_id}").strip()
         prior = self.effect_claim_recorded(attempt.attempt_id, idempotency_key=key)
         if prior is not None:
@@ -57044,13 +57456,19 @@ class DatabaseImplementationDaemon:
                 "provider_result": dict(provider_result),
             }
         else:
-            result = dict(callback(attempt, provider_result))
+            result = dict(
+                self._run_with_attempt_heartbeat(
+                    attempt,
+                    lambda: callback(attempt, provider_result),
+                )
+            )
         if self.require_real_execution and str(
             result.get("status") or ""
         ).strip().lower() not in {"applied", "succeeded"}:
             raise DatabaseImplementationAuthorityError(
                 "production database effect lacks applied-effect evidence"
             )
+        self._protect_attempt_write(attempt)
         connection = self._require_connection()
         connection.execute(
             """
@@ -57144,28 +57562,83 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "production database completion requires passing validation evidence"
             )
-        digest = str(
-            evidence_digest
-            or validation_payload.get("evidence_digest")
-            or f"sha256:{secrets.token_hex(32)}"
-        )
-        self.task_source.record_validation_result(
-            task_cid=current.task_cid,
-            outcome=str(validation_payload.get("outcome") or "passed"),
-            evidence_digest=digest,
-            argv=list(validation_payload.get("argv") or ["database-validation"]),
-            body=validation_payload,
-        )
+        supplied_digest = str(evidence_digest or "").strip()
+        validation_digest = str(
+            validation_payload.get("evidence_digest") or ""
+        ).strip()
+        if supplied_digest and validation_digest and supplied_digest != validation_digest:
+            raise DatabaseImplementationAuthorityError(
+                "completion evidence digest does not match validation evidence"
+            )
+        digest = supplied_digest or validation_digest or f"sha256:{secrets.token_hex(32)}"
         task = self.task_source.get(current.task_cid)
         if task is None:
             raise KeyError(current.task_cid)
-        if str(task.status).lower() not in {
-            "completed",
-            "complete",
-            "done",
+        task_status = str(task.status).strip().lower()
+        successful_statuses = {"completed", "complete", "done"}
+        unsuccessful_terminal_statuses = {
             "skipped",
-        }:
-            self._cas_task_status_database(
+            "cancelled",
+            "canceled",
+            "failed",
+            "blocked",
+            "quarantined",
+        }
+        if task_status in unsuccessful_terminal_statuses:
+            raise DatabaseImplementationConflictError(
+                f"task {current.task_cid} is terminal with non-success status "
+                f"{task_status!r}; refusing to record a successful completion"
+            )
+
+        claim = self._attempt_claim(current)
+        if task_status in successful_statuses:
+            prepared = self.coordinator.get_prepared_task_completion(
+                current.task_cid
+            )
+            if prepared is None:
+                raise DatabaseImplementationConflictError(
+                    f"task {current.task_cid} is completed without the exact "
+                    "coordination preparation for this attempt"
+                )
+            control_completion_receipt: Mapping[str, Any] = task.to_dict()
+        else:
+            prepare_completion = getattr(
+                self.coordinator,
+                "prepare_task_completion",
+                None,
+            )
+            if not callable(prepare_completion):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator does not implement task-completion preparation"
+                )
+            prepared = prepare_completion(
+                claim,
+                control_expected_revision=int(task.revision),
+                control_expected_status=task_status,
+                evidence_digest=digest,
+                body={"validation": validation_payload},
+                now_ms=self._now_ms(),
+            )
+            self._protect_attempt_claim(
+                current,
+                claim,
+                allow_logically_completed=True,
+            )
+            self.task_source.record_validation_result(
+                task_cid=current.task_cid,
+                outcome=str(validation_payload.get("outcome") or "passed"),
+                evidence_digest=digest,
+                argv=list(
+                    validation_payload.get("argv") or ["database-validation"]
+                ),
+                body=validation_payload,
+            )
+            self._protect_attempt_claim(
+                current,
+                claim,
+                allow_logically_completed=True,
+            )
+            cas_result = self._cas_task_status_database(
                 current.task_cid,
                 expected_revision=int(task.revision),
                 new_status="completed",
@@ -57173,33 +57646,48 @@ class DatabaseImplementationDaemon:
                     "operation": "database_complete",
                     "attempt_id": current.attempt_id,
                     "claim_id": current.claim_id,
+                    "lease_id": current.lease_id,
                     "owner_session_id": self.owner_session_id,
+                    "fencing_token": int(current.fencing_token),
+                    "fence_epoch": int(current.fence_epoch),
+                    "evidence_digest": digest,
+                    "coordination_preparation": dict(prepared),
                     "validation": validation_payload,
                 },
                 evidence_digests=[digest],
             )
-        # Coordination readiness for dependents.
-        self.coordinator.mark_task_complete(
-            current.task_cid,
-            status="succeeded",
-            body={"attempt_id": current.attempt_id},
+            to_dict = getattr(cas_result, "to_dict", None)
+            if not callable(to_dict):
+                raise DatabaseImplementationDaemonError(
+                    "control task completion CAS returned no durable receipt"
+                )
+            control_completion_receipt = dict(to_dict())
+        complete_claim = getattr(self.coordinator, "complete_task_claim", None)
+        if not callable(complete_claim):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator does not implement fenced task-claim completion"
+            )
+        complete_claim(
+            claim,
+            control_completion_receipt=control_completion_receipt,
             now_ms=self._now_ms(),
         )
-        # Release the fenced claim when possible.
-        claim = self.coordinator.get_task_claim(current.claim_id)
-        if claim is not None:
-            release = getattr(self.coordinator, "release", None)
-            if callable(release):
-                try:
-                    lease = self.coordinator.get_lease(claim.lease_id)
-                    if lease is not None:
-                        release(lease, reason="attempt_complete")
-                except Exception:
-                    pass
         updated = self.commit_phase(
             current,
             ATTEMPT_PHASE_COMPLETE,
             body={"evidence_digest": digest},
+        )
+        settle_claim = getattr(self.coordinator, "settle_task_claim", None)
+        if not callable(settle_claim):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator does not implement fenced task-claim settlement"
+            )
+        # Settlement is itself an exact live-fence check.  Never suppress its
+        # expiry/takeover error or report the attempt as accepted to the caller.
+        settle_claim(
+            claim,
+            reason="attempt_complete",
+            now_ms=self._now_ms(),
         )
         self._record_event(
             "attempt_completed",
@@ -57208,6 +57696,345 @@ class DatabaseImplementationDaemon:
             body={"evidence_digest": digest},
         )
         return updated
+
+    def _commit_reconciled_attempt_terminal(
+        self,
+        prepared: Mapping[str, Any],
+        *,
+        succeeded: bool,
+        reconciliation: Mapping[str, Any],
+    ) -> DatabaseTaskAttempt | None:
+        """Project an authoritative cross-store recovery into execution state.
+
+        This path is used only after the coordinator has either recovered a
+        completion from the exact persisted control receipt or aborted a
+        preparation from an exact unchanged control observation.  That
+        reconciliation receipt replaces the no-longer-live lease as authority
+        for this non-authoritative execution projection.
+        """
+
+        attempt_id = str(prepared.get("attempt_id") or "")
+        current = self.get_attempt(attempt_id)
+        if current is None:
+            return None
+        expected_identity = {
+            "claim_id": str(prepared.get("claim_id") or ""),
+            "task_cid": str(prepared.get("task_cid") or ""),
+            "attempt_number": int(prepared.get("attempt_number") or 0),
+            "owner_session_id": str(prepared.get("owner_session_id") or ""),
+            "fencing_token": int(prepared.get("fencing_token") or 0),
+            "fence_epoch": int(prepared.get("fence_epoch") or 0),
+            "lease_id": str(prepared.get("lease_id") or ""),
+        }
+        mismatched = [
+            name
+            for name, expected in expected_identity.items()
+            if getattr(current, name) != expected
+        ]
+        if mismatched:
+            raise DatabaseImplementationConflictError(
+                "cross-store reconciliation does not match execution attempt "
+                + ", ".join(mismatched)
+            )
+        expected_status = "succeeded" if succeeded else "failed"
+        expected_phase = (
+            ATTEMPT_PHASE_COMPLETE if succeeded else ATTEMPT_PHASE_FAILED
+        )
+        if current.status == expected_status:
+            return current
+        if current.status != "running":
+            raise DatabaseImplementationConflictError(
+                f"cannot reconcile attempt {attempt_id} from {current.status!r}"
+            )
+        now = self._now_ms()
+        revision = int(current.revision) + 1
+        body = {
+            "cross_store_reconciled": True,
+            "preparation_digest": str(
+                prepared.get("preparation_digest") or ""
+            ),
+            "reconciliation": dict(reconciliation),
+        }
+        connection = self._require_connection()
+        with self._lock:
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                changed = connection.execute(
+                    """
+                    UPDATE database_task_attempts
+                    SET committed_phase = ?, status = ?, finished_at_ms = ?, revision = ?
+                    WHERE attempt_id = ? AND revision = ? AND status = 'running'
+                    RETURNING attempt_id
+                    """,
+                    [
+                        expected_phase,
+                        expected_status,
+                        now,
+                        revision,
+                        attempt_id,
+                        int(current.revision),
+                    ],
+                ).fetchone()
+                if changed is None:
+                    raise DatabaseImplementationConflictError(
+                        f"attempt {attempt_id} changed during cross-store reconciliation"
+                    )
+                connection.execute(
+                    """
+                    INSERT OR REPLACE INTO attempt_phases(
+                        attempt_id, phase, committed_at_ms, fencing_token, fence_epoch,
+                        revision, body_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        attempt_id,
+                        expected_phase,
+                        now,
+                        int(current.fencing_token),
+                        int(current.fence_epoch),
+                        revision,
+                        _database_daemon_json(body),
+                    ],
+                )
+                connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+        updated = self.get_attempt(attempt_id)
+        if updated is None:
+            raise DatabaseImplementationDaemonError(
+                "attempt disappeared after cross-store reconciliation"
+            )
+        self._record_event(
+            "attempt_cross_store_reconciled",
+            attempt_id=attempt_id,
+            task_cid=current.task_cid,
+            body={"status": expected_status, **body},
+        )
+        return updated
+
+    def reconcile_prepared_task_completions(self) -> list[dict[str, Any]]:
+        """Resolve PREPARED or promoted barriers from authoritative truth.
+
+        The coordinator enumeration performs the expiry sweep in its own
+        transaction.  A promoted completion is reconciled even when the local
+        execution attempt already reached COMPLETE, closing the crash window
+        immediately before ordinary claim settlement.
+        """
+
+        list_unsettled = getattr(
+            self.coordinator,
+            "list_unsettled_task_completions",
+            None,
+        )
+        if not callable(list_unsettled):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator cannot enumerate unsettled task completions"
+            )
+        outcomes: list[dict[str, Any]] = []
+        now = self._now_ms()
+        for prepared in list_unsettled(limit=100, now_ms=now):
+            claim = self.coordinator.get_task_claim(
+                str(prepared.get("claim_id") or "")
+            )
+            if claim is None:
+                raise DatabaseImplementationAuthorityError(
+                    "prepared task completion has no claim history"
+                )
+            claim_state = str(
+                getattr(getattr(claim, "state", ""), "value", claim.state)
+                or ""
+            )
+            completion_status = str(
+                prepared.get("status") or ""
+            ).strip().lower()
+            if (
+                completion_status != "succeeded"
+                and claim_state == "accepted"
+                and int(claim.expires_at_ms) > now
+            ):
+                # A live attempt owns this barrier and will finish the ordinary
+                # protocol (including response-loss replay) itself.
+                continue
+            task = self.task_source.get(str(prepared.get("task_cid") or ""))
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    "prepared task completion has no control task"
+                )
+            task_observation = task.to_dict()
+            task_status = str(task.status or "").strip().lower()
+            if completion_status == "succeeded":
+                reconcile_promoted = getattr(
+                    self.coordinator,
+                    "reconcile_promoted_task_completion",
+                    None,
+                )
+                if not callable(reconcile_promoted):
+                    raise DatabaseImplementationAuthorityError(
+                        "coordinator cannot reconcile promoted task completion"
+                    )
+                outcome = dict(
+                    reconcile_promoted(
+                        str(prepared["task_cid"]),
+                        control_completion_receipt=task_observation,
+                        now_ms=now,
+                    )
+                )
+                self._commit_reconciled_attempt_terminal(
+                    prepared,
+                    succeeded=True,
+                    reconciliation=outcome,
+                )
+                outcomes.append(outcome)
+                continue
+            if task_status in {"completed", "complete", "done"}:
+                recover = getattr(
+                    self.coordinator,
+                    "recover_prepared_task_completion",
+                    None,
+                )
+                if not callable(recover):
+                    raise DatabaseImplementationAuthorityError(
+                        "coordinator cannot recover prepared task completion"
+                    )
+                outcome = dict(
+                    recover(
+                        str(prepared["task_cid"]),
+                        control_completion_receipt=task_observation,
+                        now_ms=now,
+                    )
+                )
+                self._commit_reconciled_attempt_terminal(
+                    prepared,
+                    succeeded=True,
+                    reconciliation=outcome,
+                )
+            else:
+                abort = getattr(
+                    self.coordinator,
+                    "abort_prepared_task_completion",
+                    None,
+                )
+                if not callable(abort):
+                    raise DatabaseImplementationAuthorityError(
+                        "coordinator cannot abort prepared task completion"
+                    )
+                outcome = dict(
+                    abort(
+                        str(prepared["task_cid"]),
+                        control_task_observation=task_observation,
+                        reason="expired_before_control_completion",
+                        now_ms=now,
+                    )
+                )
+                self._commit_reconciled_attempt_terminal(
+                    prepared,
+                    succeeded=False,
+                    reconciliation=outcome,
+                )
+            outcomes.append(outcome)
+        return outcomes
+
+    def reconcile_expired_running_attempts(self) -> list[dict[str, Any]]:
+        """Retire exact local attempts whose coordination authority expired.
+
+        No provider/effect receipt from the expired attempt is accepted for a
+        later fence.  The old execution projection is terminalized with an
+        explicit retry receipt, after which normal coordination may issue a
+        new attempt number and fencing token.
+        """
+
+        expire_claim = getattr(self.coordinator, "expire_task_claim", None)
+        if not callable(expire_claim):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator cannot persist exact task-claim expiry"
+            )
+        outcomes: list[dict[str, Any]] = []
+        now = self._now_ms()
+        for attempt in self.list_running_attempts():
+            claim = self.coordinator.get_task_claim(attempt.claim_id)
+            if claim is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"running attempt {attempt.attempt_id} has no claim history"
+                )
+            identity = claim.to_dict()
+            expected_identity = {
+                "task_cid": attempt.task_cid,
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "owner_session_id": attempt.owner_session_id,
+                "lease_id": attempt.lease_id,
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
+            }
+            mismatched = [
+                name
+                for name, expected in expected_identity.items()
+                if identity.get(name) != expected
+            ]
+            if mismatched:
+                raise DatabaseImplementationConflictError(
+                    "running attempt does not match coordination claim: "
+                    + ", ".join(mismatched)
+                )
+            claim_state = str(
+                getattr(getattr(claim, "state", ""), "value", claim.state)
+                or ""
+            )
+            completion = self.coordinator.get_prepared_task_completion(
+                attempt.task_cid
+            )
+            if claim_state in {"released", "completed"}:
+                if completion is None or completion.get("status") != "succeeded":
+                    raise DatabaseImplementationAuthorityError(
+                        "terminal successful task authority has no exact promoted "
+                        "completion"
+                    )
+                outcome = {
+                    "task_cid": attempt.task_cid,
+                    "claim_id": attempt.claim_id,
+                    "attempt_id": attempt.attempt_id,
+                    "status": "succeeded",
+                    "lease_state": claim_state,
+                    "replayed": True,
+                    "reason": "terminal_completion_projection_repair",
+                }
+                self._commit_reconciled_attempt_terminal(
+                    completion,
+                    succeeded=True,
+                    reconciliation=outcome,
+                )
+                outcomes.append(outcome)
+                continue
+            if completion is not None:
+                # Completion barriers are resolved by the preceding bounded
+                # reconciliation pass.  Do not reinterpret their authority as
+                # an ordinary expired retry.
+                continue
+            if claim_state == "accepted" and int(claim.expires_at_ms) > now:
+                continue
+            lease = expire_claim(claim, now_ms=now)
+            outcome = {
+                "task_cid": attempt.task_cid,
+                "claim_id": attempt.claim_id,
+                "attempt_id": attempt.attempt_id,
+                "status": "expired",
+                "lease_state": str(
+                    getattr(getattr(lease, "state", ""), "value", lease.state)
+                    or ""
+                ),
+                "retry_required": True,
+                "provider_evidence_reused": False,
+                "effect_evidence_reused": False,
+                "reason": "coordination_lease_expired_before_completion",
+            }
+            self._commit_reconciled_attempt_terminal(
+                identity,
+                succeeded=False,
+                reconciliation=outcome,
+            )
+            outcomes.append(outcome)
+        return outcomes
 
     # -- resume / run_once --------------------------------------------------
 
@@ -57242,6 +58069,12 @@ class DatabaseImplementationDaemon:
                 "provider_duplicated": False,
                 "effect_duplicated": False,
             }
+        self._protect_attempt_write(
+            current,
+            allow_logically_completed=current.phase_committed(
+                ATTEMPT_PHASE_VALIDATION
+            ),
+        )
 
         provider_result: Mapping[str, Any] = {}
         effect_result: Mapping[str, Any] = {}
@@ -57296,7 +58129,12 @@ class DatabaseImplementationDaemon:
                     "argv": ["database-validation"],
                 }
             else:
-                validation_result = dict(callback(current, effect_result))
+                validation_result = dict(
+                    self._run_with_attempt_heartbeat(
+                        current,
+                        lambda: callback(current, effect_result),
+                    )
+                )
             if self.require_real_execution and (
                 str(validation_result.get("outcome") or "").strip().lower()
                 != "passed"
@@ -57354,26 +58192,36 @@ class DatabaseImplementationDaemon:
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
+        completion_reconciliations = self.reconcile_prepared_task_completions()
+        expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
+        reconciliation_write_count = len(completion_reconciliations) + len(
+            expired_attempt_reconciliations
+        )
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
         if running:
             result = self.resume_attempt(running[0])
             return {
                 "unchanged": False,
-                "write_count": 1,
+                "write_count": 1 + reconciliation_write_count,
                 "active_task_id": running[0].task_alias or running[0].task_cid,
                 "implementation_result": result,
                 "authority_mode": self.authority_mode,
                 "task_source_kind": self.task_source_kind,
                 "markdown_status_writes": self._markdown_status_writes,
                 "projections_required": False,
+                "control_schema_evidence": dict(self.control_schema_evidence),
+                "completion_reconciliations": completion_reconciliations,
+                "expired_attempt_reconciliations": (
+                    expired_attempt_reconciliations
+                ),
             }
 
         attempt = self.claim_next()
         if attempt is None:
             return {
-                "unchanged": True,
-                "write_count": 0,
+                "unchanged": reconciliation_write_count == 0,
+                "write_count": reconciliation_write_count,
                 "active_task_id": "",
                 "selection_idle_reason": "no_ready_tasks",
                 "implementation_result": None,
@@ -57381,18 +58229,26 @@ class DatabaseImplementationDaemon:
                 "task_source_kind": self.task_source_kind,
                 "markdown_status_writes": self._markdown_status_writes,
                 "projections_required": False,
+                "control_schema_evidence": dict(self.control_schema_evidence),
+                "completion_reconciliations": completion_reconciliations,
+                "expired_attempt_reconciliations": (
+                    expired_attempt_reconciliations
+                ),
             }
 
         result = self.resume_attempt(attempt)
         return {
             "unchanged": False,
-            "write_count": 1,
+            "write_count": 1 + reconciliation_write_count,
             "active_task_id": attempt.task_alias or attempt.task_cid,
             "implementation_result": result,
             "authority_mode": self.authority_mode,
             "task_source_kind": self.task_source_kind,
             "markdown_status_writes": self._markdown_status_writes,
             "projections_required": False,
+            "control_schema_evidence": dict(self.control_schema_evidence),
+            "completion_reconciliations": completion_reconciliations,
+            "expired_attempt_reconciliations": expired_attempt_reconciliations,
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,

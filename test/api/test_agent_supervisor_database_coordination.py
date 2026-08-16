@@ -14,13 +14,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     DATABASE_COORDINATOR_INTERFACE,
     FENCED_LEASE_INTERFACE,
     MAINTENANCE_LEASE_INTERFACE,
     RESOURCE_CLAIM_INTERFACE,
     TASK_CLAIM_INTERFACE,
+    AttemptStatus,
     DatabaseCoordinationConflictError,
     DatabaseCoordinationExpiredError,
     DatabaseCoordinationNotReadyError,
@@ -64,6 +64,43 @@ def _open(
         default_lease_ms=default_lease_ms,
     )
     return coordinator, clock
+
+
+def _completed_control_task(
+    prepared: dict[str, object],
+    *,
+    nested_cas_result: bool = False,
+) -> dict[str, object]:
+    task = {
+        "task_cid": prepared["task_cid"],
+        "status": "completed",
+        "revision": int(prepared["control_expected_revision"]) + 1,
+        "body": {
+            "completion_receipt": {
+                "operation": "database_complete",
+                "coordination_preparation": dict(prepared),
+            }
+        },
+    }
+    if not nested_cas_result:
+        return task
+    return {
+        "task": task,
+        "previous_status": prepared["control_expected_status"],
+        "revision": task["revision"],
+        "event_cursor": 7,
+        "changed": True,
+        "receipt_cid": "cid:control-completion",
+    }
+
+
+def _incomplete_control_task(prepared: dict[str, object]) -> dict[str, object]:
+    return {
+        "task_cid": prepared["task_cid"],
+        "status": prepared["control_expected_status"],
+        "revision": prepared["control_expected_revision"],
+        "body": {},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +395,10 @@ def test_logically_completed_task_cannot_be_claimed_again(tmp_path: Path) -> Non
         coordinator.register_task(task_cid="task:complete", task_id="COMPLETE")
         coordinator.mark_task_complete("task:complete", status="succeeded")
 
+        readiness = coordinator.claimability("task:complete")
+        assert readiness["claimable"] is False
+        assert readiness["completion_status"] == "succeeded"
+        assert readiness["repair_evidence"][0]["kind"] == "already_completed"
         assert coordinator.claim_ready_task(owner_session_id="session:next") is None
         with pytest.raises(DatabaseCoordinationNotReadyError) as excinfo:
             coordinator.claim_task(
@@ -433,6 +474,657 @@ def test_response_loss_idempotency_replays_same_claim(tmp_path: Path) -> None:
         )
         assert replay.lease_id == lease.lease_id
         assert replay.fencing_token == lease.fencing_token
+    finally:
+        coordinator.close()
+
+
+def test_completed_task_guard_precedes_same_key_idempotency_replay(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:completed-idem", task_id="IDEM")
+        claim = coordinator.claim_task(
+            task_cid="task:completed-idem",
+            owner_session_id="session:worker",
+            idempotency_key="idem-completed",
+        )
+        coordinator.mark_task_complete(
+            claim.task_cid,
+            status="succeeded",
+            body={"attempt_id": claim.attempt_id},
+        )
+
+        with pytest.raises(DatabaseCoordinationNotReadyError) as excinfo:
+            coordinator.claim_task(
+                task_cid=claim.task_cid,
+                owner_session_id=claim.owner_session_id,
+                idempotency_key=claim.idempotency_key,
+            )
+        assert excinfo.value.evidence["reason"] == "already_completed"
+    finally:
+        coordinator.close()
+
+
+def test_task_idempotency_key_is_scoped_to_the_requested_task(tmp_path: Path) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:idem-a", task_id="IDEM-A")
+        coordinator.register_task(task_cid="task:idem-b", task_id="IDEM-B")
+        first = coordinator.claim_task(
+            task_cid="task:idem-a",
+            owner_session_id="session:worker",
+            idempotency_key="same-key",
+        )
+        second = coordinator.claim_task(
+            task_cid="task:idem-b",
+            owner_session_id="session:worker",
+            idempotency_key="same-key",
+        )
+
+        assert first.task_cid == "task:idem-a"
+        assert second.task_cid == "task:idem-b"
+        assert second.claim_id != first.claim_id
+        assert second.attempt_id != first.attempt_id
+    finally:
+        coordinator.close()
+
+
+def test_same_owner_task_reacquire_without_key_replays_exact_live_claim(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:implicit-replay", task_id="REPLAY")
+        first = coordinator.claim_task(
+            task_cid="task:implicit-replay",
+            owner_session_id="session:worker",
+        )
+        replay = coordinator.claim_task(
+            task_cid=first.task_cid,
+            owner_session_id=first.owner_session_id,
+        )
+        assert replay.claim_id == first.claim_id
+        assert replay.attempt_id == first.attempt_id
+        assert replay.lease_id == first.lease_id
+        assert replay.fencing_token == first.fencing_token
+        assert replay.fence_epoch == first.fence_epoch
+    finally:
+        coordinator.close()
+
+
+def test_expired_same_key_retry_creates_new_claim_and_never_replays_old_attempt(
+    tmp_path: Path,
+) -> None:
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(task_cid="task:expired-idem", task_id="EXPIRED")
+        original = coordinator.claim_task(
+            task_cid="task:expired-idem",
+            owner_session_id="session:old",
+            idempotency_key="same-response",
+        )
+        clock.advance(10_000)
+
+        replacement = coordinator.claim_task(
+            task_cid=original.task_cid,
+            owner_session_id=original.owner_session_id,
+            idempotency_key=original.idempotency_key,
+        )
+        assert replacement.claim_id != original.claim_id
+        assert replacement.attempt_id != original.attempt_id
+        assert replacement.attempt_number == original.attempt_number + 1
+        assert replacement.fencing_token > original.fencing_token
+        assert replacement.fence_epoch > original.fence_epoch
+        with pytest.raises(DatabaseCoordinationExpiredError):
+            coordinator.protect_task_claim(original)
+        assert coordinator.protect_task_claim(replacement).lease_id == replacement.lease_id
+        replay = coordinator.claim_task(
+            task_cid=replacement.task_cid,
+            owner_session_id=replacement.owner_session_id,
+            idempotency_key=replacement.idempotency_key,
+        )
+        assert replay.claim_id == replacement.claim_id
+        assert replay.attempt_id == replacement.attempt_id
+    finally:
+        coordinator.close()
+
+
+def test_exact_task_claim_expiry_persists_without_prior_scope_sweep(
+    tmp_path: Path,
+) -> None:
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(task_cid="task:explicit-expiry", task_id="EXPIRY")
+        claim = coordinator.claim_task(
+            task_cid="task:explicit-expiry",
+            owner_session_id="session:old",
+            idempotency_key="old-attempt",
+        )
+
+        with pytest.raises(DatabaseCoordinationExpiredError):
+            coordinator.expire_task_claim(claim)
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
+
+        clock.advance(10_000)
+        # No other coordinator mutation has swept this task scope.
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
+        expired = coordinator.expire_task_claim(claim)
+        assert expired.state is LeaseState.EXPIRED
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.EXPIRED
+        assert coordinator.get_lease(claim.lease_id).state is LeaseState.EXPIRED
+        assert (
+            coordinator.get_task_attempt(claim.attempt_id).status
+            is AttemptStatus.EXPIRED
+        )
+        assert coordinator.expire_task_claim(claim).state is LeaseState.EXPIRED
+
+        replacement = coordinator.claim_task(
+            task_cid=claim.task_cid,
+            owner_session_id="session:new",
+            idempotency_key="new-attempt",
+        )
+        assert replacement.attempt_number == claim.attempt_number + 1
+        assert replacement.fencing_token > claim.fencing_token
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.expire_task_claim(claim)
+        assert coordinator.get_task_claim(replacement.claim_id).state is LeaseState.ACCEPTED
+    finally:
+        coordinator.close()
+
+
+def test_released_same_key_retry_creates_new_claim(tmp_path: Path) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:released-idem", task_id="RELEASED")
+        claim = coordinator.claim_task(
+            task_cid="task:released-idem",
+            owner_session_id="session:worker",
+            idempotency_key="released-response",
+        )
+        coordinator.release(claim.as_fenced_lease(), reason="abandoned")
+
+        replacement = coordinator.claim_task(
+            task_cid=claim.task_cid,
+            owner_session_id=claim.owner_session_id,
+            idempotency_key=claim.idempotency_key,
+        )
+        assert replacement.claim_id != claim.claim_id
+        assert replacement.attempt_id != claim.attempt_id
+        assert replacement.attempt_number == claim.attempt_number + 1
+        assert replacement.fencing_token > claim.fencing_token
+    finally:
+        coordinator.close()
+
+
+def test_exact_task_claim_protection_rejects_identity_mismatch(tmp_path: Path) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:protected", task_id="PROTECTED")
+        claim = coordinator.claim_task(
+            task_cid="task:protected",
+            owner_session_id="session:worker",
+        )
+
+        protected = coordinator.protect_task_claim(
+            claim,
+            expected_task_cid=claim.task_cid,
+            expected_attempt_id=claim.attempt_id,
+            expected_owner_session_id=claim.owner_session_id,
+            expected_fencing_token=claim.fencing_token,
+            expected_fence_epoch=claim.fence_epoch,
+        )
+        assert protected.lease_id == claim.lease_id
+
+        mismatched = claim.to_dict()
+        mismatched["attempt_id"] = "attempt:not-authoritative"
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.protect_task_claim(mismatched)
+        mismatched = claim.to_dict()
+        mismatched["attempt_number"] += 1
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.protect_task_claim(mismatched)
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.protect_task_claim(
+                claim,
+                expected_owner_session_id="session:not-authoritative",
+            )
+    finally:
+        coordinator.close()
+
+
+def test_claim_aware_completion_and_successful_settlement_are_ordered(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:settle", task_id="SETTLE")
+        claim = coordinator.claim_task(
+            task_cid="task:settle",
+            owner_session_id="session:worker",
+        )
+
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=2,
+            control_expected_status="in_progress",
+            evidence_digest="sha256:test",
+        )
+        assert prepared["status"] == "prepared"
+        assert prepared["replayed"] is False
+        assert coordinator.claimability(claim.task_cid)["claimable"] is False
+        assert coordinator.get_prepared_task_completion(claim.task_cid) is not None
+        assert [
+            item["task_cid"]
+            for item in coordinator.list_prepared_task_completions(limit=10)
+        ] == [claim.task_cid]
+
+        control_cas = _completed_control_task(
+            prepared,
+            nested_cas_result=True,
+        )
+        completion = coordinator.complete_task_claim(
+            claim,
+            control_completion_receipt=control_cas,
+        )
+        assert completion["replayed"] is False
+        assert coordinator.claimability(claim.task_cid)["claimable"] is False
+        promoted_preparation = coordinator.get_prepared_task_completion(
+            claim.task_cid
+        )
+        assert promoted_preparation is not None
+        assert promoted_preparation["status"] == AttemptStatus.SUCCEEDED.value
+        assert coordinator.list_prepared_task_completions(limit=10) == []
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
+        assert coordinator.get_lease(claim.lease_id).state is LeaseState.ACCEPTED
+        assert (
+            coordinator.get_task_attempt(claim.attempt_id).status
+            is AttemptStatus.RUNNING
+        )
+        coordinator.protect_task_claim(claim, allow_logically_completed=True)
+
+        replay = coordinator.complete_task_claim(
+            claim,
+            control_completion_receipt=control_cas["task"],
+        )
+        assert replay["replayed"] is True
+        settled = coordinator.settle_task_claim(claim)
+        assert settled.state is LeaseState.RELEASED
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.RELEASED
+        assert (
+            coordinator.get_task_attempt(claim.attempt_id).status
+            is AttemptStatus.SUCCEEDED
+        )
+        settlement_replay = coordinator.settle_task_claim(claim)
+        assert settlement_replay.lease_id == settled.lease_id
+        assert settlement_replay.state is LeaseState.RELEASED
+        with pytest.raises(DatabaseCoordinationExpiredError):
+            coordinator.protect_task_claim(
+                claim,
+                allow_logically_completed=True,
+            )
+    finally:
+        coordinator.close()
+
+
+def test_expired_task_claim_cannot_complete_or_settle(tmp_path: Path) -> None:
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(task_cid="task:late", task_id="LATE")
+        claim = coordinator.claim_task(
+            task_cid="task:late",
+            owner_session_id="session:late",
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:late",
+        )
+        control_task = _completed_control_task(prepared)
+        clock.advance(10_000)
+
+        with pytest.raises(DatabaseCoordinationExpiredError):
+            coordinator.complete_task_claim(
+                claim,
+                control_completion_receipt=control_task,
+            )
+        assert coordinator.claimability(claim.task_cid)["claimable"] is False
+        with pytest.raises(DatabaseCoordinationExpiredError):
+            coordinator.settle_task_claim(claim)
+    finally:
+        coordinator.close()
+
+
+def test_prepared_completion_does_not_satisfy_dependents_and_rejects_forgery(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:prepared", task_id="PREPARED")
+        coordinator.register_task(
+            task_cid="task:dependent",
+            task_id="DEPENDENT",
+            dependency_task_cids=("task:prepared",),
+        )
+        claim = coordinator.claim_task(
+            task_cid="task:prepared",
+            owner_session_id="session:worker",
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:prepared",
+        )
+
+        assert coordinator.claimability(claim.task_cid)["claimable"] is False
+        dependent = coordinator.claimability("task:dependent")
+        assert dependent["claimable"] is False
+        assert dependent["blocked_dependency_task_cids"] == [claim.task_cid]
+
+        forged = _completed_control_task(prepared)
+        forged_binding = forged["body"]["completion_receipt"][
+            "coordination_preparation"
+        ]
+        forged_binding["preparation_digest"] = "sha256:forged"
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.complete_task_claim(
+                claim,
+                control_completion_receipt=forged,
+            )
+        pending = coordinator.get_prepared_task_completion(claim.task_cid)
+        assert pending is not None
+        assert pending["preparation_digest"] == prepared["preparation_digest"]
+    finally:
+        coordinator.close()
+
+
+def test_expired_prepared_completion_recovers_from_bound_control_task(
+    tmp_path: Path,
+) -> None:
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(task_cid="task:recover", task_id="RECOVER")
+        coordinator.register_task(
+            task_cid="task:after-recover",
+            task_id="AFTER",
+            dependency_task_cids=("task:recover",),
+        )
+        claim = coordinator.claim_task(
+            task_cid="task:recover",
+            owner_session_id="session:old",
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:recover",
+        )
+        control_task = _completed_control_task(prepared)
+        clock.advance(10_000)
+
+        recovered = coordinator.recover_prepared_task_completion(
+            claim.task_cid,
+            control_completion_receipt=control_task,
+        )
+        assert recovered["recovered"] is True
+        assert recovered["lease_state"] == LeaseState.COMPLETED.value
+        promoted_preparation = coordinator.get_prepared_task_completion(
+            claim.task_cid
+        )
+        assert promoted_preparation is not None
+        assert promoted_preparation["status"] == AttemptStatus.SUCCEEDED.value
+        assert coordinator.get_lease(claim.lease_id).state is LeaseState.COMPLETED
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.COMPLETED
+        assert (
+            coordinator.get_task_attempt(claim.attempt_id).status
+            is AttemptStatus.SUCCEEDED
+        )
+        assert coordinator.claimability("task:after-recover")["claimable"] is True
+    finally:
+        coordinator.close()
+
+
+def test_expired_prepared_completion_aborts_only_with_unchanged_control_truth(
+    tmp_path: Path,
+) -> None:
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(task_cid="task:abort", task_id="ABORT")
+        claim = coordinator.claim_task(
+            task_cid="task:abort",
+            owner_session_id="session:old",
+            idempotency_key="old-attempt",
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:abort",
+        )
+        clock.advance(10_000)
+
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.abort_prepared_task_completion(
+                claim.task_cid,
+                control_task_observation=_completed_control_task(prepared),
+            )
+        assert coordinator.get_prepared_task_completion(claim.task_cid) is not None
+
+        aborted = coordinator.abort_prepared_task_completion(
+            claim.task_cid,
+            control_task_observation=_incomplete_control_task(prepared),
+        )
+        assert aborted["status"] == "aborted"
+        assert aborted["ready"] is True
+        assert coordinator.get_prepared_task_completion(claim.task_cid) is None
+        replacement = coordinator.claim_task(
+            task_cid=claim.task_cid,
+            owner_session_id="session:new",
+            idempotency_key="new-attempt",
+        )
+        assert replacement.attempt_number == claim.attempt_number + 1
+        assert replacement.fencing_token > claim.fencing_token
+    finally:
+        coordinator.close()
+
+
+def test_prepared_enumeration_atomically_expires_without_prior_sweep(
+    tmp_path: Path,
+) -> None:
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(task_cid="task:lazy-expiry", task_id="LAZY")
+        coordinator.register_task(
+            task_cid="task:lazy-dependent",
+            task_id="LAZY-DEPENDENT",
+            dependency_task_cids=("task:lazy-expiry",),
+        )
+        claim = coordinator.claim_task(
+            task_cid="task:lazy-expiry",
+            owner_session_id="session:lazy",
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:lazy-expiry",
+        )
+        clock.advance(10_000)
+
+        # Merely advancing the clock does not mutate stored projections.
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
+        assert coordinator.get_lease(claim.lease_id).state is LeaseState.ACCEPTED
+        assert (
+            coordinator.get_task_attempt(claim.attempt_id).status
+            is AttemptStatus.RUNNING
+        )
+
+        pending = coordinator.list_prepared_task_completions(limit=10)
+        assert len(pending) == 1
+        assert pending[0]["preparation_digest"] == prepared["preparation_digest"]
+        assert pending[0]["claim_state"] == LeaseState.EXPIRED.value
+        assert pending[0]["lease_state"] == LeaseState.EXPIRED.value
+        assert pending[0]["attempt_status"] == AttemptStatus.EXPIRED.value
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.EXPIRED
+        assert coordinator.get_lease(claim.lease_id).state is LeaseState.EXPIRED
+        assert (
+            coordinator.get_task_attempt(claim.attempt_id).status
+            is AttemptStatus.EXPIRED
+        )
+        assert coordinator.claimability("task:lazy-dependent")["claimable"] is False
+
+        aborted = coordinator.abort_prepared_task_completion(
+            claim.task_cid,
+            control_task_observation=_incomplete_control_task(prepared),
+        )
+        assert aborted["ready"] is True
+        assert coordinator.claimability("task:lazy-expiry")["claimable"] is True
+    finally:
+        coordinator.close()
+
+
+def test_promoted_completion_is_enumerated_and_reconciled_while_live(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:pending-live", task_id="PENDING")
+        pending_claim = coordinator.claim_task(
+            task_cid="task:pending-live",
+            owner_session_id="session:pending",
+        )
+        coordinator.prepare_task_completion(
+            pending_claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:pending-live",
+        )
+        coordinator.register_task(task_cid="task:promoted-live", task_id="LIVE")
+        claim = coordinator.claim_task(
+            task_cid="task:promoted-live",
+            owner_session_id="session:live",
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:promoted-live",
+        )
+        control_task = _completed_control_task(prepared)
+        coordinator.complete_task_claim(
+            claim,
+            control_completion_receipt=control_task,
+        )
+
+        # A live pending preparation cannot starve an actionable promoted row
+        # from a bounded reconciliation query.
+        unsettled = coordinator.list_unsettled_task_completions(limit=1)
+        assert len(unsettled) == 1
+        assert unsettled[0]["task_cid"] == claim.task_cid
+        assert unsettled[0]["status"] == AttemptStatus.SUCCEEDED.value
+        assert unsettled[0]["lease_state"] == LeaseState.ACCEPTED.value
+        assert unsettled[0]["attempt_status"] == AttemptStatus.RUNNING.value
+
+        reconciled = coordinator.reconcile_promoted_task_completion(
+            claim.task_cid,
+            control_completion_receipt=control_task,
+        )
+        assert reconciled["lease_state"] == LeaseState.RELEASED.value
+        assert reconciled["replayed"] is False
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.RELEASED
+        assert coordinator.get_lease(claim.lease_id).state is LeaseState.RELEASED
+        assert (
+            coordinator.get_task_attempt(claim.attempt_id).status
+            is AttemptStatus.SUCCEEDED
+        )
+        remaining = coordinator.list_unsettled_task_completions(limit=10)
+        assert [item["task_cid"] for item in remaining] == [pending_claim.task_cid]
+
+        replay = coordinator.reconcile_promoted_task_completion(
+            claim.task_cid,
+            control_completion_receipt=control_task,
+        )
+        assert replay["lease_state"] == LeaseState.RELEASED.value
+        assert replay["replayed"] is True
+
+        # Settled history ahead of a bounded query cannot starve a later
+        # promoted-but-unsettled barrier.
+        coordinator.register_task(
+            task_cid="task:promoted-live-next",
+            task_id="LIVE-NEXT",
+        )
+        next_claim = coordinator.claim_task(
+            task_cid="task:promoted-live-next",
+            owner_session_id="session:live",
+        )
+        next_prepared = coordinator.prepare_task_completion(
+            next_claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:promoted-live-next",
+        )
+        coordinator.complete_task_claim(
+            next_claim,
+            control_completion_receipt=_completed_control_task(next_prepared),
+        )
+        bounded = coordinator.list_unsettled_task_completions(limit=1)
+        assert [item["task_cid"] for item in bounded] == [next_claim.task_cid]
+    finally:
+        coordinator.close()
+
+
+def test_promoted_completion_reconciliation_expires_and_recovers_atomically(
+    tmp_path: Path,
+) -> None:
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(
+            task_cid="task:promoted-expired",
+            task_id="EXPIRED",
+        )
+        claim = coordinator.claim_task(
+            task_cid="task:promoted-expired",
+            owner_session_id="session:expired",
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:promoted-expired",
+        )
+        control_task = _completed_control_task(prepared)
+        coordinator.complete_task_claim(
+            claim,
+            control_completion_receipt=control_task,
+        )
+        clock.advance(10_000)
+
+        # No explicit lease sweep occurs before this atomic reconciliation.
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
+        forged_control_task = _completed_control_task(prepared)
+        forged_control_task["body"]["completion_receipt"][
+            "coordination_preparation"
+        ]["claim_id"] = "claim:forged"
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.reconcile_promoted_task_completion(
+                claim.task_cid,
+                control_completion_receipt=forged_control_task,
+            )
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
+
+        reconciled = coordinator.reconcile_promoted_task_completion(
+            claim.task_cid,
+            control_completion_receipt=control_task,
+        )
+        assert reconciled["lease_state"] == LeaseState.COMPLETED.value
+        assert reconciled["replayed"] is False
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.COMPLETED
+        assert coordinator.get_lease(claim.lease_id).state is LeaseState.COMPLETED
+        assert (
+            coordinator.get_task_attempt(claim.attempt_id).status
+            is AttemptStatus.SUCCEEDED
+        )
+        assert coordinator.list_unsettled_task_completions(limit=10) == []
+
+        replay = coordinator.reconcile_promoted_task_completion(
+            claim.task_cid,
+            control_completion_receipt=control_task,
+        )
+        assert replay["lease_state"] == LeaseState.COMPLETED.value
+        assert replay["replayed"] is True
     finally:
         coordinator.close()
 
