@@ -739,7 +739,7 @@ overlays. Never force-push.
 
 ## MCPP-023 Adapt accelerate and datasets runtimes to the dual MCP bindings
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
