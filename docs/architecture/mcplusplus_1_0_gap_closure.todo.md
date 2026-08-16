@@ -2230,7 +2230,7 @@ overlays. Never force-push.
 
 ## MCPP-071 Harden quotes, settlement, entitlements, refunds, and replay protection
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
