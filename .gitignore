@@ -168,6 +168,9 @@ Thumbs.db
 /data/agent_supervisor/ipfs_datasets_logic_family_parser/
 /data/agent_supervisor/prompt_only_self_improvement_v3/live/
 /data/agent_supervisor/logic_governed_semantic_work_fabric/
+!/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/
+!/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/**
+!/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/*.json
 data/*.db
 data/*.sqlite
 data/*.sqlite3
