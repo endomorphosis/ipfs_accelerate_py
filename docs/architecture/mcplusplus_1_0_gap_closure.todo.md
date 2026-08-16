@@ -863,7 +863,7 @@ overlays. Never force-push.
 
 ## MCPP-027 Implement mcpp-jcs-v1 in Go and Rust
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
