@@ -2354,7 +2354,7 @@ overlays. Never force-push.
 
 ## MCPP-075 Create the installable mcpp CLI
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
