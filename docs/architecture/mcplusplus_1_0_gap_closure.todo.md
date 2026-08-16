@@ -1641,7 +1641,7 @@ overlays. Never force-push.
 
 ## MCPP-052 Add the crash-recovery integration test
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
