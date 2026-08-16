@@ -5943,6 +5943,53 @@ def admit_compiled_execution_assignments(
     return drift, tuple(admissions)
 
 
+
+LGSWF_RESOURCE_VECTOR = (
+    "cpu_ms",
+    "cpu_concurrency",
+    "ram_mib",
+    "gpu_memory_mib",
+    "disk_mib",
+    "network",
+    "subprocesses",
+    "worktrees",
+    "model_input_tokens",
+    "model_output_tokens",
+    "provider_quota_units",
+    "provider_concurrency",
+)
+
+
+class LgswfReservationError(ValueError):
+    """Leased reservation was refused."""
+
+
+def lgswf_reserve_vector(available, demand, *, owner):
+    reserved = {}
+    for key in LGSWF_RESOURCE_VECTOR:
+        need = int(demand.get(key, 0) or 0)
+        have = int(available.get(key, 0) or 0)
+        if need < 0 or have < 0:
+            raise LgswfReservationError(f"{key} must be non-negative")
+        if need > have:
+            raise LgswfReservationError(f"insufficient {key}")
+        reserved[key] = need
+    return {
+        "owner": owner,
+        "reserved": reserved,
+        "leased": True,
+        "released": False,
+    }
+
+
+def lgswf_release_vector(lease):
+    if not lease.get("leased"):
+        raise LgswfReservationError("lease is not active")
+    released = dict(lease)
+    released["leased"] = False
+    released["released"] = True
+    return released
+
 __all__ = [
     "ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID",
     "ADAPTIVE_STAGE_PROFILES",
@@ -6005,5 +6052,9 @@ __all__ = [
     "resource_class_for_work_kind",
     "resource_pool",
     "sample_host_resources",
+    "LGSWF_RESOURCE_VECTOR",
+    "LgswfReservationError",
+    "lgswf_release_vector",
+    "lgswf_reserve_vector",
 ]
 
