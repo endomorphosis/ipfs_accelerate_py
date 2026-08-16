@@ -1144,7 +1144,7 @@ overlays. Never force-push.
 
 ## MCPP-036 Implement the StateProvider interface and immutable CID state
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
