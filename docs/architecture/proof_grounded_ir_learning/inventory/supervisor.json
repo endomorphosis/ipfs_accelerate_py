@@ -1,0 +1,1330 @@
+{
+  "schema_version": "proof-grounded-ir-learning-supervisor-inventory/v1",
+  "interface": "PGIRSupervisorInventory@1",
+  "task_id": "PGIR-003",
+  "goal_id": "PGIR-G010",
+  "program": "proof-grounded-ir-learning/inventory",
+  "description": "Frozen-source inventory of the accelerator-owned planning, proof, scheduling, supervisor, persistence, evaluation, promotion, experiment, and publication surfaces available to a future proof-grounded IR learning campaign. The inventory records actual behavior and trust boundaries; it does not create a scheduler, supervisor, prover, cache, trainer, model registry, or publication authority.",
+  "observed_at": "2026-08-16T22:59:31Z",
+  "inventory_cid": "baguqeeraikm6txlq6og7bwqy2zwugxw2ao4vrm54x3xj7azzilzhokdlq3kq",
+  "canonicalization": {
+    "cid": "cidv1-dag-json-sha2-256-lower-base32",
+    "cid_identity_projection": "entire parsed document excluding top-level inventory_cid",
+    "identity_json": "utf-8;sorted-keys;compact-separators;no-floats",
+    "rendered_json": "utf-8;two-space-indent;one-terminal-lf"
+  },
+  "source_binding": {
+    "source_set_id": "SRCSET-1",
+    "source_id": "SRC-ACCEL-AUTH-1",
+    "repository": "endomorphosis/ipfs_accelerate_py",
+    "checkout_commit": "0cc04ebb640c4c981cf4650016e096a73ab0e8c0",
+    "authority_commit": "8d46a6d25dd006c8cab3c9d9612707d2a014e79c",
+    "authority_tree": "697ee660025fbf14a1cbe6c24fd8da5365df84d5",
+    "task_checkout_commit": "d281b78a2ce34b79e67d1813a7d5b613379d0ce7",
+    "task_checkout_tree": "09beacb8099b1a1d0419ecb2cfd0000e38f86209",
+    "binding_mode": "frozen_authority_with_current_checkout_path_equivalence",
+    "relevant_path_comparison": {
+      "command": "git diff --exit-code 8d46a6d25dd006c8cab3c9d9612707d2a014e79c -- ipfs_accelerate_py/agent_supervisor pyproject.toml setup.py docs/architecture/agent_supervisor/PACKAGE_MAP.md test/api/test_agent_supervisor_formal_verification_capabilities.py test/api/test_agent_supervisor_resource_scheduler.py test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+      "exit_code": 0,
+      "difference_count": 0,
+      "matches_frozen_authority": true
+    },
+    "reviewed_comparison_revision": "c821d0b43877591bbb0fa3f328fbccff187b56e7",
+    "reviewed_comparison_substituted": false,
+    "source_mutation_performed": false,
+    "upstream_dependency": {
+      "task_id": "PGIR-001",
+      "path": "data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/manifest.json",
+      "manifest_cid": "baguqeerasownoxqyrppw3ft3us3yvd26ghvqnjl74nr2rw5o7sm3sjehip7a",
+      "reconciliation_disposition": "allow-bounded-inventory-only",
+      "reviewed_substitution_allowed": false
+    }
+  },
+  "input_identities": {
+    "source_dataset_revision": "JDAO-PINSET-1 metadata only",
+    "source_dataset_rows_consumed": 0,
+    "data_split_identity": "not-applicable/inventory",
+    "compiler_identity": "COMPILER-CURRENT-1 adapter boundary only",
+    "decompiler_identity": "DECOMPILER-CURRENT-1 adapter boundary only",
+    "model_checkpoint_identity": "MODEL-LEGACY-1 classification only",
+    "model_checkpoint_loaded": false,
+    "network_accessed": false
+  },
+  "scope": {
+    "inventory_root": "ipfs_accelerate_py/agent_supervisor",
+    "package_map": "docs/architecture/agent_supervisor/PACKAGE_MAP.md",
+    "package_declarations": [
+      "pyproject.toml",
+      "setup.py"
+    ],
+    "role_count_expected": 15,
+    "role_population_closed": true,
+    "classification_unit": "behavioral infrastructure surface rather than every source file",
+    "external_semantic_owner": "ipfs_datasets_py owns IR semantics, Hammer implementations, compiler/decompiler meaning, and training meaning; this inventory classifies only accelerator orchestration and adapter boundaries"
+  },
+  "classification_vocabulary": {
+    "canonical": "The accelerator implementation that owns the inventoried behavior.",
+    "component": "A real reusable subcomponent that does not own the complete role.",
+    "generated": "A generated product rather than a maintained implementation.",
+    "facade": "A delegating boundary whose underlying semantic implementation is owned elsewhere.",
+    "legacy": "A superseded implementation retained for compatibility.",
+    "experimental": "A bounded evaluation-only implementation without production authority.",
+    "artifact": "A persisted result or model artifact rather than executable infrastructure.",
+    "declaration": "A marker, registry declaration, or compatibility declaration without the implementation behavior.",
+    "duplicate": "A second implementation with the same behavior and no distinct ownership.",
+    "obsolete": "An implementation that must not be reused.",
+    "unresolved": "The evidence is insufficient to assign another classification."
+  },
+  "reuse_decision_vocabulary": {
+    "reuse": "Use the existing canonical behavior without creating a parallel subsystem.",
+    "reuse_with_adapter": "Reuse through the declared external or compatibility boundary.",
+    "extend_existing": "Add PGIR-specific contracts to the existing generic owner in a later task.",
+    "gap_absent": "No in-scope implementation exists.",
+    "not_applicable": "The record is evidence or a declaration and is not an execution choice.",
+    "unresolved": "No safe reuse decision can yet be made."
+  },
+  "authority_vocabulary": {
+    "diagnostic": "May report bounded observations only.",
+    "proposal": "May create candidates or plans, never proof, mutation, promotion, or completion authority.",
+    "guidance": "May rank, retrieve, or suggest, but may not establish truth.",
+    "orchestration": "May sequence bounded work while preserving the authority of each input and result.",
+    "resource_admission": "May admit or defer resource use, but cannot establish correctness.",
+    "proof_conditional": "May establish proof assurance only from an independently accepted native checker or reviewed authoritative role bound to exact inputs.",
+    "mutation_fenced": "May mutate an allowed target only under explicit policy, lease, fence, validation, and idempotency controls.",
+    "binding_only": "May persist or bind evidence without increasing its assurance.",
+    "none": "Has no execution or authority semantics."
+  },
+  "role_order": [
+    "planning",
+    "provider",
+    "lean_proposal",
+    "tactician",
+    "hammer",
+    "prover",
+    "checker",
+    "resource",
+    "multi_supervisor",
+    "daemon",
+    "checkpoint",
+    "refill",
+    "promotion",
+    "experiment",
+    "publication"
+  ],
+  "role_inventory": [
+    {
+      "role": "planning",
+      "classification": "canonical",
+      "implementation_ids": [
+        "planning.formal_pipeline"
+      ],
+      "reuse_decision": "reuse",
+      "authority": "proposal",
+      "gap_reason": null,
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_validator.py",
+        "test/api/test_agent_supervisor_formal_plan_compiler.py",
+        "test/api/test_agent_supervisor_formal_plan_validator.py"
+      ]
+    },
+    {
+      "role": "provider",
+      "classification": "canonical",
+      "implementation_ids": [
+        "provider.execution_gateway",
+        "provider.proof_transport",
+        "provider.capability_discovery",
+        "lean_proposal.flat_declarations"
+      ],
+      "reuse_decision": "reuse",
+      "authority": "proposal",
+      "gap_reason": null,
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/provider_execution.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py",
+        "test/api/test_agent_supervisor_formal_verification_provider.py",
+        "test/api/test_agent_supervisor_provider_execution.py"
+      ]
+    },
+    {
+      "role": "lean_proposal",
+      "classification": "canonical",
+      "implementation_ids": [
+        "lean_proposal.leanstral",
+        "lean_proposal.flat_declarations"
+      ],
+      "reuse_decision": "reuse",
+      "authority": "proposal",
+      "gap_reason": null,
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/proof/leanstral_proof_provider.py",
+        "test/api/test_agent_supervisor_leanstral_proof_gate.py",
+        "test/api/test_agent_supervisor_leanstral_proof_provider.py"
+      ]
+    },
+    {
+      "role": "tactician",
+      "classification": "canonical",
+      "implementation_ids": [
+        "tactician.proof_orchestration"
+      ],
+      "reuse_decision": "reuse",
+      "authority": "orchestration",
+      "gap_reason": null,
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py",
+        "test/api/test_counterexample_guided_tactician.py",
+        "test/api/test_goal_directed_tactician_integration.py"
+      ]
+    },
+    {
+      "role": "hammer",
+      "classification": "facade",
+      "implementation_ids": [
+        "hammer.datasets_adapter",
+        "provider.capability_discovery"
+      ],
+      "reuse_decision": "reuse_with_adapter",
+      "authority": "guidance",
+      "gap_reason": "The accelerator owns routing and policy only; the actual Hammer implementation remains canonical in ipfs_datasets_py.logic.hammers and a candidate requires independent reconstruction or checking.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/kernel_verification.py",
+        "test/api/test_agent_supervisor_ipfs_datasets_logic_provider.py"
+      ]
+    },
+    {
+      "role": "prover",
+      "classification": "canonical",
+      "implementation_ids": [
+        "prover.portfolio_router",
+        "provider.proof_transport",
+        "provider.capability_discovery"
+      ],
+      "reuse_decision": "reuse_with_adapter",
+      "authority": "orchestration",
+      "gap_reason": "The accelerator owns reviewed portfolio routing, scheduling, isolation, and evidence normalization; actual solver, model-checker, and kernel executables are external capabilities and remain unavailable unless independently discovered and admitted.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py",
+        "test/api/test_agent_supervisor_multi_prover_router.py"
+      ]
+    },
+    {
+      "role": "checker",
+      "classification": "canonical",
+      "implementation_ids": [
+        "checker.independent_kernel",
+        "checker.evidence_and_cache",
+        "provider.capability_discovery"
+      ],
+      "reuse_decision": "reuse",
+      "authority": "proof_conditional",
+      "gap_reason": null,
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/proof/kernel_verification.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/prover_conformance.py",
+        "test/api/test_agent_supervisor_kernel_verification.py",
+        "test/api/test_agent_supervisor_prover_conformance.py"
+      ]
+    },
+    {
+      "role": "resource",
+      "classification": "canonical",
+      "implementation_ids": [
+        "resource.runtime_scheduler"
+      ],
+      "reuse_decision": "reuse",
+      "authority": "resource_admission",
+      "gap_reason": null,
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/resource_scheduler.py",
+        "test/api/test_agent_supervisor_resource_scheduler.py"
+      ]
+    },
+    {
+      "role": "multi_supervisor",
+      "classification": "canonical",
+      "implementation_ids": [
+        "multi_supervisor.runtime"
+      ],
+      "reuse_decision": "reuse",
+      "authority": "orchestration",
+      "gap_reason": null,
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "role": "daemon",
+      "classification": "canonical",
+      "implementation_ids": [
+        "daemon.implementation_control_plane"
+      ],
+      "reuse_decision": "reuse",
+      "authority": "mutation_fenced",
+      "gap_reason": null,
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "test/api/test_agent_supervisor_implementation_supervisor_runner.py"
+      ]
+    },
+    {
+      "role": "checkpoint",
+      "classification": "component",
+      "implementation_ids": [
+        "checkpoint.workflow_and_runtime",
+        "checker.evidence_and_cache"
+      ],
+      "reuse_decision": "extend_existing",
+      "authority": "binding_only",
+      "gap_reason": "Implementation-attempt, tactician, event-runtime, CAS, and Git-merge checkpoints exist, but no semantic model-checkpoint lifecycle, optimizer state, tokenizer binding, or promotion pointer exists. MODEL-LEGACY-1 remains artifact classification only.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/merge/merge_checkpoint.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "test/api/test_agent_supervisor_runtime_cas.py"
+      ]
+    },
+    {
+      "role": "refill",
+      "classification": "component",
+      "implementation_ids": [
+        "refill.goal_and_task_work"
+      ],
+      "reuse_decision": "extend_existing",
+      "authority": "proposal",
+      "gap_reason": "Bounded objective, codebase, symbolic-finding, retry-budget, and self-improvement refill exist. A PGIR curriculum refill contract with source-lineage, proof-authority, split, and model-checkpoint bindings does not yet exist.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_v2.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor_runner.py",
+        "test/api/test_agent_supervisor_self_improvement_refill.py"
+      ]
+    },
+    {
+      "role": "promotion",
+      "classification": "component",
+      "implementation_ids": [
+        "promotion.operational_rollout"
+      ],
+      "reuse_decision": "extend_existing",
+      "authority": "diagnostic",
+      "gap_reason": "Existing promotion vectors and rollout decisions gate supervisor or planning behavior and do not mutate runtime configuration by themselves. There is no IR-model candidate comparison, model registry, checkpoint compare-and-swap pointer, reject/no-go operation, or model-promotion authority.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/planning/formal_planning_rollout.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/leanstral_goal_benchmark.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_v2_contracts.py",
+        "test/api/test_agent_supervisor_self_improvement_v2_rollout.py"
+      ]
+    },
+    {
+      "role": "experiment",
+      "classification": "component",
+      "implementation_ids": [
+        "experiment.bounded_evaluation"
+      ],
+      "reuse_decision": "extend_existing",
+      "authority": "diagnostic",
+      "gap_reason": "Bounded model-checking, paired benchmark, ablation, and rollout receipts exist, but no PGIR learning experiment specification, run registry, hyperparameter contract, model registry, or source/split/checkpoint comparison owner exists.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_v2.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_state_model.py",
+        "test/api/test_agent_supervisor_self_improvement_v2_benchmark.py",
+        "test/api/test_agent_supervisor_supervisor_state_model.py"
+      ]
+    },
+    {
+      "role": "publication",
+      "classification": "component",
+      "implementation_ids": [
+        "publication.non_model_artifacts"
+      ],
+      "reuse_decision": "extend_existing",
+      "authority": "binding_only",
+      "gap_reason": "Restart-stable completion records, proof-attestation artifact/IPFS projection, and control-surface catalog publication exist. None is an append-only, authorization-gated IR model checkpoint or corpus publication pipeline.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "test/api/test_agent_supervisor_artifact_store.py"
+      ]
+    }
+  ],
+  "implementations": [
+    {
+      "id": "planning.formal_pipeline",
+      "roles": [
+        "planning"
+      ],
+      "classification": "canonical",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_validator.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/formal_planning_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/proof_carrying_planner.py"
+      ],
+      "symbols": [
+        "FormalPlanCompiler",
+        "FormalPlanValidator",
+        "FormalWorkPlan",
+        "ProofCarryingPlanner"
+      ],
+      "behavior": "Compiles typed work-plan graphs, validates bounded consistency and assurance requirements, and can execute a resumable proof-carrying workflow.",
+      "reuse_decision": "reuse",
+      "trust_boundary": {
+        "authority": "proposal",
+        "candidate_only": true,
+        "authoritative_checker": false,
+        "notes": "A valid plan proves neither that work ran nor that generated code or a theorem is correct."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_formal_plan_compiler.py",
+        "test/api/test_agent_supervisor_formal_plan_validator.py",
+        "test/api/test_agent_supervisor_proof_carrying_planner_e2e.py"
+      ]
+    },
+    {
+      "id": "provider.execution_gateway",
+      "roles": [
+        "provider"
+      ],
+      "classification": "canonical",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/provider_execution.py",
+        "ipfs_accelerate_py/agent_supervisor/provider_usage.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py"
+      ],
+      "symbols": [
+        "ProviderExecutionGateway",
+        "ProviderExecutionRequest",
+        "ProviderExecutionResult",
+        "call_llm_router_with_receipt"
+      ],
+      "behavior": "Applies bounded provider invocation, endpoint-usage reservation/settlement, side-effect phase labeling, isolated child execution, and typed receipts.",
+      "reuse_decision": "reuse",
+      "trust_boundary": {
+        "authority": "proposal",
+        "candidate_only": true,
+        "authoritative_checker": false,
+        "notes": "Usage settlement and successful transport do not establish semantic, proof, mutation, promotion, or completion authority."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_provider_execution.py",
+        "test/api/test_agent_supervisor_provider_usage.py"
+      ]
+    },
+    {
+      "id": "provider.proof_transport",
+      "roles": [
+        "provider",
+        "prover"
+      ],
+      "classification": "canonical",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py"
+      ],
+      "symbols": [
+        "ProofProvider",
+        "ProofProviderRegistry",
+        "ProviderClient"
+      ],
+      "behavior": "Provides lazy in-process or subprocess proof-provider dispatch with strict JSON, correlated request identity, deadlines, process/resource bounds, network policy, cancellation, and typed failures.",
+      "reuse_decision": "reuse",
+      "trust_boundary": {
+        "authority": "proposal",
+        "candidate_only": true,
+        "authoritative_checker": false,
+        "notes": "Provider output is explicitly untrusted and cannot become proof evidence merely because a provider reports success."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_formal_verification_provider.py"
+      ]
+    },
+    {
+      "id": "provider.capability_discovery",
+      "roles": [
+        "provider",
+        "hammer",
+        "prover",
+        "checker"
+      ],
+      "classification": "component",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_capabilities.py"
+      ],
+      "symbols": [
+        "FormalVerificationCapabilityProbe",
+        "FormalVerificationProbeConfig",
+        "probe_formal_verification_capabilities"
+      ],
+      "behavior": "Discovers route, package, executable, model-artifact, optional-dependency, and circuit readiness through bounded metadata and filesystem checks without importing provider modules.",
+      "reuse_decision": "reuse",
+      "trust_boundary": {
+        "authority": "diagnostic",
+        "candidate_only": false,
+        "authoritative_checker": false,
+        "notes": "Discovery permits only a route attempt; it never runs a prover, loads model weights, or establishes proof evidence."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_formal_verification_capabilities.py"
+      ]
+    },
+    {
+      "id": "lean_proposal.leanstral",
+      "roles": [
+        "lean_proposal"
+      ],
+      "classification": "canonical",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/proof/leanstral_goal_development.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/leanstral_goal_lifecycle.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/leanstral_proof_provider.py"
+      ],
+      "symbols": [
+        "LeanstralProofDraft",
+        "LeanstralProofGateResult",
+        "LeanstralProofProvider"
+      ],
+      "behavior": "Produces bounded immutable Lean proof drafts and goal-development candidates through a configured model route while preserving model, prompt, resource, and provenance identity.",
+      "reuse_decision": "reuse",
+      "trust_boundary": {
+        "authority": "proposal",
+        "candidate_only": true,
+        "authoritative_checker": false,
+        "notes": "The provider deliberately exposes no kernel-check operation; returned text remains unverified until an independent checker accepts it."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_leanstral_goal_development.py",
+        "test/api/test_agent_supervisor_leanstral_proof_gate.py",
+        "test/api/test_agent_supervisor_leanstral_proof_provider.py"
+      ]
+    },
+    {
+      "id": "lean_proposal.flat_declarations",
+      "roles": [
+        "lean_proposal",
+        "provider"
+      ],
+      "classification": "declaration",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/leanstral_goal_development.py",
+        "ipfs_accelerate_py/agent_supervisor/leanstral_proof_provider.py"
+      ],
+      "symbols": [
+        "ASI_168_LANDED_MODULE",
+        "ASI_168_LANDED_PATH",
+        "ASI_168_MIGRATED"
+      ],
+      "behavior": "Records the ASI-168 migrated semantic owner and explicitly denies correctness or completion evidence; it is not a re-export or second implementation.",
+      "reuse_decision": "not_applicable",
+      "trust_boundary": {
+        "authority": "none",
+        "candidate_only": false,
+        "authoritative_checker": false,
+        "notes": "Use the proof-package paths; marker import success is not a capability signal."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_leanstral_proof_provider.py"
+      ]
+    },
+    {
+      "id": "tactician.proof_orchestration",
+      "roles": [
+        "tactician"
+      ],
+      "classification": "canonical",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/proof/counterexample_guided_tactician.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_lifecycle.py"
+      ],
+      "symbols": [
+        "CounterexampleGuidedTactician",
+        "GoalDirectedProofTactician",
+        "TacticianCheckpoint"
+      ],
+      "behavior": "Composes formalization, retrieval, planning, Hammer, Leanstral, solver, independent kernel, cache, counterexample, legal, ZKP-binding, admission, and restart phases behind bounded contracts.",
+      "reuse_decision": "reuse",
+      "trust_boundary": {
+        "authority": "orchestration",
+        "candidate_only": false,
+        "authoritative_checker": false,
+        "notes": "Model drafts and cache hits are rejected if they claim authority without independent validation; the honest default has no live prover."
+      },
+      "evidence_paths": [
+        "test/api/test_counterexample_guided_tactician.py",
+        "test/api/test_goal_directed_tactician_integration.py"
+      ]
+    },
+    {
+      "id": "hammer.datasets_adapter",
+      "roles": [
+        "hammer"
+      ],
+      "classification": "facade",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py"
+      ],
+      "symbols": [
+        "HammerSupervisorPolicy",
+        "IpfsDatasetsLogicProvider"
+      ],
+      "behavior": "Adapts accelerator proof requests to the datasets-owned Hammer, solver, logic, and reconstruction APIs without duplicating semantic implementations.",
+      "reuse_decision": "reuse_with_adapter",
+      "trust_boundary": {
+        "authority": "guidance",
+        "candidate_only": true,
+        "authoritative_checker": false,
+        "notes": "Hammer search, ATP, or SMT output is a candidate or bounded solver observation until the declared independent authority accepts exact evidence. Timeout remains unknown, not false."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_ipfs_datasets_logic_provider.py"
+      ]
+    },
+    {
+      "id": "prover.portfolio_router",
+      "roles": [
+        "prover"
+      ],
+      "classification": "canonical",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_resources.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py"
+      ],
+      "symbols": [
+        "MultiProverRouter",
+        "PortfolioResult",
+        "ProofScheduler"
+      ],
+      "behavior": "Plans and executes reviewed property-specific prover portfolios under capability, conformance, quarantine, evidence-size, timeout, and parallelism gates.",
+      "reuse_decision": "reuse_with_adapter",
+      "trust_boundary": {
+        "authority": "orchestration",
+        "candidate_only": false,
+        "authoritative_checker": false,
+        "notes": "The router may derive a proved verdict only from lanes whose reviewed role, capability, conformance, and assurance are authoritative for that property."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_multi_prover_resources.py",
+        "test/api/test_agent_supervisor_multi_prover_router.py"
+      ]
+    },
+    {
+      "id": "checker.independent_kernel",
+      "roles": [
+        "checker"
+      ],
+      "classification": "canonical",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/kernel_verification.py"
+      ],
+      "symbols": [
+        "IndependentKernelVerifier",
+        "KernelVerificationResult",
+        "ProofReceipt",
+        "verify_admitted_lean_proof"
+      ],
+      "behavior": "Admits exact proof text, reconstructs against exact source/toolchain/environment bindings, invokes an independent native kernel or reviewed checker, and maps accepted evidence into typed assurance receipts.",
+      "reuse_decision": "reuse",
+      "trust_boundary": {
+        "authority": "proof_conditional",
+        "candidate_only": false,
+        "authoritative_checker": true,
+        "notes": "Only a successful independently bound checker receipt advances proof assurance. Provider claims, caches, paths, imports, and discovery status do not."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_kernel_verification.py"
+      ]
+    },
+    {
+      "id": "checker.evidence_and_cache",
+      "roles": [
+        "checker",
+        "checkpoint"
+      ],
+      "classification": "component",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/prover_conformance.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/prover_evidence_store.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py"
+      ],
+      "symbols": [
+        "BoundedArtifactStore",
+        "FormalVerificationCache",
+        "ProverEvidenceStore"
+      ],
+      "behavior": "Persists exact-key proof cache records, conformance-bound prover evidence, and bounded content-addressed artifacts for replay and audit.",
+      "reuse_decision": "reuse",
+      "trust_boundary": {
+        "authority": "binding_only",
+        "candidate_only": false,
+        "authoritative_checker": false,
+        "notes": "Persistence and cache hits retain recorded assurance and can never upgrade evidence or independently prove a claim."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_artifact_store.py",
+        "test/api/test_agent_supervisor_prover_conformance.py",
+        "test/api/test_agent_supervisor_prover_evidence_store.py"
+      ]
+    },
+    {
+      "id": "resource.runtime_scheduler",
+      "roles": [
+        "resource"
+      ],
+      "classification": "canonical",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/resource_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/provider_batch_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py"
+      ],
+      "symbols": [
+        "GoalRuntimeResourceScheduler",
+        "ResourceAdmissionLease",
+        "ResourceLeaseBudget",
+        "ResourceScheduler",
+        "UsageAwareResourceScheduler"
+      ],
+      "behavior": "Performs conservative host, provider, endpoint-usage, context, quota, concurrency, resource-class, deadline, distributed-lease, cancellation, proof-work, and batch admission with backpressure and fairness.",
+      "reuse_decision": "reuse",
+      "trust_boundary": {
+        "authority": "resource_admission",
+        "candidate_only": false,
+        "authoritative_checker": false,
+        "notes": "The semantic owner is runtime/resource_scheduler.py. The flat resource_scheduler.py file is the ASI-167 endpoint-usage extension that installs compatible symbols onto the runtime module; it is not a duplicate scheduler."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_provider_batch_scheduler.py",
+        "test/api/test_agent_supervisor_resource_scheduler.py"
+      ]
+    },
+    {
+      "id": "multi_supervisor.runtime",
+      "roles": [
+        "multi_supervisor"
+      ],
+      "classification": "canonical",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py"
+      ],
+      "symbols": [
+        "ConfiguredMultiSupervisorLauncher",
+        "LeaseCoordinator",
+        "SupervisorTrack",
+        "run_supervisor_tracks"
+      ],
+      "behavior": "Expands named tracks into isolated lanes, launches and monitors supervisor processes, projects status/heartbeats, stops owned process trees, and coordinates shared work through leases.",
+      "reuse_decision": "reuse",
+      "trust_boundary": {
+        "authority": "orchestration",
+        "candidate_only": false,
+        "authoritative_checker": false,
+        "notes": "Process health and lease ownership authorize neither proof nor task completion. Shared mutations remain separately fenced."
+      },
+      "evidence_paths": [
+        "scripts/ops/agent_supervisor/asref_multi_lane.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "id": "daemon.implementation_control_plane",
+      "roles": [
+        "daemon"
+      ],
+      "classification": "canonical",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor_runner.py"
+      ],
+      "symbols": [
+        "ConfiguredSupervisorRuntime",
+        "PortalImplementationDaemon",
+        "PortalImplementationSupervisor",
+        "run_configured_portal_implementation_supervisor"
+      ],
+      "behavior": "Claims tasks, prepares isolated worktrees, invokes implementation providers, enforces declared output/protected-path/validation policy, coordinates merge and recovery, supervises restarts, and persists bounded receipts.",
+      "reuse_decision": "reuse",
+      "trust_boundary": {
+        "authority": "mutation_fenced",
+        "candidate_only": false,
+        "authoritative_checker": false,
+        "notes": "Provider edits remain proposals. Completion requires deterministic admission and validation under exact scope, lease, fence, source, and task identity."
+      },
+      "evidence_paths": [
+        "pyproject.toml",
+        "setup.py",
+        "test/api/test_agent_supervisor_implementation_daemon_runner.py",
+        "test/api/test_agent_supervisor_implementation_supervisor_runner.py"
+      ]
+    },
+    {
+      "id": "checkpoint.workflow_and_runtime",
+      "roles": [
+        "checkpoint"
+      ],
+      "classification": "component",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/merge/merge_checkpoint.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/event_log.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+      ],
+      "symbols": [
+        "MergeCheckpoint",
+        "RuntimeCAS",
+        "TacticianCheckpoint",
+        "IMPLEMENTATION_CHECKPOINT_MANIFEST_SCHEMA",
+        "RUNTIME_CHECKPOINT_SCHEMA"
+      ],
+      "behavior": "Provides bounded resumable checkpoints for implementation files, event projections, proof-tactician phase state, immutable runtime artifacts, and nested Git merges.",
+      "reuse_decision": "extend_existing",
+      "gap_reason": "No record binds learned model weights, optimizer state, tokenizer policy, corpus/split/compiler identities, metrics, and promotion state into a semantic learning checkpoint.",
+      "trust_boundary": {
+        "authority": "binding_only",
+        "candidate_only": false,
+        "authoritative_checker": false,
+        "notes": "Resume may restore exact prior state but cannot upgrade its authority or convert MODEL-LEGACY-1 into a promoted checkpoint."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_proof_carrying_planner_e2e.py",
+        "test/api/test_agent_supervisor_runtime_cas.py"
+      ]
+    },
+    {
+      "id": "refill.goal_and_task_work",
+      "roles": [
+        "refill"
+      ],
+      "classification": "component",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/scan_receipts.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_v2.py",
+        "ipfs_accelerate_py/agent_supervisor/symbolic_finding_refill.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor_runner.py"
+      ],
+      "symbols": [
+        "SymbolicFindingRefiller",
+        "build_supervisor_objective_refill_callback",
+        "generate_v2_successor_goals",
+        "run_v2_refill_epoch"
+      ],
+      "behavior": "Generates and adopts bounded successor goals/tasks from objective, codebase, symbolic-finding, retry-budget, and deterministic self-improvement evidence with cooldown, ancestry, idempotency, and scan receipts.",
+      "reuse_decision": "extend_existing",
+      "gap_reason": "The generic task refill does not yet own PGIR training examples, curriculum priority, source-lineage leakage rules, proof labels, or model-checkpoint identity.",
+      "trust_boundary": {
+        "authority": "proposal",
+        "candidate_only": true,
+        "authoritative_checker": false,
+        "notes": "Refill explicitly authorizes neither execution nor completion; generated work must pass normal task admission."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_backlog_refinery.py",
+        "test/api/test_agent_supervisor_self_improvement_refill.py",
+        "test/api/test_agent_supervisor_symbolic_finding_refill.py"
+      ]
+    },
+    {
+      "id": "promotion.operational_rollout",
+      "roles": [
+        "promotion"
+      ],
+      "classification": "component",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/planning/formal_planning_rollout.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/leanstral_goal_benchmark.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_v2_rollout.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_v2_contracts.py"
+      ],
+      "symbols": [
+        "GoalRolloutGatePolicy",
+        "PromotionVector",
+        "evaluate_goal_rollout_promotion",
+        "evaluate_paired_v2_self_improvement_rollout"
+      ],
+      "behavior": "Evaluates exact paired evidence and non-compensable safety gates to recommend shadow, provisional, canary, assist, enforce, hold, or promote dispositions for supervisor behavior.",
+      "reuse_decision": "extend_existing",
+      "gap_reason": "No implementation compares or atomically promotes PGIR model checkpoints, and the existing evaluators deliberately do not change runtime configuration themselves.",
+      "trust_boundary": {
+        "authority": "diagnostic",
+        "candidate_only": false,
+        "authoritative_checker": false,
+        "notes": "Operational rollout recommendation is not ML checkpoint promotion and cannot compensate for a failed hard gate."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_leanstral_goal_benchmark.py",
+        "test/api/test_agent_supervisor_self_improvement_v2_rollout.py"
+      ]
+    },
+    {
+      "id": "experiment.bounded_evaluation",
+      "roles": [
+        "experiment"
+      ],
+      "classification": "component",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_v2.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_v2_rollout.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_state_model.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_v2_benchmark.py"
+      ],
+      "symbols": [
+        "SupervisorStateModelChecker",
+        "V2AblationReceipt",
+        "V2SelfImprovementEvaluator"
+      ],
+      "behavior": "Runs finite state-model checks and consumes frozen paired benchmark/ablation receipts for deterministic, reward-resistant evaluation under bounded populations.",
+      "reuse_decision": "extend_existing",
+      "gap_reason": "The evidence framework is reusable, but there is no PGIR ML experiment/run registry, model registry, training configuration, or artifact lineage contract.",
+      "trust_boundary": {
+        "authority": "diagnostic",
+        "candidate_only": false,
+        "authoritative_checker": false,
+        "notes": "Finite model checking is labeled bounded rather than unbounded proof, and benchmark outcomes cannot self-authorize promotion."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_self_improvement_v2_benchmark.py",
+        "test/api/test_agent_supervisor_supervisor_state_model.py"
+      ]
+    },
+    {
+      "id": "publication.non_model_artifacts",
+      "roles": [
+        "publication"
+      ],
+      "classification": "component",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+      ],
+      "symbols": [
+        "ControlSurfacePublication",
+        "PortalImplementationDaemon._publish_completion_intent",
+        "write_proof_attestation_artifact"
+      ],
+      "behavior": "Publishes transport-catalog metadata, restart-stable task completion records, and validated proof-attestation artifacts with optional best-effort IPFS projection.",
+      "reuse_decision": "extend_existing",
+      "gap_reason": "No surface publishes an authorized PGIR corpus or model checkpoint, maintains an append-only model registry, or advances a promoted model pointer.",
+      "trust_boundary": {
+        "authority": "binding_only",
+        "candidate_only": false,
+        "authoritative_checker": false,
+        "notes": "A local artifact remains canonical for the artifact store, optional IPFS publication failure is non-authoritative, and publication never raises proof assurance."
+      },
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_artifact_store.py",
+        "test/api/test_agent_supervisor_control_conformance_v2.py"
+      ]
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "trust.discovery_is_not_capability_execution",
+      "upstream": [
+        "provider.capability_discovery"
+      ],
+      "downstream": [
+        "provider.proof_transport",
+        "prover.portfolio_router"
+      ],
+      "rule": "Package, executable, model, route, or circuit discovery may permit a bounded attempt only; it does not import a provider or create proof evidence."
+    },
+    {
+      "id": "trust.models_and_planners_propose",
+      "upstream": [
+        "planning.formal_pipeline",
+        "provider.execution_gateway",
+        "lean_proposal.leanstral",
+        "tactician.proof_orchestration"
+      ],
+      "downstream": [
+        "hammer.datasets_adapter",
+        "prover.portfolio_router",
+        "checker.independent_kernel"
+      ],
+      "rule": "Plans, model text, tactic choices, retrieved premises, cache hits, and Hammer outputs are candidates or guidance. None may claim proof, mutation, model promotion, or completion authority."
+    },
+    {
+      "id": "trust.independent_checker_is_proof_root",
+      "upstream": [
+        "hammer.datasets_adapter",
+        "prover.portfolio_router"
+      ],
+      "downstream": [
+        "checker.independent_kernel"
+      ],
+      "rule": "Proof assurance advances only when an independently accepted kernel or reviewed authoritative checker binds the exact obligation, candidate, premises, source tree, policy, toolchain, environment, and bounds. Timeout and unavailable remain unknown, never false."
+    },
+    {
+      "id": "trust.proof_is_not_mutation_or_completion",
+      "upstream": [
+        "checker.independent_kernel"
+      ],
+      "downstream": [
+        "daemon.implementation_control_plane",
+        "publication.non_model_artifacts"
+      ],
+      "rule": "A proof receipt establishes only its declared proposition and assurance. Task mutation, merge, completion, promotion, and publication require their own policy, validation, lease, fence, idempotency, and authorization gates."
+    },
+    {
+      "id": "trust.storage_does_not_upgrade",
+      "upstream": [
+        "checker.evidence_and_cache",
+        "checkpoint.workflow_and_runtime"
+      ],
+      "downstream": [
+        "tactician.proof_orchestration",
+        "daemon.implementation_control_plane"
+      ],
+      "rule": "Caches, checkpoints, CAS records, event cursors, and published artifacts preserve identity and recorded assurance only. Resume or replay cannot upgrade stale, unverified, or proposal evidence."
+    },
+    {
+      "id": "trust.resource_health_is_not_correctness",
+      "upstream": [
+        "resource.runtime_scheduler",
+        "multi_supervisor.runtime"
+      ],
+      "downstream": [
+        "daemon.implementation_control_plane"
+      ],
+      "rule": "Capacity, health, process liveness, quotas, and lease ownership control execution eligibility only and cannot establish semantic correctness, proof, promotion, or completion."
+    }
+  ],
+  "absent_surfaces": [
+    {
+      "id": "absence.ml_training_loop",
+      "status": "absent",
+      "scope": "ipfs_accelerate_py/agent_supervisor/**/*.py",
+      "reason": "No optimizer, gradient/backpropagation step, fine-tuning loop, loss update, or model-weight training owner exists in the supervisor package.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/merge/merge_train.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_v2.py"
+      ]
+    },
+    {
+      "id": "absence.learned_reward_update",
+      "status": "absent",
+      "scope": "ipfs_accelerate_py/agent_supervisor/self_improvement",
+      "reason": "Self-improvement evaluates content-bound receipts and refills goals/tasks; it does not train a reward model or update model weights.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_v2.py",
+        "test/api/test_agent_supervisor_self_improvement_v2_benchmark.py"
+      ]
+    },
+    {
+      "id": "absence.model_checkpoint_lifecycle",
+      "status": "absent",
+      "scope": "ipfs_accelerate_py/agent_supervisor",
+      "reason": "Existing checkpoint schemas cover implementation, event, proof-tactician, CAS, and Git-merge state. No model weights, optimizer, tokenizer, corpus/split/compiler binding, or model checkpoint state machine exists.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/merge/merge_checkpoint.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+      ]
+    },
+    {
+      "id": "absence.model_promotion_surface",
+      "status": "absent",
+      "scope": "ipfs_accelerate_py/agent_supervisor/control",
+      "reason": "The closed Operation catalog has no train, compare-model, promote-model, reject-model, or model-pointer mutation. Generic rollout decisions are diagnostic inputs, not a PGIR promotion surface.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/leanstral_goal_benchmark.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_v2_contracts.py"
+      ]
+    },
+    {
+      "id": "absence.ml_experiment_and_model_registry",
+      "status": "absent",
+      "scope": "ipfs_accelerate_py/agent_supervisor",
+      "reason": "Bounded benchmark, ablation, and state-model evidence exists, but no learning experiment tracker, run registry, hyperparameter schema, or model registry exists.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_v2.py",
+        "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_state_model.py"
+      ]
+    },
+    {
+      "id": "absence.model_publication_pipeline",
+      "status": "absent",
+      "scope": "ipfs_accelerate_py/agent_supervisor",
+      "reason": "Completion, proof-attestation, and control-catalog publication do not implement an append-only, authorization-gated model checkpoint or corpus publication pipeline.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "PGIR-003-F001",
+      "severity": "high",
+      "status": "open",
+      "summary": "Normal cold import is not side-effect free under a fail-closed process/network/thread/filesystem-write gate.",
+      "detail": "Importing ipfs_accelerate_py.agent_supervisor first executes the parent ipfs_accelerate_py initializer. The observed path attempted three cache writability probe files and twice attempted /sbin/ldconfig -p through trio/ctypes library discovery before the probe aborted. No formal provider implementation module was loaded before abort.",
+      "evidence_receipt": "evidence_receipts.cold_import",
+      "impact": "Do not treat a normal package import as the required side-effect-free capability-discovery path. Use the metadata-only probe contract and track cold-import repair separately."
+    },
+    {
+      "id": "PGIR-003-F002",
+      "severity": "gap",
+      "status": "boundary",
+      "summary": "Supervisor self-improvement is deterministic evidence evaluation and task refill, not ML training or learned reward update.",
+      "evidence_receipt": "evidence_receipts.static_absence_scan"
+    },
+    {
+      "id": "PGIR-003-F003",
+      "severity": "gap",
+      "status": "boundary",
+      "summary": "Workflow checkpoints are reusable, but a semantic model checkpoint lifecycle is absent.",
+      "evidence_receipt": "absence.model_checkpoint_lifecycle"
+    },
+    {
+      "id": "PGIR-003-F004",
+      "severity": "gap",
+      "status": "boundary",
+      "summary": "Operational rollout evaluators exist, but IR-model promotion authority and pointer mutation are absent.",
+      "evidence_receipt": "absence.model_promotion_surface"
+    },
+    {
+      "id": "PGIR-003-F005",
+      "severity": "gap",
+      "status": "boundary",
+      "summary": "Bounded experiment evidence exists, but an ML experiment tracker and model registry are absent.",
+      "evidence_receipt": "absence.ml_experiment_and_model_registry"
+    },
+    {
+      "id": "PGIR-003-F006",
+      "severity": "gap",
+      "status": "boundary",
+      "summary": "Non-model artifact publication exists, but authorized model/corpus publication is absent.",
+      "evidence_receipt": "absence.model_publication_pipeline"
+    },
+    {
+      "id": "PGIR-003-F007",
+      "severity": "informational",
+      "status": "classified",
+      "summary": "merge/merge_train.py is a serialized Git merge train and must never be cited as machine-learning training infrastructure.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/merge/merge_train.py"
+      ]
+    },
+    {
+      "id": "PGIR-003-F008",
+      "severity": "informational",
+      "status": "classified",
+      "summary": "The flat resource_scheduler.py is an endpoint-usage compatibility extension that installs symbols onto the canonical runtime scheduler, not a duplicate canonical scheduler.",
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/resource_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py"
+      ]
+    }
+  ],
+  "evidence_receipts": {
+    "capability_discovery": {
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-verification-capabilities@1",
+      "report_version": 1,
+      "status": "passed_with_degraded_routes",
+      "bounded": true,
+      "probe_count": 44,
+      "proof_attempted": false,
+      "provider_modules_loaded": [],
+      "providers": [
+        {
+          "provider_id": "hammer",
+          "status": "available",
+          "reason": "Hammer provider and at least one external proving engine are discoverable"
+        },
+        {
+          "provider_id": "tdfol",
+          "status": "available",
+          "reason": "TDFOL core and optional natural-language dependencies are discoverable"
+        },
+        {
+          "provider_id": "external_provers",
+          "status": "available",
+          "reason": "external prover bridge and at least one solver are discoverable"
+        },
+        {
+          "provider_id": "lean",
+          "status": "available",
+          "reason": "Lean bridge and Lean 4 executable are discoverable"
+        },
+        {
+          "provider_id": "leanstral",
+          "status": "degraded",
+          "reason": "Leanstral sub-capabilities were probed independently; one or more route, local inference, preprocessing, codec, or kernel surfaces are degraded or unavailable"
+        },
+        {
+          "provider_id": "frame_logic",
+          "status": "degraded",
+          "reason": "frame-logic structures are available, but theorem queries cannot use ErgoAI"
+        },
+        {
+          "provider_id": "knowledge_graphs",
+          "status": "available",
+          "reason": "knowledge-graph core and spaCy model support are discoverable"
+        },
+        {
+          "provider_id": "zkp_backends",
+          "status": "degraded",
+          "reason": "ZKP interfaces and simulated backend are discoverable, but no real backend has both an executable and circuit artifacts"
+        }
+      ],
+      "inference_policy": "Discovery reports route readiness only; available is not proof, production certification, or permission to execute."
+    },
+    "cold_import": {
+      "import": "ipfs_accelerate_py.agent_supervisor",
+      "method": "fresh interpreter with process, network, thread-start, and filesystem-write operations replaced by fail-closed blockers",
+      "status": "failed_side_effect_gate",
+      "import_completed": false,
+      "attempt_count": 5,
+      "attempts": [
+        {
+          "kind": "filesystem_write_probe",
+          "target": "$HOME/.cache/ipfs_accelerate_py/.write_probe"
+        },
+        {
+          "kind": "filesystem_write_probe",
+          "target": "<repository>/.cache/ipfs_accelerate/.write_probe"
+        },
+        {
+          "kind": "filesystem_write_probe",
+          "target": "/tmp/ipfs_accelerate/.write_probe"
+        },
+        {
+          "count": 2,
+          "kind": "process_spawn",
+          "command": "/sbin/ldconfig -p"
+        }
+      ],
+      "network_attempt_observed_before_abort": false,
+      "thread_start_observed_before_abort": false,
+      "provider_modules_loaded_before_abort": [],
+      "error": "RuntimeError: cold import attempted process_spawn",
+      "finding_id": "PGIR-003-F001"
+    },
+    "static_absence_scan": {
+      "root": "ipfs_accelerate_py/agent_supervisor",
+      "file_glob": "*.py recursively",
+      "implementation_patterns": [
+        "torch.optim",
+        "optimizer.step",
+        "loss.backward",
+        ".backward(",
+        "Trainer(",
+        ".fit(",
+        "save_pretrained",
+        "push_to_hub",
+        "model.save",
+        "load_state_dict",
+        "state_dict("
+      ],
+      "implementation_match_count": 0,
+      "model_lifecycle_pattern_match_count": 1,
+      "model_lifecycle_false_positives": [
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/task_sources/taskboard_store.py",
+          "line": 1925,
+          "reason": "Comment describing conditional taskboard saves as checkpoints; no model checkpoint behavior."
+        }
+      ],
+      "status": "supports_scoped_absence_findings",
+      "limitations": "Static absence evidence is scoped to the frozen accelerator supervisor package and does not claim that other repositories contain no training implementation."
+    },
+    "focused_tests": {
+      "command": "python -m pytest -q test/api/test_agent_supervisor_formal_verification_capabilities.py test/api/test_agent_supervisor_resource_scheduler.py test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+      "status": "failed_pre_existing_source_or_environment_mismatches",
+      "passed": 95,
+      "failed": 4,
+      "warnings": 1,
+      "duration_milliseconds": 7380,
+      "failures": [
+        {
+          "test": "test/api/test_agent_supervisor_formal_verification_capabilities.py::test_leanstral_route_is_discoverable_through_accelerator_source_wrapper",
+          "reason": "The discovered Leanstral route health was unavailable where the frozen test expected an available route."
+        },
+        {
+          "test": "test/api/test_agent_supervisor_resource_scheduler.py::test_dynamic_scheduler_applies_host_backpressure_before_claiming_a_lease",
+          "reason": "The external Profile-G validator rejected the embedded task fixture: expected an integer in [1, 100]."
+        },
+        {
+          "test": "test/api/test_agent_supervisor_resource_scheduler.py::test_dynamic_scheduler_caps_starts_at_provider_capacity_and_records_selection",
+          "reason": "The external Profile-G validator rejected the embedded task fixture: expected an integer in [1, 100]."
+        },
+        {
+          "test": "test/api/test_agent_supervisor_resource_scheduler.py::test_dynamic_scheduler_reuses_provider_after_completed_slice_wrapper_exits",
+          "reason": "The external Profile-G validator rejected the embedded task fixture: expected an integer in [1, 100]."
+        }
+      ],
+      "scope_note": "The only PGIR-003 edit is this inventory document; it cannot alter the Python behavior exercised by these tests."
+    }
+  },
+  "downstream_consumers": [
+    {
+      "task_id": "PGIR-005",
+      "use": "Seal focused pre-change test and capability evidence without treating unavailable proof routes as passes."
+    },
+    {
+      "task_id": "PGIR-006",
+      "use": "Build the compiler/decompiler gap matrix using the adapter, proof, checker, and absence decisions recorded here."
+    }
+  ],
+  "summary": {
+    "disposition": "inventory_complete_with_reuse_gaps_and_cold_import_finding",
+    "role_count": 15,
+    "roles_with_exactly_one_disposition": 15,
+    "implementation_count": 19,
+    "classification_counts": {
+      "artifact": 0,
+      "canonical": 10,
+      "component": 7,
+      "declaration": 1,
+      "duplicate": 0,
+      "experimental": 0,
+      "facade": 1,
+      "generated": 0,
+      "legacy": 0,
+      "obsolete": 0,
+      "unresolved": 0
+    },
+    "role_reuse_decision_counts": {
+      "extend_existing": 5,
+      "gap_absent": 0,
+      "not_applicable": 0,
+      "reuse": 8,
+      "reuse_with_adapter": 2,
+      "unresolved": 0
+    },
+    "gap_roles": [
+      "checkpoint",
+      "experiment",
+      "promotion",
+      "publication",
+      "refill"
+    ],
+    "unresolved_roles": [],
+    "absent_surface_count": 6,
+    "training_surface_present": false,
+    "model_checkpoint_lifecycle_present": false,
+    "model_promotion_surface_present": false,
+    "model_publication_surface_present": false,
+    "canonical_provider_proof_checker_boundaries_explicit": true,
+    "cold_import_side_effect_free": false
+  }
+}
