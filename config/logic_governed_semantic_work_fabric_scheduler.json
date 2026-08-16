@@ -139,7 +139,7 @@
     "primary_model_id": "grok-4.5",
     "fallback_provider_id": "codex",
     "fallback_model_id": "gpt-5.6-terra",
-    "fallback_trigger": "primary_quota_or_auth_unavailable",
+    "fallback_trigger": "primary_quota_exhausted",
     "fallback_reasoning_effort": "high",
     "max_concurrency": 3,
     "secrets_from_environment_only": true,

@@ -388,12 +388,12 @@ def validate() -> dict[str, Any]:
         "primary_model_id": "grok-4.5",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
-        "fallback_trigger": "primary_quota_or_auth_unavailable",
+        "fallback_trigger": "primary_quota_exhausted",
         "fallback_reasoning_effort": "high",
         "max_concurrency": 3,
     }
     if any(provider.get(key) != value for key, value in expected_route.items()):
-        errors.append("provider must use the sealed Grok 4.5 to Codex GPT-5.6-Terra auth-or-quota/high route at concurrency 3")
+        errors.append("provider must use the sealed Grok 4.5 to Codex GPT-5.6-Terra quota/high route at concurrency 3")
 
     expected_control_paths = {
         PLAN.relative_to(ROOT).as_posix(), OBJECTIVES.relative_to(ROOT).as_posix(),
