@@ -2603,7 +2603,7 @@ overlays. Never force-push.
 
 ## MCPP-083 Publish the joined release-candidate receipt
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: true
