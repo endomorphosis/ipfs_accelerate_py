@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -22,6 +24,9 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+    DatabaseTaskSource,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
@@ -31,16 +36,39 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 
 ROOT = Path(__file__).resolve().parents[2]
 MATERIALIZER = ROOT / "scripts/materialize_logic_governed_semantic_work_fabric_control_plane.py"
+VALIDATOR = ROOT / "scripts/validate_logic_governed_semantic_work_fabric_board.py"
 requires_duckdb = pytest.mark.skipif(
     not duckdb_available(),
     reason="DuckDB is required for the temporary LGSWF control-plane fixture",
 )
 RECEIPT_RESULT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/content-addressed-receipt-result@1"
+SEAL_AUTHORITY_KEYS = (
+    "claim",
+    "preparation",
+    "validation_receipt",
+    "seal_basis_evidence_receipt",
+    "control_cas",
+    "coordination_promotion",
+    "cross_store_guard",
+    "settled_lease",
+    "writer_reservation",
+    "writer_release",
+)
 
 
 def _load_materializer() -> ModuleType:
     spec = importlib.util.spec_from_file_location(
         f"lgswf_materializer_test_{id(object())}", MATERIALIZER
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_validator() -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        f"lgswf_validator_test_{id(object())}", VALIDATOR
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -80,9 +108,14 @@ def _temporary_population() -> dict[str, Any]:
             "ordinal": ordinal,
             "title": alias,
             "dependencies": ([] if alias == "LGSWF-006" else ["task:LGSWF-006"]),
-            "outputs": [],
-            "acceptance": [],
-            "validations": [],
+            "outputs": [
+                {
+                    "path": f"outputs/{alias}.json",
+                    "effect_id": f"effect:{alias}",
+                }
+            ],
+            "acceptance": [f"accept {alias}"],
+            "validations": [f"validate {alias}"],
         }
         if alias == "LGSWF-006":
             task.update(
@@ -128,6 +161,18 @@ def _materialize_temporary_plane(
     module.ROOT = tmp_path
     config = _temporary_config()
     population = _temporary_population()
+    module._assert_population_source_current = lambda _config, _population: {
+        "source_head": _population["source_head"],
+        "repository_tree_id": _population["repository_tree_id"],
+        "worktree_clean": True,
+        "nested_repositories": [],
+        "source_forest_root": module._identity(
+            {
+                "source_head": _population["source_head"],
+                "repository_tree_id": _population["repository_tree_id"],
+            }
+        ),
+    }
     _install_test_qualification(module, config, population)
     receipt = module.materialize(config, population)
     return module, config, population, receipt
@@ -192,6 +237,88 @@ def _stub_seal_evidence(
         module, "_render_launch_plan_evidence", lambda _config: _stub_launch_evidence()
     )
     monkeypatch.setattr(module, "_sha256_file", lambda _path: "sha256:" + "2" * 64)
+    monkeypatch.setattr(
+        module,
+        "_control_bundle_cid",
+        lambda _config, _population: "sha256:" + "3" * 64,
+    )
+
+
+def _sealed_temporary_plane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[ModuleType, dict[str, Any], dict[str, Any], dict[str, Any]]:
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
+    sealed = _canonical_receipt(
+        module,
+        module.seal(config, population),
+        operation="seal",
+    )
+    return module, config, population, sealed
+
+
+def _acquire_test_bootstrap_writer(
+    module: ModuleType,
+    config: dict[str, Any],
+    population: dict[str, Any],
+) -> tuple[Any, dict[str, Any]]:
+    materialization = module._load_materialization_receipt(config, population)
+    qualification = module._load_qualification_receipt(config, population)
+    seal_basis = module._build_seal_basis(
+        config=config,
+        population=population,
+        materialization_receipt=materialization,
+        qualification_receipt=qualification,
+        launch_plan=module._render_launch_plan_evidence(config),
+    )
+    owner_id = "lgswf-bootstrap-seal:" + module._identity(population).split(":", 1)[1][:24]
+    coordinator = open_database_coordinator(module._paths(config)["coordination"])
+    try:
+        writer = module._acquire_bootstrap_writer(
+            coordinator,
+            population=population,
+            task_cid=population["task_cids_by_alias"]["LGSWF-006"],
+            owner_id=owner_id,
+            accepted_result_cid=module._identity(seal_basis),
+        )
+    finally:
+        coordinator.close()
+    return writer, seal_basis
+
+
+def _cross_store_guard_event_count(path: Path) -> int:
+    import duckdb  # type: ignore
+
+    connection = duckdb.connect(str(path), read_only=True)
+    try:
+        return int(
+            connection.execute(
+                "SELECT COUNT(*) FROM lease_events "
+                "WHERE event_type = 'cross_store_fence_guard_succeeded'"
+            ).fetchone()[0]
+        )
+    finally:
+        connection.close()
+
+
+def _rewrite_self_consistent_seal_receipt(
+    module: ModuleType,
+    config: dict[str, Any],
+    *,
+    field: str,
+    value: Any,
+) -> None:
+    path = module._bootstrap_receipt_path(config, "duckdb-seal.json")
+    receipt = json.loads(path.read_text(encoding="utf-8"))
+    receipt.pop("receipt_cid")
+    receipt[field] = value
+    receipt["authority_root"] = module._identity(
+        {key: receipt[key] for key in SEAL_AUTHORITY_KEYS}
+    )
+    receipt["receipt_cid"] = module._identity(receipt)
+    module._write_receipt(path, receipt)
 
 
 def _install_test_qualification(
@@ -200,12 +327,14 @@ def _install_test_qualification(
     population: dict[str, Any],
 ) -> dict[str, Any]:
     commands = module._qualification_commands()
+    source_verification = module._assert_population_source_current(config, population)
     receipt = {
         "schema": module.QUALIFICATION_SCHEMA,
         "source_head": population["source_head"],
         "repository_tree_id": population["repository_tree_id"],
         "plan_root_cid": population["plan_root_cid"],
         "population_cid": module._identity(population),
+        "source_verification": source_verification,
         "command_argv": [list(argv) for _label, argv, _expected in commands],
         "qualified": True,
         "results": [
@@ -377,9 +506,13 @@ def test_population_binds_clean_execution_head_tree_and_explicit_goal_edges(
     module.CONFIG_PATH = config_path
     config = json.loads(config_path.read_text(encoding="utf-8"))
     population = module.build_population(config)
+    source_verification = module._assert_population_source_current(config, population)
 
     assert population["source_head"] == execution_head
     assert population["repository_tree_id"] == execution_tree
+    assert source_verification["source_head"] == execution_head
+    assert source_verification["repository_tree_id"] == execution_tree
+    assert source_verification["nested_repositories"][0]["head"] == datasets_head
     assert population["plans"][0]["source_head"] == execution_head
     assert population["plans"][0]["repository_tree_id"] == execution_tree
     task = population["tasks"][0]
@@ -463,8 +596,32 @@ def test_unsealed_plane_exposes_only_manual_seal_and_daemon_skips_it(
         manual = daemon.task_source.get(population["task_cids_by_alias"]["LGSWF-006"])
         assert manual is not None
         assert manual.status == "todo"
+        assert [dict(item) for item in manual.acceptance] == [
+            {
+                "ordinal": 0,
+                "criterion": "accept LGSWF-006",
+                "evidence_policy": {"criterion": "accept LGSWF-006"},
+            }
+        ]
+        assert [dict(item) for item in manual.validations] == [
+            {"ordinal": 0, "argv": ["validate LGSWF-006"], "policy": {}}
+        ]
     finally:
         daemon.close()
+
+    connection = open_duckdb_connection(paths["control"])
+    try:
+        connection.execute(
+            "UPDATE goals SET title = ? WHERE goal_cid = ?",
+            ["FORGED GOAL TITLE", "goal:lgswf-root"],
+        )
+    finally:
+        connection.close()
+    with pytest.raises(
+        module.MaterializationError,
+        match="control objective/goal/plan population changed",
+    ):
+        module._verify_control_population(config, population)
 
 
 @requires_duckdb
@@ -477,12 +634,42 @@ def test_restart_resumes_exact_live_claim_before_preparation_without_expiry(
     _stub_seal_evidence(module, monkeypatch, config, population)
     captured: dict[str, Any] = {}
 
+    materialization_receipt = module._load_materialization_receipt(config, population)
+    qualification_receipt = module._load_qualification_receipt(config, population)
+    seal_basis = module._build_seal_basis(
+        config=config,
+        population=population,
+        materialization_receipt=materialization_receipt,
+        qualification_receipt=qualification_receipt,
+        launch_plan=_stub_launch_evidence(),
+    )
+    owner_id = "lgswf-bootstrap-seal:" + module._identity(population).split(":", 1)[1][:24]
+    paths = module._paths(config)
+    writer_coordinator = open_database_coordinator(paths["coordination"])
+    try:
+        stranded_writer = module._acquire_bootstrap_writer(
+            writer_coordinator,
+            population=population,
+            task_cid=population["task_cids_by_alias"]["LGSWF-006"],
+            owner_id=owner_id,
+            accepted_result_cid=module._identity(seal_basis),
+        )
+    finally:
+        writer_coordinator.close()
+
     def crash_before_preparation(
         _coordinator: DatabaseCoordinator,
         claim: Any,
         **_kwargs: Any,
     ) -> dict[str, Any]:
         captured["claim"] = claim.to_dict()
+        writer_rows = [
+            item
+            for item in _coordinator.coordination_registry_projection()["resource_claims"]
+            if item["state"] == "accepted"
+        ]
+        assert len(writer_rows) == 1
+        captured["writer"] = writer_rows[0]
         raise RuntimeError("injected crash before PREPARED")
 
     with monkeypatch.context() as injected:
@@ -494,7 +681,9 @@ def test_restart_resumes_exact_live_claim_before_preparation_without_expiry(
         with pytest.raises(RuntimeError, match="injected crash before PREPARED"):
             module.seal(config, population)
 
-    paths = module._paths(config)
+    assert captured["writer"]["lease_id"] == stranded_writer.lease_id
+    assert captured["writer"]["fencing_token"] == stranded_writer.fencing_token
+    assert captured["writer"]["fence_epoch"] == stranded_writer.fence_epoch
     coordinator = open_database_coordinator(paths["coordination"])
     try:
         active = coordinator.list_active_leases()
@@ -570,6 +759,452 @@ def test_restart_resumes_exact_live_prepared_todo_without_expiry(
 
 
 @requires_duckdb
+@pytest.mark.parametrize("crash_window", ["after_validation", "after_basis_evidence"])
+def test_prepared_retry_reuses_one_attempt_bound_validation_and_basis_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    crash_window: str,
+) -> None:
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
+    paths = module._paths(config)
+
+    with monkeypatch.context() as injected:
+        if crash_window == "after_validation":
+            injected.setattr(
+                DatabaseTaskSource,
+                "record_evidence",
+                lambda _self, **_kwargs: (_ for _ in ()).throw(
+                    RuntimeError("injected crash after validation")
+                ),
+            )
+            expected_error = "injected crash after validation"
+        else:
+            injected.setattr(
+                DatabaseTaskSource,
+                "compare_and_set_status",
+                lambda _self, *_args, **_kwargs: (_ for _ in ()).throw(
+                    RuntimeError("injected crash after basis evidence")
+                ),
+            )
+            expected_error = "injected crash after basis evidence"
+        with pytest.raises(RuntimeError, match=expected_error):
+            module.seal(config, population)
+
+    connection = open_duckdb_connection(paths["control"])
+    try:
+        validation_count = int(
+            connection.execute("SELECT COUNT(*) FROM validation_results").fetchone()[0]
+        )
+        basis_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM evidence_nodes "
+                "WHERE evidence_kind = 'bootstrap_seal_basis'"
+            ).fetchone()[0]
+        )
+    finally:
+        connection.close()
+    assert validation_count == 1
+    assert basis_count == (0 if crash_window == "after_validation" else 1)
+
+    sealed = _canonical_receipt(
+        module,
+        module.seal(config, population),
+        operation="seal",
+    )
+    binding = sealed["post_verification"]["completion_binding"]
+    validation = sealed["validation_receipt"]
+    basis = sealed["seal_basis_evidence_receipt"]
+    assert validation["attempt_id"] == binding["attempt_id"]
+    for field in (
+        "task_cid",
+        "claim_id",
+        "attempt_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+    ):
+        assert validation["body"][field] == binding[field]
+        assert basis["body"][field] == binding[field]
+
+    connection = open_duckdb_connection(paths["control"])
+    try:
+        assert int(connection.execute("SELECT COUNT(*) FROM validation_results").fetchone()[0]) == 1
+        assert int(
+            connection.execute(
+                "SELECT COUNT(*) FROM evidence_nodes "
+                "WHERE evidence_kind = 'bootstrap_seal_basis'"
+            ).fetchone()[0]
+        ) == 1
+    finally:
+        connection.close()
+
+
+@requires_duckdb
+def test_control_cas_before_guard_replays_idempotently_under_live_fences(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
+    writer, _seal_basis = _acquire_test_bootstrap_writer(module, config, population)
+    paths = module._paths(config)
+
+    original_protect = DatabaseCoordinator._protect_resource_claim_unlocked
+    calls = 0
+
+    def fail_after_control_cas(
+        self: DatabaseCoordinator,
+        connection: Any,
+        **kwargs: Any,
+    ) -> Any:
+        nonlocal calls
+        calls += 1
+        result = original_protect(self, connection, **kwargs)
+        if calls == 2:
+            raise RuntimeError("injected crash after control CAS before guard")
+        return result
+
+    with monkeypatch.context() as injected:
+        injected.setattr(
+            DatabaseCoordinator,
+            "_protect_resource_claim_unlocked",
+            fail_after_control_cas,
+        )
+        with pytest.raises(
+            RuntimeError,
+            match="injected crash after control CAS before guard",
+        ):
+            module._seal_with_writer(config, population, writer_claim=writer)
+
+    task_source = DatabaseTaskSource(
+        paths["control"],
+        owner_id="guard-crash-check",
+        repository_tree_id=population["repository_tree_id"],
+        plan_root_cid=population["plan_root_cid"],
+        install_schema=False,
+    )
+    try:
+        task = task_source.get(population["task_cids_by_alias"]["LGSWF-006"])
+        assert task is not None and task.status == "completed"
+    finally:
+        task_source.close()
+    assert _cross_store_guard_event_count(paths["coordination"]) == 0
+
+    resumed = _canonical_receipt(
+        module,
+        module.seal(config, population),
+        operation="seal",
+    )
+    assert any(
+        item.get("status") == "guard_replay_required"
+        for item in resumed["recovery"]
+    )
+    assert resumed["cross_store_guard"]["control_result_digest"] == module._identity(
+        resumed["control_cas"]["task"]
+    )
+    assert _cross_store_guard_event_count(paths["coordination"]) == 1
+
+
+@requires_duckdb
+def test_guard_before_promotion_recovers_without_duplicate_guard_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
+    writer, _seal_basis = _acquire_test_bootstrap_writer(module, config, population)
+    paths = module._paths(config)
+
+    def fail_before_promotion(
+        _self: DatabaseCoordinator,
+        _claim: Any,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        raise RuntimeError("injected crash after guard before promotion")
+
+    with monkeypatch.context() as injected:
+        injected.setattr(
+            DatabaseCoordinator,
+            "complete_task_claim",
+            fail_before_promotion,
+        )
+        with pytest.raises(
+            RuntimeError,
+            match="injected crash after guard before promotion",
+        ):
+            module._seal_with_writer(config, population, writer_claim=writer)
+
+    assert _cross_store_guard_event_count(paths["coordination"]) == 1
+    resumed = _canonical_receipt(
+        module,
+        module.seal(config, population),
+        operation="seal",
+    )
+    assert resumed["coordination_promotion"]["status"] == "succeeded"
+    assert resumed["settled_lease"]["state"] == "released"
+    assert _cross_store_guard_event_count(paths["coordination"]) == 1
+
+
+@requires_duckdb
+def test_naturally_expired_guarded_task_recovers_from_exact_durable_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
+    writer, _seal_basis = _acquire_test_bootstrap_writer(module, config, population)
+    paths = module._paths(config)
+
+    def fail_before_promotion(
+        _self: DatabaseCoordinator,
+        _claim: Any,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        raise RuntimeError("injected crash after guard before natural task expiry")
+
+    with monkeypatch.context() as injected:
+        injected.setattr(
+            DatabaseCoordinator,
+            "complete_task_claim",
+            fail_before_promotion,
+        )
+        with pytest.raises(
+            RuntimeError,
+            match="injected crash after guard before natural task expiry",
+        ):
+            module._seal_with_writer(config, population, writer_claim=writer)
+
+    deadline = time.time_ns() // 1_000_000 - 1
+    connection = open_duckdb_connection(paths["coordination"])
+    try:
+        connection.execute(
+            "UPDATE task_claims SET expires_at_ms = ? WHERE state = 'accepted'",
+            [deadline],
+        )
+        connection.execute(
+            "UPDATE fenced_leases SET expires_at_ms = ? "
+            "WHERE lease_kind = 'task' AND state = 'accepted'",
+            [deadline],
+        )
+    finally:
+        connection.close()
+
+    resumed = _canonical_receipt(
+        module,
+        module.seal(config, population),
+        operation="seal",
+    )
+    assert any(item.get("recovered") is True for item in resumed["recovery"])
+    assert resumed["claim"]["state"] == "completed"
+    assert resumed["settled_lease"]["state"] == "completed"
+    assert _cross_store_guard_event_count(paths["coordination"]) == 1
+    assert module._load_existing_seal_receipt(config, population) is not None
+
+    forged_release = dict(resumed["writer_release"])
+    forged_release["fencing_token"] = int(forged_release["fencing_token"]) + 1
+    _rewrite_self_consistent_seal_receipt(
+        module,
+        config,
+        field="writer_release",
+        value=forged_release,
+    )
+    with pytest.raises(
+        module.MaterializationError,
+        match="durable authority differs",
+    ):
+        module._load_existing_seal_receipt(config, population)
+
+
+@requires_duckdb
+def test_expired_guard_writer_uses_exact_later_recovery_writer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
+    writer, _seal_basis = _acquire_test_bootstrap_writer(module, config, population)
+    paths = module._paths(config)
+
+    def fail_before_promotion(
+        _self: DatabaseCoordinator,
+        _claim: Any,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        raise RuntimeError("injected crash after guard before writer expiry")
+
+    with monkeypatch.context() as injected:
+        injected.setattr(
+            DatabaseCoordinator,
+            "complete_task_claim",
+            fail_before_promotion,
+        )
+        with pytest.raises(
+            RuntimeError,
+            match="injected crash after guard before writer expiry",
+        ):
+            module._seal_with_writer(config, population, writer_claim=writer)
+
+    deadline = time.time_ns() // 1_000_000 - 1
+    connection = open_duckdb_connection(paths["coordination"])
+    try:
+        connection.execute(
+            "UPDATE resource_claims SET expires_at_ms = ? WHERE claim_id = ?",
+            [deadline, writer.claim_id],
+        )
+        connection.execute(
+            "UPDATE fenced_leases SET expires_at_ms = ? WHERE lease_id = ?",
+            [deadline, writer.lease_id],
+        )
+    finally:
+        connection.close()
+
+    resumed = _canonical_receipt(
+        module,
+        module.seal(config, population),
+        operation="seal",
+    )
+    reservation = resumed["writer_reservation"]
+    assert resumed["cross_store_guard"]["writer_claim_id"] == writer.claim_id
+    assert reservation["claim_id"] != writer.claim_id
+    assert (
+        int(reservation["fence_epoch"]),
+        int(reservation["fencing_token"]),
+    ) > (int(writer.fence_epoch), int(writer.fencing_token))
+    assert resumed["writer_release"]["claim_id"] == reservation["claim_id"]
+    assert resumed["writer_release"]["state"] == "released"
+    projection = module._verify_live_store(config, population)
+    assert projection["seal"]["receipt_cid"] == resumed["receipt_cid"]
+
+    forged_reservation = dict(reservation)
+    forged_reservation["fencing_token"] = int(reservation["fencing_token"]) + 100
+    _rewrite_self_consistent_seal_receipt(
+        module,
+        config,
+        field="writer_reservation",
+        value=forged_reservation,
+    )
+    with pytest.raises(
+        module.MaterializationError,
+        match="writer fences cannot be reconstructed exactly",
+    ):
+        module._verify_live_store(config, population)
+
+
+@requires_duckdb
+def test_expired_prepared_control_effect_without_guard_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
+    writer, _seal_basis = _acquire_test_bootstrap_writer(module, config, population)
+    paths = module._paths(config)
+
+    original_protect = DatabaseCoordinator._protect_resource_claim_unlocked
+    calls = 0
+
+    def fail_after_control_cas(
+        self: DatabaseCoordinator,
+        connection: Any,
+        **kwargs: Any,
+    ) -> Any:
+        nonlocal calls
+        calls += 1
+        result = original_protect(self, connection, **kwargs)
+        if calls == 2:
+            raise RuntimeError("injected unguarded control effect")
+        return result
+
+    with monkeypatch.context() as injected:
+        injected.setattr(
+            DatabaseCoordinator,
+            "_protect_resource_claim_unlocked",
+            fail_after_control_cas,
+        )
+        with pytest.raises(RuntimeError, match="injected unguarded control effect"):
+            module._seal_with_writer(config, population, writer_claim=writer)
+
+    coordinator = open_database_coordinator(paths["coordination"])
+    try:
+        prepared = coordinator.list_prepared_task_completions(limit=10)
+        assert len(prepared) == 1
+        claim = coordinator.get_task_claim(prepared[0]["claim_id"])
+        assert claim is not None
+        lease = coordinator.get_lease(claim.lease_id)
+        assert lease is not None
+        coordinator.expire_task_claim(
+            claim,
+            now_ms=int(lease.expires_at_ms) + 1,
+        )
+    finally:
+        coordinator.close()
+
+    with pytest.raises(
+        module.MaterializationError,
+        match="expired manual seal completion has no durable cross-store fence guard",
+    ):
+        module.seal(config, population)
+    assert _cross_store_guard_event_count(paths["coordination"]) == 0
+    assert not module._bootstrap_receipt_path(config, "duckdb-seal.json").exists()
+
+
+@requires_duckdb
+@pytest.mark.parametrize("tamper", ["validation_attempt", "basis_fence"])
+def test_attempt_or_fence_tamper_rejects_seal_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
+    sealed = _canonical_receipt(
+        module,
+        module.seal(config, population),
+        operation="seal",
+    )
+    paths = module._paths(config)
+    connection = open_duckdb_connection(paths["control"])
+    try:
+        if tamper == "validation_attempt":
+            connection.execute(
+                "UPDATE validation_runs SET attempt_id = 'attempt:forged' "
+                "WHERE run_id = ?",
+                [sealed["validation_receipt"]["run_id"]],
+            )
+        else:
+            row = connection.execute(
+                "SELECT body_json FROM evidence_nodes WHERE evidence_id = ?",
+                [sealed["seal_basis_evidence_receipt"]["evidence_id"]],
+            ).fetchone()
+            assert row is not None
+            body = json.loads(row[0])
+            body["fence_epoch"] = int(body["fence_epoch"]) + 1
+            connection.execute(
+                "UPDATE evidence_nodes SET body_json = ? WHERE evidence_id = ?",
+                [
+                    json.dumps(body, sort_keys=True, separators=(",", ":")),
+                    sealed["seal_basis_evidence_receipt"]["evidence_id"],
+                ],
+            )
+    finally:
+        connection.close()
+
+    with pytest.raises(
+        module.MaterializationError,
+        match="bound to a different attempt or fence",
+    ):
+        module.seal(config, population)
+
+
+@requires_duckdb
 def test_foreign_resource_lease_blocks_unsealed_verification_and_seal(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -598,8 +1233,7 @@ def test_foreign_resource_lease_blocks_unsealed_verification_and_seal(
 
         with pytest.raises(module.MaterializationError) as seal_error:
             module.seal(config, population)
-        assert "active" in str(seal_error.value).lower()
-        assert "lease" in str(seal_error.value).lower()
+        assert "foreign resource" in str(seal_error.value).lower()
     finally:
         coordinator = open_database_coordinator(paths["coordination"])
         try:
@@ -608,6 +1242,17 @@ def test_foreign_resource_lease_blocks_unsealed_verification_and_seal(
             coordinator.release(lease, reason="test cleanup")
         finally:
             coordinator.close()
+
+    with pytest.raises(
+        module.MaterializationError,
+        match="fresh unsealed coordination registry contains execution history",
+    ):
+        module._verify_store(config, population, expected_stage="unsealed")
+    with pytest.raises(
+        module.MaterializationError,
+        match="foreign writer authority|foreign resource",
+    ):
+        module.seal(config, population)
 
 
 @requires_duckdb
@@ -625,6 +1270,10 @@ def test_trusted_seal_prepares_cas_promotes_settles_and_replays_immutably(
     accepted_result_cid = sealed["accepted_result_cid"]
     assert sealed["preparation"]["status"] == "prepared"
     assert sealed["preparation"]["evidence_digest"] == accepted_result_cid
+    assert (
+        sealed["preparation"]["body"]["requires_cross_store_fence_guard"]
+        is True
+    )
     assert sealed["control_cas"]["changed"] is True
     assert sealed["control_cas"]["task"]["status"] == "completed"
     assert (
@@ -632,6 +1281,12 @@ def test_trusted_seal_prepares_cas_promotes_settles_and_replays_immutably(
         == accepted_result_cid
     )
     assert sealed["coordination_promotion"]["status"] == "succeeded"
+    assert sealed["cross_store_guard"]["preparation_digest"] == (
+        sealed["preparation"]["preparation_digest"]
+    )
+    assert sealed["cross_store_guard"]["control_result_digest"] == module._identity(
+        sealed["control_cas"]["task"]
+    )
     assert sealed["settled_lease"]["state"] == "released"
     assert sealed["post_verification"]["accepted_result_cid"] == accepted_result_cid
     assert sealed["post_verification"]["ready_task_aliases"] == [
@@ -741,6 +1396,15 @@ def test_post_settlement_reconstruction_writes_identity_default_verify_accepts(
     )
     assert reconstructed["accepted_result_cid"] == accepted_result_cid
     assert reconstructed["post_verification"]["accepted_result_cid"] == (accepted_result_cid)
+    authority = {key: reconstructed[key] for key in SEAL_AUTHORITY_KEYS}
+    assert reconstructed["authority_root"] == module._identity(authority)
+    assert reconstructed["claim"]["state"] == "released"
+    assert reconstructed["preparation"]["evidence_digest"] == accepted_result_cid
+    assert reconstructed["validation_receipt"]["outcome"] == "passed"
+    assert reconstructed["seal_basis_evidence_receipt"]["digest"] == accepted_result_cid
+    assert reconstructed["control_cas"]["task"]["status"] == "completed"
+    assert reconstructed["coordination_promotion"]["status"] == "succeeded"
+    assert reconstructed["settled_lease"]["state"] == "released"
     persisted = json.loads(receipt_path.read_text(encoding="utf-8"))
     assert persisted["accepted_result_cid"] == accepted_result_cid
     claimed_receipt_cid = persisted.pop("receipt_cid")
@@ -859,3 +1523,244 @@ def test_sealed_verification_accepts_only_the_exact_result_identity(
     result = json.loads(capsys.readouterr().out)
     assert result["valid"] is True
     assert result["seal_receipt_cid"] == seal_receipt["receipt_cid"]
+
+
+@requires_duckdb
+def test_live_verifier_accepts_exact_seal_without_mutating_any_store_or_lock_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module, config, population, sealed = _sealed_temporary_plane(tmp_path, monkeypatch)
+    paths = module._paths(config)
+    assert module._verify_store(config, population, expected_stage="sealed")[
+        "accepted_result_cid"
+    ] == sealed["accepted_result_cid"]
+
+    for lock_path in tmp_path.rglob("*.lock"):
+        lock_path.unlink()
+    entries_before = sorted(
+        path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*")
+    )
+    stores_before = {
+        key: (path.read_bytes(), path.stat().st_mtime_ns) for key, path in paths.items()
+    }
+
+    live = module._verify_live_store(config, population)
+
+    assert live["verification_mode"] == "live"
+    assert live["seal"]["accepted_result_cid"] == sealed["accepted_result_cid"]
+    assert sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*")) == (
+        entries_before
+    )
+    assert not list(tmp_path.rglob("*.lock"))
+    assert {
+        key: (path.read_bytes(), path.stat().st_mtime_ns) for key, path in paths.items()
+    } == stores_before
+
+    monkeypatch.setattr(module, "_load_config", lambda: config)
+    monkeypatch.setattr(module, "build_population", lambda _config: population)
+    assert module.main(["verify-live"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["valid"] is True
+    assert report["verification"]["seal"]["receipt_cid"] == sealed["receipt_cid"]
+
+
+@requires_duckdb
+def test_live_verifier_allows_real_task_progress_claim_provider_and_effect_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, config, population, _sealed = _sealed_temporary_plane(tmp_path, monkeypatch)
+    paths = module._paths(config)
+    schema_env = "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION"
+    prior_schema = os.environ.get(schema_env)
+    os.environ[schema_env] = str(config["database_program"]["schema_revision"])
+    daemon: DatabaseImplementationDaemon | None = None
+    try:
+        daemon = DatabaseImplementationDaemon(
+            database_path=paths["control"],
+            coordination_path=paths["coordination"],
+            execution_path=paths["execution"],
+            owner_session_id="lgswf-live-verification-daemon",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+            install_schema=False,
+        )
+        attempt = daemon.claim_next()
+        assert attempt is not None and attempt.task_alias == "LGSWF-001"
+        attempt = daemon.commit_phase(attempt, "context", body={"live_test": True})
+        attempt, provider_result, replayed = daemon.run_provider(attempt)
+        assert replayed is False
+        attempt, _effect_result, replayed = daemon.run_effect(attempt, provider_result)
+        assert replayed is False
+    finally:
+        if daemon is not None:
+            daemon.close()
+        if prior_schema is None:
+            os.environ.pop(schema_env, None)
+        else:
+            os.environ[schema_env] = prior_schema
+
+    coordinator = open_database_coordinator(paths["coordination"])
+    try:
+        resource_claims = [
+            coordinator.claim_resource(
+                resource_kind=kind,
+                resource_id=f"live-{kind}",
+                owner_session_id="lgswf-live-verification-daemon",
+                task_cid=attempt.task_cid,
+                repository_id="repository:lgswf-test",
+                path=("outputs/live-path.json" if kind == "path" else ""),
+            )
+            for kind in ("provider", "path", "prover", "merge")
+        ]
+        for resource_claim in resource_claims[1:]:
+            lease = coordinator.get_lease(resource_claim.lease_id)
+            assert lease is not None
+            coordinator.release(lease, reason="live verifier fixture settled")
+        maintenance = coordinator.acquire_maintenance_lease(
+            owner_session_id="lgswf-live-maintenance",
+            scope="live-verifier-fixture",
+        )
+        maintenance_lease = coordinator.get_lease(maintenance.lease_id)
+        assert maintenance_lease is not None
+        coordinator.release(maintenance_lease, reason="live verifier fixture settled")
+    finally:
+        coordinator.close()
+
+    live = module._verify_live_store(config, population)
+    assert live["control"]["counts"]["task_revisions"] > len(population["tasks"])
+    assert live["coordination"]["active_task_claims"] == 1
+    assert live["coordination"]["active_resource_claims"] == 1
+    assert live["coordination"]["active_fenced_leases"] == 2
+    assert live["execution"]["row_counts"] == {
+        "attempt_phases": 4,
+        "daemon_execution_events": 6,
+        "database_task_attempts": 1,
+        "effect_claims": 1,
+        "provider_invocations": 1,
+    }
+    with pytest.raises(module.MaterializationError):
+        module._verify_store(config, population, expected_stage="sealed")
+
+
+@requires_duckdb
+@pytest.mark.parametrize("forgery", ["task", "goal", "dependency"])
+def test_live_verifier_rejects_forged_static_control_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    module, config, population, _sealed = _sealed_temporary_plane(tmp_path, monkeypatch)
+    connection = open_duckdb_connection(module._paths(config)["control"])
+    try:
+        if forgery == "task":
+            connection.execute(
+                "UPDATE tasks SET priority = 'FORGED' WHERE task_cid = 'task:LGSWF-001'"
+            )
+        elif forgery == "goal":
+            connection.execute(
+                "UPDATE goals SET title = 'FORGED' WHERE goal_cid = 'goal:lgswf-root'"
+            )
+        else:
+            connection.execute(
+                "DELETE FROM task_dependencies WHERE task_cid = 'task:LGSWF-001'"
+            )
+    finally:
+        connection.close()
+
+    with pytest.raises(module.MaterializationError, match="sealed .* changed"):
+        module._verify_live_store(config, population)
+
+
+@requires_duckdb
+def test_live_verifier_rejects_impossible_claim_history_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, config, population, _sealed = _sealed_temporary_plane(tmp_path, monkeypatch)
+    paths = module._paths(config)
+    schema_env = "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION"
+    prior_schema = os.environ.get(schema_env)
+    os.environ[schema_env] = str(config["database_program"]["schema_revision"])
+    daemon = DatabaseImplementationDaemon(
+        database_path=paths["control"],
+        coordination_path=paths["coordination"],
+        execution_path=paths["execution"],
+        owner_session_id="lgswf-live-forgery-daemon",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        install_schema=False,
+    )
+    try:
+        attempt = daemon.claim_next()
+        assert attempt is not None
+    finally:
+        daemon.close()
+        if prior_schema is None:
+            os.environ.pop(schema_env, None)
+        else:
+            os.environ[schema_env] = prior_schema
+
+    connection = open_duckdb_connection(paths["coordination"])
+    try:
+        connection.execute(
+            "UPDATE task_attempts SET fencing_token = fencing_token + 100 "
+            "WHERE attempt_id = ?",
+            [attempt.attempt_id],
+        )
+    finally:
+        connection.close()
+    with pytest.raises(module.MaterializationError, match="impossible identities"):
+        module._verify_live_store(config, population)
+
+
+@requires_duckdb
+def test_live_verifier_rejects_tampered_content_addressed_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, config, population, _sealed = _sealed_temporary_plane(tmp_path, monkeypatch)
+    receipt_path = module._bootstrap_receipt_path(config, "duckdb-seal.json")
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["accepted_result_cid"] = "sha256:" + "f" * 64
+    module._write_receipt(receipt_path, receipt)
+
+    with pytest.raises(module.MaterializationError, match="receipt CID does not verify"):
+        module._verify_live_store(config, population)
+
+
+@pytest.mark.parametrize(
+    ("command_result", "expected_database_error"),
+    [
+        ((0, "{}", ""), None),
+        ((9, "", "live rejection"), "live rejection"),
+    ],
+)
+def test_board_check_all_delegates_to_live_verifier(
+    monkeypatch: pytest.MonkeyPatch,
+    command_result: tuple[int, str, str],
+    expected_database_error: str | None,
+) -> None:
+    validator = _load_validator()
+    calls: list[tuple[list[str], Path]] = []
+
+    def command(argv: list[str], *, cwd: Path) -> tuple[int, str, str]:
+        calls.append((argv, cwd))
+        return command_result
+
+    monkeypatch.setattr(validator, "_command", command)
+    report = validator.validate(require_database=True)
+
+    assert calls == [
+        ([sys.executable, str(validator.MATERIALIZER), "verify-live"], validator.ROOT)
+    ]
+    database_errors = [
+        item for item in report["errors"] if item.startswith("DuckDB control-plane verification")
+    ]
+    if expected_database_error is None:
+        assert database_errors == []
+    else:
+        assert len(database_errors) == 1
+        assert expected_database_error in database_errors[0]

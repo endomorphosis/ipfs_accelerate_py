@@ -31,6 +31,8 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     LeaseKind,
     LeaseMode,
     LeaseState,
+    ResourceClaim,
+    TaskClaim,
     duckdb_available,
     exclusive_scope_key,
     open_database_coordinator,
@@ -333,6 +335,307 @@ def test_stale_fencing_epoch_rejected_on_protected_writes(tmp_path: Path) -> Non
 # ---------------------------------------------------------------------------
 # Task claims, attempts, fairness, dependency readiness, response loss
 # ---------------------------------------------------------------------------
+
+
+def _claim_task_and_writer(
+    coordinator: DatabaseCoordinator,
+    *,
+    task_lease_ms: int = 30_000,
+    writer_lease_ms: int = 30_000,
+) -> tuple[TaskClaim, ResourceClaim]:
+    coordinator.register_task(task_cid="task:guarded", task_id="GUARDED")
+    claim = coordinator.claim_task(
+        task_cid="task:guarded",
+        owner_session_id="session:guarded",
+        lease_ms=task_lease_ms,
+    )
+    writer = coordinator.claim_resource(
+        resource_kind="database_writer",
+        resource_id="control-store:guarded",
+        owner_session_id="session:guarded",
+        task_cid="task:guarded",
+        repository_id="repository:guarded",
+        lease_ms=writer_lease_ms,
+        body={"purpose": "control_cas"},
+    )
+    return claim, writer
+
+
+def test_cross_store_callback_runs_under_exact_task_and_writer_fences(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        claim, writer = _claim_task_and_writer(coordinator)
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=1,
+            control_expected_status="todo",
+            evidence_digest="sha256:evidence",
+            body={"requires_cross_store_fence_guard": True},
+        )
+        control_receipt = _completed_control_task(
+            prepared,
+            nested_cas_result=True,
+        )
+        calls: list[str] = []
+
+        def control_cas() -> dict[str, object]:
+            calls.append("called")
+            return control_receipt
+
+        result = coordinator.execute_with_task_and_resource_fences(
+            claim,
+            writer,
+            control_cas,
+            allow_logically_completed=True,
+        )
+
+        assert result == control_receipt
+        assert calls == ["called"]
+        event_types = {item["event_type"] for item in coordinator.lease_events()}
+        assert "protected_task_write" in event_types
+        assert "protected_resource_write" in event_types
+        assert "cross_store_fence_guard_succeeded" in event_types
+        promoted = coordinator.complete_task_claim(
+            claim,
+            control_completion_receipt=control_receipt,
+        )
+        assert promoted["status"] == "succeeded"
+        assert coordinator.get_task_claim(claim.claim_id) is not None
+        assert coordinator.get_lease(writer.lease_id) is not None
+    finally:
+        coordinator.close()
+
+
+def test_cross_store_callback_failure_rolls_back_coordinator_guard(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        claim, writer = _claim_task_and_writer(coordinator)
+        before = coordinator.lease_events()
+
+        def failing_control_cas() -> None:
+            raise RuntimeError("control CAS failed")
+
+        with pytest.raises(RuntimeError, match="control CAS failed"):
+            coordinator.execute_with_task_and_resource_fences(
+                claim,
+                writer,
+                failing_control_cas,
+            )
+
+        assert coordinator.lease_events() == before
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
+        assert coordinator.get_lease(writer.lease_id).state is LeaseState.ACCEPTED
+    finally:
+        coordinator.close()
+
+
+def test_guarded_completion_cannot_promote_without_guard_success_receipt(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        claim, _writer = _claim_task_and_writer(coordinator)
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=1,
+            control_expected_status="todo",
+            evidence_digest="sha256:unguarded-control-cas",
+            body={"requires_cross_store_fence_guard": True},
+        )
+        control_receipt = _completed_control_task(
+            prepared,
+            nested_cas_result=True,
+        )
+
+        with pytest.raises(DatabaseCoordinationNotReadyError) as excinfo:
+            coordinator.complete_task_claim(
+                claim,
+                control_completion_receipt=control_receipt,
+            )
+        assert excinfo.value.evidence["reason"] == "cross_store_fence_guard_missing"
+        pending = coordinator.get_prepared_task_completion(claim.task_cid)
+        assert pending is not None
+        assert pending["status"] == "prepared"
+    finally:
+        coordinator.close()
+
+
+def test_cross_store_callback_rejects_coordinator_reentry_even_when_swallowed(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        claim, writer = _claim_task_and_writer(coordinator)
+        before = coordinator.lease_events()
+
+        def reentrant_callback() -> str:
+            with pytest.raises(
+                DatabaseCoordinationConflictError,
+                match="must not re-enter",
+            ):
+                coordinator.release(writer.as_fenced_lease())
+            return "swallowed"
+
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="attempted to re-enter",
+        ):
+            coordinator.execute_with_task_and_resource_fences(
+                claim,
+                writer,
+                reentrant_callback,
+            )
+
+        assert coordinator.lease_events() == before
+        assert coordinator.get_lease(writer.lease_id).state is LeaseState.ACCEPTED
+    finally:
+        coordinator.close()
+
+
+def test_cross_store_callback_fails_postcheck_when_fences_expire(
+    tmp_path: Path,
+) -> None:
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        claim, writer = _claim_task_and_writer(
+            coordinator,
+            task_lease_ms=10_000,
+            writer_lease_ms=10_000,
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=1,
+            control_expected_status="todo",
+            evidence_digest="sha256:expiry-evidence",
+            body={"requires_cross_store_fence_guard": True},
+        )
+        control_receipt = _completed_control_task(
+            prepared,
+            nested_cas_result=True,
+        )
+        before = coordinator.lease_events()
+        external_effects: list[dict[str, object]] = []
+
+        def slow_control_cas() -> dict[str, object]:
+            external_effects.append(control_receipt)
+            clock.advance(10_001)
+            return control_receipt
+
+        with pytest.raises(DatabaseCoordinationExpiredError):
+            coordinator.execute_with_task_and_resource_fences(
+                claim,
+                writer,
+                slow_control_cas,
+                allow_logically_completed=True,
+            )
+
+        # The coordinator transaction rolls back, but an external callback's
+        # effect cannot be undone and must be reconciled by its receipt.
+        assert external_effects == [control_receipt]
+        assert coordinator.lease_events() == before
+        with pytest.raises(DatabaseCoordinationNotReadyError) as recovery_error:
+            coordinator.recover_prepared_task_completion(
+                claim.task_cid,
+                control_completion_receipt=control_receipt,
+            )
+        assert (
+            recovery_error.value.evidence["reason"]
+            == "cross_store_fence_guard_missing"
+        )
+        assert coordinator.list_active_leases() == []
+    finally:
+        coordinator.close()
+
+
+def test_cross_store_callback_postcheck_rejects_injected_later_writer_fence(
+    tmp_path: Path,
+) -> None:
+    coordinator, clock = _open(tmp_path)
+    try:
+        claim, writer = _claim_task_and_writer(coordinator)
+        connection = coordinator._require()
+        before = coordinator.lease_events()
+        scope_key = writer.as_fenced_lease().scope_key
+
+        def inject_illicit_takeover() -> str:
+            # Deliberately bypass the public coordinator API to exercise the
+            # post-callback latest-fence check. Supported re-entry is rejected
+            # separately above.
+            connection.execute(
+                """
+                INSERT INTO token_history(
+                    scope_key, fencing_token, fence_epoch, recorded_at_ms
+                ) VALUES (?, ?, ?, ?)
+                """,
+                [
+                    scope_key,
+                    writer.fencing_token + 1,
+                    writer.fence_epoch + 1,
+                    clock.now,
+                ],
+            )
+            return "forged-result"
+
+        with pytest.raises(DatabaseCoordinationStaleFenceError, match="latest"):
+            coordinator.execute_with_task_and_resource_fences(
+                claim,
+                writer,
+                inject_illicit_takeover,
+            )
+
+        assert coordinator.lease_events() == before
+        latest = connection.execute(
+            """
+            SELECT MAX(fencing_token), MAX(fence_epoch)
+            FROM token_history WHERE scope_key = ?
+            """,
+            [scope_key],
+        ).fetchone()
+        assert latest is not None
+        assert (latest[0], latest[1]) == (
+            writer.fencing_token,
+            writer.fence_epoch,
+        )
+    finally:
+        coordinator.close()
+
+
+def test_cross_store_callback_rejects_superseded_writer_before_execution(
+    tmp_path: Path,
+) -> None:
+    coordinator, clock = _open(tmp_path)
+    try:
+        claim, writer = _claim_task_and_writer(
+            coordinator,
+            task_lease_ms=30_000,
+            writer_lease_ms=10_000,
+        )
+        clock.advance(10_001)
+        successor = coordinator.claim_resource(
+            resource_kind="database_writer",
+            resource_id=writer.resource_id,
+            owner_session_id="session:successor",
+            task_cid="task:successor",
+            repository_id=writer.repository_id,
+            lease_ms=10_000,
+            body={"purpose": "successor_control_cas"},
+        )
+        assert successor.fencing_token > writer.fencing_token
+        calls: list[str] = []
+
+        with pytest.raises(DatabaseCoordinationStaleFenceError, match="latest"):
+            coordinator.execute_with_task_and_resource_fences(
+                claim,
+                writer,
+                lambda: calls.append("called"),
+            )
+        assert calls == []
+    finally:
+        coordinator.close()
 
 
 def test_coordination_registry_projection_is_exact_and_timestamp_free(

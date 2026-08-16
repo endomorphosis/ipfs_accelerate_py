@@ -43,7 +43,6 @@ from .intent_repository import (
     open_intent_repository,
 )
 
-
 # ---------------------------------------------------------------------------
 # Interface / schema identities
 # ---------------------------------------------------------------------------
@@ -420,6 +419,7 @@ class DatabaseTaskSource:
         if isinstance(objectives, Mapping):
             objectives = (objectives,)
         goal_cids: list[str] = []
+        goal_cids_by_alias: dict[str, str] = {}
         for index, item in enumerate(objectives):
             if not isinstance(item, Mapping):
                 continue
@@ -464,6 +464,7 @@ class DatabaseTaskSource:
                 goal_alias=goal_alias,
                 title=str(item.get("title") or goal_alias),
                 objective_id=objective_id,
+                parent_goal_cid=str(item.get("parent_goal_cid") or ""),
                 ordinal=int(item.get("ordinal") or index + 1),
                 status=str(item.get("status") or "open"),
                 body={
@@ -482,6 +483,7 @@ class DatabaseTaskSource:
                 },
             )
             goal_cids.append(goal_cid)
+            goal_cids_by_alias[goal_alias] = goal_cid
 
         default_goal = goal_cids[0] if goal_cids else "goal:default"
         if not goal_cids:
@@ -492,6 +494,25 @@ class DatabaseTaskSource:
                 ordinal=1,
             )
             goal_cids.append(default_goal)
+            goal_cids_by_alias["G-DEFAULT"] = default_goal
+
+        goal_edges = population.get("goal_edges") or ()
+        if isinstance(goal_edges, Mapping):
+            goal_edges = (goal_edges,)
+        goal_edge_count = 0
+        for item in goal_edges:
+            if not isinstance(item, Mapping):
+                continue
+            parent_ref = str(item.get("parent_goal_cid") or item.get("parent") or "")
+            child_ref = str(item.get("child_goal_cid") or item.get("child") or "")
+            parent_cid = goal_cids_by_alias.get(parent_ref, parent_ref)
+            child_cid = goal_cids_by_alias.get(child_ref, child_ref)
+            self._intent.link_goal_edge(
+                parent_goal_cid=parent_cid,
+                child_goal_cid=child_cid,
+                edge_kind=str(item.get("edge_kind") or "goal_dependency"),
+            )
+            goal_edge_count += 1
 
         plans = population.get("plans") or ()
         if isinstance(plans, Mapping):
@@ -667,6 +688,7 @@ class DatabaseTaskSource:
             "projection_cid": snap.projection_cid,
             "task_count": len(task_cids),
             "goal_count": len(goal_cids),
+            "goal_edge_count": goal_edge_count,
             "plan_count": len(plan_cids),
             "event_watermark": snap.event_watermark,
             "task_cids": list(task_cids),
@@ -890,6 +912,7 @@ class DatabaseTaskSource:
         outcome: str,
         evidence_digest: str,
         argv: Sequence[str] | None = None,
+        attempt_id: str = "",
         body: Mapping[str, Any] | None = None,
     ) -> IntentReceipt:
         return self._intent.record_validation_result(
@@ -897,6 +920,7 @@ class DatabaseTaskSource:
             outcome=outcome,
             evidence_digest=evidence_digest,
             argv=argv,
+            attempt_id=attempt_id,
             body=body,
         )
 

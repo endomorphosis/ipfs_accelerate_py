@@ -13,7 +13,6 @@ from collections import defaultdict, deque
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-
 SCHEMA = "ipfs_accelerate_py/agent-supervisor/lgswf-board-validation@1"
 TASK_RE = re.compile(r"^## (LGSWF-(\d{3})) (.+)$", re.MULTILINE)
 GOAL_RE = re.compile(r"^## (LGSWF-G\d{3}) (.+)$", re.MULTILINE)
@@ -21,10 +20,11 @@ META_RE = re.compile(r"^- ([^:\n]+):(?: (.*))?$", re.MULTILINE)
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 BOOTSTRAP_BASE = "b6dc155c3d779a4166a8ee92c0e0214e0157e2e2"
 ACCELERATOR_BASE = "3a07f2b9273161ce805feff98414ef3c66eae7cc"
+CONTROL_SUCCESSOR_BASE = "489fba3ba2728d2e4399961b863d45c56a50b7e3"
 DATASETS_BASE = "0691203550c0f316852c74d293d8fc3c4ce130a6"
 BOARD_NAMESPACE = "logic-governed-semantic-work-fabric-actual-v1"
-EXPECTED_READY = ["LGSWF-001", "LGSWF-002", "LGSWF-003"]
-EXPECTED_COMPLETED = ["LGSWF-000"]
+EXPECTED_READY = ["LGSWF-006"]
+EXPECTED_COMPLETED: list[str] = []
 EXPECTED_GOALS = ["LGSWF-G000"] + [f"LGSWF-G{i:03d}" for i in range(10, 151, 10)]
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -139,7 +139,7 @@ def _blocks(text: str, pattern: re.Pattern[str]) -> list[tuple[str, str, str]]:
     result: list[tuple[str, str, str]] = []
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        result.append((match.group(1), match.group(match.lastindex or 1), text[match.end():end]))
+        result.append((match.group(1), match.group(match.lastindex or 1), text[match.end() : end]))
     return result
 
 
@@ -164,7 +164,12 @@ def _safe_paths(value: str, *, task_id: str, field: str, errors: list[str]) -> l
         errors.append(f"{task_id}: {field} is empty")
     for item in paths:
         path = PurePosixPath(item)
-        if path.is_absolute() or ".." in path.parts or item.startswith("-") or any(ch in item for ch in "*?[]\x00"):
+        if (
+            path.is_absolute()
+            or ".." in path.parts
+            or item.startswith("-")
+            or any(ch in item for ch in "*?[]\x00")
+        ):
             errors.append(f"{task_id}: unsafe {field} path {item!r}")
     return paths
 
@@ -215,8 +220,12 @@ def _overlap(left: str, right: str) -> bool:
 def _git(args: list[str], cwd: Path = ROOT) -> tuple[int, str, str]:
     try:
         completed = subprocess.run(
-            ["git", *args], cwd=cwd, text=True, capture_output=True,
-            check=False, timeout=60,
+            ["git", *args],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=60,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 124, "", f"{type(exc).__name__}: {exc}"
@@ -255,7 +264,7 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
             errors.append(f"duplicate task heading: {task_id}")
             continue
         next_match = TASK_RE.search(board_text, match.end())
-        body = board_text[match.end(): next_match.start() if next_match else len(board_text)]
+        body = board_text[match.end() : next_match.start() if next_match else len(board_text)]
         tasks[task_id] = _metadata(body, record_id=task_id, errors=errors)
         titles[task_id] = title
 
@@ -266,7 +275,9 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
             errors.append(f"duplicate goal heading: {goal_id}")
             continue
         next_match = GOAL_RE.search(objectives_text, match.end())
-        body = objectives_text[match.end(): next_match.start() if next_match else len(objectives_text)]
+        body = objectives_text[
+            match.end() : next_match.start() if next_match else len(objectives_text)
+        ]
         goals[goal_id] = _metadata(body, record_id=goal_id, errors=errors)
         if not title:
             errors.append(f"{goal_id}: empty title")
@@ -299,28 +310,55 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
             errors.append(f"{task_id}: unknown subgoal {subgoal!r}")
         if goal_id not in goals:
             errors.append(f"{task_id}: unknown Goal id {goal_id!r}")
-        if task_id != "LGSWF-000" and subgoal != goal_id:
+        if subgoal != goal_id:
             errors.append(f"{task_id}: Goal id/Subgoal ID mismatch")
         status = metadata.get("Status", "")
         if status not in {"todo", "completed"}:
             errors.append(f"{task_id}: unsupported initial status {status!r}")
-        if metadata.get("Is schedulable") != "true" or metadata.get("Review only") != "false":
+        if status == "completed" and metadata.get("Final result identity", "").lower().startswith(
+            ("pending", "unset", "unknown")
+        ):
+            errors.append(f"{task_id}: completed task has no final result identity")
+        manual_completion = metadata.get("Completion") == "manual"
+        expected_schedulable = "false" if manual_completion else "true"
+        expected_review_only = "true" if manual_completion else "false"
+        if (
+            metadata.get("Is schedulable") != expected_schedulable
+            or metadata.get("Review only") != expected_review_only
+        ):
             errors.append(f"{task_id}: schedulable/review metadata mismatch")
         owner = metadata.get("Owning repository")
+        if owner not in {"ipfs_accelerate_py", "ipfs_datasets_py"}:
+            errors.append(f"{task_id}: unsupported owning repository {owner!r}")
         base = metadata.get("Base revision", "")
         expected_base = (
             DATASETS_BASE
             if owner == "ipfs_datasets_py"
-            else BOOTSTRAP_BASE
-            if task_id == "LGSWF-000"
-            else ACCELERATOR_BASE
+            else CONTROL_SUCCESSOR_BASE
+            if task_id == "LGSWF-006"
+            else "ACCEPTED_LGSWF-006_SOURCE_HEAD"
         )
-        if not HEX40_RE.fullmatch(base) or base != expected_base:
+        if base != expected_base or (
+            expected_base != "ACCEPTED_LGSWF-006_SOURCE_HEAD" and not HEX40_RE.fullmatch(base)
+        ):
             errors.append(f"{task_id}: wrong exact base revision for {owner}: {base!r}")
         dependencies[task_id] = _csv(metadata.get("Depends on", ""))
-        owned[task_id] = _safe_paths(metadata.get("Owned paths", ""), task_id=task_id, field="Owned paths", errors=errors)
-        _safe_paths(metadata.get("Predicted files", ""), task_id=task_id, field="Predicted files", errors=errors)
-        _safe_paths(metadata.get("Outputs", ""), task_id=task_id, field="Outputs", errors=errors)
+        owned[task_id] = _safe_paths(
+            metadata.get("Owned paths", ""), task_id=task_id, field="Owned paths", errors=errors
+        )
+        predicted = _safe_paths(
+            metadata.get("Predicted files", ""),
+            task_id=task_id,
+            field="Predicted files",
+            errors=errors,
+        )
+        outputs = _safe_paths(
+            metadata.get("Outputs", ""), task_id=task_id, field="Outputs", errors=errors
+        )
+        if outputs != owned[task_id] or predicted != owned[task_id]:
+            errors.append(
+                f"{task_id}: executable Outputs, Owned paths and Predicted files must match"
+            )
         _resource_vector(metadata.get("Resource demand", ""), task_id=task_id, errors=errors)
         if "lease" not in metadata.get("Lease requirements", "").lower():
             errors.append(f"{task_id}: lease requirements do not name a lease")
@@ -350,11 +388,25 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
                 queue.append(child)
     if len(topo) != len(tasks):
         errors.append("task dependency graph contains a cycle")
+    task_edges = sorted(
+        [dep, task_id]
+        for task_id, task_dependencies in dependencies.items()
+        for dep in task_dependencies
+    )
+    task_dependency_root = _identity(
+        json.dumps(task_edges, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+    if len(task_edges) != 63:
+        errors.append(f"expected 63 task dependencies, found {len(task_edges)}")
 
-    completed = sorted(task_id for task_id, data in tasks.items() if data.get("Status") == "completed")
+    completed = sorted(
+        task_id for task_id, data in tasks.items() if data.get("Status") == "completed"
+    )
     ready = sorted(
-        task_id for task_id, data in tasks.items()
-        if data.get("Status") == "todo" and all(dep in completed for dep in dependencies.get(task_id, []))
+        task_id
+        for task_id, data in tasks.items()
+        if data.get("Status") == "todo"
+        and all(dep in completed for dep in dependencies.get(task_id, []))
     )
     if completed != EXPECTED_COMPLETED:
         errors.append(f"completed task population mismatch: {completed}")
@@ -363,7 +415,14 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
 
     for task_id, data in tasks.items():
         number = int(task_id.rsplit("-", 1)[1])
-        if task_id not in {"LGSWF-000", "LGSWF-001", "LGSWF-002", "LGSWF-003", "LGSWF-004", "LGSWF-005"}:
+        if task_id not in {
+            "LGSWF-001",
+            "LGSWF-002",
+            "LGSWF-003",
+            "LGSWF-004",
+            "LGSWF-005",
+            "LGSWF-006",
+        }:
             if "LGSWF-005" not in _dependency_closure(task_id, dependencies):
                 errors.append(f"{task_id}: post-A task does not depend transitively on LGSWF-005")
             if data.get("Base semantic-state root") != "REBIND_REQUIRED_BY_LGSWF-005":
@@ -372,23 +431,134 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
                 errors.append(f"{task_id}: post-A plan revision is not R2-required")
         _ = number
 
+    goal_dependencies: dict[str, list[str]] = {}
     for goal_id, data in sorted(goals.items()):
-        for field in ("Status", "Parent", "Depends on", "Priority", "Track", "Goal", "Completion contract", "Evidence", "Acceptance criteria", "Outputs", "Validation", "Acceptance", "Gap task"):
+        for field in (
+            "Status",
+            "Parent",
+            "Depends on",
+            "Priority",
+            "Track",
+            "Goal",
+            "Completion contract",
+            "Evidence",
+            "Acceptance criteria",
+            "Outputs",
+            "Validation",
+            "Acceptance",
+            "Gap task",
+        ):
             if field not in data:
                 errors.append(f"{goal_id}: missing field {field!r}")
             elif field not in {"Parent", "Depends on"} and not data[field]:
                 errors.append(f"{goal_id}: empty field {field!r}")
         parent = data.get("Parent", "")
+        if data.get("Status") != "active":
+            errors.append(f"{goal_id}: initial status must be active")
         if goal_id == "LGSWF-G000":
             if parent:
                 errors.append("root goal must not have a parent")
         elif parent != "LGSWF-G000":
             errors.append(f"{goal_id}: parent must be LGSWF-G000")
+        goal_dependencies[goal_id] = _csv(data.get("Depends on", ""))
+        for dependency in goal_dependencies[goal_id]:
+            if dependency not in goals:
+                errors.append(f"{goal_id}: unknown goal dependency {dependency}")
+
+    expected_goal_dependencies = {
+        goal_id: (
+            []
+            if goal_id in {"LGSWF-G000", "LGSWF-G010"}
+            else [f"LGSWF-G{int(goal_id[-3:]) - 10:03d}"]
+        )
+        for goal_id in EXPECTED_GOALS
+    }
+    if goal_dependencies != expected_goal_dependencies:
+        errors.append("goal dependency graph differs from the sealed A-O chain")
+    goal_indegree = {goal_id: 0 for goal_id in goals}
+    goal_children: dict[str, list[str]] = defaultdict(list)
+    for goal_id, goal_deps in goal_dependencies.items():
+        for dependency in goal_deps:
+            if dependency in goals:
+                goal_indegree[goal_id] += 1
+                goal_children[dependency].append(goal_id)
+    goal_queue = deque(sorted(key for key, value in goal_indegree.items() if value == 0))
+    goal_topo: list[str] = []
+    while goal_queue:
+        current_goal = goal_queue.popleft()
+        goal_topo.append(current_goal)
+        for child in sorted(goal_children[current_goal]):
+            goal_indegree[child] -= 1
+            if goal_indegree[child] == 0:
+                goal_queue.append(child)
+    if len(goal_topo) != len(goals):
+        errors.append("goal dependency graph contains a cycle")
 
     if config.get("board_namespace") != BOARD_NAMESPACE:
         errors.append("config board namespace mismatch")
+    expected_document_paths = {
+        "taskboard_path": BOARD.relative_to(ROOT).as_posix(),
+        "objectives_path": OBJECTIVES.relative_to(ROOT).as_posix(),
+        "plan_path": PLAN.relative_to(ROOT).as_posix(),
+        "validator_path": Path(__file__).resolve().relative_to(ROOT).as_posix(),
+    }
+    for field, expected_path in expected_document_paths.items():
+        if config.get(field) != expected_path:
+            errors.append(f"config {field} does not name the sealed document")
     if config.get("task_prefix") != "LGSWF-" or config.get("goal_prefix") != "LGSWF-G":
         errors.append("config task/goal prefix mismatch")
+    if config.get("accepted_plan_revision_alias") != "LGSWF-PLAN-ACTUAL-R1-S1":
+        errors.append("config plan revision does not name the immutable successor")
+    if config.get("supersedes_quarantined_plan_root_cid") != (
+        "sha256:7b1b68177b09d71905c2e88790a68544b2c82ac64618d2c2689f3937359291ba"
+    ):
+        errors.append("config does not preserve the quarantined predecessor plan")
+    seal = config.get("bootstrap_seal")
+    runtime_paths = (
+        config.get("runtime_paths") if isinstance(config.get("runtime_paths"), dict) else {}
+    )
+    evidence_root = str(runtime_paths.get("evidence") or "").rstrip("/")
+    predecessor = seal.get("supersedes_task") if isinstance(seal, dict) else None
+    if not isinstance(seal, dict) or (
+        seal.get("task_id") != "LGSWF-006"
+        or seal.get("completion_mode") != "trusted_manual"
+        or seal.get("required_before_live_launch") is not True
+        or seal.get("qualification_receipt_path") != f"{evidence_root}/bootstrap/qualification.json"
+        or seal.get("receipt_path") != f"{evidence_root}/bootstrap/duckdb-seal.json"
+        or seal.get("unsealed_ready_task_ids") != ["LGSWF-006"]
+        or seal.get("sealed_ready_task_ids") != ["LGSWF-001", "LGSWF-002", "LGSWF-003"]
+        or seal.get("markdown_is_completion_authority") is not False
+        or not isinstance(predecessor, dict)
+        or predecessor.get("task_alias") != "LGSWF-000"
+        or predecessor.get("task_cid")
+        != "sha256:262e356c9018966e1752de11fb55887e47d610d05f064ab7dd763f9d556dcd3c"
+        or predecessor.get("control_status") != "completed"
+        or predecessor.get("control_revision") != 1
+        or predecessor.get("accepted_result_status") != "absent"
+        or predecessor.get("coordination_completion_kind") != "unsupported_imported_control_seal"
+    ):
+        errors.append("config bootstrap seal contract is incomplete")
+    manual_gates = config.get("manual_completion_gates")
+    expected_manual_gates = [
+        {
+            "task_id": "LGSWF-006",
+            "terminal_when_ready": False,
+            "protocol": "trusted_fenced_bootstrap_seal",
+        },
+        {
+            "task_id": "LGSWF-141",
+            "terminal_when_ready": True,
+            "terminal_state": "human_review_required",
+            "protocol": "independent_release_review",
+        },
+    ]
+    if manual_gates != expected_manual_gates:
+        errors.append("manual completion gates are incomplete or non-deterministic")
+    board_manual_tasks = sorted(
+        task_id for task_id, metadata in tasks.items() if metadata.get("Completion") == "manual"
+    )
+    if board_manual_tasks != ["LGSWF-006", "LGSWF-141"]:
+        errors.append(f"unexpected manual task population: {board_manual_tasks}")
     if config.get("max_lanes") != 1 or config.get("strict_task_sharding") is not True:
         errors.append("bootstrap config must use one strict single-writer lane")
     if config.get("qualification_target_max_lanes") != 3:
@@ -397,7 +567,10 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
     if not isinstance(writer_policy, dict) or writer_policy.get("maximum_processes") != 1:
         errors.append("bootstrap writer policy must prohibit multiple DuckDB file writers")
     source_binding = config.get("source_binding")
-    if not isinstance(source_binding, dict) or source_binding.get("bootstrap_task_source") != "duckdb":
+    if (
+        not isinstance(source_binding, dict)
+        or source_binding.get("bootstrap_task_source") != "duckdb"
+    ):
         errors.append("DuckDB must be the explicit bootstrap task authority")
     database_program = config.get("database_program")
     if not isinstance(database_program, dict):
@@ -407,39 +580,107 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
             errors.append("bootstrap database authority must be bounded embedded mode")
         if database_program.get("task_source_kind") != "duckdb":
             errors.append("bootstrap task source must be duckdb")
+        if database_program.get("schema_revision") != "datasets-authoritative-operational-v1":
+            errors.append(
+                "bootstrap must use the datasets-authoritative operational schema revision"
+            )
+        if database_program.get("schema_profile") != "datasets-authoritative-operational":
+            errors.append(
+                "bootstrap must seal the datasets-authoritative operational schema profile"
+            )
+        if database_program.get("semantic_relations_permitted") is not False:
+            errors.append("accelerator semantic-truth relations must be prohibited")
         if database_program.get("failover_policy") != "fail_closed":
             errors.append("database authority must fail closed")
         store_id = str(database_program.get("store_id") or "")
         if not store_id.endswith("/control.duckdb") or ".." in PurePosixPath(store_id).parts:
             errors.append("database store_id must be the sealed repository-relative control.duckdb")
-    projection = config.get("initial_projection") if isinstance(config.get("initial_projection"), dict) else {}
+    projection = (
+        config.get("initial_projection")
+        if isinstance(config.get("initial_projection"), dict)
+        else {}
+    )
     if projection.get("task_count") != len(tasks):
         errors.append("config initial task count mismatch")
     if sorted(projection.get("completed_task_ids") or []) != completed:
         errors.append("config completed projection mismatch")
     if sorted(projection.get("ready_task_ids") or []) != ready:
         errors.append("config ready projection mismatch")
+    if projection.get("blocked_task_ids") != []:
+        errors.append("config initial blocked projection must be explicitly empty")
+    if projection.get("task_dependency_count") != len(task_edges):
+        errors.append("config task dependency count mismatch")
+    if projection.get("task_dependency_root_cid") != task_dependency_root:
+        errors.append("config task dependency root mismatch")
     if projection.get("goal_count") != len(goals) or projection.get("root_goal_id") != "LGSWF-G000":
         errors.append("config goal projection mismatch")
     if projection.get("terminal_task_id") != "LGSWF-141":
         errors.append("config terminal task mismatch")
-    if config.get("objective_refill_enabled") is not False or config.get("codebase_refill_enabled") is not False:
+    if (
+        config.get("objective_refill_enabled") is not False
+        or config.get("codebase_refill_enabled") is not False
+    ):
         errors.append("bootstrap refill must remain disabled until Epic I acceptance")
     provider = config.get("provider") if isinstance(config.get("provider"), dict) else {}
-    if provider.get("provider_id") != "codex" or provider.get("model_id") != "gpt-5.6-terra" or provider.get("max_concurrency") != 3:
+    if (
+        provider.get("provider_id") != "codex"
+        or provider.get("model_id") != "gpt-5.6-terra"
+        or provider.get("max_concurrency") != 3
+    ):
         errors.append("provider must be direct bounded codex/gpt-5.6-terra concurrency 3")
+    authority_policy = (
+        config.get("authority_policy") if isinstance(config.get("authority_policy"), dict) else {}
+    )
+    if authority_policy.get("accelerator_local_ast_impact_or_proof_truth_fallback") is not False:
+        errors.append("datasets authority must prohibit accelerator semantic/proof fallback")
+    if authority_policy.get("semantic_truth_writers_fail_before_io") is not True:
+        errors.append("datasets-authoritative local writer guards must fail before I/O")
+    if authority_policy.get("provider_child_semantic_truth_authority") != "ipfs_datasets_py":
+        errors.append("provider children must inherit the datasets semantic-authority marker")
 
-    expected_control_paths = {
-        PLAN.relative_to(ROOT).as_posix(), OBJECTIVES.relative_to(ROOT).as_posix(),
-        BOARD.relative_to(ROOT).as_posix(), CONFIG.relative_to(ROOT).as_posix(),
-        BASELINE.relative_to(ROOT).as_posix(), Path(__file__).resolve().relative_to(ROOT).as_posix(),
-        MATERIALIZER.relative_to(ROOT).as_posix(),
+    expected_control_paths = set(owned.get("LGSWF-006", [])) - {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
     }
     protected = set(config.get("protected_paths") or [])
-    if not expected_control_paths <= protected:
-        errors.append(f"config does not protect all controls: {sorted(expected_control_paths - protected)}")
+    if protected != expected_control_paths:
+        errors.append(
+            "config protected paths differ from the sealed safety set: "
+            + json.dumps(
+                {
+                    "missing": sorted(expected_control_paths - protected),
+                    "extra": sorted(protected - expected_control_paths),
+                },
+                sort_keys=True,
+            )
+        )
+
+    task_groups = config.get("task_groups")
+    expected_group_ids = set(EXPECTED_GOALS) - {"LGSWF-G000"}
+    if not isinstance(task_groups, dict) or set(task_groups) != expected_group_ids:
+        errors.append("task group keys differ from the fifteen subgoals")
+        task_groups = {}
+    group_population: list[str] = []
+    for goal_id in sorted(expected_group_ids):
+        group = task_groups.get(goal_id)
+        expected_group = sorted(
+            task_id for task_id, metadata in tasks.items() if metadata.get("Subgoal ID") == goal_id
+        )
+        if not isinstance(group, list) or sorted(str(item) for item in group) != expected_group:
+            errors.append(f"{goal_id}: task group differs from board subgoal membership")
+        else:
+            group_population.extend(str(item) for item in group)
+        if _csv(goals[goal_id].get("Gap task", "")) != list(group or []):
+            errors.append(f"{goal_id}: gap-task list differs from configured task group")
+    if sorted(group_population) != sorted(tasks):
+        errors.append("task groups do not contain every task exactly once")
+    if goals.get("LGSWF-G000", {}).get("Gap task") != "LGSWF-001 through LGSWF-141":
+        errors.append("root goal gap-task range is not the sealed full program")
 
     waves = config.get("waves") if isinstance(config.get("waves"), list) else []
+    if [wave.get("id") for wave in waves if isinstance(wave, dict)] != [
+        f"W{index}" for index in range(17)
+    ]:
+        errors.append("wave IDs/order differ from W0 through W16")
     wave_population: list[str] = []
     for wave in waves:
         if not isinstance(wave, dict) or not isinstance(wave.get("task_ids"), list):
@@ -448,40 +689,67 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
         ids = [str(item) for item in wave["task_ids"]]
         wave_population.extend(ids)
         for i, left_id in enumerate(ids):
-            for right_id in ids[i + 1:]:
+            for right_id in ids[i + 1 :]:
                 if left_id not in tasks or right_id not in tasks:
                     continue
-                ordered = left_id in _dependency_closure(right_id, dependencies) or right_id in _dependency_closure(left_id, dependencies)
+                ordered = left_id in _dependency_closure(
+                    right_id, dependencies
+                ) or right_id in _dependency_closure(left_id, dependencies)
                 if ordered:
                     continue
                 for left_path in owned[left_id]:
                     for right_path in owned[right_id]:
                         if _overlap(left_path, right_path):
-                            errors.append(f"unsafe same-wave owned-path overlap: {left_id}:{left_path} <> {right_id}:{right_path}")
+                            errors.append(
+                                f"unsafe same-wave owned-path overlap: {left_id}:{left_path} <> {right_id}:{right_path}"
+                            )
     if sorted(wave_population) != sorted(tasks):
         errors.append("waves do not contain each task exactly once")
 
-    selected = baseline.get("actual_accelerator_snapshot") if isinstance(baseline.get("actual_accelerator_snapshot"), dict) else {}
-    semantic = baseline.get("semantic_authority") if isinstance(baseline.get("semantic_authority"), dict) else {}
-    if selected.get("duckdb_integration_commit") != BOOTSTRAP_BASE or selected.get("duckdb_integration_tree") != "1313cf18fecd969f654f0233f6678c2d851116e8":
+    selected = (
+        baseline.get("actual_accelerator_snapshot")
+        if isinstance(baseline.get("actual_accelerator_snapshot"), dict)
+        else {}
+    )
+    semantic = (
+        baseline.get("semantic_authority")
+        if isinstance(baseline.get("semantic_authority"), dict)
+        else {}
+    )
+    if (
+        selected.get("duckdb_integration_commit") != BOOTSTRAP_BASE
+        or selected.get("duckdb_integration_tree") != "1313cf18fecd969f654f0233f6678c2d851116e8"
+    ):
         errors.append("baseline selected accelerator identity mismatch")
     if selected.get("control_contract_commit") != ACCELERATOR_BASE:
         errors.append("baseline control-contract identity mismatch")
-    if semantic.get("head") != DATASETS_BASE or semantic.get("semantic_state_root_status") != "unavailable" or semantic.get("semantic_state_root") is not None:
+    if (
+        semantic.get("head") != DATASETS_BASE
+        or semantic.get("semantic_state_root_status") != "unavailable"
+        or semantic.get("semantic_state_root") is not None
+    ):
         errors.append("baseline datasets identity/root status mismatch")
     commitments = baseline.get("intervening_change_commitments")
     if not isinstance(commitments, list) or len(commitments) != 4:
         errors.append("baseline must contain four intervening-change commitments")
     else:
         for index, item in enumerate(commitments):
-            if not isinstance(item, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(item.get("ordered_log_sha256") or "")):
+            if not isinstance(item, dict) or not re.fullmatch(
+                r"[0-9a-f]{64}", str(item.get("ordered_log_sha256") or "")
+            ):
                 errors.append(f"baseline change commitment {index} is incomplete")
 
     required_plan_phrases = (
-        "`ipfs_datasets_py` is authoritative", "`ipfs_accelerate_py` is authoritative",
-        "SupervisorWorldSnapshot@1", "SemanticWorkBinding@1", "SemanticWorkGraph@1",
-        "deterministic conflict-free", "fixed-point", "three supervisors and ten daemons",
-        "A: one supervisor/one daemon/serial", "explicit continuous-operation go/no-go",
+        "`ipfs_datasets_py` is authoritative",
+        "`ipfs_accelerate_py` is authoritative",
+        "SupervisorWorldSnapshot@1",
+        "SemanticWorkBinding@1",
+        "SemanticWorkGraph@1",
+        "deterministic conflict-free",
+        "fixed-point",
+        "three supervisors and ten daemons",
+        "A: one supervisor/one daemon/serial",
+        "explicit continuous-operation go/no-go",
     )
     for phrase in required_plan_phrases:
         if phrase not in plan_text:
@@ -505,12 +773,11 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
 
     if require_database:
         code, output, error = _command(
-            [sys.executable, str(MATERIALIZER), "verify"], cwd=ROOT
+            [sys.executable, str(MATERIALIZER), "verify-live"], cwd=ROOT
         )
         if code != 0:
             errors.append(
-                "DuckDB control-plane verification failed: "
-                + (output or error).strip()[:2000]
+                "DuckDB control-plane verification failed: " + (output or error).strip()[:2000]
             )
 
     artifacts = {}
@@ -527,6 +794,9 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
         "board_namespace": BOARD_NAMESPACE,
         "task_count": len(tasks),
         "goal_count": len(goals),
+        "task_dependency_count": len(task_edges),
+        "task_dependency_root_cid": task_dependency_root,
+        "goal_topological_ids": goal_topo,
         "completed_task_ids": completed,
         "ready_task_ids": ready,
         "topological_task_ids": topo,
@@ -542,7 +812,9 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--check-all", action="store_true", help="also require the materialized DuckDB authority")
+    parser.add_argument(
+        "--check-all", action="store_true", help="also require the materialized DuckDB authority"
+    )
     args = parser.parse_args()
     report = validate(require_database=args.check_all)
     json.dump(report, sys.stdout, indent=2, sort_keys=True)

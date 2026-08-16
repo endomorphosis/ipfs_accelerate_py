@@ -100,6 +100,13 @@ PREPARED_COMPLETION_STATUS: Final[str] = "prepared"
 TASK_COMPLETION_PREPARATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-completion-preparation@1"
 )
+CROSS_STORE_FENCE_GUARD_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/cross-store-fence-guard@1"
+)
+CROSS_STORE_FENCE_GUARD_EVENT: Final[str] = "cross_store_fence_guard_succeeded"
+CROSS_STORE_FENCE_GUARD_REQUIRED_FIELD: Final[str] = (
+    "requires_cross_store_fence_guard"
+)
 
 # ---------------------------------------------------------------------------
 # Errors (reuse LeaseCoordinator vocabulary; extend only when needed)
@@ -1631,6 +1638,8 @@ class DatabaseCoordinator:
         self._connection: Any | None = None
         self._lock = threading.RLock()
         self._closed = True
+        self._fenced_callback_active = False
+        self._fenced_callback_reentry_detected = False
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -1644,6 +1653,11 @@ class DatabaseCoordinator:
 
     def open(self) -> "DatabaseCoordinator":
         with self._lock:
+            if self._fenced_callback_active:
+                self._fenced_callback_reentry_detected = True
+                raise DatabaseCoordinationConflictError(
+                    "fenced callback must not re-enter DatabaseCoordinator"
+                )
             if self.is_open:
                 return self
             self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -1675,6 +1689,11 @@ class DatabaseCoordinator:
 
     def close(self) -> None:
         with self._lock:
+            if self._fenced_callback_active:
+                self._fenced_callback_reentry_detected = True
+                raise DatabaseCoordinationConflictError(
+                    "fenced callback must not re-enter DatabaseCoordinator"
+                )
             connection = self._connection
             self._connection = None
             self._closed = True
@@ -1691,6 +1710,11 @@ class DatabaseCoordinator:
         self.close()
 
     def _require(self) -> Any:
+        if self._fenced_callback_active:
+            self._fenced_callback_reentry_detected = True
+            raise DatabaseCoordinationConflictError(
+                "fenced callback must not re-enter DatabaseCoordinator"
+            )
         if not self.is_open or self._connection is None:
             raise DatabaseCoordinationNotOpenError("DatabaseCoordinator is not open")
         return self._connection
@@ -2831,6 +2855,53 @@ class DatabaseCoordinator:
             ),
         }
 
+    @staticmethod
+    def _resource_claim_identity(
+        claim: ResourceClaim | Mapping[str, Any],
+    ) -> dict[str, Any]:
+        mapping = claim.to_dict() if isinstance(claim, ResourceClaim) else dict(claim)
+        raw_body = mapping.get("body")
+        if raw_body is not None and not isinstance(raw_body, Mapping):
+            raise DatabaseCoordinationStaleFenceError(
+                "resource claim body is not a mapping"
+            )
+        return {
+            "claim_id": _text(mapping.get("claim_id"), "claim_id"),
+            "resource_kind": _text(
+                mapping.get("resource_kind"), "resource_kind"
+            ),
+            "resource_id": _text(mapping.get("resource_id"), "resource_id"),
+            "owner_session_id": _text(
+                mapping.get("owner_session_id"), "owner_session_id"
+            ),
+            "lease_id": _text(mapping.get("lease_id"), "lease_id"),
+            "task_cid": _text(
+                mapping.get("task_cid"), "task_cid", required=False
+            ),
+            "repository_id": _text(
+                mapping.get("repository_id"), "repository_id", required=False
+            ),
+            "path": _text(mapping.get("path"), "path", required=False),
+            "worktree_id": _text(
+                mapping.get("worktree_id"), "worktree_id", required=False
+            ),
+            "mode": (
+                mapping.get("mode")
+                if isinstance(mapping.get("mode"), LeaseMode)
+                else LeaseMode(str(mapping.get("mode") or "").strip().lower())
+            ),
+            "fencing_token": _positive_int(
+                int(mapping.get("fencing_token") or 0), "fencing_token"
+            ),
+            "fence_epoch": _positive_int(
+                int(mapping.get("fence_epoch") or 0), "fence_epoch"
+            ),
+            "body": _bounded_mapping(
+                dict(raw_body or {}),
+                name="resource_claim_body",
+            ),
+        }
+
     def _protect_task_claim_unlocked(
         self,
         connection: Any,
@@ -3055,6 +3126,215 @@ class DatabaseCoordinator:
             )
         return lease
 
+    def _protect_resource_claim_unlocked(
+        self,
+        connection: Any,
+        *,
+        identity: Mapping[str, Any],
+        now: int,
+        record_event: bool,
+    ) -> FencedLease:
+        """Validate one exact, exclusive resource claim inside a transaction."""
+
+        claim_id = str(identity["claim_id"])
+        resource_kind = str(identity["resource_kind"])
+        resource_id = str(identity["resource_id"])
+        owner_session_id = str(identity["owner_session_id"])
+        lease_id = str(identity["lease_id"])
+        task_cid = str(identity["task_cid"])
+        repository_id = str(identity["repository_id"])
+        path = str(identity["path"])
+        worktree_id = str(identity["worktree_id"])
+        mode = identity["mode"]
+        token = int(identity["fencing_token"])
+        epoch = int(identity["fence_epoch"])
+        expected_body = dict(identity["body"])
+        expected_kind = (
+            LeaseKind.PATH
+            if resource_kind == "path"
+            else LeaseKind.PROVIDER_CAPACITY
+            if resource_kind == "provider"
+            else LeaseKind.PROVER_CAPACITY
+            if resource_kind == "prover"
+            else LeaseKind.MERGE
+            if resource_kind == "merge"
+            else LeaseKind.RESOURCE
+        )
+        scope = (
+            path or resource_id
+            if expected_kind is LeaseKind.PATH
+            else resource_id
+        )
+        scope_key = exclusive_scope_key(
+            lease_kind=expected_kind,
+            scope=scope,
+            resource_kind=resource_kind,
+            resource_id=resource_id,
+            repository_id=repository_id,
+            path=path,
+            task_cid=task_cid,
+        )
+
+        if mode is not LeaseMode.EXCLUSIVE:
+            raise DatabaseCoordinationConflictError(
+                "cross-store writer resource claim must be exclusive"
+            )
+
+        self._expire_scope(connection, scope_key, now)
+        claim_row = connection.execute(
+            "SELECT * FROM resource_claims WHERE claim_id = ?",
+            [claim_id],
+        ).fetchone()
+        lease_row = connection.execute(
+            "SELECT * FROM fenced_leases WHERE lease_id = ?",
+            [lease_id],
+        ).fetchone()
+        if claim_row is None or lease_row is None:
+            missing = [
+                name
+                for name, row in (
+                    ("resource_claim", claim_row),
+                    ("fenced_lease", lease_row),
+                )
+                if row is None
+            ]
+            raise DatabaseCoordinationStaleFenceError(
+                "writer resource authority is incomplete: " + ", ".join(missing)
+            )
+
+        claim_mapping = _row_mapping(claim_row)
+        lease = self._lease_from_row(lease_row)
+        stored_body = _decode_coordination_body(
+            _row_get(claim_mapping, "body_json", default="{}"),
+            table="resource_claims",
+            identity=claim_id,
+        )
+        exact_checks = {
+            "claim.resource_kind": str(
+                _row_get(claim_mapping, "resource_kind", default="") or ""
+            )
+            == resource_kind,
+            "claim.resource_id": str(
+                _row_get(claim_mapping, "resource_id", default="") or ""
+            )
+            == resource_id,
+            "claim.owner_session_id": str(
+                _row_get(claim_mapping, "owner_session_id", default="") or ""
+            )
+            == owner_session_id,
+            "claim.lease_id": str(
+                _row_get(claim_mapping, "lease_id", default="") or ""
+            )
+            == lease_id,
+            "claim.task_cid": str(
+                _row_get(claim_mapping, "task_cid", default="") or ""
+            )
+            == task_cid,
+            "claim.repository_id": str(
+                _row_get(claim_mapping, "repository_id", default="") or ""
+            )
+            == repository_id,
+            "claim.path": str(
+                _row_get(claim_mapping, "path", default="") or ""
+            )
+            == path,
+            "claim.worktree_id": str(
+                _row_get(claim_mapping, "worktree_id", default="") or ""
+            )
+            == worktree_id,
+            "claim.mode": str(
+                _row_get(claim_mapping, "mode", default="") or ""
+            )
+            == LeaseMode.EXCLUSIVE.value,
+            "claim.fencing_token": int(
+                _row_get(claim_mapping, "fencing_token", default=0)
+            )
+            == token,
+            "claim.fence_epoch": int(
+                _row_get(claim_mapping, "fence_epoch", default=0)
+            )
+            == epoch,
+            "claim.body": stored_body == expected_body,
+            "lease.lease_kind": lease.lease_kind is expected_kind,
+            "lease.scope_key": lease.scope_key == scope_key,
+            "lease.mode": lease.mode is LeaseMode.EXCLUSIVE,
+            "lease.owner_session_id": lease.owner_session_id == owner_session_id,
+            "lease.claim_id": lease.claim_id == claim_id,
+            "lease.task_cid": lease.task_cid == task_cid,
+            "lease.resource_kind": lease.resource_kind == resource_kind,
+            "lease.resource_id": lease.resource_id == resource_id,
+            "lease.repository_id": lease.repository_id == repository_id,
+            "lease.path": lease.path == path,
+            "lease.worktree_id": lease.worktree_id == worktree_id,
+            "lease.fencing_token": int(lease.fencing_token) == token,
+            "lease.fence_epoch": int(lease.fence_epoch) == epoch,
+            "lease.body": dict(lease.body) == expected_body,
+        }
+        mismatches = [name for name, matches in exact_checks.items() if not matches]
+        if mismatches:
+            raise DatabaseCoordinationStaleFenceError(
+                "stale or mismatched writer resource authority: "
+                + ", ".join(mismatches)
+            )
+
+        latest_fence_row = connection.execute(
+            """
+            SELECT COALESCE(MAX(fencing_token), 0) AS max_token,
+                   COALESCE(MAX(fence_epoch), 0) AS max_epoch
+            FROM token_history WHERE scope_key = ?
+            """,
+            [scope_key],
+        ).fetchone()
+        latest_fence = _row_mapping(latest_fence_row)
+        if (
+            int(_row_get(latest_fence, "max_token", "0", default=0)) != token
+            or int(_row_get(latest_fence, "max_epoch", "1", default=0)) != epoch
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "writer resource claim is not the latest fencing epoch and token"
+            )
+
+        claim_state = LeaseState(
+            str(_row_get(claim_mapping, "state", default="accepted"))
+        )
+        claim_expires_at_ms = int(
+            _row_get(claim_mapping, "expires_at_ms", default=0)
+        )
+        if (
+            claim_state is not LeaseState.ACCEPTED
+            or lease.state is not LeaseState.ACCEPTED
+        ):
+            raise DatabaseCoordinationExpiredError(
+                f"writer resource claim {claim_id} is not accepted"
+            )
+        if claim_expires_at_ms <= now or lease.expires_at_ms <= now:
+            raise DatabaseCoordinationExpiredError(
+                f"writer resource claim {claim_id} cannot mutate; expired or inactive"
+            )
+        if claim_expires_at_ms != lease.expires_at_ms:
+            raise DatabaseCoordinationStaleFenceError(
+                "writer resource claim and fenced lease expiry projections disagree"
+            )
+
+        if record_event:
+            self._record_event(
+                connection,
+                lease_id=lease_id,
+                scope_key=scope_key,
+                event_type="protected_resource_write",
+                fencing_token=token,
+                fence_epoch=epoch,
+                observed_at_ms=now,
+                body={
+                    "claim_id": claim_id,
+                    "task_cid": task_cid,
+                    "owner_session_id": owner_session_id,
+                    "resource_kind": resource_kind,
+                    "resource_id": resource_id,
+                },
+            )
+        return lease
+
     def _task_completion_for_identity_unlocked(
         self,
         connection: Any,
@@ -3136,6 +3416,7 @@ class DatabaseCoordinator:
         payload = dict(body)
         payload.pop("preparation_digest", None)
         payload.pop("control_completion", None)
+        payload.pop("cross_store_guard", None)
         return _sha256_hex(_canonical_json(payload).encode("utf-8"))
 
     def _validate_preparation_mapping(
@@ -3431,6 +3712,114 @@ class DatabaseCoordinator:
             ),
         }
 
+    @staticmethod
+    def _requires_cross_store_fence_guard(prepared: Mapping[str, Any]) -> bool:
+        body = prepared.get("body")
+        if not isinstance(body, Mapping):
+            return False
+        value = body.get(CROSS_STORE_FENCE_GUARD_REQUIRED_FIELD)
+        if value is None:
+            return False
+        if type(value) is not bool:
+            raise DatabaseCoordinationStaleFenceError(
+                "cross-store fence guard requirement must be a boolean"
+            )
+        return value
+
+    def _required_cross_store_fence_guard_unlocked(
+        self,
+        connection: Any,
+        *,
+        prepared: Mapping[str, Any],
+        control_summary: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Return the matching durable guard or fail a guarded preparation."""
+
+        if not self._requires_cross_store_fence_guard(prepared):
+            return None
+        rows = connection.execute(
+            """
+            SELECT event_id, body_json
+            FROM lease_events
+            WHERE lease_id = ? AND scope_key = ? AND event_type = ?
+              AND fencing_token = ? AND fence_epoch = ?
+            ORDER BY event_id
+            """,
+            [
+                str(prepared["lease_id"]),
+                exclusive_scope_key(
+                    lease_kind=LeaseKind.TASK,
+                    scope=str(prepared["task_cid"]),
+                    task_cid=str(prepared["task_cid"]),
+                ),
+                CROSS_STORE_FENCE_GUARD_EVENT,
+                int(prepared["fencing_token"]),
+                int(prepared["fence_epoch"]),
+            ],
+        ).fetchall()
+        expected = {
+            "schema": CROSS_STORE_FENCE_GUARD_SCHEMA,
+            "preparation_digest": str(prepared["preparation_digest"]),
+            "task_cid": str(prepared["task_cid"]),
+            "claim_id": str(prepared["claim_id"]),
+            "attempt_id": str(prepared["attempt_id"]),
+            "attempt_number": int(prepared["attempt_number"]),
+            "lease_id": str(prepared["lease_id"]),
+            "owner_session_id": str(prepared["owner_session_id"]),
+            "fencing_token": int(prepared["fencing_token"]),
+            "fence_epoch": int(prepared["fence_epoch"]),
+            "control_result_digest": str(control_summary["receipt_digest"]),
+        }
+        for row in rows:
+            mapping = _row_mapping(row)
+            event_id = str(_row_get(mapping, "event_id", "0", default=""))
+            body = _decode_coordination_body(
+                _row_get(mapping, "body_json", "1", default="{}"),
+                table="lease_events",
+                identity=event_id,
+            )
+            if any(body.get(name) != value for name, value in expected.items()):
+                continue
+            writer_fields = (
+                "writer_claim_id",
+                "writer_lease_id",
+                "writer_resource_kind",
+                "writer_resource_id",
+            )
+            if (
+                any(not str(body.get(name) or "") for name in writer_fields)
+                or body.get("writer_owner_session_id")
+                != prepared["owner_session_id"]
+                or body.get("writer_task_cid") != prepared["task_cid"]
+                or body.get("writer_mode") != LeaseMode.EXCLUSIVE.value
+                or int(body.get("writer_fencing_token") or 0) < 1
+                or int(body.get("writer_fence_epoch") or 0) < 1
+            ):
+                continue
+            return {
+                "schema": CROSS_STORE_FENCE_GUARD_SCHEMA,
+                "event_id": event_id,
+                "guard_digest": _sha256_hex(
+                    _canonical_json(body).encode("utf-8")
+                ),
+                "preparation_digest": expected["preparation_digest"],
+                "control_result_digest": expected["control_result_digest"],
+                "writer_claim_id": str(body["writer_claim_id"]),
+                "writer_lease_id": str(body["writer_lease_id"]),
+                "writer_fencing_token": int(body["writer_fencing_token"]),
+                "writer_fence_epoch": int(body["writer_fence_epoch"]),
+            }
+        raise DatabaseCoordinationNotReadyError(
+            "guarded control completion has no matching cross-store fence receipt",
+            evidence={
+                "task_cid": str(prepared["task_cid"]),
+                "claim_id": str(prepared["claim_id"]),
+                "preparation_digest": str(prepared["preparation_digest"]),
+                "control_result_digest": str(control_summary["receipt_digest"]),
+                "reason": "cross_store_fence_guard_missing",
+            },
+        )
+
     def _validate_control_incomplete_observation(
         self,
         *,
@@ -3539,6 +3928,201 @@ class DatabaseCoordinator:
             except Exception:
                 self._rollback_if_open(connection)
                 raise
+
+    def execute_with_task_and_resource_fences(
+        self,
+        claim: TaskClaim | Mapping[str, Any],
+        writer_claim: ResourceClaim | Mapping[str, Any],
+        callback: Callable[[], Any],
+        *,
+        allow_logically_completed: bool = False,
+    ) -> Any:
+        """Execute an external CAS while exact coordinator fences stay stable.
+
+        The task claim/attempt/lease tuple and the exclusive resource
+        claim/lease tuple are validated before the callback and again
+        immediately after it.  This coordinator's re-entrant lock, its
+        process-shared DuckDB file lock, and one write transaction prevent a
+        coordinator mutation from interleaving with the callback.  Callback
+        re-entry into this coordinator is rejected.  A callback exception or
+        failed post-check rolls the coordinator guard transaction back.
+
+        This is deliberately *not* a distributed transaction with the store
+        mutated by ``callback``.  If that external CAS commits and this
+        process crashes, a fence expires, or the post-check fails, its effect
+        cannot be rolled back here.  The external CAS therefore must be
+        idempotent, bind both fence identities, and support receipt-based
+        reconciliation before coordinator completion is accepted.
+
+        A preparation whose ``body`` sets
+        ``requires_cross_store_fence_guard`` to true makes this durable: the
+        callback must return the same mapping receipt later supplied to
+        :meth:`complete_task_claim` or recovery.  Successful post-validation
+        records its digest with both fences; promotion and recovery then fail
+        closed when that guard receipt is absent.
+        """
+
+        if not callable(callback):
+            raise TypeError("callback must be callable")
+        task_identity = self._task_claim_identity(claim)
+        resource_identity = self._resource_claim_identity(writer_claim)
+        if resource_identity["task_cid"] != task_identity["task_cid"]:
+            raise DatabaseCoordinationStaleFenceError(
+                "writer resource claim is bound to a different task"
+            )
+        if resource_identity["owner_session_id"] != task_identity["owner_session_id"]:
+            raise DatabaseCoordinationStaleFenceError(
+                "writer resource claim is bound to a different owner"
+            )
+
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            if not getattr(connection, "in_transaction", False):
+                raise DatabaseCoordinationError(
+                    "could not start fenced cross-store callback transaction"
+                )
+            self._fenced_callback_reentry_detected = False
+            try:
+                before_ms = self._now_ms()
+                task_lease = self._protect_task_claim_unlocked(
+                    connection,
+                    identity=task_identity,
+                    now=before_ms,
+                    expected_attempt_status=AttemptStatus.RUNNING,
+                    allow_logically_completed=bool(allow_logically_completed),
+                    record_event=True,
+                )
+                writer_lease = self._protect_resource_claim_unlocked(
+                    connection,
+                    identity=resource_identity,
+                    now=before_ms,
+                    record_event=True,
+                )
+                prepared = self._prepared_completion_unlocked(
+                    connection,
+                    str(task_identity["task_cid"]),
+                    required=False,
+                )
+                guard_required = bool(
+                    prepared is not None
+                    and self._requires_cross_store_fence_guard(prepared)
+                )
+
+                self._fenced_callback_active = True
+                try:
+                    result = callback()
+                finally:
+                    self._fenced_callback_active = False
+                if self._fenced_callback_reentry_detected:
+                    raise DatabaseCoordinationConflictError(
+                        "fenced callback attempted to re-enter DatabaseCoordinator"
+                    )
+                callback_projection: dict[str, Any] | None = None
+                if isinstance(result, Mapping):
+                    callback_projection = _bounded_mapping(
+                        result,
+                        name="cross_store_callback_result",
+                    )
+                else:
+                    to_dict = getattr(result, "to_dict", None)
+                    if callable(to_dict):
+                        projected = to_dict()
+                        if isinstance(projected, Mapping):
+                            callback_projection = _bounded_mapping(
+                                projected,
+                                name="cross_store_callback_result",
+                            )
+                if guard_required and callback_projection is None:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "guarded cross-store callback returned no mapping receipt"
+                    )
+
+                after_ms = self._now_ms()
+                if after_ms < before_ms:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "coordination clock moved backwards during fenced callback"
+                    )
+                self._protect_task_claim_unlocked(
+                    connection,
+                    identity=task_identity,
+                    now=after_ms,
+                    expected_attempt_status=AttemptStatus.RUNNING,
+                    allow_logically_completed=bool(allow_logically_completed),
+                    record_event=False,
+                )
+                self._protect_resource_claim_unlocked(
+                    connection,
+                    identity=resource_identity,
+                    now=after_ms,
+                    record_event=False,
+                )
+                if guard_required:
+                    assert prepared is not None
+                    assert callback_projection is not None
+                    self._record_event(
+                        connection,
+                        lease_id=task_lease.lease_id,
+                        scope_key=task_lease.scope_key,
+                        event_type=CROSS_STORE_FENCE_GUARD_EVENT,
+                        fencing_token=int(task_identity["fencing_token"]),
+                        fence_epoch=int(task_identity["fence_epoch"]),
+                        observed_at_ms=after_ms,
+                        body={
+                            "schema": CROSS_STORE_FENCE_GUARD_SCHEMA,
+                            "preparation_digest": str(
+                                prepared["preparation_digest"]
+                            ),
+                            "task_cid": str(task_identity["task_cid"]),
+                            "claim_id": str(task_identity["claim_id"]),
+                            "attempt_id": str(task_identity["attempt_id"]),
+                            "attempt_number": int(
+                                task_identity["attempt_number"]
+                            ),
+                            "lease_id": str(task_identity["lease_id"]),
+                            "owner_session_id": str(
+                                task_identity["owner_session_id"]
+                            ),
+                            "fencing_token": int(
+                                task_identity["fencing_token"]
+                            ),
+                            "fence_epoch": int(task_identity["fence_epoch"]),
+                            "writer_claim_id": str(
+                                resource_identity["claim_id"]
+                            ),
+                            "writer_lease_id": writer_lease.lease_id,
+                            "writer_resource_kind": str(
+                                resource_identity["resource_kind"]
+                            ),
+                            "writer_resource_id": str(
+                                resource_identity["resource_id"]
+                            ),
+                            "writer_owner_session_id": str(
+                                resource_identity["owner_session_id"]
+                            ),
+                            "writer_task_cid": str(
+                                resource_identity["task_cid"]
+                            ),
+                            "writer_mode": LeaseMode.EXCLUSIVE.value,
+                            "writer_fencing_token": int(
+                                resource_identity["fencing_token"]
+                            ),
+                            "writer_fence_epoch": int(
+                                resource_identity["fence_epoch"]
+                            ),
+                            "control_result_digest": _sha256_hex(
+                                _canonical_json(callback_projection).encode("utf-8")
+                            ),
+                        },
+                    )
+                connection.commit()
+                return result
+            except BaseException:
+                self._rollback_if_open(connection)
+                raise
+            finally:
+                self._fenced_callback_active = False
+                self._fenced_callback_reentry_detected = False
 
     def expire_task_claim(
         self,
@@ -3767,6 +4351,11 @@ class DatabaseCoordinator:
                     prepared=prepared,
                     receipt=control_completion_receipt,
                 )
+                guard_summary = self._required_cross_store_fence_guard_unlocked(
+                    connection,
+                    prepared=prepared,
+                    control_summary=control_summary,
+                )
                 self._protect_task_claim_unlocked(
                     connection,
                     identity=identity,
@@ -3788,11 +4377,14 @@ class DatabaseCoordinator:
                         "status": AttemptStatus.SUCCEEDED.value,
                         "replayed": True,
                     }
+                promoted_payload = {
+                    **prepared,
+                    "control_completion": control_summary,
+                }
+                if guard_summary is not None:
+                    promoted_payload["cross_store_guard"] = guard_summary
                 promoted_body = _bounded_mapping(
-                    {
-                        **prepared,
-                        "control_completion": control_summary,
-                    },
+                    promoted_payload,
                     name="task_completion_body",
                 )
                 connection.execute(
@@ -4091,13 +4683,21 @@ class DatabaseCoordinator:
                     prepared=prepared,
                     receipt=control_completion_receipt,
                 )
+                guard_summary = self._required_cross_store_fence_guard_unlocked(
+                    connection,
+                    prepared=prepared,
+                    control_summary=control_summary,
+                )
                 promoted_preparation = dict(prepared)
                 promoted_preparation.pop("status", None)
+                promoted_payload = {
+                    **promoted_preparation,
+                    "control_completion": control_summary,
+                }
+                if guard_summary is not None:
+                    promoted_payload["cross_store_guard"] = guard_summary
                 promoted_body = _bounded_mapping(
-                    {
-                        **promoted_preparation,
-                        "control_completion": control_summary,
-                    },
+                    promoted_payload,
                     name="task_completion_body",
                 )
                 connection.execute(
@@ -4282,6 +4882,11 @@ class DatabaseCoordinator:
                 control_summary = self._validate_control_completion_receipt(
                     prepared=promoted,
                     receipt=control_completion_receipt,
+                )
+                self._required_cross_store_fence_guard_unlocked(
+                    connection,
+                    prepared=promoted,
+                    control_summary=control_summary,
                 )
                 identity, lease, lease_state, _attempt_status = (
                     self._completion_authority_state_unlocked(
@@ -5769,6 +6374,9 @@ __all__ = [
     "TASK_CLAIM_SCHEMA",
     "RESOURCE_CLAIM_SCHEMA",
     "MAINTENANCE_LEASE_SCHEMA",
+    "CROSS_STORE_FENCE_GUARD_SCHEMA",
+    "CROSS_STORE_FENCE_GUARD_EVENT",
+    "CROSS_STORE_FENCE_GUARD_REQUIRED_FIELD",
     "DEFAULT_LEASE_MS",
     "DEFAULT_MAINTENANCE_SCOPE",
     "MIN_LEASE_MS",
