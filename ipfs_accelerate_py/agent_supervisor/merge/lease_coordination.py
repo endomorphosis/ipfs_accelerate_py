@@ -89,6 +89,18 @@ def profile_g_task_attempt_limit(value: Any, *, default: int = 3) -> int:
     return raw
 
 
+def profile_g_taskspec_attempt_limit(value: Any, *, default: int = 3) -> int:
+    """Return a Profile-G TaskSpec ``max_attempts`` value in ``[1, 100]``.
+
+    Operational queue state may use ``0`` as unlimited. Profile-G v1 TaskSpec
+    cannot represent that sentinel, so embed the same bounded terminal-block
+    cap used by the lease coordinator.
+    """
+
+    raw = profile_g_task_attempt_limit(value, default=default)
+    return UNLIMITED_TASK_TERMINAL_BLOCK_ATTEMPT_CAP if raw == 0 else raw
+
+
 def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
     """Open one flock-serialized DuckDB connection for a public operation."""
 
@@ -730,7 +742,7 @@ def adapt_goal_bundle(
         "resource_class": str(bundle.get("resource_class") or "cpu-small"),
         "deadline_ms": int(bundle.get("deadline_ms") or now + 86_400_000),
         "expected_value_millionths": int(bundle.get("expected_value_millionths") or 500_000),
-        "max_attempts": profile_g_task_attempt_limit(
+        "max_attempts": profile_g_taskspec_attempt_limit(
             bundle.get("max_attempts"),
         ),
         "execution_mode": "idempotent",
@@ -776,6 +788,7 @@ def _validated_embedded_profile_g(
         bundle.get("max_attempts"),
         default=3,
     )
+    expected_task_limit = profile_g_taskspec_attempt_limit(outer_limit)
     adapted = dict(embedded)
     artifacts = adapted.get("artifacts")
     if not isinstance(artifacts, Mapping):
@@ -832,7 +845,7 @@ def _validated_embedded_profile_g(
     if "max_attempts" not in task:
         raise ValueError("embedded Profile-G TaskSpec max_attempts is required")
     task_limit = profile_g_task_attempt_limit(task["max_attempts"])
-    if task_limit != outer_limit:
+    if task_limit != expected_task_limit:
         raise ValueError("bundle max_attempts does not match embedded Profile-G TaskSpec")
 
     expected_links = (

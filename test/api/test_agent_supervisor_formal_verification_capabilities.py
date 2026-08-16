@@ -334,18 +334,20 @@ def test_leanstral_route_is_discoverable_through_accelerator_source_wrapper(
     outer = tmp_path / "ipfs_accelerate_py"
     inner = outer / "ipfs_accelerate_py"
     supervisor = inner / "agent_supervisor"
-    supervisor.mkdir(parents=True)
+    proof = supervisor / "proof"
+    proof.mkdir(parents=True)
     for initializer in (
         outer / "__init__.py",
         inner / "__init__.py",
         supervisor / "__init__.py",
+        proof / "__init__.py",
     ):
         initializer.write_text(
             "raise RuntimeError('source package initializer executed')\n",
             encoding="utf-8",
         )
     (inner / "llm_router.py").write_text("ROUTER = True\n", encoding="utf-8")
-    (supervisor / "leanstral_proof_provider.py").write_text(
+    (proof / "leanstral_proof_provider.py").write_text(
         "PROVIDER = True\n",
         encoding="utf-8",
     )
