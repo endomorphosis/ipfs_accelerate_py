@@ -944,17 +944,21 @@ def _verify_task_records(
             "ordinal": int(expected["ordinal"]),
             "priority": expected["priority"],
             "status": expected_status,
-            "dependencies": sorted(str(item) for item in expected["dependencies"]),
+            "dependencies": list(expected["dependencies"]),
             "outputs": expected_outputs,
             "acceptance": expected_acceptance,
             "validations": expected_validations,
         }
         observed_dict = observed.to_dict()
         observed_dependencies = observed_dict.get("dependencies") or []
+        expected_dependencies = list(exact_fields["dependencies"])
         if isinstance(observed_dependencies, (list, tuple)):
+            deps_match = sorted(str(item) for item in observed_dependencies) == sorted(
+                str(item) for item in expected_dependencies
+            )
             observed_dict = {
                 **observed_dict,
-                "dependencies": sorted(str(item) for item in observed_dependencies),
+                "dependencies": expected_dependencies if deps_match else list(observed_dependencies),
             }
         mismatches = [key for key, value in exact_fields.items() if observed_dict.get(key) != value]
         if mismatches:
