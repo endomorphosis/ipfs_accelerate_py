@@ -107,8 +107,7 @@ def _compiled():
 
 def _replace_event(plan, event_id: str, **updates):
     events = tuple(
-        replace(item, **updates) if item.event_id == event_id else item
-        for item in plan.events
+        replace(item, **updates) if item.event_id == event_id else item for item in plan.events
     )
     return replace(plan, events=events)
 
@@ -138,19 +137,14 @@ def _with_subgoals(plan, formulas, *, equivalent_second: bool = False):
             "goal:cid",
             second_formula.formula_id,
             refinement_mode=(
-                RefinementMode.EQUIVALENT
-                if equivalent_second
-                else RefinementMode.SUFFICIENT
+                RefinementMode.EQUIVALENT if equivalent_second else RefinementMode.SUFFICIENT
             ),
             depends_on=("subgoal:a",),
             evidence_requirement_ids=second_task.evidence_requirement_ids,
             metadata={"source_ids": ["source:subgoal:b"]},
         ),
     )
-    all_formulas = {
-        item.formula_id: item
-        for item in (*formulas, first_formula, second_formula)
-    }
+    all_formulas = {item.formula_id: item for item in (*formulas, first_formula, second_formula)}
     return (
         replace(
             plan,
@@ -178,10 +172,7 @@ def test_consistent_compiled_plan_checks_every_required_property() -> None:
     assert first.findings == ()
     assert first.validation_id == second.validation_id
     assert first.to_json() == second.to_json()
-    assert (
-        PlanValidationResult.from_dict(first.to_record()).validation_id
-        == first.validation_id
-    )
+    assert PlanValidationResult.from_dict(first.to_record()).validation_id == first.validation_id
     assert PlanValidationResult.from_json(first.to_json()).to_dict() == first.to_dict()
     assert set(first.checks_performed) >= {
         PlanCheckKind.DEPENDENCY_READINESS,
@@ -227,18 +218,14 @@ def test_deontic_contradiction_is_not_a_countermodel() -> None:
         valid_until=obligation.valid_until,
     )
 
-    result = validate_formal_plan(
-        replace(plan, norms=(*plan.norms, prohibition)), formulas
-    )
+    result = validate_formal_plan(replace(plan, norms=(*plan.norms, prohibition)), formulas)
 
     assert result.status is PlanValidationStatus.INCONSISTENT
     assert result.outcome is PlanValidationOutcome.CONTRADICTION
     assert result.countermodel is None
     assert result.consistency_level is PlanConsistencyLevel.COUNTEREXAMPLE
     assert PlanFindingCode.CONFLICTING_NORMS in {item.code for item in result.findings}
-    assert all(
-        item.disposition is FindingDisposition.CONTRADICTION for item in result.findings
-    )
+    assert all(item.disposition is FindingDisposition.CONTRADICTION for item in result.findings)
 
 
 def test_dependency_and_authority_violations_return_bounded_countermodels() -> None:
@@ -254,23 +241,17 @@ def test_dependency_and_authority_violations_return_bounded_countermodels() -> N
         PlanValidationResult.from_dict(dependency.to_record()).countermodel
         == dependency.countermodel
     )
-    assert PlanFindingCode.DEPENDENCY_NOT_READY in {
-        item.code for item in dependency.findings
-    }
+    assert PlanFindingCode.DEPENDENCY_NOT_READY in {item.code for item in dependency.findings}
 
     unauthorized = _replace_event(plan, "task:b:event:started", actor_id="supervisor")
     authority = validate_formal_plan(unauthorized, formulas)
     assert authority.outcome is PlanValidationOutcome.COUNTERMODEL
-    assert PlanFindingCode.ACTOR_NOT_ASSIGNED in {
-        item.code for item in authority.findings
-    }
+    assert PlanFindingCode.ACTOR_NOT_ASSIGNED in {item.code for item in authority.findings}
 
 
 def test_unique_lease_and_fencing_are_independently_checked() -> None:
     plan, formulas = _compiled()
-    event = next(
-        item for item in plan.events if item.event_id == "task:a:event:started"
-    )
+    event = next(item for item in plan.events if item.event_id == "task:a:event:started")
     multiple = _replace_event(
         plan,
         event.event_id,
@@ -297,9 +278,7 @@ def test_unique_lease_and_fencing_are_independently_checked() -> None:
     )
     stale_result = validate_formal_plan(stale, formulas)
     assert stale_result.outcome is PlanValidationOutcome.COUNTERMODEL
-    assert PlanFindingCode.STALE_FENCING_TOKEN in {
-        item.code for item in stale_result.findings
-    }
+    assert PlanFindingCode.STALE_FENCING_TOKEN in {item.code for item in stale_result.findings}
 
 
 def test_missing_evidence_has_a_concrete_countermodel() -> None:
@@ -318,9 +297,7 @@ def test_missing_evidence_has_a_concrete_countermodel() -> None:
         for item in plan.evidence_requirements
     )
 
-    result = validate_formal_plan(
-        replace(plan, evidence_requirements=requirements), formulas
-    )
+    result = validate_formal_plan(replace(plan, evidence_requirements=requirements), formulas)
 
     assert result.outcome is PlanValidationOutcome.COUNTERMODEL
     finding = next(
@@ -333,19 +310,13 @@ def test_missing_evidence_has_a_concrete_countermodel() -> None:
     assert result.countermodel.states[-1].logical_time == finding.logical_time
 
 
-def test_illegal_transition_missing_terminal_and_forbidden_merge_are_witnessed() -> (
-    None
-):
+def test_illegal_transition_missing_terminal_and_forbidden_merge_are_witnessed() -> None:
     plan, formulas = _compiled()
     illegal = _replace_event(plan, "task:a:event:assigned", kind=EventKind.STARTED)
     illegal_result = validate_formal_plan(illegal, formulas)
-    assert PlanFindingCode.ILLEGAL_TRANSITION in {
-        item.code for item in illegal_result.findings
-    }
+    assert PlanFindingCode.ILLEGAL_TRANSITION in {item.code for item in illegal_result.findings}
 
-    nonterminal = _replace_event(
-        plan, "task:b:event:completed", kind=EventKind.EVIDENCE_PRODUCED
-    )
+    nonterminal = _replace_event(plan, "task:b:event:completed", kind=EventKind.EVIDENCE_PRODUCED)
     terminal_result = validate_formal_plan(nonterminal, formulas)
     assert PlanFindingCode.TERMINAL_OUTCOME_MISSING in {
         item.code for item in terminal_result.findings
@@ -363,14 +334,10 @@ def test_illegal_transition_missing_terminal_and_forbidden_merge_are_witnessed()
         for item in plan.effects
     )
     merge_result = validate_formal_plan(replace(plan, effects=effects), formulas)
-    assert PlanFindingCode.FORBIDDEN_MERGE_STATE in {
-        item.code for item in merge_result.findings
-    }
+    assert PlanFindingCode.FORBIDDEN_MERGE_STATE in {item.code for item in merge_result.findings}
 
 
-def test_unsupported_operator_timeout_cancellation_and_incomplete_are_distinct() -> (
-    None
-):
+def test_unsupported_operator_timeout_cancellation_and_incomplete_are_distinct() -> None:
     plan, formulas = _compiled()
     ready = atom(
         ReviewedPredicate.TASK_READY,
@@ -381,9 +348,7 @@ def test_unsupported_operator_timeout_cancellation_and_incomplete_are_distinct()
     assert unsupported_result.status is PlanValidationStatus.UNSUPPORTED
     assert unsupported_result.outcome is PlanValidationOutcome.UNSUPPORTED_OPERATOR
 
-    timed_out = validate_formal_plan(
-        plan, formulas, bounds=ValidationBounds(timeout_ms=0)
-    )
+    timed_out = validate_formal_plan(plan, formulas, bounds=ValidationBounds(timeout_ms=0))
     assert timed_out.status is PlanValidationStatus.TIMED_OUT
     assert timed_out.outcome is PlanValidationOutcome.TIMEOUT
 
@@ -394,9 +359,7 @@ def test_unsupported_operator_timeout_cancellation_and_incomplete_are_distinct()
         raise AssertionError("cancelled validation consumed formula input")
         yield  # pragma: no cover
 
-    cancelled = validate_formal_plan(
-        plan, must_not_be_consumed(), cancellation_token=token
-    )
+    cancelled = validate_formal_plan(plan, must_not_be_consumed(), cancellation_token=token)
     assert cancelled.status is PlanValidationStatus.CANCELLED
     assert cancelled.outcome is PlanValidationOutcome.CANCELLED
 
@@ -426,9 +389,7 @@ def test_domain_resource_exhaustion_is_not_incomplete_search() -> None:
 
     assert result.status is PlanValidationStatus.RESOURCE_EXHAUSTED
     assert result.outcome is PlanValidationOutcome.RESOURCE_EXHAUSTED
-    assert PlanFindingCode.DOMAIN_BOUND_EXCEEDED in {
-        item.code for item in result.findings
-    }
+    assert PlanFindingCode.DOMAIN_BOUND_EXCEEDED in {item.code for item in result.findings}
 
     provider_result = validate_formal_plan(
         plan,
@@ -514,9 +475,7 @@ def test_subgoal_hierarchy_has_deterministic_witnesses_and_legacy_compatibility(
 def test_parent_refinement_and_subgoal_liveness_have_bounded_countermodels():
     plan, formulas = _compiled()
     plan, formulas = _with_subgoals(plan, formulas)
-    false_parent = TDFOL.goal_satisfaction(
-        "goal:without-a-trace-witness", plan.trace_bound
-    )
+    false_parent = TDFOL.goal_satisfaction("goal:without-a-trace-witness", plan.trace_bound)
     parent_violation = replace(
         plan,
         goals=(
@@ -528,24 +487,16 @@ def test_parent_refinement_and_subgoal_liveness_have_bounded_countermodels():
         formulas=(*plan.formulas, false_parent),
     )
 
-    result = validate_formal_plan(
-        parent_violation, (*formulas, false_parent)
-    )
+    result = validate_formal_plan(parent_violation, (*formulas, false_parent))
 
     assert result.outcome is PlanValidationOutcome.COUNTERMODEL
-    assert PlanFindingCode.PARENT_REFINEMENT_VIOLATED in {
-        item.code for item in result.findings
-    }
+    assert PlanFindingCode.PARENT_REFINEMENT_VIOLATED in {item.code for item in result.findings}
 
-    equivalent, equivalent_formulas = _with_subgoals(
-        *_compiled(), equivalent_second=True
-    )
+    equivalent, equivalent_formulas = _with_subgoals(*_compiled(), equivalent_second=True)
     without_child_work = replace(
         equivalent,
         tasks=tuple(
-            replace(item, subgoal_id="")
-            if item.task_id == "task:b"
-            else item
+            replace(item, subgoal_id="") if item.task_id == "task:b" else item
             for item in equivalent.tasks
         ),
     )
@@ -566,16 +517,12 @@ def test_subgoal_dependency_readiness_returns_a_concrete_countermodel():
         for item in plan.events
         if item.task_id == "task:a" and item.kind is EventKind.COMPLETED
     )
-    plan = _replace_event(
-        plan, first_completion.event_id, logical_time=plan.trace_bound
-    )
+    plan = _replace_event(plan, first_completion.event_id, logical_time=plan.trace_bound)
 
     result = validate_formal_plan(plan, formulas)
 
     assert result.outcome is PlanValidationOutcome.COUNTERMODEL
-    assert PlanFindingCode.SUBGOAL_DEPENDENCY_NOT_READY in {
-        item.code for item in result.findings
-    }
+    assert PlanFindingCode.SUBGOAL_DEPENDENCY_NOT_READY in {item.code for item in result.findings}
     assert result.countermodel is not None
     assert result.countermodel.states[-1].satisfied_subgoal_ids == ()
 
@@ -586,9 +533,7 @@ def test_stale_and_circular_subgoal_evidence_fail_closed():
     first_task = next(item for item in plan.tasks if item.task_id == "task:a")
     requirement_id = first_task.evidence_requirement_ids[0]
     requirement = next(
-        item
-        for item in plan.evidence_requirements
-        if item.requirement_id == requirement_id
+        item for item in plan.evidence_requirements if item.requirement_id == requirement_id
     )
     completed = next(
         item
@@ -611,9 +556,7 @@ def test_stale_and_circular_subgoal_evidence_fail_closed():
         for item in plan.tasks
     )
     requirements = tuple(
-        replace(item, freshness_seconds=0)
-        if item.requirement_id == requirement_id
-        else item
+        replace(item, freshness_seconds=0) if item.requirement_id == requirement_id else item
         for item in plan.evidence_requirements
     )
     stale = validate_formal_plan(
@@ -625,9 +568,7 @@ def test_stale_and_circular_subgoal_evidence_fail_closed():
         ),
         formulas,
     )
-    assert PlanFindingCode.STALE_EVIDENCE in {
-        item.code for item in stale.findings
-    }
+    assert PlanFindingCode.STALE_EVIDENCE in {item.code for item in stale.findings}
 
     circular_requirements = tuple(
         replace(
@@ -644,9 +585,7 @@ def test_stale_and_circular_subgoal_evidence_fail_closed():
         replace(plan, evidence_requirements=circular_requirements), formulas
     )
     assert circular.outcome is PlanValidationOutcome.COUNTERMODEL
-    assert PlanFindingCode.CIRCULAR_EVIDENCE in {
-        item.code for item in circular.findings
-    }
+    assert PlanFindingCode.CIRCULAR_EVIDENCE in {item.code for item in circular.findings}
 
 
 def test_scope_only_and_future_dated_evidence_cannot_witness_a_subgoal():
@@ -654,15 +593,11 @@ def test_scope_only_and_future_dated_evidence_cannot_witness_a_subgoal():
     first_task = next(item for item in plan.tasks if item.task_id == "task:a")
     requirement_id = first_task.evidence_requirement_ids[0]
     requirements = tuple(
-        replace(item, fallback_check_ids=())
-        if item.requirement_id == requirement_id
-        else item
+        replace(item, fallback_check_ids=()) if item.requirement_id == requirement_id else item
         for item in plan.evidence_requirements
     )
 
-    scope_only = validate_formal_plan(
-        replace(plan, evidence_requirements=requirements), formulas
-    )
+    scope_only = validate_formal_plan(replace(plan, evidence_requirements=requirements), formulas)
 
     assert PlanFindingCode.REQUIRED_EVIDENCE_UNAVAILABLE in {
         item.code for item in scope_only.findings
@@ -680,29 +615,21 @@ def test_scope_only_and_future_dated_evidence_cannot_witness_a_subgoal():
             metadata={
                 **plan.metadata,
                 "available_evidence_ids": [requirement_id],
-                "evidence_observed_at": {
-                    requirement_id: completion.logical_time + 1
-                },
+                "evidence_observed_at": {requirement_id: completion.logical_time + 1},
             },
         ),
         formulas,
     )
 
-    assert PlanFindingCode.STALE_EVIDENCE in {
-        item.code for item in future_dated.findings
-    }
+    assert PlanFindingCode.STALE_EVIDENCE in {item.code for item in future_dated.findings}
 
 
 def test_subgoal_bound_and_timeout_remain_distinct_from_assurance():
     plan, formulas = _compiled()
     plan, formulas = _with_subgoals(plan, formulas)
 
-    exhausted = validate_formal_plan(
-        plan, formulas, bounds=ValidationBounds(max_subgoals=1)
-    )
-    timed_out = validate_formal_plan(
-        plan, formulas, bounds=ValidationBounds(timeout_ms=0)
-    )
+    exhausted = validate_formal_plan(plan, formulas, bounds=ValidationBounds(max_subgoals=1))
+    timed_out = validate_formal_plan(plan, formulas, bounds=ValidationBounds(timeout_ms=0))
 
     assert exhausted.outcome is PlanValidationOutcome.RESOURCE_EXHAUSTED
     assert timed_out.outcome is PlanValidationOutcome.TIMEOUT

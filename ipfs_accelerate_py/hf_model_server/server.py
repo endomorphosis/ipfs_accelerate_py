@@ -24,14 +24,26 @@ from .auth.rate_limiter import RateLimiter
 from .middleware.request_queue import QueueManager, RequestPriority
 from .middleware.batching import BatchingMiddleware, BatchResult
 from .api.schemas import (
-    CompletionRequest, CompletionResponse, CompletionChoice, CompletionUsage,
-    ChatCompletionRequest, ChatCompletionResponse, ChatCompletionChoice,
-    EmbeddingRequest, EmbeddingResponse, EmbeddingData,
-    ModelListResponse, ModelInfo,
-    LoadModelRequest, LoadModelResponse,
-    UnloadModelRequest, UnloadModelResponse,
-    ServerStatus, ErrorResponse, ErrorDetail,
-    ChatMessage
+    CompletionRequest,
+    CompletionResponse,
+    CompletionChoice,
+    CompletionUsage,
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    ChatCompletionChoice,
+    EmbeddingRequest,
+    EmbeddingResponse,
+    EmbeddingData,
+    ModelListResponse,
+    ModelInfo,
+    LoadModelRequest,
+    LoadModelResponse,
+    UnloadModelRequest,
+    UnloadModelResponse,
+    ServerStatus,
+    ErrorResponse,
+    ErrorDetail,
+    ChatMessage,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +53,7 @@ security = HTTPBearer(auto_error=False)
 
 try:
     from ..inference_backend_manager import get_backend_manager
+
     HAVE_BACKEND_MANAGER = True
 except Exception:
     HAVE_BACKEND_MANAGER = False
@@ -48,6 +61,7 @@ except Exception:
 
 try:
     from ..ipfs_kit_integration import get_storage
+
     HAVE_IPFS_KIT_STORAGE = True
 except Exception:
     HAVE_IPFS_KIT_STORAGE = False
@@ -55,6 +69,7 @@ except Exception:
 
 try:
     from ..datasets_integration import DatasetsManager
+
     HAVE_DATASETS_MANAGER = True
 except Exception:
     HAVE_DATASETS_MANAGER = False
@@ -62,6 +77,7 @@ except Exception:
 
 try:
     from ..model_manager import ModelManager, ModelMetadata, ModelType, IOSpec, DataType
+
     HAVE_MODEL_MANAGER = True
 except Exception:
     HAVE_MODEL_MANAGER = False
@@ -74,6 +90,7 @@ except Exception:
 # Import WebSocket handler
 try:
     from .websocket_handler import get_connection_manager, WebSocketInferenceHandler
+
     HAVE_WEBSOCKET = True
 except ImportError:
     HAVE_WEBSOCKET = False
@@ -83,7 +100,7 @@ except ImportError:
 class HFModelServer:
     """
     Unified HuggingFace Model Server
-    
+
     Features:
     - OpenAI-compatible API
     - Automatic skill discovery
@@ -92,11 +109,11 @@ class HFModelServer:
     - Request batching and caching
     - Health checks and metrics
     """
-    
+
     def __init__(self, config: Optional[ServerConfig] = None):
         self.config = config or ServerConfig()
         self.start_time = time.time()
-        
+
         # Core components
         self.skill_registry: Optional[SkillRegistry] = None
         self.hardware_detector: Optional[HardwareDetector] = None
@@ -106,24 +123,23 @@ class HFModelServer:
         self._datasets_manager: Optional[Any] = None
         self._model_manager: Optional[Any] = None
         self._loaded_models: set[str] = set()
-        
+
         # Metrics
         self.metrics: Optional[PrometheusMetrics] = None
         if self.config.enable_metrics:
             self.metrics = PrometheusMetrics()
             logger.info("Prometheus metrics enabled")
-        
+
         # Phase 5: Authentication & Authorization
         self.api_key_manager: Optional[APIKeyManager] = None
         self.auth_middleware: Optional[AuthMiddleware] = None
         if self.config.enable_auth:
             self.api_key_manager = APIKeyManager()
             self.auth_middleware = AuthMiddleware(
-                api_key_manager=self.api_key_manager,
-                enabled=self.config.require_auth
+                api_key_manager=self.api_key_manager, enabled=self.config.require_auth
             )
             logger.info("Authentication enabled")
-            
+
             # Generate admin key if provided
             if self.config.admin_api_key:
                 # Pre-load admin key (in production, load from secure storage)
@@ -134,27 +150,27 @@ class HFModelServer:
                     key_hash=hashlib.sha256(self.config.admin_api_key.encode()).hexdigest(),
                     name="admin",
                     rate_limit=1000,
-                    is_active=True
+                    is_active=True,
                 )
-        
+
         # Phase 5: Rate Limiting
         self.rate_limiter: Optional[RateLimiter] = None
         if self.config.enable_rate_limiting:
             self.rate_limiter = RateLimiter(enabled=True)
             logger.info("Rate limiting enabled")
-        
+
         # Phase 5: Request Queuing
         self.queue_manager: Optional[QueueManager] = None
         if self.config.enable_request_queue:
             self.queue_manager = QueueManager(
                 default_max_size=self.config.max_queue_size,
-                default_timeout=self.config.queue_timeout_seconds
+                default_timeout=self.config.queue_timeout_seconds,
             )
             logger.info("Request queuing enabled")
-        
+
         # Pending results dict for queue-based request/response correlation
         self._pending_results: Dict[str, BatchResult] = {}
-        
+
         # Phase 5: Request Batching
         self.batching_middleware: Optional[BatchingMiddleware] = None
         if self.config.enable_batching:
@@ -163,22 +179,22 @@ class HFModelServer:
                 max_wait_ms=self.config.batch_timeout_ms,
             )
             logger.info("Request batching enabled")
-        
+
         # WebSocket components
         self.connection_manager = None
         self.websocket_handler = None
         if HAVE_WEBSOCKET:
             self.connection_manager = get_connection_manager()
             self.websocket_handler = WebSocketInferenceHandler(self.connection_manager)
-        
+
         # FastAPI app
         self.app = FastAPI(
             title="Unified HuggingFace Model Server",
             description="OpenAI-compatible API for HuggingFace models with WebSocket support",
             version="0.1.0",
-            lifespan=self.lifespan
+            lifespan=self.lifespan,
         )
-        
+
         # Setup
         self._setup_middleware()
         self._setup_routes()
@@ -201,10 +217,12 @@ class HFModelServer:
         if not HAVE_DATASETS_MANAGER or DatasetsManager is None:
             return None
         try:
-            self._datasets_manager = DatasetsManager({
-                "enable_audit": True,
-                "enable_provenance": True,
-            })
+            self._datasets_manager = DatasetsManager(
+                {
+                    "enable_audit": True,
+                    "enable_provenance": True,
+                }
+            )
         except Exception as exc:
             logger.debug(f"HFModelServer datasets initialization failed: {exc}")
             self._datasets_manager = None
@@ -240,7 +258,9 @@ class HFModelServer:
                 input_payload = json.dumps({"model": model, "inputs": inputs}, sort_keys=True)
                 output_payload = json.dumps(result, sort_keys=True)
                 metadata["input_cid"] = storage.store(input_payload, filename=f"{model}_input.json")
-                metadata["output_cid"] = storage.store(output_payload, filename=f"{model}_output.json")
+                metadata["output_cid"] = storage.store(
+                    output_payload, filename=f"{model}_output.json"
+                )
             except Exception as exc:
                 logger.debug(f"HFModelServer storage persistence failed: {exc}")
 
@@ -300,7 +320,9 @@ class HFModelServer:
                 input_payload = json.dumps({"model": model, "inputs": inputs}, sort_keys=True)
                 failure_payload = json.dumps({"model": model, "error": str(error)}, sort_keys=True)
                 metadata["input_cid"] = storage.store(input_payload, filename=f"{model}_input.json")
-                metadata["output_cid"] = storage.store(failure_payload, filename=f"{model}_failure.json")
+                metadata["output_cid"] = storage.store(
+                    failure_payload, filename=f"{model}_failure.json"
+                )
             except Exception as exc:
                 logger.debug(f"HFModelServer failure persistence failed: {exc}")
 
@@ -318,7 +340,9 @@ class HFModelServer:
             }
             try:
                 metadata["audit_logged"] = bool(
-                    manager.log_event("inference_failed", payload, level="ERROR", category="PERFORMANCE")
+                    manager.log_event(
+                        "inference_failed", payload, level="ERROR", category="PERFORMANCE"
+                    )
                 )
             except Exception as exc:
                 logger.debug(f"HFModelServer failure audit logging failed: {exc}")
@@ -370,7 +394,9 @@ class HFModelServer:
 
         architecture = str(options.get("architecture") or request.model_id)
         input_spec = IOSpec(name="input", data_type=DataType.TEXT, optional=False)
-        output_data_type = DataType.TEXT if model_type != ModelType.EMBEDDING_MODEL else DataType.EMBEDDINGS
+        output_data_type = (
+            DataType.TEXT if model_type != ModelType.EMBEDDING_MODEL else DataType.EMBEDDINGS
+        )
         output_spec = IOSpec(name="output", data_type=output_data_type, optional=False)
 
         metadata = ModelMetadata(
@@ -420,7 +446,7 @@ class HFModelServer:
             )
         except Exception as exc:
             logger.debug(f"HFModelServer model usage tracking failed: {exc}")
-    
+
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
         """Lifespan context manager for startup/shutdown"""
@@ -435,7 +461,7 @@ class HFModelServer:
             yield
         # Shutdown
         await self.shutdown()
-    
+
     async def startup(self):
         """Initialize server on startup"""
         logger.info("Starting HF Model Server...")
@@ -447,32 +473,31 @@ class HFModelServer:
             except Exception as exc:
                 logger.warning(f"Backend manager initialization failed: {exc}")
                 self.backend_manager = None
-        
+
         # Initialize hardware detection
         if self.config.enable_hardware_detection:
             self.hardware_detector = HardwareDetector()
             self.hardware_selector = HardwareSelector(self.hardware_detector)
             logger.info(f"Hardware available: {self.hardware_detector.get_available_hardware()}")
-        
+
         # Initialize skill registry
         self.skill_registry = SkillRegistry(
-            skill_directories=self.config.skill_directories,
-            skill_pattern=self.config.skill_pattern
+            skill_directories=self.config.skill_directories, skill_pattern=self.config.skill_pattern
         )
-        
+
         # Discover skills
         if self.config.auto_discover:
             count = await self.skill_registry.discover_skills()
             logger.info(f"Discovered {count} skills")
-        
+
         logger.info("HF Model Server started successfully")
-    
+
     async def shutdown(self):
         """Cleanup on shutdown"""
         logger.info("Shutting down HF Model Server...")
         # Cleanup resources here
         logger.info("HF Model Server shutdown complete")
-    
+
     async def _queue_worker(self):
         """Background worker that dequeues requests and dispatches them to the backend manager."""
         logger.info("Queue worker started")
@@ -486,7 +511,9 @@ class HFModelServer:
                 pending = self._pending_results.pop(request_id, None)
                 if pending is None:
                     # Request already expired or was cancelled by the caller
-                    logger.debug(f"Queue worker: no pending result for request {request_id}; skipping")
+                    logger.debug(
+                        f"Queue worker: no pending result for request {request_id}; skipping"
+                    )
                     continue
 
                 data = queued_request.data
@@ -508,7 +535,7 @@ class HFModelServer:
                     pending.set_exception(RuntimeError("Server is shutting down"))
             self._pending_results.clear()
             raise
-    
+
     def _setup_middleware(self):
         """Setup middleware"""
         # CORS
@@ -520,7 +547,7 @@ class HFModelServer:
                 allow_methods=["*"],
                 allow_headers=["*"],
             )
-    
+
     async def _execute_inference(
         self,
         *,
@@ -558,7 +585,10 @@ class HFModelServer:
         if self.batching_middleware is not None and self.backend_manager is not None:
             backend = self.backend_manager.select_backend_for_task(task=task, model=model)
             if backend is not None and backend.capabilities.supports_batching:
-                async def _batch_inference_fn(batch_requests: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+
+                async def _batch_inference_fn(
+                    batch_requests: List[Dict[str, Any]],
+                ) -> List[Dict[str, Any]]:
                     # Combine all inputs from every request in the batch into a single backend call
                     all_inputs: List[Any] = []
                     input_counts: List[int] = []
@@ -583,16 +613,21 @@ class HFModelServer:
                     for count in input_counts:
                         per = dict(combined)
                         if isinstance(combined.get("embeddings"), list):
-                            per["embeddings"] = combined["embeddings"][start:start + count]
+                            per["embeddings"] = combined["embeddings"][start : start + count]
                         if isinstance(combined.get("outputs"), list):
-                            per["outputs"] = combined["outputs"][start:start + count]
+                            per["outputs"] = combined["outputs"][start : start + count]
                         results.append(per)
                         start += count
                     return results
 
                 return await self.batching_middleware.add_request(
                     model_id=model,
-                    request_data={"task": task, "model": model, "inputs": inputs, "parameters": parameters},
+                    request_data={
+                        "task": task,
+                        "model": model,
+                        "inputs": inputs,
+                        "parameters": parameters,
+                    },
                     inference_fn=_batch_inference_fn,
                 )
 
@@ -603,16 +638,16 @@ class HFModelServer:
             inputs=inputs,
             parameters=parameters,
         )
-    
+
     async def _verify_auth(
         self,
         request: Request,
-        credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     ) -> Optional[APIKey]:
         """Dependency for verifying authentication."""
         if not self.auth_middleware or not self.config.enable_auth:
             return None
-        
+
         try:
             api_key = await self.auth_middleware.verify_request(request, credentials)
             return api_key
@@ -620,16 +655,12 @@ class HFModelServer:
             if self.config.require_auth:
                 raise
             return None
-    
-    async def _check_rate_limit(
-        self,
-        request: Request,
-        api_key: Optional[APIKey] = None
-    ) -> None:
+
+    async def _check_rate_limit(self, request: Request, api_key: Optional[APIKey] = None) -> None:
         """Check rate limit for request."""
         if not self.rate_limiter or not self.config.enable_rate_limiting:
             return
-        
+
         if not api_key:
             # Use default rate limit for unauthenticated requests
             # Create a temporary API key for rate limiting
@@ -637,92 +668,90 @@ class HFModelServer:
                 key_id="anonymous",
                 key_hash="anonymous",
                 name="Anonymous",
-                rate_limit=self.config.default_rate_limit
+                rate_limit=self.config.default_rate_limit,
             )
-        
+
         allowed, remaining = await self.rate_limiter.check_limit(api_key)
-        
+
         # Add rate limit headers
         rate_limit_headers = self.rate_limiter.get_headers(api_key)
-        
+
         if not allowed:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Rate limit exceeded",
-                headers=rate_limit_headers
+                headers=rate_limit_headers,
             )
-        
+
         # Store headers for response
         request.state.rate_limit_headers = rate_limit_headers
-    
+
     def _setup_routes(self):
         """Setup API routes"""
-        
+
         # Health checks
         @self.app.get("/health")
         async def health_check():
             """Health check endpoint"""
             return {"status": "healthy"}
-        
+
         @self.app.get("/ready")
         async def readiness_check():
             """Readiness check endpoint"""
             if self.skill_registry is None:
                 raise HTTPException(status_code=503, detail="Server not ready")
             return {"status": "ready"}
-        
+
         # Metrics endpoint
         if self.metrics:
+
             @self.app.get("/metrics")
             async def get_metrics():
                 """Prometheus metrics endpoint"""
                 return Response(
                     content=self.metrics.generate_metrics(),
-                    media_type=self.metrics.get_content_type()
+                    media_type=self.metrics.get_content_type(),
                 )
-        
+
         # Phase 5: API Key Management Endpoints
         if self.api_key_manager:
+
             @self.app.post("/admin/keys/generate")
             async def generate_api_key(
                 name: str,
                 rate_limit: int = 100,
                 request: Request = None,
-                api_key: Optional[APIKey] = Depends(self._verify_auth)
+                api_key: Optional[APIKey] = Depends(self._verify_auth),
             ):
                 """Generate new API key (admin only)."""
                 # Verify admin access
                 if not api_key or api_key.name != "admin":
                     raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Admin access required"
+                        status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
                     )
-                
+
                 key_string, key_obj = self.api_key_manager.generate_key(
-                    name=name,
-                    rate_limit=rate_limit
+                    name=name, rate_limit=rate_limit
                 )
-                
+
                 return {
                     "api_key": key_string,
                     "key_id": key_obj.key_id,
                     "name": key_obj.name,
                     "rate_limit": key_obj.rate_limit,
-                    "created_at": key_obj.created_at.isoformat()
+                    "created_at": key_obj.created_at.isoformat(),
                 }
-            
+
             @self.app.get("/admin/keys/list")
             async def list_api_keys(
-                request: Request = None,
-                api_key: Optional[APIKey] = Depends(self._verify_auth)
+                request: Request = None, api_key: Optional[APIKey] = Depends(self._verify_auth)
             ):
                 """List all API keys (admin only)."""
                 if not api_key or api_key.name != "admin":
                     raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Admin access required"
+                        status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
                     )
-                
+
                 keys = self.api_key_manager.list_keys()
                 return {
                     "keys": [
@@ -732,45 +761,43 @@ class HFModelServer:
                             "rate_limit": k.rate_limit,
                             "created_at": k.created_at.isoformat(),
                             "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,
-                            "is_active": k.is_active
+                            "is_active": k.is_active,
                         }
                         for k in keys
                     ]
                 }
-            
+
             @self.app.post("/admin/keys/{key_id}/revoke")
             async def revoke_api_key(
                 key_id: str,
                 request: Request = None,
-                api_key: Optional[APIKey] = Depends(self._verify_auth)
+                api_key: Optional[APIKey] = Depends(self._verify_auth),
             ):
                 """Revoke API key (admin only)."""
                 if not api_key or api_key.name != "admin":
                     raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Admin access required"
+                        status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
                     )
-                
+
                 success = self.api_key_manager.revoke_key(key_id)
                 if not success:
                     raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail="API key not found"
+                        status_code=status.HTTP_404_NOT_FOUND, detail="API key not found"
                     )
-                
+
                 return {"success": True, "message": f"API key {key_id} revoked"}
-        
+
         # Phase 5: Queue Statistics Endpoint
         if self.queue_manager:
+
             @self.app.get("/admin/queue/stats")
             async def get_queue_stats(
-                request: Request = None,
-                api_key: Optional[APIKey] = Depends(self._verify_auth)
+                request: Request = None, api_key: Optional[APIKey] = Depends(self._verify_auth)
             ):
                 """Get request queue statistics."""
                 stats = await self.queue_manager.get_stats()
                 return stats
-        
+
         # Server status
         @self.app.get("/status", response_model=ServerStatus)
         async def get_status():
@@ -779,11 +806,15 @@ class HFModelServer:
                 status="running",
                 version="0.1.0",
                 models_loaded=len(self._loaded_models),
-                models_available=len(self.skill_registry.list_models()) if self.skill_registry else 0,
-                hardware_available=self.hardware_detector.get_available_hardware() if self.hardware_detector else [],
-                uptime_seconds=time.time() - self.start_time
+                models_available=len(self.skill_registry.list_models())
+                if self.skill_registry
+                else 0,
+                hardware_available=self.hardware_detector.get_available_hardware()
+                if self.hardware_detector
+                else [],
+                uptime_seconds=time.time() - self.start_time,
             )
-        
+
         # OpenAI-compatible endpoints
         @self.app.post("/v1/completions", response_model=CompletionResponse)
         async def create_completion(request: CompletionRequest):
@@ -821,33 +852,31 @@ class HFModelServer:
             completion_tokens = len(text.split())
             completion_id = f"cmpl-{uuid.uuid4().hex[:8]}"
 
-            self._track_model_usage(model=request.model, result=backend_result, run_id=completion_id)
+            self._track_model_usage(
+                model=request.model, result=backend_result, run_id=completion_id
+            )
 
             return CompletionResponse(
                 id=completion_id,
                 created=int(time.time()),
                 model=request.model,
-                choices=[
-                    CompletionChoice(
-                        text=text,
-                        index=0,
-                        finish_reason="stop"
-                    )
-                ],
+                choices=[CompletionChoice(text=text, index=0, finish_reason="stop")],
                 usage=CompletionUsage(
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
-                    total_tokens=prompt_tokens + completion_tokens
-                )
+                    total_tokens=prompt_tokens + completion_tokens,
+                ),
             )
-        
+
         @self.app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
         async def create_chat_completion(request: ChatCompletionRequest):
             """OpenAI-compatible chat completions endpoint"""
             if self.backend_manager is None:
                 raise HTTPException(status_code=503, detail="Backend manager unavailable")
 
-            prompt = "\n".join([f"{message.role}: {message.content}" for message in request.messages])
+            prompt = "\n".join(
+                [f"{message.role}: {message.content}" for message in request.messages]
+            )
             try:
                 backend_result = await self._execute_inference(
                     task="text-generation",
@@ -877,7 +906,9 @@ class HFModelServer:
             completion_tokens = len(response_text.split())
             completion_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
 
-            self._track_model_usage(model=request.model, result=backend_result, run_id=completion_id)
+            self._track_model_usage(
+                model=request.model, result=backend_result, run_id=completion_id
+            )
 
             return ChatCompletionResponse(
                 id=completion_id,
@@ -886,20 +917,17 @@ class HFModelServer:
                 choices=[
                     ChatCompletionChoice(
                         index=0,
-                        message=ChatMessage(
-                            role="assistant",
-                            content=response_text
-                        ),
-                        finish_reason="stop"
+                        message=ChatMessage(role="assistant", content=response_text),
+                        finish_reason="stop",
                     )
                 ],
                 usage=CompletionUsage(
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
-                    total_tokens=prompt_tokens + completion_tokens
-                )
+                    total_tokens=prompt_tokens + completion_tokens,
+                ),
             )
-        
+
         @self.app.post("/v1/embeddings", response_model=EmbeddingResponse)
         async def create_embedding(request: EmbeddingRequest):
             """OpenAI-compatible embeddings endpoint"""
@@ -923,19 +951,26 @@ class HFModelServer:
                     inputs=[str(x) for x in inputs],
                     error=str(exc),
                 )
-                raise HTTPException(status_code=503, detail=f"Embedding inference failed: {exc}") from exc
+                raise HTTPException(
+                    status_code=503, detail=f"Embedding inference failed: {exc}"
+                ) from exc
 
             embeddings_data = backend_result.get("embeddings")
             if not isinstance(embeddings_data, list):
                 embeddings_data = []
 
-            self._track_model_usage(model=request.model, result=backend_result, run_id=f"embed-{uuid.uuid4().hex[:8]}")
+            self._track_model_usage(
+                model=request.model, result=backend_result, run_id=f"embed-{uuid.uuid4().hex[:8]}"
+            )
 
             return EmbeddingResponse(
                 data=[
                     EmbeddingData(
-                        embedding=[float(x) for x in (embeddings_data[i] if i < len(embeddings_data) else [])],
-                        index=i
+                        embedding=[
+                            float(x)
+                            for x in (embeddings_data[i] if i < len(embeddings_data) else [])
+                        ],
+                        index=i,
                     )
                     for i in range(len(inputs))
                 ],
@@ -943,26 +978,24 @@ class HFModelServer:
                 usage=CompletionUsage(
                     prompt_tokens=sum(len(text.split()) for text in inputs),
                     completion_tokens=0,
-                    total_tokens=sum(len(text.split()) for text in inputs)
-                )
+                    total_tokens=sum(len(text.split()) for text in inputs),
+                ),
             )
-        
+
         @self.app.get("/v1/models", response_model=ModelListResponse)
         async def list_models():
             """List available models"""
             if not self.skill_registry:
                 return ModelListResponse(data=[])
-            
+
             models = []
             for model_id in self.skill_registry.list_models():
-                models.append(ModelInfo(
-                    id=model_id,
-                    created=int(time.time()),
-                    owned_by="hf-model-server"
-                ))
-            
+                models.append(
+                    ModelInfo(id=model_id, created=int(time.time()), owned_by="hf-model-server")
+                )
+
             return ModelListResponse(data=models)
-        
+
         # Extended model management endpoints
         @self.app.post("/models/load", response_model=LoadModelResponse)
         async def load_model(request: LoadModelRequest):
@@ -995,7 +1028,9 @@ class HFModelServer:
                         "error": f"Failed to register model {request.model_id}",
                     },
                 )
-                raise HTTPException(status_code=500, detail=f"Failed to register model {request.model_id}")
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to register model {request.model_id}"
+                )
 
             self._loaded_models.add(request.model_id)
             manager = self._get_datasets_manager()
@@ -1027,7 +1062,7 @@ class HFModelServer:
                 tokenizer_cid=metadata.tokenizer_cid,
                 provenance_cid=provenance_cid,
             )
-        
+
         @self.app.post("/models/unload", response_model=UnloadModelResponse)
         async def unload_model(request: UnloadModelRequest):
             """Unload a model"""
@@ -1080,22 +1115,24 @@ class HFModelServer:
                 tokenizer_cid=getattr(existing, "tokenizer_cid", None),
                 provenance_cid=provenance_cid,
             )
-        
+
         # WebSocket endpoint
         if HAVE_WEBSOCKET and self.websocket_handler:
+
             @self.app.websocket("/ws/{client_id}")
             async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 """WebSocket endpoint for real-time inference and monitoring"""
                 await self.websocket_handler.handle_client(websocket, client_id)
-    
+
     def run(self):
         """Run the server"""
         import uvicorn
+
         uvicorn.run(
             self.app,
             host=self.config.host,
             port=self.config.port,
-            log_level=self.config.log_level.lower()
+            log_level=self.config.log_level.lower(),
         )
 
 

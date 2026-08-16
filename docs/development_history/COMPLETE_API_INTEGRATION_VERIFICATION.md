@@ -309,7 +309,7 @@ from ipfs_accelerate_py.api_backends import openai_api
 from ipfs_accelerate_py.datasets_integration import ProvenanceLogger
 
 # Initialize with tracking enabled
-api = openai_api(metadata={'api_key': 'sk-...'})
+api = openai_api(metadata={"api_key": "sk-..."})
 
 # Every call is automatically tracked with:
 # - Input prompt
@@ -319,10 +319,7 @@ api = openai_api(metadata={'api_key': 'sk-...'})
 # - Execution time
 # - Unique request/response IDs
 
-response = api.chat_completion(
-    messages=[{"role": "user", "content": "Hello"}],
-    model="gpt-4"
-)
+response = api.chat_completion(messages=[{"role": "user", "content": "Hello"}], model="gpt-4")
 
 # Provenance chain is automatically created:
 # Input CID → Processing → Output CID
@@ -336,10 +333,7 @@ from ipfs_accelerate_py.datasets_integration import ProvenanceLogger
 logger = ProvenanceLogger()
 
 # Query all operations for a specific model
-ops = logger.query_logs(
-    filters={'model_name': 'gpt-4'},
-    limit=100
-)
+ops = logger.query_logs(filters={"model_name": "gpt-4"}, limit=100)
 
 # Get credit assignment data
 for op in ops:

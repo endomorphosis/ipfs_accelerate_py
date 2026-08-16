@@ -71,28 +71,28 @@ ts_perf = TimeSeriesPerformance(db_path="./my_benchmark_db.duckdb")
 # Configure regression thresholds
 ts_perf = TimeSeriesPerformance(
     regression_thresholds={
-        'throughput': -5.0,  # 5% worse (negative because lower is worse)
-        'latency': 5.0,      # 5% worse (positive because higher is worse)
-        'memory': 5.0,       # 5% worse (positive because higher is worse)
-        'power': 5.0         # 5% worse (positive because higher is worse)
+        "throughput": -5.0,  # 5% worse (negative because lower is worse)
+        "latency": 5.0,  # 5% worse (positive because higher is worse)
+        "memory": 5.0,  # 5% worse (positive because higher is worse)
+        "power": 5.0,  # 5% worse (positive because higher is worse)
     }
 )
 
 # Configure notifications
 ts_perf = TimeSeriesPerformance(
     notification_config={
-        'enabled': True,
-        'methods': ['log', 'email', 'slack', 'github_issue'],
-        'targets': {
-            'email': ['team@example.com'],
-            'slack': 'https://hooks.slack.com/services/XXX/YYY/ZZZ',
-            'github': {
-                'repo': 'organization/repository',
-                'token': 'github_token',
-                'labels': ['regression', 'performance']
+        "enabled": True,
+        "methods": ["log", "email", "slack", "github_issue"],
+        "targets": {
+            "email": ["team@example.com"],
+            "slack": "https://hooks.slack.com/services/XXX/YYY/ZZZ",
+            "github": {
+                "repo": "organization/repository",
+                "token": "github_token",
+                "labels": ["regression", "performance"],
             },
-            'webhook': 'https://example.com/webhook'
-        }
+            "webhook": "https://example.com/webhook",
+        },
     }
 )
 ```
@@ -104,17 +104,17 @@ The first step in time-series tracking is recording performance results. Each re
 ```python
 # Record a performance result
 result_id = ts_perf.record_performance_result(
-    model_id=1,                # ID of the model in the database
-    hardware_id=2,             # ID of the hardware platform in the database
-    batch_size=16,             # Batch size used in the test
-    sequence_length=128,       # Sequence length or None
-    precision="fp16",          # Precision format used
-    throughput=1500.0,         # Throughput in items per second
-    latency=10.5,              # Latency in milliseconds
-    memory=2048.0,             # Memory usage in MB
-    power=150.0,               # Power consumption in watts
-    version_tag="v1.2.3",      # Optional version tag
-    run_group_id="nightly_run" # Optional group ID for related runs
+    model_id=1,  # ID of the model in the database
+    hardware_id=2,  # ID of the hardware platform in the database
+    batch_size=16,  # Batch size used in the test
+    sequence_length=128,  # Sequence length or None
+    precision="fp16",  # Precision format used
+    throughput=1500.0,  # Throughput in items per second
+    latency=10.5,  # Latency in milliseconds
+    memory=2048.0,  # Memory usage in MB
+    power=150.0,  # Power consumption in watts
+    version_tag="v1.2.3",  # Optional version tag
+    run_group_id="nightly_run",  # Optional group ID for related runs
 )
 
 print(f"Recorded performance result with ID: {result_id}")
@@ -137,17 +137,14 @@ baseline_id = ts_perf.set_baseline(
     batch_size=16,
     sequence_length=128,
     precision="fp16",
-    days_lookback=7,     # Number of days to look back for samples
-    min_samples=3        # Minimum number of samples required
+    days_lookback=7,  # Number of days to look back for samples
+    min_samples=3,  # Minimum number of samples required
 )
 
 print(f"Set baseline with ID: {baseline_id}")
 
 # Set baselines for all model-hardware-config combinations with enough samples
-baseline_results = ts_perf.set_all_baselines(
-    days_lookback=7,
-    min_samples=3
-)
+baseline_results = ts_perf.set_all_baselines(days_lookback=7, min_samples=3)
 
 print(f"Set {len([r for r in baseline_results if r['status'] == 'success'])} baselines")
 ```
@@ -161,16 +158,18 @@ Regression detection compares recent results against established baselines to id
 ```python
 # Detect regressions
 regressions = ts_perf.detect_regressions(
-    model_id=1,           # Optional: filter by model ID
-    hardware_id=2,        # Optional: filter by hardware ID
-    days_lookback=1       # Number of days to look back for results to compare
+    model_id=1,  # Optional: filter by model ID
+    hardware_id=2,  # Optional: filter by hardware ID
+    days_lookback=1,  # Number of days to look back for results to compare
 )
 
 if regressions:
     print(f"Detected {len(regressions)} regressions:")
     for reg in regressions:
-        print(f"  {reg['model_name']} on {reg['hardware_type']}: "
-              f"{reg['regression_type']} degraded by {reg['severity']:.2f}%")
+        print(
+            f"  {reg['model_name']} on {reg['hardware_type']}: "
+            f"{reg['regression_type']} degraded by {reg['severity']:.2f}%"
+        )
 else:
     print("No regressions detected")
 ```
@@ -189,19 +188,21 @@ Trend analysis examines performance metrics over time to identify patterns of im
 ```python
 # Analyze trends
 trends = ts_perf.analyze_trends(
-    model_id=1,            # Optional: filter by model ID
-    hardware_id=2,         # Optional: filter by hardware ID
-    metric="throughput",   # Metric to analyze: 'throughput', 'latency', 'memory', 'power'
-    days_lookback=30,      # Number of days to look back for analysis
-    min_samples=5          # Minimum number of samples required for analysis
+    model_id=1,  # Optional: filter by model ID
+    hardware_id=2,  # Optional: filter by hardware ID
+    metric="throughput",  # Metric to analyze: 'throughput', 'latency', 'memory', 'power'
+    days_lookback=30,  # Number of days to look back for analysis
+    min_samples=5,  # Minimum number of samples required for analysis
 )
 
 if trends:
     print(f"Analyzed {len(trends)} trends:")
     for trend in trends:
-        print(f"  {trend['model_name']} on {trend['hardware_type']}: "
-              f"{trend['metric']} {trend['trend_direction']} by {trend['trend_magnitude']:.2f}% "
-              f"(confidence: {trend['trend_confidence']:.2f})")
+        print(
+            f"  {trend['model_name']} on {trend['hardware_type']}: "
+            f"{trend['metric']} {trend['trend_direction']} by {trend['trend_magnitude']:.2f}% "
+            f"(confidence: {trend['trend_confidence']:.2f})"
+        )
 else:
     print("No significant trends detected")
 ```
@@ -219,11 +220,11 @@ The system can generate comprehensive performance reports in markdown or HTML fo
 ```python
 # Generate a performance report
 report_path = ts_perf.export_performance_report(
-    model_id=1,             # Optional: filter by model ID
-    hardware_id=2,          # Optional: filter by hardware ID
-    days_lookback=30,       # Number of days to include in the report
-    format="markdown",      # Report format: 'markdown' or 'html'
-    output_path="reports/performance_report.md"  # Output path for the report
+    model_id=1,  # Optional: filter by model ID
+    hardware_id=2,  # Optional: filter by hardware ID
+    days_lookback=30,  # Number of days to include in the report
+    format="markdown",  # Report format: 'markdown' or 'html'
+    output_path="reports/performance_report.md",  # Output path for the report
 )
 
 print(f"Generated report at: {report_path}")
@@ -246,7 +247,7 @@ viz_path = ts_perf.generate_trend_visualization(
     hardware_id=2,
     metric="throughput",
     days_lookback=30,
-    output_path="visualizations/throughput_trend.png"
+    output_path="visualizations/throughput_trend.png",
 )
 
 print(f"Generated visualization at: {viz_path}")

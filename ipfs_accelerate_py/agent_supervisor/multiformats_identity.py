@@ -41,15 +41,9 @@ from typing import Any, Final
 
 from ipfs_datasets_py.utils import cid_utils as _cid_utils
 
-MULTIFORMATS_IDENTITY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/multiformats-identity@1"
-)
-IDENTITY_LINK_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/multiformats-identity-link@1"
-)
-CID_PROFILE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/cid-profile@1"
-)
+MULTIFORMATS_IDENTITY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/multiformats-identity@1"
+IDENTITY_LINK_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/multiformats-identity-link@1"
+CID_PROFILE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/cid-profile@1"
 
 CID_VERSION: Final = 1
 CID_BASE: Final = "base32"
@@ -152,8 +146,7 @@ class CIDProfile:
         )
         if actual != expected:
             raise MultiformatsIdentityError(
-                "CID profile is frozen to "
-                "CIDv1/base32/dag-json+raw/sha2-256/32-byte digests"
+                "CID profile is frozen to CIDv1/base32/dag-json+raw/sha2-256/32-byte digests"
             )
 
     def to_dict(self) -> dict[str, Any]:
@@ -195,9 +188,7 @@ class IdentityLink:
 
     def __post_init__(self) -> None:
         if self.schema != IDENTITY_LINK_SCHEMA:
-            raise MultiformatsIdentityError(
-                "unsupported multiformats identity link schema"
-            )
+            raise MultiformatsIdentityError("unsupported multiformats identity link schema")
         try:
             IdentityKind(self.kind)
         except ValueError as exc:
@@ -207,9 +198,7 @@ class IdentityLink:
         if not isinstance(self.local_id, str) or not self.local_id:
             raise MultiformatsIdentityError("local_id must be a nonempty string")
         if self.codec not in ALLOWED_CODECS:
-            raise MultiformatsIdentityError(
-                f"codec must be one of {sorted(ALLOWED_CODECS)}"
-            )
+            raise MultiformatsIdentityError(f"codec must be one of {sorted(ALLOWED_CODECS)}")
         if (
             self.version != CID_VERSION
             or self.base != CID_BASE
@@ -225,9 +214,7 @@ class IdentityLink:
             )
         validated = validate_cid(self.cid, codecs=(self.codec,))
         if validated != self.cid:
-            raise MultiformatsIdentityError(
-                "identity link CID is not the validated canonical form"
-            )
+            raise MultiformatsIdentityError("identity link CID is not the validated canonical form")
         actual_digest = digest_hex_from_cid(self.cid, codecs=(self.codec,))
         if actual_digest != self.digest_hex:
             raise MultiformatsIdentityError(
@@ -303,16 +290,13 @@ def _validate_dag_json_value(
 
     if _is_temporal(value):
         raise MultiformatsIdentityError(
-            f"{path} must not contain timestamps in identity material: "
-            f"{type(value).__name__}"
+            f"{path} must not contain timestamps in identity material: {type(value).__name__}"
         )
     if value is None or type(value) in {str, bool, int}:
         return
     if type(value) is float:
         if not math.isfinite(value):
-            raise MultiformatsIdentityError(
-                f"{path} is not JSON compliant: non-finite number"
-            )
+            raise MultiformatsIdentityError(f"{path} is not JSON compliant: non-finite number")
         return
     if type(value) is list:
         for index, item in enumerate(value):
@@ -325,9 +309,7 @@ def _validate_dag_json_value(
     if type(value) is dict:
         for key, item in value.items():
             if type(key) is not str:
-                raise MultiformatsIdentityError(
-                    f"{path} contains a non-string DAG-JSON map key"
-                )
+                raise MultiformatsIdentityError(f"{path} contains a non-string DAG-JSON map key")
             if reject_temporal_keys and key.casefold() in _TEMPORAL_IDENTITY_KEYS:
                 raise MultiformatsIdentityError(
                     f"{path}.{key} introduces a timestamp into identity material"
@@ -369,21 +351,15 @@ def require_canonical_dag_json_bytes(data: bytes) -> bytes:
     """Accept only exact canonical (sorted-key, compact, finite) DAG-JSON bytes."""
 
     if type(data) is not bytes:
-        raise MultiformatsIdentityError(
-            "DAG-JSON identity input must be exact bytes"
-        )
+        raise MultiformatsIdentityError("DAG-JSON identity input must be exact bytes")
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise MultiformatsIdentityError(
-            "DAG-JSON bytes must be UTF-8"
-        ) from exc
+        raise MultiformatsIdentityError("DAG-JSON bytes must be UTF-8") from exc
     try:
         parsed = json.loads(text, parse_constant=_reject_json_constant)
     except json.JSONDecodeError as exc:
-        raise MultiformatsIdentityError(
-            "DAG-JSON bytes are not valid JSON"
-        ) from exc
+        raise MultiformatsIdentityError("DAG-JSON bytes are not valid JSON") from exc
     _validate_dag_json_value(parsed)
     # Reconstruct with the shared encoder — never default=repr.
     expected = _cid_utils.canonical_dag_json_bytes(parsed)
@@ -419,9 +395,7 @@ def _reject_ambiguous_raw_input(data: Any) -> bytes:
         raise MultiformatsIdentityError(
             "ambiguous raw/file input: read the file to bytes before hashing"
         )
-    raise MultiformatsIdentityError(
-        f"raw CID input must be exact bytes; got {type(data).__name__}"
-    )
+    raise MultiformatsIdentityError(f"raw CID input must be exact bytes; got {type(data).__name__}")
 
 
 def cid_for_bytes(
@@ -473,9 +447,7 @@ def cid_for_dag_json(
         version=version,
     )
     # Cross-check against the package helper and an independent multiformats build.
-    package_cid = _cid_utils.cid_for_dag_json(
-        obj, base=base, mh_type=mh_type, version=version
-    )
+    package_cid = _cid_utils.cid_for_dag_json(obj, base=base, mh_type=mh_type, version=version)
     if package_cid != cid:
         raise MultiformatsIdentityError(
             "cross-package codec drift: cid_utils dag-json CID mismatch"
@@ -498,9 +470,7 @@ def validate_cid(
     if value != value.lower():
         raise MultiformatsIdentityError("CID must be canonical lowercase form")
     if mh_type != MH_TYPE or version != CID_VERSION or base != CID_BASE:
-        raise MultiformatsIdentityError(
-            "only CIDv1/base32/sha2-256 validation is supported"
-        )
+        raise MultiformatsIdentityError("only CIDv1/base32/sha2-256 validation is supported")
     allowed = tuple(codecs)
     if not allowed or any(item not in ALLOWED_CODECS for item in allowed):
         raise MultiformatsIdentityError(
@@ -508,9 +478,7 @@ def validate_cid(
         )
     # Reject obvious truncated / pseudo forms before multiformats decode.
     if len(value) < 16 or not value.startswith("b"):
-        raise MultiformatsIdentityError(
-            "CID is truncated or not canonical lowercase base32 CIDv1"
-        )
+        raise MultiformatsIdentityError("CID is truncated or not canonical lowercase base32 CIDv1")
     try:
         canonical = _cid_utils.validate_cid(
             value,
@@ -575,9 +543,7 @@ def _cross_check_cid_for_bytes(data: bytes, cid: str, *, codec: str) -> str:
         raise MultiformatsIdentityError(
             "multiformats package is required for independent CID construction"
         ) from exc
-    independent = str(
-        CID(CID_BASE, CID_VERSION, codec, multihash.digest(data, MH_TYPE))
-    )
+    independent = str(CID(CID_BASE, CID_VERSION, codec, multihash.digest(data, MH_TYPE)))
     if independent != validated:
         raise MultiformatsIdentityError(
             "cross-package codec drift: multiformats CID disagrees with cid_utils"
@@ -626,9 +592,7 @@ def cid_from_sha256_digest(
         if text.startswith(PAYLOAD_DIGEST_PREFIX):
             text = text[len(PAYLOAD_DIGEST_PREFIX) :]
         if not _SHA256_HEX_RE.fullmatch(text):
-            raise MultiformatsIdentityError(
-                "sha2-256 digest must be 64 lowercase hex characters"
-            )
+            raise MultiformatsIdentityError("sha2-256 digest must be 64 lowercase hex characters")
         digest_bytes = bytes.fromhex(text)
     elif type(digest) is bytes:
         digest_bytes = digest
@@ -637,15 +601,11 @@ def cid_from_sha256_digest(
             "digest must be bytes or hex string; refusing ambiguous input"
         )
     if len(digest_bytes) != DIGEST_SIZE:
-        raise MultiformatsIdentityError(
-            f"sha2-256 digest must be exactly {DIGEST_SIZE} bytes"
-        )
+        raise MultiformatsIdentityError(f"sha2-256 digest must be exactly {DIGEST_SIZE} bytes")
     try:
         from multiformats import CID, multihash
     except ImportError as exc:  # pragma: no cover
-        raise MultiformatsIdentityError(
-            "multiformats package is required to wrap digests"
-        ) from exc
+        raise MultiformatsIdentityError("multiformats package is required to wrap digests") from exc
     # multihash.wrap embeds the digest; multihash.digest would hash it again.
     wrapped = multihash.wrap(digest_bytes, MH_TYPE)
     double_hashed = multihash.digest(digest_bytes, MH_TYPE)
@@ -657,9 +617,7 @@ def cid_from_sha256_digest(
     # The raw digest inside the wrapped multihash must be the caller's digest,
     # not a re-hash of it.
     if digest_hex_from_cid(probe, codecs=(codec,)) != digest_bytes.hex():
-        raise MultiformatsIdentityError(
-            "malformed multihash: wrapped digest does not round-trip"
-        )
+        raise MultiformatsIdentityError("malformed multihash: wrapped digest does not round-trip")
     return validate_cid(probe, codecs=(codec,))
 
 
@@ -677,18 +635,14 @@ def reject_double_hashed_multihash(data: bytes, claimed_cid: str) -> None:
         raise MultiformatsIdentityError(
             "double hashing rejected: CID addresses sha256(payload) as raw bytes"
         )
-    raise MultiformatsIdentityError(
-        "claimed CID does not match payload under the frozen profile"
-    )
+    raise MultiformatsIdentityError("claimed CID does not match payload under the frozen profile")
 
 
 def parse_runtime_artifact_id(artifact_id: str) -> str:
     """Return the 64-hex digest from a ``runtime-artifact:sha256:…`` ID."""
 
     if not isinstance(artifact_id, str) or not artifact_id:
-        raise MultiformatsIdentityError(
-            "runtime artifact id must be a nonempty string"
-        )
+        raise MultiformatsIdentityError("runtime artifact id must be a nonempty string")
     if not artifact_id.startswith(RUNTIME_ARTIFACT_PREFIX):
         raise MultiformatsIdentityError(
             "runtime artifact id must use the runtime-artifact:sha256: prefix"
@@ -699,9 +653,7 @@ def parse_runtime_artifact_id(artifact_id: str) -> str:
             "runtime artifact id digest must be 64 lowercase hex characters"
         )
     if artifact_id[len(RUNTIME_ARTIFACT_PREFIX) :] != digest_hex:
-        raise MultiformatsIdentityError(
-            "runtime artifact id digest must be lowercase hex"
-        )
+        raise MultiformatsIdentityError("runtime artifact id digest must be lowercase hex")
     return digest_hex
 
 
@@ -711,14 +663,10 @@ def parse_payload_digest(payload_digest: str) -> str:
     if not isinstance(payload_digest, str) or not payload_digest:
         raise MultiformatsIdentityError("payload digest must be a nonempty string")
     if not payload_digest.startswith(PAYLOAD_DIGEST_PREFIX):
-        raise MultiformatsIdentityError(
-            "payload digest must use the sha256: prefix"
-        )
+        raise MultiformatsIdentityError("payload digest must use the sha256: prefix")
     digest_hex = payload_digest[len(PAYLOAD_DIGEST_PREFIX) :].lower()
     if not _SHA256_HEX_RE.fullmatch(digest_hex):
-        raise MultiformatsIdentityError(
-            "payload digest must be 64 lowercase hex characters"
-        )
+        raise MultiformatsIdentityError("payload digest must be 64 lowercase hex characters")
     if payload_digest[len(PAYLOAD_DIGEST_PREFIX) :] != digest_hex:
         raise MultiformatsIdentityError("payload digest must be lowercase hex")
     return digest_hex
@@ -832,9 +780,7 @@ def link_runtime_artifact(
     if payload_digest is not None:
         pd = parse_payload_digest(payload_digest)
         if pd != digest_hex:
-            raise MultiformatsIdentityError(
-                "payload_digest does not match runtime artifact id"
-            )
+            raise MultiformatsIdentityError("payload_digest does not match runtime artifact id")
 
     if payload_bytes is not None:
         raw = _reject_ambiguous_raw_input(payload_bytes)
@@ -861,9 +807,7 @@ def link_runtime_artifact(
         codec=codec,
     )
     if link.digest_hex != digest_hex:
-        raise MultiformatsIdentityError(
-            "runtime artifact digest disagrees with CID multihash"
-        )
+        raise MultiformatsIdentityError("runtime artifact digest disagrees with CID multihash")
     # Never rewrite the persisted artifact id into the CID field.
     if link.local_id == link.cid:
         raise MultiformatsIdentityError(
@@ -889,9 +833,7 @@ def link_payload_digest(
         codec=codec,
     )
     if link.local_id == link.cid:
-        raise MultiformatsIdentityError(
-            "payload digest local_id must remain distinct from the CID"
-        )
+        raise MultiformatsIdentityError("payload digest local_id must remain distinct from the CID")
     return link
 
 
@@ -949,9 +891,7 @@ def independent_round_trip_cid(
     )
     from multiformats import CID, multihash
 
-    via_multi = str(
-        CID(CID_BASE, CID_VERSION, codec, multihash.digest(payload, MH_TYPE))
-    )
+    via_multi = str(CID(CID_BASE, CID_VERSION, codec, multihash.digest(payload, MH_TYPE)))
     if via_utils != via_multi:
         raise MultiformatsIdentityError(
             "independent round trip failed: cid_utils and multiformats disagree"
@@ -966,15 +906,11 @@ def independent_round_trip_dag_json(obj: Any) -> str:
     parsed = json.loads(encoded.decode("utf-8"))
     reencoded = canonical_dag_json_bytes(parsed)
     if reencoded != encoded:
-        raise MultiformatsIdentityError(
-            "independent DAG-JSON round trip changed canonical bytes"
-        )
+        raise MultiformatsIdentityError("independent DAG-JSON round trip changed canonical bytes")
     cid = independent_round_trip_cid(encoded, codec="dag-json")
     via_helper = cid_for_dag_json(obj)
     if cid != via_helper:
-        raise MultiformatsIdentityError(
-            "independent DAG-JSON round trip CID mismatch"
-        )
+        raise MultiformatsIdentityError("independent DAG-JSON round trip CID mismatch")
     return cid
 
 

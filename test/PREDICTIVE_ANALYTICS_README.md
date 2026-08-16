@@ -51,16 +51,10 @@ The Predictive Analytics System integrates directly with the API Distributed Tes
 from api_predictive_analytics import TimeSeriesPredictor, AnomalyPredictor
 
 # Initialize the coordinator with predictive analytics
-coordinator = APICoordinatorServer(
-    enable_predictive_analytics=True
-)
+coordinator = APICoordinatorServer(enable_predictive_analytics=True)
 
 # Get predictions programmatically
-predictions = coordinator.get_predictions(
-    provider="openai",
-    metric="latency",
-    forecast_days=7
-)
+predictions = coordinator.get_predictions(provider="openai", metric="latency", forecast_days=7)
 ```
 
 ## Usage Examples
@@ -72,19 +66,10 @@ predictions = coordinator.get_predictions(
 predictor = TimeSeriesPredictor()
 
 # Add historical data
-predictor.add_data_points(
-    provider="openai",
-    metric="latency",
-    timestamps=[...],
-    values=[...]
-)
+predictor.add_data_points(provider="openai", metric="latency", timestamps=[...], values=[...])
 
 # Generate forecast
-forecast = predictor.predict_timeseries(
-    provider="openai",
-    metric="latency",
-    forecast_days=7
-)
+forecast = predictor.predict_timeseries(provider="openai", metric="latency", forecast_days=7)
 
 # Access forecast results
 predicted_values = forecast["predicted_values"]
@@ -99,16 +84,10 @@ trend = forecast["trend"]  # 'increasing', 'decreasing', or 'stable'
 anomaly_predictor = AnomalyPredictor()
 
 # Add historical anomaly data
-anomaly_predictor.add_anomaly_data(
-    provider="openai",
-    anomalies=[...]
-)
+anomaly_predictor.add_anomaly_data(provider="openai", anomalies=[...])
 
 # Predict future anomalies
-predictions = anomaly_predictor.predict_anomalies(
-    provider="openai",
-    forecast_days=7
-)
+predictions = anomaly_predictor.predict_anomalies(provider="openai", forecast_days=7)
 
 # Access prediction results
 anomaly_risk = predictions["risk_score"]
@@ -120,10 +99,7 @@ confidence = predictions["confidence"]
 
 ```python
 # Generate cost optimization recommendations
-recommendations = predictor.generate_recommendations(
-    provider="openai",
-    metric="cost_efficiency"
-)
+recommendations = predictor.generate_recommendations(provider="openai", metric="cost_efficiency")
 
 # Access recommendations
 for recommendation in recommendations:
@@ -150,15 +126,17 @@ You can register custom prediction models:
 ```python
 from api_predictive_analytics import TimeSeriesPredictor, PredictionModel
 
+
 # Define custom model
 class MyCustomModel(PredictionModel):
     def train(self, data):
         # Custom training logic
         pass
-        
+
     def predict(self, forecast_horizon):
         # Custom prediction logic
         return predictions
+
 
 # Register custom model
 predictor = TimeSeriesPredictor()
@@ -166,9 +144,7 @@ predictor.register_model("my_custom_model", MyCustomModel())
 
 # Use custom model
 forecast = predictor.predict_timeseries(
-    provider="openai",
-    metric="latency",
-    model="my_custom_model"
+    provider="openai", metric="latency", model="my_custom_model"
 )
 ```
 
@@ -179,10 +155,7 @@ The system can evaluate prediction accuracy:
 ```python
 # Evaluate prediction accuracy
 evaluation = predictor.evaluate_predictions(
-    provider="openai",
-    metric="latency",
-    actual_values=[...],
-    predicted_values=[...]
+    provider="openai", metric="latency", actual_values=[...], predicted_values=[...]
 )
 
 # Access evaluation metrics

@@ -13,12 +13,14 @@ from typing import Any, Dict
 
 def register_tools(mcp: Any) -> None:
     import warnings
+
     warnings.warn(
         "ipfs_accelerate_py.mcp.tools.manifest.register_tools is deprecated. "
         "Use ipfs_accelerate_py.mcp_server.tools.monitoring_tools instead.",
         DeprecationWarning,
         stacklevel=2,
     )
+
     @mcp.tool()
     def get_mcp_manifest(include_schemas: bool = True) -> Dict[str, Any]:
         """Return a JSON-friendly list of registered MCP tools/resources/prompts."""

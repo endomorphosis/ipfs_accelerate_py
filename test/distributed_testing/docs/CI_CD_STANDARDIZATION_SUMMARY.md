@@ -16,37 +16,39 @@ class CIProviderInterface(abc.ABC):
     async def initialize(self, config: Dict[str, Any]) -> bool:
         """Initialize the CI provider with configuration."""
         pass
-    
+
     @abc.abstractmethod
     async def create_test_run(self, test_run_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new test run in the CI system."""
         pass
-    
+
     @abc.abstractmethod
     async def update_test_run(self, test_run_id: str, update_data: Dict[str, Any]) -> bool:
         """Update a test run in the CI system."""
         pass
-    
+
     @abc.abstractmethod
     async def add_pr_comment(self, pr_number: str, comment: str) -> bool:
         """Add a comment to a pull request."""
         pass
-    
+
     @abc.abstractmethod
-    async def upload_artifact(self, test_run_id: str, artifact_path: str, artifact_name: str) -> bool:
+    async def upload_artifact(
+        self, test_run_id: str, artifact_path: str, artifact_name: str
+    ) -> bool:
         """Upload an artifact for a test run."""
         pass
-    
+
     @abc.abstractmethod
     async def get_test_run_status(self, test_run_id: str) -> Dict[str, Any]:
         """Get the status of a test run."""
         pass
-    
+
     @abc.abstractmethod
     async def set_build_status(self, status: str, description: str) -> bool:
         """Set the build status in the CI system."""
         pass
-    
+
     @abc.abstractmethod
     async def close(self) -> None:
         """Close the CI provider and clean up resources."""
@@ -68,7 +70,7 @@ class TestRunResult:
         failed_tests: int,
         skipped_tests: int,
         duration_seconds: float,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         """Initialize a test run result."""
         # ...implementation details...
@@ -81,14 +83,16 @@ We've implemented a factory pattern with the `CIProviderFactory` class to simpli
 ```python
 class CIProviderFactory:
     _providers = {}
-    
+
     @classmethod
     def register_provider(cls, provider_type: str, provider_class: type) -> None:
         """Register a CI provider class."""
         cls._providers[provider_type] = provider_class
-    
+
     @classmethod
-    async def create_provider(cls, provider_type: str, config: Dict[str, Any]) -> CIProviderInterface:
+    async def create_provider(
+        cls, provider_type: str, config: Dict[str, Any]
+    ) -> CIProviderInterface:
         """Create a CI provider instance."""
         # ...implementation details...
 ```

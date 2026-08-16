@@ -131,31 +131,24 @@ def test_delta_transmits_changes_and_preserves_required_coverage() -> None:
     )
 
     assert result.delta_capsule.is_delta
-    assert ContextDeltaCapsule.from_json(
-        result.delta_capsule.to_json()
-    ) == result.delta_capsule
+    assert ContextDeltaCapsule.from_json(result.delta_capsule.to_json()) == result.delta_capsule
     assert result.delta_capsule.parent_capsule_id == parent.capsule_id
-    assert tuple(
-        item.reference_id for item in result.delta_capsule.evidence
-    ) == ("diagnostic",)
-    assert {
-        item.reference_id for item in result.reconstructed_capsule.evidence
-    } == {"required", "diagnostic"}
+    assert tuple(item.reference_id for item in result.delta_capsule.evidence) == ("diagnostic",)
+    assert {item.reference_id for item in result.reconstructed_capsule.evidence} == {
+        "required",
+        "diagnostic",
+    }
     assert result.receipt.delta_tokens < result.receipt.full_replay_tokens
     assert result.receipt.delta_tokens == compiler.estimator.estimate(
         result.delta_capsule.to_record()
     )
     assert result.receipt.full_replay_tokens == max(
         result.reconstructed_capsule.input_tokens,
-        compiler.estimator.estimate(
-            result.reconstructed_capsule.provider_input_payload
-        ),
+        compiler.estimator.estimate(result.reconstructed_capsule.provider_input_payload),
     )
     assert result.receipt.evidence is not None
     assert result.receipt.evidence.requirement_id == DELTA_RETRY_EVIDENCE_ID
-    assert result.receipt.evidence_claim_references == (
-        DELTA_RETRY_EVIDENCE_ID,
-    )
+    assert result.receipt.evidence_claim_references == (DELTA_RETRY_EVIDENCE_ID,)
     assert set(result.receipt.evidence.required_coverage_ids).issubset(
         result.receipt.evidence.reconstructed_coverage_ids
     )
@@ -174,12 +167,13 @@ def test_delta_receipt_and_witness_round_trip_and_reject_forged_claims() -> None
         ),
     )
 
-    assert ContextDeltaReceipt.from_json(
-        result.receipt.to_json()
-    ) == result.receipt
-    assert DeltaRetryContextEvidence.from_json(
-        result.receipt.evidence.to_json()  # type: ignore[union-attr]
-    ) == result.receipt.evidence
+    assert ContextDeltaReceipt.from_json(result.receipt.to_json()) == result.receipt
+    assert (
+        DeltaRetryContextEvidence.from_json(
+            result.receipt.evidence.to_json()  # type: ignore[union-attr]
+        )
+        == result.receipt.evidence
+    )
 
     forged = result.receipt.to_record()
     forged["delta_tokens"] += 1
@@ -280,18 +274,14 @@ def test_requested_expansion_is_parent_bound_and_deterministic() -> None:
     result = expand_context(compiler, parent, (smaller,))
 
     assert result.delta_capsule.parent_capsule_id == parent.capsule_id
-    decision = {
-        item.reference_id: item for item in result.decisions
-    }["large"]
+    decision = {item.reference_id: item for item in result.decisions}["large"]
     assert decision.reason in {
         InclusionReason.CHANGED,
         InclusionReason.REQUESTED,
     }
     rebuilt = reconstruct_context(parent, result.delta_capsule)
     assert rebuilt == result.reconstructed_capsule
-    assert {
-        item.reference_id for item in rebuilt.evidence
-    } == {"required", "large"}
+    assert {item.reference_id for item in rebuilt.evidence} == {"required", "large"}
     assert not rebuilt.truncated
     assert rebuilt.omissions == ()
 
@@ -417,9 +407,7 @@ def test_delta_rejects_requiredness_downgrade_and_full_context_overflow() -> Non
     tight = ContextCompiler(tight_budget, tokenizer=_tokenizer)
     base_only = tight.compile(**BINDING, **CORE).capsule.input_tokens
     base_required = _reference("required", "required", 1, required=True)
-    tight_parent = tight.compile(
-        **BINDING, **CORE, evidence=(base_required,)
-    ).capsule
+    tight_parent = tight.compile(**BINDING, **CORE, evidence=(base_required,)).capsule
     overflowing = _reference(
         "new-required",
         "new-required",
@@ -450,13 +438,10 @@ def test_reconstruction_preserves_expansion_handles_and_rejects_token_forgery() 
     )
 
     assert tuple(
-        item.reference_id
-        for item in result.reconstructed_capsule.expansion_references
+        item.reference_id for item in result.reconstructed_capsule.expansion_references
     ) == ("still-deferred",)
     assert result.reconstructed_capsule.truncated
-    assert result.reconstructed_capsule.omissions == (
-        "still-deferred:token_budget",
-    )
+    assert result.reconstructed_capsule.omissions == ("still-deferred:token_budget",)
     forged = replace(
         result.delta_capsule,
         reconstructed_input_tokens=sum(
@@ -488,14 +473,10 @@ def test_reconstruction_preserves_colon_reference_omission_reason() -> None:
 
     result = compiler.compile_delta(
         parent,
-        evidence=(
-            replace(required, referenced_content_id="sha256:changed"),
-        ),
+        evidence=(replace(required, referenced_content_id="sha256:changed"),),
     )
 
-    assert result.reconstructed_capsule.omissions == (
-        "evidence:still-deferred:item_limit",
-    )
+    assert result.reconstructed_capsule.omissions == ("evidence:still-deferred:item_limit",)
 
 
 def test_new_required_candidate_is_included_in_witness_coverage() -> None:
@@ -517,9 +498,7 @@ def test_new_required_candidate_is_included_in_witness_coverage() -> None:
 def test_delta_must_be_smaller_than_full_replay() -> None:
     compiler = ContextCompiler(
         _budget(),
-        tokenizer=lambda text: (
-            100 if "context-delta-capsule@1" in text else 1
-        ),
+        tokenizer=lambda text: 100 if "context-delta-capsule@1" in text else 1,
     )
     required = _reference("required", "old", 1, required=True)
     parent = compiler.compile(
@@ -571,9 +550,7 @@ def test_content_addressed_expansion_resolves_exact_bytes_and_fails_closed() -> 
         **CORE,
         evidence=(required, candidate),
     ).capsule
-    assert tuple(
-        item.reference_id for item in parent.expansion_references
-    ) == ("expand-me",)
+    assert tuple(item.reference_id for item in parent.expansion_references) == ("expand-me",)
 
     result = expand_context_references(
         compiler,
@@ -584,24 +561,18 @@ def test_content_addressed_expansion_resolves_exact_bytes_and_fails_closed() -> 
         tree_id=parent.tree_id,
     )
 
-    assert reconstruct_context(parent, result.delta_capsule) == (
-        result.reconstructed_capsule
-    )
-    expanded = {
-        item.reference_id: item for item in result.reconstructed_capsule.evidence
-    }["expand-me"]
+    assert reconstruct_context(parent, result.delta_capsule) == (result.reconstructed_capsule)
+    expanded = {item.reference_id: item for item in result.reconstructed_capsule.evidence}[
+        "expand-me"
+    ]
     assert expanded.summary == body
     assert expanded.referenced_content_id == target
 
     with pytest.raises(MissingContextReferenceError, match="not present"):
-        expand_context_references(
-            compiler, parent, ("absent",), store
-        )
+        expand_context_references(compiler, parent, ("absent",), store)
     empty_store = ContentAddressedContextStore()
     with pytest.raises(MissingContextReferenceError, match="unavailable"):
-        expand_context_references(
-            compiler, parent, ("expand-me",), empty_store
-        )
+        expand_context_references(compiler, parent, ("expand-me",), empty_store)
     with pytest.raises(ChangedTreeContextError, match="tree changed"):
         expand_context_references(
             compiler,
@@ -638,25 +609,16 @@ def test_semantic_retry_capsule_carries_only_delta_repair_context() -> None:
         max_repair_rounds=3,
     )
 
-    assert RetryContextCapsule.from_json(
-        result.capsule.to_json()
-    ) == result.capsule
-    assert reconstruct_context(
-        parent, result.capsule.delta_capsule
-    ) == result.reconstructed_capsule
+    assert RetryContextCapsule.from_json(result.capsule.to_json()) == result.capsule
+    assert reconstruct_context(parent, result.capsule.delta_capsule) == result.reconstructed_capsule
     wire = render_retry_context(result.capsule)
     assert result.capsule.prior_decision_id == "decision:previous"
     assert result.capsule.diagnostic_receipt_id == "diagnostic:stable"
     assert result.capsule.changed_files == ("src/context.py",)
-    assert result.capsule.changed_symbols == (
-        "ContextCompiler.compile_delta",
-    )
-    assert result.capsule.unresolved_requirement_ids == (
-        "requirement:coverage",
-    )
+    assert result.capsule.changed_symbols == ("ContextCompiler.compile_delta",)
+    assert result.capsule.unresolved_requirement_ids == ("requirement:coverage",)
     assert all(
-        field not in wire
-        for field in ('"goal":', '"authority":', '"scope":', '"acceptance":')
+        field not in wire for field in ('"goal":', '"authority":', '"scope":', '"acceptance":')
     )
 
     with pytest.raises(ChangedTreeContextError, match="invalidated"):
@@ -682,19 +644,12 @@ def test_paired_semantic_retries_reduce_median_tokens_by_at_least_35_percent() -
             **CORE,
             "goal": {
                 "id": "ASI-G092",
-                "summary": ("invariant implementation objective " * 160)
-                + str(index),
+                "summary": ("invariant implementation objective " * 160) + str(index),
             },
         }
-        required = _reference(
-            f"required-{index}", f"required-{index}", 25, required=True
-        )
-        parent = compiler.compile(
-            **BINDING, **core, evidence=(required,)
-        ).capsule
-        failure = _reference(
-            f"failure-{index}", f"failure-{index}", 5
-        )
+        required = _reference(f"required-{index}", f"required-{index}", 25, required=True)
+        parent = compiler.compile(**BINDING, **core, evidence=(required,)).capsule
+        failure = _reference(f"failure-{index}", f"failure-{index}", 5)
         result = compile_retry_context(
             compiler,
             parent,
@@ -704,9 +659,7 @@ def test_paired_semantic_retries_reduce_median_tokens_by_at_least_35_percent() -
             failure_evidence_ids=(failure.reference_id,),
             unresolved_requirement_ids=(f"coverage:{required.reference_id}",),
         )
-        retry_tokens.append(
-            compiler.estimator.estimate(result.capsule.to_record())
-        )
+        retry_tokens.append(compiler.estimator.estimate(result.capsule.to_record()))
         replay_tokens.append(result.receipt.full_replay_tokens)
         assert set(parent.evidence_coverage_ids).issubset(
             result.reconstructed_capsule.evidence_coverage_ids
@@ -806,10 +759,13 @@ def test_implementation_daemon_dispatches_delta_and_reuses_diagnostic(
     assert "Retry evidence remains complete." in full_prompt
     assert "Retry evidence remains complete." not in retry_prompt
     assert restarted._last_implementation_retry is not None
-    assert reconstruct_context(
-        restarted._last_implementation_retry.delta_result.parent_capsule,
-        restarted._last_implementation_retry.capsule.delta_capsule,
-    ) == restarted._last_implementation_retry.reconstructed_capsule
+    assert (
+        reconstruct_context(
+            restarted._last_implementation_retry.delta_result.parent_capsule,
+            restarted._last_implementation_retry.capsule.delta_capsule,
+        )
+        == restarted._last_implementation_retry.reconstructed_capsule
+    )
 
     repeated = restarted.record_implementation_failure_context(
         task,
@@ -839,8 +795,5 @@ def test_delta_result_exposes_exact_invariant_core_preservation() -> None:
     )
 
     assert result.invariant_core_preserved
-    assert (
-        result.parent_capsule.invariant_core_id
-        == result.reconstructed_capsule.invariant_core_id
-    )
+    assert result.parent_capsule.invariant_core_id == result.reconstructed_capsule.invariant_core_id
     assert result.reconstructed_capsule.invariant_core == parent.invariant_core

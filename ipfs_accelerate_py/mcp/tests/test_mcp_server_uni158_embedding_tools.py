@@ -64,7 +64,9 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
             self.assertEqual(invalid_texts.get("status"), "error")
             self.assertIn("non-empty strings", str(invalid_texts.get("error", "")))
 
-            with patch.dict(native_embedding_tools._API, {"generate_embeddings": _minimal}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API, {"generate_embeddings": _minimal}, clear=False
+            ):
                 result = await native_embedding_tools.generate_embeddings(
                     texts=["hello", "world"],
                     model_name="all-MiniLM",
@@ -75,12 +77,18 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 self.assertEqual(result.get("count"), 2)
                 self.assertEqual(result.get("dimension"), 0)
 
-            with patch.dict(native_embedding_tools._API, {"generate_embeddings": _boom}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API, {"generate_embeddings": _boom}, clear=False
+            ):
                 result = await native_embedding_tools.generate_embeddings(texts=["hello"])
                 self.assertEqual(result.get("status"), "error")
                 self.assertIn("generate_embeddings failed", str(result.get("error", "")))
 
-            with patch.dict(native_embedding_tools._API, {"generate_embeddings": _contradictory_failure}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API,
+                {"generate_embeddings": _contradictory_failure},
+                clear=False,
+            ):
                 result = await native_embedding_tools.generate_embeddings(texts=["hello"])
                 self.assertEqual(result.get("status"), "error")
                 self.assertEqual(result.get("error"), "embedding upstream failed")
@@ -99,17 +107,25 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
             self.assertEqual(invalid_text.get("status"), "error")
             self.assertIn("text must be a non-empty string", str(invalid_text.get("error", "")))
 
-            invalid_batch = await native_embedding_tools.generate_embedding(text="hello", batch_size=0)
+            invalid_batch = await native_embedding_tools.generate_embedding(
+                text="hello", batch_size=0
+            )
             self.assertEqual(invalid_batch.get("status"), "error")
-            self.assertIn("batch_size must be a positive integer", str(invalid_batch.get("error", "")))
+            self.assertIn(
+                "batch_size must be a positive integer", str(invalid_batch.get("error", ""))
+            )
 
-            with patch.dict(native_embedding_tools._API, {"generate_embedding": _minimal}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API, {"generate_embedding": _minimal}, clear=False
+            ):
                 result = await native_embedding_tools.generate_embedding(text="hello", batch_size=8)
                 self.assertEqual(result.get("status"), "success")
                 self.assertEqual(result.get("batch_size"), 8)
                 self.assertEqual(result.get("embedding"), [])
 
-            with patch.dict(native_embedding_tools._API, {"generate_embedding": _boom}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API, {"generate_embedding": _boom}, clear=False
+            ):
                 failed = await native_embedding_tools.generate_embedding(text="hello")
                 self.assertEqual(failed.get("status"), "error")
                 self.assertIn("generate_embedding failed", str(failed.get("error", "")))
@@ -124,9 +140,13 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
             return {"status": "success"}
 
         async def _run() -> None:
-            invalid_path = await native_embedding_tools.generate_embeddings_from_file(file_path="  ")
+            invalid_path = await native_embedding_tools.generate_embeddings_from_file(
+                file_path="  "
+            )
             self.assertEqual(invalid_path.get("status"), "error")
-            self.assertIn("file_path must be a non-empty string", str(invalid_path.get("error", "")))
+            self.assertIn(
+                "file_path must be a non-empty string", str(invalid_path.get("error", ""))
+            )
 
             invalid_format = await native_embedding_tools.generate_embeddings_from_file(
                 file_path="input.txt",
@@ -135,7 +155,11 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
             self.assertEqual(invalid_format.get("status"), "error")
             self.assertIn("output_format must be one of", str(invalid_format.get("error", "")))
 
-            with patch.dict(native_embedding_tools._API, {"generate_embeddings_from_file": _minimal}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API,
+                {"generate_embeddings_from_file": _minimal},
+                clear=False,
+            ):
                 result = await native_embedding_tools.generate_embeddings_from_file(
                     file_path="input.txt",
                     output_format="json",
@@ -146,8 +170,12 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 self.assertEqual(result.get("batch_size"), 16)
                 self.assertEqual(result.get("embeddings"), [])
 
-            with patch.dict(native_embedding_tools._API, {"generate_embeddings_from_file": _boom}, clear=False):
-                failed = await native_embedding_tools.generate_embeddings_from_file(file_path="input.txt")
+            with patch.dict(
+                native_embedding_tools._API, {"generate_embeddings_from_file": _boom}, clear=False
+            ):
+                failed = await native_embedding_tools.generate_embeddings_from_file(
+                    file_path="input.txt"
+                )
                 self.assertEqual(failed.get("status"), "error")
                 self.assertIn("generate_embeddings_from_file failed", str(failed.get("error", "")))
 
@@ -179,7 +207,9 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
             self.assertEqual(invalid_top_k.get("status"), "error")
             self.assertIn("top_k must be between 1 and 1000", str(invalid_top_k.get("error", "")))
 
-            with patch.dict(native_embedding_tools._API, {"semantic_search": _minimal}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API, {"semantic_search": _minimal}, clear=False
+            ):
                 result = await native_embedding_tools.semantic_search(
                     query="hello",
                     vector_store_id="vs-1",
@@ -200,7 +230,11 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 self.assertEqual(failed.get("status"), "error")
                 self.assertIn("semantic_search failed", str(failed.get("error", "")))
 
-            with patch.dict(native_embedding_tools._API, {"semantic_search": _contradictory_failure}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API,
+                {"semantic_search": _contradictory_failure},
+                clear=False,
+            ):
                 failed = await native_embedding_tools.semantic_search(
                     query="hello",
                     vector_store_id="vs-1",
@@ -279,7 +313,9 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
             self.assertEqual(invalid_method.get("status"), "error")
             self.assertIn("search_method must be one of", str(invalid_method.get("error", "")))
 
-            with patch.dict(native_embedding_tools._API, {"search_with_filters": _minimal}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API, {"search_with_filters": _minimal}, clear=False
+            ):
                 result = await native_embedding_tools.search_with_filters(
                     query="hello",
                     vector_store_id="vs-1",
@@ -290,7 +326,9 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 self.assertEqual(result.get("vector_store_id"), "vs-1")
                 self.assertEqual(result.get("results"), [])
 
-            with patch.dict(native_embedding_tools._API, {"search_with_filters": _boom}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API, {"search_with_filters": _boom}, clear=False
+            ):
                 failed = await native_embedding_tools.search_with_filters(
                     query="hello",
                     vector_store_id="vs-1",
@@ -313,7 +351,9 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 vector_store_id="vs-1",
             )
             self.assertEqual(invalid_inputs.get("status"), "error")
-            self.assertIn("either query or image_query must be provided", str(invalid_inputs.get("error", "")))
+            self.assertIn(
+                "either query or image_query must be provided", str(invalid_inputs.get("error", ""))
+            )
 
             invalid_weights = await native_embedding_tools.multi_modal_search(
                 query="hello",
@@ -321,9 +361,13 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 modality_weights="bad",  # type: ignore[arg-type]
             )
             self.assertEqual(invalid_weights.get("status"), "error")
-            self.assertIn("modality_weights must be an object", str(invalid_weights.get("error", "")))
+            self.assertIn(
+                "modality_weights must be an object", str(invalid_weights.get("error", ""))
+            )
 
-            with patch.dict(native_embedding_tools._API, {"multi_modal_search": _minimal}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API, {"multi_modal_search": _minimal}, clear=False
+            ):
                 result = await native_embedding_tools.multi_modal_search(
                     query="hello",
                     vector_store_id="vs-1",
@@ -333,7 +377,9 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 self.assertEqual(result.get("vector_store_id"), "vs-1")
                 self.assertEqual(result.get("results"), [])
 
-            with patch.dict(native_embedding_tools._API, {"multi_modal_search": _boom}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API, {"multi_modal_search": _boom}, clear=False
+            ):
                 failed = await native_embedding_tools.multi_modal_search(
                     query="hello",
                     vector_store_id="vs-1",
@@ -358,7 +404,9 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 shard_count=0,
             )
             self.assertEqual(invalid_shard_count.get("status"), "error")
-            self.assertIn("shard_count must be a positive integer", str(invalid_shard_count.get("error", "")))
+            self.assertIn(
+                "shard_count must be a positive integer", str(invalid_shard_count.get("error", ""))
+            )
 
         anyio.run(_run)
 
@@ -373,7 +421,9 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 context_length="bad",  # type: ignore[arg-type]
             )
             self.assertEqual(invalid_context.get("status"), "error")
-            self.assertIn("context_length must be an integer", str(invalid_context.get("error", "")))
+            self.assertIn(
+                "context_length must be an integer", str(invalid_context.get("error", ""))
+            )
 
             with patch.dict(native_embedding_tools._API, {"manage_endpoints": _boom}, clear=False):
                 result = await native_embedding_tools.manage_embedding_endpoints(
@@ -385,7 +435,9 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_embedding_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_embedding_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "embedding delegate failed"}
 
@@ -409,11 +461,15 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
 
                 self.assertEqual(single.get("error"), "embedding delegate failed")
 
-                from_file = await native_embedding_tools.generate_embeddings_from_file(file_path="input.txt")
+                from_file = await native_embedding_tools.generate_embeddings_from_file(
+                    file_path="input.txt"
+                )
                 self.assertEqual(from_file.get("status"), "error")
                 self.assertEqual(from_file.get("error"), "embedding delegate failed")
 
-                hybrid = await native_embedding_tools.hybrid_search(query="hello", vector_store_id="vs-1")
+                hybrid = await native_embedding_tools.hybrid_search(
+                    query="hello", vector_store_id="vs-1"
+                )
                 self.assertEqual(hybrid.get("status"), "error")
                 self.assertEqual(hybrid.get("error"), "embedding delegate failed")
 
@@ -457,7 +513,9 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
             return {"status": "success"}
 
         async def _run() -> None:
-            with patch.dict(native_embedding_tools._API, {"shard_embeddings": _minimal}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API, {"shard_embeddings": _minimal}, clear=False
+            ):
                 shard_result = await native_embedding_tools.shard_embeddings(
                     embeddings=[[0.1, 0.2], [0.3, 0.4]],
                     shard_count=2,
@@ -470,13 +528,17 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 self.assertEqual(shard_result.get("shards"), [])
 
             with patch.dict(native_embedding_tools._API, {"chunk_text": _minimal}, clear=False):
-                chunk_result = await native_embedding_tools.chunk_text_for_embeddings(text="hello world")
+                chunk_result = await native_embedding_tools.chunk_text_for_embeddings(
+                    text="hello world"
+                )
                 self.assertEqual(chunk_result.get("status"), "success")
                 self.assertEqual(chunk_result.get("original_length"), len("hello world"))
                 self.assertEqual(chunk_result.get("chunks"), [])
                 self.assertEqual(chunk_result.get("chunk_count"), 0)
 
-            with patch.dict(native_embedding_tools._API, {"manage_endpoints": _minimal}, clear=False):
+            with patch.dict(
+                native_embedding_tools._API, {"manage_endpoints": _minimal}, clear=False
+            ):
                 list_result = await native_embedding_tools.manage_embedding_endpoints(
                     action="list",
                     model="all-MiniLM",
@@ -495,6 +557,7 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 self.assertEqual(test_result.get("action"), "test")
                 self.assertEqual(test_result.get("endpoint"), "https://example.invalid/embed")
                 self.assertEqual(test_result.get("available"), False)
+
         anyio.run(_run)
 
 

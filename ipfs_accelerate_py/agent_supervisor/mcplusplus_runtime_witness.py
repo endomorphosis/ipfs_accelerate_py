@@ -260,9 +260,7 @@ def _text(
     if "\x00" in text:
         raise RuntimeWitnessError(f"{field_name} must not contain NUL")
     if len(text.encode("utf-8")) > maximum:
-        raise RuntimeWitnessBoundsError(
-            f"{field_name} exceeds {maximum} UTF-8 bytes"
-        )
+        raise RuntimeWitnessBoundsError(f"{field_name} exceeds {maximum} UTF-8 bytes")
     return text
 
 
@@ -283,9 +281,7 @@ def _integer(
         raise RuntimeWitnessError(f"{field_name} must be an integer")
     if value < minimum or (maximum is not None and value > maximum):
         suffix = f" and at most {maximum}" if maximum is not None else ""
-        raise RuntimeWitnessBoundsError(
-            f"{field_name} must be at least {minimum}{suffix}"
-        )
+        raise RuntimeWitnessBoundsError(f"{field_name} must be at least {minimum}{suffix}")
     return value
 
 
@@ -297,9 +293,7 @@ def _enum(value: Any, enum_type: type[Enum], *, field_name: str) -> Any:
         return enum_type(raw)
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum_type)
-        raise RuntimeWitnessError(
-            f"{field_name} must be one of: {allowed}"
-        ) from exc
+        raise RuntimeWitnessError(f"{field_name} must be one of: {allowed}") from exc
 
 
 def _strings(
@@ -314,16 +308,12 @@ def _strings(
         items: Sequence[Any] = ()
     elif isinstance(values, str):
         raise RuntimeWitnessError(f"{field_name} must be a sequence")
-    elif isinstance(values, Sequence) and not isinstance(
-        values, (bytes, bytearray)
-    ):
+    elif isinstance(values, Sequence) and not isinstance(values, (bytes, bytearray)):
         items = values
     else:
         raise RuntimeWitnessError(f"{field_name} must be a sequence")
     if len(items) > maximum:
-        raise RuntimeWitnessBoundsError(
-            f"{field_name} exceeds {maximum} items"
-        )
+        raise RuntimeWitnessBoundsError(f"{field_name} exceeds {maximum} items")
     result: list[str] = []
     for index, item in enumerate(items):
         text = _text(item, field_name=f"{field_name}[{index}]")
@@ -351,9 +341,7 @@ def _mapping(
         plain[key] = _json_safe(item, field_name=f"{field_name}.{key}")
     encoded = canonical_json_bytes(plain)
     if len(encoded) > max_bytes:
-        raise RuntimeWitnessBoundsError(
-            f"{field_name} exceeds {max_bytes} bytes"
-        )
+        raise RuntimeWitnessBoundsError(f"{field_name} exceeds {max_bytes} bytes")
     return MappingProxyType(dict(sorted(plain.items())))
 
 
@@ -364,9 +352,7 @@ def _json_safe(value: Any, *, field_name: str) -> Any:
         # Reject non-finite floats implicitly by only allowing int.
         return value
     if isinstance(value, float):
-        raise RuntimeWitnessError(
-            f"{field_name} must not contain floating-point values"
-        )
+        raise RuntimeWitnessError(f"{field_name} must not contain floating-point values")
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):
@@ -374,20 +360,12 @@ def _json_safe(value: Any, *, field_name: str) -> Any:
             str(k): _json_safe(v, field_name=f"{field_name}.{k}")
             for k, v in sorted(value.items(), key=lambda pair: str(pair[0]))
         }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
-        return [
-            _json_safe(item, field_name=f"{field_name}[]") for item in value
-        ]
-    raise RuntimeWitnessError(
-        f"{field_name} has unsupported type {type(value).__name__}"
-    )
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_json_safe(item, field_name=f"{field_name}[]") for item in value]
+    raise RuntimeWitnessError(f"{field_name} has unsupported type {type(value).__name__}")
 
 
-def _schema_object(
-    value: Any, *, field_name: str
-) -> Mapping[str, Any]:
+def _schema_object(value: Any, *, field_name: str) -> Mapping[str, Any]:
     if value is None:
         return MappingProxyType({})
     if isinstance(value, str):
@@ -397,9 +375,7 @@ def _schema_object(
         try:
             decoded = json.loads(text)
         except json.JSONDecodeError as exc:
-            raise RuntimeWitnessError(
-                f"{field_name} is not valid JSON"
-            ) from exc
+            raise RuntimeWitnessError(f"{field_name} is not valid JSON") from exc
         if not isinstance(decoded, Mapping):
             raise RuntimeWitnessError(f"{field_name} JSON must be an object")
         return _mapping(decoded, field_name=field_name)
@@ -411,19 +387,13 @@ def _check_header(payload: Mapping[str, Any], expected: str) -> None:
         raise RuntimeWitnessError("contract payload must be an object")
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise RuntimeWitnessError(
-            f"unsupported contract schema; use {expected}"
-        )
+        raise RuntimeWitnessError(f"unsupported contract schema; use {expected}")
     version = payload.get("contract_version")
     if version not in (None, CONTRACT_VERSION):
-        raise RuntimeWitnessError(
-            "unsupported runtime witness contract version"
-        )
+        raise RuntimeWitnessError("unsupported runtime witness contract version")
 
 
-def _reject_unknown(
-    payload: Mapping[str, Any], allowed: frozenset[str], *, artifact: str
-) -> None:
+def _reject_unknown(payload: Mapping[str, Any], allowed: frozenset[str], *, artifact: str) -> None:
     unknown = set(payload) - allowed
     if unknown:
         raise RuntimeWitnessError(
@@ -458,9 +428,7 @@ def validate_against_schema(
                 errors.append(f"{path}: expected object")
                 return
             required = sch.get("required") or ()
-            if isinstance(required, Sequence) and not isinstance(
-                required, (str, bytes, bytearray)
-            ):
+            if isinstance(required, Sequence) and not isinstance(required, (str, bytes, bytearray)):
                 for key in required:
                     if str(key) not in value:
                         errors.append(f"{path}: missing required {key!r}")
@@ -470,9 +438,7 @@ def validate_against_schema(
                     if key in value and isinstance(child, Mapping):
                         _check(value[key], child, f"{path}.{key}")
         elif expected_type == "array":
-            if not isinstance(value, Sequence) or isinstance(
-                value, (str, bytes, bytearray)
-            ):
+            if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
                 errors.append(f"{path}: expected array")
                 return
             items = sch.get("items")
@@ -543,9 +509,7 @@ class AdapterSpec(_RuntimeContract):
         object.__setattr__(
             self,
             "tool_name",
-            normalize_tool_name(
-                _text(self.tool_name, field_name="tool_name")
-            ),
+            normalize_tool_name(_text(self.tool_name, field_name="tool_name")),
         )
         object.__setattr__(
             self,
@@ -573,14 +537,12 @@ class AdapterSpec(_RuntimeContract):
         object.__setattr__(
             self,
             "package",
-            _text(self.package, field_name="package", required=False)
-            or "ipfs_accelerate_py",
+            _text(self.package, field_name="package", required=False) or "ipfs_accelerate_py",
         )
         object.__setattr__(
             self,
             "version",
-            _text(self.version, field_name="version", required=False)
-            or "1.0.0",
+            _text(self.version, field_name="version", required=False) or "1.0.0",
         )
         object.__setattr__(
             self,
@@ -621,9 +583,7 @@ class AdapterSpec(_RuntimeContract):
         for item in transports:
             kind = _enum(item, TransportKind, field_name="transports")
             if kind is TransportKind.UNKNOWN:
-                raise RuntimeWitnessError(
-                    "adapter transports must not be unknown"
-                )
+                raise RuntimeWitnessError("adapter transports must not be unknown")
             normalized_transports.append(kind.value)
         object.__setattr__(self, "transports", tuple(normalized_transports))
         object.__setattr__(
@@ -705,24 +665,16 @@ class AdapterSpec(_RuntimeContract):
         return cls(
             tool_name=str(payload.get("tool_name") or ""),
             adapter_id=str(payload.get("adapter_id") or ""),
-            implementation_kind=payload.get(
-                "implementation_kind", ImplementationKind.PRODUCTION
-            ),
-            implementation_target=str(
-                payload.get("implementation_target") or ""
-            ),
+            implementation_kind=payload.get("implementation_kind", ImplementationKind.PRODUCTION),
+            implementation_target=str(payload.get("implementation_target") or ""),
             package=str(payload.get("package") or "ipfs_accelerate_py"),
             version=str(payload.get("version") or "1.0.0"),
             input_schema=payload.get("input_schema") or {},
             output_schema=payload.get("output_schema") or {},
             error_codes=tuple(payload.get("error_codes") or ()),
             profiles=tuple(payload.get("profiles") or ("mcp++/basic",)),
-            transports=tuple(
-                payload.get("transports") or (TransportKind.HTTP.value,)
-            ),
-            backend_availability=payload.get(
-                "backend_availability", BackendAvailability.AVAILABLE
-            ),
+            transports=tuple(payload.get("transports") or (TransportKind.HTTP.value,)),
+            backend_availability=payload.get("backend_availability", BackendAvailability.AVAILABLE),
             notes=str(payload.get("notes") or ""),
         )
 
@@ -799,9 +751,7 @@ class ToolDiscoveryRecord(_RuntimeContract):
             mock_tools=tuple(payload.get("mock_tools") or ()),
             fixture_tools=tuple(payload.get("fixture_tools") or ()),
             manifest_cid=str(payload.get("manifest_cid") or ""),
-            server_name=str(
-                payload.get("server_name") or "ipfs-accelerate-mcp++"
-            ),
+            server_name=str(payload.get("server_name") or "ipfs-accelerate-mcp++"),
         )
 
 
@@ -898,24 +848,17 @@ class CapabilityNegotiationRecord(_RuntimeContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "CapabilityNegotiationRecord":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CapabilityNegotiationRecord":
         _check_header(payload, cls.SCHEMA)
         return cls(
             requested_profiles=tuple(payload.get("requested_profiles") or ()),
             admitted_profiles=tuple(payload.get("admitted_profiles") or ()),
             active_profile=str(payload.get("active_profile") or ""),
-            requested_transport=str(
-                payload.get("requested_transport") or TransportKind.HTTP.value
-            ),
+            requested_transport=str(payload.get("requested_transport") or TransportKind.HTTP.value),
             admitted_transports=tuple(
-                payload.get("admitted_transports")
-                or (TransportKind.HTTP.value,)
+                payload.get("admitted_transports") or (TransportKind.HTTP.value,)
             ),
-            active_transport=str(
-                payload.get("active_transport") or TransportKind.HTTP.value
-            ),
+            active_transport=str(payload.get("active_transport") or TransportKind.HTTP.value),
             negotiated=bool(payload.get("negotiated", False)),
             reason=str(payload.get("reason") or ""),
         )
@@ -964,18 +907,14 @@ class CallRequest(_RuntimeContract):
                 maximum=DEFAULT_MAX_PROFILES,
             ),
         )
-        transport = _enum(
-            self.transport, TransportKind, field_name="transport"
-        )
+        transport = _enum(self.transport, TransportKind, field_name="transport")
         object.__setattr__(self, "transport", transport.value)
         object.__setattr__(
             self,
             "call_id",
             _text(self.call_id, field_name="call_id", required=False),
         )
-        object.__setattr__(
-            self, "cancel", _boolean(self.cancel, field_name="cancel")
-        )
+        object.__setattr__(self, "cancel", _boolean(self.cancel, field_name="cancel"))
         object.__setattr__(
             self,
             "force_timeout",
@@ -1009,18 +948,12 @@ class CallRequest(_RuntimeContract):
         return cls(
             tool_name=str(payload.get("tool_name") or ""),
             arguments=payload.get("arguments") or {},
-            requested_profiles=tuple(
-                payload.get("requested_profiles") or ("mcp++/basic",)
-            ),
-            transport=str(
-                payload.get("transport") or TransportKind.HTTP.value
-            ),
+            requested_profiles=tuple(payload.get("requested_profiles") or ("mcp++/basic",)),
+            transport=str(payload.get("transport") or TransportKind.HTTP.value),
             call_id=str(payload.get("call_id") or ""),
             cancel=bool(payload.get("cancel", False)),
             force_timeout=bool(payload.get("force_timeout", False)),
-            expected_manifest_cid=str(
-                payload.get("expected_manifest_cid") or ""
-            ),
+            expected_manifest_cid=str(payload.get("expected_manifest_cid") or ""),
         )
 
 
@@ -1185,8 +1118,7 @@ class CallObservation(_RuntimeContract):
             or self.implementation_kind is not ImplementationKind.PRODUCTION
         ):
             raise RuntimeWitnessAuthorityError(
-                "only production adapters with passed outcome grant "
-                "runtime_witnessed authority"
+                "only production adapters with passed outcome grant runtime_witnessed authority"
             )
         object.__setattr__(self, "grants_runtime_authority", grants)
         object.__setattr__(
@@ -1226,19 +1158,11 @@ class CallObservation(_RuntimeContract):
             outcome=payload.get("outcome") or WitnessOutcome.INCONCLUSIVE,
             tool_name=str(payload.get("tool_name") or ""),
             adapter_id=str(payload.get("adapter_id") or ""),
-            implementation_kind=payload.get(
-                "implementation_kind", ImplementationKind.PRODUCTION
-            ),
-            implementation_target=str(
-                payload.get("implementation_target") or ""
-            ),
-            input_validation=payload.get(
-                "input_validation", ValidationVerdict.SKIPPED
-            ),
+            implementation_kind=payload.get("implementation_kind", ImplementationKind.PRODUCTION),
+            implementation_target=str(payload.get("implementation_target") or ""),
+            input_validation=payload.get("input_validation", ValidationVerdict.SKIPPED),
             input_errors=tuple(payload.get("input_errors") or ()),
-            output_validation=payload.get(
-                "output_validation", ValidationVerdict.SKIPPED
-            ),
+            output_validation=payload.get("output_validation", ValidationVerdict.SKIPPED),
             output_errors=tuple(payload.get("output_errors") or ()),
             error_code=str(payload.get("error_code") or ""),
             error_schema_ok=bool(payload.get("error_schema_ok", True)),
@@ -1247,16 +1171,9 @@ class CallObservation(_RuntimeContract):
             duration_ms=int(payload.get("duration_ms") or 0),
             timed_out=bool(payload.get("timed_out", False)),
             cancelled=bool(payload.get("cancelled", False)),
-            cleanup_status=payload.get(
-                "cleanup_status", CleanupStatus.SKIPPED
-            ),
-            claim_level=str(
-                payload.get("claim_level")
-                or ClaimLevel.RUNTIME_WITNESSED.value
-            ),
-            grants_runtime_authority=bool(
-                payload.get("grants_runtime_authority", False)
-            ),
+            cleanup_status=payload.get("cleanup_status", CleanupStatus.SKIPPED),
+            claim_level=str(payload.get("claim_level") or ClaimLevel.RUNTIME_WITNESSED.value),
+            grants_runtime_authority=bool(payload.get("grants_runtime_authority", False)),
             reason=str(payload.get("reason") or ""),
         )
 
@@ -1296,16 +1213,12 @@ class RuntimeWitness(_RuntimeContract):
         if not isinstance(self.discovery, ToolDiscoveryRecord):
             raise RuntimeWitnessError("discovery must be ToolDiscoveryRecord")
         if not isinstance(self.negotiation, CapabilityNegotiationRecord):
-            raise RuntimeWitnessError(
-                "negotiation must be CapabilityNegotiationRecord"
-            )
+            raise RuntimeWitnessError("negotiation must be CapabilityNegotiationRecord")
         if not isinstance(self.request, CallRequest):
             raise RuntimeWitnessError("request must be CallRequest")
         if not isinstance(self.observation, CallObservation):
             raise RuntimeWitnessError("observation must be CallObservation")
-        transport = _enum(
-            self.transport, TransportKind, field_name="transport"
-        )
+        transport = _enum(self.transport, TransportKind, field_name="transport")
         object.__setattr__(self, "transport", transport.value)
         object.__setattr__(
             self,
@@ -1328,9 +1241,7 @@ class RuntimeWitness(_RuntimeContract):
             _text(self.evidence_kind, field_name="evidence_kind"),
         )
         if self.evidence_kind != EVIDENCE_RUNTIME_WITNESS:
-            raise RuntimeWitnessError(
-                f"evidence_kind must be {EVIDENCE_RUNTIME_WITNESS}"
-            )
+            raise RuntimeWitnessError(f"evidence_kind must be {EVIDENCE_RUNTIME_WITNESS}")
         object.__setattr__(
             self,
             "witness_version",
@@ -1360,8 +1271,7 @@ class RuntimeWitness(_RuntimeContract):
         )
         if self.static_completeness_claimed or self.formal_proof_claimed:
             raise RuntimeWitnessAuthorityError(
-                "runtime witnesses must not claim static completeness "
-                "or formal proof"
+                "runtime witnesses must not claim static completeness or formal proof"
             )
 
     @property
@@ -1372,8 +1282,7 @@ class RuntimeWitness(_RuntimeContract):
     def is_production_witness(self) -> bool:
         return (
             self.observation.grants_runtime_authority
-            and self.observation.implementation_kind
-            is ImplementationKind.PRODUCTION
+            and self.observation.implementation_kind is ImplementationKind.PRODUCTION
         )
 
     def _payload(self) -> dict[str, Any]:
@@ -1400,34 +1309,18 @@ class RuntimeWitness(_RuntimeContract):
         return cls(
             fixture_id=str(payload.get("fixture_id") or ""),
             forest_id=str(payload.get("forest_id") or ""),
-            discovery=ToolDiscoveryRecord.from_dict(
-                payload.get("discovery") or {}
-            ),
-            negotiation=CapabilityNegotiationRecord.from_dict(
-                payload.get("negotiation") or {}
-            ),
+            discovery=ToolDiscoveryRecord.from_dict(payload.get("discovery") or {}),
+            negotiation=CapabilityNegotiationRecord.from_dict(payload.get("negotiation") or {}),
             request=CallRequest.from_dict(payload.get("request") or {}),
-            observation=CallObservation.from_dict(
-                payload.get("observation") or {}
-            ),
-            transport=str(
-                payload.get("transport") or TransportKind.HTTP.value
-            ),
+            observation=CallObservation.from_dict(payload.get("observation") or {}),
+            transport=str(payload.get("transport") or TransportKind.HTTP.value),
             timeout_ms=int(payload.get("timeout_ms") or DEFAULT_TIMEOUT_MS),
             network_enabled=bool(payload.get("network_enabled", False)),
-            evidence_kind=str(
-                payload.get("evidence_kind") or EVIDENCE_RUNTIME_WITNESS
-            ),
-            witness_version=str(
-                payload.get("witness_version") or WITNESS_VERSION
-            ),
+            evidence_kind=str(payload.get("evidence_kind") or EVIDENCE_RUNTIME_WITNESS),
+            witness_version=str(payload.get("witness_version") or WITNESS_VERSION),
             producer=str(payload.get("producer") or WITNESS_PRODUCER),
-            static_completeness_claimed=bool(
-                payload.get("static_completeness_claimed", False)
-            ),
-            formal_proof_claimed=bool(
-                payload.get("formal_proof_claimed", False)
-            ),
+            static_completeness_claimed=bool(payload.get("static_completeness_claimed", False)),
+            formal_proof_claimed=bool(payload.get("formal_proof_claimed", False)),
         )
 
 
@@ -1469,14 +1362,10 @@ class RuntimeWitnessReceipt(_RuntimeContract):
         if not isinstance(self.witnesses, tuple):
             raise RuntimeWitnessError("witnesses must be a tuple")
         if len(self.witnesses) > DEFAULT_MAX_OBSERVATIONS:
-            raise RuntimeWitnessBoundsError(
-                f"witnesses exceed {DEFAULT_MAX_OBSERVATIONS} items"
-            )
+            raise RuntimeWitnessBoundsError(f"witnesses exceed {DEFAULT_MAX_OBSERVATIONS} items")
         for index, witness in enumerate(self.witnesses):
             if not isinstance(witness, RuntimeWitness):
-                raise RuntimeWitnessError(
-                    f"witnesses[{index}] must be RuntimeWitness"
-                )
+                raise RuntimeWitnessError(f"witnesses[{index}] must be RuntimeWitness")
         object.__setattr__(
             self,
             "network_enabled",
@@ -1488,9 +1377,7 @@ class RuntimeWitnessReceipt(_RuntimeContract):
             _text(self.evidence_kind, field_name="evidence_kind"),
         )
         if self.evidence_kind != EVIDENCE_RUNTIME_WITNESS:
-            raise RuntimeWitnessError(
-                f"evidence_kind must be {EVIDENCE_RUNTIME_WITNESS}"
-            )
+            raise RuntimeWitnessError(f"evidence_kind must be {EVIDENCE_RUNTIME_WITNESS}")
         object.__setattr__(
             self,
             "witness_version",
@@ -1535,13 +1422,11 @@ class RuntimeWitnessReceipt(_RuntimeContract):
         )
         if self.replaces_static_completeness or self.replaces_formal_proof:
             raise RuntimeWitnessAuthorityError(
-                "runtime receipts must supplement, not replace, static "
-                "completeness or formal proof"
+                "runtime receipts must supplement, not replace, static completeness or formal proof"
             )
         if not self.supplements_static_resolution:
             raise RuntimeWitnessAuthorityError(
-                "runtime receipts must declare supplementation of static "
-                "resolution"
+                "runtime receipts must declare supplementation of static resolution"
             )
 
     @property
@@ -1602,8 +1487,7 @@ class RuntimeWitnessReceipt(_RuntimeContract):
     def from_dict(cls, payload: Mapping[str, Any]) -> "RuntimeWitnessReceipt":
         _check_header(payload, cls.SCHEMA)
         witnesses = tuple(
-            RuntimeWitness.from_dict(item)
-            for item in (payload.get("witnesses") or ())
+            RuntimeWitness.from_dict(item) for item in (payload.get("witnesses") or ())
         )
         return cls(
             fixture_id=str(payload.get("fixture_id") or ""),
@@ -1611,25 +1495,13 @@ class RuntimeWitnessReceipt(_RuntimeContract):
             manifest_cid=str(payload.get("manifest_cid") or ""),
             witnesses=witnesses,
             network_enabled=bool(payload.get("network_enabled", False)),
-            evidence_kind=str(
-                payload.get("evidence_kind") or EVIDENCE_RUNTIME_WITNESS
-            ),
-            witness_version=str(
-                payload.get("witness_version") or WITNESS_VERSION
-            ),
+            evidence_kind=str(payload.get("evidence_kind") or EVIDENCE_RUNTIME_WITNESS),
+            witness_version=str(payload.get("witness_version") or WITNESS_VERSION),
             producer=str(payload.get("producer") or WITNESS_PRODUCER),
-            supplements_static_resolution=bool(
-                payload.get("supplements_static_resolution", True)
-            ),
-            supplements_formal_proof=bool(
-                payload.get("supplements_formal_proof", True)
-            ),
-            replaces_static_completeness=bool(
-                payload.get("replaces_static_completeness", False)
-            ),
-            replaces_formal_proof=bool(
-                payload.get("replaces_formal_proof", False)
-            ),
+            supplements_static_resolution=bool(payload.get("supplements_static_resolution", True)),
+            supplements_formal_proof=bool(payload.get("supplements_formal_proof", True)),
+            replaces_static_completeness=bool(payload.get("replaces_static_completeness", False)),
+            replaces_formal_proof=bool(payload.get("replaces_formal_proof", False)),
         )
 
 
@@ -1715,8 +1587,7 @@ def default_production_adapters() -> tuple[AdapterSpec, ...]:
             adapter_id="adapter:echo:production",
             implementation_kind=ImplementationKind.PRODUCTION,
             implementation_target=(
-                "ipfs_accelerate_py.agent_supervisor."
-                "mcplusplus_runtime_witness._handler_echo"
+                "ipfs_accelerate_py.agent_supervisor.mcplusplus_runtime_witness._handler_echo"
             ),
             package="ipfs_accelerate_py",
             version="1.0.0",
@@ -1745,8 +1616,7 @@ def default_production_adapters() -> tuple[AdapterSpec, ...]:
             adapter_id="adapter:identity:production",
             implementation_kind=ImplementationKind.PRODUCTION,
             implementation_target=(
-                "ipfs_accelerate_py.agent_supervisor."
-                "mcplusplus_runtime_witness._handler_identity"
+                "ipfs_accelerate_py.agent_supervisor.mcplusplus_runtime_witness._handler_identity"
             ),
             input_schema={
                 "type": "object",
@@ -1770,8 +1640,7 @@ def default_production_adapters() -> tuple[AdapterSpec, ...]:
             adapter_id="adapter:vfs.stat:production",
             implementation_kind=ImplementationKind.PRODUCTION,
             implementation_target=(
-                "ipfs_accelerate_py.agent_supervisor."
-                "mcplusplus_runtime_witness._handler_vfs_stat"
+                "ipfs_accelerate_py.agent_supervisor.mcplusplus_runtime_witness._handler_vfs_stat"
             ),
             package="ipfs_kit_py",
             input_schema={
@@ -1816,8 +1685,7 @@ def default_production_adapters() -> tuple[AdapterSpec, ...]:
             adapter_id="adapter:slow:production",
             implementation_kind=ImplementationKind.PRODUCTION,
             implementation_target=(
-                "ipfs_accelerate_py.agent_supervisor."
-                "mcplusplus_runtime_witness._handler_slow"
+                "ipfs_accelerate_py.agent_supervisor.mcplusplus_runtime_witness._handler_slow"
             ),
             input_schema={
                 "type": "object",
@@ -1930,27 +1798,20 @@ class HermeticMCPlusPlusRuntime:
         if handlers:
             for name, handler in handlers.items():
                 if not callable(handler):
-                    raise RuntimeWitnessError(
-                        f"handler for {name!r} must be callable"
-                    )
+                    raise RuntimeWitnessError(f"handler for {name!r} must be callable")
                 self._handlers[normalize_tool_name(name)] = handler
         specs = (
             list(adapters)
             if adapters is not None
-            else list(default_production_adapters())
-            + list(default_mock_adapters())
+            else list(default_production_adapters()) + list(default_mock_adapters())
         )
         if len(specs) > DEFAULT_MAX_TOOLS:
-            raise RuntimeWitnessBoundsError(
-                f"adapters exceed {DEFAULT_MAX_TOOLS}"
-            )
+            raise RuntimeWitnessBoundsError(f"adapters exceed {DEFAULT_MAX_TOOLS}")
         for spec in specs:
             if not isinstance(spec, AdapterSpec):
                 raise RuntimeWitnessError("adapters must be AdapterSpec")
             if spec.tool_name in self._adapters:
-                raise RuntimeWitnessError(
-                    f"duplicate tool registration: {spec.tool_name}"
-                )
+                raise RuntimeWitnessError(f"duplicate tool registration: {spec.tool_name}")
             self._adapters[spec.tool_name] = spec
         self.admitted_profiles = _strings(
             admitted_profiles
@@ -1991,9 +1852,7 @@ class HermeticMCPlusPlusRuntime:
         }
         computed_fixture = content_identity(registry_payload)
         self.fixture_id = (
-            _text(fixture_id, field_name="fixture_id")
-            if fixture_id
-            else computed_fixture
+            _text(fixture_id, field_name="fixture_id") if fixture_id else computed_fixture
         )
         self.manifest_cid = (
             _text(manifest_cid, field_name="manifest_cid")
@@ -2001,8 +1860,7 @@ class HermeticMCPlusPlusRuntime:
             else content_identity(
                 {
                     "adapters": sorted(
-                        (s.tool_name, s.version, s.adapter_id)
-                        for s in self._adapters.values()
+                        (s.tool_name, s.version, s.adapter_id) for s in self._adapters.values()
                     ),
                     "profiles": list(self.admitted_profiles),
                 }
@@ -2022,19 +1880,13 @@ class HermeticMCPlusPlusRuntime:
             tool_names=tuple(s.tool_name for s in specs),
             adapter_ids=tuple(s.adapter_id for s in specs),
             production_tools=tuple(
-                s.tool_name
-                for s in specs
-                if s.implementation_kind is ImplementationKind.PRODUCTION
+                s.tool_name for s in specs if s.implementation_kind is ImplementationKind.PRODUCTION
             ),
             mock_tools=tuple(
-                s.tool_name
-                for s in specs
-                if s.implementation_kind is ImplementationKind.MOCK
+                s.tool_name for s in specs if s.implementation_kind is ImplementationKind.MOCK
             ),
             fixture_tools=tuple(
-                s.tool_name
-                for s in specs
-                if s.implementation_kind is ImplementationKind.FIXTURE
+                s.tool_name for s in specs if s.implementation_kind is ImplementationKind.FIXTURE
             ),
             manifest_cid=self.manifest_cid,
             server_name=self.server_name,
@@ -2056,9 +1908,7 @@ class HermeticMCPlusPlusRuntime:
             field_name="requested_profiles",
             maximum=DEFAULT_MAX_PROFILES,
         )
-        transport_value = _enum(
-            transport, TransportKind, field_name="transport"
-        ).value
+        transport_value = _enum(transport, TransportKind, field_name="transport").value
         admitted = set(self.admitted_profiles)
         intersection = [p for p in requested if p in admitted]
         if not intersection:
@@ -2152,10 +2002,7 @@ class HermeticMCPlusPlusRuntime:
         phases.append(WitnessPhase.DISCOVERY.value)
 
         # Stale manifest check
-        if (
-            request.expected_manifest_cid
-            and request.expected_manifest_cid != self.manifest_cid
-        ):
+        if request.expected_manifest_cid and request.expected_manifest_cid != self.manifest_cid:
             phases.append(WitnessPhase.CAPABILITY_NEGOTIATION.value)
             negotiation = self.negotiate(
                 requested_profiles=request.requested_profiles,
@@ -2166,9 +2013,7 @@ class HermeticMCPlusPlusRuntime:
                 discovery=discovery,
                 negotiation=negotiation,
                 outcome=WitnessOutcome.STALE_MANIFEST,
-                reason=(
-                    "expected_manifest_cid does not match fixture manifest"
-                ),
+                reason=("expected_manifest_cid does not match fixture manifest"),
                 phases=tuple(phases),
                 duration_ms=_elapsed_ms(started),
             )
@@ -2264,8 +2109,7 @@ class HermeticMCPlusPlusRuntime:
                 reason="backend unavailable",
                 adapter=adapter,
                 error_code="unavailable",
-                error_schema_ok="unavailable" in adapter.error_codes
-                or not adapter.error_codes,
+                error_schema_ok="unavailable" in adapter.error_codes or not adapter.error_codes,
                 phases=tuple(phases),
                 duration_ms=_elapsed_ms(started),
                 transport=negotiation.active_transport,
@@ -2292,9 +2136,7 @@ class HermeticMCPlusPlusRuntime:
             )
 
         # Cancellation before dispatch
-        if request.cancel or (
-            cancellation is not None and cancellation.cancelled
-        ):
+        if request.cancel or (cancellation is not None and cancellation.cancelled):
             return self._witness(
                 request,
                 discovery=discovery,
@@ -2415,9 +2257,7 @@ class HermeticMCPlusPlusRuntime:
                 outcome = WitnessOutcome.UNAVAILABLE_BACKEND
             else:
                 outcome = WitnessOutcome.DISPATCH_ERROR
-            error_schema_ok = (
-                code in adapter.error_codes if adapter.error_codes else True
-            )
+            error_schema_ok = code in adapter.error_codes if adapter.error_codes else True
             phases.append(WitnessPhase.ERROR_SCHEMA.value)
             return self._witness(
                 request,
@@ -2435,9 +2275,7 @@ class HermeticMCPlusPlusRuntime:
             )
 
         result = result_box.get("value") or {}
-        output_verdict, output_errors = validate_against_schema(
-            result, dict(adapter.output_schema)
-        )
+        output_verdict, output_errors = validate_against_schema(result, dict(adapter.output_schema))
         phases.append(WitnessPhase.OUTPUT_SCHEMA.value)
         if output_verdict is ValidationVerdict.INVALID:
             return self._witness(
@@ -2469,9 +2307,7 @@ class HermeticMCPlusPlusRuntime:
             phases=tuple(phases),
             duration_ms=_elapsed_ms(started),
             transport=negotiation.active_transport,
-            grants_runtime_authority=(
-                adapter.implementation_kind is ImplementationKind.PRODUCTION
-            ),
+            grants_runtime_authority=(adapter.implementation_kind is ImplementationKind.PRODUCTION),
         )
 
     def run_suite(
@@ -2479,9 +2315,7 @@ class HermeticMCPlusPlusRuntime:
         requests: Sequence[CallRequest | Mapping[str, Any]],
     ) -> RuntimeWitnessReceipt:
         if len(requests) > DEFAULT_MAX_OBSERVATIONS:
-            raise RuntimeWitnessBoundsError(
-                f"requests exceed {DEFAULT_MAX_OBSERVATIONS}"
-            )
+            raise RuntimeWitnessBoundsError(f"requests exceed {DEFAULT_MAX_OBSERVATIONS}")
         witnesses = tuple(self.call(req) for req in requests)
         return RuntimeWitnessReceipt(
             fixture_id=self.fixture_id,
@@ -2539,17 +2373,11 @@ class HermeticMCPlusPlusRuntime:
         phases_list = list(phases)
         if WitnessPhase.CLEANUP.value not in phases_list:
             # Soft cleanup check for the observation; does not shut down suite.
-            cleanup_status = (
-                CleanupStatus.CLEAN
-                if not self._cleaned_up
-                else CleanupStatus.DIRTY
-            )
+            cleanup_status = CleanupStatus.CLEAN if not self._cleaned_up else CleanupStatus.DIRTY
             phases_list.append(WitnessPhase.CLEANUP.value)
 
         impl_kind = (
-            adapter.implementation_kind
-            if adapter is not None
-            else ImplementationKind.PRODUCTION
+            adapter.implementation_kind if adapter is not None else ImplementationKind.PRODUCTION
         )
         # Never grant authority for mocks/fixtures or non-passed outcomes.
         if (
@@ -2563,13 +2391,10 @@ class HermeticMCPlusPlusRuntime:
 
         observation = CallObservation(
             outcome=outcome,
-            tool_name=request.tool_name
-            or (adapter.tool_name if adapter else ""),
+            tool_name=request.tool_name or (adapter.tool_name if adapter else ""),
             adapter_id=adapter.adapter_id if adapter else "",
             implementation_kind=impl_kind,
-            implementation_target=(
-                adapter.implementation_target if adapter else ""
-            ),
+            implementation_target=(adapter.implementation_target if adapter else ""),
             input_validation=input_validation,
             input_errors=input_errors,
             output_validation=output_validation,
@@ -2623,19 +2448,13 @@ def replay_receipt(
     elif isinstance(receipt, RuntimeWitnessReceipt):
         original = receipt
     else:
-        raise RuntimeWitnessError(
-            "receipt must be RuntimeWitnessReceipt or mapping"
-        )
+        raise RuntimeWitnessError("receipt must be RuntimeWitnessReceipt or mapping")
     payload = original.to_dict()
     replayed = RuntimeWitnessReceipt.from_dict(payload)
     if replayed.content_id != original.content_id:
-        raise RuntimeWitnessError(
-            "receipt replay produced a different content identity"
-        )
+        raise RuntimeWitnessError("receipt replay produced a different content identity")
     if replayed.to_json() != original.to_json():
-        raise RuntimeWitnessError(
-            "receipt replay produced different canonical JSON"
-        )
+        raise RuntimeWitnessError("receipt replay produced different canonical JSON")
     return replayed
 
 
@@ -2743,9 +2562,7 @@ def run_witness_subprocess(
     if not requests:
         raise RuntimeWitnessError("subprocess witness requires at least one request")
     if len(requests) > DEFAULT_MAX_OBSERVATIONS:
-        raise RuntimeWitnessBoundsError(
-            f"requests exceed {DEFAULT_MAX_OBSERVATIONS}"
-        )
+        raise RuntimeWitnessBoundsError(f"requests exceed {DEFAULT_MAX_OBSERVATIONS}")
 
     serialized_requests: list[dict[str, Any]] = []
     for item in requests:
@@ -2758,24 +2575,17 @@ def run_witness_subprocess(
                         tool_name=str(item.get("tool_name") or ""),
                         arguments=item.get("arguments") or {},
                         requested_profiles=tuple(
-                            item.get("requested_profiles")
-                            or ("mcp++/basic",)
+                            item.get("requested_profiles") or ("mcp++/basic",)
                         ),
-                        transport=str(
-                            item.get("transport") or TransportKind.HTTP.value
-                        ),
+                        transport=str(item.get("transport") or TransportKind.HTTP.value),
                         call_id=str(item.get("call_id") or ""),
                         cancel=bool(item.get("cancel", False)),
                         force_timeout=bool(item.get("force_timeout", False)),
-                        expected_manifest_cid=str(
-                            item.get("expected_manifest_cid") or ""
-                        ),
+                        expected_manifest_cid=str(item.get("expected_manifest_cid") or ""),
                     ).to_dict()
                 )
             else:
-                serialized_requests.append(
-                    CallRequest.from_dict(item).to_dict()
-                )
+                serialized_requests.append(CallRequest.from_dict(item).to_dict())
         else:
             raise RuntimeWitnessError("request must be CallRequest or mapping")
 
@@ -2786,9 +2596,7 @@ def run_witness_subprocess(
         "include_mocks": include_mocks,
         "requests": serialized_requests,
     }
-    payload = json.dumps(
-        envelope, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    payload = json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
     child_env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
@@ -2815,32 +2623,22 @@ def run_witness_subprocess(
         text=False,
     )
     try:
-        stdout, stderr = process.communicate(
-            input=payload, timeout=subprocess_timeout_s
-        )
+        stdout, stderr = process.communicate(input=payload, timeout=subprocess_timeout_s)
     except subprocess.TimeoutExpired:
         _kill_process_tree(process)
-        raise RuntimeWitnessError(
-            f"subprocess witness exceeded {subprocess_timeout_s}s"
-        ) from None
+        raise RuntimeWitnessError(f"subprocess witness exceeded {subprocess_timeout_s}s") from None
 
     if process.returncode not in (0,):
         detail = stderr.decode("utf-8", errors="replace")[:512]
-        raise RuntimeWitnessError(
-            f"subprocess witness failed rc={process.returncode}: {detail}"
-        )
+        raise RuntimeWitnessError(f"subprocess witness failed rc={process.returncode}: {detail}")
 
     try:
         response = json.loads(stdout.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeWitnessError(
-            f"subprocess produced invalid JSON: {exc}"
-        ) from exc
+        raise RuntimeWitnessError(f"subprocess produced invalid JSON: {exc}") from exc
 
     if not response.get("ok"):
-        raise RuntimeWitnessError(
-            f"subprocess reported error: {response.get('error')!r}"
-        )
+        raise RuntimeWitnessError(f"subprocess reported error: {response.get('error')!r}")
     receipt_payload = response.get("receipt")
     if not isinstance(receipt_payload, Mapping):
         raise RuntimeWitnessError("subprocess response missing receipt")
@@ -2956,9 +2754,7 @@ def typed_non_authoritative_failure_outcomes() -> tuple[str, ...]:
     """
 
     return tuple(
-        outcome.value
-        for outcome in WitnessOutcome
-        if outcome is not WitnessOutcome.PASSED
+        outcome.value for outcome in WitnessOutcome if outcome is not WitnessOutcome.PASSED
     )
 
 

@@ -195,9 +195,7 @@ def _service(
     return SupervisorControlService(
         repository_allowlist=(repo_root,),
         state_allowlist=(state_root,),
-        handlers={
-            action.operation: transition for action in LifecycleAction
-        },
+        handlers={action.operation: transition for action in LifecycleAction},
         lease_validator=lambda request: (
             request.lease_id == "lease:7" and request.fencing_epoch == 7
         ),
@@ -212,9 +210,7 @@ def _mutation_guard_witness(
     calls: list[str],
 ) -> ControlMutationGuardEvidence:
     service = _service(repo_root, state_root, calls)
-    request = _request(
-        repo_root, state_root, Operation.PAUSE, dry_run=False
-    )
+    request = _request(repo_root, state_root, Operation.PAUSE, dry_run=False)
     before = service.mutation_runtime_state()
     result = service.execute(request)
     after_result = service.mutation_runtime_state()
@@ -309,9 +305,7 @@ def test_lifecycle_dry_run_binds_typed_command_without_dispatch(
     state_root.mkdir()
     calls: list[str] = []
     service = _service(repo_root, state_root, calls)
-    request = _request(
-        repo_root, state_root, Operation.PAUSE, dry_run=True
-    )
+    request = _request(repo_root, state_root, Operation.PAUSE, dry_run=True)
 
     result = service.lifecycle(request, _command(Operation.PAUSE, dry_run=True))
 
@@ -330,9 +324,7 @@ def test_lifecycle_command_binds_reason_and_requested_state(
     repo_root.mkdir()
     state_root.mkdir()
     service = _service(repo_root, state_root, [])
-    request = _request(
-        repo_root, state_root, Operation.DRAIN, dry_run=True
-    )
+    request = _request(repo_root, state_root, Operation.DRAIN, dry_run=True)
 
     with pytest.raises(ValueError, match="reason"):
         service.lifecycle(
@@ -367,9 +359,7 @@ def test_authorized_lifecycle_mutation_is_fenced_audited_and_idempotent(
     state_root.mkdir()
     calls: list[str] = []
     service = _service(repo_root, state_root, calls)
-    request = _request(
-        repo_root, state_root, Operation.PAUSE, dry_run=False
-    )
+    request = _request(repo_root, state_root, Operation.PAUSE, dry_run=False)
     command = _command(Operation.PAUSE, dry_run=False)
 
     first = service.lifecycle(request, command)
@@ -424,9 +414,7 @@ def test_every_lifecycle_action_uses_the_same_typed_fenced_result_contract(
         observed[action] = decoded
 
     assert set(observed) == set(LifecycleAction)
-    assert calls == [
-        observed[action].request_id for action in LifecycleAction
-    ]
+    assert calls == [observed[action].request_id for action in LifecycleAction]
 
 
 def test_mutation_guard_evidence_replays_all_required_fail_closed_cases(
@@ -443,12 +431,8 @@ def test_mutation_guard_evidence_replays_all_required_fail_closed_cases(
     assert isinstance(request, OperationRequest)
     assert isinstance(result, OperationResult)
 
-    assert evidence.proved_requirement_ids == (
-        CONTROL_MUTATION_GUARD_REQUIREMENT_ID,
-    )
-    assert {
-        (item.surface, item.scenario) for item in evidence.rejections
-    } == {
+    assert evidence.proved_requirement_ids == (CONTROL_MUTATION_GUARD_REQUIREMENT_ID,)
+    assert {(item.surface, item.scenario) for item in evidence.rejections} == {
         (surface, scenario)
         for surface in ControlSurface
         for scenario in CONTROL_MUTATION_GUARD_REJECTION_SCENARIOS
@@ -602,13 +586,8 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
                 goal_id=CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
                 criterion=criterion,
                 status=CoverageStatus.VERIFIED,
-                changed_files=[
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "control_contracts.py"
-                ],
-                validation_receipt_ids=[
-                    completion_evidence[index - 1].provenance_cid
-                ],
+                changed_files=["ipfs_accelerate_py/agent_supervisor/control_contracts.py"],
+                validation_receipt_ids=[completion_evidence[index - 1].provenance_cid],
                 explanation="implementation and validation are exact",
             )
             for index, criterion in enumerate(
@@ -630,20 +609,14 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
         metrics={
             "objective_id": CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
             "repository_tree": operational.repository_tree,
-            "analyzer_version": (
-                CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION
-            ),
+            "analyzer_version": (CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION),
         },
     )
     generic_binding = ExhaustionBinding(
         repository_id="repository:control",
         tree_id=operational.repository_tree,
-        analyzer_version=(
-            CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION
-        ),
-        configuration_revision=(
-            CONTROL_MUTATION_GUARD_COMPLETION_CONFIGURATION_REVISION
-        ),
+        analyzer_version=(CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION),
+        configuration_revision=(CONTROL_MUTATION_GUARD_COMPLETION_CONFIGURATION_REVISION),
         objective_revision=CONTROL_MUTATION_GUARD_OBJECTIVE_REVISION,
     )
     generic_quorum = ExhaustionQuorumResult(
@@ -685,9 +658,7 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
         member_health=member_health,
     )
     assert (
-        ControlMutationCompletionQuorumEvidence.from_json(
-            quorum.to_json()
-        ).content_id
+        ControlMutationCompletionQuorumEvidence.from_json(quorum.to_json()).content_id
         == quorum.content_id
     )
     artifact_binding = {
@@ -737,10 +708,7 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
     )
     assert no_independent_proof.state is GoalState.PROVISIONALLY_COMPLETE
     assert not no_independent_proof.verified
-    assert (
-        no_independent_proof.gate is not None
-        and not no_independent_proof.gate.passed
-    )
+    assert no_independent_proof.gate is not None and not no_independent_proof.gate.passed
 
     provisional = operational.evaluate_objective_completion(
         current_state=GoalState.ACTIVE,
@@ -766,13 +734,8 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
                 "criterion": criterion,
                 "status": "verified",
                 "verified": True,
-                "implementation": (
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "control_contracts.py"
-                ),
-                "validation_receipt_ids": [
-                    completion_evidence[index - 1].provenance_cid
-                ],
+                "implementation": ("ipfs_accelerate_py/agent_supervisor/control_contracts.py"),
+                "validation_receipt_ids": [completion_evidence[index - 1].provenance_cid],
             }
             for index, criterion in enumerate(
                 CONTROL_MUTATION_GUARD_ACCEPTANCE_CRITERIA,
@@ -787,9 +750,7 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
         "exhaustive": True,
         "objective_id": CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
         "repository_tree": operational.repository_tree,
-        "analyzer_version": (
-            CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION
-        ),
+        "analyzer_version": (CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION),
     }
     mapping_quorum = {
         "required_members": 2,
@@ -859,9 +820,7 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
     incomplete_coverage = copy.deepcopy(mapping_coverage)
     incomplete_coverage["criteria"] = incomplete_coverage["criteria"][:-1]
     unbound_coverage = copy.deepcopy(mapping_coverage)
-    unbound_coverage["criteria"][0]["validation_receipt_ids"] = [
-        "validation:detached"
-    ]
+    unbound_coverage["criteria"][0]["validation_receipt_ids"] = ["validation:detached"]
     unsafe_health = {
         **mapping_health,
         "safe_for_completion_reasoning": False,
@@ -876,13 +835,11 @@ def test_g104_completion_requires_bound_validation_health_and_quorum(
         "analyzer_version": "asi-g104-objective-validation@stale",
     }
     duplicate_quorum = copy.deepcopy(mapping_quorum)
-    duplicate_quorum["members"][1]["evidence_channel"] = (
-        duplicate_quorum["members"][0]["evidence_channel"]
-    )
+    duplicate_quorum["members"][1]["evidence_channel"] = duplicate_quorum["members"][0][
+        "evidence_channel"
+    ]
     stale_quorum = copy.deepcopy(mapping_quorum)
-    stale_quorum["members"][0]["finished_at"] = (
-        now - timedelta(hours=1)
-    ).isoformat()
+    stale_quorum["members"][0]["finished_at"] = (now - timedelta(hours=1)).isoformat()
     foreign_quorum = copy.deepcopy(mapping_quorum)
     foreign_quorum["binding"]["tree_id"] = "tree:foreign"
     for member in foreign_quorum["members"]:
@@ -1204,8 +1161,7 @@ def test_lifecycle_state_vocabulary_and_transition_table_are_closed() -> None:
     assert set(SupervisorLifecycleState) == states
     assert set(LEGAL_LIFECYCLE_TRANSITIONS) == states
     assert {
-        state: set(targets)
-        for state, targets in LEGAL_LIFECYCLE_TRANSITIONS.items()
+        state: set(targets) for state, targets in LEGAL_LIFECYCLE_TRANSITIONS.items()
     } == expected
     assert all(state not in targets for state, targets in expected.items())
 
@@ -1239,12 +1195,8 @@ def test_status_health_and_round_trip_share_one_complete_schema(
         InMemoryLifecycleStore(initial_status=initial),
     )
 
-    status = _asi021_data(
-        service, repo_root, state_root, Operation.STATUS
-    )
-    health = _asi021_data(
-        service, repo_root, state_root, Operation.HEALTH
-    )
+    status = _asi021_data(service, repo_root, state_root, Operation.STATUS)
+    health = _asi021_data(service, repo_root, state_root, Operation.HEALTH)
     required = {
         "schema",
         "state",
@@ -1265,9 +1217,7 @@ def test_status_health_and_round_trip_share_one_complete_schema(
     }
 
     assert required <= status.keys()
-    assert status["schema"] == (
-        "ipfs_accelerate_py/agent-supervisor/lifecycle-status@1"
-    )
+    assert status["schema"] == ("ipfs_accelerate_py/agent-supervisor/lifecycle-status@1")
     assert status["state"] == "degraded"
     assert status["active_leases"] == ("lease:alpha", "lease:beta")
     assert status["backpressure"] is True
@@ -1323,18 +1273,14 @@ def test_concurrent_controllers_apply_an_exact_command_once(
 
     assert all(result.succeeded for result in results)
     assert results[0] == results[1]
-    status = _asi021_data(
-        controllers[0], repo_root, state_root, Operation.STATUS
-    )
+    status = _asi021_data(controllers[0], repo_root, state_root, Operation.STATUS)
     assert status["state"] == "paused"
     # Generation identifies a process incarnation, not every control-state
     # revision, so pausing cannot make the running generation appear newer.
     assert status["generation"] == 3
     matching = [
         event
-        for event in _asi021_events(
-            controllers[0], repo_root, state_root
-        )
+        for event in _asi021_events(controllers[0], repo_root, state_root)
         if event["request_id"] == request.request_id
     ]
     assert len(matching) == 2
@@ -1412,13 +1358,8 @@ def test_pause_and_drain_have_distinct_lease_and_transition_semantics(
     )
     assert rejected_resume.status is OperationStatus.CONFLICT
     assert rejected_resume.error is not None
-    assert (
-        rejected_resume.error.code.value
-        == "invalid_lifecycle_transition"
-    )
-    assert _asi021_data(
-        service, repo_root, state_root, Operation.STATUS
-    )["state"] == "draining"
+    assert rejected_resume.error.code.value == "invalid_lifecycle_transition"
+    assert _asi021_data(service, repo_root, state_root, Operation.STATUS)["state"] == "draining"
     rejected_event = next(
         event
         for event in _asi021_events(service, repo_root, state_root)
@@ -1462,9 +1403,7 @@ def test_stale_fence_and_unauthorized_stop_are_audited_without_mutation(
     assert stale_result.status is OperationStatus.CONFLICT
     assert stale_result.error is not None
     assert stale_result.error.code.value == "stale_lease"
-    assert _asi021_data(
-        service, repo_root, state_root, Operation.STATUS
-    )["state"] == "healthy"
+    assert _asi021_data(service, repo_root, state_root, Operation.STATUS)["state"] == "healthy"
 
     denied_service = _asi021_service(
         repo_root,
@@ -1483,9 +1422,7 @@ def test_stale_fence_and_unauthorized_stop_are_audited_without_mutation(
     denied_result = denied_service.lifecycle(denied)
 
     assert denied_result.status is OperationStatus.DENIED
-    assert _asi021_data(
-        service, repo_root, state_root, Operation.STATUS
-    )["state"] == "healthy"
+    assert _asi021_data(service, repo_root, state_root, Operation.STATUS)["state"] == "healthy"
 
     events = _asi021_events(service, repo_root, state_root)
     by_request = {event["request_id"]: event for event in events}
@@ -1544,14 +1481,13 @@ def test_json_store_restart_replays_command_without_duplicate_event(
 
     assert first.succeeded
     assert replay == first
-    assert _asi021_data(
-        restarted_service, repo_root, state_root, Operation.STATUS
-    )["state"] == "starting"
+    assert (
+        _asi021_data(restarted_service, repo_root, state_root, Operation.STATUS)["state"]
+        == "starting"
+    )
     matching = [
         event
-        for event in _asi021_events(
-            restarted_service, repo_root, state_root
-        )
+        for event in _asi021_events(restarted_service, repo_root, state_root)
         if event["request_id"] == start.request_id
     ]
     assert len(matching) == 2
@@ -1601,14 +1537,8 @@ def test_stale_starting_pid_recovers_an_interrupted_transition(
     assert recovered_status["generation"] == 5
     assert recovered_status["transition_id"] != stale.transition_id
     events = _asi021_events(service, repo_root, state_root)
-    recovery_event = next(
-        item for item in events if item["action"] == "recover"
-    )
-    command_event = next(
-        item
-        for item in events
-        if item["request_id"] == recover.request_id
-    )
+    recovery_event = next(item for item in events if item["action"] == "recover")
+    command_event = next(item for item in events if item["request_id"] == recover.request_id)
     assert recovery_event["previous_state"] == "starting"
     assert recovery_event["state"] == "stopped"
     assert recovery_event["reason"] == "interrupted_start_stale_pid"
@@ -1648,15 +1578,9 @@ def test_event_replay_is_bounded_ordered_and_round_trippable(
             )
         )
 
-    complete = _asi021_events(
-        service, repo_root, state_root, limit=256
-    )
-    first_page = _asi021_events(
-        service, repo_root, state_root, limit=2
-    )
-    second_page = _asi021_events(
-        service, repo_root, state_root, limit=2, offset=2
-    )
+    complete = _asi021_events(service, repo_root, state_root, limit=256)
+    first_page = _asi021_events(service, repo_root, state_root, limit=2)
+    second_page = _asi021_events(service, repo_root, state_root, limit=2, offset=2)
     cursor_page = _asi021_events(
         service,
         repo_root,
@@ -1667,14 +1591,9 @@ def test_event_replay_is_bounded_ordered_and_round_trippable(
     assert len(complete) == 3
     assert first_page + second_page == complete
     assert cursor_page == complete[1:]
-    assert [item["sequence"] for item in complete] == sorted(
-        item["sequence"] for item in complete
-    )
+    assert [item["sequence"] for item in complete] == sorted(item["sequence"] for item in complete)
     assert len({item["event_id"] for item in complete}) == 3
-    assert all(
-        LifecycleEvent.from_dict(item).to_dict() == item
-        for item in complete
-    )
+    assert all(LifecycleEvent.from_dict(item).to_dict() == item for item in complete)
 
     # Restart replay uses the stored sequence/event identities, not a new
     # snapshot synthesized from current state.

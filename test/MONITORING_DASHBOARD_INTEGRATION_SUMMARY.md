@@ -85,14 +85,14 @@ def _connect_to_dashboard(self):
     try:
         # Set up headers with API key
         headers = {"Authorization": f"Bearer {self.dashboard_api_key}"}
-        
+
         # Make authentication request
         response = requests.post(
             f"{self.dashboard_url}/auth",
             headers=headers,
-            json={"client_type": "validation_framework"}
+            json={"client_type": "validation_framework"},
         )
-        
+
         # Handle response
         if response.status_code == 200:
             data = response.json()
@@ -101,7 +101,9 @@ def _connect_to_dashboard(self):
             self.dashboard_connected = True
             return True
         else:
-            logger.error(f"Failed to connect to dashboard: {response.status_code} - {response.text}")
+            logger.error(
+                f"Failed to connect to dashboard: {response.status_code} - {response.text}"
+            )
             return False
     except Exception as e:
         logger.error(f"Failed to connect to dashboard: {e}")
@@ -118,13 +120,13 @@ def upload_visualization_to_dashboard(
     panel_id=None,
     dashboard_id=None,
     refresh_interval=None,
-    metadata=None
+    metadata=None,
 ):
     """Upload a visualization to the monitoring dashboard."""
     if not self.dashboard_connected:
         if not self._connect_to_dashboard():
             return {"status": "error", "message": "Not connected to dashboard"}
-    
+
     # Prepare payload
     payload = {
         "visualization_type": visualization_type,
@@ -132,17 +134,13 @@ def upload_visualization_to_dashboard(
         "panel_id": panel_id,
         "dashboard_id": dashboard_id,
         "refresh_interval": refresh_interval,
-        "metadata": metadata or {}
+        "metadata": metadata or {},
     }
-    
+
     # Make API request
     headers = {"Authorization": f"Bearer {self.dashboard_session_token}"}
-    response = requests.post(
-        f"{self.dashboard_url}/visualizations",
-        headers=headers,
-        json=payload
-    )
-    
+    response = requests.post(f"{self.dashboard_url}/visualizations", headers=headers, json=payload)
+
     # Process response
     if response.status_code == 200:
         return response.json()
@@ -165,13 +163,14 @@ def create_dashboard_panel_from_db(
     panel_config=None,
     refresh_interval=60,
     width=6,
-    height=4
+    height=4,
 ):
     """Create a dashboard panel with data from the database."""
     # Get data from database based on panel type
     visualization_data = self._get_data_for_panel_type(
-        panel_type, hardware_type, model_type, metric)
-    
+        panel_type, hardware_type, model_type, metric
+    )
+
     # Create panel metadata
     panel_metadata = {
         "panel_type": panel_type,
@@ -181,22 +180,22 @@ def create_dashboard_panel_from_db(
         "refresh_interval": refresh_interval,
         "width": width,
         "height": height,
-        "config": panel_config or {}
+        "config": panel_config or {},
     }
-    
+
     # Upload visualization to dashboard
     result = self.upload_visualization_to_dashboard(
         visualization_type=panel_type,
         visualization_data=visualization_data,
         dashboard_id=dashboard_id,
         refresh_interval=refresh_interval,
-        metadata=panel_metadata
+        metadata=panel_metadata,
     )
-    
+
     # Add panel title to result
     if result.get("status") == "success":
         result["title"] = panel_title or f"{panel_type.replace('_', ' ').title()} Panel"
-    
+
     return result
 ```
 
@@ -208,7 +207,7 @@ def create_dashboard_panel_from_db(
 connector = ValidationVisualizerDBConnector(
     dashboard_integration=True,
     dashboard_url="http://dashboard.example.com/api",
-    dashboard_api_key="your_api_key"
+    dashboard_api_key="your_api_key",
 )
 
 result = connector.create_dashboard_panel_from_db(
@@ -217,7 +216,7 @@ result = connector.create_dashboard_panel_from_db(
     model_type="bert-base-uncased",
     metric="throughput_items_per_second",
     dashboard_id="my_dashboard",
-    panel_title="BERT GPU MAPE Comparison"
+    panel_title="BERT GPU MAPE Comparison",
 )
 
 print(f"Panel created: {result['panel_id']}")
@@ -230,11 +229,7 @@ result = connector.create_comprehensive_monitoring_dashboard(
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
     dashboard_title="BERT GPU Monitoring Dashboard",
-    include_panels=[
-        "mape_comparison",
-        "time_series",
-        "drift_detection"
-    ]
+    include_panels=["mape_comparison", "time_series", "drift_detection"],
 )
 
 print(f"Dashboard created: {result['url']}")
@@ -248,11 +243,8 @@ result = connector.set_up_real_time_monitoring(
     model_type="bert-base-uncased",
     metrics=["throughput_mape", "latency_mape"],
     monitoring_interval=300,
-    alert_thresholds={
-        "throughput_mape": 10.0,
-        "latency_mape": 12.0
-    },
-    dashboard_id="my_dashboard"
+    alert_thresholds={"throughput_mape": 10.0, "latency_mape": 12.0},
+    dashboard_id="my_dashboard",
 )
 
 print(f"Monitoring set up: {result['monitoring_job_id']}")

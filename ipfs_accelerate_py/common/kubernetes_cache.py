@@ -15,19 +15,13 @@ logger = logging.getLogger(__name__)
 
 # Try to import datasets integration for Kubernetes operation tracking
 try:
-    from ..datasets_integration import (
-        is_datasets_available,
-        ProvenanceLogger,
-        DatasetsManager
-    )
+    from ..datasets_integration import is_datasets_available, ProvenanceLogger, DatasetsManager
+
     HAVE_DATASETS_INTEGRATION = True
 except ImportError:
     try:
-        from datasets_integration import (
-            is_datasets_available,
-            ProvenanceLogger,
-            DatasetsManager
-        )
+        from datasets_integration import is_datasets_available, ProvenanceLogger, DatasetsManager
+
         HAVE_DATASETS_INTEGRATION = True
     except ImportError:
         HAVE_DATASETS_INTEGRATION = False
@@ -39,7 +33,7 @@ except ImportError:
 class KubernetesAPICache(BaseAPICache):
     """
     Cache for Kubernetes API responses.
-    
+
     Caches:
     - Pod status and metadata
     - Deployment status
@@ -48,7 +42,7 @@ class KubernetesAPICache(BaseAPICache):
     - Node information
     - Resource quotas
     """
-    
+
     # Default TTLs for different operations (in seconds)
     DEFAULT_TTLS = {
         "pod_status": 30,  # 30 seconds (pod state changes frequently)
@@ -67,27 +61,27 @@ class KubernetesAPICache(BaseAPICache):
         "statefulset_status": 60,  # 1 minute
         "daemonset_status": 60,  # 1 minute
     }
-    
+
     def get_cache_namespace(self) -> str:
         """Get cache namespace."""
         return "kubernetes_api"
-    
+
     def extract_validation_fields(self, operation: str, data: Any) -> Optional[Dict[str, Any]]:
         """
         Extract validation fields from Kubernetes API response.
-        
+
         Args:
             operation: Operation name
             data: API response data
-            
+
         Returns:
             Validation fields dictionary or None
         """
         if not data or not isinstance(data, dict):
             return None
-        
+
         validation = {}
-        
+
         # Extract metadata (common to most K8s resources)
         metadata = data.get("metadata", {})
         if isinstance(metadata, dict):
@@ -96,7 +90,7 @@ class KubernetesAPICache(BaseAPICache):
             validation["uid"] = metadata.get("uid")
             validation["resourceVersion"] = metadata.get("resourceVersion")
             validation["generation"] = metadata.get("generation")
-        
+
         # Extract status (common to most K8s resources)
         status = data.get("status", {})
         if isinstance(status, dict):
@@ -104,20 +98,22 @@ class KubernetesAPICache(BaseAPICache):
             if operation.startswith("pod_"):
                 validation["phase"] = status.get("phase")
                 validation["podIP"] = status.get("podIP")
-                
+
                 # Container statuses
                 container_statuses = status.get("containerStatuses", [])
                 if isinstance(container_statuses, list):
                     validation["ready_containers"] = sum(
-                        1 for cs in container_statuses 
+                        1
+                        for cs in container_statuses
                         if isinstance(cs, dict) and cs.get("ready", False)
                     )
                     validation["total_containers"] = len(container_statuses)
                     validation["restart_count"] = sum(
-                        cs.get("restartCount", 0) for cs in container_statuses 
+                        cs.get("restartCount", 0)
+                        for cs in container_statuses
                         if isinstance(cs, dict)
                     )
-            
+
             # Deployment-specific
             elif operation.startswith("deployment_"):
                 validation["replicas"] = status.get("replicas")
@@ -125,11 +121,15 @@ class KubernetesAPICache(BaseAPICache):
                 validation["updatedReplicas"] = status.get("updatedReplicas")
                 validation["availableReplicas"] = status.get("availableReplicas")
                 validation["observedGeneration"] = status.get("observedGeneration")
-            
+
             # Service-specific
             elif operation.startswith("service_"):
-                validation["clusterIP"] = status.get("loadBalancer", {}).get("ingress", [{}])[0].get("ip") if isinstance(status.get("loadBalancer"), dict) else None
-            
+                validation["clusterIP"] = (
+                    status.get("loadBalancer", {}).get("ingress", [{}])[0].get("ip")
+                    if isinstance(status.get("loadBalancer"), dict)
+                    else None
+                )
+
             # Node-specific
             elif operation.startswith("node_"):
                 conditions = status.get("conditions", [])
@@ -139,22 +139,22 @@ class KubernetesAPICache(BaseAPICache):
                         if isinstance(condition, dict) and condition.get("type") == "Ready":
                             validation["ready"] = condition.get("status") == "True"
                             break
-                
+
                 # Node capacity
                 capacity = status.get("capacity", {})
                 if isinstance(capacity, dict):
                     validation["cpu"] = capacity.get("cpu")
                     validation["memory"] = capacity.get("memory")
                     validation["pods"] = capacity.get("pods")
-        
+
         # For list operations, include count
         if operation.endswith("_list"):
             items = data.get("items", [])
             if isinstance(items, list):
                 validation["item_count"] = len(items)
-        
+
         return validation if validation else None
-    
+
     def get_default_ttl_for_operation(self, operation: str) -> int:
         """Get operation-specific TTL."""
         return self.DEFAULT_TTLS.get(operation, self.default_ttl)
@@ -168,34 +168,36 @@ _k8s_cache_lock = threading.Lock()
 def get_global_kubernetes_cache() -> KubernetesAPICache:
     """Get or create the global Kubernetes API cache instance."""
     global _global_k8s_cache
-    
+
     with _k8s_cache_lock:
         if _global_k8s_cache is None:
             _global_k8s_cache = KubernetesAPICache()
             from .base_cache import register_cache
+
             register_cache("kubernetes_api", _global_k8s_cache)
-        
+
         return _global_k8s_cache
 
 
 def configure_kubernetes_cache(**kwargs) -> KubernetesAPICache:
     """
     Configure the global Kubernetes API cache.
-    
+
     Args:
         **kwargs: Arguments to pass to KubernetesAPICache constructor
-        
+
     Returns:
         Configured Kubernetes API cache instance
     """
     global _global_k8s_cache
-    
+
     with _k8s_cache_lock:
         if _global_k8s_cache is not None:
             _global_k8s_cache.shutdown()
-        
+
         _global_k8s_cache = KubernetesAPICache(**kwargs)
         from .base_cache import register_cache
+
         register_cache("kubernetes_api", _global_k8s_cache)
-        
+
         return _global_k8s_cache

@@ -13,15 +13,16 @@ gpt2_webgpu_skill = pytest.importorskip(
 )
 gpt2Skill = gpt2_webgpu_skill.gpt2Skill
 
+
 class TestGpt2:
     """Test suite for gpt2 on webgpu."""
-    
+
     def test_setup(self):
         """Test model setup."""
         skill = gpt2Skill()
         success = skill.setup()
         assert success, "Model setup should succeed"
-    
+
     def test_run(self):
         """Test model inference."""
         skill = gpt2Skill()

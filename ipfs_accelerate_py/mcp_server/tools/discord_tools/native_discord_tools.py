@@ -31,7 +31,9 @@ def _load_discord_tools_api() -> Dict[str, Any]:
             "discord_batch_convert_exports": _discord_batch_convert_exports,
         }
     except Exception:
-        logger.warning("Source discord_tools import unavailable, using fallback discord-tools functions")
+        logger.warning(
+            "Source discord_tools import unavailable, using fallback discord-tools functions"
+        )
 
         async def _list_guilds_fallback(token: Optional[str] = None) -> Dict[str, Any]:
             _ = token
@@ -87,7 +89,17 @@ def _load_discord_tools_api() -> Dict[str, Any]:
             reuse_media: bool = False,
             partition_limit: Optional[str] = None,
         ) -> Dict[str, Any]:
-            _ = token, output_path, format, after_date, before_date, filter_text, download_media, reuse_media, partition_limit
+            _ = (
+                token,
+                output_path,
+                format,
+                after_date,
+                before_date,
+                filter_text,
+                download_media,
+                reuse_media,
+                partition_limit,
+            )
             return {
                 "status": "error",
                 "error": "Discord wrapper not available",
@@ -199,7 +211,10 @@ async def discord_list_guilds(token: Optional[str] = None) -> Dict[str, Any]:
 
     payload.setdefault("tool", "discord_list_guilds")
     payload.setdefault("guilds", [])
-    payload.setdefault("count", len(payload.get("guilds", [])) if isinstance(payload.get("guilds", []), list) else 0)
+    payload.setdefault(
+        "count",
+        len(payload.get("guilds", [])) if isinstance(payload.get("guilds", []), list) else 0,
+    )
     return payload
 
 
@@ -246,7 +261,10 @@ async def discord_list_channels(guild_id: str, token: Optional[str] = None) -> D
     payload.setdefault("tool", "discord_list_channels")
     payload.setdefault("guild_id", normalized_guild_id)
     payload.setdefault("channels", [])
-    payload.setdefault("count", len(payload.get("channels", [])) if isinstance(payload.get("channels", []), list) else 0)
+    payload.setdefault(
+        "count",
+        len(payload.get("channels", [])) if isinstance(payload.get("channels", []), list) else 0,
+    )
     return payload
 
 
@@ -279,7 +297,10 @@ async def discord_list_dm_channels(token: Optional[str] = None) -> Dict[str, Any
 
     payload.setdefault("tool", "discord_list_dm_channels")
     payload.setdefault("channels", [])
-    payload.setdefault("count", len(payload.get("channels", [])) if isinstance(payload.get("channels", []), list) else 0)
+    payload.setdefault(
+        "count",
+        len(payload.get("channels", [])) if isinstance(payload.get("channels", []), list) else 0,
+    )
     return payload
 
 
@@ -298,20 +319,50 @@ async def discord_export_channel(
     """Export a Discord channel using the source-compatible wrapper contract."""
     normalized_channel_id = str(channel_id or "").strip()
     if not normalized_channel_id:
-        return {"status": "error", "error": "channel_id is required", "channel_id": channel_id, "tool": "discord_export_channel"}
+        return {
+            "status": "error",
+            "error": "channel_id is required",
+            "channel_id": channel_id,
+            "tool": "discord_export_channel",
+        }
     normalized_token = None if token is None else str(token).strip()
     if token is not None and not normalized_token:
-        return {"status": "error", "error": "token must be a non-empty string when provided", "channel_id": normalized_channel_id, "tool": "discord_export_channel"}
+        return {
+            "status": "error",
+            "error": "token must be a non-empty string when provided",
+            "channel_id": normalized_channel_id,
+            "tool": "discord_export_channel",
+        }
     normalized_output_path = None if output_path is None else str(output_path).strip()
     if output_path is not None and not normalized_output_path:
-        return {"status": "error", "error": "output_path must be a non-empty string when provided", "channel_id": normalized_channel_id, "tool": "discord_export_channel"}
+        return {
+            "status": "error",
+            "error": "output_path must be a non-empty string when provided",
+            "channel_id": normalized_channel_id,
+            "tool": "discord_export_channel",
+        }
     normalized_format = str(format or "").strip()
     if not normalized_format:
-        return {"status": "error", "error": "format must be a non-empty string", "channel_id": normalized_channel_id, "tool": "discord_export_channel"}
+        return {
+            "status": "error",
+            "error": "format must be a non-empty string",
+            "channel_id": normalized_channel_id,
+            "tool": "discord_export_channel",
+        }
     if not isinstance(download_media, bool):
-        return {"status": "error", "error": "download_media must be a boolean", "channel_id": normalized_channel_id, "tool": "discord_export_channel"}
+        return {
+            "status": "error",
+            "error": "download_media must be a boolean",
+            "channel_id": normalized_channel_id,
+            "tool": "discord_export_channel",
+        }
     if not isinstance(reuse_media, bool):
-        return {"status": "error", "error": "reuse_media must be a boolean", "channel_id": normalized_channel_id, "tool": "discord_export_channel"}
+        return {
+            "status": "error",
+            "error": "reuse_media must be a boolean",
+            "channel_id": normalized_channel_id,
+            "tool": "discord_export_channel",
+        }
 
     try:
         result = _API["discord_export_channel"](
@@ -328,7 +379,12 @@ async def discord_export_channel(
         )
         payload = _normalize_payload(await result if hasattr(result, "__await__") else result)
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "channel_id": normalized_channel_id, "tool": "discord_export_channel"}
+        return {
+            "status": "error",
+            "error": str(exc),
+            "channel_id": normalized_channel_id,
+            "tool": "discord_export_channel",
+        }
 
     payload.setdefault("tool", "discord_export_channel")
     payload.setdefault("channel_id", normalized_channel_id)
@@ -336,21 +392,41 @@ async def discord_export_channel(
     return payload
 
 
-async def discord_analyze_export(export_path: str, analysis_types: Optional[list[str]] = None) -> Dict[str, Any]:
+async def discord_analyze_export(
+    export_path: str, analysis_types: Optional[list[str]] = None
+) -> Dict[str, Any]:
     """Analyze a previously exported Discord dataset."""
     normalized_export_path = str(export_path or "").strip()
     if not normalized_export_path:
-        return {"status": "error", "error": "export_path is required", "export_path": export_path, "tool": "discord_analyze_export"}
+        return {
+            "status": "error",
+            "error": "export_path is required",
+            "export_path": export_path,
+            "tool": "discord_analyze_export",
+        }
     if analysis_types is not None and (
-        not isinstance(analysis_types, list) or not all(isinstance(item, str) and item.strip() for item in analysis_types)
+        not isinstance(analysis_types, list)
+        or not all(isinstance(item, str) and item.strip() for item in analysis_types)
     ):
-        return {"status": "error", "error": "analysis_types must be an array of non-empty strings when provided", "export_path": normalized_export_path, "tool": "discord_analyze_export"}
+        return {
+            "status": "error",
+            "error": "analysis_types must be an array of non-empty strings when provided",
+            "export_path": normalized_export_path,
+            "tool": "discord_analyze_export",
+        }
 
     try:
-        result = _API["discord_analyze_export"](export_path=normalized_export_path, analysis_types=analysis_types)
+        result = _API["discord_analyze_export"](
+            export_path=normalized_export_path, analysis_types=analysis_types
+        )
         payload = _normalize_payload(await result if hasattr(result, "__await__") else result)
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "export_path": normalized_export_path, "tool": "discord_analyze_export"}
+        return {
+            "status": "error",
+            "error": str(exc),
+            "export_path": normalized_export_path,
+            "tool": "discord_analyze_export",
+        }
 
     payload.setdefault("tool", "discord_analyze_export")
     payload.setdefault("export_path", normalized_export_path)
@@ -371,18 +447,56 @@ async def discord_convert_export(
     normalized_output_path = str(output_path or "").strip()
     normalized_to_format = str(to_format or "").strip().lower()
     if not normalized_input_path:
-        return {"status": "error", "error": "input_path is required", "tool": "discord_convert_export"}
+        return {
+            "status": "error",
+            "error": "input_path is required",
+            "tool": "discord_convert_export",
+        }
     if not normalized_output_path:
-        return {"status": "error", "error": "output_path is required", "input_path": normalized_input_path, "tool": "discord_convert_export"}
-    if normalized_to_format not in {"json", "jsonl", "jsonld", "jsonld-logic", "parquet", "ipld", "car", "csv"}:
-        return {"status": "error", "error": "to_format must be one of: car, csv, ipld, json, jsonl, jsonld, jsonld-logic, parquet", "input_path": normalized_input_path, "tool": "discord_convert_export"}
+        return {
+            "status": "error",
+            "error": "output_path is required",
+            "input_path": normalized_input_path,
+            "tool": "discord_convert_export",
+        }
+    if normalized_to_format not in {
+        "json",
+        "jsonl",
+        "jsonld",
+        "jsonld-logic",
+        "parquet",
+        "ipld",
+        "car",
+        "csv",
+    }:
+        return {
+            "status": "error",
+            "error": "to_format must be one of: car, csv, ipld, json, jsonl, jsonld, jsonld-logic, parquet",
+            "input_path": normalized_input_path,
+            "tool": "discord_convert_export",
+        }
     normalized_token = None if token is None else str(token).strip()
     if token is not None and not normalized_token:
-        return {"status": "error", "error": "token must be a non-empty string when provided", "input_path": normalized_input_path, "tool": "discord_convert_export"}
+        return {
+            "status": "error",
+            "error": "token must be a non-empty string when provided",
+            "input_path": normalized_input_path,
+            "tool": "discord_convert_export",
+        }
     if context is not None and not isinstance(context, dict):
-        return {"status": "error", "error": "context must be an object when provided", "input_path": normalized_input_path, "tool": "discord_convert_export"}
+        return {
+            "status": "error",
+            "error": "context must be an object when provided",
+            "input_path": normalized_input_path,
+            "tool": "discord_convert_export",
+        }
     if compression is not None and not str(compression).strip():
-        return {"status": "error", "error": "compression must be a non-empty string when provided", "input_path": normalized_input_path, "tool": "discord_convert_export"}
+        return {
+            "status": "error",
+            "error": "compression must be a non-empty string when provided",
+            "input_path": normalized_input_path,
+            "tool": "discord_convert_export",
+        }
 
     try:
         result = _API["discord_convert_export"](
@@ -395,7 +509,12 @@ async def discord_convert_export(
         )
         payload = _normalize_payload(await result if hasattr(result, "__await__") else result)
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "input_path": normalized_input_path, "tool": "discord_convert_export"}
+        return {
+            "status": "error",
+            "error": str(exc),
+            "input_path": normalized_input_path,
+            "tool": "discord_convert_export",
+        }
 
     payload.setdefault("tool", "discord_convert_export")
     payload.setdefault("input_path", normalized_input_path)
@@ -417,16 +536,49 @@ async def discord_batch_convert_exports(
     normalized_to_format = str(to_format or "").strip().lower()
     normalized_pattern = str(file_pattern or "").strip()
     if not normalized_input_dir:
-        return {"status": "error", "error": "input_dir is required", "tool": "discord_batch_convert_exports"}
+        return {
+            "status": "error",
+            "error": "input_dir is required",
+            "tool": "discord_batch_convert_exports",
+        }
     if not normalized_output_dir:
-        return {"status": "error", "error": "output_dir is required", "input_dir": normalized_input_dir, "tool": "discord_batch_convert_exports"}
-    if normalized_to_format not in {"json", "jsonl", "jsonld", "jsonld-logic", "parquet", "ipld", "car", "csv"}:
-        return {"status": "error", "error": "to_format must be one of: car, csv, ipld, json, jsonl, jsonld, jsonld-logic, parquet", "input_dir": normalized_input_dir, "tool": "discord_batch_convert_exports"}
+        return {
+            "status": "error",
+            "error": "output_dir is required",
+            "input_dir": normalized_input_dir,
+            "tool": "discord_batch_convert_exports",
+        }
+    if normalized_to_format not in {
+        "json",
+        "jsonl",
+        "jsonld",
+        "jsonld-logic",
+        "parquet",
+        "ipld",
+        "car",
+        "csv",
+    }:
+        return {
+            "status": "error",
+            "error": "to_format must be one of: car, csv, ipld, json, jsonl, jsonld, jsonld-logic, parquet",
+            "input_dir": normalized_input_dir,
+            "tool": "discord_batch_convert_exports",
+        }
     if not normalized_pattern:
-        return {"status": "error", "error": "file_pattern must be a non-empty string", "input_dir": normalized_input_dir, "tool": "discord_batch_convert_exports"}
+        return {
+            "status": "error",
+            "error": "file_pattern must be a non-empty string",
+            "input_dir": normalized_input_dir,
+            "tool": "discord_batch_convert_exports",
+        }
     normalized_token = None if token is None else str(token).strip()
     if token is not None and not normalized_token:
-        return {"status": "error", "error": "token must be a non-empty string when provided", "input_dir": normalized_input_dir, "tool": "discord_batch_convert_exports"}
+        return {
+            "status": "error",
+            "error": "token must be a non-empty string when provided",
+            "input_dir": normalized_input_dir,
+            "tool": "discord_batch_convert_exports",
+        }
 
     try:
         result = _API["discord_batch_convert_exports"](
@@ -438,7 +590,12 @@ async def discord_batch_convert_exports(
         )
         payload = _normalize_payload(await result if hasattr(result, "__await__") else result)
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "input_dir": normalized_input_dir, "tool": "discord_batch_convert_exports"}
+        return {
+            "status": "error",
+            "error": str(exc),
+            "input_dir": normalized_input_dir,
+            "tool": "discord_batch_convert_exports",
+        }
 
     payload.setdefault("tool", "discord_batch_convert_exports")
     payload.setdefault("input_dir", normalized_input_dir)
@@ -531,7 +688,9 @@ def register_native_discord_tools(manager: Any) -> None:
                 "filter_text": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
                 "download_media": {"type": "boolean", "default": False},
                 "reuse_media": {"type": "boolean", "default": False},
-                "partition_limit": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
+                "partition_limit": {
+                    "anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]
+                },
             },
             "required": ["channel_id"],
         },
@@ -548,7 +707,12 @@ def register_native_discord_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "export_path": {"type": "string", "minLength": 1},
-                "analysis_types": {"anyOf": [{"type": "array", "items": {"type": "string", "minLength": 1}}, {"type": "null"}]},
+                "analysis_types": {
+                    "anyOf": [
+                        {"type": "array", "items": {"type": "string", "minLength": 1}},
+                        {"type": "null"},
+                    ]
+                },
             },
             "required": ["export_path"],
         },
@@ -566,7 +730,20 @@ def register_native_discord_tools(manager: Any) -> None:
             "properties": {
                 "input_path": {"type": "string", "minLength": 1},
                 "output_path": {"type": "string", "minLength": 1},
-                "to_format": {"type": "string", "enum": ["json", "jsonl", "jsonld", "jsonld-logic", "parquet", "ipld", "car", "csv"], "default": "jsonl"},
+                "to_format": {
+                    "type": "string",
+                    "enum": [
+                        "json",
+                        "jsonl",
+                        "jsonld",
+                        "jsonld-logic",
+                        "parquet",
+                        "ipld",
+                        "car",
+                        "csv",
+                    ],
+                    "default": "jsonl",
+                },
                 "token": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
                 "context": {"anyOf": [{"type": "object"}, {"type": "null"}]},
                 "compression": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
@@ -587,7 +764,20 @@ def register_native_discord_tools(manager: Any) -> None:
             "properties": {
                 "input_dir": {"type": "string", "minLength": 1},
                 "output_dir": {"type": "string", "minLength": 1},
-                "to_format": {"type": "string", "enum": ["json", "jsonl", "jsonld", "jsonld-logic", "parquet", "ipld", "car", "csv"], "default": "jsonl"},
+                "to_format": {
+                    "type": "string",
+                    "enum": [
+                        "json",
+                        "jsonl",
+                        "jsonld",
+                        "jsonld-logic",
+                        "parquet",
+                        "ipld",
+                        "car",
+                        "csv",
+                    ],
+                    "default": "jsonl",
+                },
                 "file_pattern": {"type": "string", "minLength": 1, "default": "*.json"},
                 "token": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
             },

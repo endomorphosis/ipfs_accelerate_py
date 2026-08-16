@@ -248,7 +248,9 @@ async def submit_task(
 ) -> Optional[str]:
     """Module-level submit helper for compatibility with legacy call sites."""
     queue = create_task_queue(queue_path=queue_path, peer_id=peer_id, multiaddr=multiaddr)
-    return await queue.submit(task_type=task_type, payload=payload, priority=priority, model_name=model_name, **kwargs)
+    return await queue.submit(
+        task_type=task_type, payload=payload, priority=priority, model_name=model_name, **kwargs
+    )
 
 
 async def get_task_status(

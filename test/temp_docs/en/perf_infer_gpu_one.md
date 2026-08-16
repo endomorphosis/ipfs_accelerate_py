@@ -45,7 +45,9 @@ from transformers import BitsAndBytesConfig, AutoTokenizer, AutoModelForCausalLM
 
 quantization_config = BitsAndBytesConfig(load_in_8bit=True)
 tokenizer = AutoTokenizer("meta-llama/Llama-3.1-8B")
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B", device_map="auto", quantization_config=quantization_config)
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-3.1-8B", device_map="auto", quantization_config=quantization_config
+)
 
 prompt = "Hello, my llama is cute"
 inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
@@ -58,7 +60,10 @@ For distributed setups, use the `max_memory` parameter to create a mapping of th
 ```py
 max_memory_mapping = {0: "16GB", 1: "16GB"}
 model_8bit = AutoModelForCausalLM.from_pretrained(
-    "meta-llama/Llama-3.1-8B", device_map="auto", quantization_config=quantization_config, max_memory=max_memory_mapping
+    "meta-llama/Llama-3.1-8B",
+    device_map="auto",
+    quantization_config=quantization_config,
+    max_memory=max_memory_mapping,
 )
 ```
 
@@ -78,7 +83,9 @@ from transformers import BitsAndBytesConfig, AutoTokenizer, AutoModelForCausalLM
 
 quantization_config = BitsAndBytesConfig(load_in_4bit=True)
 tokenizer = AutoTokenizer("meta-llama/Llama-3.1-8B")
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B", device_map="auto", quantization_config=quantization_config)
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-3.1-8B", device_map="auto", quantization_config=quantization_config
+)
 
 prompt = "Hello, my llama is cute"
 inputs = tokenizer(prompt, return_tensors="pt").to(model_8bit.device)
@@ -91,7 +98,10 @@ For distributed setups, use the `max_memory` parameter to create a mapping of th
 ```py
 max_memory_mapping = {0: "16GB", 1: "16GB"}
 model_4bit = AutoModelForCausalLM.from_pretrained(
-    "meta-llama/Llama-3.1-8B", device_map="auto", quantization_config=quantization_config, max_memory=max_memory_mapping
+    "meta-llama/Llama-3.1-8B",
+    device_map="auto",
+    quantization_config=quantization_config,
+    max_memory=max_memory_mapping,
 )
 ```
 
@@ -118,9 +128,9 @@ For example, load the [distilbert/distilbert-base-uncased-finetuned-sst-2-englis
 from optimum.onnxruntime import ORTModelForSequenceClassification
 
 ort_model = ORTModelForSequenceClassification.from_pretrained(
-  "distilbert/distilbert-base-uncased-finetuned-sst-2-english",
-  #export=True,
-  provider="CUDAExecutionProvider",
+    "distilbert/distilbert-base-uncased-finetuned-sst-2-english",
+    # export=True,
+    provider="CUDAExecutionProvider",
 )
 ```
 
@@ -130,9 +140,15 @@ Now you can use the model for inference in a [`Pipeline`].
 from optimum.pipelines import pipeline
 from transformers import AutoTokenizer
 
-tokenizer = AutoTokenizer.from_pretrained("distilbert/distilbert-base-uncased-finetuned-sst-2-english")
-pipeline = pipeline(task="text-classification", model=ort_model, tokenizer=tokenizer, device="cuda:0")
-result = pipeline("Both the music and visual were astounding, not to mention the actors performance.")
+tokenizer = AutoTokenizer.from_pretrained(
+    "distilbert/distilbert-base-uncased-finetuned-sst-2-english"
+)
+pipeline = pipeline(
+    task="text-classification", model=ort_model, tokenizer=tokenizer, device="cuda:0"
+)
+result = pipeline(
+    "Both the music and visual were astounding, not to mention the actors performance."
+)
 ```
 
 Learn more details about using ORT with Optimum in the [Accelerated inference on NVIDIA GPUs](https://hf.co/docs/optimum/onnxruntime/usage_guides/gpu#accelerated-inference-on-nvidia-gpus) and [Accelerated inference on AMD GPUs](https://hf.co/docs/optimum/onnxruntime/usage_guides/amdgpu#accelerated-inference-on-amd-gpus) guides.
@@ -180,7 +196,9 @@ SDPA is used by default for PyTorch v2.1.1. and greater when an implementation i
 ```py
 from transformers import AutoModelForCausalLM
 
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B", device_map="auto", attn_implementation="sdpa")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-3.1-8B", device_map="auto", attn_implementation="sdpa"
+)
 ```
 
 SDPA selects the most performant implementation available, but you can also explicitly select an implementation with [torch.nn.attention.sdpa_kernel](https://pytorch.org/docs/master/backends.html#torch.backends.cuda.sdp_kernel) as a context manager. The example below shows how to enable the FlashAttention2 implementation with `enable_flash=True`.
@@ -239,7 +257,12 @@ Enable FlashAttention2 by setting `attn_implementation="flash_attention_2"` in [
 ```py
 from transformers import AutoModelForCausalLM
 
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B", device_map="auto", torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-3.1-8B",
+    device_map="auto",
+    torch_dtype=torch.bfloat16,
+    attn_implementation="flash_attention_2",
+)
 ```
 
 ### Benchmarks

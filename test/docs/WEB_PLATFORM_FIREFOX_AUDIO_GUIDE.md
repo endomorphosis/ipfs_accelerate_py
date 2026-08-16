@@ -37,17 +37,15 @@ os.environ["WEBGPU_COMPUTE_SHADERS_ENABLED"] = "1"
 if browser == "firefox":
     # Enable Firefox advanced compute mode
     os.environ["MOZ_WEBGPU_ADVANCED_COMPUTE"] = "1"
-    
+
     # Create Firefox-optimized configuration
-    firefox_config = optimize_for_firefox({
-        "model_name": "whisper",
-        "workgroup_size": "256x1x1",
-        "enable_advanced_compute": True
-    })
-    
+    firefox_config = optimize_for_firefox(
+        {"model_name": "whisper", "workgroup_size": "256x1x1", "enable_advanced_compute": True}
+    )
+
     # Get the Firefox-optimized processor
     audio_processor = firefox_config["processor"]
-    
+
     # Extract performance details if needed
     metrics = audio_processor.get_performance_metrics()
     if "firefox_advantage_over_chrome" in metrics:
@@ -58,7 +56,7 @@ model = WhisperModel("whisper-tiny")  # Your model loading code
 result = init_webgpu(
     model=model,
     compute_shaders=True,
-    precompile_shaders=True  # Firefox has limited support, but still beneficial
+    precompile_shaders=True,  # Firefox has limited support, but still beneficial
 )
 
 # Step 5: Process audio with Firefox-optimized settings
@@ -73,27 +71,29 @@ For maximum performance with audio models in Firefox, implement these advanced o
 from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
 
 # Create highly-optimized Firefox configuration
-firefox_config = optimize_for_firefox({
-    "model_name": "whisper",
-    "workgroup_size": "256x1x1",           # Firefox-optimized workgroup size vs Chrome's 128x2x1
-    "enable_advanced_compute": True,
-    "enable_shader_precompilation": True,   # Faster startup with precompiled shaders 
-    "enable_power_optimization": True,      # Enable 15% power savings
-    "optimizations": {
-        "specialized_fft": True,            # Use optimized FFT implementation
-        "spectrogram_acceleration": True,   # Accelerate spectrogram computation
-        "temporal_fusion": True,            # Enable temporal fusion for audio embeddings
-        "audio_buffer_streaming": True,     # Enable audio buffer streaming
-        "enhanced_spectrogram_pipeline": True, # Firefox-specific pipeline optimization
-        "memory_efficient_processing": True    # 8% memory savings
-    },
-    "audio_settings": {
-        "chunk_size_ms": 200,               # Process audio in 200ms chunks
-        "overlap_ms": 40,                   # 40ms overlap between chunks
-        "mel_filters": 80,                  # Number of mel filters
-        "sample_rate": 16000                # Sample rate in Hz
+firefox_config = optimize_for_firefox(
+    {
+        "model_name": "whisper",
+        "workgroup_size": "256x1x1",  # Firefox-optimized workgroup size vs Chrome's 128x2x1
+        "enable_advanced_compute": True,
+        "enable_shader_precompilation": True,  # Faster startup with precompiled shaders
+        "enable_power_optimization": True,  # Enable 15% power savings
+        "optimizations": {
+            "specialized_fft": True,  # Use optimized FFT implementation
+            "spectrogram_acceleration": True,  # Accelerate spectrogram computation
+            "temporal_fusion": True,  # Enable temporal fusion for audio embeddings
+            "audio_buffer_streaming": True,  # Enable audio buffer streaming
+            "enhanced_spectrogram_pipeline": True,  # Firefox-specific pipeline optimization
+            "memory_efficient_processing": True,  # 8% memory savings
+        },
+        "audio_settings": {
+            "chunk_size_ms": 200,  # Process audio in 200ms chunks
+            "overlap_ms": 40,  # 40ms overlap between chunks
+            "mel_filters": 80,  # Number of mel filters
+            "sample_rate": 16000,  # Sample rate in Hz
+        },
     }
-})
+)
 
 # Get the Firefox-optimized processor
 audio_processor = firefox_config["processor"]
@@ -101,7 +101,7 @@ audio_processor = firefox_config["processor"]
 # For longer audio files, process in optimized chunks
 for audio_chunk in audio_chunks:
     features = audio_processor.extract_features(audio_chunk)
-    
+
     # Process features with model
     result = model.process(features)
 ```
@@ -141,13 +141,11 @@ if browser == "firefox":
 elif browser == "chrome" or browser == "edge":
     workgroup_config = {"x": 128, "y": 2, "z": 1}  # Optimal for Chrome/Edge
 else:
-    workgroup_config = {"x": 64, "y": 2, "z": 1}   # Default for other browsers
+    workgroup_config = {"x": 64, "y": 2, "z": 1}  # Default for other browsers
 
 # Generate compute shader with browser-specific workgroup
 shader = generate_compute_shader(
-    operation="audio_processing",
-    browser=browser,
-    workgroup_size=workgroup_config
+    operation="audio_processing", browser=browser, workgroup_size=workgroup_config
 )
 ```
 
@@ -162,19 +160,11 @@ If you experience issues with Firefox audio optimizations:
 if browser == "firefox":
     try:
         # Try with shader precompilation first
-        result = init_webgpu(
-            model=model,
-            compute_shaders=True,
-            precompile_shaders=True
-        )
+        result = init_webgpu(model=model, compute_shaders=True, precompile_shaders=True)
     except Exception as e:
         if "shader compilation" in str(e).lower():
             # Fall back to compute shaders without precompilation
-            result = init_webgpu(
-                model=model,
-                compute_shaders=True,
-                precompile_shaders=False
-            )
+            result = init_webgpu(model=model, compute_shaders=True, precompile_shaders=False)
 ```
 
 ### Issue: Memory Pressure
@@ -184,12 +174,14 @@ if browser == "firefox":
 if browser == "firefox":
     # Configure memory-efficient audio processing
     audio_processor = firefox_config["processor"]
-    audio_processor.configure_memory_optimization({
-        "streaming_mode": True,           # Process audio in streaming fashion
-        "max_chunk_size_mb": 64,          # Maximum memory per chunk
-        "progressive_processing": True,   # Process audio progressively
-        "cleanup_interval_ms": 500        # Cleanup temporary buffers every 500ms
-    })
+    audio_processor.configure_memory_optimization(
+        {
+            "streaming_mode": True,  # Process audio in streaming fashion
+            "max_chunk_size_mb": 64,  # Maximum memory per chunk
+            "progressive_processing": True,  # Process audio progressively
+            "cleanup_interval_ms": 500,  # Cleanup temporary buffers every 500ms
+        }
+    )
 ```
 
 ## Performance Measurement in Firefox
@@ -207,17 +199,29 @@ results = performance_tool.run_benchmarks(
     model="whisper",
     audio_durations=[5, 15, 30, 60],
     configurations=[
-        {"workgroup_size": "128x2x1", "optimizations": False, "power_measurement": True},  # Chrome-like
-        {"workgroup_size": "256x1x1", "optimizations": False, "power_measurement": True},  # Firefox default
-        {"workgroup_size": "256x1x1", "optimizations": True, "power_measurement": True}    # Firefox optimized
-    ]
+        {
+            "workgroup_size": "128x2x1",
+            "optimizations": False,
+            "power_measurement": True,
+        },  # Chrome-like
+        {
+            "workgroup_size": "256x1x1",
+            "optimizations": False,
+            "power_measurement": True,
+        },  # Firefox default
+        {
+            "workgroup_size": "256x1x1",
+            "optimizations": True,
+            "power_measurement": True,
+        },  # Firefox optimized
+    ],
 )
 
 # Generate comprehensive performance comparison report
 performance_tool.generate_report(
-    results, 
+    results,
     "firefox_audio_performance.html",
-    include_metrics=["processing_time", "power_consumption", "memory_usage"]
+    include_metrics=["processing_time", "power_consumption", "memory_usage"],
 )
 
 # Generate power efficiency chart

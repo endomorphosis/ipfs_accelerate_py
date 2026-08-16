@@ -78,7 +78,11 @@ def _maybe_install_torch() -> None:
       - For normal `pip install .` (PEP517/wheel), setuptools install hooks are not reliable.
         Use the provided helper scripts in `scripts/` for deterministic installs.
     """
-    enabled = os.environ.get("IPFS_ACCELERATE_PY_SETUP_AUTO_TORCH", "1").strip() not in {"0", "false", "no"}
+    enabled = os.environ.get("IPFS_ACCELERATE_PY_SETUP_AUTO_TORCH", "1").strip() not in {
+        "0",
+        "false",
+        "no",
+    }
     if not enabled:
         return
 
@@ -92,14 +96,36 @@ def _maybe_install_torch() -> None:
         req = this_directory / "install" / "requirements_torch_cu130_nightly.txt"
         if req.exists():
             _run([sys.executable, "-m", "pip", "install", "-U", "pip"])
-            _run([sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall", "-r", str(req)])
+            _run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--upgrade",
+                    "--force-reinstall",
+                    "-r",
+                    str(req),
+                ]
+            )
         return
 
     if mode == "cu124":
         req = this_directory / "install" / "requirements_torch_cu124.txt"
         if req.exists():
             _run([sys.executable, "-m", "pip", "install", "-U", "pip"])
-            _run([sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall", "-r", str(req)])
+            _run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--upgrade",
+                    "--force-reinstall",
+                    "-r",
+                    str(req),
+                ]
+            )
         return
 
     if mode == "cpu":
@@ -180,7 +206,9 @@ def _read_optional_deps(pyproject_path: Path) -> dict[str, list[str]]:
 
 
 this_directory = Path(__file__).parent
-long_description = (this_directory / "README.md").read_text() if (this_directory / "README.md").exists() else ""
+long_description = (
+    (this_directory / "README.md").read_text() if (this_directory / "README.md").exists() else ""
+)
 
 install_requires = _read_requirements(this_directory / "requirements.txt")
 extras_require = _read_optional_deps(this_directory / "pyproject.toml")
@@ -188,7 +216,9 @@ extras_require = _read_optional_deps(this_directory / "pyproject.toml")
 setup(
     name="ipfs_accelerate_py",
     version="0.0.45",
-    packages=find_packages(include=["ipfs_accelerate_py", "ipfs_accelerate_py.*", "scripts", "scripts.*"]),
+    packages=find_packages(
+        include=["ipfs_accelerate_py", "ipfs_accelerate_py.*", "scripts", "scripts.*"]
+    ),
     include_package_data=True,
     description="A comprehensive framework for hardware-accelerated machine learning inference with IPFS network-based distribution",
     long_description=long_description,

@@ -11,7 +11,7 @@ from templates.base_hardware import BaseHardwareTemplate
 
 class QNNHardwareTemplate(BaseHardwareTemplate):
     """QNN hardware template implementation for Qualcomm devices."""
-    
+
     def __init__(self):
         """Initialize the QNN hardware template."""
         super().__init__()
@@ -23,7 +23,7 @@ class QNNHardwareTemplate(BaseHardwareTemplate):
         self.resource_requirements = {
             "recommended_batch_size": 1  # QNN works best with batch size 1
         }
-    
+
     def get_import_statements(self) -> str:
         """Get QNN-specific import statements."""
         return """
@@ -39,7 +39,7 @@ try:
 except ImportError:
     qnn = None
 """
-    
+
     def get_hardware_init_code(self, model_class_name: str, task_type: str) -> str:
         """Get QNN-specific initialization code."""
         return f"""
@@ -150,7 +150,7 @@ qnn_state = {{
     "device": device
 }}
 """
-    
+
     def get_handler_creation_code(self, model_class_name: str, task_type: str) -> str:
         """Get QNN-specific handler creation code."""
         return f"""
@@ -165,7 +165,7 @@ handler = self.create_qnn_{task_type}_endpoint_handler(
     use_qnn=qnn_state.get("use_qnn", False)
 )
 """
-    
+
     def get_inference_code(self, task_type: str) -> str:
         """Get QNN-specific inference code."""
         if task_type == "text_embedding":
@@ -318,7 +318,7 @@ else:
     with torch.no_grad():
         outputs = endpoint(**inputs)
 """
-    
+
     def get_cleanup_code(self) -> str:
         """Get QNN-specific cleanup code."""
         return """
@@ -336,7 +336,7 @@ import gc
 gc.collect()
 torch.cuda.empty_cache()  # No-op if not on CUDA, but doesn't hurt
 """
-    
+
     def get_mock_code(self, model_class_name: str, task_type: str) -> str:
         """Get QNN-specific mock implementation code."""
         return """
@@ -359,7 +359,7 @@ qnn_state = {
     "device": "qnn"
 }
 """
-    
+
     def get_hardware_detection_code(self) -> str:
         """Get QNN-specific hardware detection code."""
         return """
@@ -381,19 +381,14 @@ def is_available():
         print(f"Error checking QNN availability: {e}")
         return False
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check QNN compatibility with architecture type."""
         # QNN is compatible with simpler architectures
         # but may have issues with complex ones due to fixed shape requirements
-        compatible_archs = [
-            "encoder-only",
-            "vision",
-            "audio",
-            "text"
-        ]
+        compatible_archs = ["encoder-only", "vision", "audio", "text"]
         return arch_type in compatible_archs
-    
+
     def get_fallback_hardware(self) -> str:
         """Get the fallback hardware type if QNN is not available."""
         return "cpu"

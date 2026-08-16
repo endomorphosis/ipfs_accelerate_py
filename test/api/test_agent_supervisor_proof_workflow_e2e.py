@@ -211,13 +211,11 @@ def test_workflow_fixture_matrix_preserves_truthful_outcomes(tmp_path: Path) -> 
     assert result.states["kernel-rejection"] is ProofNodeState.FAILED
     assert result.states["provider-outage"] is ProofNodeState.UNSUPPORTED
     assert result.states["stale-evidence"] is ProofNodeState.SUCCEEDED
-    authoritative = {
-        receipt.authoritative_verdict
-        for receipt in result.authoritative_receipts
-    }
+    authoritative = {receipt.authoritative_verdict for receipt in result.authoritative_receipts}
     assert authoritative == {ProofVerdict.PROVED, ProofVerdict.DISPROVED}
     stale = next(
-        item for item in result.receipts
+        item
+        for item in result.receipts
         if item.obligation_id == by_id["stale-evidence"].obligation_id
     )
     assert stale.authoritative_verdict is ProofVerdict.INCONCLUSIVE
@@ -284,9 +282,7 @@ def test_independent_lanes_share_global_budget_without_duplicate_work(
     assert peak_by_pool == {"cpu-proof": 1, "model": 1, "artifact": 1}
     assert calls == {step.step_id: 1 for step in steps}
     assert result.snapshot.active_leases == 0
-    assert len({attempt.attempt_id for attempt in result.attempts}) == len(
-        result.attempts
-    )
+    assert len({attempt.attempt_id for attempt in result.attempts}) == len(result.attempts)
 
 
 def test_restart_preserves_dependencies_receipts_and_exactly_once_ownership(
@@ -301,12 +297,9 @@ def test_restart_preserves_dependencies_receipts_and_exactly_once_ownership(
     def execute(context):
         calls[context.step_id] = calls.get(context.step_id, 0) + 1
         if context.step_id == "kernel":
-            assert {
-                item.step_id for item in context.dependency_attempts
-            } == {"solve"}
+            assert {item.step_id for item in context.dependency_attempts} == {"solve"}
             assert any(
-                item.status is AttemptStatus.SUCCEEDED
-                for item in context.dependency_attempts
+                item.status is AttemptStatus.SUCCEEDED for item in context.dependency_attempts
             )
             return _receipt(plan, kernel)
         return None
@@ -331,8 +324,7 @@ def test_restart_preserves_dependencies_receipts_and_exactly_once_ownership(
     assert restarted.authoritative_receipts[0].plan_id == plan.plan_id
     assert restarted.snapshot.plan_id == first.snapshot.plan_id
     assert {
-        lease.step_id: (lease.fencing_token, lease.active)
-        for lease in restarted.snapshot.leases
+        lease.step_id: (lease.fencing_token, lease.active) for lease in restarted.snapshot.leases
     } == {
         "translate": (1, False),
         "solve": (1, False),
@@ -348,9 +340,9 @@ def test_restart_preserves_dependencies_receipts_and_exactly_once_ownership(
             "freshness": "current",
         }
     ]
-    assert next(
-        node for node in serialized["nodes"] if node["step_id"] == "kernel"
-    )["dependency_step_ids"] == ["solve"]
+    assert next(node for node in serialized["nodes"] if node["step_id"] == "kernel")[
+        "dependency_step_ids"
+    ] == ["solve"]
 
 
 def test_parallel_daemon_lanes_resume_one_proof_workflow_and_report_truth(
@@ -390,9 +382,7 @@ def test_parallel_daemon_lanes_resume_one_proof_workflow_and_report_truth(
             translate_entered.set()
             time.sleep(0.04)
         if context.step_id == kernel.step_id:
-            assert {
-                item.step_id for item in context.dependency_attempts
-            } == {solve.step_id}
+            assert {item.step_id for item in context.dependency_attempts} == {solve.step_id}
             return _receipt(plan, kernel)
         return None
 
@@ -474,26 +464,14 @@ def test_parallel_daemon_lanes_resume_one_proof_workflow_and_report_truth(
         and result["shared_resource_lease_budget"] is True
         for result in results
     )
-    operator_states = [
-        result["proof_operator_state"]
-        for result in results
-    ]
+    operator_states = [result["proof_operator_state"] for result in results]
     assert all(state["complete"] is True for state in operator_states)
     assert all(state["active_leases"] == 0 for state in operator_states)
     assert all(
-        state["dependencies"][kernel.step_id] == [solve.step_id]
-        for state in operator_states
+        state["dependencies"][kernel.step_id] == [solve.step_id] for state in operator_states
     )
-    assert all(
-        len(state["authoritative_receipt_ids"]) == 1
-        for state in operator_states
-    )
-    assert len(
-        {
-            tuple(state["authoritative_receipt_ids"])
-            for state in operator_states
-        }
-    ) == 1
+    assert all(len(state["authoritative_receipt_ids"]) == 1 for state in operator_states)
+    assert len({tuple(state["authoritative_receipt_ids"]) for state in operator_states}) == 1
     assert len(operator_states[0]["receipt_lineage"]) == 1
 
     restarted = PortalImplementationDaemon(
@@ -554,9 +532,7 @@ def test_parallel_daemon_lanes_resume_one_proof_workflow_and_report_truth(
     assert first_transition["updated_task_ids"] == [task.task_id]
     assert duplicate_transition["updated"] is False
     assert duplicate_transition["reason"] == "already_completed"
-    assert todo_path.read_text(encoding="utf-8").count(
-        "- Status: completed"
-    ) == 1
+    assert todo_path.read_text(encoding="utf-8").count("- Status: completed") == 1
 
 
 def test_scheduler_receipt_flows_into_fail_closed_merge_gate(tmp_path: Path) -> None:

@@ -43,6 +43,7 @@ except ImportError:
 
 # Import pipeline templates
 from .base_pipeline import BasePipelineTemplate
+
 try:
     from .text_pipeline import TextPipelineTemplate
 except ImportError:
@@ -63,15 +64,15 @@ from .base_architecture import BaseArchitectureTemplate
 
 # Package exports
 __all__ = [
-    'BaseHardwareTemplate',
-    'CPUHardwareTemplate',
-    'CudaHardwareTemplate',
-    'RocmHardwareTemplate',
-    'OpenvinoHardwareTemplate',
-    'AppleHardwareTemplate',
-    'QualcommHardwareTemplate',
-    'BasePipelineTemplate',
-    'TextPipelineTemplate',
-    'ImagePipelineTemplate',
-    'BaseArchitectureTemplate'
+    "BaseHardwareTemplate",
+    "CPUHardwareTemplate",
+    "CudaHardwareTemplate",
+    "RocmHardwareTemplate",
+    "OpenvinoHardwareTemplate",
+    "AppleHardwareTemplate",
+    "QualcommHardwareTemplate",
+    "BasePipelineTemplate",
+    "TextPipelineTemplate",
+    "ImagePipelineTemplate",
+    "BaseArchitectureTemplate",
 ]

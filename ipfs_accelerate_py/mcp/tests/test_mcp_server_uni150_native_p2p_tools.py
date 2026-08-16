@@ -43,7 +43,9 @@ class TestMCPServerUNI150NativeP2PTools(unittest.TestCase):
 
             invalid_submit = await p2p_mod.p2p_taskqueue_submit("", "model", {})
             self.assertFalse(invalid_submit.get("ok"))
-            self.assertIn("task_type must be a non-empty string", str(invalid_submit.get("error", "")))
+            self.assertIn(
+                "task_type must be a non-empty string", str(invalid_submit.get("error", ""))
+            )
 
             invalid_get = await p2p_mod.p2p_taskqueue_get_task("   ")
             self.assertFalse(invalid_get.get("ok"))
@@ -73,6 +75,7 @@ class TestMCPServerUNI150NativeP2PTools(unittest.TestCase):
     def test_status_minimal_success_defaults(self) -> None:
         async def _run() -> None:
             with patch.object(p2p_mod, "_request_status") as mock_request:
+
                 async def _impl(**_kwargs):
                     return {"ok": True}
 
@@ -89,6 +92,7 @@ class TestMCPServerUNI150NativeP2PTools(unittest.TestCase):
     def test_submit_error_only_payload_infers_error(self) -> None:
         async def _run() -> None:
             with patch.object(p2p_mod, "_submit_task_with_info") as mock_submit:
+
                 async def _impl(**_kwargs):
                     return {"error": "remote queue unavailable"}
 
@@ -105,6 +109,7 @@ class TestMCPServerUNI150NativeP2PTools(unittest.TestCase):
     def test_status_infers_error_from_contradictory_delegate_payload(self) -> None:
         async def _run() -> None:
             with patch.object(p2p_mod, "_request_status") as mock_request:
+
                 async def _impl(**_kwargs):
                     return {"status": "success", "success": False, "error": "delegate failure"}
 

@@ -97,19 +97,14 @@ print(f"Available accelerators: {hardware['available_accelerators']}")
 # Get hardware recommendation for a model
 model_size = 1_000_000_000  # 1B parameters
 recommendation = client.use_tool(
-    "get_hardware_recommendation",
-    model_size=model_size,
-    task_type="embedding"
+    "get_hardware_recommendation", model_size=model_size, task_type="embedding"
 )
 print(f"Best hardware: {recommendation['best_recommendation']['device']}")
 
 # Run inference
 texts = ["This is a test sentence.", "Another example text."]
 results = client.use_tool(
-    "run_inference",
-    model="BAAI/bge-small-en-v1.5",
-    inputs=texts,
-    device="cpu"
+    "run_inference", model="BAAI/bge-small-en-v1.5", inputs=texts, device="cpu"
 )
 print(f"Generated {len(results['embeddings'])} embeddings")
 ```

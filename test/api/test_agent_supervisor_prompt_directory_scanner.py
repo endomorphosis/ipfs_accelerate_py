@@ -130,8 +130,7 @@ def _request(
             policy_id="output:test",
             mode=OutputMode.BOTH,
             output_root=str(selected_output_root),
-            allowed_output_roots=allowed_output_roots
-            or (str(selected_output_root),),
+            allowed_output_roots=allowed_output_roots or (str(selected_output_root),),
             markdown_path="generated/work.todo.md",
             duckdb_path="generated/work.duckdb",
             board_namespace="scanner-test",
@@ -183,18 +182,12 @@ def test_scan_is_stable_body_free_and_returns_all_bounded_summary_kinds(
         "directory_scan_policy",
         "directory_scan_optional_analysis",
     }.issubset(kinds)
-    assert all(
-        item.authority is EvidenceAuthority.SCAN_ADVISORY
-        for item in first.receipt.evidence
-    )
+    assert all(item.authority is EvidenceAuthority.SCAN_ADVISORY for item in first.receipt.evidence)
     encoded = first.receipt.to_json()
     assert "return transform(request)" not in encoded
     assert "Fixture documentation." not in encoded
     assert first.configuration_root in encoded
-    assert all(
-        artifact.artifact_handle.startswith("blob:sha256:")
-        for artifact in first.artifacts
-    )
+    assert all(artifact.artifact_handle.startswith("blob:sha256:") for artifact in first.artifacts)
 
 
 def test_tracked_staged_modified_deleted_and_untracked_bytes_invalidate_scan(
@@ -221,9 +214,7 @@ def test_tracked_staged_modified_deleted_and_untracked_bytes_invalidate_scan(
     assert dirty.counts["tracked"] == 5
 
     (repository / "new.py").write_text("NEW = False\n", encoding="utf-8")
-    changed_untracked = scan_prompt_directory(
-        request, repository_allowlist=allowlist
-    )
+    changed_untracked = scan_prompt_directory(request, repository_allowlist=allowlist)
     assert changed_untracked.scan_cid != dirty.scan_cid
 
 
@@ -238,21 +229,15 @@ def test_exclusions_bind_ignore_generated_credentials_binary_and_outputs(
     _git(repository, "add", ".gitignore")
     _git(repository, "commit", "-qm", "ignore policy")
     (repository / "ignored.txt").write_text("ignored bytes\n", encoding="utf-8")
-    (repository / ".env").write_text(
-        "TOKEN=not-read-by-the-scanner\n", encoding="utf-8"
-    )
+    (repository / ".env").write_text("TOKEN=not-read-by-the-scanner\n", encoding="utf-8")
     (repository / "payload.png").write_bytes(b"\x89PNG\x00opaque")
     (repository / "__pycache__").mkdir()
     (repository / "__pycache__" / "service.pyc").write_bytes(b"cache")
     (repository / "generated").mkdir()
-    (repository / "generated" / "work.todo.md").write_text(
-        "previous output\n", encoding="utf-8"
-    )
+    (repository / "generated" / "work.todo.md").write_text("previous output\n", encoding="utf-8")
     request, allowlist = _request(repository)
 
-    details = scan_prompt_directory_detailed(
-        request, repository_allowlist=allowlist
-    )
+    details = scan_prompt_directory_detailed(request, repository_allowlist=allowlist)
 
     rendered = "\n".join(details.receipt.exclusions)
     assert ".env: credential_or_key_material" in rendered
@@ -260,17 +245,13 @@ def test_exclusions_bind_ignore_generated_credentials_binary_and_outputs(
     assert "payload.png: large_or_binary_default" in rendered
     assert "__pycache__: cache_tree" in rendered
     assert "generated: generated_tree" in rendered
-    decisions = next(
-        item for item in details.artifacts if item.kind == "scan-decisions"
-    ).payload["decisions"]
+    decisions = next(item for item in details.artifacts if item.kind == "scan-decisions").payload[
+        "decisions"
+    ]
     decision_by_path = {item["path"]: item for item in decisions}
     assert decision_by_path[".env"]["redactions"] == ["content_not_read"]
-    assert decision_by_path["src/service.py"]["redactions"] == [
-        "source_body_content_addressed"
-    ]
-    assert ".env" not in {
-        entry.path for entry in details.program_behavior.repository.entries
-    }
+    assert decision_by_path["src/service.py"]["redactions"] == ["source_body_content_addressed"]
+    assert ".env" not in {entry.path for entry in details.program_behavior.repository.entries}
 
 
 def test_allowlist_symlink_nested_repository_and_output_escapes_fail_closed(
@@ -338,9 +319,7 @@ def test_secret_content_rejected_without_leaking_value_and_optional_is_lazy(
             calls.append(context)
             raise RuntimeError(secret_value)
 
-    local = scan_prompt_directory_detailed(
-        request, repository_allowlist=allowlist
-    )
+    local = scan_prompt_directory_detailed(request, repository_allowlist=allowlist)
     assert calls == []
     assert local.optional_analysis_status == "not_requested"
 
@@ -379,21 +358,14 @@ def test_budget_truncation_is_exact_and_post_analysis_mutation_is_rejected(
         "\n".join(f"def symbol_{index}(): pass" for index in range(8)) + "\n",
         encoding="utf-8",
     )
-    request, allowlist = _request(
-        repository, budget=_budget(max_symbols=2)
-    )
-    bounded = scan_prompt_directory_detailed(
-        request, repository_allowlist=allowlist
-    )
+    request, allowlist = _request(repository, budget=_budget(max_symbols=2))
+    bounded = scan_prompt_directory_detailed(request, repository_allowlist=allowlist)
     assert bounded.receipt.counts["symbols"] == 2
     assert bounded.receipt.truncated is True
     assert any(
-        item.startswith("symbol_summary:max_symbols:2-of-")
-        for item in bounded.receipt.truncations
+        item.startswith("symbol_summary:max_symbols:2-of-") for item in bounded.receipt.truncations
     )
-    symbol_artifact = next(
-        item for item in bounded.artifacts if item.kind == "symbols"
-    )
+    symbol_artifact = next(item for item in bounded.artifacts if item.kind == "symbols")
     assert symbol_artifact.payload["summary"]["count"] == 2
     assert symbol_artifact.payload["summary"]["truncated"] is True
 
@@ -406,8 +378,6 @@ def test_budget_truncation_is_exact_and_post_analysis_mutation_is_rejected(
         )
         return result
 
-    monkeypatch.setattr(
-        program_behavior, "build_program_behavior", mutate_after_behavior
-    )
+    monkeypatch.setattr(program_behavior, "build_program_behavior", mutate_after_behavior)
     with pytest.raises(UnstableDirectoryScanError, match="changed"):
         scan_prompt_directory(request, repository_allowlist=allowlist)

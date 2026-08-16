@@ -18,7 +18,10 @@ _EXPORT_MAP: dict[str, tuple[str, str]] = {
     "main": (".server", "main"),
     "RuntimeRouter": (".runtime_router", "RuntimeRouter"),
     "HierarchicalToolManager": (".hierarchical_tool_manager", "HierarchicalToolManager"),
-    "register_legacy_tools_into_manager": (".registration_adapter", "register_legacy_tools_into_manager"),
+    "register_legacy_tools_into_manager": (
+        ".registration_adapter",
+        "register_legacy_tools_into_manager",
+    ),
     "UnifiedMCPServerConfig": (".configs", "UnifiedMCPServerConfig"),
     "parse_preload_categories": (".configs", "parse_preload_categories"),
     "ToolMetadata": (".tool_metadata", "ToolMetadata"),

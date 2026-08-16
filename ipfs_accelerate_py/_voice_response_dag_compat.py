@@ -16,9 +16,7 @@ from string import Formatter
 from types import MappingProxyType
 from typing import Any
 
-ABBY_VOICE_RESPONSE_DAG_APPEND_SCHEMA_VERSION = (
-    "abby_voice_response_dag_append_v1"
-)
+ABBY_VOICE_RESPONSE_DAG_APPEND_SCHEMA_VERSION = "abby_voice_response_dag_append_v1"
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SECRET_KEY_MARKERS = (
@@ -57,18 +55,14 @@ def _stable_id(prefix: str, value: Any) -> str:
 def _text(value: Any, *, field_name: str, required: bool = True) -> str:
     result = str(value or "").strip()
     if required and not result:
-        raise ResponseDAGCompatibilityError(
-            f"{field_name} must not be empty"
-        )
+        raise ResponseDAGCompatibilityError(f"{field_name} must not be empty")
     return result
 
 
 def _digest(value: Any, *, field_name: str) -> str:
     result = _text(value, field_name=field_name).casefold()
     if not _SHA256_RE.fullmatch(result):
-        raise ResponseDAGCompatibilityError(
-            f"{field_name} must be a full lowercase SHA-256"
-        )
+        raise ResponseDAGCompatibilityError(f"{field_name} must be a full lowercase SHA-256")
     return result
 
 
@@ -76,30 +70,21 @@ def _json_safe(value: Any, *, path: str = "value") -> Any:
     if value is None or isinstance(value, str | int | float | bool):
         return value
     if isinstance(value, bytes | bytearray | memoryview):
-        raise ResponseDAGCompatibilityError(
-            f"{path} must not contain raw bytes"
-        )
+        raise ResponseDAGCompatibilityError(f"{path} must not contain raw bytes")
     if isinstance(value, Mapping):
         result: dict[str, Any] = {}
         for raw_key, item in value.items():
             key = str(raw_key)
             if any(marker in key.casefold() for marker in _SECRET_KEY_MARKERS):
-                raise ResponseDAGCompatibilityError(
-                    f"{path}.{key} must not contain credentials"
-                )
+                raise ResponseDAGCompatibilityError(f"{path}.{key} must not contain credentials")
             result[key] = _json_safe(item, path=f"{path}.{key}")
         return result
     if isinstance(value, Sequence) and not isinstance(value, str | bytes):
-        return [
-            _json_safe(item, path=f"{path}[{index}]")
-            for index, item in enumerate(value)
-        ]
+        return [_json_safe(item, path=f"{path}[{index}]") for index, item in enumerate(value)]
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _json_safe(to_dict(), path=path)
-    raise ResponseDAGCompatibilityError(
-        f"{path} must contain deterministic JSON values"
-    )
+    raise ResponseDAGCompatibilityError(f"{path} must contain deterministic JSON values")
 
 
 def _mapping(value: Any, *, field_name: str) -> dict[str, Any]:
@@ -109,22 +94,16 @@ def _mapping(value: Any, *, field_name: str) -> dict[str, Any]:
         to_dict = getattr(value, "to_dict", None)
         raw = to_dict() if callable(to_dict) else None
     if not isinstance(raw, Mapping):
-        raise ResponseDAGCompatibilityError(
-            f"{field_name} must be a mapping"
-        )
+        raise ResponseDAGCompatibilityError(f"{field_name} must be a mapping")
     result = _json_safe(raw, path=field_name)
     if not isinstance(result, dict):
-        raise ResponseDAGCompatibilityError(
-            f"{field_name} must be a mapping"
-        )
+        raise ResponseDAGCompatibilityError(f"{field_name} must be a mapping")
     return result
 
 
 def _freeze_json(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return MappingProxyType(
-            {str(key): _freeze_json(item) for key, item in value.items()}
-        )
+        return MappingProxyType({str(key): _freeze_json(item) for key, item in value.items()})
     if isinstance(value, Sequence) and not isinstance(value, str | bytes):
         return tuple(_freeze_json(item) for item in value)
     return value
@@ -153,15 +132,11 @@ def _edge(source: str, target: str, kind: str) -> dict[str, str]:
 def _placeholder_names(template_text: str) -> tuple[str, ...]:
     names: list[str] = []
     try:
-        for _literal, field_name, format_spec, conversion in Formatter().parse(
-            template_text
-        ):
+        for _literal, field_name, format_spec, conversion in Formatter().parse(template_text):
             if not field_name:
                 continue
             if "." in field_name or "[" in field_name:
-                raise ResponseDAGCompatibilityError(
-                    "template fields must be simple slot names"
-                )
+                raise ResponseDAGCompatibilityError("template fields must be simple slot names")
             if format_spec or conversion:
                 raise ResponseDAGCompatibilityError(
                     "template slots must not use conversions or format specs"
@@ -182,11 +157,7 @@ def _normalize_audio_descriptor(value: Any) -> dict[str, Any]:
         field_name="audio_descriptor.content_sha256",
     )
     byte_length = audio.get("byte_length")
-    if (
-        isinstance(byte_length, bool)
-        or not isinstance(byte_length, int)
-        or byte_length <= 0
-    ):
+    if isinstance(byte_length, bool) or not isinstance(byte_length, int) or byte_length <= 0:
         raise ResponseDAGCompatibilityError(
             "audio_descriptor.byte_length must be a positive integer"
         )
@@ -195,9 +166,7 @@ def _normalize_audio_descriptor(value: Any) -> dict[str, Any]:
         field_name="audio_descriptor.media_type",
     )
     if not media_type.startswith("audio/"):
-        raise ResponseDAGCompatibilityError(
-            "audio_descriptor.media_type must be audio/*"
-        )
+        raise ResponseDAGCompatibilityError("audio_descriptor.media_type must be audio/*")
     uri = _text(
         audio.get("uri"),
         field_name="audio_descriptor.uri",
@@ -209,16 +178,11 @@ def _normalize_audio_descriptor(value: Any) -> dict[str, Any]:
         required=False,
     )
     if not uri and not ipfs_cid:
-        raise ResponseDAGCompatibilityError(
-            "validated audio requires an external uri or ipfs_cid"
-        )
+        raise ResponseDAGCompatibilityError("validated audio requires an external uri or ipfs_cid")
     if any(character.isspace() for character in uri):
-        raise ResponseDAGCompatibilityError(
-            "audio_descriptor.uri must not contain whitespace"
-        )
+        raise ResponseDAGCompatibilityError("audio_descriptor.uri must not contain whitespace")
     audio_id = _text(
-        audio.get("audio_id")
-        or _stable_id("audio", {"content_sha256": content_sha}),
+        audio.get("audio_id") or _stable_id("audio", {"content_sha256": content_sha}),
         field_name="audio_descriptor.audio_id",
     )
     return {
@@ -249,9 +213,7 @@ def _normalize_slot_bindings(
             value = _json_safe(raw_binding, path=f"slot.{name}.value")
             source_cids_raw = ()
         if value in (None, "", [], {}):
-            raise ResponseDAGCompatibilityError(
-                f"slot binding {name!r} must not be empty"
-            )
+            raise ResponseDAGCompatibilityError(f"slot binding {name!r} must not be empty")
         if isinstance(source_cids_raw, str):
             source_cids_raw = (source_cids_raw,)
         if not isinstance(source_cids_raw, Sequence):
@@ -259,10 +221,7 @@ def _normalize_slot_bindings(
                 f"slot binding {name!r} source_cids must be a sequence"
             )
         source_cids = sorted(
-            {
-                _text(cid, field_name=f"slot.{name}.source_cid")
-                for cid in source_cids_raw
-            }
+            {_text(cid, field_name=f"slot.{name}.source_cid") for cid in source_cids_raw}
         )
         node_id = _stable_id(
             "vocabulary",
@@ -316,10 +275,7 @@ class ResponseDAGAppendCandidate:
             self.output_audio_sha256,
             field_name="output_audio_sha256",
         )
-        if (
-            self.schema_version
-            != ABBY_VOICE_RESPONSE_DAG_APPEND_SCHEMA_VERSION
-        ):
+        if self.schema_version != ABBY_VOICE_RESPONSE_DAG_APPEND_SCHEMA_VERSION:
             raise ResponseDAGCompatibilityError(
                 f"unsupported response-DAG append schema: {self.schema_version}"
             )
@@ -342,32 +298,18 @@ class ResponseDAGAppendCandidate:
             )
         )
         if not nodes or not edges:
-            raise ResponseDAGCompatibilityError(
-                "response-DAG append requires nodes and edges"
-            )
-        node_ids = [
-            _text(node.get("id"), field_name="node.id") for node in nodes
-        ]
-        edge_ids = [
-            _text(edge.get("id"), field_name="edge.id") for edge in edges
-        ]
+            raise ResponseDAGCompatibilityError("response-DAG append requires nodes and edges")
+        node_ids = [_text(node.get("id"), field_name="node.id") for node in nodes]
+        edge_ids = [_text(edge.get("id"), field_name="edge.id") for edge in edges]
         if len(node_ids) != len(set(node_ids)):
-            raise ResponseDAGCompatibilityError(
-                "response-DAG nodes must have unique IDs"
-            )
+            raise ResponseDAGCompatibilityError("response-DAG nodes must have unique IDs")
         if len(edge_ids) != len(set(edge_ids)):
-            raise ResponseDAGCompatibilityError(
-                "response-DAG edges must have unique IDs"
-            )
+            raise ResponseDAGCompatibilityError("response-DAG edges must have unique IDs")
         node_kinds = [str(node.get("kind") or "") for node in nodes]
-        unsupported = sorted(
-            set(node_kinds)
-            - {"audio", "response", "template", "vocabulary"}
-        )
+        unsupported = sorted(set(node_kinds) - {"audio", "response", "template", "vocabulary"})
         if unsupported:
             raise ResponseDAGCompatibilityError(
-                "response-DAG contains unsupported node kinds: "
-                + ", ".join(unsupported)
+                "response-DAG contains unsupported node kinds: " + ", ".join(unsupported)
             )
         if node_kinds.count("response") != 1 or node_kinds.count("audio") != 1:
             raise ResponseDAGCompatibilityError(
@@ -379,10 +321,7 @@ class ResponseDAGAppendCandidate:
             )
         known_nodes = set(node_ids)
         for edge in edges:
-            if (
-                edge.get("source") not in known_nodes
-                or edge.get("target") not in known_nodes
-            ):
+            if edge.get("source") not in known_nodes or edge.get("target") not in known_nodes:
                 raise ResponseDAGCompatibilityError(
                     f"edge {edge.get('id')!r} references an unknown node"
                 )
@@ -429,19 +368,11 @@ class ResponseDAGAppendCandidate:
 
     @property
     def template_rows(self) -> tuple[dict[str, Any], ...]:
-        return tuple(
-            _thaw_json(node)
-            for node in self.nodes
-            if node.get("kind") == "template"
-        )
+        return tuple(_thaw_json(node) for node in self.nodes if node.get("kind") == "template")
 
     @property
     def vocabulary_rows(self) -> tuple[dict[str, Any], ...]:
-        return tuple(
-            _thaw_json(node)
-            for node in self.nodes
-            if node.get("kind") == "vocabulary"
-        )
+        return tuple(_thaw_json(node) for node in self.nodes if node.get("kind") == "vocabulary")
 
 
 def append_response_dag_candidate(
@@ -457,9 +388,7 @@ def append_response_dag_candidate(
 
     event = _mapping(cache_miss_event, field_name="cache_miss_event")
     if event.get("ready_for_dag_append") is not True:
-        raise ResponseDAGCompatibilityError(
-            "cache miss must pass ASR validation before DAG append"
-        )
+        raise ResponseDAGCompatibilityError("cache miss must pass ASR validation before DAG append")
     event_id = _text(
         event.get("event_id"),
         field_name="cache_miss_event.event_id",
@@ -497,25 +426,16 @@ def append_response_dag_candidate(
         field_name="template_text",
         required=False,
     )
-    placeholders = (
-        _placeholder_names(normalized_template)
-        if normalized_template
-        else ()
-    )
+    placeholders = _placeholder_names(normalized_template) if normalized_template else ()
     if normalized_template and set(placeholders) != set(binding_names):
         raise ResponseDAGCompatibilityError(
             "template placeholders must exactly match slot bindings"
         )
     if bindings and not normalized_template:
-        raise ResponseDAGCompatibilityError(
-            "slot bindings require a reusable slotted template"
-        )
+        raise ResponseDAGCompatibilityError("slot bindings require a reusable slotted template")
     if normalized_template:
         rendered_from_template = normalized_template.format_map(
-            {
-                str(binding["slot_name"]): binding["value"]
-                for binding in bindings
-            }
+            {str(binding["slot_name"]): binding["value"] for binding in bindings}
         ).strip()
         if rendered_from_template != rendered:
             raise ResponseDAGCompatibilityError(
@@ -569,9 +489,7 @@ def append_response_dag_candidate(
                 "template_text": normalized_template or None,
             }
         )
-        edges.append(
-            _edge(template_id, response_id, "template_to_response")
-        )
+        edges.append(_edge(template_id, response_id, "template_to_response"))
         for vocabulary_node in bindings:
             nodes.append(vocabulary_node)
             edges.extend(

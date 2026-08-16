@@ -140,7 +140,7 @@ models = get_models_for_pipeline(
     include_api=True,
     include_self_hosted=True,
     min_context_length=8192,
-    max_cost_per_1k=0.01
+    max_cost_per_1k=0.01,
 )
 
 # Results include both types

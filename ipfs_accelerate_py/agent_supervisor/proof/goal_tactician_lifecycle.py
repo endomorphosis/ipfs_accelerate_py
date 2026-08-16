@@ -43,16 +43,12 @@ from .formal_verification_contracts import (
 # Interface / schema constants
 # ---------------------------------------------------------------------------
 
-GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_INTERFACE: Final = (
-    "GoalTacticianSupervisorLifecycle@1"
-)
+GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_INTERFACE: Final = "GoalTacticianSupervisorLifecycle@1"
 GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_VERSION: Final = "1.0.0"
 GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/goal-tactician-supervisor-lifecycle@1"
 )
-LIFECYCLE_PLAN_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/goal-tactician-lifecycle-plan@1"
-)
+LIFECYCLE_PLAN_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/goal-tactician-lifecycle-plan@1"
 LIFECYCLE_STATE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/goal-tactician-lifecycle-state@1"
 )
@@ -192,9 +188,7 @@ def _text(value: Any, *, field_name: str, required: bool = True) -> str:
     if required and not result:
         raise GoalTacticianLifecycleError(f"{field_name} is required")
     if "\x00" in result:
-        raise GoalTacticianLifecycleError(
-            f"{field_name} must not contain NUL bytes"
-        )
+        raise GoalTacticianLifecycleError(f"{field_name} must not contain NUL bytes")
     return result
 
 
@@ -203,9 +197,7 @@ def _strings(value: Any) -> tuple[str, ...]:
         return ()
     if isinstance(value, str):
         values: Iterable[Any] = (value,)
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (bytes, bytearray, memoryview)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray, memoryview)):
         values = value
     else:
         raise GoalTacticianLifecycleError("expected a sequence of strings")
@@ -219,9 +211,7 @@ def _strings(value: Any) -> tuple[str, ...]:
 
 def _positive(value: Any, name: str, *, minimum: int = 1) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise GoalTacticianLifecycleError(
-            f"{name} must be an integer of at least {minimum}"
-        )
+        raise GoalTacticianLifecycleError(f"{name} must be an integer of at least {minimum}")
     return value
 
 
@@ -240,11 +230,7 @@ def _mapping(value: Any, *, field_name: str) -> Mapping[str, Any]:
 def _public_mapping(value: Mapping[str, Any] | None) -> dict[str, Any]:
     if not value:
         return {}
-    return {
-        str(key): item
-        for key, item in value.items()
-        if not str(key).startswith("_")
-    }
+    return {str(key): item for key, item in value.items() if not str(key).startswith("_")}
 
 
 def _enum(value: Any, kind: type[Enum], name: str) -> Any:
@@ -255,9 +241,7 @@ def _enum(value: Any, kind: type[Enum], name: str) -> Any:
         return kind(str(raw).strip().lower())
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(sorted({item.value for item in kind}))
-        raise GoalTacticianLifecycleError(
-            f"{name} must be one of: {allowed}"
-        ) from exc
+        raise GoalTacticianLifecycleError(f"{name} must be one of: {allowed}") from exc
 
 
 def _assurance(value: Any) -> AssuranceLevel:
@@ -380,9 +364,7 @@ class ExactLifecycleCacheKey:
     toolchain_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "tree_id", _text(self.tree_id, field_name="tree_id")
-        )
+        object.__setattr__(self, "tree_id", _text(self.tree_id, field_name="tree_id"))
         object.__setattr__(
             self,
             "end_goal_id",
@@ -403,9 +385,7 @@ class ExactLifecycleCacheKey:
             "provider_version",
             _text(self.provider_version, field_name="provider_version"),
         )
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, field_name="policy_id")
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, field_name="policy_id"))
         if not isinstance(self.bounds, Mapping) or not dict(self.bounds):
             raise GoalTacticianLifecycleError("bounds must be a non-empty object")
         object.__setattr__(self, "bounds", dict(self.bounds))
@@ -414,20 +394,14 @@ class ExactLifecycleCacheKey:
             "resource_class",
             _text(self.resource_class, field_name="resource_class"),
         )
-        object.__setattr__(
-            self, "max_retries", _non_negative(self.max_retries, "max_retries")
-        )
-        object.__setattr__(
-            self, "selected_leaf_ids", _strings(self.selected_leaf_ids)
-        )
+        object.__setattr__(self, "max_retries", _non_negative(self.max_retries, "max_retries"))
+        object.__setattr__(self, "selected_leaf_ids", _strings(self.selected_leaf_ids))
         object.__setattr__(
             self,
             "selected_counterexample_ids",
             _strings(self.selected_counterexample_ids),
         )
-        object.__setattr__(
-            self, "toolchain_id", str(self.toolchain_id or "").strip()
-        )
+        object.__setattr__(self, "toolchain_id", str(self.toolchain_id or "").strip())
 
     @property
     def bound_digest(self) -> str:
@@ -450,9 +424,7 @@ class ExactLifecycleCacheKey:
             "resource_class": self.resource_class,
             "max_retries": self.max_retries,
             "selected_leaf_ids": list(self.selected_leaf_ids),
-            "selected_counterexample_ids": list(
-                self.selected_counterexample_ids
-            ),
+            "selected_counterexample_ids": list(self.selected_counterexample_ids),
             "toolchain_id": self.toolchain_id,
         }
         if include_schema:
@@ -463,9 +435,7 @@ class ExactLifecycleCacheKey:
     def from_dict(cls, payload: Mapping[str, Any]) -> "ExactLifecycleCacheKey":
         value = _mapping(payload, field_name="cache_key")
         if value.get("schema") not in {None, LIFECYCLE_CACHE_KEY_SCHEMA}:
-            raise GoalTacticianLifecycleError(
-                "unsupported lifecycle cache key schema"
-            )
+            raise GoalTacticianLifecycleError("unsupported lifecycle cache key schema")
         return cls(
             tree_id=value.get("tree_id", ""),
             end_goal_id=value.get("end_goal_id", ""),
@@ -477,9 +447,7 @@ class ExactLifecycleCacheKey:
             resource_class=value.get("resource_class", ""),
             max_retries=int(value.get("max_retries", DEFAULT_MAX_RETRIES)),
             selected_leaf_ids=tuple(value.get("selected_leaf_ids") or ()),
-            selected_counterexample_ids=tuple(
-                value.get("selected_counterexample_ids") or ()
-            ),
+            selected_counterexample_ids=tuple(value.get("selected_counterexample_ids") or ()),
             toolchain_id=value.get("toolchain_id", ""),
         )
 
@@ -505,17 +473,13 @@ class ResourcePolicy:
             "max_concurrent_workers",
             _positive(self.max_concurrent_workers, "max_concurrent_workers"),
         )
-        object.__setattr__(
-            self, "wall_time_ms", _positive(self.wall_time_ms, "wall_time_ms")
-        )
+        object.__setattr__(self, "wall_time_ms", _positive(self.wall_time_ms, "wall_time_ms"))
         object.__setattr__(
             self,
             "memory_bytes",
             _positive(self.memory_bytes, "memory_bytes"),
         )
-        object.__setattr__(
-            self, "max_retries", _non_negative(self.max_retries, "max_retries")
-        )
+        object.__setattr__(self, "max_retries", _non_negative(self.max_retries, "max_retries"))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -559,12 +523,8 @@ class WorkerLease:
     release_reason: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "worker_id", _text(self.worker_id, field_name="worker_id")
-        )
-        object.__setattr__(
-            self, "plan_id", _text(self.plan_id, field_name="plan_id")
-        )
+        object.__setattr__(self, "worker_id", _text(self.worker_id, field_name="worker_id"))
+        object.__setattr__(self, "plan_id", _text(self.plan_id, field_name="plan_id"))
         object.__setattr__(
             self,
             "fencing_token",
@@ -591,9 +551,7 @@ class WorkerLease:
             _text(self.resource_class, field_name="resource_class"),
         )
         object.__setattr__(self, "active", bool(self.active))
-        object.__setattr__(
-            self, "release_reason", str(self.release_reason or "").strip()
-        )
+        object.__setattr__(self, "release_reason", str(self.release_reason or "").strip())
 
     def is_expired(self, now_ms: int) -> bool:
         return bool(self.expires_at_ms and now_ms > self.expires_at_ms)
@@ -653,16 +611,10 @@ class LifecycleReceipt:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "receipt_id", _text(self.receipt_id, field_name="receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _text(self.receipt_id, field_name="receipt_id"))
         object.__setattr__(self, "kind", _enum(self.kind, ReceiptKind, "kind"))
-        object.__setattr__(
-            self, "subject_id", _text(self.subject_id, field_name="subject_id")
-        )
-        object.__setattr__(
-            self, "tree_id", _text(self.tree_id, field_name="tree_id")
-        )
+        object.__setattr__(self, "subject_id", _text(self.subject_id, field_name="subject_id"))
+        object.__setattr__(self, "tree_id", _text(self.tree_id, field_name="tree_id"))
         object.__setattr__(
             self,
             "fencing_epoch",
@@ -674,16 +626,12 @@ class LifecycleReceipt:
             _positive(self.fencing_token, "fencing_token"),
         )
         object.__setattr__(self, "assurance", _assurance(self.assurance))
-        object.__setattr__(
-            self, "independently_validated", bool(self.independently_validated)
-        )
+        object.__setattr__(self, "independently_validated", bool(self.independently_validated))
         digest = str(self.content_digest or "").strip()
         if not digest:
             digest = f"sha256:{_sha256_hex(self.to_dict(include_identity=False))}"
         object.__setattr__(self, "content_digest", digest)
-        object.__setattr__(
-            self, "metadata", _public_mapping(dict(self.metadata or {}))
-        )
+        object.__setattr__(self, "metadata", _public_mapping(dict(self.metadata or {})))
 
     @property
     def content_id(self) -> str:
@@ -701,10 +649,7 @@ class LifecycleReceipt:
             return Freshness.STALE_TREE
         if self.fencing_epoch != fencing_epoch:
             return Freshness.STALE_EPOCH
-        if (
-            current_fencing_token is not None
-            and self.fencing_token > current_fencing_token
-        ):
+        if current_fencing_token is not None and self.fencing_token > current_fencing_token:
             return Freshness.STALE_WORKER
         if not self.independently_validated:
             return Freshness.INADEQUATE
@@ -734,9 +679,7 @@ class LifecycleReceipt:
     def from_dict(cls, payload: Mapping[str, Any]) -> "LifecycleReceipt":
         value = _mapping(payload, field_name="receipt")
         if value.get("schema") not in {None, LIFECYCLE_RECEIPT_SCHEMA}:
-            raise GoalTacticianLifecycleError(
-                "unsupported lifecycle receipt schema"
-            )
+            raise GoalTacticianLifecycleError("unsupported lifecycle receipt schema")
         return cls(
             receipt_id=value.get("receipt_id", ""),
             kind=value.get("kind", ReceiptKind.GRAPH_LEAF),
@@ -745,9 +688,7 @@ class LifecycleReceipt:
             fencing_epoch=int(value.get("fencing_epoch", 1)),
             fencing_token=int(value.get("fencing_token", 1)),
             assurance=value.get("assurance", AssuranceLevel.UNVERIFIED),
-            independently_validated=bool(
-                value.get("independently_validated", False)
-            ),
+            independently_validated=bool(value.get("independently_validated", False)),
             content_digest=value.get("content_digest", ""),
             metadata=dict(value.get("metadata") or {}),
         )
@@ -771,18 +712,10 @@ class LifecycleTransition:
     reason_code: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, LifecycleTransitionKind, "kind")
-        )
-        object.__setattr__(
-            self, "plan_id", _text(self.plan_id, field_name="plan_id")
-        )
-        object.__setattr__(
-            self, "sequence", _non_negative(self.sequence, "sequence")
-        )
-        object.__setattr__(
-            self, "tree_id", _text(self.tree_id, field_name="tree_id")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, LifecycleTransitionKind, "kind"))
+        object.__setattr__(self, "plan_id", _text(self.plan_id, field_name="plan_id"))
+        object.__setattr__(self, "sequence", _non_negative(self.sequence, "sequence"))
+        object.__setattr__(self, "tree_id", _text(self.tree_id, field_name="tree_id"))
         object.__setattr__(
             self,
             "fencing_epoch",
@@ -793,20 +726,14 @@ class LifecycleTransition:
             "fencing_token",
             _non_negative(self.fencing_token, "fencing_token"),
         )
-        object.__setattr__(
-            self, "worker_id", str(self.worker_id or "").strip()
-        )
-        object.__setattr__(
-            self, "payload", _public_mapping(dict(self.payload or {}))
-        )
+        object.__setattr__(self, "worker_id", str(self.worker_id or "").strip())
+        object.__setattr__(self, "payload", _public_mapping(dict(self.payload or {})))
         object.__setattr__(
             self,
             "recorded_at_ms",
             _non_negative(self.recorded_at_ms, "recorded_at_ms"),
         )
-        object.__setattr__(
-            self, "reason_code", str(self.reason_code or "").strip()
-        )
+        object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
 
     @property
     def content_id(self) -> str:
@@ -834,9 +761,7 @@ class LifecycleTransition:
     def from_dict(cls, payload: Mapping[str, Any]) -> "LifecycleTransition":
         value = _mapping(payload, field_name="transition")
         if value.get("schema") not in {None, LIFECYCLE_TRANSITION_SCHEMA}:
-            raise GoalTacticianLifecycleError(
-                "unsupported lifecycle transition schema"
-            )
+            raise GoalTacticianLifecycleError("unsupported lifecycle transition schema")
         return cls(
             kind=value.get("kind", LifecycleTransitionKind.END_GOAL),
             plan_id=value.get("plan_id", ""),
@@ -878,17 +803,13 @@ class LifecycleCompletionDecision:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "LifecycleCompletionDecision":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "LifecycleCompletionDecision":
         value = _mapping(payload, field_name="completion")
         return cls(
             admitted=bool(value.get("admitted", False)),
             reason_codes=_strings(value.get("reason_codes")),
             missing_leaf_ids=_strings(value.get("missing_leaf_ids")),
-            missing_counterexample_ids=_strings(
-                value.get("missing_counterexample_ids")
-            ),
+            missing_counterexample_ids=_strings(value.get("missing_counterexample_ids")),
             stale_receipt_ids=_strings(value.get("stale_receipt_ids")),
             control_signal=_enum(
                 value.get("control_signal", LifecycleControlSignal.NONE),
@@ -929,20 +850,14 @@ class LifecycleAuthoritativeState:
     updated_at_ms: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "plan_id", _text(self.plan_id, field_name="plan_id")
-        )
+        object.__setattr__(self, "plan_id", _text(self.plan_id, field_name="plan_id"))
         if not isinstance(self.cache_key, ExactLifecycleCacheKey):
             object.__setattr__(
                 self,
                 "cache_key",
-                ExactLifecycleCacheKey.from_dict(
-                    _mapping(self.cache_key, field_name="cache_key")
-                ),
+                ExactLifecycleCacheKey.from_dict(_mapping(self.cache_key, field_name="cache_key")),
             )
-        object.__setattr__(
-            self, "status", _enum(self.status, LifecyclePlanStatus, "status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, LifecyclePlanStatus, "status"))
         object.__setattr__(
             self,
             "fencing_epoch",
@@ -956,9 +871,7 @@ class LifecycleAuthoritativeState:
         object.__setattr__(
             self,
             "control_signal",
-            _enum(
-                self.control_signal, LifecycleControlSignal, "control_signal"
-            ),
+            _enum(self.control_signal, LifecycleControlSignal, "control_signal"),
         )
         if not isinstance(self.resource_policy, ResourcePolicy):
             object.__setattr__(
@@ -968,21 +881,13 @@ class LifecycleAuthoritativeState:
                     _mapping(self.resource_policy, field_name="resource_policy")
                 ),
             )
-        object.__setattr__(
-            self, "required_assurance", _assurance(self.required_assurance)
-        )
-        object.__setattr__(
-            self, "sequence", _non_negative(self.sequence, "sequence")
-        )
-        if self.active_lease is not None and not isinstance(
-            self.active_lease, WorkerLease
-        ):
+        object.__setattr__(self, "required_assurance", _assurance(self.required_assurance))
+        object.__setattr__(self, "sequence", _non_negative(self.sequence, "sequence"))
+        if self.active_lease is not None and not isinstance(self.active_lease, WorkerLease):
             object.__setattr__(
                 self,
                 "active_lease",
-                WorkerLease.from_dict(
-                    _mapping(self.active_lease, field_name="active_lease")
-                ),
+                WorkerLease.from_dict(_mapping(self.active_lease, field_name="active_lease")),
             )
         transitions: list[LifecycleTransition] = []
         for item in self.transitions or ():
@@ -990,9 +895,7 @@ class LifecycleAuthoritativeState:
                 transitions.append(item)
             else:
                 transitions.append(
-                    LifecycleTransition.from_dict(
-                        _mapping(item, field_name="transition")
-                    )
+                    LifecycleTransition.from_dict(_mapping(item, field_name="transition"))
                 )
         object.__setattr__(self, "transitions", tuple(transitions))
         receipts: list[LifecycleReceipt] = []
@@ -1000,27 +903,15 @@ class LifecycleAuthoritativeState:
             if isinstance(item, LifecycleReceipt):
                 receipts.append(item)
             else:
-                receipts.append(
-                    LifecycleReceipt.from_dict(
-                        _mapping(item, field_name="receipt")
-                    )
-                )
+                receipts.append(LifecycleReceipt.from_dict(_mapping(item, field_name="receipt")))
         object.__setattr__(self, "receipts", tuple(receipts))
-        object.__setattr__(
-            self, "end_goal", _public_mapping(dict(self.end_goal or {}))
-        )
-        object.__setattr__(
-            self, "proof_graph", _public_mapping(dict(self.proof_graph or {}))
-        )
+        object.__setattr__(self, "end_goal", _public_mapping(dict(self.end_goal or {})))
+        object.__setattr__(self, "proof_graph", _public_mapping(dict(self.proof_graph or {})))
         candidates: list[dict[str, Any]] = []
         for item in self.candidates or ():
-            candidates.append(
-                _public_mapping(_mapping(item, field_name="candidate"))
-            )
+            candidates.append(_public_mapping(_mapping(item, field_name="candidate")))
         object.__setattr__(self, "candidates", tuple(candidates))
-        object.__setattr__(
-            self, "metadata", _public_mapping(dict(self.metadata or {}))
-        )
+        object.__setattr__(self, "metadata", _public_mapping(dict(self.metadata or {})))
         if self.completion is not None and not isinstance(
             self.completion, LifecycleCompletionDecision
         ):
@@ -1058,23 +949,15 @@ class LifecycleAuthoritativeState:
             "required_assurance": self.required_assurance.value,
             "sequence": self.sequence,
             "active_lease": (
-                self.active_lease.to_dict()
-                if self.active_lease is not None
-                else None
+                self.active_lease.to_dict() if self.active_lease is not None else None
             ),
-            "transitions": [
-                item.to_dict() for item in self.transitions
-            ],
+            "transitions": [item.to_dict() for item in self.transitions],
             "receipts": [item.to_dict() for item in self.receipts],
             "end_goal": dict(self.end_goal),
             "proof_graph": dict(self.proof_graph),
             "candidates": [dict(item) for item in self.candidates],
             "metadata": dict(self.metadata),
-            "completion": (
-                self.completion.to_dict()
-                if self.completion is not None
-                else None
-            ),
+            "completion": (self.completion.to_dict() if self.completion is not None else None),
             "updated_at_ms": self.updated_at_ms,
         }
         if include_identity:
@@ -1082,31 +965,19 @@ class LifecycleAuthoritativeState:
         return payload
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "LifecycleAuthoritativeState":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "LifecycleAuthoritativeState":
         value = _mapping(payload, field_name="state")
         if value.get("schema") not in {None, LIFECYCLE_STATE_SCHEMA}:
-            raise GoalTacticianLifecycleError(
-                "unsupported lifecycle state schema"
-            )
+            raise GoalTacticianLifecycleError("unsupported lifecycle state schema")
         return cls(
             plan_id=value.get("plan_id", ""),
-            cache_key=ExactLifecycleCacheKey.from_dict(
-                value.get("cache_key") or {}
-            ),
+            cache_key=ExactLifecycleCacheKey.from_dict(value.get("cache_key") or {}),
             status=value.get("status", LifecyclePlanStatus.OPEN),
             fencing_epoch=int(value.get("fencing_epoch", 1)),
             fencing_token=int(value.get("fencing_token", 0)),
-            control_signal=value.get(
-                "control_signal", LifecycleControlSignal.NONE
-            ),
-            resource_policy=ResourcePolicy.from_dict(
-                value.get("resource_policy") or {}
-            ),
-            required_assurance=value.get(
-                "required_assurance", DEFAULT_REQUIRED_ASSURANCE
-            ),
+            control_signal=value.get("control_signal", LifecycleControlSignal.NONE),
+            resource_policy=ResourcePolicy.from_dict(value.get("resource_policy") or {}),
+            required_assurance=value.get("required_assurance", DEFAULT_REQUIRED_ASSURANCE),
             sequence=int(value.get("sequence", 0)),
             active_lease=value.get("active_lease"),
             transitions=tuple(value.get("transitions") or ()),
@@ -1130,13 +1001,9 @@ class LifecycleAuthoritativeState:
         try:
             raw = json.loads(target.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise GoalTacticianLifecycleError(
-                f"lifecycle state is unreadable: {exc}"
-            ) from exc
+            raise GoalTacticianLifecycleError(f"lifecycle state is unreadable: {exc}") from exc
         if not isinstance(raw, Mapping):
-            raise GoalTacticianLifecycleError(
-                "lifecycle state must be a JSON object"
-            )
+            raise GoalTacticianLifecycleError("lifecycle state must be a JSON object")
         return cls.from_dict(raw)
 
 
@@ -1159,9 +1026,7 @@ class GoalTacticianLifecycleConfig:
         try:
             raw_state_dir = os.fspath(self.state_dir)
         except TypeError as exc:
-            raise GoalTacticianLifecycleError(
-                "state_dir must be a filesystem path"
-            ) from exc
+            raise GoalTacticianLifecycleError("state_dir must be a filesystem path") from exc
         if not isinstance(raw_state_dir, str) or not raw_state_dir.strip():
             raise GoalTacticianLifecycleError("state_dir must not be empty")
         object.__setattr__(self, "state_dir", Path(raw_state_dir))
@@ -1173,17 +1038,11 @@ class GoalTacticianLifecycleConfig:
         for name in ("state_filename", "journal_filename"):
             value = str(getattr(self, name) or "").strip()
             if not value or value in {".", ".."} or Path(value).name != value:
-                raise GoalTacticianLifecycleError(
-                    f"{name} must be a plain file name"
-                )
+                raise GoalTacticianLifecycleError(f"{name} must be a plain file name")
             object.__setattr__(self, name, value)
         if self.state_filename == self.journal_filename:
-            raise GoalTacticianLifecycleError(
-                "state and journal filenames must be distinct"
-            )
-        object.__setattr__(
-            self, "required_assurance", _assurance(self.required_assurance)
-        )
+            raise GoalTacticianLifecycleError("state and journal filenames must be distinct")
+        object.__setattr__(self, "required_assurance", _assurance(self.required_assurance))
 
     @property
     def state_path(self) -> Path:
@@ -1211,9 +1070,7 @@ class GoalTacticianSupervisorLifecycle:
         clock: Callable[[], float] | None = None,
     ) -> None:
         if not isinstance(config, GoalTacticianLifecycleConfig):
-            raise GoalTacticianLifecycleError(
-                "config must be GoalTacticianLifecycleConfig"
-            )
+            raise GoalTacticianLifecycleError("config must be GoalTacticianLifecycleConfig")
         self.config = config
         self._clock = clock or time.time
         self._lock = threading.RLock()
@@ -1283,14 +1140,8 @@ class GoalTacticianSupervisorLifecycle:
                 policy = ResourcePolicy(
                     resource_class=resource_class,
                     max_retries=max_retries,
-                    wall_time_ms=int(
-                        dict(bounds).get("wall_time_ms", 60_000)
-                    ),
-                    memory_bytes=int(
-                        dict(bounds).get(
-                            "memory_bytes", 256 * 1024 * 1024
-                        )
-                    ),
+                    wall_time_ms=int(dict(bounds).get("wall_time_ms", 60_000)),
+                    memory_bytes=int(dict(bounds).get("memory_bytes", 256 * 1024 * 1024)),
                 )
             elif isinstance(resource_policy, ResourcePolicy):
                 policy = resource_policy
@@ -1298,8 +1149,7 @@ class GoalTacticianSupervisorLifecycle:
                 policy = ResourcePolicy.from_dict(resource_policy)
 
             resolved_plan_id = (
-                _text(plan_id, field_name="plan_id", required=False)
-                or f"plan:{cache_key.key_id}"
+                _text(plan_id, field_name="plan_id", required=False) or f"plan:{cache_key.key_id}"
             )
             now = _now_ms(self._clock)
             state = LifecycleAuthoritativeState(
@@ -1312,9 +1162,7 @@ class GoalTacticianSupervisorLifecycle:
                 resource_policy=policy,
                 required_assurance=self.config.required_assurance,
                 sequence=0,
-                end_goal=_public_mapping(
-                    dict(end_goal or {"end_goal_id": end_goal_id})
-                ),
+                end_goal=_public_mapping(dict(end_goal or {"end_goal_id": end_goal_id})),
                 proof_graph=_public_mapping(
                     dict(
                         proof_graph
@@ -1357,20 +1205,14 @@ class GoalTacticianSupervisorLifecycle:
 
         with self._lock:
             if self._state is None and self.config.state_path.exists():
-                self._state = LifecycleAuthoritativeState.load(
-                    self.config.state_path
-                )
+                self._state = LifecycleAuthoritativeState.load(self.config.state_path)
             if self._state is None:
-                raise GoalTacticianLifecycleError(
-                    "no durable lifecycle state to reconcile"
-                )
+                raise GoalTacticianLifecycleError("no durable lifecycle state to reconcile")
             state = self._state
             now = _now_ms(self._clock)
             lease = state.active_lease
             changed = False
-            if lease is not None and (
-                not lease.active or lease.is_expired(now)
-            ):
+            if lease is not None and (not lease.active or lease.is_expired(now)):
                 released = WorkerLease(
                     worker_id=lease.worker_id,
                     plan_id=lease.plan_id,
@@ -1380,9 +1222,7 @@ class GoalTacticianSupervisorLifecycle:
                     expires_at_ms=lease.expires_at_ms,
                     resource_class=lease.resource_class,
                     active=False,
-                    release_reason=(
-                        lease.release_reason or "lease_expired_on_reconcile"
-                    ),
+                    release_reason=(lease.release_reason or "lease_expired_on_reconcile"),
                 )
                 state = LifecycleAuthoritativeState.from_dict(
                     {
@@ -1390,12 +1230,10 @@ class GoalTacticianSupervisorLifecycle:
                         "active_lease": released.to_dict(),
                         "status": (
                             LifecyclePlanStatus.BLOCKED.value
-                            if state.control_signal
-                            is not LifecycleControlSignal.NONE
+                            if state.control_signal is not LifecycleControlSignal.NONE
                             else (
                                 state.status.value
-                                if state.status
-                                is not LifecyclePlanStatus.RUNNING
+                                if state.status is not LifecyclePlanStatus.RUNNING
                                 else LifecyclePlanStatus.OPEN.value
                             )
                         ),
@@ -1588,13 +1426,9 @@ class GoalTacticianSupervisorLifecycle:
             self._assert_lease_authoritative(state, held)
             self._reject_if_control_blocks_mutation(state)
             if state.status is LifecyclePlanStatus.INVALIDATED:
-                raise GoalTacticianLifecycleError(
-                    "cannot mutate an invalidated plan"
-                )
+                raise GoalTacticianLifecycleError("cannot mutate an invalidated plan")
             if state.status is LifecyclePlanStatus.COMPLETED:
-                raise GoalTacticianLifecycleError(
-                    "cannot mutate a completed plan"
-                )
+                raise GoalTacticianLifecycleError("cannot mutate a completed plan")
 
             kind_enum = _enum(kind, LifecycleTransitionKind, "kind")
             if kind_enum in {
@@ -1605,9 +1439,7 @@ class GoalTacticianSupervisorLifecycle:
                 LifecycleTransitionKind.TREE_INVALIDATION,
                 LifecycleTransitionKind.COMPLETION,
             }:
-                raise GoalTacticianLifecycleError(
-                    f"{kind_enum.value} must use its dedicated API"
-                )
+                raise GoalTacticianLifecycleError(f"{kind_enum.value} must use its dedicated API")
 
             body = _public_mapping(dict(payload or {}))
             if claims_authority(body) and kind_enum is not LifecycleTransitionKind.VERIFICATION:
@@ -1642,17 +1474,11 @@ class GoalTacticianSupervisorLifecycle:
                     current_fencing_token=state.fencing_token,
                 )
                 if freshness is not Freshness.FRESH:
-                    raise StaleReceiptError(
-                        f"receipt {bound.receipt_id} is {freshness.value}"
-                    )
+                    raise StaleReceiptError(f"receipt {bound.receipt_id} is {freshness.value}")
                 if bound.fencing_token != held.fencing_token:
-                    raise StaleReceiptError(
-                        "receipt fencing token does not match the active lease"
-                    )
+                    raise StaleReceiptError("receipt fencing token does not match the active lease")
                 receipts.append(bound)
-                next_state_fields["receipts"] = [
-                    item.to_dict() for item in receipts
-                ]
+                next_state_fields["receipts"] = [item.to_dict() for item in receipts]
 
             state = LifecycleAuthoritativeState.from_dict(next_state_fields)
             state = self._append_transition(
@@ -1938,11 +1764,7 @@ class GoalTacticianSupervisorLifecycle:
             missing_counterexample_ids=missing_cex,
             stale_receipt_ids=tuple(stale_ids),
             control_signal=current.control_signal,
-            plan_status=(
-                LifecyclePlanStatus.COMPLETED
-                if admitted
-                else current.status
-            ),
+            plan_status=(LifecyclePlanStatus.COMPLETED if admitted else current.status),
         )
 
     def build_receipt(
@@ -1979,28 +1801,20 @@ class GoalTacticianSupervisorLifecycle:
     def _require_open_state(self) -> LifecycleAuthoritativeState:
         if self._state is None:
             if self.config.state_path.exists():
-                self._state = LifecycleAuthoritativeState.load(
-                    self.config.state_path
-                )
+                self._state = LifecycleAuthoritativeState.load(self.config.state_path)
             else:
                 raise GoalTacticianLifecycleError("no lifecycle plan is open")
         return self._state
 
-    def _coerce_lease(
-        self, lease: WorkerLease | Mapping[str, Any]
-    ) -> WorkerLease:
+    def _coerce_lease(self, lease: WorkerLease | Mapping[str, Any]) -> WorkerLease:
         if isinstance(lease, WorkerLease):
             return lease
         return WorkerLease.from_dict(_mapping(lease, field_name="lease"))
 
-    def _coerce_receipt(
-        self, receipt: LifecycleReceipt | Mapping[str, Any]
-    ) -> LifecycleReceipt:
+    def _coerce_receipt(self, receipt: LifecycleReceipt | Mapping[str, Any]) -> LifecycleReceipt:
         if isinstance(receipt, LifecycleReceipt):
             return receipt
-        return LifecycleReceipt.from_dict(
-            _mapping(receipt, field_name="receipt")
-        )
+        return LifecycleReceipt.from_dict(_mapping(receipt, field_name="receipt"))
 
     def _assert_lease_authoritative(
         self,
@@ -2010,9 +1824,7 @@ class GoalTacticianSupervisorLifecycle:
         if lease.plan_id != state.plan_id:
             raise StaleWorkerError("lease plan_id does not match open plan")
         if lease.fencing_epoch != state.fencing_epoch:
-            raise StaleWorkerError(
-                "lease fencing_epoch is stale for the current plan epoch"
-            )
+            raise StaleWorkerError("lease fencing_epoch is stale for the current plan epoch")
         if state.active_lease is None or not state.active_lease.active:
             raise StaleWorkerError("no active lease is held for this plan")
         if lease.fencing_token != state.active_lease.fencing_token:
@@ -2020,20 +1832,15 @@ class GoalTacticianSupervisorLifecycle:
                 "lease fencing_token is stale; a successor worker holds the fence"
             )
         if lease.worker_id != state.active_lease.worker_id:
-            raise StaleWorkerError(
-                "lease worker_id does not match the active fenced owner"
-            )
+            raise StaleWorkerError("lease worker_id does not match the active fenced owner")
         now = _now_ms(self._clock)
         if lease.is_expired(now) or state.active_lease.is_expired(now):
             raise StaleWorkerError("lease has expired")
 
-    def _reject_if_control_blocks_mutation(
-        self, state: LifecycleAuthoritativeState
-    ) -> None:
+    def _reject_if_control_blocks_mutation(self, state: LifecycleAuthoritativeState) -> None:
         if state.control_signal is not LifecycleControlSignal.NONE:
             raise LifecycleControlActiveError(
-                f"mutation blocked by durable control signal: "
-                f"{state.control_signal.value}"
+                f"mutation blocked by durable control signal: {state.control_signal.value}"
             )
 
     def _append_transition(
@@ -2072,9 +1879,7 @@ class GoalTacticianSupervisorLifecycle:
     def _commit(self, state: LifecycleAuthoritativeState) -> None:
         state.write(self.config.state_path)
         if state.transitions:
-            _append_jsonl(
-                self.config.journal_path, state.transitions[-1].to_dict()
-            )
+            _append_jsonl(self.config.journal_path, state.transitions[-1].to_dict())
         self._state = state
 
 

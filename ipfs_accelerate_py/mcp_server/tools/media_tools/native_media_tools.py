@@ -55,7 +55,9 @@ def _load_media_tools_api() -> Dict[str, Any]:
             "Source media_tools import unavailable, using fallback media-tools functions"
         )
 
-        async def _ffmpeg_analyze_fallback(input_file: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+        async def _ffmpeg_analyze_fallback(
+            input_file: Union[str, Dict[str, Any]],
+        ) -> Dict[str, Any]:
             return {
                 "status": "success",
                 "input_file": input_file,
@@ -337,7 +339,15 @@ def _load_media_tools_api() -> Dict[str, Any]:
             resume_from_checkpoint: bool = True,
             timeout_per_file: int = 600,
         ) -> Dict[str, Any]:
-            _ = (output_directory, operation, operation_params, max_parallel, save_progress, resume_from_checkpoint, timeout_per_file)
+            _ = (
+                output_directory,
+                operation,
+                operation_params,
+                max_parallel,
+                save_progress,
+                resume_from_checkpoint,
+                timeout_per_file,
+            )
             total = len(input_files) if isinstance(input_files, list) else 0
             return {
                 "status": "success",
@@ -397,7 +407,16 @@ def _load_media_tools_api() -> Dict[str, Any]:
             custom_opts: Optional[Dict[str, Any]] = None,
             timeout: int = 1200,
         ) -> Dict[str, Any]:
-            _ = (output_dir, quality, max_downloads, start_index, end_index, download_archive, custom_opts, timeout)
+            _ = (
+                output_dir,
+                quality,
+                max_downloads,
+                start_index,
+                end_index,
+                download_archive,
+                custom_opts,
+                timeout,
+            )
             return {
                 "status": "success",
                 "playlist_url": playlist_url,
@@ -563,7 +582,9 @@ def _normalize_string_list(
         if required:
             return {"status": "error", "error": f"{field_name} is required"}
         return None
-    if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or not item.strip() for item in value
+    ):
         return {
             "status": "error",
             "error": f"{field_name} must be a list of non-empty strings"
@@ -574,14 +595,24 @@ def _normalize_string_list(
     return [item.strip() for item in value]
 
 
-def _normalize_string_mapping(value: Any, field_name: str) -> Union[Dict[str, str], None, Dict[str, Any]]:
+def _normalize_string_mapping(
+    value: Any, field_name: str
+) -> Union[Dict[str, str], None, Dict[str, Any]]:
     if value is None:
         return None
     if not isinstance(value, dict) or not value:
-        return {"status": "error", "error": f"{field_name} must be a non-empty object when provided"}
+        return {
+            "status": "error",
+            "error": f"{field_name} must be a non-empty object when provided",
+        }
     normalized: Dict[str, str] = {}
     for key, item in value.items():
-        if not isinstance(key, str) or not key.strip() or not isinstance(item, str) or not item.strip():
+        if (
+            not isinstance(key, str)
+            or not key.strip()
+            or not isinstance(item, str)
+            or not item.strip()
+        ):
             return {
                 "status": "error",
                 "error": f"{field_name} keys and values must be non-empty strings",
@@ -594,12 +625,20 @@ def _normalize_stream_selection(value: Any) -> Union[Dict[str, List[int]], None,
     if value is None:
         return None
     if not isinstance(value, dict) or not value:
-        return {"status": "error", "error": "stream_selection must be a non-empty object when provided"}
+        return {
+            "status": "error",
+            "error": "stream_selection must be a non-empty object when provided",
+        }
     normalized: Dict[str, List[int]] = {}
     for key, item in value.items():
         if key not in {"video", "audio", "subtitle"}:
-            return {"status": "error", "error": "stream_selection keys must be one of video, audio, subtitle"}
-        if not isinstance(item, list) or any(not isinstance(index, int) or index < 0 for index in item):
+            return {
+                "status": "error",
+                "error": "stream_selection keys must be one of video, audio, subtitle",
+            }
+        if not isinstance(item, list) or any(
+            not isinstance(index, int) or index < 0 for index in item
+        ):
             return {
                 "status": "error",
                 "error": "stream_selection values must be arrays of non-negative integers",
@@ -684,9 +723,17 @@ async def ffmpeg_probe(
     if not isinstance(show_frames, bool):
         return {"status": "error", "error": "show_frames must be a boolean"}
     if frame_count is not None and (not isinstance(frame_count, int) or frame_count < 1):
-        return {"status": "error", "error": "frame_count must be an integer greater than or equal to 1 when provided"}
-    if select_streams is not None and (not isinstance(select_streams, str) or not select_streams.strip()):
-        return {"status": "error", "error": "select_streams must be a non-empty string when provided"}
+        return {
+            "status": "error",
+            "error": "frame_count must be an integer greater than or equal to 1 when provided",
+        }
+    if select_streams is not None and (
+        not isinstance(select_streams, str) or not select_streams.strip()
+    ):
+        return {
+            "status": "error",
+            "error": "select_streams must be a non-empty string when provided",
+        }
     if not isinstance(include_metadata, bool):
         return {"status": "error", "error": "include_metadata must be a boolean"}
 
@@ -753,8 +800,13 @@ async def ffmpeg_convert(
         if value is not None and (not isinstance(value, str) or not value.strip()):
             return {"status": "error", "error": f"{name} must be a non-empty string when provided"}
     if custom_args is not None:
-        if not isinstance(custom_args, list) or any(not isinstance(item, str) or not item.strip() for item in custom_args):
-            return {"status": "error", "error": "custom_args must be a list of non-empty strings when provided"}
+        if not isinstance(custom_args, list) or any(
+            not isinstance(item, str) or not item.strip() for item in custom_args
+        ):
+            return {
+                "status": "error",
+                "error": "custom_args must be a list of non-empty strings when provided",
+            }
     if not isinstance(timeout, int) or timeout < 1:
         return {"status": "error", "error": "timeout must be an integer greater than or equal to 1"}
 
@@ -772,7 +824,9 @@ async def ffmpeg_convert(
                 framerate=framerate.strip() if isinstance(framerate, str) else None,
                 quality=quality.strip() if isinstance(quality, str) else None,
                 preset=preset.strip() if isinstance(preset, str) else None,
-                custom_args=[item.strip() for item in custom_args] if isinstance(custom_args, list) else None,
+                custom_args=[item.strip() for item in custom_args]
+                if isinstance(custom_args, list)
+                else None,
                 timeout=timeout,
             )
         )
@@ -833,7 +887,9 @@ async def ffmpeg_mux(
     normalized_audio_codec = _normalize_non_empty_string(audio_codec, "audio_codec", required=True)
     if _is_error_payload(normalized_audio_codec):
         return normalized_audio_codec
-    normalized_subtitle_codec = _normalize_non_empty_string(subtitle_codec, "subtitle_codec", required=True)
+    normalized_subtitle_codec = _normalize_non_empty_string(
+        subtitle_codec, "subtitle_codec", required=True
+    )
     if _is_error_payload(normalized_subtitle_codec):
         return normalized_subtitle_codec
     normalized_map_streams = _normalize_string_list(map_streams, "map_streams")
@@ -867,7 +923,11 @@ async def ffmpeg_mux(
     payload = _normalize_payload(resolved)
     payload.setdefault(
         "inputs",
-        {"video": normalized_video, "audio": normalized_audio or [], "subtitle": normalized_subtitles or []},
+        {
+            "video": normalized_video,
+            "audio": normalized_audio or [],
+            "subtitle": normalized_subtitles or [],
+        },
     )
     payload.setdefault("output_file", normalized_output)
     return payload
@@ -898,13 +958,19 @@ async def ffmpeg_demux(
         return {"status": "error", "error": "extract_audio must be a boolean"}
     if not isinstance(extract_subtitles, bool):
         return {"status": "error", "error": "extract_subtitles must be a boolean"}
-    normalized_video_format = _normalize_non_empty_string(video_format, "video_format", required=True)
+    normalized_video_format = _normalize_non_empty_string(
+        video_format, "video_format", required=True
+    )
     if _is_error_payload(normalized_video_format):
         return normalized_video_format
-    normalized_audio_format = _normalize_non_empty_string(audio_format, "audio_format", required=True)
+    normalized_audio_format = _normalize_non_empty_string(
+        audio_format, "audio_format", required=True
+    )
     if _is_error_payload(normalized_audio_format):
         return normalized_audio_format
-    normalized_subtitle_format = _normalize_non_empty_string(subtitle_format, "subtitle_format", required=True)
+    normalized_subtitle_format = _normalize_non_empty_string(
+        subtitle_format, "subtitle_format", required=True
+    )
     if _is_error_payload(normalized_subtitle_format):
         return normalized_subtitle_format
     normalized_stream_selection = _normalize_stream_selection(stream_selection)
@@ -1046,7 +1112,9 @@ async def ffmpeg_stream_output(
     normalized_tune = _normalize_non_empty_string(tune, "tune")
     if _is_error_payload(normalized_tune):
         return normalized_tune
-    normalized_keyframe_interval = _normalize_non_empty_string(keyframe_interval, "keyframe_interval")
+    normalized_keyframe_interval = _normalize_non_empty_string(
+        keyframe_interval, "keyframe_interval"
+    )
     if _is_error_payload(normalized_keyframe_interval):
         return normalized_keyframe_interval
     normalized_buffer_size = _normalize_non_empty_string(buffer_size, "buffer_size")
@@ -1180,7 +1248,9 @@ async def ffmpeg_splice(
     normalized_audio_codec = _normalize_non_empty_string(audio_codec, "audio_codec", required=True)
     if _is_error_payload(normalized_audio_codec):
         return normalized_audio_codec
-    normalized_transition_type = _normalize_non_empty_string(transition_type, "transition_type", required=True)
+    normalized_transition_type = _normalize_non_empty_string(
+        transition_type, "transition_type", required=True
+    )
     if _is_error_payload(normalized_transition_type):
         return normalized_transition_type
     if not isinstance(transition_duration, (int, float)) or transition_duration < 0:
@@ -1355,13 +1425,19 @@ async def ffmpeg_batch_process(
     if operation_params is not None and not isinstance(operation_params, dict):
         return {"status": "error", "error": "operation_params must be an object when provided"}
     if not isinstance(max_parallel, int) or max_parallel < 1:
-        return {"status": "error", "error": "max_parallel must be an integer greater than or equal to 1"}
+        return {
+            "status": "error",
+            "error": "max_parallel must be an integer greater than or equal to 1",
+        }
     if not isinstance(save_progress, bool):
         return {"status": "error", "error": "save_progress must be a boolean"}
     if not isinstance(resume_from_checkpoint, bool):
         return {"status": "error", "error": "resume_from_checkpoint must be a boolean"}
     if not isinstance(timeout_per_file, int) or timeout_per_file < 1:
-        return {"status": "error", "error": "timeout_per_file must be an integer greater than or equal to 1"}
+        return {
+            "status": "error",
+            "error": "timeout_per_file must be an integer greater than or equal to 1",
+        }
 
     try:
         resolved = await _await_maybe(
@@ -1377,7 +1453,11 @@ async def ffmpeg_batch_process(
             )
         )
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "output_directory": normalized_output_directory}
+        return {
+            "status": "error",
+            "error": str(exc),
+            "output_directory": normalized_output_directory,
+        }
 
     payload = _normalize_payload(resolved)
     payload.setdefault("operation", normalized_operation)
@@ -1422,8 +1502,13 @@ async def ytdlp_download_video(
         return {"status": "error", "error": "output_dir must be a non-empty string when provided"}
     if not isinstance(quality, str) or not quality.strip():
         return {"status": "error", "error": "quality must be a non-empty string"}
-    if format_selector is not None and (not isinstance(format_selector, str) or not format_selector.strip()):
-        return {"status": "error", "error": "format_selector must be a non-empty string when provided"}
+    if format_selector is not None and (
+        not isinstance(format_selector, str) or not format_selector.strip()
+    ):
+        return {
+            "status": "error",
+            "error": "format_selector must be a non-empty string when provided",
+        }
     if not isinstance(audio_only, bool):
         return {"status": "error", "error": "audio_only must be a boolean"}
     if not isinstance(extract_audio, bool):
@@ -1431,8 +1516,13 @@ async def ytdlp_download_video(
     if not isinstance(audio_format, str) or not audio_format.strip():
         return {"status": "error", "error": "audio_format must be a non-empty string"}
     if subtitle_langs is not None:
-        if not isinstance(subtitle_langs, list) or any(not isinstance(item, str) or not item.strip() for item in subtitle_langs):
-            return {"status": "error", "error": "subtitle_langs must be a list of non-empty strings when provided"}
+        if not isinstance(subtitle_langs, list) or any(
+            not isinstance(item, str) or not item.strip() for item in subtitle_langs
+        ):
+            return {
+                "status": "error",
+                "error": "subtitle_langs must be a list of non-empty strings when provided",
+            }
     if not isinstance(download_thumbnails, bool):
         return {"status": "error", "error": "download_thumbnails must be a boolean"}
     if not isinstance(download_info_json, bool):
@@ -1448,11 +1538,15 @@ async def ytdlp_download_video(
                 url=normalized_urls,
                 output_dir=output_dir.strip() if isinstance(output_dir, str) else None,
                 quality=quality.strip(),
-                format_selector=format_selector.strip() if isinstance(format_selector, str) else None,
+                format_selector=format_selector.strip()
+                if isinstance(format_selector, str)
+                else None,
                 audio_only=audio_only,
                 extract_audio=extract_audio,
                 audio_format=audio_format.strip(),
-                subtitle_langs=[item.strip() for item in subtitle_langs] if isinstance(subtitle_langs, list) else None,
+                subtitle_langs=[item.strip() for item in subtitle_langs]
+                if isinstance(subtitle_langs, list)
+                else None,
                 download_thumbnails=download_thumbnails,
                 download_info_json=download_info_json,
                 custom_opts=custom_opts,
@@ -1486,13 +1580,25 @@ async def ytdlp_extract_info(
     if not isinstance(download, bool):
         return {"status": "error", "error": "download must be a boolean", "url": normalized_url}
     if flat_playlist is not None and not isinstance(flat_playlist, bool):
-        return {"status": "error", "error": "flat_playlist must be a boolean", "url": normalized_url}
+        return {
+            "status": "error",
+            "error": "flat_playlist must be a boolean",
+            "url": normalized_url,
+        }
     if not isinstance(extract_flat, bool):
         return {"status": "error", "error": "extract_flat must be a boolean", "url": normalized_url}
     if not isinstance(include_subtitles, bool):
-        return {"status": "error", "error": "include_subtitles must be a boolean", "url": normalized_url}
+        return {
+            "status": "error",
+            "error": "include_subtitles must be a boolean",
+            "url": normalized_url,
+        }
     if not isinstance(include_thumbnails, bool):
-        return {"status": "error", "error": "include_thumbnails must be a boolean", "url": normalized_url}
+        return {
+            "status": "error",
+            "error": "include_thumbnails must be a boolean",
+            "url": normalized_url,
+        }
 
     normalized_extract_flat = flat_playlist if isinstance(flat_playlist, bool) else extract_flat
 
@@ -1544,13 +1650,27 @@ async def ytdlp_download_playlist(
     if not isinstance(quality, str) or not quality.strip():
         return {"status": "error", "error": "quality must be a non-empty string"}
     if max_downloads is not None and (not isinstance(max_downloads, int) or max_downloads < 1):
-        return {"status": "error", "error": "max_downloads must be an integer greater than or equal to 1 when provided"}
+        return {
+            "status": "error",
+            "error": "max_downloads must be an integer greater than or equal to 1 when provided",
+        }
     if not isinstance(start_index, int) or start_index < 1:
-        return {"status": "error", "error": "start_index must be an integer greater than or equal to 1"}
+        return {
+            "status": "error",
+            "error": "start_index must be an integer greater than or equal to 1",
+        }
     if end_index is not None and (not isinstance(end_index, int) or end_index < start_index):
-        return {"status": "error", "error": "end_index must be an integer greater than or equal to start_index when provided"}
-    if download_archive is not None and (not isinstance(download_archive, str) or not download_archive.strip()):
-        return {"status": "error", "error": "download_archive must be a non-empty string when provided"}
+        return {
+            "status": "error",
+            "error": "end_index must be an integer greater than or equal to start_index when provided",
+        }
+    if download_archive is not None and (
+        not isinstance(download_archive, str) or not download_archive.strip()
+    ):
+        return {
+            "status": "error",
+            "error": "download_archive must be a non-empty string when provided",
+        }
     if custom_opts is not None and not isinstance(custom_opts, dict):
         return {"status": "error", "error": "custom_opts must be an object when provided"}
     if not isinstance(timeout, int) or timeout < 1:
@@ -1565,7 +1685,9 @@ async def ytdlp_download_playlist(
                 max_downloads=max_downloads,
                 start_index=start_index,
                 end_index=end_index,
-                download_archive=download_archive.strip() if isinstance(download_archive, str) else None,
+                download_archive=download_archive.strip()
+                if isinstance(download_archive, str)
+                else None,
                 custom_opts=custom_opts,
                 timeout=timeout,
             )
@@ -1590,7 +1712,10 @@ async def ytdlp_search_videos(
     if not normalized_query:
         return {"status": "error", "error": "query must be a non-empty string", "query": query}
     if not isinstance(max_results, int) or max_results < 1:
-        return {"status": "error", "error": "max_results must be an integer greater than or equal to 1"}
+        return {
+            "status": "error",
+            "error": "max_results must be an integer greater than or equal to 1",
+        }
     if not isinstance(search_type, str) or not search_type.strip():
         return {"status": "error", "error": "search_type must be a non-empty string"}
     if not isinstance(extract_info, bool):
@@ -1641,7 +1766,10 @@ async def ytdlp_batch_download(
     if not isinstance(quality, str) or not quality.strip():
         return {"status": "error", "error": "quality must be a non-empty string"}
     if not isinstance(concurrent_downloads, int) or concurrent_downloads < 1:
-        return {"status": "error", "error": "concurrent_downloads must be an integer greater than or equal to 1"}
+        return {
+            "status": "error",
+            "error": "concurrent_downloads must be an integer greater than or equal to 1",
+        }
     if not isinstance(ignore_errors, bool):
         return {"status": "error", "error": "ignore_errors must be a boolean"}
     if custom_opts is not None and not isinstance(custom_opts, dict):
@@ -1745,7 +1873,10 @@ def register_native_media_tools(manager: Any) -> None:
                 "framerate": {"type": ["string", "null"], "minLength": 1},
                 "quality": {"type": ["string", "null"], "minLength": 1},
                 "preset": {"type": ["string", "null"], "minLength": 1},
-                "custom_args": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                "custom_args": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
                 "timeout": {"type": "integer", "minimum": 1, "default": 600},
             },
             "required": ["input_file", "output_file"],
@@ -1763,14 +1894,23 @@ def register_native_media_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "video_input": {"type": ["string", "null"], "minLength": 1},
-                "audio_inputs": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
-                "subtitle_inputs": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                "audio_inputs": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
+                "subtitle_inputs": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
                 "output_file": {"type": "string", "minLength": 1},
                 "output_format": {"type": ["string", "null"], "minLength": 1},
                 "video_codec": {"type": "string", "minLength": 1, "default": "copy"},
                 "audio_codec": {"type": "string", "minLength": 1, "default": "copy"},
                 "subtitle_codec": {"type": "string", "minLength": 1, "default": "copy"},
-                "map_streams": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                "map_streams": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
                 "metadata": {"type": ["object", "null"], "minProperties": 1},
                 "timeout": {"type": "integer", "minimum": 1, "default": 300},
             },
@@ -1916,7 +2056,11 @@ def register_native_media_tools(manager: Any) -> None:
                     },
                 },
                 "output_file": {"type": "string", "minLength": 1},
-                "segments": {"type": "array", "minItems": 1, "items": {"type": "object", "minProperties": 1}},
+                "segments": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {"type": "object", "minProperties": 1},
+                },
                 "video_codec": {"type": "string", "minLength": 1, "default": "libx264"},
                 "audio_codec": {"type": "string", "minLength": 1, "default": "aac"},
                 "transition_type": {"type": "string", "minLength": 1, "default": "cut"},
@@ -1975,8 +2119,14 @@ def register_native_media_tools(manager: Any) -> None:
                     ]
                 },
                 "output_file": {"type": "string", "minLength": 1},
-                "video_filters": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
-                "audio_filters": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                "video_filters": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
+                "audio_filters": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
                 "filter_complex": {"type": ["string", "null"], "minLength": 1},
                 "output_format": {"type": ["string", "null"], "minLength": 1},
                 "preserve_metadata": {"type": "boolean", "default": True},
@@ -1998,7 +2148,11 @@ def register_native_media_tools(manager: Any) -> None:
             "properties": {
                 "input_files": {
                     "oneOf": [
-                        {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+                        {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {"type": "string", "minLength": 1},
+                        },
                         {"type": "object", "minProperties": 1},
                     ]
                 },
@@ -2027,7 +2181,11 @@ def register_native_media_tools(manager: Any) -> None:
                 "url": {
                     "oneOf": [
                         {"type": "string", "minLength": 1},
-                        {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+                        {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {"type": "string", "minLength": 1},
+                        },
                     ]
                 },
                 "output_dir": {"type": ["string", "null"], "minLength": 1},
@@ -2036,7 +2194,10 @@ def register_native_media_tools(manager: Any) -> None:
                 "audio_only": {"type": "boolean", "default": False},
                 "extract_audio": {"type": "boolean", "default": False},
                 "audio_format": {"type": "string", "minLength": 1, "default": "mp3"},
-                "subtitle_langs": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                "subtitle_langs": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
                 "download_thumbnails": {"type": "boolean", "default": False},
                 "download_info_json": {"type": "boolean", "default": True},
                 "custom_opts": {"type": ["object", "null"]},

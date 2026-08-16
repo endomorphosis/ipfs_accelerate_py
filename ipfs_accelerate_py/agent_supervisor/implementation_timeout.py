@@ -59,17 +59,9 @@ def implementation_timeout_metadata_value(
         try:
             value = float(str(raw_value).strip())
         except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"{prefix}{field_name} must be a finite positive number"
-            ) from exc
-        if (
-            isinstance(raw_value, bool)
-            or not math.isfinite(value)
-            or value <= 0
-        ):
-            raise ValueError(
-                f"{prefix}{field_name} must be a finite positive number"
-            )
+            raise ValueError(f"{prefix}{field_name} must be a finite positive number") from exc
+        if isinstance(raw_value, bool) or not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{prefix}{field_name} must be a finite positive number")
         return value
     return None
 
@@ -97,9 +89,7 @@ def effective_implementation_hard_timeout(
         or not math.isfinite(float(configured_timeout))
         or float(configured_timeout) <= 0
     ):
-        raise ValueError(
-            f"{prefix}implementation_timeout must be finite and positive"
-        )
+        raise ValueError(f"{prefix}implementation_timeout must be finite and positive")
     configured = float(configured_timeout)
     explicit_max = implementation_timeout_metadata_value(
         metadata,
@@ -125,15 +115,13 @@ def effective_implementation_hard_timeout(
         )
 
     normalized = _normalized_metadata(metadata)
-    requires_provider = str(
-        normalized.get("requires provider", ("", ""))[1]
-    ).strip().lower() in _TRUE_METADATA_VALUES
+    requires_provider = (
+        str(normalized.get("requires provider", ("", ""))[1]).strip().lower()
+        in _TRUE_METADATA_VALUES
+    )
     if requires_provider:
         return EffectiveImplementationHardTimeout(
-            seconds=(
-                configured
-                * DEFAULT_PROVIDER_IMPLEMENTATION_TIMEOUT_MULTIPLIER
-            ),
+            seconds=(configured * DEFAULT_PROVIDER_IMPLEMENTATION_TIMEOUT_MULTIPLIER),
             source="provider_task_progress",
         )
     return EffectiveImplementationHardTimeout(

@@ -74,9 +74,7 @@ SOURCE = ({"source_id": "review:prompt-plan", "span_id": "fixture:1"},)
 def _graph_fixture():
     workflow = _request()
     scan = _scan(workflow)
-    graph = parse_prompt_goal_graph(
-        _encoded_proposal(scan), workflow, scan
-    )
+    graph = parse_prompt_goal_graph(_encoded_proposal(scan), workflow, scan)
     return workflow, scan, graph
 
 
@@ -132,9 +130,7 @@ def _ir_request(
     *,
     security_decision: str = "allow",
 ) -> PlanAdmissionRequest:
-    formal = FormalPlanCompiler().compile_prompt_graph(
-        graph, repository_tree_id=tree_id
-    )
+    formal = FormalPlanCompiler().compile_prompt_graph(graph, repository_tree_id=tree_id)
     assert formal.status is CompilationStatus.COMPILED
     projection = formal.admission_projection
     assert projection is not None
@@ -175,9 +171,7 @@ def _ir_request(
     constraints = intent_compilation.require_constraint_set()
     intent_candidate = copy.deepcopy(candidate)
     intent_candidate["intent_root"] = dict(constraints.intent_root)
-    intent_candidate["formalization_root"] = dict(
-        constraints.formalization_root
-    )
+    intent_candidate["formalization_root"] = dict(constraints.formalization_root)
     intent_candidate["goal_ids"] = [graph.root_goal.goal_cid]
     intent_request = create_intent_conformance_request(
         intent_compilation,
@@ -223,17 +217,13 @@ def _ir_request(
                 "source_references": SOURCE,
             }
         )
-    security_artifact = _normalized(
-        IRFamily.SECURITY, declarations=tuple(security_declarations)
-    )
+    security_artifact = _normalized(IRFamily.SECURITY, declarations=tuple(security_declarations))
     security_policy = compile_security_constraints(security_artifact)
     security_requests = tuple(
         SecurityAuthorizationRequest(
             security_root_artifact_id=security_artifact.root_artifact_id,
             security_root_cid_v1=security_artifact.root_cid_v1,
-            security_root_supervisor_digest=(
-                security_artifact.root_supervisor_digest
-            ),
+            security_root_supervisor_digest=(security_artifact.root_supervisor_digest),
             principal="actor:prompt-plan",
             action="write",
             tool="tool:editor",
@@ -252,9 +242,7 @@ def _ir_request(
             legal_result_ids=(legal.content_id,),
             security_request_ids=tuple(
                 request.content_id
-                for request, effect in zip(
-                    security_requests, effects, strict=True
-                )
+                for request, effect in zip(security_requests, effects, strict=True)
                 if effect["action_id"] == action["action_id"]
             ),
         )
@@ -262,9 +250,7 @@ def _ir_request(
     )
 
     proof_ids = {
-        obligation_id
-        for action in actions
-        for obligation_id in action["proof_obligation_ids"]
+        obligation_id for action in actions for obligation_id in action["proof_obligation_ids"]
     }
     validation_ids = {
         requirement_id
@@ -272,14 +258,9 @@ def _ir_request(
         for requirement_id in action["validation_requirement_ids"]
     }
     assert formal.plan is not None
-    formal_requirements = {
-        item.requirement_id: item
-        for item in formal.plan.evidence_requirements
-    }
+    formal_requirements = {item.requirement_id: item for item in formal.plan.evidence_requirements}
     assumption_ids = {
-        assumption_id
-        for action in actions
-        for assumption_id in action["assumption_ids"]
+        assumption_id for action in actions for assumption_id in action["assumption_ids"]
     }
     return PlanAdmissionRequest(
         candidate_plan=candidate,
@@ -297,9 +278,7 @@ def _ir_request(
             grant_source_ids=("security-grant:prompt-plan",),
         ),
         root_bindings=(
-            RootBinding(
-                "intent", workflow.intent_ir_root, workflow.intent_ir_root
-            ),
+            RootBinding("intent", workflow.intent_ir_root, workflow.intent_ir_root),
             RootBinding("legal", workflow.legal_ir_root, workflow.legal_ir_root),
             RootBinding(
                 "security",
@@ -344,12 +323,9 @@ def _ir_request(
                 action_ids=tuple(
                     str(action["action_id"])
                     for action in actions
-                    if requirement_id
-                    in action["validation_requirement_ids"]
+                    if requirement_id in action["validation_requirement_ids"]
                 ),
-                command=formal_requirements[
-                    requirement_id
-                ].fallback_check_ids[0],
+                command=formal_requirements[requirement_id].fallback_check_ids[0],
             )
             for requirement_id in sorted(validation_ids)
         ),
@@ -393,9 +369,7 @@ def test_admits_only_after_quality_formal_ir_proof_and_validation_gates() -> Non
     assert result.formal_compilation.status is CompilationStatus.COMPILED
     assert result.ir_receipt is not None and result.ir_receipt.admitted
     assert result.receipt.final_plan_cid
-    assert result.receipt.final_task_cids == tuple(
-        sorted(task.task_cid for task in graph.tasks)
-    )
+    assert result.receipt.final_task_cids == tuple(sorted(task.task_cid for task in graph.tasks))
     assert all(result.receipt.invariants.values())
     assert not result.receipt.authorizes_execution
     assert result.receipt.ir_request_id == ir_request.request_id
@@ -417,9 +391,7 @@ def test_candidate_order_and_irrelevant_corpus_growth_do_not_change_result() -> 
         ir_request=ir_request,
         workflow_request=workflow,
         scan_receipt=scan,
-        irrelevant_corpus=tuple(
-            {"path": f"unrelated/{index}.txt"} for index in range(1_000)
-        ),
+        irrelevant_corpus=tuple({"path": f"unrelated/{index}.txt"} for index in range(1_000)),
     )
 
     assert first.admitted and second.admitted
@@ -449,10 +421,7 @@ def test_final_cids_are_withheld_on_exact_ir_binding_or_hard_domain_failure() ->
     )
 
     assert not binding_failure.admitted
-    assert (
-        PromptPlanAdmissionCode.IR_BINDING_MISMATCH.value
-        in binding_failure.reason_codes
-    )
+    assert PromptPlanAdmissionCode.IR_BINDING_MISMATCH.value in binding_failure.reason_codes
     assert not binding_failure.receipt.final_plan_cid
     assert not binding_failure.receipt.final_task_cids
     assert not security_failure.admitted
@@ -481,18 +450,12 @@ def test_final_cids_are_withheld_on_exact_ir_binding_or_hard_domain_failure() ->
                 task,
                 outputs=(
                     PromptOutputRecord(
-                        path=(
-                            "docs/architecture/"
-                            "agent_supervisor_self_improvement.todo.md"
-                        ),
+                        path=("docs/architecture/agent_supervisor_self_improvement.todo.md"),
                         effect="modify",
                         media_type="text/markdown",
                     ),
                 ),
-                predicted_files=(
-                    "docs/architecture/"
-                    "agent_supervisor_self_improvement.todo.md",
-                ),
+                predicted_files=("docs/architecture/agent_supervisor_self_improvement.todo.md",),
                 scope_paths=("docs/architecture",),
             ),
             PromptPlanAdmissionCode.OUTPUT_FORBIDDEN.value,
@@ -513,9 +476,7 @@ def test_quality_output_resource_and_shell_failures_are_hard(
     workflow, scan, graph = _graph_fixture()
     changed_task = mutate(graph.tasks[0])
     changed_graph = replace(graph, tasks=(changed_task,))
-    ir_request = _ir_request(
-        changed_graph, workflow, scan.dirty_worktree_root
-    )
+    ir_request = _ir_request(changed_graph, workflow, scan.dirty_worktree_root)
 
     result = admit_prompt_plan(
         changed_graph,
@@ -535,9 +496,7 @@ def test_stale_roots_unknown_closure_unbound_paths_and_missing_proofs_fail() -> 
     stale = replace(
         ir_request,
         root_bindings=tuple(
-            replace(item, observed="root:stale")
-            if item.kind == "program"
-            else item
+            replace(item, observed="root:stale") if item.kind == "program" else item
             for item in ir_request.root_bindings
         ),
         mandatory_closure=None,
@@ -556,9 +515,7 @@ def test_stale_roots_unknown_closure_unbound_paths_and_missing_proofs_fail() -> 
         predicted_files=("pkg/unseen.py",),
     )
     unbound_graph = replace(graph, tasks=(unbound_task,))
-    unbound_ir = _ir_request(
-        unbound_graph, workflow, scan.dirty_worktree_root
-    )
+    unbound_ir = _ir_request(unbound_graph, workflow, scan.dirty_worktree_root)
 
     stale_result = admit_prompt_plan(
         graph,
@@ -576,15 +533,9 @@ def test_stale_roots_unknown_closure_unbound_paths_and_missing_proofs_fail() -> 
     )
 
     assert PromptPlanAdmissionCode.MISSING_PROOF.value in stale_result.reason_codes
-    assert (
-        PromptPlanAdmissionCode.UNKNOWN_MANDATORY_STATE.value
-        in stale_result.reason_codes
-    )
+    assert PromptPlanAdmissionCode.UNKNOWN_MANDATORY_STATE.value in stale_result.reason_codes
     assert "ir.stale_root" in stale_result.reason_codes
-    assert (
-        PromptPlanAdmissionCode.EVIDENCE_UNTRACED.value
-        in unbound_result.reason_codes
-    )
+    assert PromptPlanAdmissionCode.EVIDENCE_UNTRACED.value in unbound_result.reason_codes
 
 
 def test_malformed_claimed_graph_identity_returns_an_exact_rejection() -> None:
@@ -598,9 +549,7 @@ def test_malformed_claimed_graph_identity_returns_an_exact_rejection() -> None:
     )
 
     assert not result.admitted
-    assert result.reason_codes == (
-        PromptPlanAdmissionCode.MALFORMED_GRAPH.value,
-    )
+    assert result.reason_codes == (PromptPlanAdmissionCode.MALFORMED_GRAPH.value,)
     assert result.receipt.findings[0].counterexample["exception"]
 
 
@@ -658,15 +607,9 @@ def test_acceptance_granularity_conflicts_and_protected_subtrees_fail_closed() -
         policy=PromptPlanAdmissionPolicy(protected_paths=("pkg",)),
     )
 
-    assert (
-        PromptPlanAdmissionCode.ACCEPTANCE_UNCOVERED.value
-        in uncovered.reason_codes
-    )
+    assert PromptPlanAdmissionCode.ACCEPTANCE_UNCOVERED.value in uncovered.reason_codes
     assert PromptPlanAdmissionCode.TASK_TOO_BROAD.value in broad.reason_codes
-    assert (
-        PromptPlanAdmissionCode.CONFLICT_UNORDERED.value
-        in conflict.reason_codes
-    )
+    assert PromptPlanAdmissionCode.CONFLICT_UNORDERED.value in conflict.reason_codes
     assert PromptPlanAdmissionCode.OUTPUT_FORBIDDEN.value in protected.reason_codes
 
 
@@ -675,9 +618,7 @@ def test_validation_receipt_must_name_the_compiler_bound_structured_check() -> N
     requirement = ir_request.validation_requirements[0]
     mismatched = replace(
         ir_request,
-        validation_requirements=(
-            replace(requirement, command="pytest some-other-target.py"),
-        ),
+        validation_requirements=(replace(requirement, command="pytest some-other-target.py"),),
     )
 
     result = admit_prompt_plan(
@@ -689,14 +630,8 @@ def test_validation_receipt_must_name_the_compiler_bound_structured_check() -> N
     )
 
     assert not result.admitted
-    assert (
-        PromptPlanAdmissionCode.IR_BINDING_MISMATCH.value
-        in result.reason_codes
-    )
-    assert any(
-        finding.path.endswith(".command")
-        for finding in result.receipt.findings
-    )
+    assert PromptPlanAdmissionCode.IR_BINDING_MISMATCH.value in result.reason_codes
+    assert any(finding.path.endswith(".command") for finding in result.receipt.findings)
 
 
 def test_receipt_rejects_tampered_determinism_claims() -> None:

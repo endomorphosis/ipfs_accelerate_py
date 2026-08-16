@@ -42,47 +42,49 @@ _DATASETS_PATH = None
 def _check_datasets_availability() -> bool:
     """Check if ipfs_datasets_py is available and enabled."""
     global _DATASETS_AVAILABLE, _DATASETS_PATH
-    
+
     if _DATASETS_AVAILABLE is not None:
         return _DATASETS_AVAILABLE
-    
+
     # Check environment variable
-    env_enabled = os.environ.get('IPFS_DATASETS_ENABLED', 'auto').lower()
-    if env_enabled in ('0', 'false', 'no', 'off', 'disabled'):
+    env_enabled = os.environ.get("IPFS_DATASETS_ENABLED", "auto").lower()
+    if env_enabled in ("0", "false", "no", "off", "disabled"):
         _DATASETS_AVAILABLE = False
         return False
-    
+
     # Try to find and import ipfs_datasets_py
     try:
         # Check for submodule path
         current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        submodule_path = os.path.join(current_dir, 'external', 'ipfs_datasets_py')
-        custom_path = os.environ.get('IPFS_DATASETS_PATH')
-        
+        submodule_path = os.path.join(current_dir, "external", "ipfs_datasets_py")
+        custom_path = os.environ.get("IPFS_DATASETS_PATH")
+
         if custom_path and os.path.isdir(custom_path):
             _DATASETS_PATH = custom_path
         elif os.path.isdir(submodule_path):
             _DATASETS_PATH = submodule_path
-        
+
         # Add to path if found
         if _DATASETS_PATH and _DATASETS_PATH not in sys.path:
             sys.path.insert(0, _DATASETS_PATH)
-        
+
         # Try to import
         import ipfs_datasets_py
+
         _DATASETS_AVAILABLE = True
         return True
-        
+
     except (ImportError, Exception) as e:
         # If auto mode, silently disable; if explicitly enabled, warn
-        if env_enabled == 'auto':
+        if env_enabled == "auto":
             _DATASETS_AVAILABLE = False
         else:
             import warnings
+
             warnings.warn(
                 f"ipfs_datasets_py enabled but not available: {e}. "
                 "Falling back to local operations.",
-                RuntimeWarning
+                RuntimeWarning,
             )
             _DATASETS_AVAILABLE = False
         return False
@@ -91,10 +93,10 @@ def _check_datasets_availability() -> bool:
 def is_datasets_available() -> bool:
     """
     Check if ipfs_datasets_py integration is available.
-    
+
     Returns:
         bool: True if ipfs_datasets_py is available and enabled
-    
+
     Example:
         >>> if is_datasets_available():
         ...     # Use distributed features
@@ -109,7 +111,7 @@ def is_datasets_available() -> bool:
 def get_datasets_status() -> Dict[str, Any]:
     """
     Get detailed status of ipfs_datasets_py integration.
-    
+
     Returns:
         Dict with status information including:
         - available: bool - Whether ipfs_datasets_py is available and working
@@ -117,38 +119,38 @@ def get_datasets_status() -> Dict[str, Any]:
         - enabled: bool - Whether integration is enabled (not explicitly disabled)
         - mode: str - Configuration mode ('auto', 'enabled', 'disabled')
         - reason: str - Explanation if unavailable
-    
+
     Example:
         >>> status = get_datasets_status()
         >>> print(f"Datasets available: {status['available']}")
     """
     available = is_datasets_available()
-    env_val = os.environ.get('IPFS_DATASETS_ENABLED', 'auto').lower()
-    
+    env_val = os.environ.get("IPFS_DATASETS_ENABLED", "auto").lower()
+
     # Determine if enabled (not explicitly disabled)
-    is_enabled = env_val not in ('0', 'false', 'no', 'off', 'disabled')
-    
+    is_enabled = env_val not in ("0", "false", "no", "off", "disabled")
+
     # Determine mode
-    if env_val in ('0', 'false', 'no', 'off', 'disabled'):
-        mode = 'disabled'
-    elif env_val in ('1', 'true', 'yes', 'on', 'enabled'):
-        mode = 'enabled'
+    if env_val in ("0", "false", "no", "off", "disabled"):
+        mode = "disabled"
+    elif env_val in ("1", "true", "yes", "on", "enabled"):
+        mode = "enabled"
     else:
-        mode = 'auto'
-    
+        mode = "auto"
+
     status = {
-        'available': available,
-        'path': _DATASETS_PATH,
-        'enabled': is_enabled,
-        'mode': mode,
+        "available": available,
+        "path": _DATASETS_PATH,
+        "enabled": is_enabled,
+        "mode": mode,
     }
-    
+
     if not available:
         if not is_enabled:
-            status['reason'] = 'Explicitly disabled via IPFS_DATASETS_ENABLED'
+            status["reason"] = "Explicitly disabled via IPFS_DATASETS_ENABLED"
         else:
-            status['reason'] = 'Package not found or import failed'
-    
+            status["reason"] = "Package not found or import failed"
+
     return status
 
 
@@ -160,10 +162,10 @@ from .provenance import ProvenanceLogger
 from .workflow import WorkflowCoordinator
 
 __all__ = [
-    'is_datasets_available',
-    'get_datasets_status',
-    'DatasetsManager',
-    'FilesystemHandler',
-    'ProvenanceLogger',
-    'WorkflowCoordinator',
+    "is_datasets_available",
+    "get_datasets_status",
+    "DatasetsManager",
+    "FilesystemHandler",
+    "ProvenanceLogger",
+    "WorkflowCoordinator",
 ]

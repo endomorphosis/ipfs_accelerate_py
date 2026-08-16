@@ -36,42 +36,28 @@ DEFAULT_OBJECTIVES_RELATIVE: Final = Path(
 DEFAULT_RECEIPT_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json"
 )
-DEFAULT_BUILDER_RELATIVE: Final = Path(
-    "tools/logic/build_formal_verification_tactician_receipt.py"
-)
+DEFAULT_BUILDER_RELATIVE: Final = Path("tools/logic/build_formal_verification_tactician_receipt.py")
 DEFAULT_COMPLETION_TEST_RELATIVE: Final = Path(
     "test/api/test_formal_verification_tactician_readiness_completion.py"
 )
 
-BASELINE_RELATIVE: Final = Path(
-    "docs/architecture/formal_verification_readiness_baseline.json"
-)
+BASELINE_RELATIVE: Final = Path("docs/architecture/formal_verification_readiness_baseline.json")
 TOOLCHAIN_CERT_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_toolchain_certificate.json"
 )
-BENCHMARK_RELATIVE: Final = Path(
-    "docs/architecture/formal_verification_tactician_benchmark.json"
-)
-LIVE_REPORT_RELATIVE: Final = Path(
-    "docs/architecture/formal_verification_live_example_report.json"
-)
-ROLLOUT_RELATIVE: Final = Path(
-    "docs/architecture/formal_verification_tactician_rollout.md"
-)
+BENCHMARK_RELATIVE: Final = Path("docs/architecture/formal_verification_tactician_benchmark.json")
+LIVE_REPORT_RELATIVE: Final = Path("docs/architecture/formal_verification_live_example_report.json")
+ROLLOUT_RELATIVE: Final = Path("docs/architecture/formal_verification_tactician_rollout.md")
 LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 CORPUS_MANIFEST_RELATIVE: Final = Path(
     "ipfs_datasets_py/tests/fixtures/logic/proof_tactician/manifest.json"
 )
 PRODUCT_DOC_RELATIVE: Final = Path("docs/formal_verification_tactician.md")
-RUNBOOK_RELATIVE: Final = Path(
-    "docs/operations/formal_verification_tactician_runbook.md"
-)
+RUNBOOK_RELATIVE: Final = Path("docs/operations/formal_verification_tactician_runbook.md")
 PUBLIC_API_TEST_RELATIVE: Final = Path(
     "ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py"
 )
-CLI_MCP_TEST_RELATIVE: Final = Path(
-    "test/api/test_goal_tactician_cli_mcp_parity.py"
-)
+CLI_MCP_TEST_RELATIVE: Final = Path("test/api/test_goal_tactician_cli_mcp_parity.py")
 ADVERSARIAL_ROOT_TEST_RELATIVE: Final = Path(
     "test/security/test_formal_verification_tactician_adversarial.py"
 )
@@ -332,9 +318,7 @@ def observe_tree_alignment(repo_root: Path) -> dict[str, Any]:
         _git_stdout(datasets_root, "rev-parse", "HEAD") if datasets_root.is_dir() else None
     )
     datasets_origin = (
-        _git_stdout(datasets_root, "rev-parse", "origin/main")
-        if datasets_root.is_dir()
-        else None
+        _git_stdout(datasets_root, "rev-parse", "origin/main") if datasets_root.is_dir() else None
     )
     datasets_porcelain = (
         _git_stdout(datasets_root, "status", "--porcelain", allow_empty=True) or ""
@@ -347,11 +331,7 @@ def observe_tree_alignment(repo_root: Path) -> dict[str, Any]:
     gitlink_matches_embedded = bool(
         gitlink_commit and datasets_head and gitlink_commit == datasets_head
     )
-    publication_lag = bool(
-        datasets_origin
-        and gitlink_commit
-        and datasets_origin != gitlink_commit
-    )
+    publication_lag = bool(datasets_origin and gitlink_commit and datasets_origin != gitlink_commit)
     parent_publication_lag = bool(
         parent_origin and parent_commit and parent_origin != parent_commit
     )
@@ -576,8 +556,7 @@ def build_implementation_section(
     ]
 
     public_ops = all(
-        artifacts.get(key, {}).get("present")
-        for key in ("public_api_test", "cli_mcp_parity_test")
+        artifacts.get(key, {}).get("present") for key in ("public_api_test", "cli_mcp_parity_test")
     )
     metrics_bound = bool(artifacts.get("metrics_module", {}).get("present")) and bool(
         artifacts.get("benchmark_report", {}).get("present")
@@ -622,9 +601,7 @@ def build_implementation_section(
         else [],
         "metrics_bound": metrics_bound,
         "rollout_policy_bound": rollout_bound,
-        "completion_surfaces_bound": bool(
-            artifacts.get("receipt_builder", {}).get("present")
-        )
+        "completion_surfaces_bound": bool(artifacts.get("receipt_builder", {}).get("present"))
         and bool(artifacts.get("completion_test", {}).get("present")),
         "hardcoded_success_counters": False,
     }
@@ -662,9 +639,7 @@ def build_deployment_section(
 
     usable = list(baseline_summary.get("usable_tools") or [])
     unavailable = list(baseline_summary.get("unavailable_tools") or [])
-    production_certified = list(
-        cert_promotion.get("production_certified_tool_ids") or []
-    )
+    production_certified = list(cert_promotion.get("production_certified_tool_ids") or [])
     cert_unavailable = list(cert_promotion.get("unavailable_tool_ids") or [])
     blocked = _safe_dict(cert_promotion.get("blocked_tool_ids"))
     lane_ready = _safe_dict(cert_promotion.get("lane_promotion_ready"))
@@ -678,9 +653,7 @@ def build_deployment_section(
         for case in _safe_list(live_report.get("cases")):
             if not isinstance(case, Mapping):
                 continue
-            evidence_class = str(
-                case.get("evidence_class") or case.get("class") or ""
-            ).lower()
+            evidence_class = str(case.get("evidence_class") or case.get("class") or "").lower()
             if evidence_class in {"live"}:
                 live_cases += 1
             elif evidence_class in {"simulated", "fixture", "offline"}:
@@ -707,7 +680,11 @@ def build_deployment_section(
         "status": (
             "machine_specific_partial"
             if machine_certified and (unavailable or cert_unavailable or not publication_clear)
-            else ("machine_specific_certified" if machine_certified and publication_clear else "not_deployment_certified")
+            else (
+                "machine_specific_certified"
+                if machine_certified and publication_clear
+                else "not_deployment_certified"
+            )
         ),
         "description": (
             "Machine-specific deployment certification binds exact tool "
@@ -780,9 +757,7 @@ def build_acceptance(
         "hardcoded_success_counters": False,
         "false_proof_count": hard_zero.get("false_proof_count"),
         "false_closure_count": hard_zero.get("false_closure_count"),
-        "secret_or_witness_leakage_count": hard_zero.get(
-            "secret_or_witness_leakage_count"
-        ),
+        "secret_or_witness_leakage_count": hard_zero.get("secret_or_witness_leakage_count"),
         "authority_boundary_violations": hard_zero.get("authority_boundary_violations"),
         "unresolved_cross_provider_disagreement_count": hard_zero.get(
             "unresolved_cross_provider_disagreement_count"
@@ -886,9 +861,7 @@ def build_receipt(
             "binding_mode": "current_tree_content_identity",
         },
         "acceptance": acceptance,
-        "hard_zero_gates": {
-            key: hard_zero[key] for key in HARD_ZERO_GATE_KEYS
-        }
+        "hard_zero_gates": {key: hard_zero[key] for key in HARD_ZERO_GATE_KEYS}
         | {"derivation": hard_zero.get("derivation")},
         "implementation": implementation,
         "deployment": deployment,
@@ -898,18 +871,16 @@ def build_receipt(
             "remaining_bounds": [
                 "Machine-specific production certification is limited to tools "
                 "with hermetic offline certificates.",
-                "Publication lag against origin/main is disclosed and never "
-                "fetched away.",
-                "Unavailable tools and unsupported semantics remain explicit "
-                "non-success outcomes.",
+                "Publication lag against origin/main is disclosed and never fetched away.",
+                "Unavailable tools and unsupported semantics remain explicit non-success outcomes.",
             ],
             "unsupported_semantics": deployment.get("unsupported_semantics") or [],
             "unavailable_tools": deployment.get("unavailable_tools") or [],
             "publication_gates": deployment.get("publication_gates") or {},
             "assurance_ceilings": deployment.get("assurance_ceilings") or {},
-            "open_baseline_findings": (
-                hard_zero.get("derivation") or {}
-            ).get("open_baseline_findings")
+            "open_baseline_findings": (hard_zero.get("derivation") or {}).get(
+                "open_baseline_findings"
+            )
             or [],
         },
         "notes": [
@@ -939,10 +910,7 @@ def write_receipt(receipt: Mapping[str, Any], output: Path) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description=(
-            "Build the formal verification tactician completion receipt "
-            f"({INTERFACE})."
-        )
+        description=(f"Build the formal verification tactician completion receipt ({INTERFACE}).")
     )
     parser.add_argument(
         "--repo-root",
@@ -981,11 +949,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dump(receipt, sys.stdout, indent=2, ensure_ascii=False)
         sys.stdout.write("\n")
     else:
-        output = (
-            args.output.resolve()
-            if args.output
-            else (root / DEFAULT_RECEIPT_RELATIVE)
-        )
+        output = args.output.resolve() if args.output else (root / DEFAULT_RECEIPT_RELATIVE)
         write_receipt(receipt, output)
         if not args.quiet:
             print(f"wrote {output}", file=sys.stderr)
@@ -1006,8 +970,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         print(
-            "hard_zero="
-            + json.dumps({k: hard_zero[k] for k in HARD_ZERO_GATE_KEYS}),
+            "hard_zero=" + json.dumps({k: hard_zero[k] for k in HARD_ZERO_GATE_KEYS}),
             file=sys.stderr,
         )
         print(f"receipt_identity={receipt['receipt_identity']}", file=sys.stderr)

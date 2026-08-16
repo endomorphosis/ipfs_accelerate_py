@@ -157,9 +157,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     provider = str(args.implementation_provider or "").strip() or (
         ASREF_DEFAULT_IMPLEMENTATION_PROVIDER
     )
-    enable_refill = bool(args.enable_objective_refill) and not bool(
-        args.no_objective_refill
-    )
+    enable_refill = bool(args.enable_objective_refill) and not bool(args.no_objective_refill)
 
     banner = {
         "schema": "ipfs_accelerate_py.asref.g100_entry.v1",

@@ -83,8 +83,8 @@ Week 5:   Phase 5 (Documentation)
 - Provides unified API for distributed operations:
   ```python
   storage = get_storage()
-  cid = storage.store(data)       # Distributed when ipfs_kit_py available
-  data = storage.retrieve(cid)    # Can retrieve from IPFS network
+  cid = storage.store(data)  # Distributed when ipfs_kit_py available
+  data = storage.retrieve(cid)  # Can retrieve from IPFS network
   ```
 - Ready to use ipfs_kit_py backends when available
 - Supports IPFS, Filecoin, S3, and local storage
@@ -138,6 +138,7 @@ Week 5:   Phase 5 (Documentation)
   def _try_init_ipfs_kit(self):
       try:
           from ipfs_kit_py.backends import BackendAdapter
+
           self.ipfs_kit_client = {...}
           self.using_fallback = False
       except ImportError:
@@ -321,7 +322,7 @@ storage = get_storage()
 cid = storage.store(
     model_weights,
     filename="bert-base-uncased.bin",
-    pin=True  # Persist on IPFS
+    pin=True,  # Persist on IPFS
 )
 
 # Retrieve from distributed network

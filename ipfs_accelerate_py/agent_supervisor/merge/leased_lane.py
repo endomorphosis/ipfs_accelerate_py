@@ -105,10 +105,10 @@ def _is_transient_duckdb_lock_error(exc: Exception) -> bool:
     if isinstance(exc, LeaseError):
         return False
     exception_type = type(exc)
-    if (
-        exception_type.__module__ not in {"duckdb", "_duckdb"}
-        or exception_type.__name__ not in {"IOException", "OperationalError"}
-    ):
+    if exception_type.__module__ not in {"duckdb", "_duckdb"} or exception_type.__name__ not in {
+        "IOException",
+        "OperationalError",
+    }:
         return False
     message = str(exc).casefold()
     return all(marker in message for marker in _DUCKDB_LOCK_ERROR_MARKERS)
@@ -243,9 +243,7 @@ def _execution_slice_violation(
 _MEMBER_COMPLETION_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
 )
-_TASK_ATTEMPT_LIMIT_IDLE_REASON = (
-    "all_selectable_ready_tasks_reached_max_task_attempts"
-)
+_TASK_ATTEMPT_LIMIT_IDLE_REASON = "all_selectable_ready_tasks_reached_max_task_attempts"
 
 
 def _normalized_task_status(value: Any) -> str:
@@ -260,11 +258,7 @@ def _expected_task_identity_map(
     """Normalize and validate one exact execution-slice identity projection."""
 
     normalized_ids = tuple(
-        dict.fromkeys(
-            str(task_id).strip()
-            for task_id in expected_task_ids
-            if str(task_id).strip()
-        )
+        dict.fromkeys(str(task_id).strip() for task_id in expected_task_ids if str(task_id).strip())
     )
     normalized_bindings = {
         str(task_id).strip(): str(task_cid).strip()
@@ -272,17 +266,10 @@ def _expected_task_identity_map(
         if str(task_id).strip() and str(task_cid).strip()
     }
     if normalized_ids and not normalized_bindings:
-        raise ValueError(
-            "expected_task_ids require exact expected_task_cids_by_id bindings"
-        )
+        raise ValueError("expected_task_ids require exact expected_task_cids_by_id bindings")
     if normalized_bindings and set(normalized_bindings) != set(normalized_ids):
-        raise ValueError(
-            "expected task display IDs and canonical CID bindings must match exactly"
-        )
-    return {
-        task_id: normalized_bindings[task_id]
-        for task_id in normalized_ids
-    }
+        raise ValueError("expected task display IDs and canonical CID bindings must match exactly")
+    return {task_id: normalized_bindings[task_id] for task_id in normalized_ids}
 
 
 def _timestamp_ms(value: Any) -> int | None:
@@ -364,9 +351,7 @@ def _fresh_durable_member_completion_receipts(
                 ):
                     continue
                 candidate = event.get("todo_update_result")
-                completion_payload = (
-                    candidate if isinstance(candidate, Mapping) else {}
-                )
+                completion_payload = candidate if isinstance(candidate, Mapping) else {}
             else:
                 continue
             rows = completion_payload.get("completion_receipts")
@@ -389,10 +374,7 @@ def _fresh_durable_member_completion_receipts(
                                 for task_id, task_cid in expected
                                 if isinstance(row, Mapping)
                                 and str(row.get("task_id") or "").strip() == task_id
-                                and str(
-                                    row.get("canonical_task_cid") or ""
-                                ).strip()
-                                == task_cid
+                                and str(row.get("canonical_task_cid") or "").strip() == task_cid
                             },
                         )
                         if single:
@@ -453,8 +435,7 @@ def _fresh_durable_terminal_blocked_pass(
             if str(event.get("active_task_id") or "").strip():
                 continue
             if any(
-                int(event.get(field) or 0) != int(state.get(field) or 0)
-                for field in count_fields
+                int(event.get(field) or 0) != int(state.get(field) or 0) for field in count_fields
             ):
                 continue
             state_idle_reason = str(state.get("selection_idle_reason") or "")
@@ -572,9 +553,8 @@ def _fresh_blocked_execution_slice(
         statuses.update({task_id: "blocked" for task_id in attempt_limited_ids})
 
     terminal_statuses = {"completed", "blocked", "on_hold"}
-    if (
-        any(status not in terminal_statuses for status in statuses.values())
-        or not any(status in {"blocked", "on_hold"} for status in statuses.values())
+    if any(status not in terminal_statuses for status in statuses.values()) or not any(
+        status in {"blocked", "on_hold"} for status in statuses.values()
     ):
         return None
 
@@ -596,22 +576,17 @@ def _fresh_blocked_execution_slice(
         }
 
     blocked_task_ids = sorted(
-        task_id
-        for task_id, status in statuses.items()
-        if status in {"blocked", "on_hold"}
+        task_id for task_id, status in statuses.items() if status in {"blocked", "on_hold"}
     )
     return {
         "blocked_task_ids": blocked_task_ids,
         "blocked_task_cids": sorted(
-            expected_task_cids_by_id[task_id]
-            for task_id in blocked_task_ids
+            expected_task_cids_by_id[task_id] for task_id in blocked_task_ids
         ),
         "execution_slice_task_statuses": dict(sorted(statuses.items())),
         "attempt_limited_task_ids": sorted(attempt_limited_ids),
         "terminal_reason": (
-            "task_attempt_limit"
-            if attempt_limited_ids
-            else "terminal_blocked_status"
+            "task_attempt_limit" if attempt_limited_ids else "terminal_blocked_status"
         ),
         "phase_state_not_before_ms": int(started_at_ms),
         "phase_state_heartbeat_at": heartbeat_at,
@@ -659,15 +634,9 @@ def _fresh_completed_execution_slice(
     completed_value = state.get("completed_task_ids")
     if not isinstance(completed_value, list):
         return None
-    if any(
-        not isinstance(task_id, str) or not task_id.strip()
-        for task_id in completed_value
-    ):
+    if any(not isinstance(task_id, str) or not task_id.strip() for task_id in completed_value):
         return None
-    completed_task_ids = {
-        task_id.strip()
-        for task_id in completed_value
-    }
+    completed_task_ids = {task_id.strip() for task_id in completed_value}
     expected_task_ids = frozenset(expected_task_cids_by_id)
     if not expected_task_ids.issubset(completed_task_ids):
         return None
@@ -678,10 +647,7 @@ def _fresh_completed_execution_slice(
         identity = task_identities.get(task_id)
         if not isinstance(identity, Mapping):
             return None
-        if (
-            str(identity.get("canonical_task_cid") or "").strip()
-            != expected_task_cid
-        ):
+        if str(identity.get("canonical_task_cid") or "").strip() != expected_task_cid:
             return None
     if state.get("implementation_in_progress") is not False:
         return None
@@ -698,10 +664,7 @@ def _fresh_completed_execution_slice(
     if heartbeat_at_ms is None:
         return None
     observed_at_ms = _now_ms()
-    if (
-        heartbeat_at_ms < int(started_at_ms)
-        or heartbeat_at_ms > observed_at_ms + 1_000
-    ):
+    if heartbeat_at_ms < int(started_at_ms) or heartbeat_at_ms > observed_at_ms + 1_000:
         return None
     receipt_evidence: dict[str, Any]
     if completion_events_path is not None:
@@ -773,9 +736,7 @@ def _terminate_child(
             owned_process_group_id=(process.pid if os.name == "posix" else None),
         )
         if not fenced:
-            raise RuntimeError(
-                f"could not prove process tree {process.pid} fully fenced"
-            )
+            raise RuntimeError(f"could not prove process tree {process.pid} fully fenced")
     elif process.poll() is not None:
         return
     else:
@@ -1043,8 +1004,7 @@ def run_leased_lane_result(
                     try:
                         now = _now_ms()
                         retry_deadline_ms = (
-                            grant.lease_expires_at_ms
-                            - _LEASE_EXPIRY_SAFETY_MARGIN_MS
+                            grant.lease_expires_at_ms - _LEASE_EXPIRY_SAFETY_MARGIN_MS
                         )
                         if previous_lock_error is not None and now >= retry_deadline_ms:
                             raise previous_lock_error
@@ -1087,17 +1047,13 @@ def run_leased_lane_result(
                     except Exception as exc:
                         retry_now_ms = _now_ms()
                         retry_deadline_ms = (
-                            grant.lease_expires_at_ms
-                            - _LEASE_EXPIRY_SAFETY_MARGIN_MS
+                            grant.lease_expires_at_ms - _LEASE_EXPIRY_SAFETY_MARGIN_MS
                         )
                         retry_seconds = min(
                             lock_retry_delay,
                             max(0.0, (retry_deadline_ms - retry_now_ms) / 1_000),
                         )
-                        if (
-                            _is_transient_duckdb_lock_error(exc)
-                            and retry_seconds > 0
-                        ):
+                        if _is_transient_duckdb_lock_error(exc) and retry_seconds > 0:
                             previous_lock_error = exc
                             logger.warning(
                                 "Retrying lease maintenance for %s after transient "
@@ -1279,9 +1235,7 @@ def run_leased_lane_result(
                             "command": list(command),
                             "reason": "missing_execution_slice_completion_evidence",
                             "expected_task_ids": sorted(expected_task_identity_map),
-                            "expected_task_cids": sorted(
-                                expected_task_identity_map.values()
-                            ),
+                            "expected_task_cids": sorted(expected_task_identity_map.values()),
                         }
                         if missing_completion_evidence
                         else {"exit_code": child_exit_code, "command": list(command)}
@@ -1398,9 +1352,7 @@ def _parse_expected_task_identity_json(value: str) -> tuple[str, str]:
     try:
         payload = json.loads(value)
     except json.JSONDecodeError as exc:
-        raise argparse.ArgumentTypeError(
-            "expected task identity must be valid JSON"
-        ) from exc
+        raise argparse.ArgumentTypeError("expected task identity must be valid JSON") from exc
     if not isinstance(payload, Mapping):
         raise argparse.ArgumentTypeError("expected task identity must be an object")
     task_id = str(payload.get("task_id") or "").strip()
@@ -1444,9 +1396,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for task_id, canonical_task_cid in args.expected_task_identity_json:
         previous = expected_task_cids_by_id.get(task_id)
         if previous is not None and previous != canonical_task_cid:
-            parser.error(
-                f"conflicting canonical task CIDs supplied for {task_id!r}"
-            )
+            parser.error(f"conflicting canonical task CIDs supplied for {task_id!r}")
         expected_task_cids_by_id[task_id] = canonical_task_cid
     grant = LeaseGrant(**json.loads(args.grant_json))
     return run_leased_lane(

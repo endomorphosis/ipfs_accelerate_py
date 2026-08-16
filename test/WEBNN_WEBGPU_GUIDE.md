@@ -65,22 +65,24 @@ python scripts/generators/models/test_webnn_webgpu_integration.py --platform web
 import anyio
 from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
 
+
 async def run_webgpu_example():
     # Create implementation
     impl = RealWebGPUImplementation(browser_name="chrome", headless=True)
-    
+
     # Initialize
     await impl.initialize()
-    
+
     # Initialize model
     model_info = await impl.initialize_model("bert-base-uncased", model_type="text")
-    
+
     # Run inference
     result = await impl.run_inference("bert-base-uncased", "Example input text")
     print(result)
-    
+
     # Shutdown
     await impl.shutdown()
+
 
 # Run the example
 anyio.run(run_webgpu_example)
@@ -92,26 +94,28 @@ anyio.run(run_webgpu_example)
 import anyio
 from fixed_web_platform.webnn_implementation import RealWebNNImplementation
 
+
 async def run_webnn_example():
     # Create implementation
     impl = RealWebNNImplementation(browser_name="chrome", headless=True)
-    
+
     # Initialize
     await impl.initialize()
-    
+
     # Get backend info
     backend_info = impl.get_backend_info()
     print(f"WebNN backend: {backend_info}")
-    
+
     # Initialize model
     model_info = await impl.initialize_model("bert-base-uncased", model_type="text")
-    
+
     # Run inference
     result = await impl.run_inference("bert-base-uncased", "Example input text")
     print(result)
-    
+
     # Shutdown
     await impl.shutdown()
+
 
 # Run the example
 anyio.run(run_webnn_example)
@@ -123,34 +127,36 @@ anyio.run(run_webnn_example)
 import anyio
 from implement_real_webnn_webgpu import RealWebPlatformIntegration
 
+
 async def run_unified_example():
     # Create integration
     integration = RealWebPlatformIntegration()
-    
+
     # Initialize platform (webgpu or webnn)
     await integration.initialize_platform(
         platform="webgpu",  # or "webnn"
         browser_name="chrome",
-        headless=True
+        headless=True,
     )
-    
+
     # Initialize model
     await integration.initialize_model(
         platform="webgpu",  # use same platform as above
         model_name="bert-base-uncased",
-        model_type="text"
+        model_type="text",
     )
-    
+
     # Run inference
     response = await integration.run_inference(
         platform="webgpu",  # use same platform as above
         model_name="bert-base-uncased",
-        input_data="Example input text"
+        input_data="Example input text",
     )
     print(response)
-    
+
     # Shutdown
     await integration.shutdown("webgpu")  # use same platform as above
+
 
 # Run the example
 anyio.run(run_unified_example)
@@ -163,44 +169,36 @@ import anyio
 from fixed_web_platform.unified_web_framework import (
     WebPlatformAccelerator,
     create_web_endpoint,
-    get_optimal_config
+    get_optimal_config,
 )
+
 
 async def run_advanced_example():
     # Get optimal configuration
-    config = get_optimal_config(
-        model_path="bert-base-uncased",
-        model_type="text",
-        browser="chrome"
-    )
-    
+    config = get_optimal_config(model_path="bert-base-uncased", model_type="text", browser="chrome")
+
     # Create accelerator
     accelerator = WebPlatformAccelerator(
-        model_path="bert-base-uncased",
-        model_type="text",
-        config=config,
-        auto_detect=True
+        model_path="bert-base-uncased", model_type="text", config=config, auto_detect=True
     )
-    
+
     # Create endpoint
     endpoint = accelerator.create_endpoint()
-    
+
     # Run inference
     result = endpoint("Example input text")
     print(result)
-    
+
     # Get performance metrics
     metrics = accelerator.get_performance_metrics()
     print(metrics)
-    
+
     # Alternative simple usage
-    simple_endpoint = create_web_endpoint(
-        model_path="bert-base-uncased",
-        model_type="text"
-    )
-    
+    simple_endpoint = create_web_endpoint(model_path="bert-base-uncased", model_type="text")
+
     simple_result = simple_endpoint("Example input text")
     print(simple_result)
+
 
 # Run the example
 anyio.run(run_advanced_example)
@@ -371,53 +369,55 @@ class RealWebPlatformIntegration:
         """
         Initialize platform integration
         """
-    
+
     async def initialize_platform(platform="webgpu", browser_name="chrome", headless=False) -> bool:
         """
         Initialize a specific platform
-        
+
         Args:
             platform: Platform to initialize (webgpu or webnn)
             browser_name: Name of browser to use
             headless: Whether to run browser in headless mode
-            
+
         Returns:
             True if initialization successful, False otherwise
         """
-    
+
     async def initialize_model(platform, model_name, model_type="text", model_path=None) -> dict:
         """
         Initialize a model on the specified platform
-        
+
         Args:
             platform: Platform to use (webgpu or webnn)
             model_name: Name of the model to initialize
             model_type: Type of model (text, vision, audio, multimodal)
             model_path: Optional path to model files
-            
+
         Returns:
             Dictionary with model initialization information or None if failed
         """
-    
-    async def run_inference(platform, model_name, input_data, options=None, model_path=None) -> dict:
+
+    async def run_inference(
+        platform, model_name, input_data, options=None, model_path=None
+    ) -> dict:
         """
         Run inference on the specified platform
-        
+
         Args:
             platform: Platform to use (webgpu or webnn)
             model_name: Name of the model to use
             input_data: Input data for inference
             options: Optional inference parameters
             model_path: Optional path to model files
-            
+
         Returns:
             Dictionary with inference results or None if failed
         """
-    
+
     async def shutdown(platform=None):
         """
         Shutdown specified platform(s)
-        
+
         Args:
             platform: Platform to shut down (None for all)
         """
@@ -497,49 +497,53 @@ The unified web framework also provides several utility functions:
 def create_web_endpoint(model_path, model_type, config=None) -> Callable:
     """
     Create a web-accelerated model endpoint with a single function call
-    
+
     Args:
         model_path: Path to the model
         model_type: Type of model (text, vision, audio, multimodal)
         config: Optional configuration dictionary
-        
+
     Returns:
         Callable function for model inference
     """
 
+
 def get_optimal_config(model_path, model_type, browser=None) -> dict:
     """
     Get optimal configuration for a specific model
-    
+
     Args:
         model_path: Path to the model
         model_type: Type of model
         browser: Optional browser name to override detection
-        
+
     Returns:
         Dictionary with optimal configuration
     """
 
+
 def get_browser_capabilities() -> dict:
     """
     Get current browser capabilities
-    
+
     Returns:
         Dictionary with browser capabilities
     """
 
+
 def detect_platform() -> dict:
     """
     Detect platform capabilities
-    
+
     Returns:
         Dictionary with platform capabilities
     """
 
+
 def detect_browser_features() -> dict:
     """
     Detect browser features
-    
+
     Returns:
         Dictionary with browser features
     """
@@ -582,14 +586,12 @@ Precompiles WebGPU shaders during model initialization to dramatically reduce fi
 # Enable shader precompilation
 config = {
     "shader_precompilation": True,
-    "shader_cache_size": 512  # Optional cache size in MB
+    "shader_cache_size": 512,  # Optional cache size in MB
 }
 
 # Create accelerator with shader precompilation
 accelerator = WebPlatformAccelerator(
-    model_path="bert-base-uncased",
-    model_type="text",
-    config=config
+    model_path="bert-base-uncased", model_type="text", config=config
 )
 ```
 
@@ -607,14 +609,14 @@ Specialized WebGPU compute shaders for audio and complex matrix operations:
 config = {
     "compute_shaders": True,
     "workgroup_size": [256, 1, 1],  # Firefox-optimized for audio models
-    "firefox_audio_optimization": True
+    "firefox_audio_optimization": True,
 }
 
 # Create accelerator with compute shader optimization
 accelerator = WebPlatformAccelerator(
     model_path="whisper-tiny",  # Audio model
     model_type="audio",
-    config=config
+    config=config,
 )
 ```
 
@@ -633,14 +635,14 @@ config = {
     "quantization": 4,  # 4-bit quantization
     "group_size": 128,
     "scheme": "symmetric",
-    "mixed_precision": True
+    "mixed_precision": True,
 }
 
 # Ultra-low precision (2/3-bit) for compatible browsers
 advanced_config = {
     "ultra_low_precision": True,
     "quantization": 2,  # 2-bit or 3-bit
-    "adaptive_precision": True  # Dynamically adjust precision
+    "adaptive_precision": True,  # Dynamically adjust precision
 }
 ```
 
@@ -656,16 +658,13 @@ Optimized model loading techniques for large models:
 
 ```python
 # Enable progressive loading
-config = {
-    "progressive_loading": True,
-    "load_priority": ["embeddings", "attention", "feedforward"]
-}
+config = {"progressive_loading": True, "load_priority": ["embeddings", "attention", "feedforward"]}
 
 # Enable parallel loading for multimodal models
 multimodal_config = {
     "progressive_loading": True,
     "parallel_loading": True,
-    "concurrent_requests": 4  # Number of concurrent loading operations
+    "concurrent_requests": 4,  # Number of concurrent loading operations
 }
 ```
 
@@ -684,26 +683,20 @@ config = {
     "streaming_inference": True,
     "kv_cache_optimization": True,
     "latency_optimized": True,
-    "adaptive_batch_size": True
+    "adaptive_batch_size": True,
 }
 
 # Create streaming endpoint
-accelerator = WebPlatformAccelerator(
-    model_path="llama-7b",
-    model_type="text",
-    config=config
-)
+accelerator = WebPlatformAccelerator(model_path="llama-7b", model_type="text", config=config)
 endpoint = accelerator.create_endpoint()
+
 
 # Run streaming inference with callback
 def token_callback(token):
     print(token, end="", flush=True)
 
-result = endpoint(
-    "Write a short story about AI", 
-    stream=True, 
-    callback=token_callback
-)
+
+result = endpoint("Write a short story about AI", stream=True, callback=token_callback)
 ```
 
 Key benefits:
@@ -801,9 +794,7 @@ Key benefits:
 - Specify the browser path explicitly:
   ```python
   impl = RealWebGPUImplementation(
-      browser_name="chrome", 
-      headless=True, 
-      browser_path="/path/to/chrome"
+      browser_name="chrome", headless=True, browser_path="/path/to/chrome"
   )
   ```
 
@@ -846,7 +837,7 @@ Key benefits:
   # Get browser logs
   def get_browser_logs(impl):
       if hasattr(impl, "browser_manager") and impl.browser_manager.driver:
-          return impl.browser_manager.driver.get_log('browser')
+          return impl.browser_manager.driver.get_log("browser")
       return []
   ```
 - **Use smaller models** for initial testing
@@ -860,18 +851,12 @@ Key benefits:
 - **Enable quantization**:
   ```python
   # 4-bit quantization
-  config = {
-      "quantization": 4,
-      "group_size": 128
-  }
+  config = {"quantization": 4, "group_size": 128}
   ```
 - **Chunked processing** for large inputs:
   ```python
   # Process in chunks
-  config = {
-      "chunked_inference": True,
-      "chunk_size": 512
-  }
+  config = {"chunked_inference": True, "chunk_size": 512}
   ```
 - **Increase browser memory limits** (Chrome):
   ```bash
@@ -911,6 +896,7 @@ async def diagnose_websocket():
             await anyio.sleep(float("inf"))  # Run forever
     except Exception as e:
         print(f"WebSocket diagnostic error: {e}")
+
 
 async def echo(websocket):
     async for message in websocket:
@@ -1042,6 +1028,7 @@ os.environ["WEBNN_AVAILABLE"] = "1"
 
 # Now create implementations
 from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
+
 impl = RealWebGPUImplementation(browser_name="chrome", headless=True)
 ```
 

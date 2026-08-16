@@ -33,7 +33,7 @@ viz_3d = Visualization3D(theme="light")
 viz_3d.create_3d_visualization(
     metrics=["throughput_items_per_second", "average_latency_ms", "memory_peak_mb"],
     dimensions=["model_family", "hardware_type"],
-    title="3D Performance Visualization"
+    title="3D Performance Visualization",
 )
 ```
 
@@ -50,7 +50,7 @@ viz_heatmap.create_hardware_heatmap(
     metric="throughput_items_per_second",
     model_families=["transformers", "vision", "audio"],
     hardware_types=["nvidia_a100", "amd_mi250", "intel_arc"],
-    title="Hardware Throughput Comparison"
+    title="Hardware Throughput Comparison",
 )
 ```
 
@@ -68,7 +68,7 @@ viz_ts.create_time_series_visualization(
     dimensions=["model_family", "hardware_type"],
     time_range=90,
     include_trend=True,
-    title="Performance Trends Over Time"
+    title="Performance Trends Over Time",
 )
 ```
 
@@ -86,7 +86,7 @@ viz_animated.create_animated_time_series(
     dimensions=["model_family", "hardware_type"],
     time_range=90,
     show_trend=True,
-    title="Animated Performance Trends"
+    title="Animated Performance Trends",
 )
 ```
 
@@ -103,19 +103,16 @@ dashboard_path = dashboard.create_dashboard(
     dashboard_name="performance_overview",
     template="overview",
     title="Performance Overview Dashboard",
-    description="Overview of performance metrics across models and hardware"
+    description="Overview of performance metrics across models and hardware",
 )
 
 # Add a component to the dashboard
 dashboard.add_component_to_dashboard(
     dashboard_name="performance_overview",
     component_type="heatmap",
-    component_config={
-        "metric": "memory_peak_mb",
-        "title": "Memory Usage Comparison"
-    },
+    component_config={"metric": "memory_peak_mb", "title": "Memory Usage Comparison"},
     width=2,
-    height=1
+    height=1,
 )
 ```
 
@@ -158,12 +155,13 @@ python test_3d_visualization.py
 ### Monitoring Dashboard Integration
 
 ```python
-from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import VisualizationDashboardIntegration
+from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
+    VisualizationDashboardIntegration,
+)
 
 # Create integration component
 viz_integration = VisualizationDashboardIntegration(
-    dashboard_dir="./dashboards",
-    integration_dir="./dashboards/monitor_integration"
+    dashboard_dir="./dashboards", integration_dir="./dashboards/monitor_integration"
 )
 
 # Create an embedded dashboard for the overview page
@@ -173,21 +171,19 @@ viz_integration.create_embedded_dashboard(
     template="overview",
     title="System Overview Dashboard",
     description="Overview of system metrics",
-    position="below"
+    position="below",
 )
 
 # Generate a dashboard from performance data
 viz_integration.generate_dashboard_from_performance_data(
     performance_data=analytics_data,
     name="performance_dashboard",
-    title="Performance Analytics Dashboard"
+    title="Performance Analytics Dashboard",
 )
 
 # Get HTML for embedding a dashboard
 iframe_html = viz_integration.get_dashboard_iframe_html(
-    name="overview_dashboard",
-    width="100%",
-    height="600px"
+    name="overview_dashboard", width="100%", height="600px"
 )
 ```
 

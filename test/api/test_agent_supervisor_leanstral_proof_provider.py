@@ -129,9 +129,7 @@ def test_model_output_is_always_unverified_and_non_mutating() -> None:
 
 
 def test_equivalent_drafts_have_stable_artifact_identity() -> None:
-    provider = LeanstralProofProvider(
-        llm_generate=lambda *_args, **_kwargs: "by exact premise_1"
-    )
+    provider = LeanstralProofProvider(llm_generate=lambda *_args, **_kwargs: "by exact premise_1")
     first = provider.prove(_prove_request())
     second_request = ProviderRequest(
         request_id="request-2",
@@ -154,9 +152,7 @@ def test_kernel_work_cannot_be_smuggled_into_model_invocation() -> None:
     wrong_class = dispatch_provider_request(
         provider, _prove_request(resource_class=LEAN_KERNEL_RESOURCE_CLASS)
     )
-    kernel_flag = dispatch_provider_request(
-        provider, _prove_request(kernel_check=True)
-    )
+    kernel_flag = dispatch_provider_request(provider, _prove_request(kernel_check=True))
 
     assert wrong_class.ok is False
     assert wrong_class.error.code is ProviderFailureCode.MALFORMED_REQUEST

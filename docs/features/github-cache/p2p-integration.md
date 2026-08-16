@@ -51,10 +51,7 @@ cache_entry = {
     "data": api_response,
     "timestamp": time.time(),
     "content_hash": "Qm...",  # CID of validation fields
-    "validation_fields": {
-        "commit_sha": "abc123",
-        "updated_at": "2024-01-31T12:00:00Z"
-    }
+    "validation_fields": {"commit_sha": "abc123", "updated_at": "2024-01-31T12:00:00Z"},
 }
 
 # On retrieval, recompute hash to check freshness
@@ -91,9 +88,10 @@ def _get_github_cli(self):
     """Lazy load GitHub CLI with P2P/IPFS caching enabled."""
     if self._github_cli is None:
         from ipfs_accelerate_py.github_cli.wrapper import GitHubCLI
+
         self._github_cli = GitHubCLI(
             enable_cache=True,  # Enable P2P/IPFS caching
-            cache_ttl=300       # 5 minute default TTL
+            cache_ttl=300,  # 5 minute default TTL
         )
     return self._github_cli
 ```
@@ -105,9 +103,10 @@ def _get_github_cli(self):
 def _init_github_cli(self):
     """Initialize GitHub CLI wrapper with P2P/IPFS caching."""
     from .wrapper import GitHubCLI
+
     self._github_cli = GitHubCLI(
         enable_cache=True,  # Enable P2P/IPFS/ipfs_kit caching
-        cache_ttl=300       # 5 minute TTL for API responses
+        cache_ttl=300,  # 5 minute TTL for API responses
     )
 ```
 
@@ -119,7 +118,7 @@ def _init_github_cli(self):
 issues = github_cli.list_issues(
     repo="owner/repo",
     state="open",
-    use_cache=True  # Default
+    use_cache=True,  # Default
 )
 ```
 
@@ -127,10 +126,7 @@ issues = github_cli.list_issues(
 ```python
 # Creates issue and updates cache
 issue_url = github_cli.create_issue(
-    repo="owner/repo",
-    title="Bug Report",
-    body="Description",
-    labels=["bug"]
+    repo="owner/repo", title="Bug Report", body="Description", labels=["bug"]
 )
 # Cache is automatically updated
 ```
@@ -181,6 +177,7 @@ def derive_key(github_token):
         iterations=100000,
     )
     return base64.urlsafe_b64encode(kdf.derive(github_token.encode()))
+
 
 # Encrypt cache entry
 fernet = Fernet(derived_key)
@@ -429,12 +426,9 @@ If you have existing direct `gh` CLI calls:
 
 **Before:**
 ```python
-result = subprocess.run([
-    "gh", "issue", "create",
-    "--repo", repo,
-    "--title", title,
-    "--body", body
-], capture_output=True)
+result = subprocess.run(
+    ["gh", "issue", "create", "--repo", repo, "--title", title, "--body", body], capture_output=True
+)
 ```
 
 **After:**
@@ -442,11 +436,7 @@ result = subprocess.run([
 from ipfs_accelerate_py.github_cli.wrapper import GitHubCLI
 
 github_cli = GitHubCLI(enable_cache=True)
-issue_url = github_cli.create_issue(
-    repo=repo,
-    title=title,
-    body=body
-)
+issue_url = github_cli.create_issue(repo=repo, title=title, body=body)
 ```
 
 ## Future Enhancements

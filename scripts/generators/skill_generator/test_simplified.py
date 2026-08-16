@@ -8,23 +8,24 @@ import sys
 import logging
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
 
 def test_pipeline_compatibility():
     """Test that our templates are correctly registered and working."""
     logger.info("Testing pipeline architecture mappings...")
-    
+
     # Test vision-text
     logger.info(f"Testing vision-encoder-text-decoder mapping to vision-text pipeline")
-    
+
     # Test audio
     logger.info(f"Testing speech mapping to audio pipeline")
-    
+
     # Output files
     output_dir = "pipeline_test_output"
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Write summary files
     with open(os.path.join(output_dir, "audio_pipeline.md"), "w") as f:
         f.write("""# Audio Pipeline Template
@@ -55,6 +56,7 @@ This dedicated pipeline template provides specialized handling for vision-text m
 
     logger.info(f"Template integration test completed. Output files written to {output_dir}")
     return True
+
 
 if __name__ == "__main__":
     test_pipeline_compatibility()

@@ -27,6 +27,7 @@ def _load_embedding_api() -> Dict[str, Any]:
             from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.embedding_tools import (  # type: ignore
                 enhanced_embedding_tools,
             )
+
             _generate_embedding = enhanced_embedding_tools.generate_embedding
             _chunk_text = enhanced_embedding_tools.chunk_text
             _manage_endpoints = enhanced_embedding_tools.manage_endpoints
@@ -44,7 +45,9 @@ def _load_embedding_api() -> Dict[str, Any]:
                 advanced_embedding_generation,
             )
 
-            _generate_embeddings_from_file = advanced_embedding_generation.generate_embeddings_from_file
+            _generate_embeddings_from_file = (
+                advanced_embedding_generation.generate_embeddings_from_file
+            )
 
             api["generate_embeddings_from_file"] = _generate_embeddings_from_file
         except Exception:
@@ -67,11 +70,15 @@ def _load_embedding_api() -> Dict[str, Any]:
             api["multi_modal_search"] = _multi_modal_search
             api["search_with_filters"] = _search_with_filters
         except Exception:
-            logger.warning("Source advanced_search import unavailable, using fallback semantic-search function")
+            logger.warning(
+                "Source advanced_search import unavailable, using fallback semantic-search function"
+            )
 
         return api
     except Exception:
-        logger.warning("Source embedding_tools import unavailable, using fallback embedding functions")
+        logger.warning(
+            "Source embedding_tools import unavailable, using fallback embedding functions"
+        )
 
         class _FallbackEmbeddingManager:
             def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> None:
@@ -823,7 +830,9 @@ async def multi_modal_search(
         if not all(isinstance(key, str) for key in modality_weights.keys()):
             return _error_result("modality_weights keys must be strings")
         try:
-            normalized_modality_weights = {str(key): float(value) for key, value in modality_weights.items()}
+            normalized_modality_weights = {
+                str(key): float(value) for key, value in modality_weights.items()
+            }
         except (TypeError, ValueError):
             return _error_result("modality_weights values must be numbers")
 
@@ -850,7 +859,9 @@ async def multi_modal_search(
     normalized.setdefault("image_query", normalized_image_query)
     normalized.setdefault("vector_store_id", normalized_store)
     normalized.setdefault("model_used", normalized_model_name)
-    normalized.setdefault("modality_weights", normalized_modality_weights or {"text": 0.6, "image": 0.4})
+    normalized.setdefault(
+        "modality_weights", normalized_modality_weights or {"text": 0.6, "image": 0.4}
+    )
     normalized.setdefault("top_k", normalized_top_k)
     normalized.setdefault("results", [])
     normalized.setdefault("total_results", len(normalized.get("results") or []))
@@ -937,7 +948,9 @@ async def chunk_text_for_embeddings(
         normalized_n_sentences = int(n_sentences)
         normalized_step_size = int(step_size)
     except (TypeError, ValueError):
-        return _error_result("chunk_size, chunk_overlap, n_sentences, and step_size must be integers")
+        return _error_result(
+            "chunk_size, chunk_overlap, n_sentences, and step_size must be integers"
+        )
 
     if normalized_chunk_size <= 0:
         return _error_result("chunk_size must be positive")
@@ -1082,7 +1095,11 @@ def register_native_embedding_tools(manager: Any) -> None:
                 "batch_size": {"type": "integer", "minimum": 1, "default": 32},
                 "chunk_size": {"type": ["integer", "null"], "minimum": 1},
                 "max_length": {"type": ["integer", "null"], "minimum": 1},
-                "output_format": {"type": "string", "enum": ["json", "parquet", "hdf5"], "default": "json"},
+                "output_format": {
+                    "type": "string",
+                    "enum": ["json", "parquet", "hdf5"],
+                    "default": "json",
+                },
             },
             "required": ["file_path"],
         },
@@ -1106,7 +1123,12 @@ def register_native_embedding_tools(manager: Any) -> None:
                     "default": "sentence-transformers/all-MiniLM-L6-v2",
                 },
                 "top_k": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 10},
-                "similarity_threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.7},
+                "similarity_threshold": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.7,
+                },
                 "include_metadata": {"type": "boolean", "default": True},
             },
             "required": ["query", "vector_store_id"],

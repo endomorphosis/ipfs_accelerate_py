@@ -134,8 +134,8 @@ response = client.run_test(
         "sharding_strategy": "layer",
         "recovery_mechanism": "parallel",
         "browser_count": 4,
-        "simulate_failures": True
-    }
+        "simulate_failures": True,
+    },
 )
 
 # Monitor the test

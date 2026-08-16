@@ -126,9 +126,7 @@ def test_materialization_journal_replay_is_an_exact_no_op(
         task_id="AUTO-001",
         goal_id="GOAL-001",
         rendered_block=(
-            "## AUTO-001 Demonstrate journal replay\n\n"
-            "- Status: todo\n"
-            "- Goal id: GOAL-001"
+            "## AUTO-001 Demonstrate journal replay\n\n- Status: todo\n- Goal id: GOAL-001"
         ),
     )
     preview = preview_taskboard_materialization("", (entry,))

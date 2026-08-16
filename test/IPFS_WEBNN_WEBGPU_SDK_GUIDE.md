@@ -20,16 +20,11 @@ import ipfs_accelerate_py
 # Initialize the SDK
 sdk = ipfs_accelerate_py.ipfs_accelerate_py()
 
-# Accelerate inference with WebGPU 
+# Accelerate inference with WebGPU
 result = sdk.accelerate(
     model_name="bert-base-uncased",
     content="This is a test sentence",
-    config={
-        "platform": "webgpu",
-        "browser": "chrome",
-        "precision": 8,
-        "mixed_precision": False
-    }
+    config={"platform": "webgpu", "browser": "chrome", "precision": 8, "mixed_precision": False},
 )
 
 # Print results
@@ -54,11 +49,7 @@ Firefox provides exceptional performance for audio models with specialized compu
 whisper_result = sdk.accelerate(
     model_name="whisper-tiny",
     content={"audio_path": "audio.mp3"},
-    config={
-        "platform": "webgpu",
-        "browser": "firefox",
-        "use_firefox_optimizations": True
-    }
+    config={"platform": "webgpu", "browser": "firefox", "use_firefox_optimizations": True},
 )
 ```
 
@@ -71,10 +62,7 @@ Edge provides the best WebNN implementation for text models:
 bert_result = sdk.accelerate(
     model_name="bert-base-uncased",
     content="This is a test sentence",
-    config={
-        "platform": "webnn",
-        "browser": "edge"
-    }
+    config={"platform": "webnn", "browser": "edge"},
 )
 ```
 
@@ -87,10 +75,7 @@ Chrome provides excellent WebGPU performance for vision models:
 vit_result = sdk.accelerate(
     model_name="vit-base-patch16-224",
     content={"image_path": "image.jpg"},
-    config={
-        "platform": "webgpu",
-        "browser": "chrome"
-    }
+    config={"platform": "webgpu", "browser": "chrome"},
 )
 ```
 
@@ -103,31 +88,21 @@ The SDK supports various precision levels to balance performance and accuracy:
 low_precision_result = sdk.accelerate(
     model_name="bert-base-uncased",
     content="This is a test sentence",
-    config={
-        "platform": "webgpu",
-        "precision": 4,
-        "mixed_precision": True
-    }
+    config={"platform": "webgpu", "precision": 4, "mixed_precision": True},
 )
 
 # 8-bit quantization (good balance)
 balanced_result = sdk.accelerate(
     model_name="bert-base-uncased",
     content="This is a test sentence",
-    config={
-        "platform": "webgpu",
-        "precision": 8
-    }
+    config={"platform": "webgpu", "precision": 8},
 )
 
 # 16-bit quantization (higher accuracy)
 high_precision_result = sdk.accelerate(
     model_name="bert-base-uncased",
     content="This is a test sentence",
-    config={
-        "platform": "webgpu",
-        "precision": 16
-    }
+    config={"platform": "webgpu", "precision": 16},
 )
 ```
 
@@ -148,22 +123,22 @@ The `accelerate()` function returns a dictionary with detailed information:
 
 ```python
 {
-    "model_name": "bert-base-uncased",        # Model name
-    "model_type": "text",                     # Model type (text, vision, audio, multimodal)
-    "platform": "webgpu",                     # Hardware acceleration platform
-    "browser": "chrome",                      # Browser used
-    "is_real_hardware": True,                 # Whether real hardware was used
-    "precision": 8,                           # Precision level
-    "mixed_precision": False,                 # Whether mixed precision was used
-    "processing_time": 0.025,                 # Model processing time in seconds
-    "total_time": 0.134,                      # Total execution time in seconds
-    "ipfs_cache_hit": True,                   # Whether model was found in cache
-    "ipfs_source": "p2p",                     # Source of model (cache, p2p, ipfs)
-    "ipfs_load_time": 100.5,                  # Load time in milliseconds
-    "optimizations": ["4bit_optimization"],   # Applied optimizations
-    "memory_usage_mb": 256.5,                 # Estimated memory usage
-    "throughput_items_per_sec": 40.0,         # Items processed per second
-    "p2p_optimized": True                     # Whether P2P optimization was used
+    "model_name": "bert-base-uncased",  # Model name
+    "model_type": "text",  # Model type (text, vision, audio, multimodal)
+    "platform": "webgpu",  # Hardware acceleration platform
+    "browser": "chrome",  # Browser used
+    "is_real_hardware": True,  # Whether real hardware was used
+    "precision": 8,  # Precision level
+    "mixed_precision": False,  # Whether mixed precision was used
+    "processing_time": 0.025,  # Model processing time in seconds
+    "total_time": 0.134,  # Total execution time in seconds
+    "ipfs_cache_hit": True,  # Whether model was found in cache
+    "ipfs_source": "p2p",  # Source of model (cache, p2p, ipfs)
+    "ipfs_load_time": 100.5,  # Load time in milliseconds
+    "optimizations": ["4bit_optimization"],  # Applied optimizations
+    "memory_usage_mb": 256.5,  # Estimated memory usage
+    "throughput_items_per_sec": 40.0,  # Items processed per second
+    "p2p_optimized": True,  # Whether P2P optimization was used
 }
 ```
 
@@ -229,7 +204,7 @@ results = benchmark_ipfs_webnn_webgpu(
     platforms=["webnn", "webgpu"],
     browsers=["chrome", "firefox", "edge"],
     precisions=[4, 8, 16],
-    db_path="./benchmark_db.duckdb"
+    db_path="./benchmark_db.duckdb",
 )
 ```
 

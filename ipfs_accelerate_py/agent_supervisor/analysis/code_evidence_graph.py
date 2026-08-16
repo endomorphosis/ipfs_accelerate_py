@@ -16,33 +16,17 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
-CODE_EVIDENCE_GRAPH_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.code-evidence-graph@1"
-)
-CODE_EVIDENCE_NODE_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.code-evidence-node@1"
-)
-CODE_EVIDENCE_EDGE_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.code-evidence-edge@1"
-)
-CODE_IMPACT_INDEX_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.code-impact-index@1"
-)
-CODE_IMPACT_RESULT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.code-impact-result@1"
-)
-POST_MERGE_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/post-merge-evidence@1"
-)
-POST_MERGE_EVIDENCE_REQUIREMENT_ID = (
-    "post-merge-semantic-proof-evidence:ASI-109"
-)
+CODE_EVIDENCE_GRAPH_SCHEMA = "ipfs_accelerate_py.agent_supervisor.code-evidence-graph@1"
+CODE_EVIDENCE_NODE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.code-evidence-node@1"
+CODE_EVIDENCE_EDGE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.code-evidence-edge@1"
+CODE_IMPACT_INDEX_SCHEMA = "ipfs_accelerate_py.agent_supervisor.code-impact-index@1"
+CODE_IMPACT_RESULT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.code-impact-result@1"
+POST_MERGE_EVIDENCE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/post-merge-evidence@1"
+POST_MERGE_EVIDENCE_REQUIREMENT_ID = "post-merge-semantic-proof-evidence:ASI-109"
 POST_MERGE_EVIDENCE_OBJECTIVE_ID = "ASI-G240"
 POST_MERGE_EVIDENCE_OBJECTIVE_REVISION = "ASI-G240@asi-109"
 POST_MERGE_EVIDENCE_ANALYZER_VERSION = "post-merge-evidence-assembler@1"
-POST_MERGE_EVIDENCE_CONFIGURATION_REVISION = (
-    "post-merge-evidence-policy@asi-109"
-)
+POST_MERGE_EVIDENCE_CONFIGURATION_REVISION = "post-merge-evidence-policy@asi-109"
 POST_MERGE_EVIDENCE_PRODUCING_TASK_IDS = ("ASI-107", "ASI-108", "ASI-109")
 POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA = (
     (
@@ -140,9 +124,7 @@ AUTHORITATIVE_EDGE_PROVENANCE: Mapping[EvidenceEdgeKind, frozenset[EvidenceProve
     EvidenceEdgeKind.DEFINES_SYMBOL: frozenset({EvidenceProvenance.AST}),
     EvidenceEdgeKind.CONTAINS: frozenset({EvidenceProvenance.AST}),
     EvidenceEdgeKind.HAS_OBLIGATION: frozenset({EvidenceProvenance.PROOF}),
-    EvidenceEdgeKind.COVERS: frozenset(
-        {EvidenceProvenance.PROOF, EvidenceProvenance.VALIDATION}
-    ),
+    EvidenceEdgeKind.COVERS: frozenset({EvidenceProvenance.PROOF, EvidenceProvenance.VALIDATION}),
     EvidenceEdgeKind.ATTEMPT_FOR: frozenset({EvidenceProvenance.PROOF}),
     EvidenceEdgeKind.DERIVED_FROM: frozenset(
         {
@@ -207,9 +189,7 @@ def _canonical_value(value: Any) -> Any:
         if not isinstance(result, Mapping):
             raise EvidenceGraphValidationError("to_dict() must return a mapping")
         return _canonical_value(result)
-    raise EvidenceGraphValidationError(
-        f"unsupported graph record value: {type(value).__name__}"
-    )
+    raise EvidenceGraphValidationError(f"unsupported graph record value: {type(value).__name__}")
 
 
 def canonical_json(value: Any) -> str:
@@ -403,8 +383,7 @@ class ProvenanceEdge:
     def authoritative(self) -> bool:
         return (
             self.kind in AUTHORITATIVE_EDGE_PROVENANCE
-            and self.provenance
-            in AUTHORITATIVE_EDGE_PROVENANCE.get(self.kind, frozenset())
+            and self.provenance in AUTHORITATIVE_EDGE_PROVENANCE.get(self.kind, frozenset())
         )
 
     @property
@@ -468,28 +447,18 @@ class CodeEvidenceGraph:
             node = value if isinstance(value, EvidenceNode) else EvidenceNode.from_dict(value)
             previous = node_map.get(node.node_id)
             if previous is not None and previous.to_dict() != node.to_dict():
-                raise EvidenceGraphValidationError(
-                    f"conflicting records for node {node.node_id}"
-                )
+                raise EvidenceGraphValidationError(f"conflicting records for node {node.node_id}")
             node_map[node.node_id] = node
         edge_map: dict[str, ProvenanceEdge] = {}
         for value in self.edges:
-            edge = (
-                value
-                if isinstance(value, ProvenanceEdge)
-                else ProvenanceEdge.from_dict(value)
-            )
+            edge = value if isinstance(value, ProvenanceEdge) else ProvenanceEdge.from_dict(value)
             if edge.source not in node_map or edge.target not in node_map:
                 raise EvidenceGraphValidationError(
                     f"edge {edge.edge_id} references an unknown node"
                 )
             edge_map[edge.edge_id] = edge
-        object.__setattr__(
-            self, "nodes", tuple(node_map[key] for key in sorted(node_map))
-        )
-        object.__setattr__(
-            self, "edges", tuple(edge_map[key] for key in sorted(edge_map))
-        )
+        object.__setattr__(self, "nodes", tuple(node_map[key] for key in sorted(node_map)))
+        object.__setattr__(self, "edges", tuple(edge_map[key] for key in sorted(edge_map)))
 
     @property
     def graph_id(self) -> str:
@@ -815,33 +784,37 @@ def _post_merge_validation_reasons(
         reasons.add("validation_receipt_unverified")
     if report.get("passed") is not True or receipt.get("passed") is not True:
         reasons.add("executed_validation_failed")
-    if report.get("hermetic") is not True or not isinstance(
-        report.get("hermetic_policy"), Mapping
-    ):
+    if report.get("hermetic") is not True or not isinstance(report.get("hermetic_policy"), Mapping):
         reasons.add("validation_not_hermetic")
-    if _post_merge_tree_id(report) != merged_tree_id or _post_merge_tree_id(
-        receipt
-    ) != merged_tree_id:
+    if (
+        _post_merge_tree_id(report) != merged_tree_id
+        or _post_merge_tree_id(receipt) != merged_tree_id
+    ):
         reasons.add("validation_tree_mismatch")
 
     dag = receipt.get("dag")
     dag = dag if isinstance(dag, Mapping) else {}
     planned = dag.get("nodes")
-    planned = planned if isinstance(planned, Sequence) and not isinstance(
-        planned, (str, bytes, bytearray)
-    ) else ()
+    planned = (
+        planned
+        if isinstance(planned, Sequence) and not isinstance(planned, (str, bytes, bytearray))
+        else ()
+    )
     receipt_nodes = receipt.get("nodes")
-    receipt_nodes = receipt_nodes if isinstance(
-        receipt_nodes, Sequence
-    ) and not isinstance(receipt_nodes, (str, bytes, bytearray)) else ()
+    receipt_nodes = (
+        receipt_nodes
+        if isinstance(receipt_nodes, Sequence)
+        and not isinstance(receipt_nodes, (str, bytes, bytearray))
+        else ()
+    )
     results = report.get("results")
-    results = results if isinstance(results, Sequence) and not isinstance(
-        results, (str, bytes, bytearray)
-    ) else ()
+    results = (
+        results
+        if isinstance(results, Sequence) and not isinstance(results, (str, bytes, bytearray))
+        else ()
+    )
     planned_ids = [
-        str(item.get("check_id") or "").strip()
-        for item in planned
-        if isinstance(item, Mapping)
+        str(item.get("check_id") or "").strip() for item in planned if isinstance(item, Mapping)
     ]
     selected_ids = {
         str(item.get("check_id") or "").strip()
@@ -854,10 +827,7 @@ def _post_merge_validation_reasons(
         if isinstance(item, Mapping)
     }
     result_by_id = {
-        str(
-            item.get("validation_id", item.get("check_id", ""))
-            or ""
-        ).strip(): item
+        str(item.get("validation_id", item.get("check_id", "")) or "").strip(): item
         for item in results
         if isinstance(item, Mapping)
     }
@@ -874,9 +844,7 @@ def _post_merge_validation_reasons(
         node = receipt_by_id.get(check_id, {})
         runtime = result.get("hermetic_runtime")
         runtime = runtime if isinstance(runtime, Mapping) else {}
-        result_digest = str(
-            result.get("validation_result_digest") or ""
-        ).strip()
+        result_digest = str(result.get("validation_result_digest") or "").strip()
         node_digest = str(node.get("result_digest") or "").strip()
         if (
             result.get("outcome") != "passed"
@@ -948,12 +916,9 @@ def _build_post_merge_graph(
     unknown = set(merged_tree_records) - allowed
     if unknown:
         raise EvidenceGraphValidationError(
-            "unsupported merged-tree record channels: "
-            + ", ".join(sorted(unknown))
+            "unsupported merged-tree record channels: " + ", ".join(sorted(unknown))
         )
-    supplied = {
-        key: value for key, value in merged_tree_records.items() if key in allowed
-    }
+    supplied = {key: value for key, value in merged_tree_records.items() if key in allowed}
     supplied.setdefault(
         "tree_records",
         ({"repository_tree_id": merged_tree_id, "content_id": merged_tree_id},),
@@ -1051,9 +1016,7 @@ class PostMergeEvidenceReceipt:
             object.__setattr__(self, name, value)
         assembled = _post_merge_datetime(self.assembled_at, name="assembled_at")
         verified = _post_merge_datetime(self.verified_at, name="verified_at")
-        deadline = _post_merge_datetime(
-            self.freshness_deadline, name="freshness_deadline"
-        )
+        deadline = _post_merge_datetime(self.freshness_deadline, name="freshness_deadline")
         object.__setattr__(self, "assembled_at", assembled.isoformat())
         object.__setattr__(self, "verified_at", verified.isoformat())
         object.__setattr__(self, "freshness_deadline", deadline.isoformat())
@@ -1065,7 +1028,9 @@ class PostMergeEvidenceReceipt:
         object.__setattr__(
             self,
             "gate_kinds",
-            tuple(sorted(_post_merge_gate(item) for item in self.gate_kinds if _post_merge_gate(item))),
+            tuple(
+                sorted(_post_merge_gate(item) for item in self.gate_kinds if _post_merge_gate(item))
+            ),
         )
         for name in (
             "proposal_admission",
@@ -1128,16 +1093,12 @@ class PostMergeEvidenceReceipt:
         object.__setattr__(self, "receipt_id", "")
         actual = _identity(self._identity_payload())
         if claimed and claimed != actual:
-            raise EvidenceGraphValidationError(
-                "post-merge evidence receipt identity mismatch"
-            )
+            raise EvidenceGraphValidationError("post-merge evidence receipt identity mismatch")
         object.__setattr__(self, "receipt_id", actual)
 
     def _derive_reason_codes(self, *, now: datetime) -> tuple[str, ...]:
         reasons: set[str] = set()
-        deadline = _post_merge_datetime(
-            self.freshness_deadline, name="freshness_deadline"
-        )
+        deadline = _post_merge_datetime(self.freshness_deadline, name="freshness_deadline")
         assembled = _post_merge_datetime(self.assembled_at, name="assembled_at")
         freshness_horizon = deadline - assembled
 
@@ -1170,9 +1131,7 @@ class PostMergeEvidenceReceipt:
         proposal_tree = _post_merge_tree_id(self.proposal_admission)
         proposal_policy = _post_merge_text(self.proposal_admission, "policy_id")
         proposal_task = _post_merge_text(self.proposal_admission, "task_id")
-        if not self.proposal_admission or not _post_merge_passed(
-            self.proposal_admission
-        ):
+        if not self.proposal_admission or not _post_merge_passed(self.proposal_admission):
             reasons.add("proposal_not_admitted")
         if proposal_tree != self.candidate_tree_id:
             reasons.add("proposal_candidate_tree_mismatch")
@@ -1264,14 +1223,10 @@ class PostMergeEvidenceReceipt:
                     reasons.add("proof_not_authoritative")
             except (TypeError, ValueError):
                 reasons.add("proof_receipt_unverified")
-            obligation_id = _post_merge_text(
-                proof, "obligation_id", "requirement_id", "subject_id"
-            )
+            obligation_id = _post_merge_text(proof, "obligation_id", "requirement_id", "subject_id")
             if obligation_id:
                 proved_ids.append(obligation_id)
-                conclusion = _post_merge_text(
-                    proof, "conclusion", "claim", "statement"
-                ).casefold()
+                conclusion = _post_merge_text(proof, "conclusion", "claim", "statement").casefold()
                 if conclusion:
                     conclusions.setdefault(obligation_id, set()).add(conclusion)
             verdict = _post_merge_text(
@@ -1280,10 +1235,8 @@ class PostMergeEvidenceReceipt:
             if (
                 authoritative_verdict != "proved"
                 or verdict != "proved"
-                or authoritative_assurance
-                not in {"kernel_verified", "attested"}
-                or _post_merge_bool(proof, "contradicted", "counterexample_found")
-                is True
+                or authoritative_assurance not in {"kernel_verified", "attested"}
+                or _post_merge_bool(proof, "contradicted", "counterexample_found") is True
             ):
                 reasons.add("contradictory_proof")
         if (
@@ -1295,9 +1248,7 @@ class PostMergeEvidenceReceipt:
         if any(len(values) > 1 for values in conclusions.values()):
             reasons.add("contradictory_proof")
 
-        merge_candidate = _post_merge_text(
-            self.merge_record, "candidate_tree_id", "source_tree_id"
-        )
+        merge_candidate = _post_merge_text(self.merge_record, "candidate_tree_id", "source_tree_id")
         merge_tree = _post_merge_text(
             self.merge_record,
             "merged_tree_id",
@@ -1317,10 +1268,7 @@ class PostMergeEvidenceReceipt:
             reasons.add("merge_commit_mismatch")
         if not _post_merge_receipt_id(self.merge_record):
             reasons.add("merge_receipt_missing")
-        if (
-            not _post_merge_fresh(self.merge_record)
-            or not timestamp_is_current(self.merge_record)
-        ):
+        if not _post_merge_fresh(self.merge_record) or not timestamp_is_current(self.merge_record):
             reasons.add("stale_merge_evidence")
 
         if self.acceptance_criteria != POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA:
@@ -1372,9 +1320,7 @@ class PostMergeEvidenceReceipt:
             self.merge_record,
             *self.criterion_coverage,
         )
-        proposal_plan_id = _post_merge_text(
-            self.proposal_admission, "accepted_plan_id", "plan_id"
-        )
+        proposal_plan_id = _post_merge_text(self.proposal_admission, "accepted_plan_id", "plan_id")
         for record in common_sources:
             source_repository = _post_merge_text(record, "repository_id")
             source_task = _post_merge_text(record, "task_id")
@@ -1395,9 +1341,7 @@ class PostMergeEvidenceReceipt:
         }
         if foreign_trees:
             reasons.add("foreign_graph_evidence")
-        if not self.graph.find_nodes(
-            kind=EvidenceNodeKind.TREE, tree_id=self.merged_tree_id
-        ):
+        if not self.graph.find_nodes(kind=EvidenceNodeKind.TREE, tree_id=self.merged_tree_id):
             reasons.add("merged_tree_graph_missing")
         if self.graph.graph_id != self.graph_id:
             reasons.add("graph_identity_mismatch")
@@ -1489,19 +1433,44 @@ class PostMergeEvidenceReceipt:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PostMergeEvidenceReceipt":
         allowed = {
-            "schema", "repository_id", "task_id", "objective_id",
-            "objective_revision", "policy_id", "candidate_tree_id",
-            "merged_tree_id", "merge_commit_id", "assembled_at",
-            "verified_tree_id", "verified_at",
-            "freshness_deadline", "acceptance_criteria", "gate_kinds",
-            "proposal_admission", "validation_report", "validation_receipt",
-            "semantic_checks", "protocol_checks", "legal_logic_obligations",
-            "theorem_obligations", "proof_receipts", "merge_record",
-            "criterion_coverage", "merged_tree_records", "graph",
-            "analyzer_version", "configuration_revision", "reason_codes",
-            "receipt_id", "graph_id", "accepted", "authoritative",
-            "merge_eligible", "merge_authoritative",
-            "completion_authoritative", "freshness_authoritative",
+            "schema",
+            "repository_id",
+            "task_id",
+            "objective_id",
+            "objective_revision",
+            "policy_id",
+            "candidate_tree_id",
+            "merged_tree_id",
+            "merge_commit_id",
+            "assembled_at",
+            "verified_tree_id",
+            "verified_at",
+            "freshness_deadline",
+            "acceptance_criteria",
+            "gate_kinds",
+            "proposal_admission",
+            "validation_report",
+            "validation_receipt",
+            "semantic_checks",
+            "protocol_checks",
+            "legal_logic_obligations",
+            "theorem_obligations",
+            "proof_receipts",
+            "merge_record",
+            "criterion_coverage",
+            "merged_tree_records",
+            "graph",
+            "analyzer_version",
+            "configuration_revision",
+            "reason_codes",
+            "receipt_id",
+            "graph_id",
+            "accepted",
+            "authoritative",
+            "merge_eligible",
+            "merge_authoritative",
+            "completion_authoritative",
+            "freshness_authoritative",
             "proved_requirement_ids",
         }
         extras = set(payload) - allowed
@@ -1568,13 +1537,9 @@ class PostMergeEvidenceReceipt:
         try:
             value = json.loads(payload)
         except (TypeError, json.JSONDecodeError) as exc:
-            raise EvidenceGraphValidationError(
-                "post-merge evidence JSON is malformed"
-            ) from exc
+            raise EvidenceGraphValidationError("post-merge evidence JSON is malformed") from exc
         if not isinstance(value, Mapping):
-            raise EvidenceGraphValidationError(
-                "post-merge evidence JSON must contain an object"
-            )
+            raise EvidenceGraphValidationError("post-merge evidence JSON must contain an object")
         return cls.from_dict(value)
 
     def to_json(self, *, indent: int | None = None) -> str:
@@ -1596,9 +1561,7 @@ class PostMergeEvidenceReceipt:
     ) -> "PostMergeEvidenceReceipt":
         current_tree = str(current_repository_tree_id or "").strip()
         instant = (
-            _post_merge_datetime(now, name="now")
-            if now is not None
-            else datetime.now(timezone.utc)
+            _post_merge_datetime(now, name="now") if now is not None else datetime.now(timezone.utc)
         )
         receipt = assemble_post_merge_evidence(
             repository_id=self.repository_id,
@@ -1670,9 +1633,7 @@ def assemble_post_merge_evidence(
             raise EvidenceGraphValidationError("freshness_seconds must be positive")
         deadline = assembled + timedelta(seconds=float(freshness_seconds))
     else:
-        deadline = _post_merge_datetime(
-            freshness_deadline, name="freshness_deadline"
-        )
+        deadline = _post_merge_datetime(freshness_deadline, name="freshness_deadline")
     verified = (
         _post_merge_datetime(verified_at, name="verified_at")
         if verified_at is not None
@@ -1682,24 +1643,16 @@ def assemble_post_merge_evidence(
     report = _post_merge_record(validation_report, name="validation_report")
     embedded_receipt = report.get("impact_validation_receipt")
     receipt = _post_merge_record(
-        validation_receipt
-        if validation_receipt is not None
-        else embedded_receipt,
+        validation_receipt if validation_receipt is not None else embedded_receipt,
         name="validation_receipt",
     )
     semantic = _post_merge_records(tuple(semantic_checks), name="semantic_checks")
     protocol = _post_merge_records(tuple(protocol_checks), name="protocol_checks")
-    legal = _post_merge_records(
-        tuple(legal_logic_obligations), name="legal_logic_obligations"
-    )
-    theorem = _post_merge_records(
-        tuple(theorem_obligations), name="theorem_obligations"
-    )
+    legal = _post_merge_records(tuple(legal_logic_obligations), name="legal_logic_obligations")
+    theorem = _post_merge_records(tuple(theorem_obligations), name="theorem_obligations")
     proofs = _post_merge_records(tuple(proof_receipts), name="proof_receipts")
     merge = _post_merge_record(merge_record, name="merge_record")
-    coverage = _post_merge_records(
-        tuple(criterion_coverage), name="criterion_coverage"
-    )
+    coverage = _post_merge_records(tuple(criterion_coverage), name="criterion_coverage")
     tree_records = _post_merge_record(
         merged_tree_records if merged_tree_records is not None else graph_records,
         name="merged_tree_records",
@@ -1727,8 +1680,7 @@ def assemble_post_merge_evidence(
         merged_tree_id=merged_tree_id,
         merge_commit_id=merge_commit_id,
         verified_tree_id=(
-            str(current_repository_tree_id or "").strip()
-            or str(merged_tree_id or "").strip()
+            str(current_repository_tree_id or "").strip() or str(merged_tree_id or "").strip()
         ),
         assembled_at=assembled.isoformat(),
         verified_at=verified.isoformat(),
@@ -1851,9 +1803,7 @@ class _GraphBuilder:
         self.edges[edge.edge_id] = edge
 
 
-def _record_key(
-    record: Mapping[str, Any], names: Sequence[str], kind: EvidenceNodeKind
-) -> str:
+def _record_key(record: Mapping[str, Any], names: Sequence[str], kind: EvidenceNodeKind) -> str:
     value = _text(record, *names)
     if value:
         return value
@@ -1906,12 +1856,12 @@ def _freshness(record: Mapping[str, Any]) -> str:
     return str(value or "").strip()
 
 
-def _add_tree(builder: _GraphBuilder, tree_id: str, provenance: EvidenceProvenance) -> EvidenceNode | None:
+def _add_tree(
+    builder: _GraphBuilder, tree_id: str, provenance: EvidenceProvenance
+) -> EvidenceNode | None:
     if not tree_id:
         return None
-    return builder.reference(
-        EvidenceNodeKind.TREE, tree_id, provenance, tree_id=tree_id
-    )
+    return builder.reference(EvidenceNodeKind.TREE, tree_id, provenance, tree_id=tree_id)
 
 
 def _ingest_tasks(builder: _GraphBuilder, records: Iterable[Any]) -> None:
@@ -1937,8 +1887,11 @@ def _ingest_tasks(builder: _GraphBuilder, records: Iterable[Any]) -> None:
         tree = _add_tree(builder, tree_id, EvidenceProvenance.TASK)
         if tree:
             builder.edge(
-                node, tree, EvidenceEdgeKind.TARGETS_TREE,
-                EvidenceProvenance.TASK, key,
+                node,
+                tree,
+                EvidenceEdgeKind.TARGETS_TREE,
+                EvidenceProvenance.TASK,
+                key,
             )
     aliases = {
         alias: node
@@ -1983,16 +1936,17 @@ def _ingest_ast(builder: _GraphBuilder, records: Iterable[Any]) -> None:
     for value in records:
         record = _record(value)
         kind_text = _text(record, "kind", "scope_kind", "scope_type").lower()
-        symbol = _text(
-            record, "qualified_symbol", "symbol", "qualified_name", "name", "value"
-        )
+        symbol = _text(record, "qualified_symbol", "symbol", "qualified_name", "name", "value")
         is_symbol = bool(symbol) and kind_text in {
-            "qualified_symbol", "symbol", "function", "class", "method", "interface"
+            "qualified_symbol",
+            "symbol",
+            "function",
+            "class",
+            "method",
+            "interface",
         }
         kind = EvidenceNodeKind.SYMBOL if is_symbol else EvidenceNodeKind.AST_SCOPE
-        key = _record_key(
-            record, ("scope_id", "record_id", "content_id", "ast_id"), kind
-        )
+        key = _record_key(record, ("scope_id", "record_id", "content_id", "ast_id"), kind)
         tree_id = _tree_id(record)
         task_id = _task_id(record)
         node = builder.node(
@@ -2082,8 +2036,11 @@ def _ingest_obligations(builder: _GraphBuilder, records: Iterable[Any]) -> None:
         tree = _add_tree(builder, tree_id, EvidenceProvenance.PROOF)
         if tree:
             builder.edge(
-                node, tree, EvidenceEdgeKind.TARGETS_TREE,
-                EvidenceProvenance.PROOF, key,
+                node,
+                tree,
+                EvidenceEdgeKind.TARGETS_TREE,
+                EvidenceProvenance.PROOF,
+                key,
             )
         if task_id:
             task = builder.reference(
@@ -2093,8 +2050,11 @@ def _ingest_obligations(builder: _GraphBuilder, records: Iterable[Any]) -> None:
                 task_id=task_id,
             )
             builder.edge(
-                task, node, EvidenceEdgeKind.HAS_OBLIGATION,
-                EvidenceProvenance.PROOF, key,
+                task,
+                node,
+                EvidenceEdgeKind.HAS_OBLIGATION,
+                EvidenceProvenance.PROOF,
+                key,
             )
         for scope_id in _strings(record.get("ast_scope_ids")):
             scope = (
@@ -2108,8 +2068,11 @@ def _ingest_obligations(builder: _GraphBuilder, records: Iterable[Any]) -> None:
                 )
             )
             builder.edge(
-                node, scope, EvidenceEdgeKind.COVERS,
-                EvidenceProvenance.PROOF, key,
+                node,
+                scope,
+                EvidenceEdgeKind.COVERS,
+                EvidenceProvenance.PROOF,
+                key,
             )
         for dependency in _strings(record.get("premise_ids")):
             premise = builder.reference(
@@ -2119,17 +2082,18 @@ def _ingest_obligations(builder: _GraphBuilder, records: Iterable[Any]) -> None:
                 obligation_id=dependency,
             )
             builder.edge(
-                node, premise, EvidenceEdgeKind.DEPENDS_ON,
-                EvidenceProvenance.PROOF, key,
+                node,
+                premise,
+                EvidenceEdgeKind.DEPENDS_ON,
+                EvidenceProvenance.PROOF,
+                key,
             )
 
 
 def _ingest_attempts(builder: _GraphBuilder, records: Iterable[Any]) -> None:
     for value in records:
         record = _record(value)
-        key = _record_key(
-            record, ("attempt_id", "content_id", "id"), EvidenceNodeKind.ATTEMPT
-        )
+        key = _record_key(record, ("attempt_id", "content_id", "id"), EvidenceNodeKind.ATTEMPT)
         obligation_id = _text(record, "obligation_id")
         node = builder.node(
             EvidenceNodeKind.ATTEMPT,
@@ -2150,8 +2114,11 @@ def _ingest_attempts(builder: _GraphBuilder, records: Iterable[Any]) -> None:
                 obligation_id=obligation_id,
             )
             builder.edge(
-                node, obligation, EvidenceEdgeKind.ATTEMPT_FOR,
-                EvidenceProvenance.PROOF, key,
+                node,
+                obligation,
+                EvidenceEdgeKind.ATTEMPT_FOR,
+                EvidenceProvenance.PROOF,
+                key,
             )
 
 
@@ -2164,9 +2131,7 @@ def _ingest_proofs(builder: _GraphBuilder, records: Iterable[Any]) -> None:
             EvidenceNodeKind.PROOF,
         )
         obligation_id = _text(record, "obligation_id", "subject_id")
-        assurance = _text(
-            record, "authoritative_assurance", "assurance", "level"
-        )
+        assurance = _text(record, "authoritative_assurance", "assurance", "level")
         freshness = _freshness(record)
         node = builder.node(
             EvidenceNodeKind.PROOF,
@@ -2194,14 +2159,20 @@ def _ingest_proofs(builder: _GraphBuilder, records: Iterable[Any]) -> None:
             )
             if authoritative_proof:
                 builder.edge(
-                    node, obligation, EvidenceEdgeKind.PROVES,
-                    EvidenceProvenance.PROOF, key,
+                    node,
+                    obligation,
+                    EvidenceEdgeKind.PROVES,
+                    EvidenceProvenance.PROOF,
+                    key,
                     {"assurance": assurance, "freshness": freshness},
                 )
             else:
                 builder.edge(
-                    node, obligation, EvidenceEdgeKind.DERIVED_FROM,
-                    EvidenceProvenance.PROOF, key,
+                    node,
+                    obligation,
+                    EvidenceEdgeKind.DERIVED_FROM,
+                    EvidenceProvenance.PROOF,
+                    key,
                     {"verdict": verdict or "unknown"},
                 )
         attempt_id = _text(record, "attempt_id")
@@ -2210,8 +2181,11 @@ def _ingest_proofs(builder: _GraphBuilder, records: Iterable[Any]) -> None:
                 EvidenceNodeKind.ATTEMPT, attempt_id, EvidenceProvenance.PROOF
             )
             builder.edge(
-                node, attempt, EvidenceEdgeKind.DERIVED_FROM,
-                EvidenceProvenance.PROOF, key,
+                node,
+                attempt,
+                EvidenceEdgeKind.DERIVED_FROM,
+                EvidenceProvenance.PROOF,
+                key,
             )
         evidence_values = record.get("evidence")
         if isinstance(evidence_values, Sequence) and not isinstance(
@@ -2271,8 +2245,11 @@ def _ingest_validations(builder: _GraphBuilder, records: Iterable[Any]) -> None:
             )
             if _successful(record):
                 builder.edge(
-                    node, task, EvidenceEdgeKind.VALIDATES,
-                    EvidenceProvenance.VALIDATION, key,
+                    node,
+                    task,
+                    EvidenceEdgeKind.VALIDATES,
+                    EvidenceProvenance.VALIDATION,
+                    key,
                 )
         for obligation_id in _strings(
             record.get("obligation_ids") or record.get("covered_obligation_ids")
@@ -2285,8 +2262,11 @@ def _ingest_validations(builder: _GraphBuilder, records: Iterable[Any]) -> None:
             )
             if _successful(record):
                 builder.edge(
-                    node, obligation, EvidenceEdgeKind.COVERS,
-                    EvidenceProvenance.VALIDATION, key,
+                    node,
+                    obligation,
+                    EvidenceEdgeKind.COVERS,
+                    EvidenceProvenance.VALIDATION,
+                    key,
                 )
 
 
@@ -2316,21 +2296,32 @@ def _ingest_merges(builder: _GraphBuilder, records: Iterable[Any]) -> None:
                 task_id=task_id,
             )
             builder.edge(
-                node, task, EvidenceEdgeKind.MERGED,
-                EvidenceProvenance.MERGE, key,
+                node,
+                task,
+                EvidenceEdgeKind.MERGED,
+                EvidenceProvenance.MERGE,
+                key,
             )
             if _text(record, "completion_status", "task_status").lower() in {
-                "complete", "completed", "done"
+                "complete",
+                "completed",
+                "done",
             }:
                 builder.edge(
-                    node, task, EvidenceEdgeKind.COMPLETES,
-                    EvidenceProvenance.MERGE, key,
+                    node,
+                    task,
+                    EvidenceEdgeKind.COMPLETES,
+                    EvidenceProvenance.MERGE,
+                    key,
                 )
         tree = _add_tree(builder, tree_id, EvidenceProvenance.MERGE)
         if tree:
             builder.edge(
-                node, tree, EvidenceEdgeKind.DERIVED_FROM,
-                EvidenceProvenance.MERGE, key,
+                node,
+                tree,
+                EvidenceEdgeKind.DERIVED_FROM,
+                EvidenceProvenance.MERGE,
+                key,
             )
 
 
@@ -2352,9 +2343,7 @@ def _ingest_enrichments(builder: _GraphBuilder, records: Iterable[Any]) -> None:
         record = _record(value)
         requested = _text(record, "edge_kind", "kind").lower()
         if requested and requested not in {item.value for item in ENRICHMENT_EDGE_KINDS}:
-            raise EvidenceGraphValidationError(
-                f"enrichment cannot create {requested!r} edges"
-            )
+            raise EvidenceGraphValidationError(f"enrichment cannot create {requested!r} edges")
         key = _record_key(
             record, ("enrichment_id", "content_id", "id"), EvidenceNodeKind.ENRICHMENT
         )
@@ -2381,8 +2370,11 @@ def _ingest_enrichments(builder: _GraphBuilder, records: Iterable[Any]) -> None:
             if target is None:
                 continue
             builder.edge(
-                node, target, edge_kind,
-                provenance, key,
+                node,
+                target,
+                edge_kind,
+                provenance,
+                key,
             )
 
 
@@ -2418,9 +2410,7 @@ def materialize_code_evidence_graph(
     _ingest_obligations(builder, (*tuple(obligations), *tuple(proof_obligations)))
     _ingest_attempts(builder, (*tuple(attempts), *tuple(proof_attempts)))
     _ingest_proofs(builder, (*tuple(proof_records), *tuple(proof_receipts)))
-    _ingest_validations(
-        builder, (*tuple(validation_records), *tuple(validation_receipts))
-    )
+    _ingest_validations(builder, (*tuple(validation_records), *tuple(validation_receipts)))
     _ingest_merges(builder, (*tuple(merge_records), *tuple(merge_receipts)))
     _ingest_enrichments(builder, enrichments)
     return CodeEvidenceGraph(
@@ -2431,7 +2421,9 @@ def materialize_code_evidence_graph(
 build_code_evidence_graph = materialize_code_evidence_graph
 
 
-def canonical_graph_records(value: CodeEvidenceGraph | Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
+def canonical_graph_records(
+    value: CodeEvidenceGraph | Mapping[str, Any],
+) -> dict[str, list[dict[str, Any]]]:
     """Normalize a graph or graph mapping to canonical node and edge records."""
 
     graph = value if isinstance(value, CodeEvidenceGraph) else CodeEvidenceGraph.from_dict(value)
@@ -2451,9 +2443,7 @@ def _impact_path(value: Any) -> str:
         raw = raw[2:]
     path = PurePosixPath(raw)
     if not raw or path.is_absolute() or ".." in path.parts or "\0" in raw:
-        raise EvidenceGraphValidationError(
-            f"unsafe repository impact path: {value!r}"
-        )
+        raise EvidenceGraphValidationError(f"unsafe repository impact path: {value!r}")
     return path.as_posix()
 
 
@@ -2462,19 +2452,9 @@ def _impact_strings(value: Any) -> tuple[str, ...]:
         return ()
     values = (value,) if isinstance(value, str) else value
     try:
-        return tuple(
-            sorted(
-                {
-                    str(item).strip()
-                    for item in values
-                    if str(item).strip()
-                }
-            )
-        )
+        return tuple(sorted({str(item).strip() for item in values if str(item).strip()}))
     except TypeError as exc:
-        raise EvidenceGraphValidationError(
-            "impact graph collections must be iterable"
-        ) from exc
+        raise EvidenceGraphValidationError("impact graph collections must be iterable") from exc
 
 
 @dataclass(frozen=True)
@@ -2497,9 +2477,7 @@ class ChangedASTSymbol:
             raise EvidenceGraphValidationError("changed AST symbol is required")
         kind = str(self.change_kind or "modified").strip().lower()
         if kind not in {"added", "modified", "deleted", "renamed"}:
-            raise EvidenceGraphValidationError(
-                f"unsupported AST symbol change kind: {kind!r}"
-            )
+            raise EvidenceGraphValidationError(f"unsupported AST symbol change kind: {kind!r}")
         object.__setattr__(self, "symbol", symbol)
         object.__setattr__(self, "path", _impact_path(self.path))
         object.__setattr__(self, "change_kind", kind)
@@ -2522,12 +2500,7 @@ class ChangedASTSymbol:
                 or value.get("qualified_name")
                 or ""
             ),
-            path=str(
-                value.get("path")
-                or value.get("new_path")
-                or value.get("old_path")
-                or ""
-            ),
+            path=str(value.get("path") or value.get("new_path") or value.get("old_path") or ""),
             change_kind=str(value.get("change_kind") or "modified"),
             interface_changed=bool(value.get("interface_changed", False)),
         )
@@ -2553,9 +2526,7 @@ class CodeImpactResult:
         for name in ("repository_tree_id", "index_id"):
             value = str(getattr(self, name) or "").strip()
             if not value:
-                raise EvidenceGraphValidationError(
-                    f"code impact result requires {name}"
-                )
+                raise EvidenceGraphValidationError(f"code impact result requires {name}")
             object.__setattr__(self, name, value)
         for name in (
             "changed_symbols",
@@ -2563,34 +2534,19 @@ class CodeImpactResult:
             "required_validation_ids",
             "uncovered_symbols",
         ):
-            object.__setattr__(
-                self, name, _impact_strings(getattr(self, name))
-            )
+            object.__setattr__(self, name, _impact_strings(getattr(self, name)))
         for name in ("changed_paths", "affected_paths", "uncovered_paths"):
             object.__setattr__(
                 self,
                 name,
-                tuple(
-                    sorted(
-                        {
-                            _impact_path(value)
-                            for value in getattr(self, name)
-                        }
-                    )
-                ),
+                tuple(sorted({_impact_path(value) for value in getattr(self, name)})),
             )
         object.__setattr__(
             self,
             "dependency_chains",
             {
-                str(key): tuple(
-                    str(item).strip()
-                    for item in value
-                    if str(item).strip()
-                )
-                for key, value in sorted(
-                    dict(self.dependency_chains or {}).items()
-                )
+                str(key): tuple(str(item).strip() for item in value if str(item).strip())
+                for key, value in sorted(dict(self.dependency_chains or {}).items())
             },
         )
         object.__setattr__(
@@ -2598,9 +2554,7 @@ class CodeImpactResult:
             "validation_reasons",
             {
                 str(key): _impact_strings(value)
-                for key, value in sorted(
-                    dict(self.validation_reasons or {}).items()
-                )
+                for key, value in sorted(dict(self.validation_reasons or {}).items())
             },
         )
 
@@ -2618,13 +2572,11 @@ class CodeImpactResult:
             "changed_paths": list(self.changed_paths),
             "affected_paths": list(self.affected_paths),
             "dependency_chains": {
-                key: list(value)
-                for key, value in sorted(self.dependency_chains.items())
+                key: list(value) for key, value in sorted(self.dependency_chains.items())
             },
             "required_validation_ids": list(self.required_validation_ids),
             "validation_reasons": {
-                key: list(value)
-                for key, value in sorted(self.validation_reasons.items())
+                key: list(value) for key, value in sorted(self.validation_reasons.items())
             },
             "uncovered_symbols": list(self.uncovered_symbols),
             "uncovered_paths": list(self.uncovered_paths),
@@ -2635,9 +2587,7 @@ class CodeImpactResult:
     def from_dict(cls, value: Mapping[str, Any]) -> "CodeImpactResult":
         schema = str(value.get("schema") or CODE_IMPACT_RESULT_SCHEMA)
         if schema != CODE_IMPACT_RESULT_SCHEMA:
-            raise EvidenceGraphValidationError(
-                f"unsupported code impact result schema: {schema}"
-            )
+            raise EvidenceGraphValidationError(f"unsupported code impact result schema: {schema}")
         return cls(
             repository_tree_id=str(value.get("repository_tree_id") or ""),
             index_id=str(value.get("index_id") or ""),
@@ -2646,27 +2596,15 @@ class CodeImpactResult:
             changed_paths=tuple(value.get("changed_paths") or ()),
             affected_paths=tuple(value.get("affected_paths") or ()),
             dependency_chains={
-                str(key): (
-                    (items,) if isinstance(items, str) else tuple(items)
-                )
-                for key, items in dict(
-                    value.get("dependency_chains") or {}
-                ).items()
+                str(key): ((items,) if isinstance(items, str) else tuple(items))
+                for key, items in dict(value.get("dependency_chains") or {}).items()
             },
-            required_validation_ids=tuple(
-                value.get("required_validation_ids") or ()
-            ),
+            required_validation_ids=tuple(value.get("required_validation_ids") or ()),
             validation_reasons={
-                str(key): (
-                    (items,) if isinstance(items, str) else tuple(items)
-                )
-                for key, items in dict(
-                    value.get("validation_reasons") or {}
-                ).items()
+                str(key): ((items,) if isinstance(items, str) else tuple(items))
+                for key, items in dict(value.get("validation_reasons") or {}).items()
             },
-            uncovered_symbols=tuple(
-                value.get("uncovered_symbols") or ()
-            ),
+            uncovered_symbols=tuple(value.get("uncovered_symbols") or ()),
             uncovered_paths=tuple(value.get("uncovered_paths") or ()),
         )
 
@@ -2691,40 +2629,29 @@ class CodeImpactIndex:
     def __post_init__(self) -> None:
         tree_id = str(self.repository_tree_id or "").strip()
         if not tree_id:
-            raise EvidenceGraphValidationError(
-                "code impact index requires repository_tree_id"
-            )
+            raise EvidenceGraphValidationError("code impact index requires repository_tree_id")
         object.__setattr__(self, "repository_tree_id", tree_id)
 
         symbol_paths: dict[str, str] = {}
         for raw_symbol, raw_path in dict(self.symbol_paths or {}).items():
             symbol = str(raw_symbol or "").strip()
             if not symbol:
-                raise EvidenceGraphValidationError(
-                    "code impact index contains an empty symbol"
-                )
+                raise EvidenceGraphValidationError("code impact index contains an empty symbol")
             symbol_paths[symbol] = _impact_path(raw_path)
-        object.__setattr__(
-            self, "symbol_paths", dict(sorted(symbol_paths.items()))
-        )
+        object.__setattr__(self, "symbol_paths", dict(sorted(symbol_paths.items())))
 
         symbol_dependencies: dict[str, tuple[str, ...]] = {}
         known_symbols = set(symbol_paths)
-        for raw_dependent, raw_dependencies in dict(
-            self.symbol_dependencies or {}
-        ).items():
+        for raw_dependent, raw_dependencies in dict(self.symbol_dependencies or {}).items():
             dependent = str(raw_dependent or "").strip()
             dependencies = _impact_strings(raw_dependencies)
-            unknown = ({dependent, *dependencies} - known_symbols)
+            unknown = {dependent, *dependencies} - known_symbols
             if unknown:
                 raise EvidenceGraphValidationError(
-                    "symbol dependency references unknown symbols: "
-                    + ", ".join(sorted(unknown))
+                    "symbol dependency references unknown symbols: " + ", ".join(sorted(unknown))
                 )
             if dependent in dependencies:
-                raise EvidenceGraphValidationError(
-                    "symbol dependency cannot reference itself"
-                )
+                raise EvidenceGraphValidationError("symbol dependency cannot reference itself")
             symbol_dependencies[dependent] = dependencies
         object.__setattr__(
             self,
@@ -2733,9 +2660,7 @@ class CodeImpactIndex:
         )
 
         path_dependencies: dict[str, tuple[str, ...]] = {}
-        for raw_dependent, raw_dependencies in dict(
-            self.path_dependencies or {}
-        ).items():
+        for raw_dependent, raw_dependencies in dict(self.path_dependencies or {}).items():
             dependent = _impact_path(raw_dependent)
             dependencies = tuple(
                 sorted(
@@ -2750,13 +2675,9 @@ class CodeImpactIndex:
                 )
             )
             if dependent in dependencies:
-                raise EvidenceGraphValidationError(
-                    "path dependency cannot reference itself"
-                )
+                raise EvidenceGraphValidationError("path dependency cannot reference itself")
             path_dependencies[dependent] = dependencies
-        object.__setattr__(
-            self, "path_dependencies", dict(sorted(path_dependencies.items()))
-        )
+        object.__setattr__(self, "path_dependencies", dict(sorted(path_dependencies.items())))
 
         targets: dict[str, tuple[str, ...]] = {}
         known_paths = set(symbol_paths.values())
@@ -2764,14 +2685,10 @@ class CodeImpactIndex:
         for dependencies in path_dependencies.values():
             known_paths.update(dependencies)
         known_targets = known_symbols | known_paths
-        for raw_validation_id, raw_targets in dict(
-            self.validation_targets or {}
-        ).items():
+        for raw_validation_id, raw_targets in dict(self.validation_targets or {}).items():
             validation_id = str(raw_validation_id or "").strip()
             if not validation_id:
-                raise EvidenceGraphValidationError(
-                    "validation target requires an identity"
-                )
+                raise EvidenceGraphValidationError("validation target requires an identity")
             values = _impact_strings(raw_targets)
             if not values:
                 raise EvidenceGraphValidationError(
@@ -2780,27 +2697,20 @@ class CodeImpactIndex:
             unknown = set(values) - known_targets
             if unknown:
                 raise EvidenceGraphValidationError(
-                    "validation references unknown impact targets: "
-                    + ", ".join(sorted(unknown))
+                    "validation references unknown impact targets: " + ", ".join(sorted(unknown))
                 )
             targets[validation_id] = values
-        object.__setattr__(
-            self, "validation_targets", dict(sorted(targets.items()))
-        )
+        object.__setattr__(self, "validation_targets", dict(sorted(targets.items())))
 
         version = str(self.index_version or "").strip()
         if not version:
-            raise EvidenceGraphValidationError(
-                "code impact index version is required"
-            )
+            raise EvidenceGraphValidationError("code impact index version is required")
         object.__setattr__(self, "index_version", version)
         claimed = str(self.index_id or "").strip()
         object.__setattr__(self, "index_id", "")
         actual = _identity(self._identity_payload())
         if claimed and claimed != actual:
-            raise EvidenceGraphValidationError(
-                "code impact index identity does not match payload"
-            )
+            raise EvidenceGraphValidationError("code impact index identity does not match payload")
         object.__setattr__(self, "index_id", actual)
 
     def _identity_payload(self) -> dict[str, Any]:
@@ -2823,10 +2733,7 @@ class CodeImpactIndex:
             reverse.setdefault(dependent, set())
             for provider in providers:
                 reverse.setdefault(provider, set()).add(dependent)
-        return {
-            key: tuple(sorted(value))
-            for key, value in sorted(reverse.items())
-        }
+        return {key: tuple(sorted(value)) for key, value in sorted(reverse.items())}
 
     @staticmethod
     def _closure_with_chains(
@@ -2877,16 +2784,10 @@ class CodeImpactIndex:
         explicit_paths.update(_impact_path(value) for value in changed_paths)
 
         inferred_symbols = {
-            symbol
-            for symbol, path in self.symbol_paths.items()
-            if path in explicit_paths
+            symbol for symbol, path in self.symbol_paths.items() if path in explicit_paths
         }
-        known_changed_symbols = (explicit_symbols | inferred_symbols) & set(
-            self.symbol_paths
-        )
-        uncovered_symbols = tuple(
-            sorted(explicit_symbols - set(self.symbol_paths))
-        )
+        known_changed_symbols = (explicit_symbols | inferred_symbols) & set(self.symbol_paths)
+        uncovered_symbols = tuple(sorted(explicit_symbols - set(self.symbol_paths)))
         known_paths = set(self.symbol_paths.values())
         known_paths.update(self.path_dependencies)
         for dependencies in self.path_dependencies.values():
@@ -2897,9 +2798,7 @@ class CodeImpactIndex:
             known_changed_symbols,
             self._reverse(self.symbol_dependencies),
         )
-        symbol_affected_paths = {
-            self.symbol_paths[symbol] for symbol in affected_symbols
-        }
+        symbol_affected_paths = {self.symbol_paths[symbol] for symbol in affected_symbols}
         path_roots = explicit_paths | symbol_affected_paths
         affected_paths, path_chains = self._closure_with_chains(
             path_roots,
@@ -2908,9 +2807,7 @@ class CodeImpactIndex:
 
         impacted_targets = set(affected_symbols) | set(affected_paths)
         validation_reasons = {
-            validation_id: tuple(
-                sorted(impacted_targets.intersection(targets))
-            )
+            validation_id: tuple(sorted(impacted_targets.intersection(targets)))
             for validation_id, targets in self.validation_targets.items()
             if impacted_targets.intersection(targets)
         }
@@ -2938,18 +2835,14 @@ class CodeImpactIndex:
     def from_dict(cls, value: Mapping[str, Any]) -> "CodeImpactIndex":
         schema = str(value.get("schema") or CODE_IMPACT_INDEX_SCHEMA)
         if schema != CODE_IMPACT_INDEX_SCHEMA:
-            raise EvidenceGraphValidationError(
-                f"unsupported code impact index schema: {schema}"
-            )
+            raise EvidenceGraphValidationError(f"unsupported code impact index schema: {schema}")
         return cls(
             repository_tree_id=str(value.get("repository_tree_id") or ""),
             symbol_paths=value.get("symbol_paths") or {},
             symbol_dependencies=value.get("symbol_dependencies") or {},
             path_dependencies=value.get("path_dependencies") or {},
             validation_targets=value.get("validation_targets") or {},
-            index_version=str(
-                value.get("index_version") or "code-impact-index-v1"
-            ),
+            index_version=str(value.get("index_version") or "code-impact-index-v1"),
             index_id=str(value.get("index_id") or ""),
         )
 
@@ -2978,8 +2871,7 @@ class CodeImpactIndex:
         }
         paths: dict[str, set[str]] = {
             _impact_path(key): {
-                _impact_path(item)
-                for item in ((value,) if isinstance(value, str) else value)
+                _impact_path(item) for item in ((value,) if isinstance(value, str) else value)
             }
             for key, value in dict(path_dependencies or {}).items()
         }
@@ -2998,9 +2890,7 @@ class CodeImpactIndex:
                 or record.get("file")
             )
             if not path_value:
-                raise EvidenceGraphValidationError(
-                    "AST impact records require a repository path"
-                )
+                raise EvidenceGraphValidationError("AST impact records require a repository path")
             path = _impact_path(path_value)
             record_symbols = set(_strings(record.get("qualified_symbols")))
             singular = _text(
@@ -3036,13 +2926,8 @@ class CodeImpactIndex:
         return cls(
             repository_tree_id=repository_tree_id,
             symbol_paths=symbols,
-            symbol_dependencies={
-                key: tuple(sorted(value))
-                for key, value in dependencies.items()
-            },
-            path_dependencies={
-                key: tuple(sorted(value)) for key, value in paths.items()
-            },
+            symbol_dependencies={key: tuple(sorted(value)) for key, value in dependencies.items()},
+            path_dependencies={key: tuple(sorted(value)) for key, value in paths.items()},
             validation_targets=validation_targets or {},
         )
 

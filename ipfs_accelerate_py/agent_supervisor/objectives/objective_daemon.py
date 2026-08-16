@@ -112,9 +112,7 @@ def objective_record_plan_context(record: Any) -> dict[str, Any]:
     )
     predicted_symbols = list(
         dict.fromkeys(
-            str(item)
-            for item in (getattr(finding, "ast_symbols", ()) or ())
-            if str(item).strip()
+            str(item) for item in (getattr(finding, "ast_symbols", ()) or ()) if str(item).strip()
         )
     )
     return {
@@ -159,9 +157,13 @@ def _evaluated_branch_dict(value: Any, evaluation: Any = None) -> dict[str, Any]
     )
     payload = {
         "branch": branch_payload,
-        "score_millionths": int(wrapped_score if wrapped_score is not None else scores.get(branch_id, 0)),
+        "score_millionths": int(
+            wrapped_score if wrapped_score is not None else scores.get(branch_id, 0)
+        ),
         "rationale": list(
-            wrapped_rationale if wrapped_rationale is not None else rationales.get(branch_id, ()) or ()
+            wrapped_rationale
+            if wrapped_rationale is not None
+            else rationales.get(branch_id, ()) or ()
         ),
     }
     return payload
@@ -185,7 +187,10 @@ def plan_objective_records(
     """
 
     from ..planning.plan_evaluator import evaluate_plan_branches
-    from ..planning.task_proposal_router import deterministic_plan_branches, generate_structured_plan_branches
+    from ..planning.task_proposal_router import (
+        deterministic_plan_branches,
+        generate_structured_plan_branches,
+    )
 
     evaluate = evaluator or evaluate_plan_branches
     count = max(1, int(branch_count))
@@ -231,7 +236,11 @@ def plan_objective_records(
                 }
             )
         except Exception as exc:  # one provider/record must never stall later ready work
-            logger.warning("Plan routing failed for %s; using deterministic fallback: %s", context["task_id"], exc)
+            logger.warning(
+                "Plan routing failed for %s; using deterministic fallback: %s",
+                context["task_id"],
+                exc,
+            )
             try:
                 branches = tuple(deterministic_plan_branches(context, branch_count=1))
                 evaluation = evaluate(branches)
@@ -246,7 +255,9 @@ def plan_objective_records(
                         "router_error": str(exc),
                         "evaluator_version": str(evaluation.evaluator_version),
                         "selected": selected,
-                        "rejected": [_evaluated_branch_dict(item, evaluation) for item in evaluation.rejected],
+                        "rejected": [
+                            _evaluated_branch_dict(item, evaluation) for item in evaluation.rejected
+                        ],
                         "selection_rationale": selected["rationale"],
                     }
                 )
@@ -254,7 +265,11 @@ def plan_objective_records(
                 # Preserve the failure as evidence and continue planning the
                 # remaining records. A malformed injected fallback must not
                 # turn one subgoal into a daemon-wide outage.
-                logger.error("Deterministic plan fallback failed for %s: %s", context["task_id"], fallback_exc)
+                logger.error(
+                    "Deterministic plan fallback failed for %s: %s",
+                    context["task_id"],
+                    fallback_exc,
+                )
                 decisions.append(
                     {
                         "task_id": context["task_id"],
@@ -267,7 +282,9 @@ def plan_objective_records(
                         "evaluator_version": "",
                         "selected": None,
                         "rejected": [],
-                        "selection_rationale": ["deterministic fallback could not produce a valid branch"],
+                        "selection_rationale": [
+                            "deterministic fallback could not produce a valid branch"
+                        ],
                     }
                 )
     return decisions
@@ -285,7 +302,9 @@ def persist_objective_plan_evaluations(
     if path.exists():
         try:
             previous = json.loads(path.read_text(encoding="utf-8"))
-            previous_items = previous.get("evaluations", []) if isinstance(previous, Mapping) else []
+            previous_items = (
+                previous.get("evaluations", []) if isinstance(previous, Mapping) else []
+            )
             if isinstance(previous_items, list):
                 retained.update(
                     {
@@ -362,7 +381,10 @@ def objective_terms_for_analysis(
             # Provisional and inconclusive goals remain schedulable so their
             # unproven criteria can feed bounded evidence generation.
             if goal.lifecycle_state_value in {
-                "active", "reopened", "provisionally_complete", "analysis_inconclusive"
+                "active",
+                "reopened",
+                "provisionally_complete",
+                "analysis_inconclusive",
             }:
                 terms.extend(goal.required_evidence)
     for record in records:
@@ -417,9 +439,7 @@ def _atomic_json_write(path: Path, payload: Mapping[str, Any]) -> None:
     """Durably replace one JSON artifact without exposing partial bytes."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(dict(payload), handle, indent=2, sort_keys=True)
@@ -464,13 +484,10 @@ def _load_generation_payload(path: Path) -> dict[str, Any]:
     result = dict(payload)
     records = result.get("admission_records", {})
     if not isinstance(records, Mapping) or any(
-        not isinstance(key, str) or not isinstance(value, Mapping)
-        for key, value in records.items()
+        not isinstance(key, str) or not isinstance(value, Mapping) for key, value in records.items()
     ):
         raise ValueError("objective generation admission_records must be an object")
-    result["admission_records"] = {
-        str(key): dict(value) for key, value in sorted(records.items())
-    }
+    result["admission_records"] = {str(key): dict(value) for key, value in sorted(records.items())}
     family_states = result.get("gap_family_states", {})
     if not isinstance(family_states, Mapping) or any(
         not isinstance(key, str) or not isinstance(value, Mapping)
@@ -492,8 +509,7 @@ def load_objective_admission_records(
         return {}
     payload = _load_generation_payload(path)
     return {
-        str(key): dict(value)
-        for key, value in (payload.get("admission_records") or {}).items()
+        str(key): dict(value) for key, value in (payload.get("admission_records") or {}).items()
     }
 
 
@@ -505,8 +521,7 @@ def _persist_objective_admission_records(
 
     payload = _load_generation_payload(path)
     retained = {
-        str(key): dict(value)
-        for key, value in (payload.get("admission_records") or {}).items()
+        str(key): dict(value) for key, value in (payload.get("admission_records") or {}).items()
     }
     for value in records:
         canonical_id = str(value.get("canonical_id") or "").strip()
@@ -516,17 +531,10 @@ def _persist_objective_admission_records(
         next_record = dict(value)
         if prior is not None:
             for field_name in ("preview", "tracker_transaction"):
-                if (
-                    next_record.get(field_name) is None
-                    and prior.get(field_name) is not None
-                ):
+                if next_record.get(field_name) is None and prior.get(field_name) is not None:
                     next_record[field_name] = prior[field_name]
             attempts = [
-                *(
-                    prior.get("attempts", ())
-                    if isinstance(prior.get("attempts"), list)
-                    else ()
-                ),
+                *(prior.get("attempts", ()) if isinstance(prior.get("attempts"), list) else ()),
                 *(
                     next_record.get("attempts", ())
                     if isinstance(next_record.get("attempts"), list)
@@ -542,13 +550,9 @@ def _persist_objective_admission_records(
                         dict(attempt), sort_keys=True, separators=(",", ":"), default=str
                     )
                     unique_attempts[key] = dict(attempt)
-                next_record["attempts"] = [
-                    unique_attempts[key] for key in sorted(unique_attempts)
-                ]
+                next_record["attempts"] = [unique_attempts[key] for key in sorted(unique_attempts)]
         retained[canonical_id] = next_record
-    payload["admission_records"] = {
-        key: retained[key] for key in sorted(retained)
-    }
+    payload["admission_records"] = {key: retained[key] for key in sorted(retained)}
     _atomic_json_write(path, payload)
     return payload
 
@@ -592,12 +596,8 @@ def persist_objective_generation(
     if path.exists():
         try:
             previous_payload = _load_generation_payload(path)
-            retained_admission_records = dict(
-                previous_payload.get("admission_records") or {}
-            )
-            retained_gap_family_states = dict(
-                previous_payload.get("gap_family_states") or {}
-            )
+            retained_admission_records = dict(previous_payload.get("admission_records") or {})
+            retained_gap_family_states = dict(previous_payload.get("gap_family_states") or {})
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             # The identity load above remains fail-closed.  This branch is only
             # reachable for observability fields in a legacy/corrupt artifact.
@@ -605,8 +605,7 @@ def persist_objective_generation(
             retained_gap_family_states = {}
     if gap_family_states is not None:
         retained_gap_family_states = {
-            str(key): dict(value)
-            for key, value in gap_family_states.items()
+            str(key): dict(value) for key, value in gap_family_states.items()
         }
     payload = {
         "schema": OBJECTIVE_GENERATION_ARTIFACT_SCHEMA,
@@ -614,13 +613,10 @@ def persist_objective_generation(
         "generated_work_count": len(merged),
         "generated_work": [merged[key] for key in sorted(merged)],
         "last_cycle": cycle,
-        "last_evaluation": (
-            evaluation.to_dict() if hasattr(evaluation, "to_dict") else evaluation
-        ),
+        "last_evaluation": (evaluation.to_dict() if hasattr(evaluation, "to_dict") else evaluation),
         "admission_records": retained_admission_records,
         "gap_family_states": {
-            key: retained_gap_family_states[key]
-            for key in sorted(retained_gap_family_states)
+            key: retained_gap_family_states[key] for key in sorted(retained_gap_family_states)
         },
     }
     _atomic_json_write(path, payload)
@@ -661,11 +657,7 @@ def materialize_objective_generation_cycle(
     active_keys = (
         None
         if active_family_keys is None
-        else {
-            str(item).strip()
-            for item in active_family_keys
-            if str(item).strip()
-        }
+        else {str(item).strip() for item in active_family_keys if str(item).strip()}
     )
     completed_counts = {
         str(key).strip(): max(0, int(value))
@@ -680,22 +672,14 @@ def materialize_objective_generation_cycle(
     observed_goal_ids = (
         None
         if observed_gap_goal_ids is None
-        else {
-            str(item).strip()
-            for item in observed_gap_goal_ids
-            if str(item).strip()
-        }
+        else {str(item).strip() for item in observed_gap_goal_ids if str(item).strip()}
     )
     if limits is None:
         max_retries = ObjectiveGenerationLimits().max_retries
     elif isinstance(limits, Mapping):
-        max_retries = int(
-            limits.get("max_retries", ObjectiveGenerationLimits().max_retries)
-        )
+        max_retries = int(limits.get("max_retries", ObjectiveGenerationLimits().max_retries))
     else:
-        max_retries = int(
-            getattr(limits, "max_retries", ObjectiveGenerationLimits().max_retries)
-        )
+        max_retries = int(getattr(limits, "max_retries", ObjectiveGenerationLimits().max_retries))
     prior_payload = _load_generation_payload(artifact_path)
     prior_family_states = {
         str(key): dict(value)
@@ -716,9 +700,7 @@ def materialize_objective_generation_cycle(
         prior = typed_candidates.get(family_key)
         if prior is not None:
             if prior.instance_key != normalized.instance_key:
-                raise ValueError(
-                    f"completion gap family {family_key} has conflicting instances"
-                )
+                raise ValueError(f"completion gap family {family_key} has conflicting instances")
         typed_candidates[family_key] = normalized
 
     lifecycle_actions: dict[str, str] = {}
@@ -733,15 +715,11 @@ def materialize_objective_generation_cycle(
         return replace(
             proposal,
             title=f"Retry {retry_ordinal}: {proposal.title}",
-            expected_evidence_delta=tuple(
-                dict.fromkeys([*proposal.expected_evidence_delta, note])
-            ),
+            expected_evidence_delta=tuple(dict.fromkeys([*proposal.expected_evidence_delta, note])),
             retry_count=retry_ordinal,
             source="completion_gate_gap_retry",
             source_id=f"{proposal.instance_key}:retry:{retry_ordinal}",
-            rationale="; ".join(
-                dict.fromkeys([proposal.rationale, note])
-            ),
+            rationale="; ".join(dict.fromkeys([proposal.rationale, note])),
             canonical_id="",
         )
 
@@ -754,15 +732,11 @@ def materialize_objective_generation_cycle(
         return replace(
             proposal,
             title=f"Review persistent gap: {proposal.title}",
-            expected_evidence_delta=tuple(
-                dict.fromkeys([*proposal.expected_evidence_delta, note])
-            ),
+            expected_evidence_delta=tuple(dict.fromkeys([*proposal.expected_evidence_delta, note])),
             retry_count=retry_count,
             source="completion_gate_gap_review",
             source_id=f"{proposal.instance_key}:review",
-            rationale="; ".join(
-                dict.fromkeys([proposal.rationale, note])
-            ),
+            rationale="; ".join(dict.fromkeys([proposal.rationale, note])),
             canonical_id="",
         )
 
@@ -770,8 +744,7 @@ def materialize_objective_generation_cycle(
         prior = prior_family_states.get(family_key, {})
         family_unresolved = bool(prior) and prior.get("resolved") is not True
         same_instance = (
-            family_unresolved
-            and str(prior.get("instance_key") or "") == proposal.instance_key
+            family_unresolved and str(prior.get("instance_key") or "") == proposal.instance_key
         )
         completed_count = completed_counts.get(family_key, 0)
         blocked_count = blocked_counts.get(family_key, 0)
@@ -785,9 +758,7 @@ def materialize_objective_generation_cycle(
                 or 0
             ),
         )
-        prior_blocked_count = max(
-            0, int(prior.get("blocked_task_count", 0) or 0)
-        )
+        prior_blocked_count = max(0, int(prior.get("blocked_task_count", 0) or 0))
         attempt_count = max(1, int(prior.get("attempt_count", 1) or 1))
         review_emitted = bool(prior.get("review_emitted", False))
         action = "stable"
@@ -797,10 +768,7 @@ def materialize_objective_generation_cycle(
         # second task, even when fresher diagnostics arrive mid-attempt.
         if active_keys is not None and family_key in active_keys:
             action = "active"
-        elif (
-            family_unresolved
-            and str(prior.get("outcome") or "") == "blocked_review"
-        ):
+        elif family_unresolved and str(prior.get("outcome") or "") == "blocked_review":
             action = "blocked_review"
         elif family_unresolved and blocked_count > prior_blocked_count:
             if review_emitted:
@@ -882,10 +850,7 @@ def materialize_objective_generation_cycle(
 
     dedupe_existing = list(existing)
     if active_keys is not None:
-        typed_goal_ids = {
-            value.parent_goal_id
-            for value in typed_candidates.values()
-        }
+        typed_goal_ids = {value.parent_goal_id for value in typed_candidates.values()}
         dedupe_existing = []
         for raw in existing:
             item = ObjectiveWorkProposal.from_dict(raw)
@@ -921,12 +886,8 @@ def materialize_objective_generation_cycle(
             proposal_values,
             policy=evaluation_policy,
             objective_terms=objective_terms,
-            known_canonical_ids=(
-                str(item.get("canonical_id") or "") for item in dedupe_existing
-            ),
-            known_semantic_keys=(
-                str(item.get("semantic_key") or "") for item in dedupe_existing
-            ),
+            known_canonical_ids=(str(item.get("canonical_id") or "") for item in dedupe_existing),
+            known_semantic_keys=(str(item.get("semantic_key") or "") for item in dedupe_existing),
         )
         proposal_values = evaluation.accepted_proposals
     result = materialize_bounded_objective_work(
@@ -935,19 +896,12 @@ def materialize_objective_generation_cycle(
         limits=limits,
         current_open_work=current_open_work,
     )
-    accepted_by_family = {
-        item.family_key: item
-        for item in result.accepted
-        if item.family_key
-    }
-    next_family_states = {
-        key: dict(value) for key, value in prior_family_states.items()
-    }
+    accepted_by_family = {item.family_key: item for item in result.accepted if item.family_key}
+    next_family_states = {key: dict(value) for key, value in prior_family_states.items()}
     current_families = set(typed_candidates)
     for family_key, state in next_family_states.items():
         goal_was_observed = (
-            observed_goal_ids is None
-            or str(state.get("goal_id") or "") in observed_goal_ids
+            observed_goal_ids is None or str(state.get("goal_id") or "") in observed_goal_ids
         )
         if family_key not in current_families and goal_was_observed:
             state["resolved"] = True
@@ -958,9 +912,7 @@ def materialize_objective_generation_cycle(
         action = lifecycle_actions[family_key]
         completed_count = completed_counts.get(family_key, 0)
         blocked_count = blocked_counts.get(family_key, 0)
-        is_active = bool(
-            active_keys is not None and family_key in active_keys
-        )
+        is_active = bool(active_keys is not None and family_key in active_keys)
         accepted = accepted_by_family.get(family_key)
 
         if action == "blocked_review":
@@ -981,24 +933,26 @@ def materialize_objective_generation_cycle(
                 next_family_states[family_key] = blocked_state
             continue
         if is_active:
-            active_state = dict(prior) if prior else {
-                "family_key": family_key,
-                "instance_key": proposal.instance_key,
-                "canonical_id": proposal.canonical_id,
-                "goal_id": proposal.parent_goal_id,
-                "occurrence": 1,
-                "attempt_count": 1,
-                "completed_task_count": completed_count,
-                "blocked_task_count": blocked_count,
-                "review_emitted": (
-                    proposal.source == "completion_gate_gap_manual_review"
-                ),
-                "outcome": (
-                    "review_required"
-                    if proposal.source == "completion_gate_gap_manual_review"
-                    else "actionable"
-                ),
-            }
+            active_state = (
+                dict(prior)
+                if prior
+                else {
+                    "family_key": family_key,
+                    "instance_key": proposal.instance_key,
+                    "canonical_id": proposal.canonical_id,
+                    "goal_id": proposal.parent_goal_id,
+                    "occurrence": 1,
+                    "attempt_count": 1,
+                    "completed_task_count": completed_count,
+                    "blocked_task_count": blocked_count,
+                    "review_emitted": (proposal.source == "completion_gate_gap_manual_review"),
+                    "outcome": (
+                        "review_required"
+                        if proposal.source == "completion_gate_gap_manual_review"
+                        else "actionable"
+                    ),
+                }
+            )
             active_state.update(
                 {
                     "resolved": False,
@@ -1015,30 +969,18 @@ def materialize_objective_generation_cycle(
                 retained_state["resolved"] = False
                 retained_state["active"] = False
                 retained_state["latest_instance_key"] = proposal.instance_key
-                retained_state[
-                    "latest_diagnostic_canonical_id"
-                ] = proposal.canonical_id
+                retained_state["latest_diagnostic_canonical_id"] = proposal.canonical_id
                 next_family_states[family_key] = retained_state
             continue
 
         is_fresh = action == "fresh"
         prior_occurrence = max(0, int(prior.get("occurrence", 0) or 0))
         occurrence = (
-            prior_occurrence + 1
-            if prior
-            else 1
-        ) if is_fresh else max(1, prior_occurrence)
-        prior_attempt_count = max(
-            1, int(prior.get("attempt_count", 1) or 1)
+            (prior_occurrence + 1 if prior else 1) if is_fresh else max(1, prior_occurrence)
         )
-        attempt_count = (
-            1
-            if is_fresh
-            else prior_attempt_count + (1 if action == "retry" else 0)
-        )
-        manual_review_accepted = (
-            accepted.source == "completion_gate_gap_manual_review"
-        )
+        prior_attempt_count = max(1, int(prior.get("attempt_count", 1) or 1))
+        attempt_count = 1 if is_fresh else prior_attempt_count + (1 if action == "retry" else 0)
+        manual_review_accepted = accepted.source == "completion_gate_gap_manual_review"
         outcome = {
             "fresh": "actionable",
             "retry": "retry",
@@ -1096,9 +1038,7 @@ class ObjectiveGenerationAdmissionResult:
 
     def to_dict(self) -> dict[str, Any]:
         preview_payload = (
-            self.preview.to_dict()
-            if hasattr(self.preview, "to_dict")
-            else dict(self.preview or {})
+            self.preview.to_dict() if hasattr(self.preview, "to_dict") else dict(self.preview or {})
         )
         return {
             "schema": "ipfs_accelerate_py/agent-supervisor/objective-generation-admission@1",
@@ -1148,9 +1088,7 @@ def _verified_authority_receipt_ids(
             if verdict != "proved":
                 continue
             result_id = str(
-                getattr(result, "result_id", "")
-                or getattr(result, "content_id", "")
-                or ""
+                getattr(result, "result_id", "") or getattr(result, "content_id", "") or ""
             ).strip()
             if result_id:
                 resolved.add(result_id)
@@ -1162,9 +1100,7 @@ def _verified_authority_receipt_ids(
         for retained in tuple(getattr(verification, "all_attempts", ()) or ()):
             attempt = getattr(retained, "attempt", retained)
             attempt_id = str(
-                getattr(attempt, "attempt_id", "")
-                or getattr(attempt, "content_id", "")
-                or ""
+                getattr(attempt, "attempt_id", "") or getattr(attempt, "content_id", "") or ""
             ).strip()
             outcome = str(
                 getattr(
@@ -1203,10 +1139,7 @@ def _verified_authority_receipt_ids(
         )
         if isinstance(receipt, Mapping):
             status = str(
-                receipt.get("status")
-                or receipt.get("verdict")
-                or receipt.get("decision")
-                or ""
+                receipt.get("status") or receipt.get("verdict") or receipt.get("decision") or ""
             ).lower()
             authoritative = receipt.get("authoritative") is True
             verified = receipt.get("verified") is True or status in {
@@ -1255,9 +1188,12 @@ def _objective_admission_transaction_id(
         "proposal_receipt_id": proposal_receipt_id,
         "admission_receipt_id": admission_receipt_id,
     }
-    return "objective-admission:" + sha256(
-        json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+    return (
+        "objective-admission:"
+        + sha256(
+            json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+    )
 
 
 def materialize_admitted_objective_work(
@@ -1329,9 +1265,7 @@ def materialize_admitted_objective_work(
     goal_work: list[ObjectiveWorkProposal] = []
     for raw in proposals:
         item = (
-            raw
-            if isinstance(raw, ObjectiveWorkProposal)
-            else ObjectiveWorkProposal.from_dict(raw)
+            raw if isinstance(raw, ObjectiveWorkProposal) else ObjectiveWorkProposal.from_dict(raw)
         )
         if item.kind in {ObjectiveWorkKind.GOAL, ObjectiveWorkKind.SUBGOAL}:
             goal_work.append(item)
@@ -1343,16 +1277,10 @@ def materialize_admitted_objective_work(
         lifecycle_owner=lifecycle_owner,
         atomic=True,
     )
-    current_goals = {
-        goal.goal_id: goal for goal in parse_goal_heap(objective_text)
-    }
+    current_goals = {goal.goal_id: goal for goal in parse_goal_heap(objective_text)}
     selected_root_id = str(root_goal_id or "").strip()
     if not selected_root_id:
-        roots = [
-            goal.goal_id
-            for goal in current_goals.values()
-            if not goal.parent_goal_ids
-        ]
+        roots = [goal.goal_id for goal in current_goals.values() if not goal.parent_goal_ids]
         if len(roots) == 1:
             selected_root_id = roots[0]
 
@@ -1396,9 +1324,7 @@ def materialize_admitted_objective_work(
 
     already_materialized_ids = tuple(
         item.canonical_id
-        for item in sorted(
-            goal_work, key=lambda value: (value.depth, value.canonical_id)
-        )
+        for item in sorted(goal_work, key=lambda value: (value.depth, value.canonical_id))
         if is_exact_materialization(item)
     )
     already_materialized = set(already_materialized_ids)
@@ -1439,9 +1365,7 @@ def materialize_admitted_objective_work(
             )
             proposal_receipt_id = parsed_proposal_receipt.receipt_id
         except (TypeError, ValueError) as exc:
-            reason_codes.append(
-                f"invalid_proposal_receipt:{type(exc).__name__}"
-            )
+            reason_codes.append(f"invalid_proposal_receipt:{type(exc).__name__}")
     if admission_receipt is not None:
         try:
             parsed_admission_receipt = _contract_value(
@@ -1449,9 +1373,7 @@ def materialize_admitted_objective_work(
             )
             admission_receipt_id = parsed_admission_receipt.receipt_id
         except (TypeError, ValueError) as exc:
-            reason_codes.append(
-                f"invalid_admission_receipt:{type(exc).__name__}"
-            )
+            reason_codes.append(f"invalid_admission_receipt:{type(exc).__name__}")
     transaction_id = _objective_admission_transaction_id(
         preview,
         mode=normalized_mode.value,
@@ -1487,30 +1409,23 @@ def materialize_admitted_objective_work(
                 "transaction_id": transaction_id,
                 "proposal": item.to_dict(),
                 "preview": (
-                    by_id[item.canonical_id].to_dict()
-                    if item.canonical_id in by_id
-                    else None
+                    by_id[item.canonical_id].to_dict() if item.canonical_id in by_id else None
                 ),
                 "proposal_receipt_id": proposal_receipt_id,
                 "admission_receipt_id": admission_receipt_id,
                 "authoritative_receipt_ids": list(
-                    getattr(parsed_admission_receipt, "authoritative_receipt_ids", ())
-                    or ()
+                    getattr(parsed_admission_receipt, "authoritative_receipt_ids", ()) or ()
                 ),
                 "reason_codes": sorted(set(str(reason) for reason in reasons if reason)),
                 "lifecycle_owner": lifecycle_owner,
                 "tracker_transaction": (
-                    dict(tracker_transaction)
-                    if tracker_transaction is not None
-                    else None
+                    dict(tracker_transaction) if tracker_transaction is not None else None
                 ),
                 "attempts": [
                     {
                         "transaction_id": transaction_id,
                         "status": status,
-                        "reason_codes": sorted(
-                            set(str(reason) for reason in reasons if reason)
-                        ),
+                        "reason_codes": sorted(set(str(reason) for reason in reasons if reason)),
                     }
                 ],
             }
@@ -1574,9 +1489,7 @@ def materialize_admitted_objective_work(
         reason_codes.append(f"admission_receipt_gate:{type(exc).__name__}")
 
     try:
-        parsed_verification = _contract_value(
-            refinement_verification, RefinementVerificationResult
-        )
+        parsed_verification = _contract_value(refinement_verification, RefinementVerificationResult)
         if not parsed_verification.verified:
             reason_codes.append("refinement_not_verified")
     except (TypeError, ValueError) as exc:
@@ -1600,19 +1513,13 @@ def materialize_admitted_objective_work(
             for key, value in (proposal_bindings or {}).items()
             if str(key).strip() and str(value).strip()
         }
-        admitted_ids = set(
-            getattr(parsed_admission_receipt, "proposal_ids", ()) or ()
-        )
+        admitted_ids = set(getattr(parsed_admission_receipt, "proposal_ids", ()) or ())
         for item in goal_work:
             source_proposal_id = (
-                bindings.get(item.canonical_id)
-                or item.source_id
-                or item.canonical_id
+                bindings.get(item.canonical_id) or item.source_id or item.canonical_id
             )
             if source_proposal_id not in admitted_ids:
-                reason_codes.append(
-                    f"unbound_proposal:{item.canonical_id}"
-                )
+                reason_codes.append(f"unbound_proposal:{item.canonical_id}")
 
     if new_assumption_ids:
         reason_codes.append("new_assumptions")
@@ -1646,24 +1553,16 @@ def materialize_admitted_objective_work(
         getattr(parsed_admission_receipt, "authoritative_receipt_ids", ()) or ()
     )
     configured_authorities = {
-        str(item).strip()
-        for item in required_authoritative_receipt_ids
-        if str(item).strip()
+        str(item).strip() for item in required_authoritative_receipt_ids if str(item).strip()
     }
-    if configured_authorities and not configured_authorities.issubset(
-        claimed_authorities
-    ):
+    if configured_authorities and not configured_authorities.issubset(claimed_authorities):
         reason_codes.append("missing_configured_authoritative_receipts")
     required_resolution = claimed_authorities | configured_authorities
-    if not required_resolution or not required_resolution.issubset(
-        resolved_authorities
-    ):
+    if not required_resolution or not required_resolution.issubset(resolved_authorities):
         reason_codes.append("unresolved_authoritative_receipts")
 
     reason_codes = sorted(set(reason_codes))
-    graph_ready = bool(goal_work) and (
-        len(already_materialized) == len(goal_work) or preview.ready
-    )
+    graph_ready = bool(goal_work) and (len(already_materialized) == len(goal_work) or preview.ready)
     if reason_codes or not graph_ready:
         _persist_objective_admission_records(
             generation_path, admission_records("rejected", reason_codes)
@@ -1678,9 +1577,7 @@ def materialize_admitted_objective_work(
             resumable=True,
         )
     if len(already_materialized) == len(goal_work):
-        _persist_objective_admission_records(
-            generation_path, admission_records("admitted", ())
-        )
+        _persist_objective_admission_records(generation_path, admission_records("admitted", ()))
         return ObjectiveGenerationAdmissionResult(
             mode=normalized_mode.value,
             status="already_committed",
@@ -1699,9 +1596,7 @@ def materialize_admitted_objective_work(
             resumable=True,
         )
 
-    _persist_objective_admission_records(
-        generation_path, admission_records("prepared", ())
-    )
+    _persist_objective_admission_records(generation_path, admission_records("prepared", ()))
     try:
         tracker_result = commit_objective_goal_materialization(
             repo_root=repo_root,
@@ -1729,9 +1624,7 @@ def materialize_admitted_objective_work(
             resumable=True,
         )
     tracker_payload = (
-        tracker_result.to_dict()
-        if hasattr(tracker_result, "to_dict")
-        else dict(tracker_result)
+        tracker_result.to_dict() if hasattr(tracker_result, "to_dict") else dict(tracker_result)
     )
     tracker_status = str(
         getattr(
@@ -1752,9 +1645,7 @@ def materialize_admitted_objective_work(
             set(
                 str(item)
                 for item in (
-                    tracker_payload.get("reason_codes")
-                    or tracker_payload.get("reasons")
-                    or ()
+                    tracker_payload.get("reason_codes") or tracker_payload.get("reasons") or ()
                 )
                 if str(item)
             )
@@ -1775,10 +1666,7 @@ def materialize_admitted_objective_work(
         preview=preview,
         reason_codes=final_reasons,
         materialized_goal_ids=(
-            (
-                already_materialized_ids
-                + tuple(preview.admitted_proposal_ids)
-            )
+            (already_materialized_ids + tuple(preview.admitted_proposal_ids))
             if committed
             else already_materialized_ids
         ),
@@ -1889,8 +1777,7 @@ def _stable_completion_gap_diagnostic(value: Any) -> Any:
         return {
             str(key): _stable_completion_gap_diagnostic(item)
             for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
-            if str(key).strip().casefold()
-            not in _VOLATILE_COMPLETION_DIAGNOSTIC_FIELDS
+            if str(key).strip().casefold() not in _VOLATILE_COMPLETION_DIAGNOSTIC_FIELDS
         }
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         return [_stable_completion_gap_diagnostic(item) for item in value]
@@ -2005,17 +1892,10 @@ def _completion_gap_precise_files(
     resolved_root = repo_root.resolve()
     for value in values:
         raw_path = str(value or "").strip()
-        if (
-            not raw_path
-            or "\x00" in raw_path
-            or raw_path.endswith(("/", "\\"))
-        ):
+        if not raw_path or "\x00" in raw_path or raw_path.endswith(("/", "\\")):
             continue
         normalized = raw_path.replace("\\", "/")
-        if (
-            "://" in normalized
-            or re.match(r"^[A-Za-z]:", normalized)
-        ):
+        if "://" in normalized or re.match(r"^[A-Za-z]:", normalized):
             continue
         relative_path = PurePosixPath(normalized)
         if relative_path.is_absolute() or ".." in relative_path.parts:
@@ -2027,9 +1907,7 @@ def _completion_gap_precise_files(
         if "." not in name and name.casefold() not in extensionless_files:
             continue
         try:
-            resolved_target = (
-                resolved_root.joinpath(*relative_path.parts).resolve(strict=False)
-            )
+            resolved_target = resolved_root.joinpath(*relative_path.parts).resolve(strict=False)
             resolved_target.relative_to(resolved_root)
             if resolved_target.exists() and not resolved_target.is_file():
                 continue
@@ -2067,12 +1945,12 @@ def _completion_gap_validation_commands(
         for field_name, raw in sources:
             if not raw:
                 continue
-            if field_name in {"validation_command", "command"} and isinstance(
-                raw, Sequence
-            ) and not isinstance(raw, (str, bytes)):
-                command = shlex.join(
-                    str(item) for item in raw if str(item).strip()
-                )
+            if (
+                field_name in {"validation_command", "command"}
+                and isinstance(raw, Sequence)
+                and not isinstance(raw, (str, bytes))
+            ):
+                command = shlex.join(str(item) for item in raw if str(item).strip())
                 if command and command not in tier_values:
                     tier_values.append(command)
                 continue
@@ -2131,25 +2009,29 @@ def _documentation_completion_gap_proposals(
     if not isinstance(coverage, Mapping):
         coverage = {}
     raw_rows = coverage.get("criteria", ())
-    rows = [
-        dict(item)
-        for item in raw_rows
-        if isinstance(item, Mapping)
-        and (
-            item.get("verified") is False
-            or (
-                item.get("verified") is not True
-                and str(item.get("status") or "").strip().lower()
-                not in {
-                    "complete",
-                    "completed",
-                    "passed",
-                    "satisfied",
-                    "verified",
-                }
+    rows = (
+        [
+            dict(item)
+            for item in raw_rows
+            if isinstance(item, Mapping)
+            and (
+                item.get("verified") is False
+                or (
+                    item.get("verified") is not True
+                    and str(item.get("status") or "").strip().lower()
+                    not in {
+                        "complete",
+                        "completed",
+                        "passed",
+                        "satisfied",
+                        "verified",
+                    }
+                )
             )
-        )
-    ] if isinstance(raw_rows, Sequence) and not isinstance(raw_rows, (str, bytes)) else []
+        ]
+        if isinstance(raw_rows, Sequence) and not isinstance(raw_rows, (str, bytes))
+        else []
+    )
     for row in rows:
         if str(row.get("required_producer_channel") or "").strip():
             continue
@@ -2161,16 +2043,19 @@ def _documentation_completion_gap_proposals(
                 {"criterion": _normalized_completion_gap_text(criterion)},
             )
             row["criterion_id"] = criterion_id
-        row["required_producer_channel"] = (
-            f"completion-gate-criterion:{criterion_id}"
+        row["required_producer_channel"] = f"completion-gate-criterion:{criterion_id}"
+    missing_channels = (
+        sorted(
+            {
+                str(item).strip()
+                for item in record.get("missing_producer_channels", ())
+                if str(item).strip()
+            }
         )
-    missing_channels = sorted(
-        {
-            str(item).strip()
-            for item in record.get("missing_producer_channels", ())
-            if str(item).strip()
-        }
-    ) if isinstance(record.get("missing_producer_channels", ()), Sequence) and not isinstance(record.get("missing_producer_channels", ()), (str, bytes)) else []
+        if isinstance(record.get("missing_producer_channels", ()), Sequence)
+        and not isinstance(record.get("missing_producer_channels", ()), (str, bytes))
+        else []
+    )
     row_channels = {
         str(row.get("required_producer_channel") or "").strip()
         for row in rows
@@ -2179,11 +2064,11 @@ def _documentation_completion_gap_proposals(
     channels = sorted(set(missing_channels) | row_channels)
 
     rejected_values = record.get("rejected_receipts", ())
-    rejected = [
-        dict(item)
-        for item in rejected_values
-        if isinstance(item, Mapping)
-    ] if isinstance(rejected_values, Sequence) and not isinstance(rejected_values, (str, bytes)) else []
+    rejected = (
+        [dict(item) for item in rejected_values if isinstance(item, Mapping)]
+        if isinstance(rejected_values, Sequence) and not isinstance(rejected_values, (str, bytes))
+        else []
+    )
     receipts_by_channel: dict[str, list[dict[str, Any]]] = {}
     for receipt in rejected:
         channel = _rejected_receipt_channel(
@@ -2268,9 +2153,7 @@ def _documentation_completion_gap_proposals(
         )
         channel_receipts = receipts_by_channel.get(channel, [])
         receipt = channel_receipts[0] if channel_receipts else None
-        row_reasons = sorted(
-            set(_completion_gap_strings(row.get("reason_codes", ())))
-        )
+        row_reasons = sorted(set(_completion_gap_strings(row.get("reason_codes", ()))))
         receipt_reasons: list[str] = []
         receipt_diagnostics: list[str] = []
         receipt_instance: dict[str, Any] = {}
@@ -2329,17 +2212,13 @@ def _documentation_completion_gap_proposals(
         delta = tuple(
             dict.fromkeys(
                 [
-                    (
-                        "Align documentation claims with "
-                        f"{channel} evidence for: {criterion}"
-                    ),
+                    (f"Align documentation claims with {channel} evidence for: {criterion}"),
                     *(
                         f"Reconcile documentation evidence for gate diagnostic: {item}"
                         for item in row_reasons
                     ),
                     *(
-                        f"Reconcile documentation evidence for rejected-receipt "
-                        f"diagnostic: {item}"
+                        f"Reconcile documentation evidence for rejected-receipt diagnostic: {item}"
                         for item in receipt_reasons
                     ),
                     *receipt_diagnostics,
@@ -2362,9 +2241,7 @@ def _documentation_completion_gap_proposals(
                 ]
             )
         )
-        predicted_symbols = tuple(
-            dict.fromkeys([*goal_symbols, criterion_id, channel])
-        )
+        predicted_symbols = tuple(dict.fromkeys([*goal_symbols, criterion_id, channel]))
         validation = _completion_gap_validation_commands(
             row=row,
             receipt=receipt,
@@ -2383,11 +2260,7 @@ def _documentation_completion_gap_proposals(
                 ]
             )
         )
-        criterion_label = (
-            criterion
-            if len(criterion) <= 96
-            else criterion[:93].rstrip() + "..."
-        )
+        criterion_label = criterion if len(criterion) <= 96 else criterion[:93].rstrip() + "..."
         proposals.append(
             ObjectiveWorkProposal(
                 kind=ObjectiveWorkKind.TASK,
@@ -2518,18 +2391,14 @@ def _completion_decision_gap_proposal(
             ]
         )
     )
-    goal_validation = tuple(
-        split_csv([str(goal.fields.get("validation") or "")])
-    )
+    goal_validation = tuple(split_csv([str(goal.fields.get("validation") or "")]))
     validation = _completion_gap_validation_commands(
         row=decision,
         receipt=None,
         goal_validation=goal_validation,
         default_validation=default_validation,
     )
-    predicted_symbols = tuple(
-        dict.fromkeys([*goal.required_evidence, "completion-reconciliation"])
-    )
+    predicted_symbols = tuple(dict.fromkeys([*goal.required_evidence, "completion-reconciliation"]))
     if not validation or not predicted_symbols:
         return None
     parent_terms = tuple(
@@ -2564,9 +2433,7 @@ def _completion_decision_gap_proposal(
         depth=1,
         estimated_tokens=max(128, 64 * len(delta)),
         source=(
-            "completion_gate_gap_manual_review"
-            if manual_review_only
-            else "completion_gate_gap"
+            "completion_gate_gap_manual_review" if manual_review_only else "completion_gate_gap"
         ),
         source_id=instance_key,
         rationale="; ".join(delta),
@@ -2602,11 +2469,7 @@ def _objective_generation_board_state(
             continue
         merge_key = merge_match.group(1).strip()
         status_match = re.search(r"^- Status:\s*(.+?)\s*$", block, flags=re.MULTILINE)
-        status = (
-            " ".join(status_match.group(1).strip().lower().split())
-            if status_match
-            else ""
-        )
+        status = " ".join(status_match.group(1).strip().lower().split()) if status_match else ""
         if status == "completed":
             completed_counts[merge_key] = completed_counts.get(merge_key, 0) + 1
             continue
@@ -2685,9 +2548,7 @@ def objective_generation_proposals(
     from ..planning.task_proposal_router import analysis_proposals_to_objective_work
 
     resolved_repo_root = (
-        repo_root.resolve()
-        if repo_root is not None
-        else objective_path.resolve().parent
+        repo_root.resolve() if repo_root is not None else objective_path.resolve().parent
     )
     goals = (
         parse_goal_heap(objective_path.read_text(encoding="utf-8", errors="replace"))
@@ -2695,11 +2556,9 @@ def objective_generation_proposals(
         else []
     )
     goals_by_id = {str(goal.goal_id): goal for goal in goals}
-    _external_goal_ids, external_blocked_goal_ids = (
-        external_authority_goal_fence(
-            goals,
-            trust_recorded_completion=trust_recorded_external_completion,
-        )
+    _external_goal_ids, external_blocked_goal_ids = external_authority_goal_fence(
+        goals,
+        trust_recorded_completion=trust_recorded_external_completion,
     )
     default_parent = next(
         (
@@ -2737,31 +2596,17 @@ def objective_generation_proposals(
             if typed:
                 typed_gap_goal_ids.add(goal_id)
                 proposals.extend(typed)
-        if (
-            not typed
-            and coverage
-            and coverage.get("verified") is not True
-            and goal is not None
-        ):
+        if not typed and coverage and coverage.get("verified") is not True and goal is not None:
             coverage_reasons: list[str] = []
-            coverage_reasons.extend(
-                _completion_gap_strings(record.get("reason_codes", ()))
-            )
-            coverage_reasons.extend(
-                _completion_gap_strings(coverage.get("reason_codes", ()))
-            )
+            coverage_reasons.extend(_completion_gap_strings(record.get("reason_codes", ())))
+            coverage_reasons.extend(_completion_gap_strings(coverage.get("reason_codes", ())))
             for contradiction in contradictions:
                 if isinstance(contradiction, Mapping):
                     coverage_reasons.extend(
-                        _completion_gap_strings(
-                            contradiction.get("reason_codes", ())
-                        )
+                        _completion_gap_strings(contradiction.get("reason_codes", ()))
                     )
             reasons = tuple(
-                dict.fromkeys(
-                    coverage_reasons
-                    or ("completion_gate_coverage_unverified",)
-                )
+                dict.fromkeys(coverage_reasons or ("completion_gate_coverage_unverified",))
             )
             fallback = _completion_decision_gap_proposal(
                 repo_root=resolved_repo_root,
@@ -2793,9 +2638,7 @@ def objective_generation_proposals(
             dict.fromkeys(
                 str(item).strip()
                 for item in (
-                    decision.get("actionable_reasons")
-                    or decision.get("reason_codes")
-                    or ()
+                    decision.get("actionable_reasons") or decision.get("reason_codes") or ()
                 )
                 if str(item).strip()
             )
@@ -2832,7 +2675,9 @@ def objective_generation_proposals(
         else:
             direct.append(raw)
     per_routed_tokens = (
-        max(1, int(estimated_router_tokens) // len(routed)) if routed and estimated_router_tokens else 0
+        max(1, int(estimated_router_tokens) // len(routed))
+        if routed and estimated_router_tokens
+        else 0
     )
     if routed:
         proposals.extend(
@@ -2853,12 +2698,9 @@ def objective_generation_proposals(
         if not title or not path or not validation:
             continue
         parent_goal_id = str(raw.get("goal_id") or default_parent).strip()
-        dependencies = tuple(
-            str(item) for item in raw.get("dependencies", ()) if str(item).strip()
-        )
-        if (
-            parent_goal_id in external_blocked_goal_ids
-            or external_blocked_goal_ids.intersection(dependencies)
+        dependencies = tuple(str(item) for item in raw.get("dependencies", ()) if str(item).strip())
+        if parent_goal_id in external_blocked_goal_ids or external_blocked_goal_ids.intersection(
+            dependencies
         ):
             continue
         proposals.append(
@@ -2868,11 +2710,10 @@ def objective_generation_proposals(
                 parent_goal_id=parent_goal_id,
                 parent_objective_terms=tuple(
                     str(item)
-                    for item in (
-                        escalation.get("objective_terms", ()) or objective_terms
-                    )
+                    for item in (escalation.get("objective_terms", ()) or objective_terms)
                     if str(item).strip()
-                ) or (title,),
+                )
+                or (title,),
                 expected_evidence_delta=(title,),
                 dependencies=dependencies,
                 predicted_files=(path,),
@@ -2890,12 +2731,9 @@ def objective_generation_proposals(
     return tuple(
         proposal
         for proposal in proposals
-        if str(getattr(proposal, "parent_goal_id", "") or "")
-        not in external_blocked_goal_ids
+        if str(getattr(proposal, "parent_goal_id", "") or "") not in external_blocked_goal_ids
         and not external_blocked_goal_ids.intersection(
-            str(item)
-            for item in (getattr(proposal, "dependencies", ()) or ())
-            if str(item).strip()
+            str(item) for item in (getattr(proposal, "dependencies", ()) or ()) if str(item).strip()
         )
     )
 
@@ -2925,11 +2763,9 @@ def objective_generation_task_findings(
         else []
     )
     goals_by_id = {goal.goal_id: goal for goal in goals}
-    _external_goal_ids, external_blocked_goal_ids = (
-        external_authority_goal_fence(
-            goals,
-            trust_recorded_completion=trust_recorded_external_completion,
-        )
+    _external_goal_ids, external_blocked_goal_ids = external_authority_goal_fence(
+        goals,
+        trust_recorded_completion=trust_recorded_external_completion,
     )
     seen = {str(item) for item in seen_fingerprints if str(item).strip()}
     open_goals = {str(item) for item in open_goal_ids if str(item).strip()}
@@ -2977,9 +2813,7 @@ def objective_generation_task_findings(
         if fingerprint in seen:
             continue
 
-        missing_evidence = list(
-            proposal.expected_evidence_delta or proposal.parent_objective_terms
-        )
+        missing_evidence = list(proposal.expected_evidence_delta or proposal.parent_objective_terms)
         outputs = list(proposal.predicted_files)
         validation = "; ".join(proposal.validation_commands) or "git diff --check"
         bundle_key = goal.bundle_key(missing_evidence)
@@ -3055,16 +2889,11 @@ def run_objective_analysis_escalation(
 
     from ..analysis.audit_scanner import run_low_backlog_analysis
 
-    if analysis_pipeline is None and (
-        analysis_cache_path is not None or artifact_path is not None
-    ):
+    if analysis_pipeline is None and (analysis_cache_path is not None or artifact_path is not None):
         from ..analysis.analysis_cache import AnalysisCache
         from ..analysis.analysis_pipeline import AnalysisPipeline, make_analysis_stage_receipt
 
-        cache_path = Path(
-            analysis_cache_path
-            or (Path(artifact_path).parent / "analysis_cache")
-        )
+        cache_path = Path(analysis_cache_path or (Path(artifact_path).parent / "analysis_cache"))
 
         def objective_pipeline_analyzer(context: Any) -> Any:
             return make_analysis_stage_receipt(
@@ -3177,9 +3006,7 @@ def _validate_completion_gate_edit_targets(
             key = str(raw_key)
             nested_location = f"{location}.{key}"
             if key == "validation_commands":
-                if not isinstance(nested, Sequence) or isinstance(
-                    nested, (str, bytes)
-                ):
+                if not isinstance(nested, Sequence) or isinstance(nested, (str, bytes)):
                     raise ValueError(
                         "goal completion gate record "
                         f"{goal_id!r} field {nested_location!r} must be a "
@@ -3216,9 +3043,7 @@ def _validate_completion_gate_edit_targets(
                     )
                 if isinstance(nested, str):
                     raw_targets: Sequence[Any] = (nested,)
-                elif isinstance(nested, Sequence) and not isinstance(
-                    nested, (str, bytes)
-                ):
+                elif isinstance(nested, Sequence) and not isinstance(nested, (str, bytes)):
                     raw_targets = nested
                 else:
                     raise ValueError(
@@ -3349,23 +3174,15 @@ def load_goal_completion_gate_records(
             )
         required_child_goal_ids = normalized.get("required_child_goal_ids")
         if required_child_goal_ids is not None:
-            if (
-                not isinstance(required_child_goal_ids, list)
-                or any(
-                    not isinstance(item, str) or not item.strip()
-                    for item in required_child_goal_ids
-                )
+            if not isinstance(required_child_goal_ids, list) or any(
+                not isinstance(item, str) or not item.strip() for item in required_child_goal_ids
             ):
                 raise ValueError(
                     f"goal completion gate record {normalized_goal_id!r} field "
                     "'required_child_goal_ids' must be a list of non-empty strings"
                 )
-            normalized_child_goal_ids = [
-                item.strip() for item in required_child_goal_ids
-            ]
-            if len(set(normalized_child_goal_ids)) != len(
-                normalized_child_goal_ids
-            ):
+            normalized_child_goal_ids = [item.strip() for item in required_child_goal_ids]
+            if len(set(normalized_child_goal_ids)) != len(normalized_child_goal_ids):
                 raise ValueError(
                     f"goal completion gate record {normalized_goal_id!r} field "
                     "'required_child_goal_ids' must contain unique strings"
@@ -3470,9 +3287,7 @@ def load_goal_completion_evidence_records(
                     "exactly one of 'completion_evidence_records' or 'records'"
                 )
             raw_records = raw_goal_value.get(
-                "completion_evidence_records"
-                if has_canonical_records
-                else "records"
+                "completion_evidence_records" if has_canonical_records else "records"
             )
         else:
             raw_records = raw_goal_value
@@ -3484,8 +3299,7 @@ def load_goal_completion_evidence_records(
         for index, raw_record in enumerate(raw_records):
             if not isinstance(raw_record, Mapping):
                 raise ValueError(
-                    f"goal completion evidence {normalized_goal_id!r}[{index}] "
-                    "must be an object"
+                    f"goal completion evidence {normalized_goal_id!r}[{index}] must be an object"
                 )
             record = dict(raw_record)
             bound_tree = goal_binding.get("tree_id", binding.get("tree_id"))
@@ -3563,15 +3377,13 @@ def load_goal_completion_evidence_records(
             if missing_record_binding:
                 raise ValueError(
                     f"goal completion evidence {normalized_goal_id!r}[{index}] "
-                    "binding is missing: "
-                    + ", ".join(missing_record_binding)
+                    "binding is missing: " + ", ".join(missing_record_binding)
                 )
             try:
                 typed_records.append(CompletionEvidence.from_dict(record))
             except (TypeError, ValueError) as exc:
                 raise ValueError(
-                    f"goal completion evidence {normalized_goal_id!r}[{index}] "
-                    f"is malformed: {exc}"
+                    f"goal completion evidence {normalized_goal_id!r}[{index}] is malformed: {exc}"
                 ) from exc
         records[normalized_goal_id] = typed_records
     return records
@@ -3598,8 +3410,7 @@ def completion_evidence_records_from_gate_records(
         for index, raw_record in enumerate(raw_records):
             if not isinstance(raw_record, Mapping):
                 raise ValueError(
-                    f"goal completion gate evidence {goal_id!r}[{index}] "
-                    "must be an object"
+                    f"goal completion gate evidence {goal_id!r}[{index}] must be an object"
                 )
             record = dict(raw_record)
             bound_tree = binding.get("tree_id")
@@ -3660,8 +3471,7 @@ def completion_evidence_records_from_gate_records(
                 typed_records.append(CompletionEvidence.from_dict(record))
             except (TypeError, ValueError) as exc:
                 raise ValueError(
-                    f"goal completion gate evidence {goal_id!r}[{index}] "
-                    f"is malformed: {exc}"
+                    f"goal completion gate evidence {goal_id!r}[{index}] is malformed: {exc}"
                 ) from exc
         extracted[str(goal_id)] = typed_records
     return extracted
@@ -3746,7 +3556,9 @@ def completion_gate_receipts_from_decisions(
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate autonomous-agent todos from an objective goal heap")
+    parser = argparse.ArgumentParser(
+        description="Generate autonomous-agent todos from an objective goal heap"
+    )
     parser.add_argument("--repo-root", type=Path, default=default_repo_root())
     parser.add_argument("--objective-path", type=Path, default=None)
     parser.add_argument("--todo-path", type=Path, default=None)
@@ -3787,7 +3599,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=[],
         help="Objective goal id to rescan even when an existing discovery fingerprint would suppress it.",
     )
-    parser.add_argument("--repeat-existing", action="store_true", help="Do not suppress fingerprints already in discovery files")
+    parser.add_argument(
+        "--repeat-existing",
+        action="store_true",
+        help="Do not suppress fingerprints already in discovery files",
+    )
     parser.add_argument("--max-findings", type=int, default=10)
     parser.add_argument(
         "--surplus-findings-per-goal",
@@ -3973,11 +3789,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=-1,
         help="Override scheduler open-work count; negative derives it from active goals and generated tasks.",
     )
-    parser.add_argument("--submit-bundles", action="store_true", help="Submit generated bundle shards to the local task queue")
+    parser.add_argument(
+        "--submit-bundles",
+        action="store_true",
+        help="Submit generated bundle shards to the local task queue",
+    )
     parser.add_argument("--queue-path", default=None)
     parser.add_argument("--queue-task-type", default="codex.todo_bundle")
     parser.add_argument("--queue-model-name", default="codex")
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
     return parser
 
 
@@ -4009,7 +3831,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     discovery_dir = (args.discovery_dir or state_root / "discovery").resolve()
     bundle_dir = (args.bundle_dir or state_root / "objective_bundles").resolve()
     dataset_dir = (args.dataset_dir or state_root / "objective_datasets").resolve()
-    graph_path = (getattr(args, "graph_path", None) or state_root / "objective_graph.json").resolve()
+    graph_path = (
+        getattr(args, "graph_path", None) or state_root / "objective_graph.json"
+    ).resolve()
     external_completion_path = getattr(
         args,
         "objective_external_completion_receipt_path",
@@ -4019,9 +3843,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         external_completion_path = (repo_root / external_completion_path).resolve()
     external_completion_authority: ExternalCompletionAuthority | None = None
     if external_completion_path is not None:
-        external_completion_authority = load_external_completion_authority(
-            external_completion_path
-        )
+        external_completion_authority = load_external_completion_authority(external_completion_path)
     completion_reconciliation_enabled = not bool(
         getattr(args, "no_reconcile_goal_completion", False)
     )
@@ -4040,7 +3862,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             root_goal_id=getattr(args, "root_goal_id", None),
             goal_prefix=getattr(args, "goal_prefix", None) or DEFAULT_GOAL_PREFIX,
             root_goal_title=getattr(args, "root_goal_title", DEFAULT_ROOT_GOAL_TITLE),
-            document_title=getattr(args, "tracking_document_title", DEFAULT_TRACKING_DOCUMENT_TITLE),
+            document_title=getattr(
+                args, "tracking_document_title", DEFAULT_TRACKING_DOCUMENT_TITLE
+            ),
         )
         tracking_created = tracking.created
         ensured_goal_ids = tracking.appended_goal_ids
@@ -4091,12 +3915,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     )
     if completion_evidence_path is not None and not completion_evidence_path.is_absolute():
         completion_evidence_path = (repo_root / completion_evidence_path).resolve()
-    embedded_completion_evidence_records = (
-        completion_evidence_records_from_gate_records(completion_gate_records)
+    embedded_completion_evidence_records = completion_evidence_records_from_gate_records(
+        completion_gate_records
     )
-    completion_evidence_records = load_goal_completion_evidence_records(
-        completion_evidence_path
-    )
+    completion_evidence_records = load_goal_completion_evidence_records(completion_evidence_path)
     duplicate_evidence_goal_ids = sorted(
         set(embedded_completion_evidence_records) & set(completion_evidence_records)
     )
@@ -4110,9 +3932,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         **completion_evidence_records,
     }
     completion_control_paths = [
-        path
-        for path in (completion_gate_path, completion_evidence_path)
-        if path is not None
+        path for path in (completion_gate_path, completion_evidence_path) if path is not None
     ]
     require_artifact_binding = bool(completion_control_paths)
     goal_completion_todo_boards = parse_goal_completion_todo_boards(
@@ -4147,9 +3967,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
 
     refined_goal_ids: list[str] = []
     if getattr(args, "refine_objective_heap", False) and objective_path.exists():
-        forced_refinement_goal_ids = split_csv(
-            getattr(args, "force_goal_id", []) or []
-        )
+        forced_refinement_goal_ids = split_csv(getattr(args, "force_goal_id", []) or [])
         refinement_findings = scan_objective_gaps(
             repo_root,
             objective_path=objective_path,
@@ -4159,9 +3977,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             scope_goal_ids=forced_refinement_goal_ids,
             evidence_repository_tree=evidence_repository_tree,
             scan_exclude_paths=scan_exclude_paths,
-            trust_recorded_external_completion=(
-                completion_reconciliation_enabled
-            ),
+            trust_recorded_external_completion=(completion_reconciliation_enabled),
         )
         refinement = append_refinement_goals(
             objective_path,
@@ -4195,9 +4011,15 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         persist_ast_dataset=not args.no_persist_ast_dataset,
         write_todo_vector_index=not getattr(args, "no_todo_vector_index", False),
         todo_vector_index_path=getattr(args, "todo_vector_index_path", None),
-        surplus_findings_per_goal=getattr(args, "surplus_findings_per_goal", DEFAULT_SURPLUS_FINDINGS_PER_GOAL),
-        surplus_min_terms_per_todo=getattr(args, "surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO),
-        summary_prefix=getattr(args, "objective_summary_prefix", DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX),
+        surplus_findings_per_goal=getattr(
+            args, "surplus_findings_per_goal", DEFAULT_SURPLUS_FINDINGS_PER_GOAL
+        ),
+        surplus_min_terms_per_todo=getattr(
+            args, "surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO
+        ),
+        summary_prefix=getattr(
+            args, "objective_summary_prefix", DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX
+        ),
         discovery_output_path=getattr(args, "discovery_output_path", DEFAULT_DISCOVERY_OUTPUT_PATH),
         evidence_repository_tree=evidence_repository_tree,
         scan_exclude_paths=scan_exclude_paths,
@@ -4233,8 +4055,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         bundle_index_path=bundle_dir / "index.json",
     )
     analysis_escalation_path = (
-        getattr(args, "analysis_escalation_path", None)
-        or state_root / "analysis_escalation.json"
+        getattr(args, "analysis_escalation_path", None) or state_root / "analysis_escalation.json"
     ).resolve()
     analysis_escalation_payload: dict[str, Any] | None = None
     if bool(getattr(args, "escalate_low_backlog_analysis", False)):
@@ -4260,12 +4081,14 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                     analysis_escalation_path.read_text(encoding="utf-8")
                 )
                 for stage_record in previous_escalation.get("records", []):
-                    if isinstance(stage_record, Mapping) and stage_record.get("stage") == "llm_router":
+                    if (
+                        isinstance(stage_record, Mapping)
+                        and stage_record.get("stage") == "llm_router"
+                    ):
                         cost = stage_record.get("cost")
                         if isinstance(cost, Mapping):
                             prior_router_call_timestamps.extend(
-                                float(item)
-                                for item in cost.get("router_call_timestamps", [])
+                                float(item) for item in cost.get("router_call_timestamps", [])
                             )
             except (OSError, ValueError, TypeError, json.JSONDecodeError):
                 prior_router_call_timestamps = []
@@ -4273,10 +4096,13 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             repo_root=repo_root,
             provider=str(getattr(args, "plan_router_provider", "") or "") or None,
             model=str(getattr(args, "plan_router_model", "gpt-5.3-codex-spark")),
-            branch_count=max(1, min(
-                int(getattr(args, "plan_branch_count", 3)),
-                max(1, analysis_policy.max_novel_proposals),
-            )),
+            branch_count=max(
+                1,
+                min(
+                    int(getattr(args, "plan_branch_count", 3)),
+                    max(1, analysis_policy.max_novel_proposals),
+                ),
+            ),
             max_new_tokens=min(
                 int(getattr(args, "plan_router_max_new_tokens", 4096)),
                 analysis_policy.max_router_tokens,
@@ -4300,8 +4126,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         analysis_escalation_payload = escalation_result.to_dict()
 
     objective_generation_path = Path(
-        getattr(args, "objective_generation_path", None)
-        or state_root / "objective_generation.json"
+        getattr(args, "objective_generation_path", None) or state_root / "objective_generation.json"
     )
     if not objective_generation_path.is_absolute():
         objective_generation_path = repo_root / objective_generation_path
@@ -4336,15 +4161,11 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             estimated_router_tokens=reserved_router_tokens,
             router_retry_count=router_retry_count,
             objective_terms=generation_terms,
-            trust_recorded_external_completion=(
-                completion_reconciliation_enabled
-            ),
+            trust_recorded_external_completion=(completion_reconciliation_enabled),
         )
         generation_limits = ObjectiveGenerationLimits(
             max_depth=int(getattr(args, "objective_generation_max_depth", 3)),
-            max_breadth_per_parent=int(
-                getattr(args, "objective_generation_max_breadth", 4)
-            ),
+            max_breadth_per_parent=int(getattr(args, "objective_generation_max_breadth", 4)),
             max_new_work=int(getattr(args, "objective_generation_max_new_work", 12)),
             max_open_work=int(getattr(args, "objective_generation_max_open_work", 48)),
             token_budget=int(getattr(args, "objective_generation_token_budget", 8192)),
@@ -4353,13 +4174,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                 getattr(args, "objective_generation_semantic_threshold", 0.82)
             ),
         )
-        configured_open_work = int(
-            getattr(args, "objective_generation_current_open_work", -1)
-        )
+        configured_open_work = int(getattr(args, "objective_generation_current_open_work", -1))
         todo_board_text = (
-            todo_path.read_text(encoding="utf-8", errors="replace")
-            if todo_path.exists()
-            else ""
+            todo_path.read_text(encoding="utf-8", errors="replace") if todo_path.exists() else ""
         )
         (
             active_generation_keys,
@@ -4375,26 +4192,17 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                 open_work_goals = parse_goal_heap(
                     objective_path.read_text(encoding="utf-8", errors="replace")
                 )
-                _external_goal_ids, externally_blocked_goal_ids = (
-                    external_authority_goal_fence(
-                        open_work_goals,
-                        trust_recorded_completion=(
-                            completion_reconciliation_enabled
-                        ),
-                    )
+                _external_goal_ids, externally_blocked_goal_ids = external_authority_goal_fence(
+                    open_work_goals,
+                    trust_recorded_completion=(completion_reconciliation_enabled),
                 )
                 active_goal_count = sum(
                     1
                     for goal in open_work_goals
-                    if (
-                        goal.is_schedulable
-                        and goal.goal_id not in externally_blocked_goal_ids
-                    )
+                    if (goal.is_schedulable and goal.goal_id not in externally_blocked_goal_ids)
                 )
             try:
-                persisted_generation_payload = _load_generation_payload(
-                    objective_generation_path
-                )
+                persisted_generation_payload = _load_generation_payload(objective_generation_path)
                 persisted_work = persisted_generation_payload.get(
                     "generated_work",
                     (),
@@ -4428,14 +4236,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                 + persisted_blocked_review_count
             )
         evaluation_policy = ObjectiveWorkEvaluationPolicy(
-            min_confidence=float(
-                getattr(args, "objective_generation_min_confidence", 0.0)
-            ),
+            min_confidence=float(getattr(args, "objective_generation_min_confidence", 0.0)),
             min_novelty=float(getattr(args, "objective_generation_min_novelty", 0.0)),
             max_proposals=generation_limits.max_new_work,
-            max_total_cost=float(
-                getattr(args, "objective_generation_max_cost", 1000000.0)
-            ),
+            max_total_cost=float(getattr(args, "objective_generation_max_cost", 1000000.0)),
             max_open_work=generation_limits.max_open_work,
             current_open_work=configured_open_work,
             remaining_token_budget=generation_limits.token_budget,
@@ -4483,9 +4287,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                         "gap_family_states",
                         {},
                     ),
-                    trust_recorded_external_completion=(
-                        completion_reconciliation_enabled
-                    ),
+                    trust_recorded_external_completion=(completion_reconciliation_enabled),
                 )
                 remaining_findings = max(0, int(args.max_findings) - len(records))
                 generated_findings = generated_findings[:remaining_findings]
@@ -4508,9 +4310,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                             DEFAULT_DISCOVERY_OUTPUT_PATH,
                         ),
                         precomputed_findings=generated_findings,
-                        trust_recorded_external_completion=(
-                            completion_reconciliation_enabled
-                        ),
+                        trust_recorded_external_completion=(completion_reconciliation_enabled),
                         protected_output_paths=protected_output_paths,
                     )
                     records.extend(objective_generation_materialized_records)
@@ -4518,9 +4318,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                         objective_generation_materialized_records,
                         branch_count=max(1, int(getattr(args, "plan_branch_count", 3))),
                         router_config=router_config,
-                        use_llm_router=bool(
-                            getattr(args, "generate_plan_branches", False)
-                        ),
+                        use_llm_router=bool(getattr(args, "generate_plan_branches", False)),
                     )
                     plan_decisions.extend(generated_plan_decisions)
                     persist_objective_plan_evaluations(
@@ -4531,7 +4329,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     blocked_review_family_keys = blocked_review_objective_generation_families(
         (objective_generation_payload or {}).get("gap_family_states", {})
     )
-    graph_payload = write_objective_graph_artifact(objective_path=objective_path, graph_path=graph_path)
+    graph_payload = write_objective_graph_artifact(
+        objective_path=objective_path, graph_path=graph_path
+    )
 
     bundle_index_path = bundle_dir / "index.json"
     submitted_bundle_task_ids: list[str] = []
@@ -4552,7 +4352,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "bundle_index_path": repo_relative_path(repo_root, bundle_index_path),
         "todo_vector_index_path": repo_relative_path(
             repo_root,
-            (getattr(args, "todo_vector_index_path", None) or bundle_dir / "todo_vector_index.json").resolve(),
+            (
+                getattr(args, "todo_vector_index_path", None)
+                or bundle_dir / "todo_vector_index.json"
+            ).resolve(),
         ),
         "dataset_dir": repo_relative_path(repo_root, dataset_dir),
         "graph_path": repo_relative_path(repo_root, graph_path),
@@ -4561,17 +4364,11 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "protected_output_paths": list(protected_output_paths),
         "protected_output_path_count": len(protected_output_paths),
         "source_protected_scan_policy": source_protected_scan_policy(),
-        "objective_completion_reconciliation_enabled": (
-            completion_reconciliation_enabled
-        ),
-        "recorded_external_completion_trusted_for_generation": (
-            completion_reconciliation_enabled
-        ),
+        "objective_completion_reconciliation_enabled": (completion_reconciliation_enabled),
+        "recorded_external_completion_trusted_for_generation": (completion_reconciliation_enabled),
         "objective_external_authority_declared_goal_ids": sorted(
             goal.goal_id
-            for goal in parse_goal_heap(
-                objective_path.read_text(encoding="utf-8")
-            )
+            for goal in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
             if goal.requires_external_completion
         )
         if objective_path.exists()
@@ -4580,7 +4377,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "plan_evaluation_count": len(plan_decisions),
         "plan_router_branch_count": max(1, int(getattr(args, "plan_branch_count", 3))),
         "plan_router_enabled": bool(getattr(args, "generate_plan_branches", False)),
-        "plan_router_fallback_count": sum(1 for item in plan_decisions if item.get("used_fallback")),
+        "plan_router_fallback_count": sum(
+            1 for item in plan_decisions if item.get("used_fallback")
+        ),
         "plan_router_error_count": sum(1 for item in plan_decisions if item.get("router_error")),
         "analysis_escalation_enabled": bool(getattr(args, "escalate_low_backlog_analysis", False)),
         "analysis_escalation_path": repo_relative_path(repo_root, analysis_escalation_path),
@@ -4588,32 +4387,22 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "analysis_inconclusive": bool(
             analysis_escalation_payload and analysis_escalation_payload.get("analysis_inconclusive")
         ),
-        "objective_generation_enabled": not bool(
-            getattr(args, "no_generate_bounded_work", False)
-        ),
-        "objective_generation_path": repo_relative_path(
-            repo_root, objective_generation_path
-        ),
+        "objective_generation_enabled": not bool(getattr(args, "no_generate_bounded_work", False)),
+        "objective_generation_path": repo_relative_path(repo_root, objective_generation_path),
         "objective_generation": objective_generation_payload,
         "objective_generation_error": objective_generation_error or None,
         "objective_generated_work_count": int(
             (objective_generation_payload or {}).get("generated_work_count", 0)
         ),
-        "objective_generation_materialized_count": len(
-            objective_generation_materialized_records
-        ),
+        "objective_generation_materialized_count": len(objective_generation_materialized_records),
         "objective_generation_materialized_task_ids": [
             record.task_id for record in objective_generation_materialized_records
         ],
         "objective_generation_cycle_accepted_count": len(
             ((objective_generation_payload or {}).get("last_cycle") or {}).get("accepted", ())
         ),
-        "objective_generation_blocked_review_count": len(
-            blocked_review_family_keys
-        ),
-        "objective_generation_blocked_review_family_keys": list(
-            blocked_review_family_keys
-        ),
+        "objective_generation_blocked_review_count": len(blocked_review_family_keys),
+        "objective_generation_blocked_review_family_keys": list(blocked_review_family_keys),
         "tracking_document_created": tracking_created,
         "ensured_goal_ids": ensured_goal_ids,
         "deduplicated_interoperability_goal_ids": deduplicated_interoperability_goal_ids,
@@ -4659,13 +4448,21 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "refined_goal_ids": refined_goal_ids,
         "objective_goal_count": graph_payload["goal_count"],
         "objective_active_goal_count": graph_payload["active_goal_count"],
-        "objective_completed_goal_count": graph_payload.get("completed_goal_count", objective_completed_goal_count),
+        "objective_completed_goal_count": graph_payload.get(
+            "completed_goal_count", objective_completed_goal_count
+        ),
         "objective_heap_schedule_count": len(graph_payload.get("heap_schedule") or []),
         "generated_count": len(records),
-        "surplus_findings_per_goal": getattr(args, "surplus_findings_per_goal", DEFAULT_SURPLUS_FINDINGS_PER_GOAL),
-        "surplus_min_terms_per_todo": getattr(args, "surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO),
+        "surplus_findings_per_goal": getattr(
+            args, "surplus_findings_per_goal", DEFAULT_SURPLUS_FINDINGS_PER_GOAL
+        ),
+        "surplus_min_terms_per_todo": getattr(
+            args, "surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO
+        ),
         "task_ids": [record.task_id for record in records],
-        "discovery_paths": [repo_relative_path(repo_root, record.discovery_path) for record in records],
+        "discovery_paths": [
+            repo_relative_path(repo_root, record.discovery_path) for record in records
+        ],
         "bundle_keys": sorted({record.finding.bundle_key for record in records}),
         "submitted_bundle_task_ids": submitted_bundle_task_ids,
     }

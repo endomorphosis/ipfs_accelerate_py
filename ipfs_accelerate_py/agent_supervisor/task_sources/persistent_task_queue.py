@@ -164,7 +164,9 @@ class PersistentTaskQueue:
         target.last_selected_at = max(target.last_selected_at, source.last_selected_at)
         target.last_completed_at = max(target.last_completed_at, source.last_completed_at)
         target.consecutive_failures = max(target.consecutive_failures, source.consecutive_failures)
-        target.consecutive_no_change = max(target.consecutive_no_change, source.consecutive_no_change)
+        target.consecutive_no_change = max(
+            target.consecutive_no_change, source.consecutive_no_change
+        )
         target.merge_failure_count = max(target.merge_failure_count, source.merge_failure_count)
         target.cooldown_until = max(target.cooldown_until, source.cooldown_until)
         target.notes = target.notes or source.notes
@@ -248,7 +250,9 @@ class PersistentTaskQueue:
         self._dirty = self._dirty or changed or entry.to_dict() != before_entry
         return entry
 
-    def get_or_create(self, task_id: str, *, priority: str = "P2", track: str = "") -> TaskQueueEntry:
+    def get_or_create(
+        self, task_id: str, *, priority: str = "P2", track: str = ""
+    ) -> TaskQueueEntry:
         key = self.resolve_key(task_id)
         if key not in self.entries:
             self.entries[key] = TaskQueueEntry(task_id=task_id, priority=priority, track=track)
@@ -331,9 +335,7 @@ class PersistentTaskQueue:
         if stale_ids:
             stale_set = set(stale_ids)
             self.aliases = {
-                alias: target
-                for alias, target in self.aliases.items()
-                if target not in stale_set
+                alias: target for alias, target in self.aliases.items() if target not in stale_set
             }
         if stale_ids:
             self._dirty = True

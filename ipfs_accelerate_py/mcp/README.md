@@ -60,17 +60,12 @@ base_url = "http://localhost:8000"
 mcp_path = "/mcp"
 
 # Using a tool
-response = requests.post(
-    f"{base_url}{mcp_path}/tool/get_hardware_info",
-    json={}
-)
+response = requests.post(f"{base_url}{mcp_path}/tool/get_hardware_info", json={})
 hardware_info = response.json()
 print(f"CPU: {hardware_info.get('cpu', {}).get('model', 'Unknown')}")
 
 # Accessing a resource
-response = requests.get(
-    f"{base_url}{mcp_path}/resource/ipfs_accelerate/supported_models"
-)
+response = requests.get(f"{base_url}{mcp_path}/resource/ipfs_accelerate/supported_models")
 model_info = response.json()
 print(f"Total models: {model_info.get('count', 0)}")
 ```

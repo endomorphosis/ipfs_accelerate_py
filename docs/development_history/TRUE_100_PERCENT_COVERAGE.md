@@ -126,12 +126,12 @@ if HAVE_STORAGE_WRAPPER:
 # Use with complete safety
 if storage and storage.is_distributed:
     try:
-        storage.write_file(data, cache_key, pin=True/False)
+        storage.write_file(data, cache_key, pin=True / False)
     except Exception:
         pass  # Graceful fallback
 
 # Always works locally
-with open(filepath, 'w') as f:
+with open(filepath, "w") as f:
     f.write(data)
 ```
 

@@ -133,9 +133,7 @@ def test_sarif_structure_and_artifact_references() -> None:
     assert result["ruleId"].startswith("sec/")
     assert result["level"] in {"note", "warning", "error"}
     assert result["kind"] == "fail"
-    assert "password" not in json.dumps(result).lower() or "[REDACTED]" in json.dumps(
-        result
-    )
+    assert "password" not in json.dumps(result).lower() or "[REDACTED]" in json.dumps(result)
     props = result["properties"]
     assert props["is_vulnerability"] is True
     assert props["finding_id"] == finding.finding_id
@@ -187,17 +185,7 @@ def test_assert_leakage_detects_private_key() -> None:
     pem = f"{dash}BEGIN PRIVATE KEY{dash}\nABC\n{dash}END PRIVATE KEY{dash}"
     log = {
         "version": "2.1.0",
-        "runs": [
-            {
-                "results": [
-                    {
-                        "message": {
-                            "text": pem
-                        }
-                    }
-                ]
-            }
-        ],
+        "runs": [{"results": [{"message": {"text": pem}}]}],
     }
     with pytest.raises(SecretLeakageError):
         assert_no_secret_or_body_leakage(log)
@@ -206,17 +194,20 @@ def test_assert_leakage_detects_private_key() -> None:
 def test_assert_leakage_detects_snippet_key() -> None:
     log = {
         "version": "2.1.0",
-        "runs": [{"results": [{"locations": [{"physicalLocation": {"region": {"snippet": {"text": "code"}}}}]}]}],
+        "runs": [
+            {
+                "results": [
+                    {"locations": [{"physicalLocation": {"region": {"snippet": {"text": "code"}}}}]}
+                ]
+            }
+        ],
     }
     with pytest.raises(SecretLeakageError):
         assert_no_secret_or_body_leakage(log)
 
 
 def test_max_results_truncation() -> None:
-    findings = [
-        _true_positive_finding(family)
-        for family in list(SecurityRuleFamily)[:4]
-    ]
+    findings = [_true_positive_finding(family) for family in list(SecurityRuleFamily)[:4]]
     log = findings_to_sarif(
         findings,
         config=SarifExportConfig(max_results=2),
@@ -297,10 +288,7 @@ def test_analysis_report_projects_to_sarif() -> None:
     assert log["runs"][0]["results"]
     assert log["runs"][0]["properties"]["report_id"] == report.report_id
     # Vulnerability present.
-    assert any(
-        r["properties"]["is_vulnerability"]
-        for r in log["runs"][0]["results"]
-    )
+    assert any(r["properties"]["is_vulnerability"] for r in log["runs"][0]["results"])
 
 
 def test_contract_finding_projection_is_not_vulnerability() -> None:
@@ -358,9 +346,7 @@ def test_related_locations_are_node_references_not_bodies() -> None:
     for rel in result["relatedLocations"]:
         uri = rel["physicalLocation"]["artifactLocation"]["uri"]
         assert uri.startswith("node:")
-        assert "snippet" not in rel.get("physicalLocation", {}).get(
-            "region", {}
-        )
+        assert "snippet" not in rel.get("physicalLocation", {}).get("region", {})
 
 
 def test_empty_findings_export() -> None:

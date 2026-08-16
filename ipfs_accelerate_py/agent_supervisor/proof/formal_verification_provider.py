@@ -45,12 +45,8 @@ from .formal_verification_contracts import (
 
 PROOF_PROVIDER_PROTOCOL_VERSION = 1
 PROOF_PROVIDER_SUPPORTED_PROTOCOL_VERSIONS = (PROOF_PROVIDER_PROTOCOL_VERSION,)
-PROOF_PROVIDER_REQUEST_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proof-provider-request@1"
-)
-PROOF_PROVIDER_RESPONSE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proof-provider-response@1"
-)
+PROOF_PROVIDER_REQUEST_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-provider-request@1"
+PROOF_PROVIDER_RESPONSE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-provider-response@1"
 PROOF_PROVIDER_ENTRY_POINT_GROUP = "ipfs_accelerate_py.proof_providers"
 PROOF_PROVIDER_ENVIRONMENT = "IPFS_ACCELERATE_PROOF_PROVIDER"
 
@@ -194,9 +190,7 @@ def _json_value(value: Any, *, field_name: str) -> Any:
         if item is None or isinstance(item, (str, bool, int)):
             return
         if isinstance(item, float):
-            raise ValueError(
-                f"{field_name} cannot contain floating-point values"
-            )
+            raise ValueError(f"{field_name} cannot contain floating-point values")
         if isinstance(item, Mapping):
             if not all(isinstance(key, str) for key in item):
                 raise ValueError(f"{field_name} object keys must be strings")
@@ -207,9 +201,7 @@ def _json_value(value: Any, *, field_name: str) -> Any:
             for nested in item:
                 validate(nested)
             return
-        raise ValueError(
-            f"{field_name} contains unsupported value {type(item).__name__}"
-        )
+        raise ValueError(f"{field_name} contains unsupported value {type(item).__name__}")
 
     try:
         validate(value)
@@ -316,8 +308,7 @@ class ProviderRequest:
     @property
     def expired(self) -> bool:
         return (
-            self.deadline_unix_ms is not None
-            and int(time.time() * 1000) >= self.deadline_unix_ms
+            self.deadline_unix_ms is not None and int(time.time() * 1000) >= self.deadline_unix_ms
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -389,17 +380,13 @@ class ProviderResponse:
             raise ValueError("proof-provider duration_ms must be an integer")
         if self.duration_ms < 0:
             raise ValueError("proof-provider duration_ms must be non-negative")
-        if not isinstance(self.provider_id, str) or not isinstance(
-            self.provider_version, str
-        ):
+        if not isinstance(self.provider_id, str) or not isinstance(self.provider_version, str):
             raise ValueError("proof-provider identity fields must be strings")
         provider_id = self.provider_id.strip()
         provider_version = self.provider_version.strip()
 
         result = (
-            None
-            if self.result is None
-            else _json_object(self.result, field_name="response result")
+            None if self.result is None else _json_object(self.result, field_name="response result")
         )
         if self.error is None:
             error = None
@@ -521,23 +508,17 @@ class ProofProvider(Protocol):
     provider_version: str
     protocol_version: int
 
-    def capability(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse:
-        ...
+    def capability(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse: ...
 
-    def translate(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse:
-        ...
+    def translate(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse: ...
 
-    def prove(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse:
-        ...
+    def prove(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse: ...
 
-    def reconstruct(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse:
-        ...
+    def reconstruct(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse: ...
 
-    def verify(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse:
-        ...
+    def verify(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse: ...
 
-    def attest(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse:
-        ...
+    def attest(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse: ...
 
 
 @dataclass(frozen=True)
@@ -588,11 +569,7 @@ class ProviderInvocationConfig:
             raise ValueError("inherit_environment names must not be empty")
         if not isinstance(self.environment, Mapping):
             raise ValueError("provider environment must be a mapping")
-        environment = {
-            str(key): str(value)
-            for key, value in self.environment.items()
-            if str(key)
-        }
+        environment = {str(key): str(value) for key, value in self.environment.items() if str(key)}
         object.__setattr__(self, "timeout_seconds", float(self.timeout_seconds))
         object.__setattr__(self, "inherit_environment", inherited)
         object.__setattr__(self, "environment", environment)
@@ -692,9 +669,7 @@ def dispatch_provider_request(
     started = time.monotonic()
     provider_id = str(getattr(provider, "provider_id", "")).strip()
     provider_version = str(getattr(provider, "provider_version", "")).strip()
-    protocol_version = getattr(
-        provider, "protocol_version", PROOF_PROVIDER_PROTOCOL_VERSION
-    )
+    protocol_version = getattr(provider, "protocol_version", PROOF_PROVIDER_PROTOCOL_VERSION)
     if protocol_version != request.protocol_version:
         return ProviderResponse.failure(
             request,
@@ -826,9 +801,7 @@ class InProcessProofProvider(ProviderClient):
         expected_capability: ProofProviderCapability | None = None,
     ) -> None:
         self._provider_or_loader = provider
-        self._provider: Any | None = (
-            None if lazy else _materialize_provider(provider)
-        )
+        self._provider: Any | None = None if lazy else _materialize_provider(provider)
         self._config = config or ProviderInvocationConfig()
         self._expected_capability = expected_capability
         self._lock = threading.Lock()
@@ -959,9 +932,7 @@ def _resource_preexec(
     cpu_ms = request.resource_budget.cpu_time_ms
     requested_cpu_seconds = max(1, math.ceil(cpu_ms / 1000.0)) if cpu_ms else 0
     cpu_seconds = _minimum_positive(config.cpu_time_seconds, requested_cpu_seconds)
-    processes = _minimum_positive(
-        config.max_processes, request.resource_budget.max_processes
-    )
+    processes = _minimum_positive(config.max_processes, request.resource_budget.max_processes)
     file_bytes = _minimum_positive(
         config.max_response_bytes,
         request.resource_budget.disk_bytes or request.resource_budget.max_output_bytes,
@@ -996,9 +967,7 @@ def _subprocess_environment(
     config: ProviderInvocationConfig,
 ) -> dict[str, str]:
     environment = {
-        name: os.environ[name]
-        for name in config.inherit_environment
-        if name in os.environ
+        name: os.environ[name] for name in config.inherit_environment if name in os.environ
     }
     environment.update(config.environment)
     environment.update(
@@ -1133,9 +1102,10 @@ class SubprocessProofProvider(ProviderClient):
         )
         process: subprocess.Popen[Any] | None = None
         try:
-            with tempfile.TemporaryFile(mode="w+b") as stdout_file, tempfile.TemporaryFile(
-                mode="w+b"
-            ) as stderr_file:
+            with (
+                tempfile.TemporaryFile(mode="w+b") as stdout_file,
+                tempfile.TemporaryFile(mode="w+b") as stderr_file,
+            ):
                 process = subprocess.Popen(
                     self.command,
                     stdin=subprocess.PIPE,
@@ -1282,8 +1252,7 @@ def _materialize_provider(value: Any) -> Any:
     if isinstance(value, type):
         value = value()
     elif callable(value) and not any(
-        callable(getattr(value, operation.value, None))
-        for operation in ProofProviderOperation
+        callable(getattr(value, operation.value, None)) for operation in ProofProviderOperation
     ):
         value = value()
     if value is None:
@@ -1324,9 +1293,7 @@ class ProviderRegistration:
         object.__setattr__(self, "provider_id", provider_id)
         object.__setattr__(self, "source", source)
 
-    def client(
-        self, *, config: ProviderInvocationConfig | None = None
-    ) -> InProcessProofProvider:
+    def client(self, *, config: ProviderInvocationConfig | None = None) -> InProcessProofProvider:
         return InProcessProofProvider(self.loader, config=config, lazy=True)
 
 
@@ -1356,6 +1323,7 @@ class ProofProviderRegistry:
         replace: bool = False,
     ) -> ProviderRegistration:
         if isinstance(provider, str):
+
             def loader(reference: str = provider) -> Any:
                 return load_provider_reference(reference)
 
@@ -1367,6 +1335,7 @@ class ProofProviderRegistry:
             loader = provider
             registration_source = source
         else:
+
             def loader(value: Any = provider) -> Any:
                 return value
 
@@ -1391,9 +1360,7 @@ class ProofProviderRegistry:
         if isinstance(discovered, Mapping):
             return tuple(discovered.get(self.entry_point_group, ()))
         return tuple(
-            item
-            for item in discovered
-            if getattr(item, "group", None) == self.entry_point_group
+            item for item in discovered if getattr(item, "group", None) == self.entry_point_group
         )
 
     def discover(self, *, force_refresh: bool = False) -> tuple[ProviderRegistration, ...]:
@@ -1401,12 +1368,8 @@ class ProofProviderRegistry:
 
         with self._lock:
             if self._discovered and not force_refresh:
-                return tuple(
-                    self._registrations[key] for key in sorted(self._registrations)
-                )
-            environment_reference = str(
-                self._environ.get(PROOF_PROVIDER_ENVIRONMENT, "")
-            ).strip()
+                return tuple(self._registrations[key] for key in sorted(self._registrations))
+            environment_reference = str(self._environ.get(PROOF_PROVIDER_ENVIRONMENT, "")).strip()
             if environment_reference:
                 provider_id, separator, reference = environment_reference.partition("=")
                 if not separator:
@@ -1434,9 +1397,7 @@ class ProofProviderRegistry:
                     replace=True,
                 )
             self._discovered = True
-            return tuple(
-                self._registrations[key] for key in sorted(self._registrations)
-            )
+            return tuple(self._registrations[key] for key in sorted(self._registrations))
 
     def get(self, provider_id: str) -> ProviderRegistration | None:
         self.discover()
@@ -1473,9 +1434,7 @@ def register_proof_provider(
     )
 
 
-def discover_proof_providers(
-    *, force_refresh: bool = False
-) -> tuple[ProviderRegistration, ...]:
+def discover_proof_providers(*, force_refresh: bool = False) -> tuple[ProviderRegistration, ...]:
     """Discover optional providers without importing their implementation."""
 
     return _DEFAULT_PROVIDER_REGISTRY.discover(force_refresh=force_refresh)

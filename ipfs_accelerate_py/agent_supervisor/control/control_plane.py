@@ -108,9 +108,7 @@ from .control_contracts import (
 
 
 CONTROL_SERVICE_VERSION: Final[str] = "1.0.0"
-CONTROL_CONFORMANCE_V2_REQUIREMENT_ID: Final[str] = (
-    "107787885166558411314422313513714746721"
-)
+CONTROL_CONFORMANCE_V2_REQUIREMENT_ID: Final[str] = "107787885166558411314422313513714746721"
 CONTROL_OPERATION_CONFORMANCE_CASE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/control-operation-conformance-case@2"
 )
@@ -126,24 +124,17 @@ CONTROL_MUTATION_TRANSACTION_SCHEMA: Final[str] = (
 CONTROL_BACKEND_RESPONSE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/control-backend-response@1"
 )
-LIFECYCLE_STATUS_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/lifecycle-status@1"
-)
-LIFECYCLE_EVENT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/lifecycle-event@1"
-)
+LIFECYCLE_STATUS_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/lifecycle-status@1"
+LIFECYCLE_EVENT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/lifecycle-event@1"
 CONTROL_MUTATION_EVENT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/control-mutation-event@1"
 )
 CONTROL_SURFACE_PUBLICATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/control-surface-publication@1"
 )
-CONTROL_BEHAVIOR_NORMALIZATION_VERSION: Final[str] = (
-    "agent-supervisor-control-normalization@1"
-)
+CONTROL_BEHAVIOR_NORMALIZATION_VERSION: Final[str] = "agent-supervisor-control-normalization@1"
 DIRECT_CONTROL_SERVICE_DISPATCHER_ID: Final[str] = (
-    "ipfs_accelerate_py.agent_supervisor.control.control_plane:"
-    "SupervisorControlService.execute"
+    "ipfs_accelerate_py.agent_supervisor.control.control_plane:SupervisorControlService.execute"
 )
 DEFAULT_QUERY_LIMIT: Final[int] = 50
 DEFAULT_MAX_QUERY_ITEMS: Final[int] = 256
@@ -257,14 +248,10 @@ class PartialMutationError(SupervisorControlError):
         recovery: Union["MutationRecoveryAction", str] = "repair",
     ) -> None:
         super().__init__(message)
-        self.applied_effect_ids = tuple(
-            sorted({str(item).strip() for item in applied_effect_ids})
-        )
+        self.applied_effect_ids = tuple(sorted({str(item).strip() for item in applied_effect_ids}))
         if any(not item for item in self.applied_effect_ids):
             raise ValueError("applied_effect_ids must not contain empty values")
-        self.recovery = MutationRecoveryAction(
-            str(getattr(recovery, "value", recovery))
-        )
+        self.recovery = MutationRecoveryAction(str(getattr(recovery, "value", recovery)))
 
 
 class BackendNotFoundError(SupervisorControlError):
@@ -319,9 +306,7 @@ LEGAL_LIFECYCLE_TRANSITIONS: Final[
     Mapping[SupervisorLifecycleState, frozenset[SupervisorLifecycleState]]
 ] = MappingProxyType(
     {
-        SupervisorLifecycleState.STOPPED: frozenset(
-            {SupervisorLifecycleState.STARTING}
-        ),
+        SupervisorLifecycleState.STOPPED: frozenset({SupervisorLifecycleState.STARTING}),
         SupervisorLifecycleState.STARTING: frozenset(
             {
                 SupervisorLifecycleState.HEALTHY,
@@ -414,9 +399,7 @@ def lifecycle_transition_is_legal(
 def _lifecycle_text_tuple(value: Iterable[Any]) -> tuple[str, ...]:
     if isinstance(value, (str, bytes, bytearray, Mapping)):
         raise ValueError("lifecycle collection must be an array")
-    result = tuple(
-        sorted({str(item).strip() for item in value if str(item).strip()})
-    )
+    result = tuple(sorted({str(item).strip() for item in value if str(item).strip()}))
     if len(result) > DEFAULT_MAX_CONTROL_EVENTS:
         raise ControlBoundsError("lifecycle collection exceeds 256 items")
     if any(len(item.encode("utf-8")) > 2048 for item in result):
@@ -485,9 +468,7 @@ class LifecycleStatus:
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(f"{name} must be a non-negative integer")
         if self.pid is not None and (
-            isinstance(self.pid, bool)
-            or not isinstance(self.pid, int)
-            or self.pid <= 0
+            isinstance(self.pid, bool) or not isinstance(self.pid, int) or self.pid <= 0
         ):
             raise ValueError("pid must be a positive integer or null")
         if self.fencing_epoch is not None and (
@@ -498,9 +479,7 @@ class LifecycleStatus:
             raise ValueError("fencing_epoch must be a non-negative integer or null")
         if not isinstance(self.backpressure, bool):
             raise ValueError("backpressure must be boolean")
-        object.__setattr__(
-            self, "active_leases", _lifecycle_text_tuple(self.active_leases)
-        )
+        object.__setattr__(self, "active_leases", _lifecycle_text_tuple(self.active_leases))
         object.__setattr__(
             self,
             "backpressure_reasons",
@@ -573,10 +552,7 @@ class LifecycleStatus:
             target_id=str(payload.get("target_id") or ""),
             state=SupervisorLifecycleState(str(payload.get("state") or "")),
             phase=str(payload.get("phase") or ""),
-            heartbeat_at_ms=_lifecycle_record_int(
-                payload, "heartbeat_at_ms"
-            )
-            or 0,
+            heartbeat_at_ms=_lifecycle_record_int(payload, "heartbeat_at_ms") or 0,
             pid=_lifecycle_record_int(payload, "pid", nullable=True),
             active_leases=tuple(active_leases),
             refill_state=str(payload.get("refill_state") or "idle"),
@@ -585,11 +561,8 @@ class LifecycleStatus:
             terminal_reason=str(payload.get("terminal_reason") or ""),
             transition_id=str(payload.get("transition_id") or ""),
             generation=_lifecycle_record_int(payload, "generation") or 0,
-            fencing_epoch=_lifecycle_record_int(
-                payload, "fencing_epoch", nullable=True
-            ),
-            updated_at_ms=_lifecycle_record_int(payload, "updated_at_ms")
-            or 0,
+            fencing_epoch=_lifecycle_record_int(payload, "fencing_epoch", nullable=True),
+            updated_at_ms=_lifecycle_record_int(payload, "updated_at_ms") or 0,
         )
 
 
@@ -702,19 +675,12 @@ class LifecycleEvent:
             changed=payload.get("changed", False),
             replayed=payload.get("replayed", False),
             recovered=payload.get("recovered", False),
-            previous_state=SupervisorLifecycleState(
-                str(payload.get("previous_state") or "")
-            ),
+            previous_state=SupervisorLifecycleState(str(payload.get("previous_state") or "")),
             state=SupervisorLifecycleState(str(payload.get("state") or "")),
             reason=str(payload.get("reason") or ""),
             request_id=str(payload.get("request_id") or ""),
-            fencing_epoch=_lifecycle_record_int(
-                payload, "fencing_epoch", nullable=True
-            ),
-            occurred_at_ms=_lifecycle_record_int(
-                payload, "occurred_at_ms"
-            )
-            or 0,
+            fencing_epoch=_lifecycle_record_int(payload, "fencing_epoch", nullable=True),
+            occurred_at_ms=_lifecycle_record_int(payload, "occurred_at_ms") or 0,
             event_id=str(payload.get("event_id") or ""),
         )
 
@@ -724,20 +690,14 @@ def _now_ms() -> int:
 
 
 def _utc_timestamp(now_ms: int) -> str:
-    return (
-        datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _current_child_process_ids() -> tuple[int, ...]:
     """Read the current OS child inventory without importing a process API."""
 
     process_id = os.getpid()
-    children_path = Path(
-        f"/proc/{process_id}/task/{process_id}/children"
-    )
+    children_path = Path(f"/proc/{process_id}/task/{process_id}/children")
     try:
         raw = children_path.read_text(encoding="ascii").strip()
     except (OSError, UnicodeError):
@@ -758,9 +718,7 @@ def capture_control_discovery_runtime_state(
     service_resolution_count: int = 0,
     optional_provider_load_count: int = 0,
     process_start_count: int = 0,
-    optional_provider_prefixes: Sequence[
-        str
-    ] = CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES,
+    optional_provider_prefixes: Sequence[str] = CONTROL_OPTIONAL_PROVIDER_MODULE_PREFIXES,
 ) -> ControlDiscoveryRuntimeState:
     """Capture a read-only discovery state for an independently instrumented run.
 
@@ -771,22 +729,13 @@ def capture_control_discovery_runtime_state(
     """
 
     prefixes = tuple(
-        sorted(
-            {
-                str(item).strip()
-                for item in optional_provider_prefixes
-                if str(item).strip()
-            }
-        )
+        sorted({str(item).strip() for item in optional_provider_prefixes if str(item).strip()})
     )
     loaded = tuple(
         sorted(
             name
             for name in sys.modules
-            if any(
-                name == prefix or name.startswith(prefix)
-                for prefix in prefixes
-            )
+            if any(name == prefix or name.startswith(prefix) for prefix in prefixes)
         )
     )
     return ControlDiscoveryRuntimeState(
@@ -818,9 +767,7 @@ def _canonical_json_value(value: Any) -> Any:
             str(key): _canonical_json_value(item)
             for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
         }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [_canonical_json_value(item) for item in value]
     if is_dataclass(value):
         return _canonical_json_value(asdict(value))
@@ -828,9 +775,7 @@ def _canonical_json_value(value: Any) -> Any:
         method = getattr(value, method_name, None)
         if callable(method):
             return _canonical_json_value(method())
-    raise ValueError(
-        f"backend data contains unsupported value type {type(value).__name__}"
-    )
+    raise ValueError(f"backend data contains unsupported value type {type(value).__name__}")
 
 
 def _normalized_control_field_name(value: Any) -> str:
@@ -918,9 +863,7 @@ def _publication_string_map(
             ) from exc
         text = str(raw_value).strip()
         if not text:
-            raise ControlCatalogConformanceError(
-                f"{name}[{operation.value!r}] must not be empty"
-            )
+            raise ControlCatalogConformanceError(f"{name}[{operation.value!r}] must not be empty")
         if operation.value in normalized:
             raise ControlCatalogConformanceError(
                 f"{name} contains duplicate operation {operation.value!r}"
@@ -962,9 +905,7 @@ class ControlSurfacePublication:
             or not isinstance(self.catalog_version, int)
             or self.catalog_version < 1
         ):
-            raise ControlCatalogConformanceError(
-                "catalog_version must be a positive integer"
-            )
+            raise ControlCatalogConformanceError("catalog_version must be a positive integer")
         catalog_id = str(self.catalog_id).strip()
         if not catalog_id:
             raise ControlCatalogConformanceError("catalog_id must not be empty")
@@ -973,9 +914,7 @@ class ControlSurfacePublication:
             operations = tuple(
                 sorted(
                     (
-                        item
-                        if isinstance(item, Operation)
-                        else Operation(str(item))
+                        item if isinstance(item, Operation) else Operation(str(item))
                         for item in self.operations
                     ),
                     key=lambda item: item.value,
@@ -986,9 +925,7 @@ class ControlSurfacePublication:
                 "operations contains an unknown operation"
             ) from exc
         if len(operations) != len(set(operations)):
-            raise ControlCatalogConformanceError(
-                "operations contains duplicate operations"
-            )
+            raise ControlCatalogConformanceError("operations contains duplicate operations")
         object.__setattr__(self, "operations", operations)
         for name in (
             "request_schema_ids",
@@ -1003,15 +940,11 @@ class ControlSurfacePublication:
             )
         mode = str(self.dispatch_mode).strip()
         if not mode:
-            raise ControlCatalogConformanceError(
-                "dispatch_mode must not be empty"
-            )
+            raise ControlCatalogConformanceError("dispatch_mode must not be empty")
         object.__setattr__(self, "dispatch_mode", mode)
         for name in ("provider_free", "process_free"):
             if not isinstance(getattr(self, name), bool):
-                raise ControlCatalogConformanceError(
-                    f"{name} must be a boolean"
-                )
+                raise ControlCatalogConformanceError(f"{name} must be a boolean")
 
     @property
     def operation_names(self) -> tuple[str, ...]:
@@ -1046,9 +979,7 @@ class ControlSurfacePublication:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ControlSurfacePublication":
         if not isinstance(payload, Mapping):
-            raise ControlCatalogConformanceError(
-                "control surface publication must be an object"
-            )
+            raise ControlCatalogConformanceError("control surface publication must be an object")
         allowed = {
             "schema",
             "schema_version",
@@ -1069,15 +1000,13 @@ class ControlSurfacePublication:
         extra = set(payload).difference(allowed)
         if extra:
             raise ControlCatalogConformanceError(
-                "control surface publication contains unknown fields: "
-                + ", ".join(sorted(extra))
+                "control surface publication contains unknown fields: " + ", ".join(sorted(extra))
             )
         required = allowed.difference({"content_id"})
         missing = required.difference(payload)
         if missing:
             raise ControlCatalogConformanceError(
-                "control surface publication is missing fields: "
-                + ", ".join(sorted(missing))
+                "control surface publication is missing fields: " + ", ".join(sorted(missing))
             )
         if payload["schema"] != CONTROL_SURFACE_PUBLICATION_SCHEMA:
             raise ControlCatalogConformanceError(
@@ -1140,21 +1069,15 @@ def control_operation_behavior_id(
 
 def _validate_canonical_catalog(catalog: OperationCatalog) -> OperationCatalog:
     if not isinstance(catalog, OperationCatalog):
-        raise ControlCatalogConformanceError(
-            "catalog must be an OperationCatalog"
-        )
+        raise ControlCatalogConformanceError("catalog must be an OperationCatalog")
     canonical = DEFAULT_CONTROL_CATALOG
     if catalog.catalog_version != CONTROL_CATALOG_VERSION:
         raise ControlCatalogConformanceError(
             "catalog version differs from the canonical service version"
         )
     if catalog.operation_names != canonical.operation_names:
-        missing = sorted(
-            set(canonical.operation_names).difference(catalog.operation_names)
-        )
-        extra = sorted(
-            set(catalog.operation_names).difference(canonical.operation_names)
-        )
+        missing = sorted(set(canonical.operation_names).difference(catalog.operation_names))
+        extra = sorted(set(catalog.operation_names).difference(canonical.operation_names))
         raise ControlCatalogConformanceError(
             "catalog operation population differs from the canonical "
             f"population; missing={missing}, extra={extra}"
@@ -1171,13 +1094,9 @@ def _validate_canonical_catalog(catalog: OperationCatalog) -> OperationCatalog:
                 f"result schema drift for operation {operation.value}"
             )
         if actual.content_id != expected.content_id:
-            raise ControlCatalogConformanceError(
-                f"behavior drift for operation {operation.value}"
-            )
+            raise ControlCatalogConformanceError(f"behavior drift for operation {operation.value}")
     if catalog.content_id != canonical.content_id:
-        raise ControlCatalogConformanceError(
-            "catalog identity differs from the canonical catalog"
-        )
+        raise ControlCatalogConformanceError("catalog identity differs from the canonical catalog")
     return catalog
 
 
@@ -1197,32 +1116,21 @@ def validate_control_surface_publication(
             "publication catalog_version does not match the catalog"
         )
     if publication.catalog_id != canonical_catalog.content_id:
-        raise ControlCatalogConformanceError(
-            "publication catalog_id does not match the catalog"
-        )
+        raise ControlCatalogConformanceError("publication catalog_id does not match the catalog")
     if publication.operations != expected_operations:
         missing = sorted(expected_names.difference(publication.operation_names))
-        extra = sorted(
-            set(publication.operation_names).difference(expected_names)
-        )
+        extra = sorted(set(publication.operation_names).difference(expected_names))
         raise ControlCatalogConformanceError(
-            "publication operation population is not closed; "
-            f"missing={missing}, extra={extra}"
+            f"publication operation population is not closed; missing={missing}, extra={extra}"
         )
     populations = {
         "request_schema_ids": (
             publication.request_schema_ids,
-            {
-                item.operation.value: item.request_schema_id
-                for item in canonical_catalog
-            },
+            {item.operation.value: item.request_schema_id for item in canonical_catalog},
         ),
         "result_schema_ids": (
             publication.result_schema_ids,
-            {
-                item.operation.value: item.result_schema_id
-                for item in canonical_catalog
-            },
+            {item.operation.value: item.result_schema_id for item in canonical_catalog},
         ),
         "behavior_ids": (
             publication.behavior_ids,
@@ -1240,34 +1148,24 @@ def validate_control_surface_publication(
                 f"{name} population differs; missing={missing}, extra={extra}"
             )
         drifted = sorted(
-            operation
-            for operation, identity in expected.items()
-            if actual[operation] != identity
+            operation for operation, identity in expected.items() if actual[operation] != identity
         )
         if drifted:
-            raise ControlCatalogConformanceError(
-                f"{name} drift for operations {drifted}"
-            )
+            raise ControlCatalogConformanceError(f"{name} drift for operations {drifted}")
     if set(publication.dispatcher_ids) != expected_names:
         missing = sorted(expected_names.difference(publication.dispatcher_ids))
-        extra = sorted(
-            set(publication.dispatcher_ids).difference(expected_names)
-        )
+        extra = sorted(set(publication.dispatcher_ids).difference(expected_names))
         raise ControlCatalogConformanceError(
-            "dispatcher population differs; "
-            f"missing={missing}, extra={extra}"
+            f"dispatcher population differs; missing={missing}, extra={extra}"
         )
     if publication.dispatch_mode != "direct_service":
-        raise ControlCatalogConformanceError(
-            "control adapters must use direct_service dispatch"
-        )
+        raise ControlCatalogConformanceError("control adapters must use direct_service dispatch")
     if any(
         dispatcher != DIRECT_CONTROL_SERVICE_DISPATCHER_ID
         for dispatcher in publication.dispatcher_ids.values()
     ):
         raise ControlCatalogConformanceError(
-            "every operation must dispatch directly to "
-            "SupervisorControlService.execute"
+            "every operation must dispatch directly to SupervisorControlService.execute"
         )
     if not publication.provider_free or not publication.process_free:
         raise ControlCatalogConformanceError(
@@ -1286,9 +1184,7 @@ def _normalized_absolute(value: Union[str, Path], *, label: str) -> Path:
     return path.resolve(strict=False)
 
 
-def _normalize_allowlist(
-    values: Iterable[Union[str, Path]], *, label: str
-) -> tuple[Path, ...]:
+def _normalize_allowlist(values: Iterable[Union[str, Path]], *, label: str) -> tuple[Path, ...]:
     paths = {_normalized_absolute(item, label=label) for item in values}
     if not paths:
         raise ValueError(f"{label} must not be empty")
@@ -1323,23 +1219,13 @@ def _relative_parameter(
 
 
 def _bounded_window(request: OperationRequest) -> tuple[int, int]:
-    raw_limit = request.parameters.get(
-        "limit", min(DEFAULT_QUERY_LIMIT, request.bounds.max_items)
-    )
+    raw_limit = request.parameters.get("limit", min(DEFAULT_QUERY_LIMIT, request.bounds.max_items))
     raw_offset = request.parameters.get("offset", 0)
-    if (
-        isinstance(raw_limit, bool)
-        or not isinstance(raw_limit, int)
-        or raw_limit < 1
-    ):
+    if isinstance(raw_limit, bool) or not isinstance(raw_limit, int) or raw_limit < 1:
         raise ControlBoundsError("limit must be a positive integer")
     if raw_limit > request.bounds.max_items:
         raise ControlBoundsError("limit exceeds the request item bound")
-    if (
-        isinstance(raw_offset, bool)
-        or not isinstance(raw_offset, int)
-        or raw_offset < 0
-    ):
+    if isinstance(raw_offset, bool) or not isinstance(raw_offset, int) or raw_offset < 0:
         raise ControlBoundsError("offset must be a non-negative integer")
     if raw_offset > DEFAULT_MAX_OFFSET:
         raise ControlBoundsError("offset exceeds the absolute query bound")
@@ -1376,9 +1262,7 @@ def normalize_control_result(
 
 def _selector_text(value: Any, selector: str) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise ControlContractError(
-            f"target selector {selector} must be a non-empty string"
-        )
+        raise ControlContractError(f"target selector {selector} must be a non-empty string")
     return value.strip()
 
 
@@ -1403,9 +1287,7 @@ def normalize_control_target(
     if declared_target and not isinstance(declared_target, Mapping):
         raise ControlContractError("target must be an object")
     declared_target = dict(declared_target)
-    required = frozenset(
-        descriptor.target_descriptor.required_selectors
-    )
+    required = frozenset(descriptor.target_descriptor.required_selectors)
     extra = set(declared_target).difference(required)
     if extra:
         raise ControlContractError(
@@ -1422,14 +1304,10 @@ def normalize_control_target(
         "bundle_id": parameters.get("bundle_id") or target_id,
         "lane_id": parameters.get("lane_id") or target_id,
         "stream_id": (
-            parameters.get("stream_id")
-            or target_id
-            or f"{request.repository_id}:events"
+            parameters.get("stream_id") or target_id or f"{request.repository_id}:events"
         ),
         "receipt_id": parameters.get("receipt_id") or target_id,
-        "cache_namespace": (
-            parameters.get("cache_namespace") or target_id or "default"
-        ),
+        "cache_namespace": (parameters.get("cache_namespace") or target_id or "default"),
         "artifact_id": parameters.get("artifact_id") or target_id,
         "validation_id": parameters.get("validation_id") or target_id,
         "preview_ref": parameters.get("preview_ref") or target_id,
@@ -1442,9 +1320,7 @@ def normalize_control_target(
         nested = declared_target.get(selector)
         if top_level not in (None, "") and nested not in (None, ""):
             if top_level != nested:
-                raise ControlContractError(
-                    f"target selector {selector} is inconsistent"
-                )
+                raise ControlContractError(f"target selector {selector} is inconsistent")
         declared = top_level if top_level not in (None, "") else nested
         authoritative = defaults.get(selector)
         if selector in {
@@ -1453,14 +1329,10 @@ def normalize_control_target(
             "objective_id",
         }:
             if declared not in (None, "") and declared != authoritative:
-                raise ControlContractError(
-                    f"target selector {selector} does not match the request"
-                )
+                raise ControlContractError(f"target selector {selector} does not match the request")
             selected = authoritative
         else:
-            selected = (
-                declared if declared not in (None, "") else authoritative
-            )
+            selected = declared if declared not in (None, "") else authoritative
         canonical[selector] = _selector_text(selected, selector)
     return MappingProxyType(canonical)
 
@@ -1491,15 +1363,9 @@ def normalize_control_pagination(
         raise ControlBoundsError("offset is outside the canonical query bound")
     if descriptor.pagination.kind is PaginationKind.NONE:
         if raw_offset:
-            raise ControlBoundsError(
-                "non-paginated operations cannot specify an offset"
-            )
-        return MappingProxyType(
-            {"kind": PaginationKind.NONE.value, "limit": 1, "offset": 0}
-        )
-    raw_cursor = request.parameters.get(
-        "event_cursor", request.parameters.get("cursor", "")
-    )
+            raise ControlBoundsError("non-paginated operations cannot specify an offset")
+        return MappingProxyType({"kind": PaginationKind.NONE.value, "limit": 1, "offset": 0})
+    raw_cursor = request.parameters.get("event_cursor", request.parameters.get("cursor", ""))
     if descriptor.pagination.kind is PaginationKind.EVENT_CURSOR:
         selected_target = target or normalize_control_target(request, descriptor)
         stream_id = selected_target["stream_id"]
@@ -1564,14 +1430,8 @@ def validate_control_surface_manifest(
         raise ControlCatalogConformanceError(
             "control surface manifest operation population differs from catalog"
         )
-    expected_requests = {
-        item.operation.value: item.request_schema_id
-        for item in selected_catalog
-    }
-    expected_results = {
-        item.operation.value: item.result_schema_id
-        for item in selected_catalog
-    }
+    expected_requests = {item.operation.value: item.request_schema_id for item in selected_catalog}
+    expected_results = {item.operation.value: item.result_schema_id for item in selected_catalog}
     if dict(selected_manifest.request_schema_ids) != expected_requests:
         raise ControlCatalogConformanceError(
             "control surface manifest request schema population drift"
@@ -1605,9 +1465,7 @@ def validate_operation_request_against_catalog(
     )
     normalize_control_pagination(decoded, descriptor, target=target)
     if decoded.dry_run and not descriptor.supports_dry_run:
-        raise ControlContractError(
-            f"operation {decoded.operation.value} does not support dry-run"
-        )
+        raise ControlContractError(f"operation {decoded.operation.value} does not support dry-run")
     return decoded
 
 
@@ -1641,9 +1499,7 @@ class ControlOperationConformanceCase:
     def __post_init__(self) -> None:
         scenario = str(self.scenario).strip()
         if not scenario or len(scenario.encode("utf-8")) > 256:
-            raise ControlContractError(
-                "conformance scenario must be bounded text"
-            )
+            raise ControlContractError("conformance scenario must be bounded text")
         object.__setattr__(self, "scenario", scenario)
         request = validate_operation_request_against_catalog(self.request)
         object.__setattr__(self, "request", request)
@@ -1658,26 +1514,19 @@ class ControlOperationConformanceCase:
                 else None
             )
             if result is None:
-                raise ControlContractError(
-                    f"{name} must be an OperationResult"
-                )
+                raise ControlContractError(f"{name} must be an OperationResult")
             result = normalize_control_result(result, request)
             object.__setattr__(self, name, result)
             results.append(result)
-        canonical = tuple(
-            canonical_control_json_bytes(item.to_record())
-            for item in results
-        )
+        canonical = tuple(canonical_control_json_bytes(item.to_record()) for item in results)
         if canonical[1:] != canonical[:-1]:
             raise ControlContractError(
-                "Python, CLI, and MCP conformance results are behaviorally "
-                "inconsistent"
+                "Python, CLI, and MCP conformance results are behaviorally inconsistent"
             )
         if (
             isinstance(self.cli_exit_status, bool)
             or not isinstance(self.cli_exit_status, int)
-            or self.cli_exit_status
-            != _conformance_cli_exit_status(results[1])
+            or self.cli_exit_status != _conformance_cli_exit_status(results[1])
         ):
             raise ControlContractError(
                 "CLI exit status does not match the canonical operation result"
@@ -1696,11 +1545,7 @@ class ControlOperationConformanceCase:
     @property
     def error_code(self) -> str:
         assert isinstance(self.python_result, OperationResult)
-        return (
-            self.python_result.error.code.value
-            if self.python_result.error is not None
-            else ""
-        )
+        return self.python_result.error.code.value if self.python_result.error is not None else ""
 
     @property
     def effect_ids(self) -> tuple[str, ...]:
@@ -1741,9 +1586,7 @@ class ControlOperationConformanceCase:
         return canonical_control_json_bytes(self.to_record())
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlOperationConformanceCase":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlOperationConformanceCase":
         if not isinstance(payload, Mapping):
             raise ControlContractError("conformance case must be an object")
         allowed = {
@@ -1765,12 +1608,10 @@ class ControlOperationConformanceCase:
         extra = set(payload).difference(allowed)
         if extra:
             raise ControlContractError(
-                "conformance case contains unknown fields: "
-                + ", ".join(sorted(extra))
+                "conformance case contains unknown fields: " + ", ".join(sorted(extra))
             )
         if (
-            payload.get("schema")
-            != CONTROL_OPERATION_CONFORMANCE_CASE_SCHEMA
+            payload.get("schema") != CONTROL_OPERATION_CONFORMANCE_CASE_SCHEMA
             or payload.get("schema_version") != 2
             or payload.get("contract_version") != CONTROL_CONTRACT_VERSION
         ):
@@ -1801,12 +1642,8 @@ class ControlCatalogConformanceEvidence:
     """Publication receipt for the exact v2 catalog and transport matrix."""
 
     catalog: Union[OperationCatalog, Mapping[str, Any]]
-    manifests: tuple[
-        Union[ControlDiscoveryManifest, Mapping[str, Any]], ...
-    ]
-    cases: tuple[
-        Union[ControlOperationConformanceCase, Mapping[str, Any]], ...
-    ]
+    manifests: tuple[Union[ControlDiscoveryManifest, Mapping[str, Any]], ...]
+    cases: tuple[Union[ControlOperationConformanceCase, Mapping[str, Any]], ...]
     requirement_id: str = CONTROL_CONFORMANCE_V2_REQUIREMENT_ID
 
     def __post_init__(self) -> None:
@@ -1818,9 +1655,7 @@ class ControlCatalogConformanceEvidence:
         catalog = validate_control_catalog_publication(catalog)
         object.__setattr__(self, "catalog", catalog)
         if self.requirement_id != CONTROL_CONFORMANCE_V2_REQUIREMENT_ID:
-            raise ControlContractError(
-                "control conformance requirement identity mismatch"
-            )
+            raise ControlContractError("control conformance requirement identity mismatch")
 
         manifests: list[ControlDiscoveryManifest] = []
         for value in self.manifests:
@@ -1832,29 +1667,18 @@ class ControlCatalogConformanceEvidence:
                 else None
             )
             if manifest is None:
-                raise ControlContractError(
-                    "conformance manifest is malformed"
-                )
-            manifests.append(
-                validate_control_surface_manifest(manifest, catalog=catalog)
-            )
+                raise ControlContractError("conformance manifest is malformed")
+            manifests.append(validate_control_surface_manifest(manifest, catalog=catalog))
         manifests.sort(key=lambda item: item.surface.value)
-        expected_surfaces = tuple(
-            sorted(ControlSurface, key=lambda item: item.value)
-        )
-        if (
-            tuple(item.surface for item in manifests) != expected_surfaces
-            or len({item.surface for item in manifests})
-            != len(expected_surfaces)
-        ):
+        expected_surfaces = tuple(sorted(ControlSurface, key=lambda item: item.value))
+        if tuple(item.surface for item in manifests) != expected_surfaces or len(
+            {item.surface for item in manifests}
+        ) != len(expected_surfaces):
             raise ControlContractError(
-                "catalog publication requires exactly Python, CLI, and MCP "
-                "manifests"
+                "catalog publication requires exactly Python, CLI, and MCP manifests"
             )
         if len({item.schema_population_id for item in manifests}) != 1:
-            raise ControlContractError(
-                "control surface schema populations are inconsistent"
-            )
+            raise ControlContractError("control surface schema populations are inconsistent")
         object.__setattr__(self, "manifests", tuple(manifests))
 
         cases: list[ControlOperationConformanceCase] = []
@@ -1867,34 +1691,23 @@ class ControlCatalogConformanceEvidence:
                 else None
             )
             if case is None:
-                raise ControlContractError(
-                    "conformance case is malformed"
-                )
+                raise ControlContractError("conformance case is malformed")
             cases.append(case)
         if not cases:
-            raise ControlContractError(
-                "catalog publication requires conformance cases"
-            )
+            raise ControlContractError("catalog publication requires conformance cases")
         scenario_keys = {(item.operation, item.scenario) for item in cases}
         if len(scenario_keys) != len(cases):
             raise ControlContractError("conformance cases must be unique")
         operation_population = [item.operation for item in cases]
         if len(operation_population) != len(set(operation_population)):
             raise ControlContractError(
-                "catalog publication requires exactly one conformance case "
-                "per operation"
+                "catalog publication requires exactly one conformance case per operation"
             )
         actual_operations = {item.operation for item in cases}
         expected_operations = set(catalog.operations)
         if actual_operations != expected_operations:
-            missing = sorted(
-                item.value
-                for item in expected_operations - actual_operations
-            )
-            extra = sorted(
-                item.value
-                for item in actual_operations - expected_operations
-            )
+            missing = sorted(item.value for item in expected_operations - actual_operations)
+            extra = sorted(item.value for item in actual_operations - expected_operations)
             raise ControlContractError(
                 "catalog publication conformance population drift; "
                 f"missing={missing}, extra={extra}"
@@ -1935,9 +1748,7 @@ class ControlCatalogConformanceEvidence:
             "requirement_id": self.requirement_id,
             "catalog_id": self.catalog_id,
             "catalog": self.catalog.to_record(),
-            "manifests": tuple(
-                item.to_record() for item in self.manifests
-            ),
+            "manifests": tuple(item.to_record() for item in self.manifests),
             "cases": tuple(item.to_record() for item in self.cases),
         }
 
@@ -1954,13 +1765,9 @@ class ControlCatalogConformanceEvidence:
         return canonical_control_json_bytes(self.to_record())
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlCatalogConformanceEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlCatalogConformanceEvidence":
         if not isinstance(payload, Mapping):
-            raise ControlContractError(
-                "conformance evidence must be an object"
-            )
+            raise ControlContractError("conformance evidence must be an object")
         allowed = {
             "schema",
             "schema_version",
@@ -1975,18 +1782,14 @@ class ControlCatalogConformanceEvidence:
         extra = set(payload).difference(allowed)
         if extra:
             raise ControlContractError(
-                "conformance evidence contains unknown fields: "
-                + ", ".join(sorted(extra))
+                "conformance evidence contains unknown fields: " + ", ".join(sorted(extra))
             )
         if (
-            payload.get("schema")
-            != CONTROL_CATALOG_CONFORMANCE_EVIDENCE_SCHEMA
+            payload.get("schema") != CONTROL_CATALOG_CONFORMANCE_EVIDENCE_SCHEMA
             or payload.get("schema_version") != 2
             or payload.get("contract_version") != CONTROL_CONTRACT_VERSION
         ):
-            raise ControlContractError(
-                "conformance evidence schema is invalid"
-            )
+            raise ControlContractError("conformance evidence schema is invalid")
         result = cls(
             catalog=payload.get("catalog") or {},
             manifests=tuple(payload.get("manifests", ())),
@@ -1994,24 +1797,16 @@ class ControlCatalogConformanceEvidence:
             requirement_id=payload.get("requirement_id", ""),
         )
         if payload.get("catalog_id") != result.catalog_id:
-            raise ControlContractError(
-                "conformance evidence catalog identity mismatch"
-            )
+            raise ControlContractError("conformance evidence catalog identity mismatch")
         if payload.get("content_id") not in (None, result.content_id):
-            raise ControlContractError(
-                "conformance evidence identity mismatch"
-            )
+            raise ControlContractError("conformance evidence identity mismatch")
         return result
 
 
 def validate_catalog_publication(
     catalog: OperationCatalog,
-    manifests: Sequence[
-        Union[ControlDiscoveryManifest, Mapping[str, Any]]
-    ],
-    cases: Sequence[
-        Union[ControlOperationConformanceCase, Mapping[str, Any]]
-    ],
+    manifests: Sequence[Union[ControlDiscoveryManifest, Mapping[str, Any]]],
+    cases: Sequence[Union[ControlOperationConformanceCase, Mapping[str, Any]]],
 ) -> ControlCatalogConformanceEvidence:
     """Publish only after the complete three-surface matrix passes."""
 
@@ -2064,9 +1859,7 @@ _LEGAL_MUTATION_TRANSACTION_TRANSITIONS: Final[
     Mapping[MutationTransactionPhase, frozenset[MutationTransactionPhase]]
 ] = MappingProxyType(
     {
-        MutationTransactionPhase.PREPARED: frozenset(
-            {MutationTransactionPhase.DISPATCHING}
-        ),
+        MutationTransactionPhase.PREPARED: frozenset({MutationTransactionPhase.DISPATCHING}),
         MutationTransactionPhase.DISPATCHING: frozenset(
             {
                 MutationTransactionPhase.COMMITTED,
@@ -2077,9 +1870,7 @@ _LEGAL_MUTATION_TRANSACTION_TRANSITIONS: Final[
         MutationTransactionPhase.COMPENSATION_REQUIRED: frozenset(
             {MutationTransactionPhase.COMPENSATED}
         ),
-        MutationTransactionPhase.REPAIR_REQUIRED: frozenset(
-            {MutationTransactionPhase.REPAIRED}
-        ),
+        MutationTransactionPhase.REPAIR_REQUIRED: frozenset({MutationTransactionPhase.REPAIRED}),
         MutationTransactionPhase.COMMITTED: frozenset(),
         MutationTransactionPhase.COMPENSATED: frozenset(),
         MutationTransactionPhase.REPAIRED: frozenset(),
@@ -2137,9 +1928,11 @@ class MutationTransactionState:
             if not value or "\x00" in value:
                 raise ValueError(f"{name} must be non-empty")
             object.__setattr__(self, name, value)
-        if isinstance(self.fencing_epoch, bool) or not isinstance(
-            self.fencing_epoch, int
-        ) or self.fencing_epoch < 0:
+        if (
+            isinstance(self.fencing_epoch, bool)
+            or not isinstance(self.fencing_epoch, int)
+            or self.fencing_epoch < 0
+        ):
             raise ValueError("fencing_epoch must be a non-negative integer")
         for name in ("revision", "updated_at_ms"):
             value = getattr(self, name)
@@ -2148,9 +1941,7 @@ class MutationTransactionState:
         object.__setattr__(
             self,
             "phase",
-            MutationTransactionPhase(
-                str(getattr(self.phase, "value", self.phase))
-            ),
+            MutationTransactionPhase(str(getattr(self.phase, "value", self.phase))),
         )
         object.__setattr__(
             self,
@@ -2160,9 +1951,7 @@ class MutationTransactionState:
             ),
         )
         effect_ids = tuple(sorted({str(item).strip() for item in self.effect_ids}))
-        applied = tuple(
-            sorted({str(item).strip() for item in self.applied_effect_ids})
-        )
+        applied = tuple(sorted({str(item).strip() for item in self.applied_effect_ids}))
         if not effect_ids or any(not item for item in effect_ids):
             raise ValueError("effect_ids must contain non-empty values")
         if any(not item for item in applied) or not set(applied).issubset(effect_ids):
@@ -2195,9 +1984,7 @@ class MutationTransactionState:
         object.__setattr__(self, "transaction_id", identity)
 
     @classmethod
-    def prepare(
-        cls, request: OperationRequest, *, now_ms: int
-    ) -> "MutationTransactionState":
+    def prepare(cls, request: OperationRequest, *, now_ms: int) -> "MutationTransactionState":
         if request.operation not in MUTATION_OPERATIONS or request.dry_run:
             raise ValueError("only real mutations have transaction state")
         return cls(
@@ -2212,9 +1999,7 @@ class MutationTransactionState:
             caller=request.caller,
             idempotency_key=request.idempotency_key,
             lease_id=request.lease_id,
-            fencing_epoch=request.fencing_epoch
-            if request.fencing_epoch is not None
-            else -1,
+            fencing_epoch=request.fencing_epoch if request.fencing_epoch is not None else -1,
             effect_ids=tuple(item.effect_id for item in request.expected_effects),
             updated_at_ms=now_ms,
         )
@@ -2284,10 +2069,7 @@ class MutationTransactionState:
         }
         unknown = sorted(set(payload) - allowed)
         if unknown:
-            raise ValueError(
-                "mutation transaction contains unknown fields: "
-                + ", ".join(unknown)
-            )
+            raise ValueError("mutation transaction contains unknown fields: " + ", ".join(unknown))
         result_payload = payload.get("result")
         if result_payload is not None and not isinstance(result_payload, Mapping):
             raise ValueError("mutation transaction result must be an object or null")
@@ -2340,9 +2122,7 @@ class BackendResponse:
             raise TypeError("backend response data must be a mapping")
         if not isinstance(self.changed, bool):
             raise TypeError("backend response changed must be boolean")
-        effect_ids = tuple(
-            sorted({str(item).strip() for item in self.applied_effect_ids})
-        )
+        effect_ids = tuple(sorted({str(item).strip() for item in self.applied_effect_ids}))
         if any(not item for item in effect_ids):
             raise ValueError("applied effect IDs must not be empty")
         object.__setattr__(self, "applied_effect_ids", effect_ids)
@@ -2358,19 +2138,17 @@ class BackendResponse:
         )
 
 
-_ACTION_REQUESTED_STATE: Final[Mapping[Operation, SupervisorLifecycleState]] = (
-    MappingProxyType(
-        {
-            Operation.START: SupervisorLifecycleState.STARTING,
-            Operation.PAUSE: SupervisorLifecycleState.PAUSED,
-            Operation.RESUME: SupervisorLifecycleState.HEALTHY,
-            Operation.DRAIN: SupervisorLifecycleState.DRAINING,
-            Operation.STOP: SupervisorLifecycleState.STOPPING,
-            Operation.RETRY: SupervisorLifecycleState.STARTING,
-            Operation.CANCEL: SupervisorLifecycleState.STOPPING,
-            Operation.QUARANTINE: SupervisorLifecycleState.BLOCKED,
-        }
-    )
+_ACTION_REQUESTED_STATE: Final[Mapping[Operation, SupervisorLifecycleState]] = MappingProxyType(
+    {
+        Operation.START: SupervisorLifecycleState.STARTING,
+        Operation.PAUSE: SupervisorLifecycleState.PAUSED,
+        Operation.RESUME: SupervisorLifecycleState.HEALTHY,
+        Operation.DRAIN: SupervisorLifecycleState.DRAINING,
+        Operation.STOP: SupervisorLifecycleState.STOPPING,
+        Operation.RETRY: SupervisorLifecycleState.STARTING,
+        Operation.CANCEL: SupervisorLifecycleState.STOPPING,
+        Operation.QUARANTINE: SupervisorLifecycleState.BLOCKED,
+    }
 )
 _LIFECYCLE_UNSET: Final[object] = object()
 
@@ -2469,18 +2247,14 @@ class InMemoryLifecycleStore:
         if status.pid is None:
             return status
         heartbeat_stale = (
-            status.heartbeat_at_ms <= 0
-            or now_ms - status.heartbeat_at_ms >= stale_after_ms
+            status.heartbeat_at_ms <= 0 or now_ms - status.heartbeat_at_ms >= stale_after_ms
         )
         try:
             alive = bool(pid_alive(status.pid))
         except Exception:
             alive = False
         if alive:
-            if (
-                heartbeat_stale
-                and status.state is SupervisorLifecycleState.HEALTHY
-            ):
+            if heartbeat_stale and status.state is SupervisorLifecycleState.HEALTHY:
                 degraded = replace(
                     status,
                     state=SupervisorLifecycleState.DEGRADED,
@@ -2590,33 +2364,37 @@ class InMemoryLifecycleStore:
             return status
 
     @staticmethod
-    def _idempotent_action(
-        operation: Operation, state: SupervisorLifecycleState
-    ) -> bool:
+    def _idempotent_action(operation: Operation, state: SupervisorLifecycleState) -> bool:
         return (
-            (operation is Operation.START and state in {
-                SupervisorLifecycleState.STARTING,
-                SupervisorLifecycleState.HEALTHY,
-                SupervisorLifecycleState.DEGRADED,
-            })
+            (
+                operation is Operation.START
+                and state
+                in {
+                    SupervisorLifecycleState.STARTING,
+                    SupervisorLifecycleState.HEALTHY,
+                    SupervisorLifecycleState.DEGRADED,
+                }
+            )
             or (operation is Operation.PAUSE and state is SupervisorLifecycleState.PAUSED)
+            or (operation is Operation.RESUME and state is SupervisorLifecycleState.HEALTHY)
             or (
-                operation is Operation.RESUME
-                and state is SupervisorLifecycleState.HEALTHY
+                operation is Operation.DRAIN
+                and state
+                in {
+                    SupervisorLifecycleState.DRAINING,
+                    SupervisorLifecycleState.STOPPED,
+                }
             )
-            or (operation is Operation.DRAIN and state in {
-                SupervisorLifecycleState.DRAINING,
-                SupervisorLifecycleState.STOPPED,
-            })
-            or (operation in {Operation.STOP, Operation.CANCEL} and state in {
-                SupervisorLifecycleState.STOPPING,
-                SupervisorLifecycleState.STOPPED,
-            })
+            or (
+                operation in {Operation.STOP, Operation.CANCEL}
+                and state
+                in {
+                    SupervisorLifecycleState.STOPPING,
+                    SupervisorLifecycleState.STOPPED,
+                }
+            )
             or (operation is Operation.RETRY and state is SupervisorLifecycleState.STARTING)
-            or (
-                operation is Operation.QUARANTINE
-                and state is SupervisorLifecycleState.BLOCKED
-            )
+            or (operation is Operation.QUARANTINE and state is SupervisorLifecycleState.BLOCKED)
         )
 
     def transition(
@@ -2633,21 +2411,16 @@ class InMemoryLifecycleStore:
         target_id = str(request.parameters.get("target_id") or "supervisor").strip()
         reason = str(request.parameters.get("reason") or operation.value).strip()
         requested = _ACTION_REQUESTED_STATE[operation]
-        requested_value = str(
-            request.parameters.get("requested_state") or ""
-        ).strip()
+        requested_value = str(request.parameters.get("requested_state") or "").strip()
         if requested_value and requested_value not in {
             requested.value,
             operation.value,
         }:
             raise InvalidLifecycleTransitionError(
-                f"{operation.value} requests {requested.value}, not "
-                f"{requested_value}"
+                f"{operation.value} requests {requested.value}, not {requested_value}"
             )
         with self._lock:
-            original = self._statuses.get(target_id) or self._default(
-                target_id, now_ms
-            )
+            original = self._statuses.get(target_id) or self._default(target_id, now_ms)
             self._statuses.setdefault(target_id, original)
             for prior_event in reversed(self._events):
                 if (
@@ -2686,12 +2459,8 @@ class InMemoryLifecycleStore:
                 raise StaleLeaseError(event.reason)
             if self._idempotent_action(operation, previous.state):
                 status = previous
-                if (
-                    request.fencing_epoch is not None
-                    and (
-                        previous.fencing_epoch is None
-                        or request.fencing_epoch > previous.fencing_epoch
-                    )
+                if request.fencing_epoch is not None and (
+                    previous.fencing_epoch is None or request.fencing_epoch > previous.fencing_epoch
                 ):
                     status = replace(
                         previous,
@@ -2722,8 +2491,7 @@ class InMemoryLifecycleStore:
                     previous_state=previous.state,
                     state=previous.state,
                     reason=(
-                        f"invalid transition {previous.state.value}"
-                        f" -> {requested.value}: {reason}"
+                        f"invalid transition {previous.state.value} -> {requested.value}: {reason}"
                     ),
                     request_id=request.request_id,
                     occurred_at_ms=now_ms,
@@ -2753,7 +2521,8 @@ class InMemoryLifecycleStore:
                     else "draining"
                     if operation is Operation.DRAIN
                     else "idle"
-                    if operation in {
+                    if operation
+                    in {
                         Operation.START,
                         Operation.RESUME,
                         Operation.RETRY,
@@ -2838,17 +2607,20 @@ class InMemoryLifecycleStore:
         target = str(target_id).strip()
         with self._lock:
             previous = self._statuses.get(target) or self._default(target, now_ms)
-            requested = previous.state if state is None else (
-                state
-                if isinstance(state, SupervisorLifecycleState)
-                else SupervisorLifecycleState(str(state))
+            requested = (
+                previous.state
+                if state is None
+                else (
+                    state
+                    if isinstance(state, SupervisorLifecycleState)
+                    else SupervisorLifecycleState(str(state))
+                )
             )
             if requested is not previous.state and not lifecycle_transition_is_legal(
                 previous.state, requested
             ):
                 raise InvalidLifecycleTransitionError(
-                    f"invalid heartbeat transition {previous.state.value}"
-                    f" -> {requested.value}"
+                    f"invalid heartbeat transition {previous.state.value} -> {requested.value}"
                 )
             leases = (
                 previous.active_leases
@@ -2866,10 +2638,14 @@ class InMemoryLifecycleStore:
                     if effective_pid is None
                     else SupervisorLifecycleState.STOPPING
                 )
-                terminal_reason = terminal_reason or previous.terminal_reason or (
-                    "drained"
-                    if requested is SupervisorLifecycleState.STOPPED
-                    else "drain_complete_stopping"
+                terminal_reason = (
+                    terminal_reason
+                    or previous.terminal_reason
+                    or (
+                        "drained"
+                        if requested is SupervisorLifecycleState.STOPPED
+                        else "drain_complete_stopping"
+                    )
                 )
             if (
                 previous.state is SupervisorLifecycleState.STOPPING
@@ -2878,9 +2654,7 @@ class InMemoryLifecycleStore:
                 and pid is None
             ):
                 requested = SupervisorLifecycleState.STOPPED
-                terminal_reason = (
-                    terminal_reason or previous.terminal_reason or "stopped"
-                )
+                terminal_reason = terminal_reason or previous.terminal_reason or "stopped"
             status = replace(
                 previous,
                 state=requested,
@@ -2896,16 +2670,8 @@ class InMemoryLifecycleStore:
                     else effective_pid
                 ),
                 active_leases=leases,
-                refill_state=(
-                    previous.refill_state
-                    if refill_state is None
-                    else str(refill_state)
-                ),
-                backpressure=(
-                    previous.backpressure
-                    if backpressure is None
-                    else backpressure
-                ),
+                refill_state=(previous.refill_state if refill_state is None else str(refill_state)),
+                backpressure=(previous.backpressure if backpressure is None else backpressure),
                 backpressure_reasons=(
                     previous.backpressure_reasons
                     if backpressure_reasons is None
@@ -2913,8 +2679,7 @@ class InMemoryLifecycleStore:
                 ),
                 terminal_reason=(
                     str(terminal_reason or "")
-                    if requested.terminal
-                    or requested is SupervisorLifecycleState.STOPPING
+                    if requested.terminal or requested is SupervisorLifecycleState.STOPPING
                     else ""
                 ),
                 transition_id=(
@@ -2961,9 +2726,7 @@ class InMemoryLifecycleStore:
 
         target_id = str(request.parameters.get("target_id") or "supervisor").strip()
         with self._lock:
-            current = self._statuses.get(target_id) or self._default(
-                target_id, now_ms
-            )
+            current = self._statuses.get(target_id) or self._default(target_id, now_ms)
             self._statuses.setdefault(target_id, current)
             # Invalid transition is already recorded by ``transition``.
             if (
@@ -3090,16 +2853,10 @@ class JsonLifecycleStore(InMemoryLifecycleStore):
             targets = sorted({event.target_id for event in events if event.target_id})
             for target_id in targets or ["supervisor"]:
                 latest = next(
-                    (
-                        event
-                        for event in reversed(events)
-                        if event.target_id == target_id
-                    ),
+                    (event for event in reversed(events) if event.target_id == target_id),
                     None,
                 )
-                occurred_at_ms = (
-                    latest.occurred_at_ms if latest is not None else _now_ms()
-                )
+                occurred_at_ms = latest.occurred_at_ms if latest is not None else _now_ms()
                 statuses[target_id] = LifecycleStatus(
                     target_id=target_id,
                     state=SupervisorLifecycleState.FAILED,
@@ -3107,9 +2864,7 @@ class JsonLifecycleStore(InMemoryLifecycleStore):
                     heartbeat_at_ms=occurred_at_ms,
                     terminal_reason="lifecycle_state_corrupt",
                     generation=0,
-                    fencing_epoch=(
-                        latest.fencing_epoch if latest is not None else None
-                    ),
+                    fencing_epoch=(latest.fencing_epoch if latest is not None else None),
                     updated_at_ms=occurred_at_ms,
                 )
         self._statuses = statuses
@@ -3120,8 +2875,7 @@ class JsonLifecycleStore(InMemoryLifecycleStore):
         payload = {
             "schema": LIFECYCLE_STATUS_SCHEMA,
             "statuses": {
-                target: status.to_dict()
-                for target, status in sorted(self._statuses.items())
+                target: status.to_dict() for target, status in sorted(self._statuses.items())
             },
         }
         temporary = self._state_path.with_suffix(self._state_path.suffix + ".tmp")
@@ -3139,9 +2893,7 @@ class JsonLifecycleStore(InMemoryLifecycleStore):
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, self._state_path)
-        events_temporary = self._events_path.with_suffix(
-            self._events_path.suffix + ".tmp"
-        )
+        events_temporary = self._events_path.with_suffix(self._events_path.suffix + ".tmp")
         with events_temporary.open("w", encoding="utf-8") as stream:
             for event in self._events:
                 stream.write(
@@ -3193,9 +2945,7 @@ class JsonLifecycleStore(InMemoryLifecycleStore):
             self._load_locked()
             return super().events(**kwargs)
 
-    def record_decision(
-        self, request: OperationRequest, **kwargs: Any
-    ) -> LifecycleEvent:
+    def record_decision(self, request: OperationRequest, **kwargs: Any) -> LifecycleEvent:
         with self._file_guard(), self._lock:
             self._load_locked()
             result = super().record_decision(request, **kwargs)
@@ -3235,9 +2985,7 @@ class SupervisorLifecycleBackend:
             or stale_after_ms < 1
         ):
             raise ValueError("stale_after_ms must be a positive integer")
-        self.state_store = state_store or InMemoryLifecycleStore(
-            max_events=max_events
-        )
+        self.state_store = state_store or InMemoryLifecycleStore(max_events=max_events)
         self._clock_ms = clock_ms
         self._pid_alive = pid_alive
         self._stale_after_ms = stale_after_ms
@@ -3272,9 +3020,7 @@ class SupervisorLifecycleBackend:
         )
 
     def heartbeat(self, target_id: str = "supervisor", **values: Any) -> LifecycleStatus:
-        return self.state_store.heartbeat(
-            target_id, now_ms=self._clock_ms(), **values
-        )
+        return self.state_store.heartbeat(target_id, now_ms=self._clock_ms(), **values)
 
     def _status_is_healthy(self, status: LifecycleStatus) -> bool:
         if status.state is not SupervisorLifecycleState.HEALTHY:
@@ -3293,9 +3039,7 @@ class SupervisorLifecycleBackend:
         except Exception:
             return False
 
-    def record_rejection(
-        self, request: OperationRequest, error: OperationError
-    ) -> LifecycleEvent:
+    def record_rejection(self, request: OperationRequest, error: OperationError) -> LifecycleEvent:
         return self.state_store.record_decision(
             request,
             now_ms=self._clock_ms(),
@@ -3323,9 +3067,7 @@ class SupervisorLifecycleBackend:
             limit, offset = _bounded_window(request)
             after_sequence = int(request.parameters.get("after_sequence") or 0)
             events = self.state_store.events(
-                target_id=self._target_id(request)
-                if request.parameters.get("target_id")
-                else "",
+                target_id=self._target_id(request) if request.parameters.get("target_id") else "",
                 limit=min(limit, self.state_store.max_events),
                 offset=offset,
                 after_sequence=after_sequence,
@@ -3361,9 +3103,7 @@ class SupervisorLifecycleBackend:
             },
             changed=event.changed,
             applied_effect_ids=(
-                tuple(item.effect_id for item in request.expected_effects)
-                if event.changed
-                else ()
+                tuple(item.effect_id for item in request.expected_effects) if event.changed else ()
             ),
         )
 
@@ -3376,8 +3116,7 @@ class WorkflowPreviewHandler(Protocol):
 
     def __call__(
         self, request: OperationRequest
-    ) -> Union[BackendResponse, Mapping[str, Any], Any]:
-        ...
+    ) -> Union[BackendResponse, Mapping[str, Any], Any]: ...
 
 
 class WorkflowMaterializeHandler(Protocol):
@@ -3385,8 +3124,7 @@ class WorkflowMaterializeHandler(Protocol):
 
     def __call__(
         self, request: OperationRequest
-    ) -> Union[BackendResponse, Mapping[str, Any], Any]:
-        ...
+    ) -> Union[BackendResponse, Mapping[str, Any], Any]: ...
 
 
 class RestartHandler(Protocol):
@@ -3394,8 +3132,7 @@ class RestartHandler(Protocol):
 
     def __call__(
         self, request: OperationRequest
-    ) -> Union[BackendResponse, Mapping[str, Any], Any]:
-        ...
+    ) -> Union[BackendResponse, Mapping[str, Any], Any]: ...
 
 
 class RescuePreviewHandler(Protocol):
@@ -3403,8 +3140,7 @@ class RescuePreviewHandler(Protocol):
 
     def __call__(
         self, request: OperationRequest
-    ) -> Union[BackendResponse, Mapping[str, Any], Any]:
-        ...
+    ) -> Union[BackendResponse, Mapping[str, Any], Any]: ...
 
 
 class RescueHandler(Protocol):
@@ -3412,29 +3148,25 @@ class RescueHandler(Protocol):
 
     def __call__(
         self, request: OperationRequest
-    ) -> Union[BackendResponse, Mapping[str, Any], Any]:
-        ...
+    ) -> Union[BackendResponse, Mapping[str, Any], Any]: ...
 
 
 class LeaseFenceValidator(Protocol):
     """Checks authoritative current lease state before mutation dispatch."""
 
-    def validate(self, request: OperationRequest) -> Union[bool, None]:
-        ...
+    def validate(self, request: OperationRequest) -> Union[bool, None]: ...
 
 
 class AuthorizationValidator(Protocol):
     """Optional live policy check in addition to the bound contract decision."""
 
-    def validate(self, request: OperationRequest) -> Union[bool, None]:
-        ...
+    def validate(self, request: OperationRequest) -> Union[bool, None]: ...
 
 
 class TargetIdentityValidator(Protocol):
     """Checks repository and tree identities against authoritative state."""
 
-    def validate(self, request: OperationRequest) -> Union[bool, None]:
-        ...
+    def validate(self, request: OperationRequest) -> Union[bool, None]: ...
 
 
 @dataclass(frozen=True)
@@ -3503,23 +3235,17 @@ class ControlAuditReceipt:
 class ControlStateStore(Protocol):
     """Persistence boundary for transactions, replay results, and audit."""
 
-    def transaction(self, request: OperationRequest) -> Any:
-        ...
+    def transaction(self, request: OperationRequest) -> Any: ...
 
     def get_idempotent(
         self, request: OperationRequest
-    ) -> Union[tuple[str, OperationResult], None]:
-        ...
+    ) -> Union[tuple[str, OperationResult], None]: ...
 
     def begin_mutation(
         self, request: OperationRequest, *, now_ms: int
-    ) -> MutationTransactionState:
-        ...
+    ) -> MutationTransactionState: ...
 
-    def get_mutation(
-        self, request: OperationRequest
-    ) -> Union[MutationTransactionState, None]:
-        ...
+    def get_mutation(self, request: OperationRequest) -> Union[MutationTransactionState, None]: ...
 
     def compare_and_swap_mutation(
         self,
@@ -3531,23 +3257,15 @@ class ControlStateStore(Protocol):
         applied_effect_ids: Iterable[str] = (),
         failure_code: str = "",
         result: Union[OperationResult, None] = None,
-    ) -> MutationTransactionState:
-        ...
+    ) -> MutationTransactionState: ...
 
-    def put_idempotent(
-        self, request: OperationRequest, result: OperationResult
-    ) -> None:
-        ...
+    def put_idempotent(self, request: OperationRequest, result: OperationResult) -> None: ...
 
-    def append_receipt(
-        self, request: OperationRequest, receipt: ControlAuditReceipt
-    ) -> None:
-        ...
+    def append_receipt(self, request: OperationRequest, receipt: ControlAuditReceipt) -> None: ...
 
     def query_receipts(
         self, request: OperationRequest, *, limit: int, offset: int
-    ) -> Sequence[Mapping[str, Any]]:
-        ...
+    ) -> Sequence[Mapping[str, Any]]: ...
 
 
 class InMemoryControlStateStore:
@@ -3580,15 +3298,11 @@ class InMemoryControlStateStore:
             )
         )
 
-    def get_idempotent(
-        self, request: OperationRequest
-    ) -> Union[tuple[str, OperationResult], None]:
+    def get_idempotent(self, request: OperationRequest) -> Union[tuple[str, OperationResult], None]:
         with self._lock:
             return self._idempotency.get(self._key(request))
 
-    def begin_mutation(
-        self, request: OperationRequest, *, now_ms: int
-    ) -> MutationTransactionState:
+    def begin_mutation(self, request: OperationRequest, *, now_ms: int) -> MutationTransactionState:
         key = self._key(request)
         prepared = MutationTransactionState.prepare(request, now_ms=now_ms)
         with self._lock:
@@ -3603,9 +3317,7 @@ class InMemoryControlStateStore:
             self._mutations[key] = prepared
             return prepared
 
-    def get_mutation(
-        self, request: OperationRequest
-    ) -> Union[MutationTransactionState, None]:
+    def get_mutation(self, request: OperationRequest) -> Union[MutationTransactionState, None]:
         with self._lock:
             return self._mutations.get(self._key(request))
 
@@ -3627,9 +3339,7 @@ class InMemoryControlStateStore:
             if current is None:
                 raise TransactionConflictError("mutation transaction is absent")
             if current.request_id != request.request_id:
-                raise IdempotencyConflictError(
-                    "idempotency key is bound to another request"
-                )
+                raise IdempotencyConflictError("idempotency key is bound to another request")
             if current.revision != expected_revision:
                 raise TransactionConflictError(
                     f"stale transaction revision {expected_revision}; "
@@ -3637,8 +3347,7 @@ class InMemoryControlStateStore:
                 )
             if phase not in _LEGAL_MUTATION_TRANSACTION_TRANSITIONS[current.phase]:
                 raise TransactionConflictError(
-                    f"illegal mutation transaction transition "
-                    f"{current.phase.value}->{phase.value}"
+                    f"illegal mutation transaction transition {current.phase.value}->{phase.value}"
                 )
             recovery_action = MutationRecoveryAction.NONE
             if phase is MutationTransactionPhase.COMPENSATION_REQUIRED:
@@ -3658,9 +3367,7 @@ class InMemoryControlStateStore:
             self._mutations[key] = updated
             return updated
 
-    def put_idempotent(
-        self, request: OperationRequest, result: OperationResult
-    ) -> None:
+    def put_idempotent(self, request: OperationRequest, result: OperationResult) -> None:
         key = self._key(request)
         with self._lock:
             existing = self._idempotency.get(key)
@@ -3670,9 +3377,7 @@ class InMemoryControlStateStore:
                 )
             self._idempotency[key] = (request.request_id, result)
 
-    def append_receipt(
-        self, request: OperationRequest, receipt: ControlAuditReceipt
-    ) -> None:
+    def append_receipt(self, request: OperationRequest, receipt: ControlAuditReceipt) -> None:
         del request
         with self._lock:
             self._receipts.append(receipt.to_dict())
@@ -3741,9 +3446,7 @@ class JsonlControlStateStore(InMemoryControlStateStore):
             finally:
                 fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
-    def get_idempotent(
-        self, request: OperationRequest
-    ) -> Union[tuple[str, OperationResult], None]:
+    def get_idempotent(self, request: OperationRequest) -> Union[tuple[str, OperationResult], None]:
         cached = super().get_idempotent(request)
         if cached is not None or not request.idempotency_key:
             return cached
@@ -3761,14 +3464,11 @@ class JsonlControlStateStore(InMemoryControlStateStore):
                         except json.JSONDecodeError:
                             continue
                         if isinstance(record, Mapping) and not any(
-                            record.get(name) != value
-                            for name, value in expected.items()
+                            record.get(name) != value for name, value in expected.items()
                         ):
                             matching = record
             except OSError as exc:
-                raise IdempotencyConflictError(
-                    "idempotency state is unreadable"
-                ) from exc
+                raise IdempotencyConflictError("idempotency state is unreadable") from exc
         if matching is not None:
             raw_result = matching.get("result")
             try:
@@ -3804,9 +3504,7 @@ class JsonlControlStateStore(InMemoryControlStateStore):
             stream.flush()
             os.fsync(stream.fileno())
 
-    def get_mutation(
-        self, request: OperationRequest
-    ) -> Union[MutationTransactionState, None]:
+    def get_mutation(self, request: OperationRequest) -> Union[MutationTransactionState, None]:
         cached = super().get_mutation(request)
         if cached is not None or not request.idempotency_key:
             return cached
@@ -3839,23 +3537,18 @@ class JsonlControlStateStore(InMemoryControlStateStore):
                             "mutation transaction contains divergent revisions"
                         )
         except OSError as exc:
-            raise TransactionConflictError(
-                "mutation transaction state is unreadable"
-            ) from exc
+            raise TransactionConflictError("mutation transaction state is unreadable") from exc
         if latest is not None:
             with self._lock:
                 self._mutations[self._key(request)] = latest
         return latest
 
-    def begin_mutation(
-        self, request: OperationRequest, *, now_ms: int
-    ) -> MutationTransactionState:
+    def begin_mutation(self, request: OperationRequest, *, now_ms: int) -> MutationTransactionState:
         existing = self.get_mutation(request)
         if existing is not None:
             if existing.request_id != request.request_id:
                 raise IdempotencyConflictError(
-                    "idempotency key is already bound to changed effects "
-                    "or another request binding"
+                    "idempotency key is already bound to changed effects or another request binding"
                 )
             return existing
         state = super().begin_mutation(request, now_ms=now_ms)
@@ -3888,9 +3581,7 @@ class JsonlControlStateStore(InMemoryControlStateStore):
         self._append_mutation(request, state)
         return state
 
-    def put_idempotent(
-        self, request: OperationRequest, result: OperationResult
-    ) -> None:
+    def put_idempotent(self, request: OperationRequest, result: OperationResult) -> None:
         existing = self.get_idempotent(request)
         if existing is not None:
             if existing[0] != request.request_id:
@@ -3906,9 +3597,7 @@ class JsonlControlStateStore(InMemoryControlStateStore):
             "request_id": request.request_id,
             "result": result.to_record(),
         }
-        encoded = json.dumps(
-            record, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        )
+        encoded = json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         with self._lock:
             with path.open("a", encoding="utf-8") as stream:
                 stream.write(encoded + "\n")
@@ -3916,9 +3605,7 @@ class JsonlControlStateStore(InMemoryControlStateStore):
                 os.fsync(stream.fileno())
         super().put_idempotent(request, result)
 
-    def append_receipt(
-        self, request: OperationRequest, receipt: ControlAuditReceipt
-    ) -> None:
+    def append_receipt(self, request: OperationRequest, receipt: ControlAuditReceipt) -> None:
         super().append_receipt(request, receipt)
         path = Path(request.state_root) / self._filename
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -3936,9 +3623,7 @@ class JsonlControlStateStore(InMemoryControlStateStore):
     ) -> Sequence[Mapping[str, Any]]:
         path = Path(request.state_root) / self._filename
         if not path.exists():
-            return super().query_receipts(
-                request, limit=limit, offset=offset
-            )
+            return super().query_receipts(request, limit=limit, offset=offset)
         from collections import deque
 
         records: Any = deque(maxlen=offset + limit)
@@ -4009,16 +3694,12 @@ class RepositorySupervisorBackend:
         if not path.is_file():
             raise ValueError(f"control data path is not a file: {path.name}")
         if path.stat().st_size > maximum_bytes:
-            raise ControlBoundsError(
-                f"control data exceeds the {maximum_bytes}-byte request bound"
-            )
+            raise ControlBoundsError(f"control data exceeds the {maximum_bytes}-byte request bound")
         return path.read_text(encoding="utf-8")
 
     @classmethod
     def _read_json(cls, path: Path, *, maximum_bytes: int) -> Any:
-        return json.loads(
-            cls._read_text(path, maximum_bytes=maximum_bytes)
-        )
+        return json.loads(cls._read_text(path, maximum_bytes=maximum_bytes))
 
     @staticmethod
     def _window(items: Sequence[Any], request: OperationRequest) -> dict[str, Any]:
@@ -4057,9 +3738,7 @@ class RepositorySupervisorBackend:
         path = self._resolve(request, relative, state=False)
         if not path.exists():
             raise BackendNotFoundError(f"objective heap not found: {relative}")
-        text = self._read_text(
-            path, maximum_bytes=request.bounds.max_serialized_bytes
-        )
+        text = self._read_text(path, maximum_bytes=request.bounds.max_serialized_bytes)
         goals = [
             {
                 "goal_id": item.goal_id,
@@ -4081,9 +3760,7 @@ class RepositorySupervisorBackend:
         prefix = request.parameters.get("task_header_prefix", "")
         if not isinstance(prefix, str) or not prefix.strip():
             raise ValueError("task_header_prefix must be a non-empty string")
-        text = self._read_text(
-            path, maximum_bytes=request.bounds.max_serialized_bytes
-        )
+        text = self._read_text(path, maximum_bytes=request.bounds.max_serialized_bytes)
         tasks = [
             {
                 "task_id": task_id,
@@ -4137,9 +3814,7 @@ class RepositorySupervisorBackend:
         with path.open("r", encoding="utf-8") as stream:
             for raw_line in stream:
                 if len(raw_line.encode("utf-8")) > request.bounds.max_text_bytes:
-                    raise ControlBoundsError(
-                        "JSONL record exceeds the request text bound"
-                    )
+                    raise ControlBoundsError("JSONL record exceeds the request text bound")
                 try:
                     value = json.loads(raw_line)
                 except json.JSONDecodeError:
@@ -4169,13 +3844,9 @@ class RepositorySupervisorBackend:
         }
 
     def _receipts(self, request: OperationRequest) -> Mapping[str, Any]:
-        relative = _relative_parameter(
-            request, "receipts_path", "path", required=False
-        )
+        relative = _relative_parameter(request, "receipts_path", "path", required=False)
         if not relative:
-            raise OperationUnavailableError(
-                "receipt reads are served by the control state store"
-            )
+            raise OperationUnavailableError("receipt reads are served by the control state store")
         path = self._resolve(request, relative, state=True)
         if path.is_dir():
             limit, offset = _bounded_window(request)
@@ -4213,9 +3884,7 @@ class RepositorySupervisorBackend:
             }
         if path.suffix == ".jsonl":
             return self._jsonl_window(path, request)
-        value = self._read_json(
-            path, maximum_bytes=request.bounds.max_serialized_bytes
-        )
+        value = self._read_json(path, maximum_bytes=request.bounds.max_serialized_bytes)
         values = value if isinstance(value, list) else [value]
         return self._window(values, request)
 
@@ -4226,9 +3895,7 @@ class RepositorySupervisorBackend:
             raise BackendNotFoundError(f"cache path not found: {relative}")
         limit, offset = _bounded_window(request)
         if path.is_file():
-            value = self._read_json(
-                path, maximum_bytes=request.bounds.max_serialized_bytes
-            )
+            value = self._read_json(path, maximum_bytes=request.bounds.max_serialized_bytes)
             return {"path": relative, "kind": "file", "value": value}
         entries = heapq.nsmallest(
             offset + limit + 1,
@@ -4271,9 +3938,7 @@ class RepositorySupervisorBackend:
             raise ControlBoundsError("columns exceed the request item bound")
         sql = str(request.parameters.get("sql") or "").strip()
         if sql:
-            raise ValueError(
-                "raw SQL is disabled at the supervisor control boundary"
-            )
+            raise ValueError("raw SQL is disabled at the supervisor control boundary")
         where = str(request.parameters.get("where") or "").strip()
         folded_where = where.lower()
         if (
@@ -4285,9 +3950,7 @@ class RepositorySupervisorBackend:
                 folded_where,
             )
         ):
-            raise ValueError(
-                "where must be a simple expression without subqueries or I/O"
-            )
+            raise ValueError("where must be a simple expression without subqueries or I/O")
         return query_artifact(
             path,
             table=str(request.parameters.get("table") or "") or None,
@@ -4412,20 +4075,12 @@ class SupervisorControlService:
         usage_coordinator: Any = None,
     ) -> None:
         repositories = (
-            repository_allowlist
-            if repository_allowlist is not None
-            else allowed_repository_roots
+            repository_allowlist if repository_allowlist is not None else allowed_repository_roots
         )
-        states = (
-            state_allowlist if state_allowlist is not None else allowed_state_roots
-        )
+        states = state_allowlist if state_allowlist is not None else allowed_state_roots
         if repositories is None or states is None:
-            raise ValueError(
-                "explicit repository and state root allowlists are required"
-            )
-        self._repository_roots = _normalize_allowlist(
-            repositories, label="repository allowlist"
-        )
+            raise ValueError("explicit repository and state root allowlists are required")
+        self._repository_roots = _normalize_allowlist(repositories, label="repository allowlist")
         self._state_roots = _normalize_allowlist(states, label="state allowlist")
         if backend is not None and handlers:
             raise ValueError("supply backend or handlers, not both")
@@ -4456,9 +4111,7 @@ class SupervisorControlService:
         self._mutation_audit_receipt_count = 0
         self._last_mutation_dispatch_request_id = ""
         self._last_mutation_audit_receipt_id = ""
-        if usage_control is not None and not isinstance(
-            usage_control, ProviderUsageControl
-        ):
+        if usage_control is not None and not isinstance(usage_control, ProviderUsageControl):
             raise TypeError("usage_control must be a ProviderUsageControl")
         self._usage_control = usage_control or ProviderUsageControl(
             coordinator=usage_coordinator,
@@ -4476,9 +4129,7 @@ class SupervisorControlService:
         else:
             try:
                 self._registered_operations = frozenset(
-                    item
-                    if isinstance(item, Operation)
-                    else Operation(str(item))
+                    item if isinstance(item, Operation) else Operation(str(item))
                     for item in registered
                 )
             except (TypeError, ValueError) as exc:
@@ -4526,9 +4177,7 @@ class SupervisorControlService:
                 requires_idempotency=operation in MUTATION_OPERATIONS,
                 requires_authorization=operation in MUTATION_OPERATIONS,
             )
-            for operation in sorted(
-                self._registered_operations, key=lambda item: item.value
-            )
+            for operation in sorted(self._registered_operations, key=lambda item: item.value)
         )
         return CapabilityReport(
             service_id=self._service_id,
@@ -4537,9 +4186,7 @@ class SupervisorControlService:
             optional_providers_loaded=bool(
                 getattr(self._backend, "optional_providers_loaded", False)
             ),
-            processes_started=bool(
-                getattr(self._backend, "processes_started", False)
-            ),
+            processes_started=bool(getattr(self._backend, "processes_started", False)),
         )
 
     def capability_report(self) -> CapabilityReport:
@@ -4560,12 +4207,8 @@ class SupervisorControlService:
             return ControlMutationRuntimeState(
                 dispatch_count=self._mutation_dispatch_count,
                 audit_receipt_count=self._mutation_audit_receipt_count,
-                last_dispatch_request_id=(
-                    self._last_mutation_dispatch_request_id
-                ),
-                last_audit_receipt_id=(
-                    self._last_mutation_audit_receipt_id
-                ),
+                last_dispatch_request_id=(self._last_mutation_dispatch_request_id),
+                last_audit_receipt_id=(self._last_mutation_audit_receipt_id),
             )
 
     def mutation_transaction(
@@ -4605,9 +4248,7 @@ class SupervisorControlService:
 
         if not isinstance(request, OperationRequest):
             raise TypeError("request must be an OperationRequest")
-        selected = MutationRecoveryAction(
-            str(getattr(action, "value", action))
-        )
+        selected = MutationRecoveryAction(str(getattr(action, "value", action)))
         if selected is MutationRecoveryAction.NONE:
             raise ValueError("recovery action must be compensate or repair")
         transaction = getattr(self._state_store, "transaction", None)
@@ -4633,8 +4274,7 @@ class SupervisorControlService:
                 )
             if current.recovery_action is not selected:
                 raise TransactionConflictError(
-                    f"transaction requires {current.recovery_action.value}, "
-                    f"not {selected.value}"
+                    f"transaction requires {current.recovery_action.value}, not {selected.value}"
                 )
             hook = getattr(self._backend, selected.value, None)
             if not callable(hook):
@@ -4648,29 +4288,17 @@ class SupervisorControlService:
 
                 def recover_dispatch() -> dict[str, Any]:
                     value = hook(request, current)
-                    runtime_request = getattr(
-                        decision, "decision_request", None
-                    )
+                    runtime_request = getattr(decision, "decision_request", None)
                     return {
                         "outcome": value,
-                        "observed_effects": tuple(
-                            getattr(runtime_request, "expected_effects", ())
-                        ),
+                        "observed_effects": tuple(getattr(runtime_request, "expected_effects", ())),
                     }
 
-                executed = self._decision_runtime.authorize_mutation(
-                    decision, recover_dispatch
-                )
+                executed = self._decision_runtime.authorize_mutation(decision, recover_dispatch)
                 wrapped = getattr(executed, "value", executed)
-                outcome = (
-                    wrapped.get("outcome")
-                    if isinstance(wrapped, Mapping)
-                    else wrapped
-                )
+                outcome = wrapped.get("outcome") if isinstance(wrapped, Mapping) else wrapped
             if outcome is False:
-                raise BackendConflictError(
-                    f"backend rejected {selected.value} recovery"
-                )
+                raise BackendConflictError(f"backend rejected {selected.value} recovery")
             terminal = (
                 MutationTransactionPhase.COMPENSATED
                 if selected is MutationRecoveryAction.COMPENSATE
@@ -4714,9 +4342,7 @@ class SupervisorControlService:
         return SupervisorClient(self, target=target, **binding)
 
     def _check_target(self, request: OperationRequest) -> None:
-        repository = _normalized_absolute(
-            request.repository_root, label="repository_root"
-        )
+        repository = _normalized_absolute(request.repository_root, label="repository_root")
         state = _normalized_absolute(request.state_root, label="state_root")
         if repository not in self._repository_roots:
             raise TargetNotAllowedError("repository_root is not allowlisted")
@@ -4747,15 +4373,10 @@ class SupervisorControlService:
             target=target,
         )
         limit, _offset = _bounded_window(request)
-        if (
-            "limit" in request.parameters
-            and limit > self._max_query_items
-        ):
+        if "limit" in request.parameters and limit > self._max_query_items:
             raise ControlBoundsError("limit exceeds the service query bound")
 
-    def _degraded_backend_response(
-        self, request: OperationRequest
-    ) -> Union[BackendResponse, None]:
+    def _degraded_backend_response(self, request: OperationRequest) -> Union[BackendResponse, None]:
         if request.operation in self._registered_operations:
             return None
         descriptor = self._catalog.operation(request.operation)
@@ -4807,13 +4428,9 @@ class SupervisorControlService:
         if decision is not None:
             now = self._clock_ms()
             if decision.evaluated_at_ms > now:
-                raise AuthorizationBindingError(
-                    "authorization decision is not yet valid"
-                )
+                raise AuthorizationBindingError("authorization decision is not yet valid")
             if decision.expires_at_ms is not None and now >= decision.expires_at_ms:
-                raise AuthorizationBindingError(
-                    "authorization decision has expired"
-                )
+                raise AuthorizationBindingError("authorization decision has expired")
         if self._authorization_validator is not None:
             self._invoke_validator(
                 self._authorization_validator,
@@ -4846,9 +4463,7 @@ class SupervisorControlService:
                 raise StaleLeaseError(str(exc) or "lease is stale") from exc
             raise LeaseValidationError(str(exc) or "lease validation failed") from exc
 
-    def _check_idempotency(
-        self, request: OperationRequest
-    ) -> Union[OperationResult, None]:
+    def _check_idempotency(self, request: OperationRequest) -> Union[OperationResult, None]:
         if request.operation not in MUTATION_OPERATIONS or request.dry_run:
             return None
         existing = self._state_store.get_idempotent(request)
@@ -4859,9 +4474,7 @@ class SupervisorControlService:
             existing = (transaction.request_id, transaction.result)
         request_id, result = existing
         if request_id != request.request_id:
-            raise IdempotencyConflictError(
-                "idempotency key is already bound to another request"
-            )
+            raise IdempotencyConflictError("idempotency key is already bound to another request")
         result.validate_against(request)
         return result
 
@@ -4872,26 +4485,18 @@ class SupervisorControlService:
         elif isinstance(value, Mapping):
             response = BackendResponse(
                 data=value,
-                changed=request.operation in MUTATION_OPERATIONS
-                and not request.dry_run,
-                applied_effect_ids=tuple(
-                    item.effect_id for item in request.expected_effects
-                )
-                if request.operation in MUTATION_OPERATIONS
-                and not request.dry_run
+                changed=request.operation in MUTATION_OPERATIONS and not request.dry_run,
+                applied_effect_ids=tuple(item.effect_id for item in request.expected_effects)
+                if request.operation in MUTATION_OPERATIONS and not request.dry_run
                 else (),
             )
         else:
             response = BackendResponse(data={"result": _canonical_json_value(value)})
         declared = {item.effect_id for item in request.expected_effects}
         if not set(response.applied_effect_ids).issubset(declared):
-            raise ControlContractError(
-                "backend claimed an effect not declared by the request"
-            )
+            raise ControlContractError("backend claimed an effect not declared by the request")
         if response.applied_effect_ids and not response.changed:
-            raise ControlContractError(
-                "backend cannot apply effects while reporting no change"
-            )
+            raise ControlContractError("backend cannot apply effects while reporting no change")
         if response.applied_effect_ids and (
             request.operation not in MUTATION_OPERATIONS or request.dry_run
         ):
@@ -4915,25 +4520,18 @@ class SupervisorControlService:
                     "service_id": report.service_id,
                     "service_version": report.service_version,
                     "catalog_id": self._catalog.content_id,
-                    "operations": tuple(
-                        item.value for item in report.supported_operations
-                    ),
+                    "operations": tuple(item.value for item in report.supported_operations),
                     "capability_report_id": report.content_id,
-                    "optional_providers_loaded": (
-                        report.optional_providers_loaded
-                    ),
+                    "optional_providers_loaded": (report.optional_providers_loaded),
                     "processes_started": report.processes_started,
                 },
                 checks=("catalog_population", "provider_free", "process_free"),
             )
         if request.operation is Operation.RECEIPTS and not any(
-            request.parameters.get(name)
-            for name in ("receipts_path", "path")
+            request.parameters.get(name) for name in ("receipts_path", "path")
         ):
             limit, offset = _bounded_window(request)
-            items = self._state_store.query_receipts(
-                request, limit=limit, offset=offset
-            )
+            items = self._state_store.query_receipts(request, limit=limit, offset=offset)
             return BackendResponse(
                 data={
                     "items": list(items),
@@ -4948,9 +4546,7 @@ class SupervisorControlService:
             return degraded
         execute = getattr(self._backend, "execute", None)
         if not callable(execute):
-            raise OperationUnavailableError(
-                "control backend does not provide execute(request)"
-            )
+            raise OperationUnavailableError("control backend does not provide execute(request)")
         if request.operation in MUTATION_OPERATIONS and not request.dry_run:
             self._mutation_dispatch_count += 1
             self._last_mutation_dispatch_request_id = request.request_id
@@ -4958,9 +4554,7 @@ class SupervisorControlService:
         value = execute(request)
         elapsed_ms = (time.monotonic_ns() - started_ns) / 1_000_000
         if elapsed_ms > request.bounds.timeout_ms:
-            raise BackendTimeoutError(
-                f"backend execution exceeded {request.bounds.timeout_ms}ms"
-            )
+            raise BackendTimeoutError(f"backend execution exceeded {request.bounds.timeout_ms}ms")
         return self._normalize_backend_response(value, request)
 
     @staticmethod
@@ -5019,9 +4613,7 @@ class SupervisorControlService:
             code = ErrorCode.UNAUTHORIZED
         elif type(exc).__name__ == "DecisionRuntimeCancelled":
             code = ErrorCode.CANCELLED
-        elif isinstance(exc, BackendNotFoundError) or isinstance(
-            exc, FileNotFoundError
-        ):
+        elif isinstance(exc, BackendNotFoundError) or isinstance(exc, FileNotFoundError):
             code = ErrorCode.NOT_FOUND
         elif isinstance(exc, InvalidLifecycleTransitionError):
             code = ErrorCode.INVALID_LIFECYCLE_TRANSITION
@@ -5087,9 +4679,7 @@ class SupervisorControlService:
             authorization_decision_id=(
                 authorization.decision_id if authorization is not None else ""
             ),
-            grant_ids=(
-                authorization.grant_ids if authorization is not None else ()
-            ),
+            grant_ids=(authorization.grant_ids if authorization is not None else ()),
             dry_run=request.dry_run,
             idempotency_key=request.idempotency_key,
             lease_id=request.lease_id,
@@ -5136,9 +4726,7 @@ class SupervisorControlService:
             expected_effects=request.expected_effects,
             checks=(response.checks if response else ("authorization", "bounds", "allowlists")),
             warnings=response.warnings if response else (),
-            would_change=bool(request.expected_effects)
-            if response is None
-            else response.changed,
+            would_change=bool(request.expected_effects) if response is None else response.changed,
         )
 
     def _success_result(
@@ -5182,10 +4770,7 @@ class SupervisorControlService:
             # exceed the result's proposal-only authority.
             effects=(
                 ()
-                if (
-                    request.dry_run
-                    and request.operation in MUTATION_OPERATIONS
-                )
+                if (request.dry_run and request.operation in MUTATION_OPERATIONS)
                 or request.operation in DOWNSTREAM_EFFECT_PREVIEW_OPERATIONS
                 else self._claims(request, applied, receipt.receipt_id)
             ),
@@ -5197,9 +4782,7 @@ class SupervisorControlService:
         self._state_store.append_receipt(request, receipt)
         if request.operation in MUTATION_OPERATIONS and not request.dry_run:
             if transaction_state is None:
-                raise TransactionConflictError(
-                    "real mutation completed without transaction state"
-                )
+                raise TransactionConflictError("real mutation completed without transaction state")
             transaction_state = self._state_store.compare_and_swap_mutation(
                 request,
                 expected_revision=transaction_state.revision,
@@ -5230,9 +4813,7 @@ class SupervisorControlService:
         declared = {item.effect_id for item in request.expected_effects}
         if not set(applied_effect_ids).issubset(declared):
             error = self._stable_error(
-                ControlContractError(
-                    "partial mutation reported an undeclared applied effect"
-                )
+                ControlContractError("partial mutation reported an undeclared applied effect")
             )
             status = self._status_for_error(error.code)
             applied_effect_ids = ()
@@ -5356,8 +4937,7 @@ class SupervisorControlService:
         if callable(checker):
             return bool(checker())
         raise TypeError(
-            "decision_runtime_cancellation must be a boolean, predicate, "
-            "event, or None"
+            "decision_runtime_cancellation must be a boolean, predicate, event, or None"
         )
 
     def _prepare_decision_runtime(self, request: OperationRequest) -> None:
@@ -5367,9 +4947,7 @@ class SupervisorControlService:
         if request.operation not in MUTATION_OPERATIONS or request.dry_run:
             return
         if self._runtime_cancelled():
-            raise BackendCancelledError(
-                "control operation cancelled before runtime decision"
-            )
+            raise BackendCancelledError("control operation cancelled before runtime decision")
         runtime = self._decision_runtime
         runtime_config = request.parameters.get("decision_runtime")
         if runtime_config is not None:
@@ -5387,8 +4965,7 @@ class SupervisorControlService:
                 self._decision_runtime = runtime
             elif (
                 getattr(runtime, "config", None) is not None
-                and getattr(runtime.config, "config_id", None)
-                != decoded.config_id
+                and getattr(runtime.config, "config_id", None) != decoded.config_id
             ):
                 raise ControlContractError(
                     "control request decision_runtime config differs from "
@@ -5413,15 +4990,11 @@ class SupervisorControlService:
                 "lease_id": request.lease_id,
                 "fencing_epoch": request.fencing_epoch,
                 "idempotency_key": request.idempotency_key,
-                "expected_effect_ids": tuple(
-                    item.effect_id for item in request.expected_effects
-                ),
+                "expected_effect_ids": tuple(item.effect_id for item in request.expected_effects),
             },
         )
 
-    def _dispatch_with_decision_runtime(
-        self, request: OperationRequest
-    ) -> BackendResponse:
+    def _dispatch_with_decision_runtime(self, request: OperationRequest) -> BackendResponse:
         """Check the current permit immediately adjacent to backend dispatch."""
 
         runtime = self._decision_runtime
@@ -5429,14 +5002,10 @@ class SupervisorControlService:
         if runtime is None:
             return self._dispatch(request)
         if self._runtime_cancelled():
-            raise BackendCancelledError(
-                "control operation cancelled before backend dispatch"
-            )
+            raise BackendCancelledError("control operation cancelled before backend dispatch")
         authorize = getattr(runtime, "authorize_mutation", None)
         if not callable(authorize):
-            raise TypeError(
-                "decision_runtime must expose authorize_mutation()"
-            )
+            raise TypeError("decision_runtime must expose authorize_mutation()")
 
         def dispatch() -> dict[str, Any]:
             response = self._dispatch(request)
@@ -5456,14 +5025,10 @@ class SupervisorControlService:
         if not isinstance(wrapped, Mapping) or not isinstance(
             wrapped.get("response"), BackendResponse
         ):
-            raise ControlContractError(
-                "decision runtime returned an invalid backend response"
-            )
+            raise ControlContractError("decision runtime returned an invalid backend response")
         return wrapped["response"]
 
-    def execute(
-        self, request: Union[OperationRequest, Mapping[str, Any]]
-    ) -> OperationResult:
+    def execute(self, request: Union[OperationRequest, Mapping[str, Any]]) -> OperationResult:
         """Validate, dispatch, audit, and return one typed operation result."""
 
         if not isinstance(request, OperationRequest):
@@ -5495,9 +5060,7 @@ class SupervisorControlService:
                                 "committed mutation has no durable result"
                             )
                         mutation_state.result.validate_against(request)
-                        self._state_store.put_idempotent(
-                            request, mutation_state.result
-                        )
+                        self._state_store.put_idempotent(request, mutation_state.result)
                         return mutation_state.result
                     if mutation_state.phase is not MutationTransactionPhase.PREPARED:
                         if mutation_state.result is not None:
@@ -5541,8 +5104,7 @@ class SupervisorControlService:
                     transaction_state=(
                         mutation_state
                         if mutation_state is not None
-                        and mutation_state.phase
-                        is MutationTransactionPhase.DISPATCHING
+                        and mutation_state.phase is MutationTransactionPhase.DISPATCHING
                         else None
                     ),
                 )
@@ -5562,9 +5124,7 @@ class SupervisorControlService:
     handle = execute
     dispatch = execute
 
-    def _operation(
-        self, operation: Operation, request: OperationRequest
-    ) -> OperationResult:
+    def _operation(self, operation: Operation, request: OperationRequest) -> OperationResult:
         if not isinstance(request, OperationRequest):
             raise TypeError("request must be an OperationRequest")
         if request.operation is not operation:
@@ -5643,9 +5203,7 @@ class SupervisorControlService:
     def workflow_preview(self, request: OperationRequest) -> OperationResult:
         return self._operation(Operation.WORKFLOW_PREVIEW, request)
 
-    def workflow_materialize(
-        self, request: OperationRequest
-    ) -> OperationResult:
+    def workflow_materialize(self, request: OperationRequest) -> OperationResult:
         return self._operation(Operation.WORKFLOW_MATERIALIZE, request)
 
     def start(self, request: OperationRequest) -> OperationResult:
@@ -5702,16 +5260,10 @@ class SupervisorControlService:
             reason = str(request.parameters.get("reason") or "")
             if reason != command.reason:
                 raise ValueError("lifecycle command reason does not match request")
-            requested_state = str(
-                request.parameters.get("requested_state") or ""
-            )
+            requested_state = str(request.parameters.get("requested_state") or "")
             if requested_state != command.requested_state:
-                raise ValueError(
-                    "lifecycle command requested_state does not match request"
-                )
-        if request.operation not in {
-            action.operation for action in LifecycleAction
-        }:
+                raise ValueError("lifecycle command requested_state does not match request")
+        if request.operation not in {action.operation for action in LifecycleAction}:
             raise ValueError("request is not a lifecycle operation")
         return self.execute(request)
 
@@ -5735,9 +5287,7 @@ class SupervisorControlService:
     ) -> dict[str, Any]:
         """Dispatch one usage-governance operation through the shared service."""
 
-        return self._usage_control.execute(
-            operation, authorities=authorities, **kwargs
-        )
+        return self._usage_control.execute(operation, authorities=authorities, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -5757,10 +5307,9 @@ class ProviderUsageControlError(Exception):
     ) -> None:
         super().__init__(message)
         self.code = str(code)
-        self.reason_codes = tuple(
-            str(item)[:64]
-            for item in (reason_codes or (self.code,))
-        )[:MAX_USAGE_CONTROL_REASON_CODES]
+        self.reason_codes = tuple(str(item)[:64] for item in (reason_codes or (self.code,)))[
+            :MAX_USAGE_CONTROL_REASON_CODES
+        ]
 
 
 @dataclass(frozen=True)
@@ -5818,16 +5367,10 @@ def _usage_now_rfc3339(now: datetime | None = None) -> str:
     value = now or datetime.now(timezone.utc)
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return (
-        value.astimezone(timezone.utc)
-        .isoformat(timespec="microseconds")
-        .replace("+00:00", "Z")
-    )
+    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
-def _usage_require_text(
-    value: Any, field: str, *, maximum: int = MAX_USAGE_CONTROL_STRING
-) -> str:
+def _usage_require_text(value: Any, field: str, *, maximum: int = MAX_USAGE_CONTROL_STRING) -> str:
     if not isinstance(value, str) or not value or len(value) > maximum:
         raise ProviderUsageControlError(
             f"{field} must be non-empty text within {maximum} bytes",
@@ -5984,8 +5527,7 @@ class ProviderUsageControl:
         max_receipts: int = MAX_USAGE_CONTROL_RECEIPTS,
         max_audit: int = MAX_USAGE_CONTROL_AUDIT,
         default_authorities: Sequence[str] | None = None,
-        adapter_capabilities_provider: Callable[[], Sequence[Mapping[str, Any]]]
-        | None = None,
+        adapter_capabilities_provider: Callable[[], Sequence[Mapping[str, Any]]] | None = None,
     ) -> None:
         if (
             isinstance(max_receipts, bool)
@@ -6087,9 +5629,7 @@ class ProviderUsageControl:
         usage_revision: str | None = None,
         **payload: Any,
     ) -> dict[str, Any]:
-        allow_detail = _usage_has_authority(
-            authorities, SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY
-        )
+        allow_detail = _usage_has_authority(authorities, SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY)
         envelope = self._bind_revisions(
             usage_revision=usage_revision,
             extra={"status": "success", "success": True, **payload},
@@ -6111,9 +5651,7 @@ class ProviderUsageControl:
             code = "invalid_request"
             message = "usage control request failed"
             reasons = ["invalid_request"]
-        allow_detail = _usage_has_authority(
-            authorities, SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY
-        )
+        allow_detail = _usage_has_authority(authorities, SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY)
         envelope = self._bind_revisions(
             usage_revision=usage_revision,
             extra={
@@ -6127,9 +5665,7 @@ class ProviderUsageControl:
         )
         return _usage_redact(envelope, allow_detail=allow_detail)
 
-    def _resolve_authorities(
-        self, authorities: Sequence[str] | None
-    ) -> frozenset[str]:
+    def _resolve_authorities(self, authorities: Sequence[str] | None) -> frozenset[str]:
         if authorities is None:
             return self._default_authorities
         return _usage_authorities(authorities)
@@ -6161,9 +5697,7 @@ class ProviderUsageControl:
                         meta["store_revision"] = int(doc.get("revision") or 0)
                         meta["store_fence"] = int(doc.get("fence") or 0)
                         meta["event_count"] = len(doc.get("events") or [])
-                        meta["reservation_count"] = len(
-                            doc.get("reservations") or {}
-                        )
+                        meta["reservation_count"] = len(doc.get("reservations") or {})
                 except Exception:
                     meta["store_unhealthy"] = True
         return meta
@@ -6204,9 +5738,7 @@ class ProviderUsageControl:
     def _list_scope_ids(self) -> list[str]:
         scopes: set[str] = set(self._budgets)
         scopes.update(self._policies)
-        if self._coordinator is not None and callable(
-            getattr(self._coordinator, "snapshot", None)
-        ):
+        if self._coordinator is not None and callable(getattr(self._coordinator, "snapshot", None)):
             store = getattr(self._coordinator, "store", None)
             if store is not None and callable(getattr(store, "read", None)):
                 try:
@@ -6229,9 +5761,7 @@ class ProviderUsageControl:
         return sorted(scopes)[:MAX_USAGE_CONTROL_PAGE_SIZE]
 
     def _coordinator_snapshot(self, scope_id: str) -> Mapping[str, Any] | None:
-        if self._coordinator is None or not callable(
-            getattr(self._coordinator, "snapshot", None)
-        ):
+        if self._coordinator is None or not callable(getattr(self._coordinator, "snapshot", None)):
             return None
         snap = self._coordinator.snapshot(scope_id)
         if hasattr(snap, "to_dict"):
@@ -6456,9 +5986,7 @@ class ProviderUsageControl:
             fence=fence,
             lease_id=lease_id,
             reason_codes=("ok", operation.value),
-            effects=tuple(str(item)[:64] for item in effects)[
-                :MAX_USAGE_CONTROL_EXPECTED_EFFECTS
-            ],
+            effects=tuple(str(item)[:64] for item in effects)[:MAX_USAGE_CONTROL_EXPECTED_EFFECTS],
             created_at=_usage_now_rfc3339(),
             audit_id=_usage_content_cid(
                 {
@@ -6534,9 +6062,7 @@ class ProviderUsageControl:
             SupervisorUsageControlOperation.ROUTE_PREVIEW: self.route_preview,
             SupervisorUsageControlOperation.BLOCKED_WORK: self.blocked_work,
             SupervisorUsageControlOperation.NEXT_ELIGIBLE: self.next_eligible,
-            SupervisorUsageControlOperation.ADAPTER_CAPABILITIES: (
-                self.adapter_capabilities
-            ),
+            SupervisorUsageControlOperation.ADAPTER_CAPABILITIES: (self.adapter_capabilities),
             SupervisorUsageControlOperation.SET_BUDGET: self.set_budget,
             SupervisorUsageControlOperation.SET_POLICY: self.set_policy,
             SupervisorUsageControlOperation.CORRECT: self.correct,
@@ -6560,9 +6086,7 @@ class ProviderUsageControl:
                     inspect.Parameter.KEYWORD_ONLY,
                 }
             }
-            filtered = {
-                key: value for key, value in kwargs.items() if key in allowed
-            }
+            filtered = {key: value for key, value in kwargs.items() if key in allowed}
         return method(authorities=authorities, **filtered)
 
     # -- read / query / preview -------------------------------------------
@@ -6627,20 +6151,12 @@ class ProviderUsageControl:
                         # Aggregate only: credential/account/tenant omitted
                         # unless read_detail is granted (redaction layer).
                         "credential_pseudonym": (
-                            snap.get("credential_pseudonym")
-                            if isinstance(snap, Mapping)
-                            else None
+                            snap.get("credential_pseudonym") if isinstance(snap, Mapping) else None
                         ),
                         "account_pseudonym": (
-                            snap.get("account_pseudonym")
-                            if isinstance(snap, Mapping)
-                            else None
+                            snap.get("account_pseudonym") if isinstance(snap, Mapping) else None
                         ),
-                        "tenant_id": (
-                            snap.get("tenant_id")
-                            if isinstance(snap, Mapping)
-                            else None
-                        ),
+                        "tenant_id": (snap.get("tenant_id") if isinstance(snap, Mapping) else None),
                     }
                 )
             page, next_cursor = self._page_items(
@@ -6834,18 +6350,12 @@ class ProviderUsageControl:
                 for item in items
                 if isinstance(item, Mapping) or hasattr(item, "to_dict")
             ]
-            items.sort(
-                key=lambda item: str(
-                    item.get("reservation_id") or item.get("id") or ""
-                )
-            )
+            items.sort(key=lambda item: str(item.get("reservation_id") or item.get("id") or ""))
             page, next_cursor = self._page_items(
                 items,
                 limit=page_limit,
                 cursor=cursor,
-                cursor_key=lambda item: str(
-                    item.get("reservation_id") or item.get("id") or ""
-                ),
+                cursor_key=lambda item: str(item.get("reservation_id") or item.get("id") or ""),
             )
             return self._success(
                 authorities=granted,
@@ -6886,10 +6396,7 @@ class ProviderUsageControl:
                 limit=page_limit,
                 cursor=cursor,
                 cursor_key=lambda item: str(
-                    item.get("receipt_id")
-                    or item.get("attempt_id")
-                    or item.get("audit_id")
-                    or ""
+                    item.get("receipt_id") or item.get("attempt_id") or item.get("audit_id") or ""
                 ),
             )
             return self._success(
@@ -6926,10 +6433,7 @@ class ProviderUsageControl:
                         reason_codes=("invalid_request",),
                     )
                 sid = str(
-                    candidate.get("scope_id")
-                    or candidate.get("target_id")
-                    or target_id
-                    or ""
+                    candidate.get("scope_id") or candidate.get("target_id") or target_id or ""
                 )
                 headroom = self.headroom(sid, authorities=list(granted)) if sid else {}
                 bands = {
@@ -6937,22 +6441,16 @@ class ProviderUsageControl:
                     for item in (headroom.get("items") or ())
                     if isinstance(item, Mapping)
                 }
-                eligible = not any(
-                    band in {"exhausted", "critical"} for band in bands.values()
-                )
+                eligible = not any(band in {"exhausted", "critical"} for band in bands.values())
                 rows.append(
                     {
-                        "binding_id": str(
-                            candidate.get("binding_id") or f"binding:{index}"
-                        ),
+                        "binding_id": str(candidate.get("binding_id") or f"binding:{index}"),
                         "provider": str(candidate.get("provider_id") or "other"),
                         "deployment": str(candidate.get("deployment_id") or "other"),
                         "target_id": sid,
                         "eligible": eligible,
                         "headroom_bands": bands,
-                        "reasons": (
-                            ["ok"] if eligible else ["limit_exhausted"]
-                        ),
+                        "reasons": (["ok"] if eligible else ["limit_exhausted"]),
                     }
                 )
             page = rows[:page_limit]
@@ -7519,9 +7017,7 @@ class ProviderUsageControl:
                     }
                 # Clear blocked work for this target on reset.
                 self._blocked_work = [
-                    item
-                    for item in self._blocked_work
-                    if item.get("scope_id") != target_id
+                    item for item in self._blocked_work if item.get("scope_id") != target_id
                 ]
             revision = self._bump_usage_revision()
             self._record_metric("record_reset", reason="reset")
@@ -7548,9 +7044,7 @@ provider_usage_controls = type(
     "provider_usage_controls",
     (),
     {
-        "SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID": (
-            SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID
-        ),
+        "SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID": (SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID),
         "ProviderUsageControl": ProviderUsageControl,
         "discover_usage_control_catalog": discover_usage_control_catalog,
         "usage_control_authorities": usage_control_authorities,
@@ -7569,15 +7063,11 @@ def control_service_publication(
 ) -> ControlSurfacePublication:
     """Publish the exhaustive Python service surface without dispatching it."""
 
-    selected_catalog = (
-        service.operation_catalog() if service is not None else catalog
-    )
+    selected_catalog = service.operation_catalog() if service is not None else catalog
     _validate_canonical_catalog(selected_catalog)
     service_type = type(service) if service is not None else SupervisorControlService
     if not callable(getattr(service_type, "execute", None)):
-        raise ControlCatalogConformanceError(
-            "SupervisorControlService.execute is not callable"
-        )
+        raise ControlCatalogConformanceError("SupervisorControlService.execute is not callable")
     missing_methods = tuple(
         operation.value
         for operation in selected_catalog.operations
@@ -7585,29 +7075,20 @@ def control_service_publication(
     )
     if missing_methods:
         raise ControlCatalogConformanceError(
-            "Python service is missing catalog operation methods: "
-            + ", ".join(missing_methods)
+            "Python service is missing catalog operation methods: " + ", ".join(missing_methods)
         )
     publication = ControlSurfacePublication(
         surface=ControlSurface.PYTHON,
         catalog_id=selected_catalog.content_id,
         catalog_version=selected_catalog.catalog_version,
         operations=selected_catalog.operations,
-        request_schema_ids={
-            item.operation: item.request_schema_id
-            for item in selected_catalog
-        },
-        result_schema_ids={
-            item.operation: item.result_schema_id
-            for item in selected_catalog
-        },
+        request_schema_ids={item.operation: item.request_schema_id for item in selected_catalog},
+        result_schema_ids={item.operation: item.result_schema_id for item in selected_catalog},
         behavior_ids={
-            item.operation: control_operation_behavior_id(item)
-            for item in selected_catalog
+            item.operation: control_operation_behavior_id(item) for item in selected_catalog
         },
         dispatcher_ids={
-            item.operation: DIRECT_CONTROL_SERVICE_DISPATCHER_ID
-            for item in selected_catalog
+            item.operation: DIRECT_CONTROL_SERVICE_DISPATCHER_ID for item in selected_catalog
         },
     )
     return validate_control_surface_publication(
@@ -7672,18 +7153,12 @@ class SupervisorClient:
         merged = dict(parameters or {})
         overlap = set(merged).intersection(values)
         if overlap:
-            raise ValueError(
-                "duplicate request parameters: " + ", ".join(sorted(overlap))
-            )
+            raise ValueError("duplicate request parameters: " + ", ".join(sorted(overlap)))
         merged.update(values)
-        request = self._target.request(
-            operation, parameters=merged, bounds=self._bounds
-        )
+        request = self._target.request(operation, parameters=merged, bounds=self._bounds)
         return self._service.execute(request)
 
-    def _authorized(
-        self, operation: Operation, request: OperationRequest
-    ) -> OperationResult:
+    def _authorized(self, operation: Operation, request: OperationRequest) -> OperationResult:
         return self._service._operation(operation, request)
 
     def status(
@@ -7780,9 +7255,7 @@ class SupervisorClient:
 
     refill = backlog_refill
 
-    def workflow_materialize(
-        self, request: OperationRequest
-    ) -> OperationResult:
+    def workflow_materialize(self, request: OperationRequest) -> OperationResult:
         return self._authorized(Operation.WORKFLOW_MATERIALIZE, request)
 
     def start(self, request: OperationRequest) -> OperationResult:

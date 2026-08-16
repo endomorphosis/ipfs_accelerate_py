@@ -220,9 +220,7 @@ def test_forged_verified_status_and_provider_claims_fail_closed() -> None:
     payload["status"] = "verified"
     with pytest.raises(ContractValidationError) as rejected:
         ProofReceipt.from_dict(payload)
-    _assert_public_reason(
-        bounded_rejection_reason("malformed_proof_receipt", rejected.value)
-    )
+    _assert_public_reason(bounded_rejection_reason("malformed_proof_receipt", rejected.value))
 
     payload = receipt.to_dict()
     payload["authoritative_assurance"] = "attested"
@@ -243,10 +241,7 @@ def test_solver_only_success_never_becomes_a_proof_or_cache_hit(
     rejected = cache.put(_key(), receipt)
     assert not rejected.stored
     assert CacheRejectionReason.SOLVER_ONLY_ENTRY.value in rejected.reason_codes
-    assert (
-        CacheRejectionReason.INSUFFICIENT_ASSURANCE.value
-        in rejected.reason_codes
-    )
+    assert CacheRejectionReason.INSUFFICIENT_ASSURANCE.value in rejected.reason_codes
     _assert_public_reason(rejected.actionable_reason)
 
 
@@ -280,10 +275,7 @@ def test_stale_tree_changed_premises_and_toolchain_drift_cannot_reuse_receipts(
         changed_receipt = _receipt(**receipt_changes)  # type: ignore[arg-type]
         rejected = cache.put(_key(), changed_receipt)
         assert not rejected.stored
-        assert (
-            CacheRejectionReason.BINDING_MISMATCH.value
-            in rejected.reason_codes
-        )
+        assert CacheRejectionReason.BINDING_MISMATCH.value in rejected.reason_codes
         _assert_public_reason(rejected.actionable_reason)
 
 
@@ -298,10 +290,7 @@ def test_empty_and_unidentifiable_premise_bindings_fail_closed(
     for key in (empty_key, opaque_key):
         rejected = cache.put(key, nonempty_receipt)
         assert not rejected.stored
-        assert (
-            CacheRejectionReason.BINDING_MISMATCH.value
-            in rejected.reason_codes
-        )
+        assert CacheRejectionReason.BINDING_MISMATCH.value in rejected.reason_codes
         _assert_public_reason(rejected.actionable_reason)
 
 
@@ -337,9 +326,7 @@ def test_cache_poisoning_and_malformed_receipts_are_quarantined(
     malformed["verified"] = True
     rejected = cache.put(_key(), malformed)
     assert not rejected.stored
-    assert rejected.reason_codes == (
-        CacheRejectionReason.MALFORMED_ENTRY.value,
-    )
+    assert rejected.reason_codes == (CacheRejectionReason.MALFORMED_ENTRY.value,)
     _assert_public_reason(rejected.actionable_reason)
 
 
@@ -396,10 +383,7 @@ def test_simulated_zkp_and_stale_verification_keys_cannot_promote_assurance(
     assert not receipt.satisfies(AssuranceLevel.ATTESTED)
     rejected = FormalVerificationCache(tmp_path).put(_key(), receipt)
     assert not rejected.stored
-    assert (
-        CacheRejectionReason.SIMULATED_ATTESTATION.value
-        in rejected.reason_codes
-    )
+    assert CacheRejectionReason.SIMULATED_ATTESTATION.value in rejected.reason_codes
     _assert_public_reason(rejected.actionable_reason)
 
     policy = AttestationBackendPolicy(
@@ -559,9 +543,7 @@ def test_single_flight_crash_and_cancellation_are_shared_but_never_promoted(
     leader_thread = threading.Thread(target=leader)
     leader_thread.start()
     assert started.wait(timeout=2)
-    follower_thread = threading.Thread(
-        target=follower, name="adversarial-follower"
-    )
+    follower_thread = threading.Thread(target=follower, name="adversarial-follower")
     follower_thread.start()
     assert follower_waiting.wait(timeout=2)
     fail.set()
@@ -585,9 +567,7 @@ def test_restart_fences_abandoned_work_and_coordination_never_promotes_verdict(
 ) -> None:
     now = [1_000.0]
     before_crash = FormalVerificationCache(tmp_path, clock=lambda: now[0])
-    abandoned = before_crash.acquire_lease(
-        _key(), owner_id="crashed-process", lease_seconds=1
-    )
+    abandoned = before_crash.acquire_lease(_key(), owner_id="crashed-process", lease_seconds=1)
     assert abandoned.acquired
 
     now[0] += 2
@@ -598,9 +578,7 @@ def test_restart_fences_abandoned_work_and_coordination_never_promotes_verdict(
         executions[0] += 1
         return {"candidate": "not-authoritative"}
 
-    assert after_restart.single_flight(_key(), recompute) == {
-        "candidate": "not-authoritative"
-    }
+    assert after_restart.single_flight(_key(), recompute) == {"candidate": "not-authoritative"}
     assert executions == [1]
     assert after_restart.lookup(_key()).status is CacheLookupStatus.MISS
 
@@ -622,9 +600,7 @@ def test_duplicate_single_flight_executes_once_without_creating_assurance(
 
     def worker() -> None:
         barrier.wait()
-        output = cache.single_flight(
-            _key(), execute, poll_interval_seconds=0.005
-        )
+        output = cache.single_flight(_key(), execute, poll_interval_seconds=0.005)
         with lock:
             outputs.append(output)
 
@@ -636,9 +612,7 @@ def test_duplicate_single_flight_executes_once_without_creating_assurance(
 
     assert all(not thread.is_alive() for thread in threads)
     assert executions == [1]
-    assert outputs == [
-        {"candidate": "shared", "authoritative": False}
-    ] * 6
+    assert outputs == [{"candidate": "shared", "authoritative": False}] * 6
     assert cache.lookup(_key()).receipt is None
 
 

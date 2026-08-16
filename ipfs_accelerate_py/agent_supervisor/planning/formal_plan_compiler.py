@@ -69,15 +69,11 @@ FORMAL_PLAN_COMPILER_VERSION: Final = 1
 FORMAL_PLAN_COMPILATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-compilation@1"
 )
-FORMAL_PLAN_GRAPH_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/formal-plan-graph@1"
-)
+FORMAL_PLAN_GRAPH_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/formal-plan-graph@1"
 FORMAL_PLAN_ADMISSION_PROJECTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-admission-projection@1"
 )
-FORMAL_PLAN_INPUT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/formal-plan-input@1"
-)
+FORMAL_PLAN_INPUT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/formal-plan-input@1"
 PROMPT_FORMAL_PLAN_INPUT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/prompt-formal-plan-input@1"
 )
@@ -213,12 +209,8 @@ class PlanAdmissionProjection:
         )
         if not self.plan_id:
             raise ValueError("plan_id is required")
-        object.__setattr__(
-            self, "actions", _unique_records(self.actions, "action_id")
-        )
-        object.__setattr__(
-            self, "effects", _unique_records(self.effects, "effect_id")
-        )
+        object.__setattr__(self, "actions", _unique_records(self.actions, "action_id"))
+        object.__setattr__(self, "effects", _unique_records(self.effects, "effect_id"))
         object.__setattr__(
             self,
             "dependency_edges",
@@ -235,13 +227,7 @@ class PlanAdmissionProjection:
                 self,
                 name,
                 tuple(
-                    sorted(
-                        {
-                            str(item).strip()
-                            for item in getattr(self, name)
-                            if str(item).strip()
-                        }
-                    )
+                    sorted({str(item).strip() for item in getattr(self, name) if str(item).strip()})
                 ),
             )
 
@@ -275,9 +261,7 @@ class PlanAdmissionProjection:
             "dependency_edges": [dict(item) for item in self.dependency_edges],
             "assumption_ids": list(self.assumption_ids),
             "proof_obligation_ids": list(self.proof_obligation_ids),
-            "validation_requirement_ids": list(
-                self.validation_requirement_ids
-            ),
+            "validation_requirement_ids": list(self.validation_requirement_ids),
             "generated_formula_ids": list(self.generated_formula_ids),
             "source_ids": list(self.source_ids),
             "proof_results": [],
@@ -295,8 +279,7 @@ class PlanAdmissionProjection:
         supplied_schema = payload.get("schema")
         if supplied_schema not in (None, "", FORMAL_PLAN_ADMISSION_PROJECTION_SCHEMA):
             raise ValueError(
-                "unsupported formal-plan admission projection schema "
-                f"{supplied_schema!r}"
+                f"unsupported formal-plan admission projection schema {supplied_schema!r}"
             )
         result = cls(
             plan_id=str(payload.get("plan_id") or ""),
@@ -304,29 +287,19 @@ class PlanAdmissionProjection:
             actions=tuple(payload.get("actions") or ()),
             effects=tuple(payload.get("effects") or ()),
             dependency_edges=tuple(
-                payload.get("dependency_edges")
-                or payload.get("dependencies")
-                or ()
+                payload.get("dependency_edges") or payload.get("dependencies") or ()
             ),
             assumption_ids=tuple(payload.get("assumption_ids") or ()),
-            proof_obligation_ids=tuple(
-                payload.get("proof_obligation_ids") or ()
-            ),
-            validation_requirement_ids=tuple(
-                payload.get("validation_requirement_ids") or ()
-            ),
-            generated_formula_ids=tuple(
-                payload.get("generated_formula_ids") or ()
-            ),
+            proof_obligation_ids=tuple(payload.get("proof_obligation_ids") or ()),
+            validation_requirement_ids=tuple(payload.get("validation_requirement_ids") or ()),
+            generated_formula_ids=tuple(payload.get("generated_formula_ids") or ()),
             source_ids=tuple(payload.get("source_ids") or ()),
         )
         claimed = str(payload.get("projection_id") or "")
         if claimed and claimed != result.projection_id:
             raise ValueError("plan-admission projection identity does not match payload")
         if payload.get("proof_results"):
-            raise ValueError(
-                "formal-plan projections cannot carry proof results"
-            )
+            raise ValueError("formal-plan projections cannot carry proof results")
         return result
 
 
@@ -344,9 +317,7 @@ class PlanCompilationResult:
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", CompilationStatus(self.status))
         formulas = {formula.formula_id: formula for formula in self.formulas}
-        object.__setattr__(
-            self, "formulas", tuple(formulas[key] for key in sorted(formulas))
-        )
+        object.__setattr__(self, "formulas", tuple(formulas[key] for key in sorted(formulas)))
         object.__setattr__(
             self,
             "issues",
@@ -438,9 +409,7 @@ class PlanCompilationResult:
         return projection.to_dict() if projection is not None else {}
 
     def formula_by_id(self, formula_id: str) -> Formula | None:
-        return next(
-            (item for item in self.formulas if item.formula_id == formula_id), None
-        )
+        return next((item for item in self.formulas if item.formula_id == formula_id), None)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -459,9 +428,7 @@ class PlanCompilationResult:
                 else None
             ),
             "graph_projection": self.graph_projection.to_dict(),
-            "issues": [
-                {**item.to_dict(), "issue_id": item.issue_id} for item in self.issues
-            ],
+            "issues": [{**item.to_dict(), "issue_id": item.issue_id} for item in self.issues],
             "unsupported_fields": list(self.unsupported_fields),
             "abstraction_ids": list(self.abstraction_ids),
         }
@@ -504,68 +471,189 @@ _SECTION_ALIASES: Final = {
 _KNOWN_FIELDS: Final = {
     "objectives": frozenset(
         {
-            "id", "goal_id", "goal_cid", "canonical_goal_id", "cid",
-            "owner_actor_id", "owner_id", "actor_id", "title", "description",
-            "terminal_states", "source_ids", "subgoals", "acceptance_criteria",
-            "trace_bound", "deadline", "metadata", "schema", "content_id",
+            "id",
+            "goal_id",
+            "goal_cid",
+            "canonical_goal_id",
+            "cid",
+            "owner_actor_id",
+            "owner_id",
+            "actor_id",
+            "title",
+            "description",
+            "terminal_states",
+            "source_ids",
+            "subgoals",
+            "acceptance_criteria",
+            "trace_bound",
+            "deadline",
+            "metadata",
+            "schema",
+            "content_id",
         }
     ),
     "tasks": frozenset(
         {
-            "id", "task_id", "task_cid", "canonical_task_id",
-            "canonical_task_cid", "cid", "goal_id", "goal_cid", "subgoal_id",
-            "subgoal_cid", "actor_id", "actor_ids", "assigned_to", "assignee",
-            "depends_on", "dependencies", "dependency_task_cids",
-            "blocking_task_cids", "lease", "lease_id", "lease_cid", "lease_holder",
-            "holder_id", "fencing_token", "resource_needs", "resources",
-            "required_resources", "changed_ast_scopes", "ast_scope_ids",
-            "symbol_cids", "tree_cid", "repository_tree_id",
-            "acceptance_criteria", "validation_commands", "effects",
-            "preconditions", "requires_proof", "require_proof", "events",
-            "evidence_cids", "evidence_ids",
-            "status", "title", "description", "terminal_states", "deadline",
-            "metadata", "schema", "content_id",
+            "id",
+            "task_id",
+            "task_cid",
+            "canonical_task_id",
+            "canonical_task_cid",
+            "cid",
+            "goal_id",
+            "goal_cid",
+            "subgoal_id",
+            "subgoal_cid",
+            "actor_id",
+            "actor_ids",
+            "assigned_to",
+            "assignee",
+            "depends_on",
+            "dependencies",
+            "dependency_task_cids",
+            "blocking_task_cids",
+            "lease",
+            "lease_id",
+            "lease_cid",
+            "lease_holder",
+            "holder_id",
+            "fencing_token",
+            "resource_needs",
+            "resources",
+            "required_resources",
+            "changed_ast_scopes",
+            "ast_scope_ids",
+            "symbol_cids",
+            "tree_cid",
+            "repository_tree_id",
+            "acceptance_criteria",
+            "validation_commands",
+            "effects",
+            "preconditions",
+            "requires_proof",
+            "require_proof",
+            "events",
+            "evidence_cids",
+            "evidence_ids",
+            "status",
+            "title",
+            "description",
+            "terminal_states",
+            "deadline",
+            "metadata",
+            "schema",
+            "content_id",
         }
     ),
     "ast": frozenset(
         {
-            "id", "cid", "content_id", "ast_cid", "scope_cid", "symbol_cid",
-            "tree_cid", "repository_tree_id", "task_id", "task_cid", "symbol",
-            "symbol_name", "qualified_name", "path", "file_path", "changed",
-            "change_kind", "kind", "metadata", "schema",
+            "id",
+            "cid",
+            "content_id",
+            "ast_cid",
+            "scope_cid",
+            "symbol_cid",
+            "tree_cid",
+            "repository_tree_id",
+            "task_id",
+            "task_cid",
+            "symbol",
+            "symbol_name",
+            "qualified_name",
+            "path",
+            "file_path",
+            "changed",
+            "change_kind",
+            "kind",
+            "metadata",
+            "schema",
         }
     ),
     "policies": frozenset(
         {
-            "id", "cid", "content_id", "policy_id", "policy_cid", "name",
-            "required_evidence", "evidence_requirements", "minimum_assurance",
-            "minimum_code_assurance", "freshness_seconds", "fallback_checks",
-            "fallback_check_ids", "obligations", "permissions", "prohibitions",
-            "trace_bound", "metadata", "schema",
+            "id",
+            "cid",
+            "content_id",
+            "policy_id",
+            "policy_cid",
+            "name",
+            "required_evidence",
+            "evidence_requirements",
+            "minimum_assurance",
+            "minimum_code_assurance",
+            "freshness_seconds",
+            "fallback_checks",
+            "fallback_check_ids",
+            "obligations",
+            "permissions",
+            "prohibitions",
+            "trace_bound",
+            "metadata",
+            "schema",
         }
     ),
     "leases": frozenset(
         {
-            "id", "cid", "content_id", "lease_id", "lease_cid", "task_id",
-            "task_cid", "actor_id", "holder_id", "lease_holder", "owner_id",
-            "fencing_token", "valid_from", "valid_until", "expires_at",
-            "resource_needs", "resources", "metadata", "schema",
+            "id",
+            "cid",
+            "content_id",
+            "lease_id",
+            "lease_cid",
+            "task_id",
+            "task_cid",
+            "actor_id",
+            "holder_id",
+            "lease_holder",
+            "owner_id",
+            "fencing_token",
+            "valid_from",
+            "valid_until",
+            "expires_at",
+            "resource_needs",
+            "resources",
+            "metadata",
+            "schema",
         }
     ),
     "evidence": frozenset(
         {
-            "id", "cid", "content_id", "evidence_id", "evidence_cid",
-            "task_id", "task_cid", "goal_id", "goal_cid", "kind", "freshness",
-            "scope_ids", "source_scope_ids", "metadata", "schema",
+            "id",
+            "cid",
+            "content_id",
+            "evidence_id",
+            "evidence_cid",
+            "task_id",
+            "task_cid",
+            "goal_id",
+            "goal_cid",
+            "kind",
+            "freshness",
+            "scope_ids",
+            "source_scope_ids",
+            "metadata",
+            "schema",
         }
     ),
 }
 
 _ABSTRACTED_FIELDS: Final = frozenset(
     {
-        "title", "description", "status", "path", "file_path", "symbol",
-        "symbol_name", "qualified_name", "change_kind", "expires_at", "name",
-        "metadata", "schema", "changed", "kind", "freshness",
+        "title",
+        "description",
+        "status",
+        "path",
+        "file_path",
+        "symbol",
+        "symbol_name",
+        "qualified_name",
+        "change_kind",
+        "expires_at",
+        "name",
+        "metadata",
+        "schema",
+        "changed",
+        "kind",
+        "freshness",
     }
 )
 
@@ -662,9 +750,7 @@ def _values(value: Any) -> tuple[Any, ...]:
 
 
 def _strings(value: Any) -> tuple[str, ...]:
-    return tuple(
-        sorted({str(item).strip() for item in _values(value) if str(item).strip()})
-    )
+    return tuple(sorted({str(item).strip() for item in _values(value) if str(item).strip()}))
 
 
 def _resource_values(value: Any) -> tuple[str, ...]:
@@ -705,12 +791,8 @@ def _records(value: Any) -> tuple[dict[str, Any], ...]:
 def _source_id(record: Mapping[str, Any], kind: str) -> str:
     preferred = {
         "objectives": ("goal_cid", "content_id", "cid", "goal_id", "id"),
-        "tasks": (
-            "task_cid", "canonical_task_cid", "content_id", "cid", "task_id", "id"
-        ),
-        "ast": (
-            "symbol_cid", "scope_cid", "ast_cid", "content_id", "cid", "id"
-        ),
+        "tasks": ("task_cid", "canonical_task_cid", "content_id", "cid", "task_id", "id"),
+        "ast": ("symbol_cid", "scope_cid", "ast_cid", "content_id", "cid", "id"),
         "policies": ("policy_cid", "content_id", "cid", "policy_id", "id"),
         "leases": ("lease_cid", "content_id", "cid", "lease_id", "id"),
         "evidence": ("evidence_cid", "content_id", "cid", "evidence_id", "id"),
@@ -718,9 +800,7 @@ def _source_id(record: Mapping[str, Any], kind: str) -> str:
     return _text(record, *preferred) or content_identity(record)
 
 
-def _subgoal_source_id(
-    record: Mapping[str, Any], objective_source_id: str = ""
-) -> str:
+def _subgoal_source_id(record: Mapping[str, Any], objective_source_id: str = "") -> str:
     """Return the stable source identity of one reviewed nested subgoal."""
 
     return (
@@ -753,9 +833,7 @@ def _subgoal_identity(record: Mapping[str, Any]) -> str:
     )
 
 
-def _unique_records(
-    values: Iterable[Mapping[str, Any]], key: str
-) -> tuple[Mapping[str, Any], ...]:
+def _unique_records(values: Iterable[Mapping[str, Any]], key: str) -> tuple[Mapping[str, Any], ...]:
     result: dict[str, dict[str, Any]] = {}
     for raw in values:
         item = _record(raw)
@@ -795,9 +873,7 @@ def project_formal_plan_for_admission(
         effect_records.append(record)
         effects_by_action[effect.task_id].append(record)
 
-    proof_obligation_ids = {
-        item.requirement_id for item in plan.evidence_requirements
-    }
+    proof_obligation_ids = {item.requirement_id for item in plan.evidence_requirements}
     validation_kinds = {
         EvidenceRequirementKind.TEST,
         EvidenceRequirementKind.STATIC_ANALYSIS,
@@ -821,18 +897,10 @@ def project_formal_plan_for_admission(
             )
         )
         task_obligations = tuple(
-            sorted(
-                set(task.evidence_requirement_ids).intersection(
-                    proof_obligation_ids
-                )
-            )
+            sorted(set(task.evidence_requirement_ids).intersection(proof_obligation_ids))
         )
         task_validations = tuple(
-            sorted(
-                set(task.evidence_requirement_ids).intersection(
-                    validation_requirement_ids
-                )
-            )
+            sorted(set(task.evidence_requirement_ids).intersection(validation_requirement_ids))
         )
         actions.append(
             {
@@ -875,13 +943,9 @@ def project_formal_plan_for_admission(
         actions=tuple(actions),
         effects=tuple(effect_records),
         dependency_edges=tuple(dependency_edges),
-        assumption_ids=tuple(
-            item.precondition_id for item in plan.preconditions
-        ),
+        assumption_ids=tuple(item.precondition_id for item in plan.preconditions),
         proof_obligation_ids=tuple(sorted(proof_obligation_ids)),
-        validation_requirement_ids=tuple(
-            sorted(validation_requirement_ids)
-        ),
+        validation_requirement_ids=tuple(sorted(validation_requirement_ids)),
         generated_formula_ids=formula_ids,
         source_ids=plan.source_ids,
     )
@@ -1011,15 +1075,11 @@ def prompt_goal_graph_to_formal_input(
             {
                 "task_cid": task.task_cid,
                 "goal_cid": root.goal_cid,
-                "subgoal_cid": (
-                    task.goal_cid if task.goal_cid != root.goal_cid else ""
-                ),
+                "subgoal_cid": (task.goal_cid if task.goal_cid != root.goal_cid else ""),
                 "actor_id": resolved_actor,
                 "depends_on": list(task.dependency_task_cids),
                 "resource_needs": [task.resource_class],
-                "changed_ast_scopes": [
-                    f"path:{path}" for path in task.predicted_files
-                ],
+                "changed_ast_scopes": [f"path:{path}" for path in task.predicted_files],
                 "acceptance_criteria": [
                     {
                         "id": criterion.criterion_key,
@@ -1095,9 +1155,7 @@ def _graph_node(kind: str, record_id: str, **attributes: Any) -> dict[str, Any]:
     return {"node_id": content_identity(material), **material}
 
 
-def _graph_edge(
-    kind: str, source: str, target: str, *, source_id: str = ""
-) -> dict[str, Any]:
+def _graph_edge(kind: str, source: str, target: str, *, source_id: str = "") -> dict[str, Any]:
     material = {
         "kind": kind,
         "source": source,
@@ -1115,9 +1173,7 @@ def _normalize_bundle(payload: Mapping[str, Any]) -> dict[str, Any]:
         "policies": [],
         "leases": [],
         "evidence": [],
-        "repository_tree_id": _text(
-            payload, "repository_tree_id", "tree_cid", "tree_id"
-        ),
+        "repository_tree_id": _text(payload, "repository_tree_id", "tree_cid", "tree_id"),
     }
     records_value = payload.get("records")
     if isinstance(records_value, Sequence) and not isinstance(
@@ -1125,9 +1181,7 @@ def _normalize_bundle(payload: Mapping[str, Any]) -> dict[str, Any]:
     ):
         for item in records_value:
             record = _record(item)
-            section = _SECTION_ALIASES.get(
-                _text(record, "record_type", "section", "kind").lower()
-            )
+            section = _SECTION_ALIASES.get(_text(record, "record_type", "section", "kind").lower())
             if section:
                 bundle[section].append(record.get("record", record.get("payload", record)))
     for key, value in payload.items():
@@ -1170,9 +1224,7 @@ def _normalize_bundle(payload: Mapping[str, Any]) -> dict[str, Any]:
             if section:
                 bundle[section].append(_record(record))
     # A bare objective/task/etc. record is accepted when record_type identifies it.
-    record_type = _SECTION_ALIASES.get(
-        _text(payload, "record_type", "section").lower()
-    )
+    record_type = _SECTION_ALIASES.get(_text(payload, "record_type", "section").lower())
     if record_type and not bundle[record_type]:
         bundle[record_type].append(_record(payload))
     for section in _KNOWN_FIELDS:
@@ -1187,13 +1239,9 @@ def _normalize_bundle(payload: Mapping[str, Any]) -> dict[str, Any]:
             ):
                 nested = [_record(value) for value in _values(record["subgoals"])]
                 by_content = {canonical_json(value): value for value in nested}
-                record["subgoals"] = [
-                    by_content[key] for key in sorted(by_content)
-                ]
+                record["subgoals"] = [by_content[key] for key in sorted(by_content)]
             unique[canonical_json(record)] = record
-        bundle[section] = [
-            unique[key] for key in sorted(unique)
-        ]
+        bundle[section] = [unique[key] for key in sorted(unique)]
     return bundle
 
 
@@ -1450,10 +1498,7 @@ class FormalPlanCompiler:
         return receipt
 
     def _read_duckdb(self, connection: Any) -> dict[str, Any]:
-        tables = {
-            str(row[0])
-            for row in connection.execute("SHOW TABLES").fetchall()
-        }
+        tables = {str(row[0]) for row in connection.execute("SHOW TABLES").fetchall()}
         bundle: dict[str, Any] = {
             "objectives": [],
             "tasks": [],
@@ -1481,9 +1526,7 @@ class FormalPlanCompiler:
                         "SELECT field_name, field_value FROM formal_plan_input_metadata"
                     ).fetchall()
                 )
-                bundle["repository_tree_id"] = str(
-                    metadata.get("repository_tree_id") or ""
-                )
+                bundle["repository_tree_id"] = str(metadata.get("repository_tree_id") or "")
             return _normalize_bundle(bundle)
 
         aliases = {
@@ -1503,8 +1546,7 @@ class FormalPlanCompiler:
         # the original authoritative task/AST/evidence records.
         if "evidence_nodes" in tables:
             rows = connection.execute(
-                "SELECT node_kind, payload_json FROM evidence_nodes "
-                "ORDER BY node_id"
+                "SELECT node_kind, payload_json FROM evidence_nodes ORDER BY node_id"
             ).fetchall()
             for node_kind, payload in rows:
                 value = json.loads(str(payload))
@@ -1536,7 +1578,8 @@ class FormalPlanCompiler:
             record = dict(zip(columns, row))
             json_field = next(
                 (
-                    name for name in ("payload_json", "record_json", "json")
+                    name
+                    for name in ("payload_json", "record_json", "json")
                     if name in record and record[name] not in (None, "")
                 ),
                 None,
@@ -1608,9 +1651,7 @@ class FormalPlanCompiler:
                                 record[field_name],
                             )
                         )
-                for field_name in sorted(
-                    set(record) & _UNSUPPORTED_SEMANTIC_FIELDS[section]
-                ):
+                for field_name in sorted(set(record) & _UNSUPPORTED_SEMANTIC_FIELDS[section]):
                     if record.get(field_name) not in (None, "", {}, []):
                         issues.append(
                             CompilationIssue(
@@ -1624,9 +1665,7 @@ class FormalPlanCompiler:
                             )
                         )
                 if section == "objectives":
-                    for subgoal_index, raw_subgoal in enumerate(
-                        _values(record.get("subgoals"))
-                    ):
+                    for subgoal_index, raw_subgoal in enumerate(_values(record.get("subgoals"))):
                         if not isinstance(raw_subgoal, Mapping):
                             issues.append(
                                 CompilationIssue(
@@ -1641,22 +1680,15 @@ class FormalPlanCompiler:
                             )
                             continue
                         subgoal_record = _record(raw_subgoal)
-                        subgoal_path = (
-                            f"$.objectives[{index}].subgoals[{subgoal_index}]"
-                        )
-                        for field_name in sorted(
-                            set(subgoal_record) - _KNOWN_SUBGOAL_FIELDS
-                        ):
-                            semantic = (
-                                field_name in _UNSUPPORTED_SUBGOAL_SEMANTIC_FIELDS
-                                or any(
-                                    token in field_name.lower()
-                                    for token in (
-                                        "formula",
-                                        "operator",
-                                        "predicate",
-                                        "semantic",
-                                    )
+                        subgoal_path = f"$.objectives[{index}].subgoals[{subgoal_index}]"
+                        for field_name in sorted(set(subgoal_record) - _KNOWN_SUBGOAL_FIELDS):
+                            semantic = field_name in _UNSUPPORTED_SUBGOAL_SEMANTIC_FIELDS or any(
+                                token in field_name.lower()
+                                for token in (
+                                    "formula",
+                                    "operator",
+                                    "predicate",
+                                    "semantic",
                                 )
                             )
                             issues.append(
@@ -1749,9 +1781,7 @@ class FormalPlanCompiler:
                     "a proof/evidence policy is required",
                 )
             )
-        if any(
-            item.severity is CompilationIssueSeverity.UNSUPPORTED for item in issues
-        ):
+        if any(item.severity is CompilationIssueSeverity.UNSUPPORTED for item in issues):
             graph = self._source_graph(bundle)
             return _failure_result(
                 CompilationStatus.UNSUPPORTED,
@@ -1762,9 +1792,15 @@ class FormalPlanCompiler:
 
         try:
             return self._build_plan(
-                objectives, tasks, ast_records, policies, leases, evidence,
+                objectives,
+                tasks,
+                ast_records,
+                policies,
+                leases,
+                evidence,
                 str(bundle.get("repository_tree_id") or ""),
-                issues, source_identity,
+                issues,
+                source_identity,
             )
         except ContractValidationError as exc:
             text = str(exc)
@@ -1815,8 +1851,7 @@ class FormalPlanCompiler:
         objective_ids: dict[str, str] = {}
         for record in objectives:
             canonical = _text(
-                record, "goal_cid", "content_id", "cid", "canonical_goal_id",
-                "goal_id", "id"
+                record, "goal_cid", "content_id", "cid", "canonical_goal_id", "goal_id", "id"
             )
             if not canonical:
                 raise ValueError("objective identity is required")
@@ -1833,8 +1868,14 @@ class FormalPlanCompiler:
         task_by_canonical: dict[str, Mapping[str, Any]] = {}
         for record in tasks:
             canonical = _text(
-                record, "task_cid", "canonical_task_cid", "content_id", "cid",
-                "canonical_task_id", "task_id", "id"
+                record,
+                "task_cid",
+                "canonical_task_cid",
+                "content_id",
+                "cid",
+                "canonical_task_id",
+                "task_id",
+                "id",
             )
             if not canonical:
                 raise ValueError("task identity is required")
@@ -1896,9 +1937,7 @@ class FormalPlanCompiler:
         # A subgoal is semantic input only when it is nested in a reviewed
         # objective record.  IDs and references are resolved in two passes so
         # source ordering never changes the resulting hierarchy.
-        subgoal_records: dict[
-            str, tuple[Mapping[str, Any], str, str]
-        ] = {}
+        subgoal_records: dict[str, tuple[Mapping[str, Any], str, str]] = {}
         subgoal_ids: dict[str, str] = {}
         for objective in objectives:
             objective_key = _text(
@@ -1922,9 +1961,7 @@ class FormalPlanCompiler:
                 value = (record, root_goal_id, objective_source_id)
                 previous = subgoal_records.get(canonical)
                 if previous is not None and previous != value:
-                    raise ValueError(
-                        f"conflicting subgoal records for {canonical}"
-                    )
+                    raise ValueError(f"conflicting subgoal records for {canonical}")
                 subgoal_records[canonical] = value
                 for alias in (
                     canonical,
@@ -1936,9 +1973,7 @@ class FormalPlanCompiler:
                     if alias:
                         existing = subgoal_ids.get(alias)
                         if existing is not None and existing != canonical:
-                            raise ValueError(
-                                f"ambiguous subgoal alias {alias}"
-                            )
+                            raise ValueError(f"ambiguous subgoal alias {alias}")
                         subgoal_ids[alias] = canonical
 
         plan_subgoals: list[Subgoal] = []
@@ -1949,17 +1984,11 @@ class FormalPlanCompiler:
         ) in sorted(subgoal_records.items()):
             raw_goal_id = _text(record, "goal_cid", "goal_id")
             goal_id = (
-                objective_ids.get(raw_goal_id, raw_goal_id)
-                if raw_goal_id
-                else enclosing_goal_id
+                objective_ids.get(raw_goal_id, raw_goal_id) if raw_goal_id else enclosing_goal_id
             )
             if goal_id != enclosing_goal_id:
-                raise ValueError(
-                    f"subgoal {subgoal_id} belongs to a different enclosing goal"
-                )
-            raw_parent_id = _text(
-                record, "parent_id", "parent_subgoal_id", "parent_goal_id"
-            )
+                raise ValueError(f"subgoal {subgoal_id} belongs to a different enclosing goal")
+            raw_parent_id = _text(record, "parent_id", "parent_subgoal_id", "parent_goal_id")
             if not raw_parent_id:
                 parent_id = goal_id
             else:
@@ -1971,8 +2000,7 @@ class FormalPlanCompiler:
                     {
                         subgoal_ids.get(value, value)
                         for value in _strings(
-                            record.get("depends_on")
-                            or record.get("dependencies")
+                            record.get("depends_on") or record.get("dependencies")
                         )
                     }
                 )
@@ -1980,10 +2008,7 @@ class FormalPlanCompiler:
             formula = TDFOL.subgoal_satisfaction(subgoal_id, trace_bound)
             formulae[formula.formula_id] = formula
             claimed_formula_id = _text(record, "satisfaction_formula_id")
-            if (
-                claimed_formula_id
-                and claimed_formula_id != formula.formula_id
-            ):
+            if claimed_formula_id and claimed_formula_id != formula.formula_id:
                 issues.append(
                     CompilationIssue(
                         CompilationIssueCode.UNKNOWN_SEMANTIC,
@@ -1997,25 +2022,17 @@ class FormalPlanCompiler:
                     )
                 )
 
-            explicit_requirement_ids = list(
-                _strings(record.get("evidence_requirement_ids"))
-            )
-            scopes = _strings(
-                record.get("source_scope_ids") or record.get("scope_ids")
-            )
+            explicit_requirement_ids = list(_strings(record.get("evidence_requirement_ids")))
+            scopes = _strings(record.get("source_scope_ids") or record.get("scope_ids"))
             validation_commands = _strings(record.get("validation_commands"))
             evidence_specs = [
                 *(
                     ("evidence_requirement", ordinal, value)
-                    for ordinal, value in enumerate(
-                        _values(record.get("evidence_requirements"))
-                    )
+                    for ordinal, value in enumerate(_values(record.get("evidence_requirements")))
                 ),
                 *(
                     ("acceptance_criterion", ordinal, value)
-                    for ordinal, value in enumerate(
-                        _values(record.get("acceptance_criteria"))
-                    )
+                    for ordinal, value in enumerate(_values(record.get("acceptance_criteria")))
                 ),
             ]
             for category, ordinal, raw_spec in evidence_specs:
@@ -2032,9 +2049,7 @@ class FormalPlanCompiler:
                         )
                     )
                     requirement_id = _text(spec, "requirement_id", "id")
-                    spec_scopes = _strings(
-                        spec.get("source_scope_ids") or spec.get("scope_ids")
-                    )
+                    spec_scopes = _strings(spec.get("source_scope_ids") or spec.get("scope_ids"))
                     check_ids = _strings(
                         spec.get("fallback_check_ids")
                         or spec.get("check_ids")
@@ -2098,9 +2113,7 @@ class FormalPlanCompiler:
                 )
                 previous = requirements.get(requirement_id)
                 if previous is not None and previous != requirement:
-                    raise ValueError(
-                        f"conflicting evidence requirement {requirement_id}"
-                    )
+                    raise ValueError(f"conflicting evidence requirement {requirement_id}")
                 requirements[requirement_id] = requirement
                 explicit_requirement_ids.append(requirement_id)
             if not evidence_specs and validation_commands:
@@ -2159,14 +2172,10 @@ class FormalPlanCompiler:
                     subgoal_id=subgoal_id,
                     goal_id=goal_id,
                     parent_id=parent_id,
-                    refinement_mode=record.get(
-                        "refinement_mode", RefinementMode.SUFFICIENT
-                    ),
+                    refinement_mode=record.get("refinement_mode", RefinementMode.SUFFICIENT),
                     satisfaction_formula_id=formula.formula_id,
                     depends_on=dependencies,
-                    evidence_requirement_ids=tuple(
-                        sorted(set(explicit_requirement_ids))
-                    ),
+                    evidence_requirement_ids=tuple(sorted(set(explicit_requirement_ids))),
                     metadata={
                         **_descriptive_metadata(record),
                         "source_ids": list(source_ids),
@@ -2209,8 +2218,7 @@ class FormalPlanCompiler:
                     CompilationIssueCode.MULTIPLE_REPOSITORY_TREES,
                     CompilationIssueSeverity.ERROR,
                     "$.ast",
-                    "records refer to multiple repository trees: "
-                    + ", ".join(sorted(tree_ids)),
+                    "records refer to multiple repository trees: " + ", ".join(sorted(tree_ids)),
                 )
             )
             return _failure_result(
@@ -2219,8 +2227,11 @@ class FormalPlanCompiler:
                 source_identity=source_identity,
                 graph=self._source_graph(
                     {
-                        "objectives": objectives, "tasks": tasks, "ast": ast_records,
-                        "policies": policies, "leases": leases,
+                        "objectives": objectives,
+                        "tasks": tasks,
+                        "ast": ast_records,
+                        "policies": policies,
+                        "leases": leases,
                         "evidence": evidence_records,
                         "repository_tree_id": repository_tree_id,
                     }
@@ -2230,10 +2241,7 @@ class FormalPlanCompiler:
 
         for record in objectives:
             goal_id = objective_ids[
-                _text(
-                    record, "goal_cid", "content_id", "cid", "canonical_goal_id",
-                    "goal_id", "id"
-                )
+                _text(record, "goal_cid", "content_id", "cid", "canonical_goal_id", "goal_id", "id")
             ]
             owner = _text(record, "owner_actor_id", "owner_id", "actor_id") or "supervisor"
             actors.setdefault(owner, Actor(actor_id=owner, kind=ActorKind.HUMAN))
@@ -2283,9 +2291,7 @@ class FormalPlanCompiler:
             raw_subgoal_id = _text(record, "subgoal_cid", "subgoal_id")
             subgoal_id = subgoal_ids.get(raw_subgoal_id, raw_subgoal_id)
             if subgoal_id and subgoal_id not in subgoal_records:
-                raise ValueError(
-                    f"task {task_id} has unknown subgoal {subgoal_id!r}"
-                )
+                raise ValueError(f"task {task_id} has unknown subgoal {subgoal_id!r}")
 
             dependencies = tuple(
                 sorted(
@@ -2302,15 +2308,11 @@ class FormalPlanCompiler:
             )
             actor_values = set(
                 _strings(record.get("actor_ids"))
-                or _strings(
-                    _text(record, "actor_id", "assigned_to", "assignee")
-                )
+                or _strings(_text(record, "actor_id", "assigned_to", "assignee"))
             )
             task_leases = lease_by_task.get(task_id, [])
             for lease in task_leases:
-                holder = _text(
-                    lease, "actor_id", "holder_id", "lease_holder", "owner_id"
-                )
+                holder = _text(lease, "actor_id", "holder_id", "lease_holder", "owner_id")
                 if holder:
                     actor_values.add(holder)
             if len(task_leases) > 1:
@@ -2319,9 +2321,7 @@ class FormalPlanCompiler:
                     for item in task_leases
                 } - {""}
                 if len(active_holders) > 1:
-                    raise ValueError(
-                        f"task {task_id} has ambiguous active lease holders"
-                    )
+                    raise ValueError(f"task {task_id} has ambiguous active lease holders")
             if not actor_values:
                 actor_values.add("supervisor")
             for actor_id in actor_values:
@@ -2344,9 +2344,7 @@ class FormalPlanCompiler:
                             }
                         )
                     ),
-                    authority_ids=(
-                        previous_actor.authority_ids if previous_actor else ()
-                    ),
+                    authority_ids=(previous_actor.authority_ids if previous_actor else ()),
                     metadata=previous_actor.metadata if previous_actor else {},
                 )
 
@@ -2372,9 +2370,7 @@ class FormalPlanCompiler:
                     logical_time=base_time + offset,
                     provenance_ids=tuple(sorted(provenance)),
                     metadata={
-                        "lease_ids": sorted(
-                            _source_id(item, "leases") for item in task_leases
-                        ),
+                        "lease_ids": sorted(_source_id(item, "leases") for item in task_leases),
                         "fencing_tokens": sorted(
                             {
                                 str(item.get("fencing_token"))
@@ -2440,9 +2436,7 @@ class FormalPlanCompiler:
                             "kind": "authorization",
                             "actor_id": actor_id,
                             "task_id": task_id,
-                            "lease_ids": sorted(
-                                _source_id(item, "leases") for item in task_leases
-                            ),
+                            "lease_ids": sorted(_source_id(item, "leases") for item in task_leases),
                             "resource_needs": sorted(resources),
                             "resource_spec": _canonical_safe(resource_spec),
                         }
@@ -2452,9 +2446,7 @@ class FormalPlanCompiler:
                     event_id=event_records[1].event_id,
                     metadata={
                         "actor_id": actor_id,
-                        "lease_ids": sorted(
-                            _source_id(item, "leases") for item in task_leases
-                        ),
+                        "lease_ids": sorted(_source_id(item, "leases") for item in task_leases),
                         "resource_needs": sorted(resources),
                         "resource_spec": _canonical_safe(resource_spec),
                     },
@@ -2546,14 +2538,8 @@ class FormalPlanCompiler:
                 preconditions.append(proof_precondition)
             deadline = record.get("deadline")
             if deadline not in (None, ""):
-                if (
-                    isinstance(deadline, bool)
-                    or not isinstance(deadline, int)
-                    or deadline < 0
-                ):
-                    raise ValueError(
-                        f"task {task_id} deadline must be a non-negative integer"
-                    )
+                if isinstance(deadline, bool) or not isinstance(deadline, int) or deadline < 0:
+                    raise ValueError(f"task {task_id} deadline must be a non-negative integer")
                 deadline_formula = TDFOL.deadline(task_id, deadline)
                 formulae[deadline_formula.formula_id] = deadline_formula
                 constraints.append(
@@ -2591,17 +2577,21 @@ class FormalPlanCompiler:
                     criterion_record = _record(criterion)
                     criterion_source = _source_id(record, "tasks")
                     criterion_known = {
-                        "id", "requirement_id", "kind", "check_ids",
-                        "validation_commands", "source_scope_ids",
-                        "minimum_code_assurance", "freshness_seconds",
+                        "id",
+                        "requirement_id",
+                        "kind",
+                        "check_ids",
+                        "validation_commands",
+                        "source_scope_ids",
+                        "minimum_code_assurance",
+                        "freshness_seconds",
                     }
                     for field_name in sorted(set(criterion_record) - criterion_known):
                         issues.append(
                             CompilationIssue(
                                 CompilationIssueCode.ABSTRACTED_FIELD,
                                 CompilationIssueSeverity.ABSTRACTION,
-                                f"$.tasks[{task_id}].acceptance_criteria"
-                                f"[{ordinal}].{field_name}",
+                                f"$.tasks[{task_id}].acceptance_criteria[{ordinal}].{field_name}",
                                 "criterion field is retained as evidence metadata, "
                                 "not parsed into logic",
                                 criterion_source,
@@ -2686,9 +2676,7 @@ class FormalPlanCompiler:
                         valid_until=trace_bound,
                         metadata={
                             "policy_ids": list(policy_ids),
-                            "lease_ids": [
-                                _source_id(item, "leases") for item in task_leases
-                            ],
+                            "lease_ids": [_source_id(item, "leases") for item in task_leases],
                         },
                     )
                 )
@@ -2699,14 +2687,10 @@ class FormalPlanCompiler:
                     subgoal_id=subgoal_id,
                     actor_ids=tuple(sorted(actor_values)),
                     depends_on=dependencies,
-                    precondition_ids=tuple(
-                        item.precondition_id for item in task_preconditions
-                    ),
+                    precondition_ids=tuple(item.precondition_id for item in task_preconditions),
                     effect_ids=tuple(item.effect_id for item in task_effects),
                     event_ids=tuple(item.event_id for item in event_records),
-                    evidence_requirement_ids=tuple(
-                        sorted(task_requirement_ids[task_id])
-                    ),
+                    evidence_requirement_ids=tuple(sorted(task_requirement_ids[task_id])),
                     terminal_states=_strings(record.get("terminal_states"))
                     or ("completed", "failed", "cancelled"),
                     metadata={
@@ -2716,8 +2700,7 @@ class FormalPlanCompiler:
                                 _source_id(record, "tasks"),
                                 *(_source_id(item, "leases") for item in task_leases),
                                 *_strings(
-                                    record.get("evidence_cids")
-                                    or record.get("evidence_ids")
+                                    record.get("evidence_cids") or record.get("evidence_ids")
                                 ),
                             }
                         ),
@@ -2739,17 +2722,18 @@ class FormalPlanCompiler:
                 )
             )
 
-        if any(
-            item.severity is CompilationIssueSeverity.UNSUPPORTED for item in issues
-        ):
+        if any(item.severity is CompilationIssueSeverity.UNSUPPORTED for item in issues):
             return _failure_result(
                 CompilationStatus.UNSUPPORTED,
                 issues,
                 source_identity=source_identity,
                 graph=self._source_graph(
                     {
-                        "objectives": objectives, "tasks": tasks, "ast": ast_records,
-                        "policies": policies, "leases": leases,
+                        "objectives": objectives,
+                        "tasks": tasks,
+                        "ast": ast_records,
+                        "policies": policies,
+                        "leases": leases,
                         "evidence": evidence_records,
                         "repository_tree_id": repository_tree_id,
                     }
@@ -2759,14 +2743,9 @@ class FormalPlanCompiler:
         # Explicit policy evidence applies to all goals unless scoped by task.
         for record in objectives:
             goal_id = objective_ids[
-                _text(
-                    record, "goal_cid", "content_id", "cid", "canonical_goal_id",
-                    "goal_id", "id"
-                )
+                _text(record, "goal_cid", "content_id", "cid", "canonical_goal_id", "goal_id", "id")
             ]
-            for ordinal, criterion in enumerate(
-                _values(record.get("acceptance_criteria"))
-            ):
+            for ordinal, criterion in enumerate(_values(record.get("acceptance_criteria"))):
                 requirement_id = content_identity(
                     {
                         "goal_id": goal_id,
@@ -2790,16 +2769,18 @@ class FormalPlanCompiler:
 
         for policy in policies:
             for ordinal, spec in enumerate(
-                _values(
-                    policy.get("required_evidence")
-                    or policy.get("evidence_requirements")
-                )
+                _values(policy.get("required_evidence") or policy.get("evidence_requirements"))
             ):
                 item = _record(spec) if isinstance(spec, Mapping) else {"kind": spec}
                 policy_requirement_known = {
-                    "id", "requirement_id", "kind", "subject_ids",
-                    "source_scope_ids", "minimum_code_assurance",
-                    "freshness_seconds", "fallback_check_ids",
+                    "id",
+                    "requirement_id",
+                    "kind",
+                    "subject_ids",
+                    "source_scope_ids",
+                    "minimum_code_assurance",
+                    "freshness_seconds",
+                    "fallback_check_ids",
                 }
                 for field_name in sorted(set(item) - policy_requirement_known):
                     issues.append(
@@ -2819,9 +2800,7 @@ class FormalPlanCompiler:
                     sorted(
                         task_ids.get(
                             value,
-                            objective_ids.get(
-                                value, subgoal_ids.get(value, value)
-                            ),
+                            objective_ids.get(value, subgoal_ids.get(value, value)),
                         )
                         for value in _strings(item.get("subject_ids"))
                     )
@@ -2858,17 +2837,14 @@ class FormalPlanCompiler:
                         item.get("freshness_seconds", policy_defaults["freshness_seconds"])
                     ),
                     fallback_check_ids=_strings(
-                        item.get("fallback_check_ids")
-                        or policy_defaults["fallback_checks"]
+                        item.get("fallback_check_ids") or policy_defaults["fallback_checks"]
                     ),
                     metadata={"policy_id": _source_id(policy, "policies")},
                 )
                 for subject in subjects:
                     if subject in {item.goal_id for item in plan_goals}:
                         goal_requirement_ids[subject].append(requirement_id)
-                    if subject in {
-                        item.subgoal_id for item in plan_subgoals
-                    }:
+                    if subject in {item.subgoal_id for item in plan_subgoals}:
                         subgoal_requirement_ids[subject].append(requirement_id)
 
         plan_goals = [
@@ -2876,9 +2852,7 @@ class FormalPlanCompiler:
                 goal_id=item.goal_id,
                 owner_actor_id=item.owner_actor_id,
                 satisfaction_formula_id=item.satisfaction_formula_id,
-                evidence_requirement_ids=tuple(
-                    sorted(goal_requirement_ids[item.goal_id])
-                ),
+                evidence_requirement_ids=tuple(sorted(goal_requirement_ids[item.goal_id])),
                 terminal_states=item.terminal_states,
                 source_ids=item.source_ids,
                 metadata=item.metadata,
@@ -2887,9 +2861,7 @@ class FormalPlanCompiler:
         ]
         rebuilt_subgoals: list[Subgoal] = []
         for item in plan_subgoals:
-            requirement_ids = tuple(
-                sorted(set(subgoal_requirement_ids[item.subgoal_id]))
-            )
+            requirement_ids = tuple(sorted(set(subgoal_requirement_ids[item.subgoal_id])))
             for requirement_id in requirement_ids:
                 requirement = requirements.get(requirement_id)
                 if requirement is None:
@@ -2963,22 +2935,16 @@ class FormalPlanCompiler:
             norms=tuple(norms),
             temporal_constraints=tuple(constraints),
             evidence_requirements=tuple(requirements.values()),
-            formulas=(
-                tuple(formulae.values()) if plan_subgoals else ()
-            ),
+            formulas=(tuple(formulae.values()) if plan_subgoals else ()),
             source_ids=tuple(source_ids),
             repository_tree_id=tree_id,
             trace_bound=trace_bound,
             abstraction_ids=abstraction_ids,
             metadata={
                 "compiler_version": FORMAL_PLAN_COMPILER_VERSION,
-                "formula_records": [
-                    formulae[key].to_record() for key in sorted(formulae)
-                ],
+                "formula_records": [formulae[key].to_record() for key in sorted(formulae)],
                 "policy_ids": list(policy_ids),
-                "evidence_cids": sorted(
-                    _source_id(item, "evidence") for item in evidence_records
-                ),
+                "evidence_cids": sorted(_source_id(item, "evidence") for item in evidence_records),
             },
         )
         graph = self._plan_graph(
@@ -3049,8 +3015,7 @@ class FormalPlanCompiler:
                 operation = EffectOperation(operation_text)
             except ValueError as exc:
                 raise ValueError(
-                    f"task {task_id} effect {ordinal} uses unsupported operation "
-                    f"{operation_text!r}"
+                    f"task {task_id} effect {ordinal} uses unsupported operation {operation_text!r}"
                 ) from exc
             fluent_id = _text(item, "fluent_id") or (
                 state_id if operation is not EffectOperation.EMIT else ""
@@ -3147,19 +3112,13 @@ class FormalPlanCompiler:
                 )
                 parent_node = node_by_alias.get(parent_ref) if parent_ref else root_node
                 if parent_node:
-                    edges.append(
-                        _graph_edge("refines", subgoal_node, parent_node)
-                    )
+                    edges.append(_graph_edge("refines", subgoal_node, parent_node))
                 for dependency in _strings(
                     subgoal.get("depends_on") or subgoal.get("dependencies")
                 ):
                     dependency_node = node_by_alias.get(dependency)
                     if dependency_node:
-                        edges.append(
-                            _graph_edge(
-                                "depends_on", subgoal_node, dependency_node
-                            )
-                        )
+                        edges.append(_graph_edge("depends_on", subgoal_node, dependency_node))
         for record in bundle.get("tasks", ()):
             task_node = node_by_alias.get(_source_id(record, "tasks"))
             if not task_node:
@@ -3203,9 +3162,7 @@ class FormalPlanCompiler:
         ):
             for record in records:
                 record_id = str(getattr(record, identity_name))
-                node = _graph_node(
-                    kind, record_id, content_id=record.content_id
-                )
+                node = _graph_node(kind, record_id, content_id=record.content_id)
                 nodes.append(node)
                 by_record[record_id] = node["node_id"]
         formula_records = plan.metadata.get("formula_records", ())
@@ -3376,20 +3333,12 @@ class FormalPlanCompiler:
         ]
         for task in plan.tasks:
             for policy_node in policy_nodes:
-                edges.append(
-                    _graph_edge(
-                        "governed_by", by_record[task.task_id], policy_node
-                    )
-                )
+                edges.append(_graph_edge("governed_by", by_record[task.task_id], policy_node))
         for lease in leases:
             task_ref = _text(lease, "task_cid", "task_id")
             lease_id = _source_id(lease, "leases")
             if task_ref in by_record and lease_id in by_record:
-                edges.append(
-                    _graph_edge(
-                        "leased_by", by_record[task_ref], by_record[lease_id]
-                    )
-                )
+                edges.append(_graph_edge("leased_by", by_record[task_ref], by_record[lease_id]))
         return PlanGraphProjection(tuple(nodes), tuple(edges))
 
 
@@ -3445,9 +3394,9 @@ def _coerce_requires_proof_declaration(
     if not isinstance(raw, Mapping):
         return None
     record = _record(raw)
-    kind = str(
-        record.get("kind") or record.get("predicate") or record.get("op") or ""
-    ).strip().lower()
+    kind = (
+        str(record.get("kind") or record.get("predicate") or record.get("op") or "").strip().lower()
+    )
     if kind:
         if kind not in _REQUIRES_PROOF_KINDS:
             return None
@@ -3462,10 +3411,7 @@ def _coerce_requires_proof_declaration(
             return None
         return None
     property_id = str(
-        record.get("property_id")
-        or record.get("property")
-        or record.get("code_property_id")
-        or ""
+        record.get("property_id") or record.get("property") or record.get("code_property_id") or ""
     ).strip()
     assurance = str(
         record.get("assurance")
@@ -3503,9 +3449,7 @@ def _collect_requires_proof_declarations(
     seen: set[tuple[str, str]] = set()
 
     def _emit(path: str, raw: Any, *, allow_implicit_kind: bool) -> None:
-        parsed = _coerce_requires_proof_declaration(
-            raw, allow_implicit_kind=allow_implicit_kind
-        )
+        parsed = _coerce_requires_proof_declaration(raw, allow_implicit_kind=allow_implicit_kind)
         if parsed is None:
             issues.append(
                 CompilationIssue(
@@ -3609,17 +3553,14 @@ def is_requires_proof_precondition(precondition: Any) -> bool:
     metadata: Mapping[str, Any]
     if isinstance(precondition, Mapping):
         metadata = precondition.get("metadata") or {}
-        kind = str(
-            metadata.get("kind")
-            or metadata.get("predicate")
-            or precondition.get("kind")
-            or ""
-        ).strip().lower()
+        kind = (
+            str(metadata.get("kind") or metadata.get("predicate") or precondition.get("kind") or "")
+            .strip()
+            .lower()
+        )
     else:
         metadata = getattr(precondition, "metadata", None) or {}
-        kind = str(
-            metadata.get("kind") or metadata.get("predicate") or ""
-        ).strip().lower()
+        kind = str(metadata.get("kind") or metadata.get("predicate") or "").strip().lower()
     return kind in _REQUIRES_PROOF_KINDS
 
 
@@ -3646,13 +3587,9 @@ def requires_proof_precondition_bindings(
             metadata = getattr(item, "metadata", None) or {}
             precondition_id = str(getattr(item, "precondition_id", "") or "")
             task_id = str(getattr(item, "task_id", "") or "")
-        property_id = str(
-            metadata.get("property_id") or metadata.get("property") or ""
-        ).strip()
+        property_id = str(metadata.get("property_id") or metadata.get("property") or "").strip()
         assurance = str(
-            metadata.get("assurance")
-            or metadata.get("required_assurance")
-            or ""
+            metadata.get("assurance") or metadata.get("required_assurance") or ""
         ).strip()
         if not property_id or not assurance:
             continue
@@ -3690,9 +3627,7 @@ def _policy_defaults(policies: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     freshness: int | None = None
     fallbacks: set[str] = set()
     for policy in policies:
-        raw_assurance = policy.get(
-            "minimum_code_assurance", policy.get("minimum_assurance")
-        )
+        raw_assurance = policy.get("minimum_code_assurance", policy.get("minimum_assurance"))
         if raw_assurance not in (None, ""):
             candidate = _assurance(raw_assurance)
             if candidate.rank > assurance.rank:
@@ -3701,14 +3636,11 @@ def _policy_defaults(policies: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         if raw_freshness not in (None, ""):
             candidate_freshness = _optional_nonnegative(raw_freshness)
             if freshness is None or (
-                candidate_freshness is not None
-                and candidate_freshness < freshness
+                candidate_freshness is not None and candidate_freshness < freshness
             ):
                 freshness = candidate_freshness
         fallbacks.update(
-            _strings(
-                policy.get("fallback_check_ids") or policy.get("fallback_checks")
-            )
+            _strings(policy.get("fallback_check_ids") or policy.get("fallback_checks"))
         )
     return {
         "minimum_assurance": assurance,
@@ -3756,9 +3688,7 @@ def _topological_times(
         current = 0
         for dependency in dependencies[task_id]:
             if dependency not in tasks:
-                raise ContractValidationError(
-                    f"task {task_id} has unknown dependency {dependency}"
-                )
+                raise ContractValidationError(f"task {task_id} has unknown dependency {dependency}")
             current = max(current, level(dependency) + 1)
         visiting.remove(task_id)
         levels[task_id] = current
@@ -3788,9 +3718,7 @@ def compile_formal_plan_json(source: str | bytes | Path) -> PlanCompilationResul
     return FormalPlanCompiler().compile_json(source)
 
 
-def compile_formal_plan_duckdb(
-    source: Any, **records: Any
-) -> PlanCompilationResult:
+def compile_formal_plan_duckdb(source: Any, **records: Any) -> PlanCompilationResult:
     return FormalPlanCompiler().compile_duckdb(source, **records)
 
 
@@ -3802,9 +3730,7 @@ def compile_plan_admission(
     return FormalPlanCompiler().compile_admission(request)
 
 
-def write_formal_plan_compiler_input_duckdb(
-    path: str | Path, source: Mapping[str, Any]
-) -> Path:
+def write_formal_plan_compiler_input_duckdb(path: str | Path, source: Mapping[str, Any]) -> Path:
     """Write the lossless normalized DuckDB input used by equivalence tests/tools."""
 
     try:
@@ -3838,9 +3764,7 @@ def write_formal_plan_compiler_input_duckdb(
                     )
                 )
         if rows:
-            connection.executemany(
-                "INSERT INTO formal_plan_input_records VALUES (?, ?, ?)", rows
-            )
+            connection.executemany("INSERT INTO formal_plan_input_records VALUES (?, ?, ?)", rows)
         connection.execute(
             "INSERT INTO formal_plan_input_metadata VALUES (?, ?)",
             ("repository_tree_id", bundle["repository_tree_id"]),

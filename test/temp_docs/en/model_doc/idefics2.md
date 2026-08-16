@@ -68,14 +68,16 @@ image_1 = Image.open(requests.get(url_1, stream=True).raw)
 image_2 = Image.open(requests.get(url_2, stream=True).raw)
 images = [image_1, image_2]
 
-messages = [{
-    "role": "user",
-    "content": [
-        {"type": "text", "text": "What’s the difference between these two images?"},
-        {"type": "image"},
-        {"type": "image"},
-    ],
-}]
+messages = [
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "What’s the difference between these two images?"},
+            {"type": "image"},
+            {"type": "image"},
+        ],
+    }
+]
 
 processor = Idefics2Processor.from_pretrained("HuggingFaceM4/idefics2-8b")
 model = Idefics2ForConditionalGeneration.from_pretrained("HuggingFaceM4/idefics2-8b")
@@ -108,20 +110,25 @@ image_1 = Image.open(requests.get(url_1, stream=True).raw)
 image_2 = Image.open(requests.get(url_2, stream=True).raw)
 images = [image_1, image_2]
 
-messages = [{
-    "role": "user",
-    "content": [
-        {"type": "text", "text": "What’s the difference between these two images?"},
-        {"type": "image"},
-        {"type": "image"},
-    ],
-},
-{
-    "role": "assistant",
-    "content": [
-        {"type": "text", "text": "The difference is that one image is about dogs and the other one about cats."},
-    ],
-}]
+messages = [
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "What’s the difference between these two images?"},
+            {"type": "image"},
+            {"type": "image"},
+        ],
+    },
+    {
+        "role": "assistant",
+        "content": [
+            {
+                "type": "text",
+                "text": "The difference is that one image is about dogs and the other one about cats.",
+            },
+        ],
+    },
+]
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 

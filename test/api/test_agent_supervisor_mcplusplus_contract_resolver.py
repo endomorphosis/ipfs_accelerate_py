@@ -71,9 +71,7 @@ SERVER = "ipfs-accelerate-mcp++"
 
 
 def _span(line: int = 1) -> SourceSpan:
-    return SourceSpan(
-        line_start=line, column_start=0, line_end=line, column_end=8
-    )
+    return SourceSpan(line_start=line, column_start=0, line_end=line, column_end=8)
 
 
 def _ev(
@@ -304,30 +302,16 @@ def test_normalize_and_alias_helpers() -> None:
 
 
 def test_confidence_is_deterministic_and_status_bounded() -> None:
-    assert confidence_for(
-        ResolverStatus.RESOLVED_STATIC, ReasonCode.REGISTRATION_MATCH
-    ) == 100
-    assert confidence_for(
-        ResolverStatus.AMBIGUOUS, ReasonCode.AMBIGUOUS_REGISTRATION
-    ) == 25
-    assert confidence_for(
-        ResolverStatus.UNRESOLVED, ReasonCode.MOCK_IMPLEMENTATION
-    ) == 0
+    assert confidence_for(ResolverStatus.RESOLVED_STATIC, ReasonCode.REGISTRATION_MATCH) == 100
+    assert confidence_for(ResolverStatus.AMBIGUOUS, ReasonCode.AMBIGUOUS_REGISTRATION) == 25
+    assert confidence_for(ResolverStatus.UNRESOLVED, ReasonCode.MOCK_IMPLEMENTATION) == 0
     # Reason cannot raise above status baseline.
-    assert confidence_for(
-        ResolverStatus.CANDIDATE, ReasonCode.PROVED_INVOCATION_CHAIN
-    ) == 50
+    assert confidence_for(ResolverStatus.CANDIDATE, ReasonCode.PROVED_INVOCATION_CHAIN) == 50
 
 
 def test_classify_non_invocation_roles_and_markers() -> None:
-    assert (
-        classify_non_invocation(role=ArtifactRole.MOCK)
-        is ReasonCode.MOCK_IMPLEMENTATION
-    )
-    assert (
-        classify_non_invocation(role=ArtifactRole.LOCAL_HELPER)
-        is ReasonCode.SAME_NAME_HELPER
-    )
+    assert classify_non_invocation(role=ArtifactRole.MOCK) is ReasonCode.MOCK_IMPLEMENTATION
+    assert classify_non_invocation(role=ArtifactRole.LOCAL_HELPER) is ReasonCode.SAME_NAME_HELPER
     assert (
         classify_non_invocation(
             role=ArtifactRole.IMPLEMENTATION,
@@ -441,10 +425,7 @@ def test_proved_http_invocation_chain() -> None:
     assert path.transport is TransportKind.HTTP
     assert path.implementation_ref == "ipfs_kit_py.vfs.read"
     assert path.hop_for(PathStage.SERVER_REGISTRY) is not None
-    assert (
-        path.hop_for(PathStage.SERVER_REGISTRY).reason_code
-        is ReasonCode.REGISTRATION_MATCH
-    )
+    assert path.hop_for(PathStage.SERVER_REGISTRY).reason_code is ReasonCode.REGISTRATION_MATCH
     assert not path.has_frontier
     assert result.stats()["proved_count"] == 1
 
@@ -518,11 +499,7 @@ def test_proved_mcp_p2p_transport_edge() -> None:
 
 def test_same_name_local_helper_cannot_prove_invocation() -> None:
     inv = _proved_inventory()
-    arts = [
-        item
-        for item in inv.artifacts
-        if item.role is not ArtifactRole.IMPLEMENTATION
-    ]
+    arts = [item for item in inv.artifacts if item.role is not ArtifactRole.IMPLEMENTATION]
     arts.append(
         _art(
             "impl:helper",
@@ -561,11 +538,7 @@ def test_same_name_local_helper_cannot_prove_invocation() -> None:
 
 def test_mock_implementation_rejected() -> None:
     inv = _proved_inventory()
-    arts = [
-        item
-        for item in inv.artifacts
-        if item.role is not ArtifactRole.IMPLEMENTATION
-    ]
+    arts = [item for item in inv.artifacts if item.role is not ArtifactRole.IMPLEMENTATION]
     arts.append(
         _art(
             "impl:mock",
@@ -598,16 +571,13 @@ def test_mock_implementation_rejected() -> None:
     path = resolve_mcplusplus_paths(inv2, (_claim(),)).paths[0]
     assert path.verdict is PathVerdict.REJECTED
     assert (
-        path.hop_for(PathStage.PACKAGE_IMPLEMENTATION).reason_code
-        is ReasonCode.MOCK_IMPLEMENTATION
+        path.hop_for(PathStage.PACKAGE_IMPLEMENTATION).reason_code is ReasonCode.MOCK_IMPLEMENTATION
     )
 
 
 def test_test_server_registration_rejected() -> None:
     inv = _proved_inventory()
-    arts = [
-        item for item in inv.artifacts if item.role is not ArtifactRole.REGISTRATION
-    ]
+    arts = [item for item in inv.artifacts if item.role is not ArtifactRole.REGISTRATION]
     arts.append(
         _art(
             "reg:test",
@@ -622,10 +592,7 @@ def test_test_server_registration_rejected() -> None:
     inv2 = MCPlusPlusInventory(forest_id=FOREST, artifacts=tuple(arts))
     path = resolve_mcplusplus_paths(inv2, (_claim(),)).paths[0]
     assert path.verdict is PathVerdict.REJECTED
-    assert (
-        path.hop_for(PathStage.SERVER_REGISTRY).reason_code
-        is ReasonCode.TEST_SERVER
-    )
+    assert path.hop_for(PathStage.SERVER_REGISTRY).reason_code is ReasonCode.TEST_SERVER
 
 
 def test_static_dashboard_and_copied_manifest_do_not_prove() -> None:
@@ -657,11 +624,7 @@ def test_static_dashboard_and_copied_manifest_do_not_prove() -> None:
 
 def test_legacy_fallback_rejected() -> None:
     inv = _proved_inventory()
-    arts = [
-        item
-        for item in inv.artifacts
-        if item.role is not ArtifactRole.IMPLEMENTATION
-    ]
+    arts = [item for item in inv.artifacts if item.role is not ArtifactRole.IMPLEMENTATION]
     arts.append(
         _art(
             "impl:legacy",
@@ -692,10 +655,7 @@ def test_legacy_fallback_rejected() -> None:
     inv2 = MCPlusPlusInventory(forest_id=FOREST, artifacts=tuple(rebuilt))
     path = resolve_mcplusplus_paths(inv2, (_claim(),)).paths[0]
     assert path.verdict is PathVerdict.REJECTED
-    assert (
-        path.hop_for(PathStage.PACKAGE_IMPLEMENTATION).reason_code
-        is ReasonCode.LEGACY_FALLBACK
-    )
+    assert path.hop_for(PathStage.PACKAGE_IMPLEMENTATION).reason_code is ReasonCode.LEGACY_FALLBACK
 
 
 def test_import_without_call_edge_cannot_prove_connector() -> None:
@@ -717,10 +677,7 @@ def test_import_without_call_edge_cannot_prove_connector() -> None:
     inv2 = MCPlusPlusInventory(forest_id=FOREST, artifacts=tuple(rebuilt))
     path = resolve_mcplusplus_paths(inv2, (_claim(),)).paths[0]
     assert path.verdict is PathVerdict.REJECTED
-    assert (
-        path.hop_for(PathStage.CONNECTOR).reason_code
-        is ReasonCode.IMPORT_WITHOUT_CALL
-    )
+    assert path.hop_for(PathStage.CONNECTOR).reason_code is ReasonCode.IMPORT_WITHOUT_CALL
 
 
 def test_caller_import_only_is_rejected() -> None:
@@ -742,10 +699,7 @@ def test_caller_import_only_is_rejected() -> None:
     inv2 = MCPlusPlusInventory(forest_id=FOREST, artifacts=tuple(rebuilt))
     path = resolve_mcplusplus_paths(inv2, (_claim(),)).paths[0]
     assert path.verdict is PathVerdict.REJECTED
-    assert (
-        path.hop_for(PathStage.CALLER).reason_code
-        is ReasonCode.IMPORT_WITHOUT_CALL
-    )
+    assert path.hop_for(PathStage.CALLER).reason_code is ReasonCode.IMPORT_WITHOUT_CALL
 
 
 # ---------------------------------------------------------------------------
@@ -776,10 +730,7 @@ def test_ambiguous_registration_is_frontier() -> None:
     assert hop.reason_code is ReasonCode.AMBIGUOUS_REGISTRATION
     assert hop.status is ResolverStatus.AMBIGUOUS
     assert path.has_frontier
-    assert any(
-        item.reason_code is ReasonCode.AMBIGUOUS_REGISTRATION
-        for item in result.frontiers
-    )
+    assert any(item.reason_code is ReasonCode.AMBIGUOUS_REGISTRATION for item in result.frontiers)
 
 
 def test_external_package_frontier() -> None:
@@ -802,13 +753,8 @@ def test_external_package_frontier() -> None:
     result = resolve_mcplusplus_paths(inv2, (_claim(),))
     path = result.paths[0]
     assert path.verdict is PathVerdict.EXTERNAL
-    assert (
-        path.hop_for(PathStage.PACKAGE_IMPLEMENTATION).reason_code
-        is ReasonCode.EXTERNAL_PACKAGE
-    )
-    assert any(
-        item.status is ResolverStatus.EXTERNAL for item in result.frontiers
-    )
+    assert path.hop_for(PathStage.PACKAGE_IMPLEMENTATION).reason_code is ReasonCode.EXTERNAL_PACKAGE
+    assert any(item.status is ResolverStatus.EXTERNAL for item in result.frontiers)
 
 
 def test_profile_mismatch_is_unknown_not_proved() -> None:
@@ -874,14 +820,8 @@ def test_schema_mismatch_emits_drift_witness() -> None:
     result = resolve_mcplusplus_paths(inv2, (_claim(),))
     path = result.paths[0]
     assert path.verdict is not PathVerdict.PROVED
-    assert any(
-        item.drift_kind is DriftKind.SCHEMA_MISMATCH
-        for item in path.drift_witnesses
-    )
-    assert any(
-        item.drift_kind is DriftKind.SCHEMA_MISMATCH
-        for item in result.drift_witnesses
-    )
+    assert any(item.drift_kind is DriftKind.SCHEMA_MISMATCH for item in path.drift_witnesses)
+    assert any(item.drift_kind is DriftKind.SCHEMA_MISMATCH for item in result.drift_witnesses)
 
 
 def test_missing_registration_manifest_drift() -> None:
@@ -955,10 +895,7 @@ def test_language_name_mismatch_witness() -> None:
     inv = _proved_inventory()
     claim = _claim(language_names={"typescript": "vfsReadWrong", "python": "vfs.read"})
     path = resolve_mcplusplus_paths(inv, (claim,)).paths[0]
-    assert any(
-        item.drift_kind is DriftKind.LANGUAGE_NAME_MISMATCH
-        for item in path.drift_witnesses
-    )
+    assert any(item.drift_kind is DriftKind.LANGUAGE_NAME_MISMATCH for item in path.drift_witnesses)
 
 
 def test_hierarchical_alias_resolves_registration() -> None:
@@ -1006,11 +943,7 @@ def test_hierarchical_alias_resolves_registration() -> None:
 
 def test_missing_tools_call_edge_is_not_proved() -> None:
     inv = _proved_inventory()
-    rebuilt = [
-        item
-        for item in inv.artifacts
-        if item.role is not ArtifactRole.TOOL_CALL_SITE
-    ]
+    rebuilt = [item for item in inv.artifacts if item.role is not ArtifactRole.TOOL_CALL_SITE]
     inv2 = MCPlusPlusInventory(forest_id=FOREST, artifacts=tuple(rebuilt))
     # Connector still has call edge but tool_name must match for stand-in.
     # Clear connector tool_name so stand-in fails.
@@ -1036,18 +969,14 @@ def test_missing_tools_call_edge_is_not_proved() -> None:
 
 def test_missing_adapter_unknown() -> None:
     inv = _proved_inventory()
-    rebuilt = [
-        item for item in inv.artifacts if item.role is not ArtifactRole.ADAPTER
-    ]
+    rebuilt = [item for item in inv.artifacts if item.role is not ArtifactRole.ADAPTER]
     # Clear adapter pointer on registration.
     rebuilt2 = []
     for item in rebuilt:
         if item.role is ArtifactRole.REGISTRATION:
             record = dict(item.record)
             record.pop("adapter", None)
-            rebuilt2.append(
-                InventoryArtifact.from_dict({**item.to_dict(), "record": record})
-            )
+            rebuilt2.append(InventoryArtifact.from_dict({**item.to_dict(), "record": record}))
         else:
             rebuilt2.append(item)
     inv2 = MCPlusPlusInventory(forest_id=FOREST, artifacts=tuple(rebuilt2))
@@ -1258,9 +1187,7 @@ def test_result_round_trip_dict() -> None:
 
 def EVIDENCE_KINDS_PRESENT(payload: dict[str, Any]) -> bool:
     kinds = payload.get("evidence_kinds") or []
-    return "vfs/mcplusplus-call-path@1" in kinds and (
-        "vfs/mcplusplus-manifest-parity@1" in kinds
-    )
+    return "vfs/mcplusplus-call-path@1" in kinds and ("vfs/mcplusplus-manifest-parity@1" in kinds)
 
 
 def test_resolver_version_constant() -> None:
@@ -1336,10 +1263,7 @@ def test_error_map_mismatch_witness() -> None:
             rebuilt.append(item)
     inv2 = MCPlusPlusInventory(forest_id=FOREST, artifacts=tuple(rebuilt))
     path = resolve_mcplusplus_paths(inv2, (_claim(),)).paths[0]
-    assert any(
-        item.drift_kind is DriftKind.ERROR_MAP_MISMATCH
-        for item in path.drift_witnesses
-    )
+    assert any(item.drift_kind is DriftKind.ERROR_MAP_MISMATCH for item in path.drift_witnesses)
 
 
 def test_transport_not_admitted() -> None:
@@ -1403,9 +1327,7 @@ def test_static_resolution_boundary_defers_runtime_to_child_goal() -> None:
         == "vfs/mcplusplus-runtime-witness@1"
     )
     assert list(boundary["evidence_kinds"]) == list(STATIC_EVIDENCE_KINDS)
-    assert list(boundary["excluded_evidence_kinds"]) == list(
-        EXCLUDED_RUNTIME_EVIDENCE_KINDS
-    )
+    assert list(boundary["excluded_evidence_kinds"]) == list(EXCLUDED_RUNTIME_EVIDENCE_KINDS)
     assert EVIDENCE_CALL_PATH in boundary["evidence_kinds"]
     assert EVIDENCE_MANIFEST_PARITY in boundary["evidence_kinds"]
     assert EVIDENCE_RUNTIME_WITNESS not in boundary["evidence_kinds"]

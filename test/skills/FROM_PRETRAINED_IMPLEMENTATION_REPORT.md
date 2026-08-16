@@ -27,16 +27,17 @@ Added `to_valid_identifier()` function to convert model family names to valid Py
 def to_valid_identifier(text):
     """Convert text to a valid Python identifier."""
     # Replace hyphens with underscores
-    valid_name = text.replace('-', '_')
-    
+    valid_name = text.replace("-", "_")
+
     # Ensure the name doesn't start with a number
     if valid_name and valid_name[0].isdigit():
         valid_name = f"m{valid_name}"
-    
+
     # Replace any invalid characters with underscores
     import re
-    valid_name = re.sub(r'[^a-zA-Z0-9_]', '_', valid_name)
-    
+
+    valid_name = re.sub(r"[^a-zA-Z0-9_]", "_", valid_name)
+
     return valid_name
 ```
 
@@ -47,9 +48,9 @@ Added `to_pascal_case()` function for proper class name generation:
 def to_pascal_case(text):
     """Convert text to PascalCase."""
     # Replace hyphens with spaces
-    text = text.replace('-', ' ')
+    text = text.replace("-", " ")
     # Capitalize each word and join
-    return ''.join(word.capitalize() for word in text.split())
+    return "".join(word.capitalize() for word in text.split())
 ```
 
 ### 4. Standardized Test Methods

@@ -147,9 +147,7 @@ def test_fixture_rejects_noncanonical_or_unsafe_recipes():
 
 
 @pytest.mark.parametrize("family", tuple(SurfaceFamily))
-def test_real_surface_families_share_contract_without_false_drift(
-    family, tmp_path
-):
+def test_real_surface_families_share_contract_without_false_drift(family, tmp_path):
     def compatible(step, _context):
         result = dict(step.expected)
         result["implementation_metadata"] = {
@@ -186,15 +184,9 @@ def test_real_surface_families_share_contract_without_false_drift(
     assert len(run.observations) == len(witness.trace.steps)
     assert all(observation.contract_match for observation in run.observations)
     assert all(observation.cleanup.succeeded for observation in run.observations)
-    assert any(
-        observation.status is ObservationStatus.ERROR
-        for observation in run.observations
-    )
+    assert any(observation.status is ObservationStatus.ERROR for observation in run.observations)
     assert run.runtime.packages["pytest"] != "<unavailable>"
-    assert (
-        run.runtime.packages["definitely-not-an-installed-distribution"]
-        == "<unavailable>"
-    )
+    assert run.runtime.packages["definitely-not-an-installed-distribution"] == "<unavailable>"
     assert run.runtime.content_id.startswith("sha256:")
     assert run.implementation_identity.content_id.startswith("sha256:")
 
@@ -225,21 +217,20 @@ def test_normalization_is_closed_and_invariant_scoped():
         invariant_ids=(VfsInvariantKind.UNICODE.value,),
     )
 
-    assert normalize_contract_result(
-        bytes_step, {"payload": bytearray(b"\xc3\xa9")}
-    ) == {"payload": {"bytes_hex": "c3a9"}}
+    assert normalize_contract_result(bytes_step, {"payload": bytearray(b"\xc3\xa9")}) == {
+        "payload": {"bytes_hex": "c3a9"}
+    }
     assert normalize_contract_result(
         bytes_step,
         {"payload": {"text": "é", "encoding": "utf-8"}},
     ) == {"payload": {"bytes_hex": "c3a9"}}
-    assert normalize_contract_result(
-        stat_step, {"kind": "file", "length": 2}
-    ) == {"type": "file", "size": 2}
+    assert normalize_contract_result(stat_step, {"kind": "file", "length": 2}) == {
+        "type": "file",
+        "size": 2,
+    }
 
     nfd_path = unicodedata.normalize("NFD", "/café")
-    assert normalize_contract_result(path_step, {"path": nfd_path}) == {
-        "path": nfd_path
-    }
+    assert normalize_contract_result(path_step, {"path": nfd_path}) == {"path": nfd_path}
     assert normalize_contract_result(
         path_step,
         {"kind": "file", "length": 2},
@@ -256,12 +247,8 @@ def test_seeded_surface_exposes_every_required_drift_class(tmp_path):
     def seeded(step, _context):
         result = dict(step.expected)
         mutations = {
-            "vector:path:nfc-dot-segments": lambda value: value.update(
-                path="/wrong"
-            ),
-            "vector:write:utf8-byte-accounting": lambda value: value.update(
-                written=1
-            ),
+            "vector:path:nfc-dot-segments": lambda value: value.update(path="/wrong"),
+            "vector:write:utf8-byte-accounting": lambda value: value.update(written=1),
             "vector:stat:cid-size": lambda value: value.update(size=6),
             "vector:journal:duplicate-replay": lambda value: value.update(
                 commits=2, destination_entries=2
@@ -269,9 +256,7 @@ def test_seeded_surface_exposes_every_required_drift_class(tmp_path):
             "vector:auth:precedes-cache": lambda value: value.update(
                 bytes_exposed=1, metadata_exposed=True
             ),
-            "vector:resource:list-limit": lambda value: value.update(
-                entry_count=3
-            ),
+            "vector:resource:list-limit": lambda value: value.update(entry_count=3),
         }
         if step.vector_id == "vector:remove:non-empty":
             return {"removed": True}
@@ -287,10 +272,7 @@ def test_seeded_surface_exposes_every_required_drift_class(tmp_path):
         temp_parent=tmp_path,
     )
     found = {
-        kind
-        for finding in witness.findings
-        for kind in finding.kinds
-        if finding.authoritative
+        kind for finding in witness.findings for kind in finding.kinds if finding.authoritative
     }
 
     assert {

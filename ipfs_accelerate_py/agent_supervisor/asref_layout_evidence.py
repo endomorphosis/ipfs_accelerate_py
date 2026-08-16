@@ -41,19 +41,13 @@ ASREF_TASK_PREFIX = "ASREF-"
 ASREF_GOAL_PREFIX = "ASREF-G"
 ASREF_DEFAULT_NAMESPACE = "asref-v1"
 ASREF_DEFAULT_IMPLEMENTATION_PROVIDER = "grok"
-ASREF_IMPLEMENTATION_PROVIDER_ENV = (
-    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
-)
+ASREF_IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
 
 # Tracked inventory (ASREF-G010). Runtime discovery mirrors under data/ are
 # optional and often gitignored; the durable freeze lives under docs/.
 ASREF_MOVE_MAP_RELATIVE = Path("docs/architecture/asref/move_map.json")
-ASREF_IMPORT_INVENTORY_RELATIVE = Path(
-    "docs/architecture/asref/import_inventory.md"
-)
-ASREF_DISCOVERY_MOVE_MAP_RELATIVE = Path(
-    "data/agent_supervisor/discovery/asref/move_map.json"
-)
+ASREF_IMPORT_INVENTORY_RELATIVE = Path("docs/architecture/asref/import_inventory.md")
+ASREF_DISCOVERY_MOVE_MAP_RELATIVE = Path("data/agent_supervisor/discovery/asref/move_map.json")
 ASREF_DISCOVERY_IMPORT_INVENTORY_RELATIVE = Path(
     "data/agent_supervisor/discovery/asref/import_inventory.md"
 )
@@ -69,15 +63,9 @@ ASREF_TODO_RELATIVE = Path(ASREF_PROTECTED_PATHS[0])
 ASREF_OBJECTIVE_RELATIVE = Path(ASREF_PROTECTED_PATHS[1])
 ASREF_PLAN_RELATIVE = Path(ASREF_PROTECTED_PATHS[2])
 
-ASREF_SUPERVISOR_LAUNCH_SCRIPT = Path(
-    "scripts/ops/asref_module_refactor_supervisor.py"
-)
-ASREF_MULTI_LANE_LAUNCH_SCRIPT = Path(
-    "scripts/ops/agent_supervisor/asref_multi_lane_launch.py"
-)
-ASREF_IMPLEMENTATION_ENTRY = Path(
-    "scripts/ops/agent_supervisor/implementation_supervisor_entry.py"
-)
+ASREF_SUPERVISOR_LAUNCH_SCRIPT = Path("scripts/ops/asref_module_refactor_supervisor.py")
+ASREF_MULTI_LANE_LAUNCH_SCRIPT = Path("scripts/ops/agent_supervisor/asref_multi_lane_launch.py")
+ASREF_IMPLEMENTATION_ENTRY = Path("scripts/ops/agent_supervisor/implementation_supervisor_entry.py")
 
 # Console scripts that must not resolve through retired flat module paths
 # after package moves (ASREF-G090 cutover gate subset).
@@ -177,9 +165,7 @@ class AsrefEvidenceReport:
             "ok": self.ok,
             "repo_root": self.repo_root,
             "goal_ids": list(self.goal_ids),
-            "goal_status": {
-                goal_id: self.goal_ok(goal_id) for goal_id in self.goal_ids
-            },
+            "goal_status": {goal_id: self.goal_ok(goal_id) for goal_id in self.goal_ids},
             "checks": [c.to_dict() for c in self.checks],
             "errors": list(self.errors),
         }
@@ -192,9 +178,7 @@ def resolve_repo_root(start: Path | None = None) -> Path:
         candidate = Path(start).resolve()
         if (candidate / "ipfs_accelerate_py" / "agent_supervisor").is_dir():
             return candidate
-        if candidate.name == "agent_supervisor" and candidate.parent.name == (
-            "ipfs_accelerate_py"
-        ):
+        if candidate.name == "agent_supervisor" and candidate.parent.name == ("ipfs_accelerate_py"):
             return candidate.parent.parent
 
     here = Path(__file__).resolve()
@@ -314,8 +298,7 @@ def _check_g010(repo_root: Path) -> list[AsrefEvidenceCheck]:
             check_id="import_inventory_present",
             ok=inventory_path is not None,
             detail=(
-                f"Import inventory present at "
-                f"{inventory_path.relative_to(repo_root).as_posix()}"
+                f"Import inventory present at {inventory_path.relative_to(repo_root).as_posix()}"
                 if inventory_path is not None
                 else "import_inventory.md missing"
             ),
@@ -340,18 +323,13 @@ def _check_g010(repo_root: Path) -> list[AsrefEvidenceCheck]:
                     goal_id=ASREF_G010,
                     check_id="move_map_branch_target",
                     ok=branch == ASREF_MERGE_BRANCH,
-                    detail=(
-                        f"move_map branch_target={branch!r} "
-                        f"(expected {ASREF_MERGE_BRANCH!r})"
-                    ),
+                    detail=(f"move_map branch_target={branch!r} (expected {ASREF_MERGE_BRANCH!r})"),
                     paths=map_paths,
                 )
             )
             if isinstance(modules, Mapping):
                 module_count = len(modules)
-            elif isinstance(modules, Sequence) and not isinstance(
-                modules, (str, bytes, bytearray)
-            ):
+            elif isinstance(modules, Sequence) and not isinstance(modules, (str, bytes, bytearray)):
                 module_count = len(modules)
             else:
                 module_count = 0
@@ -579,8 +557,7 @@ def _check_g090(repo_root: Path) -> list[AsrefEvidenceCheck]:
         # Also accept if all listed targets include the package segment.
         if not ok and actual_list:
             ok = all(
-                ".objectives." in t or ".merge." in t or ".todo_daemon." in t
-                for t in actual_list
+                ".objectives." in t or ".merge." in t or ".todo_daemon." in t for t in actual_list
             ) and not any(
                 re.search(
                     rf"agent_supervisor\.({stem}):",
@@ -594,9 +571,7 @@ def _check_g090(repo_root: Path) -> list[AsrefEvidenceCheck]:
                 goal_id=ASREF_G090,
                 check_id=f"entry_point_{script_name}",
                 ok=ok and bool(actual_list),
-                detail=(
-                    f"{script_name} -> {actual_list or ['<missing>']}"
-                ),
+                detail=(f"{script_name} -> {actual_list or ['<missing>']}"),
                 paths=("pyproject.toml", "setup.py"),
             )
         )
@@ -709,8 +684,7 @@ def _check_g100(repo_root: Path) -> list[AsrefEvidenceCheck]:
             AsrefEvidenceCheck(
                 goal_id=ASREF_G100,
                 check_id="implementation_provider_flag",
-                ok="implementation-provider" in text
-                or "IMPLEMENTATION_PROVIDER" in text,
+                ok="implementation-provider" in text or "IMPLEMENTATION_PROVIDER" in text,
                 detail="launch script accepts implementation provider selection",
                 paths=(ASREF_SUPERVISOR_LAUNCH_SCRIPT.as_posix(),),
             )
@@ -798,18 +772,12 @@ def assert_asref_layout_evidence(
     """Raise AssertionError unless every required goal's checks pass."""
 
     report = collect_asref_layout_evidence(repo_root)
-    failed = [
-        c
-        for c in report.checks
-        if c.goal_id in set(require_goals) and not c.ok
-    ]
+    failed = [c for c in report.checks if c.goal_id in set(require_goals) and not c.ok]
     if report.errors or failed:
         lines = [f"ASREF layout evidence failed under {report.repo_root}"]
         lines.extend(f"error: {err}" for err in report.errors)
         for check in failed:
-            lines.append(
-                f"FAIL {check.goal_id}/{check.check_id}: {check.detail}"
-            )
+            lines.append(f"FAIL {check.goal_id}/{check.check_id}: {check.detail}")
         raise AssertionError("\n".join(lines))
     return report
 
@@ -895,8 +863,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         description=(
-            "Verify ASREF-G010 / ASREF-G090 / ASREF-G100 layout evidence "
-            "on the current tree"
+            "Verify ASREF-G010 / ASREF-G090 / ASREF-G100 layout evidence on the current tree"
         )
     )
     parser.add_argument(

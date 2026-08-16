@@ -59,9 +59,7 @@ from .prover_conformance import ConformanceReport
 
 
 PROVER_EVIDENCE_STORE_VERSION: Final = 1
-PROVER_EVIDENCE_KEY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/prover-evidence-key@1"
-)
+PROVER_EVIDENCE_KEY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/prover-evidence-key@1"
 PROVER_EVIDENCE_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/prover-evidence-receipt@1"
 )
@@ -155,9 +153,7 @@ def _ordered_values(values: Iterable[Any], name: str) -> tuple[Any, ...]:
 
 
 def _digest(value: Any) -> str:
-    return "sha256:" + hashlib.sha256(
-        canonical_json(value).encode("utf-8")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def _timestamp_ms(value: Any, name: str) -> int:
@@ -212,12 +208,8 @@ class ProverEvidenceKey:
         object.__setattr__(
             self, "translator_profile", _required(self.translator_profile, "translator_profile")
         )
-        object.__setattr__(
-            self, "assumptions", _ordered_values(self.assumptions, "assumptions")
-        )
-        object.__setattr__(
-            self, "finite_bounds", _mapping(self.finite_bounds, "finite_bounds")
-        )
+        object.__setattr__(self, "assumptions", _ordered_values(self.assumptions, "assumptions"))
+        object.__setattr__(self, "finite_bounds", _mapping(self.finite_bounds, "finite_bounds"))
         object.__setattr__(
             self,
             "prover_versions",
@@ -319,13 +311,9 @@ def build_prover_evidence_key(
             raise ContractValidationError("normalized model identities disagree")
     model_value = normalized_model if normalized_model is not None else model
     if translator_profile is not None and translator is not None:
-        if _json(translator_profile, "translator_profile") != _json(
-            translator, "translator"
-        ):
+        if _json(translator_profile, "translator_profile") != _json(translator, "translator"):
             raise ContractValidationError("translator profile identities disagree")
-    translator_value = (
-        translator_profile if translator_profile is not None else translator
-    )
+    translator_value = translator_profile if translator_profile is not None else translator
     if finite_bounds is not None and bounds is not None:
         if _json(finite_bounds, "finite_bounds") != _json(bounds, "bounds"):
             raise ContractValidationError("finite bound identities disagree")
@@ -341,11 +329,7 @@ def build_prover_evidence_key(
     trees = [item for item in (repository_tree_id, candidate_tree, tree_id) if item]
     if len(set(trees)) > 1:
         raise ContractValidationError("repository tree identities disagree")
-    fixtures = [
-        item
-        for item in (conformance_fixture_set_id, fixture_set_id)
-        if item
-    ]
+    fixtures = [item for item in (conformance_fixture_set_id, fixture_set_id) if item]
     if len(set(fixtures)) > 1:
         raise ContractValidationError("conformance fixture set identities disagree")
     if prover_versions is not None and prover_version is not None:
@@ -390,9 +374,7 @@ class ConformanceBinding:
     permitted_assurance: AssuranceLevel
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "fixture_set_id", _required(self.fixture_set_id, "fixture_set_id")
-        )
+        object.__setattr__(self, "fixture_set_id", _required(self.fixture_set_id, "fixture_set_id"))
         object.__setattr__(
             self,
             "report_ids",
@@ -402,13 +384,9 @@ class ConformanceBinding:
             raise ContractValidationError("at least one conformance report is required")
         if not isinstance(self.passed, bool):
             raise ContractValidationError("conformance passed must be boolean")
-        object.__setattr__(
-            self, "permitted_assurance", AssuranceLevel(self.permitted_assurance)
-        )
+        object.__setattr__(self, "permitted_assurance", AssuranceLevel(self.permitted_assurance))
         if not self.passed and self.permitted_assurance is not AssuranceLevel.UNVERIFIED:
-            raise ContractValidationError(
-                "failed conformance cannot permit verified assurance"
-            )
+            raise ContractValidationError("failed conformance cannot permit verified assurance")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -433,9 +411,7 @@ class ConformanceBinding:
         if fixture_set_id is not None:
             identities.add(str(fixture_set_id))
         if len(identities) != 1:
-            raise ContractValidationError(
-                "conformance reports do not bind one fixture set"
-            )
+            raise ContractValidationError("conformance reports do not bind one fixture set")
         passed = all(item.passed for item in reports)
         permitted = min(
             (item.permitted_assurance for item in reports),
@@ -458,9 +434,7 @@ class ConformanceBinding:
             fixture_set_id=value.get("fixture_set_id", ""),
             report_ids=tuple(value.get("report_ids") or ()),
             passed=value.get("passed", False),
-            permitted_assurance=value.get(
-                "permitted_assurance", AssuranceLevel.UNVERIFIED
-            ),
+            permitted_assurance=value.get("permitted_assurance", AssuranceLevel.UNVERIFIED),
         )
 
 
@@ -492,19 +466,16 @@ class ProverEvidenceReceipt:
         if not isinstance(self.model_only, bool):
             raise ContractValidationError("model_only must be boolean")
         object.__setattr__(
-            self, "supersedes_receipt_id",
+            self,
+            "supersedes_receipt_id",
             str(self.supersedes_receipt_id).strip(),
         )
         object.__setattr__(self, "metadata", _mapping(self.metadata, "metadata"))
         if self.result.plan.obligation.property_kind is not self.key.property_class:
-            raise ContractValidationError(
-                "portfolio property class does not match evidence key"
-            )
+            raise ContractValidationError("portfolio property class does not match evidence key")
         policy_id = _named_identity(self.key.policy, "policy_id", "id")
         if policy_id and policy_id != self.result.plan.policy_id:
-            raise ContractValidationError(
-                "portfolio policy does not match evidence key"
-            )
+            raise ContractValidationError("portfolio policy does not match evidence key")
         obligation_tree = _named_identity(
             self.result.plan.obligation.metadata,
             "repository_tree_id",
@@ -512,30 +483,18 @@ class ProverEvidenceReceipt:
             "tree_id",
         )
         if obligation_tree and obligation_tree != self.key.repository_tree_id:
-            raise ContractValidationError(
-                "portfolio repository tree does not match evidence key"
-            )
+            raise ContractValidationError("portfolio repository tree does not match evidence key")
         known_provers = set(self.key.prover_versions)
         known_kernels = set(self.key.kernel_versions)
-        generic_prover_version = bool(
-            known_provers & {"prover", "version", "default"}
-        )
-        generic_kernel_version = bool(
-            known_kernels & {"kernel", "version", "default"}
-        )
+        generic_prover_version = bool(known_provers & {"prover", "version", "default"})
+        generic_kernel_version = bool(known_kernels & {"kernel", "version", "default"})
         for attempt in self.result.attempts:
             if attempt.role.value == "kernel":
-                if (
-                    attempt.prover_id not in known_kernels
-                    and not generic_kernel_version
-                ):
+                if attempt.prover_id not in known_kernels and not generic_kernel_version:
                     raise ContractValidationError(
                         f"kernel version is not bound for {attempt.prover_id}"
                     )
-            elif (
-                attempt.prover_id not in known_provers
-                and not generic_prover_version
-            ):
+            elif attempt.prover_id not in known_provers and not generic_prover_version:
                 raise ContractValidationError(
                     f"prover version is not bound for {attempt.prover_id}"
                 )
@@ -651,20 +610,14 @@ class EvidenceRequirements:
     allow_disagreement: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "required_assurance", AssuranceLevel(self.required_assurance)
-        )
-        object.__setattr__(
-            self, "required_freshness", EvidenceFreshness(self.required_freshness)
-        )
+        object.__setattr__(self, "required_assurance", AssuranceLevel(self.required_assurance))
+        object.__setattr__(self, "required_freshness", EvidenceFreshness(self.required_freshness))
         if self.max_age_seconds is not None and (
             isinstance(self.max_age_seconds, bool)
             or not isinstance(self.max_age_seconds, int)
             or self.max_age_seconds < 0
         ):
-            raise ContractValidationError(
-                "max_age_seconds must be a non-negative integer or None"
-            )
+            raise ContractValidationError("max_age_seconds must be a non-negative integer or None")
         if not isinstance(self.allow_disagreement, bool):
             raise ContractValidationError("allow_disagreement must be boolean")
 
@@ -737,9 +690,7 @@ class ProverEvidenceStore:
         self.default_ttl_seconds = int(default_ttl_seconds)
         self._clock = clock
         self._duckdb_timeout_seconds = int(
-            sqlite_timeout_seconds
-            if sqlite_timeout_seconds is not None
-            else duckdb_timeout_seconds
+            sqlite_timeout_seconds if sqlite_timeout_seconds is not None else duckdb_timeout_seconds
         )
         self._initialize()
 
@@ -811,11 +762,7 @@ class ProverEvidenceStore:
 
     @staticmethod
     def _key(value: ProverEvidenceKey | Mapping[str, Any]) -> ProverEvidenceKey:
-        return (
-            value
-            if isinstance(value, ProverEvidenceKey)
-            else ProverEvidenceKey.from_dict(value)
-        )
+        return value if isinstance(value, ProverEvidenceKey) else ProverEvidenceKey.from_dict(value)
 
     def put(
         self,
@@ -834,9 +781,7 @@ class ProverEvidenceStore:
         cache_key = self._key(key)
         try:
             typed_result = (
-                result
-                if isinstance(result, PortfolioResult)
-                else PortfolioResult.from_dict(result)
+                result if isinstance(result, PortfolioResult) else PortfolioResult.from_dict(result)
             )
             if conformance is None:
                 binding = ConformanceBinding.from_reports(
@@ -996,29 +941,18 @@ class ProverEvidenceStore:
                 reasons.add(EvidenceRejectionReason.MODEL_ONLY.value)
             if not receipt.conformance.passed:
                 reasons.add(EvidenceRejectionReason.NON_CONFORMANT.value)
-            if (
-                receipt.conformance.fixture_set_id
-                != cache_key.conformance_fixture_set_id
-            ):
+            if receipt.conformance.fixture_set_id != cache_key.conformance_fixture_set_id:
                 reasons.add(EvidenceRejectionReason.FIXTURE_SET_MISMATCH.value)
-            if not receipt.conformance.permitted_assurance.satisfies(
-                requested.required_assurance
-            ):
-                reasons.add(
-                    EvidenceRejectionReason.INSUFFICIENT_CONFORMANCE_ASSURANCE.value
-                )
-            if not receipt.authoritative_assurance.satisfies(
-                requested.required_assurance
-            ):
+            if not receipt.conformance.permitted_assurance.satisfies(requested.required_assurance):
+                reasons.add(EvidenceRejectionReason.INSUFFICIENT_CONFORMANCE_ASSURANCE.value)
+            if not receipt.authoritative_assurance.satisfies(requested.required_assurance):
                 reasons.add(EvidenceRejectionReason.INSUFFICIENT_ASSURANCE.value)
             if receipt.result.verdict is not PortfolioVerdict.PROVED:
                 reasons.add(EvidenceRejectionReason.INCONCLUSIVE.value)
             if receipt.result.disagreement and not requested.allow_disagreement:
                 reasons.add(EvidenceRejectionReason.DISAGREEMENT.value)
             if not reasons:
-                return EvidenceLookupResult(
-                    EvidenceLookupStatus.HIT, cache_key, receipt
-                )
+                return EvidenceLookupResult(EvidenceLookupStatus.HIT, cache_key, receipt)
             accumulated.update(reasons)
         return EvidenceLookupResult(
             EvidenceLookupStatus.REJECTED,
@@ -1208,10 +1142,13 @@ class ProverEvidenceStore:
                 """,
                 (key.key_id,),
             ).fetchone()
-            fencing_token = max(
-                int(last["value"] or 0),
-                int(row["fencing_token"]) if row is not None else 0,
-            ) + 1
+            fencing_token = (
+                max(
+                    int(last["value"] or 0),
+                    int(row["fencing_token"]) if row is not None else 0,
+                )
+                + 1
+            )
             connection.execute(
                 """
                 INSERT INTO prover_evidence_flights(
@@ -1339,9 +1276,7 @@ class ProverEvidenceStore:
                 ),
             )
             if cursor.rowcount != 1:
-                raise ProverSingleFlightError(
-                    "single-flight lease heartbeat was fenced"
-                )
+                raise ProverSingleFlightError("single-flight lease heartbeat was fenced")
         finally:
             connection.close()
 
@@ -1371,9 +1306,7 @@ class ProverEvidenceStore:
             ):
                 raise ValueError("outcome envelope mismatch")
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise ProverSingleFlightExecutionError(
-                "single-flight outcome is malformed"
-            ) from exc
+            raise ProverSingleFlightExecutionError("single-flight outcome is malformed") from exc
         if row["status"] == "error":
             raise ProverSingleFlightExecutionError(str(envelope["value"]))
         return envelope["value"], int(row["fencing_token"])
@@ -1530,14 +1463,8 @@ def prover_evidence_projection_paths(
     raise ValueError("prover evidence projection path must end in .json or .duckdb")
 
 
-def _public_attempt(
-    receipt: ProverEvidenceReceipt, attempt: Any
-) -> dict[str, Any]:
-    lane = next(
-        lane
-        for lane in receipt.result.plan.lanes
-        if lane.prover_id == attempt.prover_id
-    )
+def _public_attempt(receipt: ProverEvidenceReceipt, attempt: Any) -> dict[str, Any]:
+    lane = next(lane for lane in receipt.result.plan.lanes if lane.prover_id == attempt.prover_id)
     counterexample_id = ""
     if attempt.attempt_id == receipt.result.counterexample_attempt_id:
         counterexample_id = attempt.attempt_id
@@ -1668,12 +1595,8 @@ def _projection_payload(
                     "receipt_id": receipt.receipt_id,
                     "result_id": receipt.result.result_id,
                     "property_class": receipt.key.property_class.value,
-                    "authority_attempt_ids": list(
-                        receipt.result.authority_attempt_ids
-                    ),
-                    "counterexample_attempt_id": (
-                        receipt.result.counterexample_attempt_id
-                    ),
+                    "authority_attempt_ids": list(receipt.result.authority_attempt_ids),
+                    "counterexample_attempt_id": (receipt.result.counterexample_attempt_id),
                     "fail_closed": receipt.result.fail_closed,
                 }
             )
@@ -1709,9 +1632,7 @@ def _projection_payload(
 
 def _atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(
-        f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
-    )
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     try:
         temporary.write_text(text, encoding="utf-8")
         os.replace(temporary, path)
@@ -1723,63 +1644,98 @@ def _duckdb_module() -> Any:
     try:
         import duckdb
     except ImportError as exc:  # pragma: no cover - declared project dependency
-        raise RuntimeError(
-            "DuckDB is required for prover evidence projections"
-        ) from exc
+        raise RuntimeError("DuckDB is required for prover evidence projections") from exc
     return duckdb
 
 
 _PROJECTION_TABLE_FIELDS: Mapping[str, tuple[tuple[str, str], ...]] = {
     "prover_evidence_cache_keys": (
-        ("key_id", "VARCHAR"), ("property_class", "VARCHAR"),
-        ("normalized_model_id", "VARCHAR"), ("translator_profile_id", "VARCHAR"),
-        ("assumptions_id", "VARCHAR"), ("finite_bounds_id", "VARCHAR"),
-        ("prover_versions_id", "VARCHAR"), ("prover_versions", "VARCHAR"),
-        ("kernel_versions_id", "VARCHAR"), ("kernel_versions", "VARCHAR"),
-        ("policy_id", "VARCHAR"), ("policy_name", "VARCHAR"),
+        ("key_id", "VARCHAR"),
+        ("property_class", "VARCHAR"),
+        ("normalized_model_id", "VARCHAR"),
+        ("translator_profile_id", "VARCHAR"),
+        ("assumptions_id", "VARCHAR"),
+        ("finite_bounds_id", "VARCHAR"),
+        ("prover_versions_id", "VARCHAR"),
+        ("prover_versions", "VARCHAR"),
+        ("kernel_versions_id", "VARCHAR"),
+        ("kernel_versions", "VARCHAR"),
+        ("policy_id", "VARCHAR"),
+        ("policy_name", "VARCHAR"),
         ("repository_tree_id", "VARCHAR"),
         ("conformance_fixture_set_id", "VARCHAR"),
     ),
     "prover_evidence_receipts": (
-        ("receipt_id", "VARCHAR"), ("key_id", "VARCHAR"), ("result_id", "VARCHAR"),
-        ("property_class", "VARCHAR"), ("repository_tree_id", "VARCHAR"),
-        ("conformance_fixture_set_id", "VARCHAR"), ("conformance_passed", "BOOLEAN"),
-        ("conformance_report_ids", "VARCHAR"), ("verdict", "VARCHAR"),
-        ("assurance", "VARCHAR"), ("freshness", "VARCHAR"),
-        ("created_at_ms", "BIGINT"), ("expires_at_ms", "BIGINT"),
-        ("model_only", "BOOLEAN"), ("disagreement", "BOOLEAN"),
-        ("invalidated", "BOOLEAN"), ("supersedes_receipt_id", "VARCHAR"),
-        ("attempt_count", "BIGINT"), ("counterexample_attempt_id", "VARCHAR"),
+        ("receipt_id", "VARCHAR"),
+        ("key_id", "VARCHAR"),
+        ("result_id", "VARCHAR"),
+        ("property_class", "VARCHAR"),
+        ("repository_tree_id", "VARCHAR"),
+        ("conformance_fixture_set_id", "VARCHAR"),
+        ("conformance_passed", "BOOLEAN"),
+        ("conformance_report_ids", "VARCHAR"),
+        ("verdict", "VARCHAR"),
+        ("assurance", "VARCHAR"),
+        ("freshness", "VARCHAR"),
+        ("created_at_ms", "BIGINT"),
+        ("expires_at_ms", "BIGINT"),
+        ("model_only", "BOOLEAN"),
+        ("disagreement", "BOOLEAN"),
+        ("invalidated", "BOOLEAN"),
+        ("supersedes_receipt_id", "VARCHAR"),
+        ("attempt_count", "BIGINT"),
+        ("counterexample_attempt_id", "VARCHAR"),
     ),
     "prover_evidence_capabilities": (
-        ("receipt_id", "VARCHAR"), ("prover_id", "VARCHAR"), ("role", "VARCHAR"),
-        ("capability_receipt_id", "VARCHAR"), ("authority_capability", "VARCHAR"),
-        ("translation_path_id", "VARCHAR"), ("conformance_gate_id", "VARCHAR"),
+        ("receipt_id", "VARCHAR"),
+        ("prover_id", "VARCHAR"),
+        ("role", "VARCHAR"),
+        ("capability_receipt_id", "VARCHAR"),
+        ("authority_capability", "VARCHAR"),
+        ("translation_path_id", "VARCHAR"),
+        ("conformance_gate_id", "VARCHAR"),
         ("authoritative", "BOOLEAN"),
     ),
     "prover_evidence_attempts": (
-        ("receipt_id", "VARCHAR"), ("result_id", "VARCHAR"),
-        ("attempt_id", "VARCHAR"), ("prover_id", "VARCHAR"), ("role", "VARCHAR"),
-        ("stage", "BIGINT"), ("reported_outcome", "VARCHAR"),
-        ("effective_outcome", "VARCHAR"), ("authoritative", "BOOLEAN"),
-        ("conclusive", "BOOLEAN"), ("duration_ms", "BIGINT"),
-        ("capability_receipt_id", "VARCHAR"), ("authority_capability", "VARCHAR"),
-        ("translation_path_id", "VARCHAR"), ("conformance_gate_id", "VARCHAR"),
-        ("cancellation_requested", "BOOLEAN"), ("counterexample_id", "VARCHAR"),
+        ("receipt_id", "VARCHAR"),
+        ("result_id", "VARCHAR"),
+        ("attempt_id", "VARCHAR"),
+        ("prover_id", "VARCHAR"),
+        ("role", "VARCHAR"),
+        ("stage", "BIGINT"),
+        ("reported_outcome", "VARCHAR"),
+        ("effective_outcome", "VARCHAR"),
+        ("authoritative", "BOOLEAN"),
+        ("conclusive", "BOOLEAN"),
+        ("duration_ms", "BIGINT"),
+        ("capability_receipt_id", "VARCHAR"),
+        ("authority_capability", "VARCHAR"),
+        ("translation_path_id", "VARCHAR"),
+        ("conformance_gate_id", "VARCHAR"),
+        ("cancellation_requested", "BOOLEAN"),
+        ("counterexample_id", "VARCHAR"),
     ),
     "prover_evidence_disagreements": (
-        ("receipt_id", "VARCHAR"), ("result_id", "VARCHAR"),
-        ("property_class", "VARCHAR"), ("authority_attempt_ids", "VARCHAR"),
-        ("counterexample_attempt_id", "VARCHAR"), ("fail_closed", "BOOLEAN"),
+        ("receipt_id", "VARCHAR"),
+        ("result_id", "VARCHAR"),
+        ("property_class", "VARCHAR"),
+        ("authority_attempt_ids", "VARCHAR"),
+        ("counterexample_attempt_id", "VARCHAR"),
+        ("fail_closed", "BOOLEAN"),
     ),
     "prover_evidence_counterexamples": (
-        ("receipt_id", "VARCHAR"), ("result_id", "VARCHAR"),
-        ("attempt_id", "VARCHAR"), ("prover_id", "VARCHAR"),
-        ("property_class", "VARCHAR"), ("conclusive", "BOOLEAN"),
+        ("receipt_id", "VARCHAR"),
+        ("result_id", "VARCHAR"),
+        ("attempt_id", "VARCHAR"),
+        ("prover_id", "VARCHAR"),
+        ("property_class", "VARCHAR"),
+        ("conclusive", "BOOLEAN"),
     ),
     "prover_evidence_invalidations": (
-        ("invalidation_id", "VARCHAR"), ("receipt_id", "VARCHAR"),
-        ("invalidated_at_ms", "BIGINT"), ("reason", "VARCHAR"),
+        ("invalidation_id", "VARCHAR"),
+        ("receipt_id", "VARCHAR"),
+        ("invalidated_at_ms", "BIGINT"),
+        ("reason", "VARCHAR"),
         ("invalidated_by_receipt_id", "VARCHAR"),
     ),
 }
@@ -1803,9 +1759,7 @@ def _write_projection_duckdb(
     source_sha256: str,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(
-        f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
-    )
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     temporary.unlink(missing_ok=True)
     connection = _duckdb_module().connect(str(temporary))
     try:
@@ -1853,9 +1807,7 @@ def _write_projection_duckdb(
                     if isinstance(value, (list, dict)):
                         value = canonical_json(value)
                     values.append(value)
-                connection.execute(
-                    f"INSERT INTO {table} VALUES ({placeholders})", values
-                )
+                connection.execute(f"INSERT INTO {table} VALUES ({placeholders})", values)
         for view, target in _PROJECTION_VIEW_TARGETS.items():
             connection.execute(f"CREATE VIEW {view} AS SELECT * FROM {target}")
         connection.execute("CHECKPOINT")
@@ -1919,9 +1871,7 @@ def query_prover_evidence(
         raise ValueError(f"unsupported prover evidence table: {table}")
     if not 1 <= limit <= 1000:
         raise ValueError("query limit must be between 1 and 1000")
-    if not columns or any(
-        item != "*" and not _IDENTIFIER.fullmatch(item) for item in columns
-    ):
+    if not columns or any(item != "*" and not _IDENTIFIER.fullmatch(item) for item in columns):
         raise ValueError("columns must be simple identifiers")
     if where and (
         ";" in where

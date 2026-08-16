@@ -120,10 +120,12 @@ All files follow the proven **zero-breaking-changes** pattern:
 # Import with comprehensive fallback
 try:
     from ...common.storage_wrapper import StorageWrapper
+
     DISTRIBUTED_STORAGE_AVAILABLE = True
 except ImportError:
     try:
         from ..common.storage_wrapper import StorageWrapper
+
         DISTRIBUTED_STORAGE_AVAILABLE = True
     except ImportError:
         DISTRIBUTED_STORAGE_AVAILABLE = False
@@ -219,7 +221,7 @@ if self.storage:
         pass
 
 # Fall back to local
-with open(cache_path, 'rb') as f:
+with open(cache_path, "rb") as f:
     return f.read()
 ```
 
@@ -234,7 +236,7 @@ if storage:
         pass
 
 # Always save locally too
-with open(model_path, 'wb') as f:
+with open(model_path, "wb") as f:
     f.write(model_data)
 ```
 

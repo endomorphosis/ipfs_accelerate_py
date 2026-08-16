@@ -86,9 +86,7 @@ ENDPOINT_USAGE_BATCH_ADMISSION_REQUIREMENT_ID: str = (
 ENDPOINT_USAGE_BATCH_ADMISSION_SCHEMA: str = (
     "ipfs_accelerate_py/agent-supervisor/endpoint-usage-batch-admission@1"
 )
-PHYSICAL_BATCH_RESERVE_ONCE_REQUIREMENT_ID: str = (
-    "requirement:physical-batch-reserve-once.v1"
-)
+PHYSICAL_BATCH_RESERVE_ONCE_REQUIREMENT_ID: str = "requirement:physical-batch-reserve-once.v1"
 
 
 def _canonical_json(value: Any) -> str:
@@ -300,8 +298,7 @@ class PhysicalBatchReservation:
     def to_dict(self) -> dict[str, Any]:
         with self._lock:
             attributions = {
-                key: value.to_dict()
-                for key, value in sorted(self.member_attributions.items())
+                key: value.to_dict() for key, value in sorted(self.member_attributions.items())
             }
             return {
                 "schema": ENDPOINT_USAGE_BATCH_ADMISSION_SCHEMA,
@@ -356,9 +353,7 @@ def reserve_physical_batch(
         else:
             normalized.append(ProviderBatchRequest.from_value(item))
     if not normalized:
-        return None, ProviderBatchAdmissionGrant(
-            admitted=False, reason="empty_batch"
-        )
+        return None, ProviderBatchAdmissionGrant(admitted=False, reason="empty_batch")
 
     request_ids = tuple(item.request_id for item in normalized)
     total_tokens = sum(max(0, int(item.token_budget)) for item in normalized)
@@ -557,6 +552,7 @@ class UsageAwareProviderBatchScheduler(ProviderBatchScheduler):
 
         usage_admission = admission
         if self.usage_mode is not UsageAdmissionMode.OFF and admission is None:
+
             def _usage_admission(
                 key: ProviderBatchKey,
                 requests: Sequence[ProviderBatchRequest],
@@ -603,7 +599,9 @@ class UsageAwareProviderBatchScheduler(ProviderBatchScheduler):
             return 0
         return reservation.settle_shared_overhead_once()
 
-    def cancel_member_attribution(self, batch_id: str, request_id: str) -> BatchMemberAttribution | None:
+    def cancel_member_attribution(
+        self, batch_id: str, request_id: str
+    ) -> BatchMemberAttribution | None:
         with self._reservation_lock:
             reservation = self._batch_reservations.get(str(batch_id))
         if reservation is None:

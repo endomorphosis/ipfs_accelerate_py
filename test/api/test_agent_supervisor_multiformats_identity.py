@@ -87,22 +87,15 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 )
 
 # Well-known IPFS / multiformats raw sha2-256 CIDv1 vectors (base32).
-KNOWN_EMPTY_RAW_CID = (
-    "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
-)
-KNOWN_HELLO_WORLD_RAW_CID = (
-    "bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e"
-)
+KNOWN_EMPTY_RAW_CID = "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
+KNOWN_HELLO_WORLD_RAW_CID = "bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e"
 
 
 def test_known_raw_vectors_match_frozen_profile() -> None:
     assert cid_for_bytes(b"") == KNOWN_EMPTY_RAW_CID
     assert cid_for_bytes(b"hello world") == KNOWN_HELLO_WORLD_RAW_CID
     assert validate_cid(KNOWN_EMPTY_RAW_CID, codecs=("raw",)) == KNOWN_EMPTY_RAW_CID
-    assert (
-        validate_cid(KNOWN_HELLO_WORLD_RAW_CID, codecs=("raw",))
-        == KNOWN_HELLO_WORLD_RAW_CID
-    )
+    assert validate_cid(KNOWN_HELLO_WORLD_RAW_CID, codecs=("raw",)) == KNOWN_HELLO_WORLD_RAW_CID
 
 
 def test_dag_json_cid_stable_across_mapping_order() -> None:
@@ -132,9 +125,7 @@ def test_cross_package_bytes_match_cid_utils() -> None:
     payload = {"program": "vfs-010", "n": 1, "nested": {"b": 2, "a": 1}}
     raw = b"exact source bytes\n"
 
-    assert canonical_dag_json_bytes(payload) == package_canonical_dag_json_bytes(
-        payload
-    )
+    assert canonical_dag_json_bytes(payload) == package_canonical_dag_json_bytes(payload)
     assert cid_for_dag_json(payload) == package_cid_for_dag_json(payload)
     assert cid_for_bytes(raw) == package_cid_for_bytes(raw)
     assert package_validate_cid(
@@ -150,9 +141,7 @@ def test_independent_round_trips() -> None:
     assert independent_round_trip_dag_json(obj) == cid_for_dag_json(obj)
 
     encoded = canonical_dag_json_bytes(obj)
-    assert independent_round_trip_cid(encoded, codec="dag-json") == cid_for_dag_json(
-        obj
-    )
+    assert independent_round_trip_cid(encoded, codec="dag-json") == cid_for_dag_json(obj)
 
 
 def test_content_identity_link_preserves_local_id() -> None:
@@ -242,9 +231,7 @@ def test_reject_double_hashing() -> None:
     # Wrapping must not equal hashing the digest as payload.
     digest_hex = hashlib.sha256(payload).hexdigest()
     assert cid_from_sha256_digest(digest_hex) == direct
-    assert cid_from_sha256_digest(digest_hex) != cid_for_bytes(
-        bytes.fromhex(digest_hex)
-    )
+    assert cid_from_sha256_digest(digest_hex) != cid_for_bytes(bytes.fromhex(digest_hex))
 
 
 def test_cid_from_sha256_digest_refuses_ambiguous_already_hashed_false() -> None:
@@ -439,9 +426,7 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
     assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-060"
     assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G030"
     assert OBJECTIVE_PARENT_REPAIR_TASK_ID == "VFS-060"
-    assert objective_validation_repair_evidence_terms() == (
-        "objective validation repair",
-    )
+    assert objective_validation_repair_evidence_terms() == ("objective validation repair",)
     assert cache_repair_terms() == ("objective validation repair",)
 
     # Domain envelope evidence remains cid-profile only on this bridge.

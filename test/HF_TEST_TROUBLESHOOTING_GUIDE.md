@@ -58,6 +58,7 @@ pass
 ```python
 try:
     import openvino
+
     capabilities["openvino"] = True
 except ImportError:
     pass
@@ -161,6 +162,7 @@ If automated tools fail, you can fix files manually:
    ```python
    try:
        import torch
+
        HAS_TORCH = True
    except ImportError:
        torch = MagicMock()
@@ -179,10 +181,11 @@ If automated tools fail, you can fix files manually:
 3. **Fix mock class definitions**: Ensure proper indentation in mock classes
    ```python
    if not HAS_TOKENIZERS:
+
        class MockTokenizer:
            def __init__(self, *args, **kwargs):
                self.vocab_size = 32000
-           
+
            def decode(self, ids, **kwargs):
                return "Decoded text from mock"
    ```

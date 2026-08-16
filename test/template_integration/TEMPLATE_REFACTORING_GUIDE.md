@@ -121,20 +121,21 @@ class TestBertModel:
 ```python
 from refactored_test_suite.model_test import ModelTest
 
+
 class TestBertModel(ModelTest):
     """Test class for BERT model."""
-    
+
     def setUp(self):
         """Set up the test environment."""
         super().setUp()
         self.model_name = "bert-base-uncased"
         self.model_type = "text"
         self.setup_hardware()
-    
+
     def setup_hardware(self):
         """Set up hardware detection."""
         # Hardware detection code...
-    
+
     def test_basic_inference(self):
         """Test that the model can perform basic inference."""
         # Updated inference test code with standard assertions

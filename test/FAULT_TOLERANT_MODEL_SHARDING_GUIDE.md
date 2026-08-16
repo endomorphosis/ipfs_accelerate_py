@@ -58,7 +58,7 @@ manager = ModelShardingManager(
     shard_type="layer",
     model_type="text",
     enable_ipfs=True,
-    db_path="benchmark_db.duckdb"  # For performance history tracking
+    db_path="benchmark_db.duckdb",  # For performance history tracking
 )
 
 # Initialize sharding
@@ -67,7 +67,7 @@ await manager.initialize_sharding()
 # Run inference across shards with fault tolerance
 result = await manager.run_inference_sharded(
     {"input_ids": [101, 2023, 2003, 1037, 3231, 102]},
-    max_retries=3  # Maximum number of retries for failed components
+    max_retries=3,  # Maximum number of retries for failed components
 )
 
 # Get performance metrics
@@ -87,20 +87,14 @@ The system supports multiple sharding strategies for different model architectur
 1. **Layer-Based Sharding**: Distributes model layers across browsers
     ```python
     manager = ModelShardingManager(
-        model_name="llama-7b",
-        num_shards=4,
-        shard_type="layer",
-        model_type="text"
+        model_name="llama-7b", num_shards=4, shard_type="layer", model_type="text"
     )
     ```
 
 2. **Attention-Feedforward Sharding**: Separates attention and feedforward components
     ```python
     manager = ModelShardingManager(
-        model_name="llama-7b",
-        num_shards=6,
-        shard_type="attention_feedforward",
-        model_type="text"
+        model_name="llama-7b", num_shards=6, shard_type="attention_feedforward", model_type="text"
     )
     ```
 
@@ -110,7 +104,7 @@ The system supports multiple sharding strategies for different model architectur
         model_name="clip-vit-base-patch32",
         num_shards=3,
         shard_type="component",
-        model_type="multimodal"
+        model_type="multimodal",
     )
     ```
 
@@ -142,36 +136,36 @@ history = manager.get_performance_history()
 
 # Example history structure
 {
-    'components': {
-        'component_123': {
-            'success_count': 42,
-            'error_count': 3,
-            'total_latency': 1250.5,
-            'execution_count': 45,
-            'avg_latency': 27.8,
-            'browser': 'firefox',
-            'platform': 'webgpu',
-            'shard_type': 'attention',
-            'shard_index': 2
+    "components": {
+        "component_123": {
+            "success_count": 42,
+            "error_count": 3,
+            "total_latency": 1250.5,
+            "execution_count": 45,
+            "avg_latency": 27.8,
+            "browser": "firefox",
+            "platform": "webgpu",
+            "shard_type": "attention",
+            "shard_index": 2,
         },
         # More components...
     },
-    'browser_metrics': {
-        'chrome': {
-            'success_count': 120,
-            'error_count': 5,
-            'total_latency': 3200.0,
-            'execution_count': 125,
-            'success_rate': 0.96,
-            'avg_latency': 26.7
+    "browser_metrics": {
+        "chrome": {
+            "success_count": 120,
+            "error_count": 5,
+            "total_latency": 3200.0,
+            "execution_count": 125,
+            "success_rate": 0.96,
+            "avg_latency": 26.7,
         },
-        'firefox': {...},
-        'edge': {...}
+        "firefox": {...},
+        "edge": {...},
     },
-    'overall_metrics': {...},
-    'shard_types': {...},
-    'timeline': [...],
-    'recovery_events': [...]
+    "overall_metrics": {...},
+    "shard_types": {...},
+    "timeline": [...],
+    "recovery_events": [...],
 }
 ```
 
@@ -193,7 +187,7 @@ manager = ModelShardingManager(
     num_shards=4,
     shard_type="layer",
     fault_tolerance_level="high",  # Options: none, low, medium, high, critical
-    recovery_strategy="progressive"  # Options: restart, reconnect, failover, progressive, parallel
+    recovery_strategy="progressive",  # Options: restart, reconnect, failover, progressive, parallel
 )
 ```
 
@@ -204,36 +198,36 @@ The system generates performance recommendations based on historical data:
 ```python
 # Get recommendations
 metrics = manager.get_metrics()
-recommendations = metrics.get('recommendations', {})
+recommendations = metrics.get("recommendations", {})
 
 # Example recommendations
 {
-    'browser_allocation': {
-        'overall': {
-            'recommended_browser': 'firefox',
-            'reason': 'Best overall performance with 98.5% success rate and 23.5ms latency'
+    "browser_allocation": {
+        "overall": {
+            "recommended_browser": "firefox",
+            "reason": "Best overall performance with 98.5% success rate and 23.5ms latency",
         },
-        'attention': {
-            'recommended_browser': 'firefox',
-            'reason': 'Best performance for attention components'
+        "attention": {
+            "recommended_browser": "firefox",
+            "reason": "Best performance for attention components",
         },
-        'feedforward': {
-            'recommended_browser': 'chrome',
-            'reason': 'Best performance for feedforward components'
-        }
+        "feedforward": {
+            "recommended_browser": "chrome",
+            "reason": "Best performance for feedforward components",
+        },
     },
-    'optimization_suggestions': [
+    "optimization_suggestions": [
         {
-            'type': 'allocation',
-            'issue': 'Only 1/4 shards using optimal browser (firefox)',
-            'suggestion': 'Consider reallocating more shards to firefox for better performance'
+            "type": "allocation",
+            "issue": "Only 1/4 shards using optimal browser (firefox)",
+            "suggestion": "Consider reallocating more shards to firefox for better performance",
         },
         {
-            'type': 'audio_optimization',
-            'issue': 'Audio models typically perform best on Firefox with compute shader optimizations',
-            'suggestion': 'Consider allocating more audio processing to Firefox browsers'
-        }
-    ]
+            "type": "audio_optimization",
+            "issue": "Audio models typically perform best on Firefox with compute shader optimizations",
+            "suggestion": "Consider allocating more audio processing to Firefox browsers",
+        },
+    ],
 }
 ```
 
@@ -244,10 +238,7 @@ Performance history can be saved to a DuckDB database for long-term analysis:
 ```python
 # Create model sharding manager with database integration
 manager = ModelShardingManager(
-    model_name="llama-7b",
-    num_shards=4,
-    shard_type="layer",
-    db_path="benchmark_db.duckdb"
+    model_name="llama-7b", num_shards=4, shard_type="layer", db_path="benchmark_db.duckdb"
 )
 
 # Run inference with automatic history tracking
@@ -274,7 +265,7 @@ custom_allocation = {
     0: {"browser": "firefox", "platform": "webgpu", "specialization": "audio_compute"},
     1: {"browser": "edge", "platform": "webnn", "specialization": "text"},
     2: {"browser": "chrome", "platform": "webgpu", "specialization": "vision"},
-    3: {"browser": "firefox", "platform": "webgpu", "specialization": "audio_compute"}
+    3: {"browser": "firefox", "platform": "webgpu", "specialization": "audio_compute"},
 }
 
 # Create manager with custom allocation
@@ -283,7 +274,7 @@ manager = ModelShardingManager(
     num_shards=4,
     shard_type="component",
     model_type="multimodal",
-    custom_browser_allocation=custom_allocation
+    custom_browser_allocation=custom_allocation,
 )
 ```
 
@@ -294,6 +285,7 @@ manager = ModelShardingManager(
 ```python
 from fixed_web_platform.cross_browser_model_sharding import ModelShardingManager
 
+
 async def run_sharded_llm():
     # Create model sharding manager
     manager = ModelShardingManager(
@@ -301,24 +293,21 @@ async def run_sharded_llm():
         num_shards=4,
         shard_type="layer",
         model_type="text",
-        db_path="llm_benchmark.duckdb"
+        db_path="llm_benchmark.duckdb",
     )
-    
+
     # Initialize sharding
     success = await manager.initialize_sharding()
     if not success:
         print("Failed to initialize sharding")
         return
-    
+
     # Prepare input
-    inputs = {
-        "input_ids": [101, 2023, 2003, 1037, 3231, 102],
-        "attention_mask": [1, 1, 1, 1, 1, 1]
-    }
-    
+    inputs = {"input_ids": [101, 2023, 2003, 1037, 3231, 102], "attention_mask": [1, 1, 1, 1, 1, 1]}
+
     # Run sharded inference
     result = await manager.run_inference_sharded(inputs)
-    
+
     # Process results
     if "error" in result:
         print(f"Inference error: {result['error']}")
@@ -327,8 +316,10 @@ async def run_sharded_llm():
         metrics = result["metrics"]
         print(f"Output: {output}")
         print(f"Inference time: {metrics['inference_time_ms']}ms")
-        print(f"Successful components: {metrics['successful_components']}/{metrics['component_count']}")
-    
+        print(
+            f"Successful components: {metrics['successful_components']}/{metrics['component_count']}"
+        )
+
     # Get performance recommendations
     perf_metrics = manager.get_metrics()
     if "recommendations" in perf_metrics:
@@ -336,7 +327,7 @@ async def run_sharded_llm():
         print("\nRecommendations:")
         for suggestion in recommendations.get("optimization_suggestions", []):
             print(f"- {suggestion['issue']}: {suggestion['suggestion']}")
-    
+
     # Clean up
     await manager.close()
 ```
@@ -346,6 +337,7 @@ async def run_sharded_llm():
 ```python
 from fixed_web_platform.cross_browser_model_sharding import ModelShardingManager
 
+
 async def run_sharded_multimodal():
     # Create model sharding manager for multimodal model
     manager = ModelShardingManager(
@@ -353,25 +345,25 @@ async def run_sharded_multimodal():
         num_shards=3,
         shard_type="component",
         model_type="multimodal",
-        db_path="multimodal_benchmark.duckdb"
+        db_path="multimodal_benchmark.duckdb",
     )
-    
+
     # Initialize sharding with browser-specific optimizations
     success = await manager.initialize_sharding()
     if not success:
         print("Failed to initialize sharding")
         return
-    
+
     # Prepare multimodal input
     inputs = {
         "input_ids": [101, 2023, 2003, 1037, 3231, 102],
         "attention_mask": [1, 1, 1, 1, 1, 1],
-        "pixel_values": [[[0.5 for _ in range(3)] for _ in range(224)] for _ in range(1)]
+        "pixel_values": [[[0.5 for _ in range(3)] for _ in range(224)] for _ in range(1)],
     }
-    
+
     # Run sharded inference
     result = await manager.run_inference_sharded(inputs)
-    
+
     # Process results
     if "error" in result:
         print(f"Inference error: {result['error']}")
@@ -380,18 +372,20 @@ async def run_sharded_multimodal():
         metrics = result["metrics"]
         print(f"Text-image similarity: {output.get('similarity', 'N/A')}")
         print(f"Inference time: {metrics['inference_time_ms']}ms")
-        
+
         # Output component-specific results
         if "component_results" in metrics:
             for component_id, component_result in metrics["component_results"].items():
                 print(f"Component {component_id}: {component_result['status']}")
-    
+
     # Get browser allocation
     metrics = manager.get_metrics()
     print("\nBrowser Allocation:")
     for shard_idx, config in metrics["browser_allocation"].items():
-        print(f"Shard {shard_idx}: {config['browser']} ({config['platform']}) - {config['specialization']}")
-    
+        print(
+            f"Shard {shard_idx}: {config['browser']} ({config['platform']}) - {config['specialization']}"
+        )
+
     # Clean up
     await manager.close()
 ```
@@ -401,6 +395,7 @@ async def run_sharded_multimodal():
 ```python
 from fixed_web_platform.cross_browser_model_sharding import ModelShardingManager
 
+
 async def run_sharded_audio_model():
     # Create model sharding manager with Firefox optimization for audio
     manager = ModelShardingManager(
@@ -408,22 +403,22 @@ async def run_sharded_audio_model():
         num_shards=3,
         shard_type="layer",
         model_type="audio",
-        db_path="audio_benchmark.duckdb"
+        db_path="audio_benchmark.duckdb",
     )
-    
+
     # Initialize sharding
     success = await manager.initialize_sharding()
     if not success:
         print("Failed to initialize sharding")
         return
-    
+
     # Prepare audio input (mock data)
     audio_features = [[[0.1 for _ in range(80)] for _ in range(3000)]]
     inputs = {"input_features": audio_features}
-    
+
     # Run sharded inference
     result = await manager.run_inference_sharded(inputs)
-    
+
     # Process results
     if "error" in result:
         print(f"Inference error: {result['error']}")
@@ -432,20 +427,23 @@ async def run_sharded_audio_model():
         metrics = result["metrics"]
         print(f"Transcription: {output.get('text', 'N/A')}")
         print(f"Inference time: {metrics['inference_time_ms']}ms")
-    
+
     # Get browser allocation and check Firefox usage
     metrics = manager.get_metrics()
-    firefox_shards = sum(1 for config in metrics["browser_allocation"].values() 
-                       if config.get("browser") == "firefox")
+    firefox_shards = sum(
+        1 for config in metrics["browser_allocation"].values() if config.get("browser") == "firefox"
+    )
     print(f"\nFirefox shards: {firefox_shards}/{manager.num_shards}")
-    
+
     # Get performance history for Firefox
     history = manager.get_performance_history()
     firefox_metrics = history.get("browser_metrics", {}).get("firefox", {})
     if firefox_metrics:
-        print(f"Firefox performance: {firefox_metrics.get('avg_latency', 0):.1f}ms latency, "
-              f"{firefox_metrics.get('success_rate', 0):.1%} success rate")
-    
+        print(
+            f"Firefox performance: {firefox_metrics.get('avg_latency', 0):.1f}ms latency, "
+            f"{firefox_metrics.get('success_rate', 0):.1%} success rate"
+        )
+
     # Clean up
     await manager.close()
 ```
@@ -614,8 +612,10 @@ Enable detailed logging for better diagnosis:
 
 ```python
 import logging
-logging.basicConfig(level=logging.DEBUG,
-                  format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 ```
 
 #### Enhanced Browser Debugging

@@ -137,6 +137,7 @@ except ImportError:
         from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
         HAVE_STORAGE_WRAPPER = False
+
         def get_storage_wrapper(*args, **kwargs):
             return None
 ```
@@ -151,7 +152,7 @@ def __init__(self, ...):
 ### Usage Pattern
 ```python
 # Try distributed storage
-if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+if self._storage and hasattr(self._storage, "is_distributed") and self._storage.is_distributed:
     try:
         cache_key = f"prefix_{filename}"
         self._storage.write_file(data, cache_key, pin=True)  # or pin=False
@@ -159,7 +160,7 @@ if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.
         logger.debug(f"Failed to write to distributed storage: {e}")
 
 # Always maintain local path (existing behavior)
-with open(filepath, 'w') as f:
+with open(filepath, "w") as f:
     f.write(data)
 ```
 

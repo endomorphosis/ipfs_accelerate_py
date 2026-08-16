@@ -23,9 +23,7 @@ from .proof.formal_verification_provider import (
     ProviderResponse,
 )
 
-CANONICAL_LOGIC_PROVIDER_MODULE: Final = (
-    "ipfs_datasets_py.logic.backends.provider"
-)
+CANONICAL_LOGIC_PROVIDER_MODULE: Final = "ipfs_datasets_py.logic.backends.provider"
 
 
 class LogicProviderFacadeError(RuntimeError):
@@ -75,9 +73,7 @@ def to_logic_provider_request(
         operation=request.operation.value,
         payload=request.payload,
         request_id=request.request_id,
-        resource_budget=contract.ProviderResourceBudget(
-            **_resource_budget_payload(request)
-        ),
+        resource_budget=contract.ProviderResourceBudget(**_resource_budget_payload(request)),
         cancellation=cancellation_payload,
         network_allowed=request.network_allowed,
         deadline_unix_ms=request.deadline_unix_ms,
@@ -99,17 +95,13 @@ def to_supervisor_provider_response(
     if isinstance(response, Mapping):
         response = contract.LogicProviderResponse.from_dict(response)
     if not isinstance(response, contract.LogicProviderResponse):
-        raise LogicProviderFacadeError(
-            "canonical provider returned an unsupported response type"
-        )
+        raise LogicProviderFacadeError("canonical provider returned an unsupported response type")
     if response.request_id != request.request_id:
         raise LogicProviderFacadeError("canonical provider response request_id mismatch")
     if response.operation.value != request.operation.value:
         raise LogicProviderFacadeError("canonical provider response operation mismatch")
     if response.protocol_version != request.protocol_version:
-        raise LogicProviderFacadeError(
-            "canonical provider response protocol version mismatch"
-        )
+        raise LogicProviderFacadeError("canonical provider response protocol version mismatch")
     if response.ok:
         assert response.result is not None
         return ProviderResponse.success(
@@ -136,19 +128,11 @@ class LazyLogicProviderReference:
     """A ``module:attribute`` declaration that imports nothing until loaded."""
 
     def __init__(self, target: str) -> None:
-        if (
-            not isinstance(target, str)
-            or target != target.strip()
-            or target.count(":") != 1
-        ):
-            raise ValueError(
-                "logic-provider target must be a trimmed module:attribute reference"
-            )
+        if not isinstance(target, str) or target != target.strip() or target.count(":") != 1:
+            raise ValueError("logic-provider target must be a trimmed module:attribute reference")
         module_name, attribute = target.split(":", 1)
         if not module_name or not attribute or "." in attribute:
-            raise ValueError(
-                "logic-provider target must name one top-level module attribute"
-            )
+            raise ValueError("logic-provider target must name one top-level module attribute")
         self.target = target
         self._module_name = module_name
         self._attribute = attribute
@@ -317,9 +301,7 @@ class SupervisorLogicProviderFacade:
                 provider_version=self.provider_version,
             )
 
-        canonical_response = contract.dispatch_logic_provider_request(
-            provider, canonical_request
-        )
+        canonical_response = contract.dispatch_logic_provider_request(provider, canonical_request)
         try:
             response = to_supervisor_provider_response(
                 request,
@@ -342,10 +324,7 @@ class SupervisorLogicProviderFacade:
                 provider_id=self.provider_id,
                 provider_version=self.provider_version,
             )
-        if (
-            response.provider_version
-            and response.provider_version != self.provider_version
-        ):
+        if response.provider_version and response.provider_version != self.provider_version:
             return ProviderResponse.failure(
                 request,
                 ProviderFailureCode.MALFORMED_RESPONSE,

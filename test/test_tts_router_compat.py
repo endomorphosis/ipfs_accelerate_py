@@ -26,10 +26,19 @@ def _minimal_wav() -> bytes:
     chunk_size = 36 + data_size
     return struct.pack(
         "<4sI4s4sIHHIIHH4sI",
-        b"RIFF", chunk_size, b"WAVE", b"fmt ", 16,
-        1, num_channels, sample_rate, byte_rate,
-        block_align, bits_per_sample,
-        b"data", data_size,
+        b"RIFF",
+        chunk_size,
+        b"WAVE",
+        b"fmt ",
+        16,
+        1,
+        num_channels,
+        sample_rate,
+        byte_rate,
+        block_align,
+        bits_per_sample,
+        b"data",
+        data_size,
     )
 
 
@@ -47,11 +56,13 @@ def test_shim_imports():
             ProviderInfo,
             ProviderFactory,
         )
+
         print("  ✓ All shim imports successful")
         return True
     except Exception as e:
         print(f"  ✗ Shim import failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -61,6 +72,7 @@ def test_shim_no_private_leak():
     print("\nTesting that private helpers are not in tts_router.__all__...")
     try:
         import ipfs_accelerate_py.tts_router as shim
+
         all_names = shim.__all__
         private_names = [n for n in all_names if n.startswith("_")]
         assert private_names == [], f"Private names in __all__: {private_names}"
@@ -69,6 +81,7 @@ def test_shim_no_private_leak():
     except Exception as e:
         print(f"  ✗ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -87,6 +100,7 @@ def test_ttsprovider_is_voiceprovider():
     except Exception as e:
         print(f"  ✗ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -114,6 +128,7 @@ def test_aliases_are_same_objects():
     except Exception as e:
         print(f"  ✗ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -128,12 +143,21 @@ def test_register_via_shim_shared_registry():
         wav = _minimal_wav()
 
         class CompatProvider:
-            def synthesize(self, text, *, voice=None, model_name=None,
-                           device=None, output_format=None, **kwargs) -> bytes:
+            def synthesize(
+                self,
+                text,
+                *,
+                voice=None,
+                model_name=None,
+                device=None,
+                output_format=None,
+                **kwargs,
+            ) -> bytes:
                 return wav
 
-            def transcribe(self, audio, *, model_name=None, language=None,
-                           device=None, **kwargs) -> str:
+            def transcribe(
+                self, audio, *, model_name=None, language=None, device=None, **kwargs
+            ) -> str:
                 raise NotImplementedError
 
         clear_voice_router_caches()
@@ -148,6 +172,7 @@ def test_register_via_shim_shared_registry():
     except Exception as e:
         print(f"  ✗ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -162,8 +187,16 @@ def test_text_to_speech_via_shim():
         wav = _minimal_wav()
 
         class ShimTTSProvider:
-            def synthesize(self, text, *, voice=None, model_name=None,
-                           device=None, output_format=None, **kwargs) -> bytes:
+            def synthesize(
+                self,
+                text,
+                *,
+                voice=None,
+                model_name=None,
+                device=None,
+                output_format=None,
+                **kwargs,
+            ) -> bytes:
                 return wav
 
             def transcribe(self, audio, **kwargs) -> str:
@@ -180,6 +213,7 @@ def test_text_to_speech_via_shim():
     except Exception as e:
         print(f"  ✗ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -197,6 +231,7 @@ def test_top_level_package_aliases():
             tts_router_available,
             voice_router_available,
         )
+
         assert tts_router_available is voice_router_available, (
             "tts_router_available and voice_router_available should be in sync"
         )
@@ -205,6 +240,7 @@ def test_top_level_package_aliases():
     except Exception as e:
         print(f"  ✗ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -218,9 +254,20 @@ def test_voice_router_all_no_stdlib():
         assert hasattr(vr, "__all__"), "voice_router should define __all__"
 
         stdlib_names = {
-            "hashlib", "json", "os", "logging", "urllib", "dataclass",
-            "lru_cache", "annotations", "Callable", "Dict", "Optional",
-            "Protocol", "Union", "runtime_checkable",
+            "hashlib",
+            "json",
+            "os",
+            "logging",
+            "urllib",
+            "dataclass",
+            "lru_cache",
+            "annotations",
+            "Callable",
+            "Dict",
+            "Optional",
+            "Protocol",
+            "Union",
+            "runtime_checkable",
         }
         leaked = [n for n in vr.__all__ if n in stdlib_names]
         assert leaked == [], f"stdlib names leaked into __all__: {leaked}"
@@ -229,6 +276,7 @@ def test_voice_router_all_no_stdlib():
     except Exception as e:
         print(f"  ✗ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

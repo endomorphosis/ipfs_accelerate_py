@@ -77,9 +77,7 @@ def _receipt(
     status: AnalysisStageStatus | str = AnalysisStageStatus.COMPLETED,
     outcome: AnalysisOutcome | str = AnalysisOutcome.CONCLUSIVE,
     freshness: AnalysisFreshness | str = AnalysisFreshness.FRESH,
-    cache_disposition: AnalysisCacheDisposition | str = (
-        AnalysisCacheDisposition.NOT_CACHED
-    ),
+    cache_disposition: AnalysisCacheDisposition | str = (AnalysisCacheDisposition.NOT_CACHED),
     coverage_complete: bool = True,
     truncated: bool = False,
     error_code: str = "",
@@ -160,9 +158,7 @@ def test_full_packet_round_trip_preserves_typed_state_and_identity() -> None:
     assert restored.stage_receipts[0].cost.records_examined == 500
     assert restored.candidate_proposals == ()
     assert restored.safe_for_completion_reasoning is True
-    assert restored.completion_evidence_receipt_ids == (
-        restored.stage_receipts[0].receipt_id,
-    )
+    assert restored.completion_evidence_receipt_ids == (restored.stage_receipts[0].receipt_id,)
     assert json.loads(encoded)["schema"] == ANALYSIS_EVIDENCE_PACKET_SCHEMA
 
 
@@ -337,9 +333,7 @@ def test_configurable_text_record_and_packet_byte_bounds() -> None:
             ),
         )
 
-    with pytest.raises(
-        AnalysisContractValidationError, match="max_serialized_bytes"
-    ):
+    with pytest.raises(AnalysisContractValidationError, match="max_serialized_bytes"):
         _packet(
             outcome=AnalysisOutcome.INCONCLUSIVE,
             stage_receipts=(),
@@ -368,9 +362,7 @@ def test_configurable_text_record_and_packet_byte_bounds() -> None:
 def test_invalid_stage_states_cannot_claim_conclusive_outcome(
     changes: dict[str, object],
 ) -> None:
-    with pytest.raises(
-        AnalysisContractValidationError, match="conclusive stage receipts"
-    ):
+    with pytest.raises(AnalysisContractValidationError, match="conclusive stage receipts"):
         _receipt(**changes)
 
 
@@ -402,9 +394,7 @@ def test_failed_partial_stale_and_negative_receipts_remain_explicitly_inconclusi
         bool(receipt)
     with pytest.raises(TypeError):
         bool(packet)
-    with pytest.raises(
-        AnalysisContractValidationError, match="not safe for completion"
-    ):
+    with pytest.raises(AnalysisContractValidationError, match="not safe for completion"):
         packet.require_completion_evidence()
 
 
@@ -414,21 +404,13 @@ def test_conclusive_packet_requires_real_completion_receipt() -> None:
         outcome=AnalysisOutcome.INCONCLUSIVE,
     )
 
-    with pytest.raises(
-        AnalysisContractValidationError, match="completion-eligible stage receipt"
-    ):
+    with pytest.raises(AnalysisContractValidationError, match="completion-eligible stage receipt"):
         _packet(stage_receipts=(partial,))
-    with pytest.raises(
-        AnalysisContractValidationError, match="completion-eligible stage receipt"
-    ):
+    with pytest.raises(AnalysisContractValidationError, match="completion-eligible stage receipt"):
         _packet(stage_receipts=())
-    with pytest.raises(
-        AnalysisContractValidationError, match="completion-eligible stage receipt"
-    ):
+    with pytest.raises(AnalysisContractValidationError, match="completion-eligible stage receipt"):
         _packet(coverage_complete=False)
-    with pytest.raises(
-        AnalysisContractValidationError, match="completion-eligible stage receipt"
-    ):
+    with pytest.raises(AnalysisContractValidationError, match="completion-eligible stage receipt"):
         _packet(truncated=True)
 
 

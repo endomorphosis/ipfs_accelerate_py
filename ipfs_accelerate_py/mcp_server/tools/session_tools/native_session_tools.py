@@ -149,7 +149,9 @@ def _normalize_session_payload(
 
     created_at_str, created_at_dt = _normalize_datetime_value(payload.get("created_at"), now)
     timeout_seconds = 3600
-    raw_timeout = (payload.get("config") or payload.get("configuration") or config or {}).get("timeout_seconds", 3600)
+    raw_timeout = (payload.get("config") or payload.get("configuration") or config or {}).get(
+        "timeout_seconds", 3600
+    )
     try:
         timeout_seconds = int(raw_timeout or 3600)
     except Exception:
@@ -226,7 +228,8 @@ async def create_session(
         if metadata is not None and not isinstance(metadata, dict):
             return {"status": "error", "message": "metadata must be an object"}
         if tags is not None and (
-            not isinstance(tags, list) or not all(isinstance(tag, str) and tag.strip() for tag in tags)
+            not isinstance(tags, list)
+            or not all(isinstance(tag, str) and tag.strip() for tag in tags)
         ):
             return {"status": "error", "message": "tags must be a list of non-empty strings"}
 
@@ -237,11 +240,15 @@ async def create_session(
             "timeout_seconds": 3600,
             "auto_cleanup": True,
         }
-        resources = resource_limits or resource_allocation or {
-            "memory_limit_mb": 2048,
-            "cpu_cores": 1.0,
-            "gpu_enabled": False,
-        }
+        resources = (
+            resource_limits
+            or resource_allocation
+            or {
+                "memory_limit_mb": 2048,
+                "cpu_cores": 1.0,
+                "gpu_enabled": False,
+            }
+        )
 
         manager = session_manager or _get_session_manager()
         session = await manager.create_session(
@@ -543,7 +550,9 @@ async def manage_session(
                     "error": "Invalid session ID format",
                     "code": "INVALID_SESSION_ID",
                 }
-            session = await _get_session_manager().update_session(str(session_id), **(updates or {}))
+            session = await _get_session_manager().update_session(
+                str(session_id), **(updates or {})
+            )
             normalized = _normalize_delegate_payload(session)
             if normalized is not None:
                 return normalized
@@ -631,7 +640,9 @@ async def manage_session(
                 }
 
             if not dry_run:
-                expired = await _get_session_manager().cleanup_expired_sessions(max_age_hours=max_age_hours)
+                expired = await _get_session_manager().cleanup_expired_sessions(
+                    max_age_hours=max_age_hours
+                )
             else:
                 expired = []
             normalized = _normalize_delegate_payload(expired)

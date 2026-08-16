@@ -39,36 +39,18 @@ WORKFLOW_BUDGET_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-workflow-budget@1"
 SCAN_POLICY_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/directory-scan-policy@1"
 PLANNING_POLICY_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-planning-policy@1"
 OUTPUT_POLICY_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-output-policy@1"
-PROMPT_WORKFLOW_REQUEST_SCHEMA: Final[str] = (
-    f"{SCHEMA_PREFIX}/prompt-workflow-request@1"
-)
-PROMPT_EVIDENCE_RECORD_SCHEMA: Final[str] = (
-    f"{SCHEMA_PREFIX}/prompt-evidence-record@1"
-)
-PROMPT_ACCEPTANCE_RECORD_SCHEMA: Final[str] = (
-    f"{SCHEMA_PREFIX}/prompt-acceptance-record@1"
-)
-PROMPT_VALIDATION_RECORD_SCHEMA: Final[str] = (
-    f"{SCHEMA_PREFIX}/prompt-validation-record@1"
-)
-PROMPT_OUTPUT_RECORD_SCHEMA: Final[str] = (
-    f"{SCHEMA_PREFIX}/prompt-output-record@1"
-)
+PROMPT_WORKFLOW_REQUEST_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-workflow-request@1"
+PROMPT_EVIDENCE_RECORD_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-evidence-record@1"
+PROMPT_ACCEPTANCE_RECORD_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-acceptance-record@1"
+PROMPT_VALIDATION_RECORD_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-validation-record@1"
+PROMPT_OUTPUT_RECORD_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-output-record@1"
 PROMPT_GOAL_RECORD_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-goal-record@1"
 PROMPT_TASK_RECORD_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-task-record@1"
-DIRECTORY_SCAN_RECEIPT_SCHEMA: Final[str] = (
-    f"{SCHEMA_PREFIX}/directory-scan-receipt@1"
-)
+DIRECTORY_SCAN_RECEIPT_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/directory-scan-receipt@1"
 PROMPT_GOAL_GRAPH_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-goal-graph@1"
-MATERIALIZATION_REFERENCE_SCHEMA: Final[str] = (
-    f"{SCHEMA_PREFIX}/prompt-materialization-reference@1"
-)
-SUPERVISOR_RUN_REFERENCE_SCHEMA: Final[str] = (
-    f"{SCHEMA_PREFIX}/supervisor-run-reference@1"
-)
-SUPERVISOR_INCIDENT_SCHEMA: Final[str] = (
-    f"{SCHEMA_PREFIX}/supervisor-incident@1"
-)
+MATERIALIZATION_REFERENCE_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-materialization-reference@1"
+SUPERVISOR_RUN_REFERENCE_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/supervisor-run-reference@1"
+SUPERVISOR_INCIDENT_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/supervisor-incident@1"
 RECOVERY_ATTEMPT_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/recovery-attempt@1"
 PROGRAMMATIC_RECOVERY_EXHAUSTION_SCHEMA: Final[str] = (
     f"{SCHEMA_PREFIX}/programmatic-recovery-exhaustion-receipt@1"
@@ -78,9 +60,7 @@ RESCUE_PLAN_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/rescue-plan@1"
 PROMPT_WORKFLOW_PREVIEW_RECEIPT_SCHEMA: Final[str] = (
     f"{SCHEMA_PREFIX}/prompt-workflow-preview-receipt@1"
 )
-PROMPT_WORKFLOW_RESULT_SCHEMA: Final[str] = (
-    f"{SCHEMA_PREFIX}/prompt-workflow-result@1"
-)
+PROMPT_WORKFLOW_RESULT_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-workflow-result@1"
 
 ABSOLUTE_MAX_CONTRACT_BYTES: Final[int] = 1_048_576
 ABSOLUTE_MAX_PROMPT_BYTES: Final[int] = 4 * 1024 * 1024
@@ -297,9 +277,7 @@ def _enum(value: Any, kind: type[Enum], name: str) -> Any:
         return kind(value)
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(sorted({str(member.value) for member in kind}))
-        raise PromptWorkflowContractError(
-            f"{name} must be one of: {allowed}"
-        ) from exc
+        raise PromptWorkflowContractError(f"{name} must be one of: {allowed}") from exc
 
 
 def _text(
@@ -312,9 +290,7 @@ def _text(
     if not isinstance(value, str):
         raise PromptWorkflowContractError(f"{name} must be a string")
     if value != value.strip():
-        raise NonCanonicalPromptWorkflowError(
-            f"{name} has leading or trailing whitespace"
-        )
+        raise NonCanonicalPromptWorkflowError(f"{name} has leading or trailing whitespace")
     if required and not value:
         raise PromptWorkflowContractError(f"{name} must not be empty")
     if "\x00" in value:
@@ -399,9 +375,7 @@ def canonical_prompt_workflow_bytes(value: Any) -> bytes:
             sort_keys=True,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise PromptWorkflowContractError(
-            "value is not canonical prompt-workflow JSON"
-        ) from exc
+        raise PromptWorkflowContractError("value is not canonical prompt-workflow JSON") from exc
     if len(encoded) > ABSOLUTE_MAX_CONTRACT_BYTES:
         raise PromptWorkflowBoundsError("canonical contract exceeds byte bound")
     return encoded
@@ -423,9 +397,7 @@ def _validate_cid(value: Any, name: str, *, required: bool = True) -> str:
     except (ValueError, UnicodeError) as exc:
         raise PromptWorkflowIdentityError(f"{name} is malformed") from exc
     if len(decoded) != len(_CID_PREFIX) + 32 or not decoded.startswith(_CID_PREFIX):
-        raise PromptWorkflowIdentityError(
-            f"{name} must use CIDv1 dag-json with sha2-256"
-        )
+        raise PromptWorkflowIdentityError(f"{name} must use CIDv1 dag-json with sha2-256")
     canonical = "b" + base64.b32encode(decoded).decode("ascii").rstrip("=").lower()
     if canonical != result:
         raise PromptWorkflowIdentityError(f"{name} is not canonical")
@@ -440,9 +412,7 @@ def _identity(value: Any, name: str, *, required: bool = True) -> str:
         return _validate_cid(result, name)
     if _DIGEST_RE.fullmatch(result):
         return result
-    raise PromptWorkflowIdentityError(
-        f"{name} must be a CIDv1 or sha256:<64 lowercase hex>"
-    )
+    raise PromptWorkflowIdentityError(f"{name} must be a CIDv1 or sha256:<64 lowercase hex>")
 
 
 def _strings(
@@ -458,10 +428,7 @@ def _strings(
         raise PromptWorkflowContractError(f"{name} must be a sequence")
     if len(values) > maximum:
         raise PromptWorkflowBoundsError(f"{name} exceeds its count bound")
-    result = tuple(
-        _relative_path(item, name) if paths else _text(item, name)
-        for item in values
-    )
+    result = tuple(_relative_path(item, name) if paths else _text(item, name) for item in values)
     if required and not result:
         raise PromptWorkflowContractError(f"{name} must not be empty")
     if len(result) != len(set(result)):
@@ -472,8 +439,7 @@ def _strings(
 def _secret_key(key: str) -> bool:
     normalized = key.lower().replace("-", "_")
     return normalized in _SECRET_KEYS or any(
-        marker in normalized
-        for marker in ("password", "private_key", "access_token", "api_key")
+        marker in normalized for marker in ("password", "private_key", "access_token", "api_key")
     )
 
 
@@ -512,18 +478,12 @@ def _freeze_json(
             for key in sorted(item):
                 normalized = _text(key, f"{name} key")
                 if reject_secrets and _secret_key(normalized):
-                    raise PromptSecretError(
-                        f"{name} contains forbidden secret-bearing field"
-                    )
+                    raise PromptSecretError(f"{name} contains forbidden secret-bearing field")
                 result[normalized] = visit(item[key], depth + 1, normalized)
             return MappingProxyType(result)
-        if isinstance(item, Sequence) and not isinstance(
-            item, (str, bytes, bytearray, memoryview)
-        ):
+        if isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray, memoryview)):
             return tuple(visit(member, depth + 1, key_name) for member in item)
-        raise PromptWorkflowContractError(
-            f"{name} contains unsupported type {type(item).__name__}"
-        )
+        raise PromptWorkflowContractError(f"{name} contains unsupported type {type(item).__name__}")
 
     return visit(value, 0)
 
@@ -535,9 +495,7 @@ def _wire_value(value: Any) -> Any:
         return value.value
     if isinstance(value, Mapping):
         return {key: _wire_value(member) for key, member in value.items()}
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [_wire_value(member) for member in value]
     return value
 
@@ -546,17 +504,13 @@ def _decode_json_object(payload: str, noun: str) -> Mapping[str, Any]:
     if not isinstance(payload, str):
         raise PromptWorkflowContractError(f"{noun} JSON must be text")
     if len(payload.encode("utf-8")) > ABSOLUTE_MAX_CONTRACT_BYTES:
-        raise PromptWorkflowBoundsError(
-            f"{noun} JSON exceeds the serialized byte bound"
-        )
+        raise PromptWorkflowBoundsError(f"{noun} JSON exceeds the serialized byte bound")
 
     def pairs_hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, value in pairs:
             if key in result:
-                raise NonCanonicalPromptWorkflowError(
-                    f"{noun} JSON contains duplicate keys"
-                )
+                raise NonCanonicalPromptWorkflowError(f"{noun} JSON contains duplicate keys")
             result[key] = value
         return result
 
@@ -569,9 +523,7 @@ def _decode_json_object(payload: str, noun: str) -> Mapping[str, Any]:
     if not isinstance(result, Mapping):
         raise PromptWorkflowContractError(f"{noun} JSON must contain an object")
     if canonical_prompt_workflow_bytes(result) != payload.encode("utf-8"):
-        raise NonCanonicalPromptWorkflowError(
-            f"{noun} JSON changes during canonical round trip"
-        )
+        raise NonCanonicalPromptWorkflowError(f"{noun} JSON changes during canonical round trip")
     return result
 
 
@@ -605,9 +557,7 @@ class _WorkflowContract:
 
     def _identity_payload(self) -> dict[str, Any]:
         payload = {
-            key: value
-            for key, value in self.to_dict().items()
-            if key not in self.IDENTITY_EXCLUDED
+            key: value for key, value in self.to_dict().items() if key not in self.IDENTITY_EXCLUDED
         }
 
         # Lifecycle fields can occur inside embedded goal/task/evidence,
@@ -680,8 +630,7 @@ class _WorkflowContract:
         unknown = set(payload).difference(allowed)
         if unknown:
             raise PromptWorkflowContractError(
-                f"{cls.__name__} contains unsupported fields: "
-                + ", ".join(sorted(unknown))
+                f"{cls.__name__} contains unsupported fields: " + ", ".join(sorted(unknown))
             )
         if payload.get("schema") != cls.SCHEMA:
             raise PromptWorkflowContractError(
@@ -689,25 +638,17 @@ class _WorkflowContract:
             )
         if payload.get("contract_version") != PROMPT_WORKFLOW_CONTRACT_VERSION:
             raise PromptWorkflowContractError(
-                f"{cls.__name__} requires contract_version "
-                f"{PROMPT_WORKFLOW_CONTRACT_VERSION}"
+                f"{cls.__name__} requires contract_version {PROMPT_WORKFLOW_CONTRACT_VERSION}"
             )
         missing = [name for name in cls.FIELDS if name not in payload]
         if missing:
             raise PromptWorkflowContractError(
                 f"{cls.__name__} is missing required field {missing[0]}"
             )
-        result = cls(
-            **{
-                name: cls._decode_field(name, payload[name])
-                for name in cls.FIELDS
-            }
-        )
+        result = cls(**{name: cls._decode_field(name, payload[name]) for name in cls.FIELDS})
         claimed = payload.get("content_id")
         if claimed is not None and claimed != result.content_id:
-            raise PromptWorkflowIdentityError(
-                f"{cls.__name__} content identity does not match"
-            )
+            raise PromptWorkflowIdentityError(f"{cls.__name__} content identity does not match")
         return result
 
     @classmethod
@@ -741,15 +682,11 @@ class PromptSource(_WorkflowContract):
     redacted_metadata: Mapping[str, Any] = field(default_factory=dict)
     source_path: str = ""
     artifact_handle: str = ""
-    _transient_body: bytes | None = field(
-        default=None, repr=False, compare=False, hash=False
-    )
+    _transient_body: bytes | None = field(default=None, repr=False, compare=False, hash=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "kind", _enum(self.kind, PromptSourceKind, "kind"))
-        object.__setattr__(
-            self, "prompt_cid", _validate_cid(self.prompt_cid, "prompt_cid")
-        )
+        object.__setattr__(self, "prompt_cid", _validate_cid(self.prompt_cid, "prompt_cid"))
         object.__setattr__(
             self,
             "byte_count",
@@ -777,14 +714,10 @@ class PromptSource(_WorkflowContract):
         )
         if self.kind is PromptSourceKind.FILE:
             if not self.source_path or self.artifact_handle:
-                raise PromptSourceError(
-                    "file prompt source requires only source_path"
-                )
+                raise PromptSourceError("file prompt source requires only source_path")
         elif self.kind is PromptSourceKind.ARTIFACT:
             if not self.artifact_handle or self.source_path:
-                raise PromptSourceError(
-                    "artifact prompt source requires only artifact_handle"
-                )
+                raise PromptSourceError("artifact prompt source requires only artifact_handle")
         elif self.source_path or self.artifact_handle:
             raise PromptSourceError(
                 "inline/stdin prompt source cannot carry path or artifact handle"
@@ -794,11 +727,17 @@ class PromptSource(_WorkflowContract):
                 raise PromptSourceError("transient prompt body must be bytes")
             if len(self._transient_body) != self.byte_count:
                 raise PromptSourceError("prompt byte count does not match body")
-            if _content_digest_bytes(
-                canonical_prompt_workflow_bytes(
-                    {"media_type": "text/plain; charset=utf-8", "body_sha256": hashlib.sha256(self._transient_body).hexdigest()}
+            if (
+                _content_digest_bytes(
+                    canonical_prompt_workflow_bytes(
+                        {
+                            "media_type": "text/plain; charset=utf-8",
+                            "body_sha256": hashlib.sha256(self._transient_body).hexdigest(),
+                        }
+                    )
                 )
-            ) != self.prompt_cid:
+                != self.prompt_cid
+            ):
                 raise PromptSourceError("prompt CID does not match body")
             try:
                 prompt_text = self._transient_body.decode("utf-8")
@@ -810,24 +749,16 @@ class PromptSource(_WorkflowContract):
                     return (value,)
                 if isinstance(value, Mapping):
                     return tuple(
-                        member
-                        for item in value.values()
-                        for member in metadata_strings(item)
+                        member for item in value.values() for member in metadata_strings(item)
                     )
                 if isinstance(value, Sequence) and not isinstance(
                     value, (str, bytes, bytearray, memoryview)
                 ):
-                    return tuple(
-                        member
-                        for item in value
-                        for member in metadata_strings(item)
-                    )
+                    return tuple(member for item in value for member in metadata_strings(item))
                 return ()
 
             if prompt_text in metadata_strings(self.redacted_metadata):
-                raise PromptSourceError(
-                    "redacted_metadata must not reproduce the raw prompt"
-                )
+                raise PromptSourceError("redacted_metadata must not reproduce the raw prompt")
 
     @staticmethod
     def _cid_for_body(body: bytes) -> str:
@@ -973,9 +904,7 @@ class PromptWorkflowBudget(_WorkflowContract):
                 _integer(getattr(self, name), name, minimum=1, maximum=maximum),
             )
         if self.max_file_bytes > self.max_scan_bytes:
-            raise PromptWorkflowBoundsError(
-                "max_file_bytes cannot exceed max_scan_bytes"
-            )
+            raise PromptWorkflowBoundsError("max_file_bytes cannot exceed max_scan_bytes")
 
 
 @dataclass(frozen=True)
@@ -1005,13 +934,9 @@ class DirectoryScanPolicy(_WorkflowContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
-        object.__setattr__(
-            self, "scanner_version", _text(self.scanner_version, "scanner_version")
-        )
+        object.__setattr__(self, "scanner_version", _text(self.scanner_version, "scanner_version"))
         for name in ("include_patterns", "exclude_patterns"):
-            object.__setattr__(
-                self, name, _strings(getattr(self, name), name, maximum=1_024)
-            )
+            object.__setattr__(self, name, _strings(getattr(self, name), name, maximum=1_024))
         for name in (
             "include_untracked",
             "reject_symlinks",
@@ -1021,9 +946,7 @@ class DirectoryScanPolicy(_WorkflowContract):
         ):
             object.__setattr__(self, name, _boolean(getattr(self, name), name))
         if not self.exclude_credentials:
-            raise PromptWorkflowContractError(
-                "scan policy must exclude credentials"
-            )
+            raise PromptWorkflowContractError("scan policy must exclude credentials")
 
 
 @dataclass(frozen=True)
@@ -1040,9 +963,7 @@ class PromptPlanningPolicy(_WorkflowContract):
         "require_validation",
         "reject_unknown_applicability",
     )
-    ENUM_FIELDS: ClassVar[Mapping[str, type[Enum]]] = {
-        "fallback_policy": LocalFallbackPolicy
-    }
+    ENUM_FIELDS: ClassVar[Mapping[str, type[Enum]]] = {"fallback_policy": LocalFallbackPolicy}
 
     policy_id: str
     provider_preferences: tuple[str, ...] = ()
@@ -1057,9 +978,7 @@ class PromptPlanningPolicy(_WorkflowContract):
     def __post_init__(self) -> None:
         object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
         for name in ("provider_preferences", "model_preferences"):
-            object.__setattr__(
-                self, name, _strings(getattr(self, name), name, maximum=64)
-            )
+            object.__setattr__(self, name, _strings(getattr(self, name), name, maximum=64))
         object.__setattr__(
             self,
             "candidate_count",
@@ -1106,31 +1025,20 @@ class PromptOutputPolicy(_WorkflowContract):
     def __post_init__(self) -> None:
         object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
         object.__setattr__(self, "mode", _enum(self.mode, OutputMode, "mode"))
-        object.__setattr__(
-            self, "output_root", _absolute_path(self.output_root, "output_root")
-        )
+        object.__setattr__(self, "output_root", _absolute_path(self.output_root, "output_root"))
         if isinstance(self.allowed_output_roots, str) or not isinstance(
             self.allowed_output_roots, Sequence
         ):
-            raise PromptWorkflowContractError(
-                "allowed_output_roots must be a sequence"
-            )
+            raise PromptWorkflowContractError("allowed_output_roots must be a sequence")
         roots = tuple(
             sorted(
-                {
-                    _absolute_path(root, "allowed_output_roots")
-                    for root in self.allowed_output_roots
-                }
+                {_absolute_path(root, "allowed_output_roots") for root in self.allowed_output_roots}
             )
         )
         if not roots:
-            raise PromptWorkflowContractError(
-                "allowed_output_roots must not be empty"
-            )
+            raise PromptWorkflowContractError("allowed_output_roots must not be empty")
         if not any(_is_within(self.output_root, root) for root in roots):
-            raise PromptWorkflowPathError(
-                "output_root is outside allowed_output_roots"
-            )
+            raise PromptWorkflowPathError("output_root is outside allowed_output_roots")
         object.__setattr__(self, "allowed_output_roots", roots)
         for name in ("markdown_path", "duckdb_path"):
             object.__setattr__(
@@ -1139,24 +1047,14 @@ class PromptOutputPolicy(_WorkflowContract):
                 _relative_path(getattr(self, name), name, allow_empty=True),
             )
         if self.mode in (OutputMode.MARKDOWN, OutputMode.BOTH) and not self.markdown_path:
-            raise PromptWorkflowContractError(
-                "markdown output mode requires markdown_path"
-            )
+            raise PromptWorkflowContractError("markdown output mode requires markdown_path")
         if self.mode in (OutputMode.DUCKDB, OutputMode.BOTH) and not self.duckdb_path:
-            raise PromptWorkflowContractError(
-                "duckdb output mode requires duckdb_path"
-            )
+            raise PromptWorkflowContractError("duckdb output mode requires duckdb_path")
         if self.mode is OutputMode.MARKDOWN and self.duckdb_path:
-            raise PromptWorkflowContractError(
-                "markdown output mode cannot define duckdb_path"
-            )
+            raise PromptWorkflowContractError("markdown output mode cannot define duckdb_path")
         if self.mode is OutputMode.DUCKDB and self.markdown_path:
-            raise PromptWorkflowContractError(
-                "duckdb output mode cannot define markdown_path"
-            )
-        object.__setattr__(
-            self, "board_namespace", _text(self.board_namespace, "board_namespace")
-        )
+            raise PromptWorkflowContractError("duckdb output mode cannot define markdown_path")
+        object.__setattr__(self, "board_namespace", _text(self.board_namespace, "board_namespace"))
         object.__setattr__(self, "task_prefix", _text(self.task_prefix, "task_prefix"))
 
 
@@ -1232,9 +1130,7 @@ class PromptWorkflowRequest(_WorkflowContract):
         repository_root = _absolute_path(self.repository_root, "repository_root")
         directory = _absolute_path(self.directory, "directory")
         if not _is_within(directory, repository_root):
-            raise PromptWorkflowPathError(
-                "directory must resolve within repository_root"
-            )
+            raise PromptWorkflowPathError("directory must resolve within repository_root")
         object.__setattr__(self, "repository_root", repository_root)
         object.__setattr__(self, "directory", directory)
         object.__setattr__(
@@ -1242,9 +1138,7 @@ class PromptWorkflowRequest(_WorkflowContract):
             "repository_root_cid",
             _identity(self.repository_root_cid, "repository_root_cid"),
         )
-        object.__setattr__(
-            self, "allowlist_cid", _identity(self.allowlist_cid, "allowlist_cid")
-        )
+        object.__setattr__(self, "allowlist_cid", _identity(self.allowlist_cid, "allowlist_cid"))
         object.__setattr__(self, "caller", _text(self.caller, "caller"))
         for name in (
             "program_root",
@@ -1257,28 +1151,18 @@ class PromptWorkflowRequest(_WorkflowContract):
         for name in ("dry_run", "materialize", "start_after_materialize"):
             object.__setattr__(self, name, _boolean(getattr(self, name), name))
         if self.dry_run and (self.materialize or self.start_after_materialize):
-            raise PromptWorkflowContractError(
-                "dry_run cannot request materialization or start"
-            )
+            raise PromptWorkflowContractError("dry_run cannot request materialization or start")
         if self.start_after_materialize and not self.materialize:
-            raise PromptWorkflowContractError(
-                "start_after_materialize requires materialize"
-            )
+            raise PromptWorkflowContractError("start_after_materialize requires materialize")
         object.__setattr__(
             self,
             "supervisor_profile",
             _text(self.supervisor_profile, "supervisor_profile", required=False),
         )
-        state_root = (
-            _absolute_path(self.state_root, "state_root") if self.state_root else ""
-        )
+        state_root = _absolute_path(self.state_root, "state_root") if self.state_root else ""
         object.__setattr__(self, "state_root", state_root)
-        if self.start_after_materialize and (
-            not self.supervisor_profile or not self.state_root
-        ):
-            raise PromptWorkflowContractError(
-                "start requires supervisor_profile and state_root"
-            )
+        if self.start_after_materialize and (not self.supervisor_profile or not self.state_root):
+            raise PromptWorkflowContractError("start requires supervisor_profile and state_root")
         for name in ("authority_cid",):
             object.__setattr__(
                 self,
@@ -1286,9 +1170,7 @@ class PromptWorkflowRequest(_WorkflowContract):
                 _identity(getattr(self, name), name, required=False),
             )
         for name in ("idempotency_key", "lease_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         if self.fencing_epoch is not None:
             object.__setattr__(
                 self,
@@ -1307,13 +1189,9 @@ class PromptWorkflowRequest(_WorkflowContract):
                 "mutation requires authority, idempotency, lease, and fence"
             )
         if not mutation and any(bindings) and not all(bindings):
-            raise PromptWorkflowContractError(
-                "mutation bindings must be supplied together"
-            )
+            raise PromptWorkflowContractError("mutation bindings must be supplied together")
         if len(self.canonical_bytes()) > self.budget.max_serialized_bytes:
-            raise PromptWorkflowBoundsError(
-                "request exceeds max_serialized_bytes"
-            )
+            raise PromptWorkflowBoundsError("request exceeds max_serialized_bytes")
 
     @property
     def request_cid(self) -> str:
@@ -1365,24 +1243,16 @@ class PromptEvidenceRecord(_WorkflowContract):
     def __post_init__(self) -> None:
         for name in ("evidence_key", "source_kind"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "artifact_cid", _identity(self.artifact_cid, "artifact_cid")
-        )
+        object.__setattr__(self, "artifact_cid", _identity(self.artifact_cid, "artifact_cid"))
         object.__setattr__(self, "summary", _text(self.summary, "summary"))
         object.__setattr__(
             self,
             "repository_paths",
             _strings(self.repository_paths, "repository_paths", paths=True),
         )
-        object.__setattr__(
-            self, "claim_keys", _strings(self.claim_keys, "claim_keys")
-        )
-        object.__setattr__(
-            self, "authority", _enum(self.authority, EvidenceAuthority, "authority")
-        )
-        object.__setattr__(
-            self, "provenance", _freeze_json(self.provenance, "provenance")
-        )
+        object.__setattr__(self, "claim_keys", _strings(self.claim_keys, "claim_keys"))
+        object.__setattr__(self, "authority", _enum(self.authority, EvidenceAuthority, "authority"))
+        object.__setattr__(self, "provenance", _freeze_json(self.provenance, "provenance"))
         object.__setattr__(self, "status", _enum(self.status, RecordStatus, "status"))
         for name in ("created_at_ms", "updated_at_ms"):
             object.__setattr__(self, name, _integer(getattr(self, name), name))
@@ -1408,9 +1278,7 @@ class PromptAcceptanceRecord(_WorkflowContract):
     validation_keys: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "criterion_key", _text(self.criterion_key, "criterion_key")
-        )
+        object.__setattr__(self, "criterion_key", _text(self.criterion_key, "criterion_key"))
         object.__setattr__(self, "criterion", _text(self.criterion, "criterion"))
         object.__setattr__(
             self,
@@ -1447,9 +1315,7 @@ class PromptValidationRecord(_WorkflowContract):
     policy_cid: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "validation_key", _text(self.validation_key, "validation_key")
-        )
+        object.__setattr__(self, "validation_key", _text(self.validation_key, "validation_key"))
         object.__setattr__(
             self,
             "argv",
@@ -1464,9 +1330,7 @@ class PromptValidationRecord(_WorkflowContract):
         if isinstance(self.expected_exit_codes, (str, bytes)) or not isinstance(
             self.expected_exit_codes, Sequence
         ):
-            raise PromptWorkflowContractError(
-                "expected_exit_codes must be a sequence"
-            )
+            raise PromptWorkflowContractError("expected_exit_codes must be a sequence")
         codes = tuple(
             sorted(
                 {
@@ -1476,9 +1340,7 @@ class PromptValidationRecord(_WorkflowContract):
             )
         )
         if not codes:
-            raise PromptWorkflowContractError(
-                "expected_exit_codes must not be empty"
-            )
+            raise PromptWorkflowContractError("expected_exit_codes must not be empty")
         object.__setattr__(self, "expected_exit_codes", codes)
         object.__setattr__(
             self,
@@ -1499,9 +1361,7 @@ class PromptOutputRecord(_WorkflowContract):
     def __post_init__(self) -> None:
         object.__setattr__(self, "path", _relative_path(self.path, "path"))
         if self.effect not in {"create", "write", "modify", "delete"}:
-            raise PromptWorkflowContractError(
-                "effect must be create, write, modify, or delete"
-            )
+            raise PromptWorkflowContractError("effect must be create, write, modify, or delete")
         object.__setattr__(self, "media_type", _text(self.media_type, "media_type"))
 
 
@@ -1560,8 +1420,7 @@ class PromptGoalRecord(_WorkflowContract):
                 name,
                 tuple(
                     sorted(
-                        _validate_cid(item, name)
-                        for item in _strings(getattr(self, name), name)
+                        _validate_cid(item, name) for item in _strings(getattr(self, name), name)
                     )
                 ),
             )
@@ -1580,9 +1439,7 @@ class PromptGoalRecord(_WorkflowContract):
         object.__setattr__(self, "acceptance", acceptance)
         for name in ("risks", "assumptions"):
             object.__setattr__(self, name, _strings(getattr(self, name), name))
-        object.__setattr__(
-            self, "provenance", _freeze_json(self.provenance, "provenance")
-        )
+        object.__setattr__(self, "provenance", _freeze_json(self.provenance, "provenance"))
         object.__setattr__(self, "status", _enum(self.status, RecordStatus, "status"))
         for name in ("created_at_ms", "updated_at_ms"):
             object.__setattr__(self, name, _integer(getattr(self, name), name))
@@ -1665,8 +1522,7 @@ class PromptTaskRecord(_WorkflowContract):
                 name,
                 tuple(
                     sorted(
-                        _validate_cid(item, name)
-                        for item in _strings(getattr(self, name), name)
+                        _validate_cid(item, name) for item in _strings(getattr(self, name), name)
                     )
                 ),
             )
@@ -1687,29 +1543,21 @@ class PromptTaskRecord(_WorkflowContract):
             object.__setattr__(self, name, canonical)
         if len({item.path for item in self.outputs}) != len(self.outputs):
             raise PromptGraphError("task output paths must be unique")
-        if len({item.validation_key for item in self.validations}) != len(
-            self.validations
-        ):
+        if len({item.validation_key for item in self.validations}) != len(self.validations):
             raise PromptGraphError("task validation keys must be unique")
-        if len({item.criterion_key for item in self.acceptance}) != len(
-            self.acceptance
-        ):
+        if len({item.criterion_key for item in self.acceptance}) != len(self.acceptance):
             raise PromptGraphError("task acceptance keys must be unique")
         validation_keys = {item.validation_key for item in self.validations}
         for criterion in self.acceptance:
             if not set(criterion.validation_keys).issubset(validation_keys):
-                raise PromptGraphError(
-                    "acceptance references an unknown validation key"
-                )
+                raise PromptGraphError("acceptance references an unknown validation key")
         object.__setattr__(
             self,
             "policy_roots",
             tuple(
                 sorted(
                     _identity(item, "policy_roots")
-                    for item in _strings(
-                        self.policy_roots, "policy_roots", required=True
-                    )
+                    for item in _strings(self.policy_roots, "policy_roots", required=True)
                 )
             ),
         )
@@ -1737,9 +1585,7 @@ class PromptTaskRecord(_WorkflowContract):
         )
         for name in ("risks", "assumptions"):
             object.__setattr__(self, name, _strings(getattr(self, name), name))
-        object.__setattr__(
-            self, "provenance", _freeze_json(self.provenance, "provenance")
-        )
+        object.__setattr__(self, "provenance", _freeze_json(self.provenance, "provenance"))
         object.__setattr__(self, "status", _enum(self.status, RecordStatus, "status"))
         for name in ("created_at_ms", "updated_at_ms"):
             object.__setattr__(self, name, _integer(getattr(self, name), name))
@@ -1771,9 +1617,7 @@ class DirectoryScanReceipt(_WorkflowContract):
         "started_at_ms",
         "finished_at_ms",
     )
-    IDENTITY_EXCLUDED: ClassVar[frozenset[str]] = frozenset(
-        {"started_at_ms", "finished_at_ms"}
-    )
+    IDENTITY_EXCLUDED: ClassVar[frozenset[str]] = frozenset({"started_at_ms", "finished_at_ms"})
     NESTED_FIELDS: ClassVar[Mapping[str, type[_WorkflowContract]]] = {
         "budget": PromptWorkflowBudget
     }
@@ -1809,27 +1653,19 @@ class DirectoryScanReceipt(_WorkflowContract):
         ):
             object.__setattr__(self, name, _identity(getattr(self, name), name))
         for name in ("ast_root", "index_root"):
-            object.__setattr__(
-                self, name, _identity(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _identity(getattr(self, name), name, required=False))
         repository_root = _absolute_path(self.repository_root, "repository_root")
         directory = _absolute_path(self.directory, "directory")
         if not _is_within(directory, repository_root):
-            raise PromptWorkflowPathError(
-                "scan directory must be within repository_root"
-            )
+            raise PromptWorkflowPathError("scan directory must be within repository_root")
         object.__setattr__(self, "repository_root", repository_root)
         object.__setattr__(self, "directory", directory)
         if not isinstance(self.budget, PromptWorkflowBudget):
-            raise PromptWorkflowContractError(
-                "budget must be PromptWorkflowBudget"
-            )
+            raise PromptWorkflowContractError("budget must be PromptWorkflowBudget")
         if len(self.evidence) > self.budget.max_evidence:
             raise PromptWorkflowBoundsError("scan evidence exceeds budget")
         if not all(isinstance(item, PromptEvidenceRecord) for item in self.evidence):
-            raise PromptWorkflowContractError(
-                "evidence must contain PromptEvidenceRecord values"
-            )
+            raise PromptWorkflowContractError("evidence must contain PromptEvidenceRecord values")
         evidence = tuple(sorted(self.evidence, key=lambda item: item.content_id))
         if len({item.content_id for item in evidence}) != len(evidence):
             raise PromptWorkflowContractError("scan evidence contains duplicates")
@@ -1839,9 +1675,7 @@ class DirectoryScanReceipt(_WorkflowContract):
             isinstance(value, bool) or not isinstance(value, int) or value < 0
             for value in frozen_counts.values()
         ):
-            raise PromptWorkflowContractError(
-                "scan counts must be non-negative integers"
-            )
+            raise PromptWorkflowContractError("scan counts must be non-negative integers")
         object.__setattr__(self, "counts", frozen_counts)
         count_limits = {
             "files": self.budget.max_files,
@@ -1854,22 +1688,16 @@ class DirectoryScanReceipt(_WorkflowContract):
         }
         for key, maximum in count_limits.items():
             if key in frozen_counts and frozen_counts[key] > maximum:
-                raise PromptWorkflowBoundsError(
-                    f"scan count {key} exceeds declared budget"
-                )
+                raise PromptWorkflowBoundsError(f"scan count {key} exceeds declared budget")
         for name in ("exclusions", "truncations"):
             object.__setattr__(self, name, _strings(getattr(self, name), name))
         object.__setattr__(self, "truncated", _boolean(self.truncated, "truncated"))
         if bool(self.truncations) != self.truncated:
-            raise PromptWorkflowContractError(
-                "truncated must exactly reflect truncation reasons"
-            )
+            raise PromptWorkflowContractError("truncated must exactly reflect truncation reasons")
         for name in ("started_at_ms", "finished_at_ms"):
             object.__setattr__(self, name, _integer(getattr(self, name), name))
         if self.finished_at_ms and self.finished_at_ms < self.started_at_ms:
-            raise PromptWorkflowContractError(
-                "finished_at_ms cannot precede started_at_ms"
-            )
+            raise PromptWorkflowContractError("finished_at_ms cannot precede started_at_ms")
         if len(self.canonical_bytes()) > self.budget.max_serialized_bytes:
             raise PromptWorkflowBoundsError("scan receipt exceeds byte budget")
 
@@ -1904,9 +1732,7 @@ def _graph_depth(nodes: Mapping[str, Sequence[str]]) -> int:
         if node not in depths:
             dependencies = nodes[node]
             depths[node] = (
-                1
-                if not dependencies
-                else 1 + max(depth(dependency) for dependency in dependencies)
+                1 if not dependencies else 1 + max(depth(dependency) for dependency in dependencies)
             )
         return depths[node]
 
@@ -1960,9 +1786,7 @@ class PromptGoalGraph(_WorkflowContract):
             tuple(
                 sorted(
                     _identity(item, "policy_roots")
-                    for item in _strings(
-                        self.policy_roots, "policy_roots", required=True
-                    )
+                    for item in _strings(self.policy_roots, "policy_roots", required=True)
                 )
             ),
         )
@@ -1976,17 +1800,13 @@ class PromptGoalGraph(_WorkflowContract):
                 raise PromptGraphError(f"{name} must be a sequence")
             if not values and name in {"goals", "tasks"}:
                 raise PromptGraphError(f"{name} must not be empty")
-            if len(values) > maximum or not all(
-                isinstance(item, item_type) for item in values
-            ):
+            if len(values) > maximum or not all(isinstance(item, item_type) for item in values):
                 raise PromptGraphError(f"{name} is malformed or exceeds its bound")
             canonical = tuple(sorted(values, key=lambda item: item.content_id))
             if len({item.content_id for item in canonical}) != len(canonical):
                 raise PromptGraphError(f"{name} contains duplicate identities")
             keys = [
-                getattr(item, f"{name[:-1]}_key", None)
-                if name != "evidence"
-                else item.evidence_key
+                getattr(item, f"{name[:-1]}_key", None) if name != "evidence" else item.evidence_key
                 for item in canonical
             ]
             if len(keys) != len(set(keys)):
@@ -1999,9 +1819,7 @@ class PromptGoalGraph(_WorkflowContract):
         goal_edges: dict[str, tuple[str, ...]] = {}
         for goal in self.goals:
             references = tuple(
-                item
-                for item in (goal.parent_goal_cid, *goal.dependency_goal_cids)
-                if item
+                item for item in (goal.parent_goal_cid, *goal.dependency_goal_cids) if item
             )
             if any(item not in goals for item in references):
                 raise PromptGraphError("goal references unknown goal CID")
@@ -2038,9 +1856,9 @@ class PromptGoalGraph(_WorkflowContract):
         if _graph_depth(task_edges) > ABSOLUTE_MAX_DEPTH:
             raise PromptWorkflowBoundsError("task graph exceeds depth bound")
         evidence_cids = {item.evidence_cid for item in self.evidence}
-        referenced = {
-            cid for goal in self.goals for cid in goal.evidence_cids
-        } | {cid for task in self.tasks for cid in task.evidence_cids}
+        referenced = {cid for goal in self.goals for cid in goal.evidence_cids} | {
+            cid for task in self.tasks for cid in task.evidence_cids
+        }
         acceptance_referenced = {
             cid
             for goal in self.goals
@@ -2055,9 +1873,7 @@ class PromptGoalGraph(_WorkflowContract):
         if not referenced.issubset(evidence_cids):
             raise PromptGraphError("goal or task references unknown evidence CID")
         if not acceptance_referenced.issubset(evidence_cids):
-            raise PromptGraphError(
-                "acceptance references unknown evidence CID"
-            )
+            raise PromptGraphError("acceptance references unknown evidence CID")
         for name in ("unresolved_questions", "uncertainty_debt"):
             object.__setattr__(self, name, _strings(getattr(self, name), name))
         object.__setattr__(self, "status", _enum(self.status, RecordStatus, "status"))
@@ -2131,27 +1947,19 @@ class MaterializationReference(_WorkflowContract):
         for name in ("request_cid", "preview_receipt_cid", "plan_root_cid"):
             object.__setattr__(self, name, _validate_cid(getattr(self, name), name))
         for name in ("repository_root", "output_root"):
-            object.__setattr__(
-                self, name, _absolute_path(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _absolute_path(getattr(self, name), name))
         object.__setattr__(self, "mode", _enum(self.mode, OutputMode, "mode"))
         expected = 2 if self.mode is OutputMode.BOTH else 1
         projection_cids = tuple(
             sorted(
                 _validate_cid(item, "projection_cids")
-                for item in _strings(
-                    self.projection_cids, "projection_cids", required=True
-                )
+                for item in _strings(self.projection_cids, "projection_cids", required=True)
             )
         )
         if len(projection_cids) != expected:
-            raise PromptWorkflowContractError(
-                "projection count does not match output mode"
-            )
+            raise PromptWorkflowContractError("projection count does not match output mode")
         object.__setattr__(self, "projection_cids", projection_cids)
-        object.__setattr__(
-            self, "revision", _integer(self.revision, "revision", minimum=1)
-        )
+        object.__setattr__(self, "revision", _integer(self.revision, "revision", minimum=1))
         for name in (
             "scan_cid",
             "program_root",
@@ -2177,9 +1985,7 @@ class MaterializationReference(_WorkflowContract):
         if isinstance(self.task_source_identities, (str, bytes)) or not isinstance(
             self.task_source_identities, Sequence
         ):
-            raise PromptWorkflowContractError(
-                "task_source_identities must be a sequence"
-            )
+            raise PromptWorkflowContractError("task_source_identities must be a sequence")
         identities = tuple(
             sorted(
                 (
@@ -2190,22 +1996,16 @@ class MaterializationReference(_WorkflowContract):
             )
         )
         if any(not isinstance(item, Mapping) for item in identities):
-            raise PromptWorkflowContractError(
-                "task_source_identities must contain objects"
-            )
+            raise PromptWorkflowContractError("task_source_identities must contain objects")
         if identities and len(identities) != expected:
             raise PromptWorkflowContractError(
                 "task-source identity count does not match output mode"
             )
         object.__setattr__(self, "task_source_identities", identities)
         for name in ("expected_effects", "observed_effects"):
-            object.__setattr__(
-                self, name, _strings(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _strings(getattr(self, name), name))
         if not set(self.observed_effects).issubset(set(self.expected_effects)):
-            raise PromptWorkflowContractError(
-                "observed effects must be declared expected effects"
-            )
+            raise PromptWorkflowContractError("observed effects must be declared expected effects")
         cursors = _freeze_json(self.event_cursors, "event_cursors")
         if not isinstance(cursors, Mapping):
             raise PromptWorkflowContractError("event_cursors must be an object")
@@ -2241,8 +2041,8 @@ class SupervisorRunReference(_WorkflowContract):
     # The run is named before a process exists.  Process identity is an
     # observed-effect binding on the reference, not an input to the stable run
     # CID (plan/profile/state/lifecycle request are the inputs).
-    IDENTITY_EXCLUDED: ClassVar[frozenset[str]] = (
-        _VOLATILE_FIELDS | frozenset({"process_identity_cid"})
+    IDENTITY_EXCLUDED: ClassVar[frozenset[str]] = _VOLATILE_FIELDS | frozenset(
+        {"process_identity_cid"}
     )
     ENUM_FIELDS: ClassVar[Mapping[str, type[Enum]]] = {"status": RecordStatus}
 
@@ -2267,14 +2067,10 @@ class SupervisorRunReference(_WorkflowContract):
         object.__setattr__(
             self,
             "process_identity_cid",
-            _validate_cid(
-                self.process_identity_cid, "process_identity_cid", required=False
-            ),
+            _validate_cid(self.process_identity_cid, "process_identity_cid", required=False),
         )
         for name in ("repository_root", "state_root"):
-            object.__setattr__(
-                self, name, _absolute_path(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _absolute_path(getattr(self, name), name))
         object.__setattr__(
             self,
             "supervisor_profile",
@@ -2333,15 +2129,11 @@ class SupervisorIncident(_WorkflowContract):
 
     def __post_init__(self) -> None:
         for name in ("repository_root", "state_root"):
-            object.__setattr__(
-                self, name, _absolute_path(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _absolute_path(getattr(self, name), name))
         for name in ("repository_root_cid", "policy_root", "run_cid"):
             object.__setattr__(self, name, _identity(getattr(self, name), name))
         object.__setattr__(self, "kind", _enum(self.kind, IncidentKind, "kind"))
-        fingerprint = _text(
-            self.failure_fingerprint, "failure_fingerprint", maximum=512
-        )
+        fingerprint = _text(self.failure_fingerprint, "failure_fingerprint", maximum=512)
         if not _DIGEST_RE.fullmatch(fingerprint):
             raise PromptWorkflowIdentityError(
                 "failure_fingerprint must be sha256:<64 lowercase hex>"
@@ -2358,8 +2150,7 @@ class SupervisorIncident(_WorkflowContract):
                 name,
                 tuple(
                     sorted(
-                        _validate_cid(item, name)
-                        for item in _strings(getattr(self, name), name)
+                        _validate_cid(item, name) for item in _strings(getattr(self, name), name)
                     )
                 ),
             )
@@ -2391,9 +2182,7 @@ class RecoveryAttempt(_WorkflowContract):
         "started_at_ms",
         "finished_at_ms",
     )
-    IDENTITY_EXCLUDED: ClassVar[frozenset[str]] = frozenset(
-        {"started_at_ms", "finished_at_ms"}
-    )
+    IDENTITY_EXCLUDED: ClassVar[frozenset[str]] = frozenset({"started_at_ms", "finished_at_ms"})
     ENUM_FIELDS: ClassVar[Mapping[str, type[Enum]]] = {
         "operation": RescueOperation,
         "outcome": RecoveryAttemptOutcome,
@@ -2409,28 +2198,18 @@ class RecoveryAttempt(_WorkflowContract):
     finished_at_ms: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "operation", _enum(self.operation, RescueOperation, "operation")
-        )
+        object.__setattr__(self, "operation", _enum(self.operation, RescueOperation, "operation"))
         object.__setattr__(self, "target_id", _text(self.target_id, "target_id"))
-        object.__setattr__(
-            self, "attempt", _integer(self.attempt, "attempt", minimum=1)
-        )
-        object.__setattr__(
-            self, "outcome", _enum(self.outcome, RecoveryAttemptOutcome, "outcome")
-        )
+        object.__setattr__(self, "attempt", _integer(self.attempt, "attempt", minimum=1))
+        object.__setattr__(self, "outcome", _enum(self.outcome, RecoveryAttemptOutcome, "outcome"))
         object.__setattr__(
             self,
             "receipt_cid",
             _validate_cid(self.receipt_cid, "receipt_cid", required=False),
         )
-        fingerprint = _text(
-            self.failure_fingerprint, "failure_fingerprint", required=False
-        )
+        fingerprint = _text(self.failure_fingerprint, "failure_fingerprint", required=False)
         if fingerprint and not _DIGEST_RE.fullmatch(fingerprint):
-            raise PromptWorkflowIdentityError(
-                "failure_fingerprint must be a sha256 digest"
-            )
+            raise PromptWorkflowIdentityError("failure_fingerprint must be a sha256 digest")
         object.__setattr__(self, "failure_fingerprint", fingerprint)
         for name in ("started_at_ms", "finished_at_ms"):
             object.__setattr__(self, name, _integer(getattr(self, name), name))
@@ -2479,13 +2258,8 @@ class ProgrammaticRecoveryExhaustionReceipt(_WorkflowContract):
     def _decode_field(cls, name: str, value: Any) -> Any:
         if name == "inapplicable_operations":
             if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
-                raise PromptWorkflowContractError(
-                    "inapplicable_operations must be a sequence"
-                )
-            return tuple(
-                _enum(item, RescueOperation, "inapplicable_operations")
-                for item in value
-            )
+                raise PromptWorkflowContractError("inapplicable_operations must be a sequence")
+            return tuple(_enum(item, RescueOperation, "inapplicable_operations") for item in value)
         return super()._decode_field(name, value)
 
     def __post_init__(self) -> None:
@@ -2497,9 +2271,7 @@ class ProgrammaticRecoveryExhaustionReceipt(_WorkflowContract):
         ):
             object.__setattr__(self, name, _identity(getattr(self, name), name))
         if not isinstance(self.budget, PromptWorkflowBudget):
-            raise PromptWorkflowContractError(
-                "budget must be PromptWorkflowBudget"
-            )
+            raise PromptWorkflowContractError("budget must be PromptWorkflowBudget")
         if len(self.attempts) > ABSOLUTE_MAX_ITEMS or not all(
             isinstance(item, RecoveryAttempt) for item in self.attempts
         ):
@@ -2537,9 +2309,7 @@ class ProgrammaticRecoveryExhaustionReceipt(_WorkflowContract):
             "exhaustion_reason",
             _text(self.exhaustion_reason, "exhaustion_reason"),
         )
-        object.__setattr__(
-            self, "circuit_open", _boolean(self.circuit_open, "circuit_open")
-        )
+        object.__setattr__(self, "circuit_open", _boolean(self.circuit_open, "circuit_open"))
         object.__setattr__(self, "status", _enum(self.status, RecordStatus, "status"))
         for name in ("created_at_ms", "updated_at_ms"):
             object.__setattr__(self, name, _integer(getattr(self, name), name))
@@ -2588,9 +2358,7 @@ class RescueAction(_WorkflowContract):
         "stop_condition",
         "rollback_operation",
     )
-    ENUM_FIELDS: ClassVar[Mapping[str, type[Enum]]] = {
-        "operation": RescueOperation
-    }
+    ENUM_FIELDS: ClassVar[Mapping[str, type[Enum]]] = {"operation": RescueOperation}
 
     operation: RescueOperation
     target_id: str
@@ -2604,17 +2372,11 @@ class RescueAction(_WorkflowContract):
     @classmethod
     def _decode_field(cls, name: str, value: Any) -> Any:
         if name == "rollback_operation":
-            return (
-                None
-                if value is None
-                else _enum(value, RescueOperation, "rollback_operation")
-            )
+            return None if value is None else _enum(value, RescueOperation, "rollback_operation")
         return super()._decode_field(name, value)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "operation", _enum(self.operation, RescueOperation, "operation")
-        )
+        object.__setattr__(self, "operation", _enum(self.operation, RescueOperation, "operation"))
         object.__setattr__(self, "target_id", _text(self.target_id, "target_id"))
         parameters = _freeze_json(self.parameters, "parameters")
         if not isinstance(parameters, Mapping):
@@ -2632,9 +2394,7 @@ class RescueAction(_WorkflowContract):
                     "path",
                 )
             ):
-                raise RescuePlanError(
-                    "rescue parameters contain a forbidden open-ended field"
-                )
+                raise RescuePlanError("rescue parameters contain a forbidden open-ended field")
         object.__setattr__(self, "parameters", parameters)
         object.__setattr__(
             self,
@@ -2653,16 +2413,10 @@ class RescueAction(_WorkflowContract):
         object.__setattr__(
             self,
             "expected_effects",
-            _strings(
-                self.expected_effects, "expected_effects", required=True, maximum=64
-            ),
+            _strings(self.expected_effects, "expected_effects", required=True, maximum=64),
         )
-        object.__setattr__(
-            self, "success_test", _text(self.success_test, "success_test")
-        )
-        object.__setattr__(
-            self, "stop_condition", _text(self.stop_condition, "stop_condition")
-        )
+        object.__setattr__(self, "success_test", _text(self.success_test, "success_test"))
+        object.__setattr__(self, "stop_condition", _text(self.stop_condition, "stop_condition"))
         if self.rollback_operation is not None:
             object.__setattr__(
                 self,
@@ -2693,9 +2447,7 @@ class RescuePlan(_WorkflowContract):
         "updated_at_ms",
     )
     IDENTITY_EXCLUDED: ClassVar[frozenset[str]] = _VOLATILE_FIELDS
-    NESTED_SEQUENCES: ClassVar[Mapping[str, type[_WorkflowContract]]] = {
-        "actions": RescueAction
-    }
+    NESTED_SEQUENCES: ClassVar[Mapping[str, type[_WorkflowContract]]] = {"actions": RescueAction}
     ENUM_FIELDS: ClassVar[Mapping[str, type[Enum]]] = {"status": RecordStatus}
 
     incident_cid: str
@@ -2916,17 +2668,11 @@ class PromptWorkflowPreviewReceipt(_WorkflowContract):
             ),
         )
         if not isinstance(self.budget, PromptWorkflowBudget):
-            raise PromptWorkflowContractError(
-                "budget must be PromptWorkflowBudget"
-            )
+            raise PromptWorkflowContractError("budget must be PromptWorkflowBudget")
         if len(self.admitted_goal_cids) > self.budget.max_goals:
-            raise PromptWorkflowBoundsError(
-                "admitted goals exceed the declared workflow budget"
-            )
+            raise PromptWorkflowBoundsError("admitted goals exceed the declared workflow budget")
         if len(self.admitted_task_cids) > self.budget.max_tasks:
-            raise PromptWorkflowBoundsError(
-                "admitted tasks exceed the declared workflow budget"
-            )
+            raise PromptWorkflowBoundsError("admitted tasks exceed the declared workflow budget")
         object.__setattr__(self, "status", _enum(self.status, RecordStatus, "status"))
         if self.status is RecordStatus.ADMITTED and (
             not self.admitted_goal_cids or not self.admitted_task_cids
@@ -2937,15 +2683,11 @@ class PromptWorkflowPreviewReceipt(_WorkflowContract):
         if self.status is RecordStatus.REJECTED and (
             self.admitted_goal_cids or self.admitted_task_cids
         ):
-            raise PromptWorkflowContractError(
-                "rejected preview cannot publish admitted branches"
-            )
+            raise PromptWorkflowContractError("rejected preview cannot publish admitted branches")
         for name in ("created_at_ms", "updated_at_ms"):
             object.__setattr__(self, name, _integer(getattr(self, name), name))
         if len(self.canonical_bytes()) > self.budget.max_serialized_bytes:
-            raise PromptWorkflowBoundsError(
-                "preview receipt exceeds max_serialized_bytes"
-            )
+            raise PromptWorkflowBoundsError("preview receipt exceeds max_serialized_bytes")
 
     @property
     def receipt_cid(self) -> str:
@@ -3010,9 +2752,7 @@ class PromptWorkflowResult(_WorkflowContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "request_cid", _validate_cid(self.request_cid, "request_cid"))
-        object.__setattr__(
-            self, "outcome", _enum(self.outcome, WorkflowOutcome, "outcome")
-        )
+        object.__setattr__(self, "outcome", _enum(self.outcome, WorkflowOutcome, "outcome"))
         object.__setattr__(
             self,
             "preview_receipt_cid",
@@ -3021,15 +2761,11 @@ class PromptWorkflowResult(_WorkflowContract):
         if self.materialization is not None and not isinstance(
             self.materialization, MaterializationReference
         ):
-            raise PromptWorkflowContractError(
-                "materialization must be MaterializationReference"
-            )
+            raise PromptWorkflowContractError("materialization must be MaterializationReference")
         if self.run is not None and not isinstance(self.run, SupervisorRunReference):
             raise PromptWorkflowContractError("run must be SupervisorRunReference")
         if self.run is not None and self.materialization is None:
-            raise PromptWorkflowContractError(
-                "run reference requires materialization reference"
-            )
+            raise PromptWorkflowContractError("run reference requires materialization reference")
         if (
             self.materialization is not None
             and self.materialization.request_cid != self.request_cid
@@ -3039,33 +2775,21 @@ class PromptWorkflowResult(_WorkflowContract):
             )
         if (
             self.materialization is not None
-            and self.materialization.preview_receipt_cid
-            != self.preview_receipt_cid
+            and self.materialization.preview_receipt_cid != self.preview_receipt_cid
         ):
-            raise PromptWorkflowIdentityError(
-                "materialization is bound to another preview receipt"
-            )
+            raise PromptWorkflowIdentityError("materialization is bound to another preview receipt")
         if (
             self.run is not None
             and self.run.materialization_cid != self.materialization.materialization_cid
         ):
-            raise PromptWorkflowIdentityError(
-                "run is bound to another materialization"
-            )
-        if (
-            self.run is not None
-            and self.run.plan_root_cid != self.materialization.plan_root_cid
-        ):
-            raise PromptWorkflowIdentityError(
-                "run is bound to another plan root"
-            )
+            raise PromptWorkflowIdentityError("run is bound to another materialization")
+        if self.run is not None and self.run.plan_root_cid != self.materialization.plan_root_cid:
+            raise PromptWorkflowIdentityError("run is bound to another plan root")
         if (
             self.run is not None
             and self.run.repository_root != self.materialization.repository_root
         ):
-            raise PromptWorkflowIdentityError(
-                "run is bound to another repository root"
-            )
+            raise PromptWorkflowIdentityError("run is bound to another repository root")
         if self.outcome is WorkflowOutcome.PREVIEWED and (
             self.materialization is not None or self.run is not None
         ):
@@ -3075,49 +2799,35 @@ class PromptWorkflowResult(_WorkflowContract):
         if self.outcome is WorkflowOutcome.MATERIALIZED and (
             self.materialization is None or self.run is not None
         ):
-            raise PromptWorkflowContractError(
-                "materialized outcome requires only materialization"
-            )
+            raise PromptWorkflowContractError("materialized outcome requires only materialization")
         if self.outcome is WorkflowOutcome.STARTED and (
             self.materialization is None or self.run is None
         ):
-            raise PromptWorkflowContractError(
-                "started outcome requires materialization and run"
-            )
+            raise PromptWorkflowContractError("started outcome requires materialization and run")
         object.__setattr__(
             self,
             "completed_stage_cids",
             tuple(
                 sorted(
                     _validate_cid(item, "completed_stage_cids")
-                    for item in _strings(
-                        self.completed_stage_cids, "completed_stage_cids"
-                    )
+                    for item in _strings(self.completed_stage_cids, "completed_stage_cids")
                 )
             ),
         )
-        object.__setattr__(
-            self, "failure_codes", _strings(self.failure_codes, "failure_codes")
-        )
+        object.__setattr__(self, "failure_codes", _strings(self.failure_codes, "failure_codes"))
         object.__setattr__(
             self,
             "safe_continuation",
             _text(self.safe_continuation, "safe_continuation", required=False),
         )
         for name in ("expected_effects", "observed_effects"):
-            object.__setattr__(
-                self, name, _strings(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _strings(getattr(self, name), name))
         if not set(self.observed_effects).issubset(set(self.expected_effects)):
-            raise PromptWorkflowContractError(
-                "observed effects must be declared expected effects"
-            )
+            raise PromptWorkflowContractError("observed effects must be declared expected effects")
         if isinstance(self.task_source_identities, (str, bytes)) or not isinstance(
             self.task_source_identities, Sequence
         ):
-            raise PromptWorkflowContractError(
-                "task_source_identities must be a sequence"
-            )
+            raise PromptWorkflowContractError("task_source_identities must be a sequence")
         identities = tuple(
             sorted(
                 (
@@ -3128,9 +2838,7 @@ class PromptWorkflowResult(_WorkflowContract):
             )
         )
         if any(not isinstance(item, Mapping) for item in identities):
-            raise PromptWorkflowContractError(
-                "task_source_identities must contain objects"
-            )
+            raise PromptWorkflowContractError("task_source_identities must contain objects")
         object.__setattr__(self, "task_source_identities", identities)
         cursors = _freeze_json(self.event_cursors, "event_cursors")
         if not isinstance(cursors, Mapping):
@@ -3141,21 +2849,20 @@ class PromptWorkflowResult(_WorkflowContract):
                 self,
                 name,
                 tuple(
-                    sorted(
-                        _identity(item, name)
-                        for item in _strings(getattr(self, name), name)
-                    )
+                    sorted(_identity(item, name) for item in _strings(getattr(self, name), name))
                 ),
             )
-        if self.outcome in {
-            WorkflowOutcome.PARTIAL,
-            WorkflowOutcome.REJECTED,
-            WorkflowOutcome.FAILED,
-            WorkflowOutcome.QUARANTINED,
-        } and not self.failure_codes:
-            raise PromptWorkflowContractError(
-                "non-success outcome requires failure_codes"
-            )
+        if (
+            self.outcome
+            in {
+                WorkflowOutcome.PARTIAL,
+                WorkflowOutcome.REJECTED,
+                WorkflowOutcome.FAILED,
+                WorkflowOutcome.QUARANTINED,
+            }
+            and not self.failure_codes
+        ):
+            raise PromptWorkflowContractError("non-success outcome requires failure_codes")
         object.__setattr__(self, "status", _enum(self.status, RecordStatus, "status"))
         for name in ("created_at_ms", "updated_at_ms"):
             object.__setattr__(self, name, _integer(getattr(self, name), name))
@@ -3191,9 +2898,7 @@ def _reference_cid(value: Any, namespace: str) -> str:
     if isinstance(value, _WorkflowContract):
         return value.content_id
     if isinstance(value, Mapping):
-        return prompt_workflow_cid(
-            {"namespace": namespace, "record": _wire_value(value)}
-        )
+        return prompt_workflow_cid({"namespace": namespace, "record": _wire_value(value)})
     text = str(value or "").strip()
     if not text:
         return ""
@@ -3277,9 +2982,7 @@ class PromptSupervisorService:
         self.optional_analysis = optional_analysis
         self.receipt_store = receipt_store
         self.root_observer = root_observer
-        self._catalog_root = (
-            _identity(catalog_root, "catalog_root") if catalog_root else ""
-        )
+        self._catalog_root = _identity(catalog_root, "catalog_root") if catalog_root else ""
         self._clock_ms = clock_ms or (lambda: 0)
         self._preview_by_request: dict[str, _PromptPreviewState] = {}
         self._preview_by_receipt: dict[str, _PromptPreviewState] = {}
@@ -3295,9 +2998,7 @@ class PromptSupervisorService:
             return self._catalog_root
         if self.control_service is not None:
             catalog = getattr(self.control_service, "_catalog", None)
-            value = getattr(catalog, "catalog_id", "") or getattr(
-                catalog, "content_id", ""
-            )
+            value = getattr(catalog, "catalog_id", "") or getattr(catalog, "content_id", "")
             if value:
                 self._catalog_root = _reference_cid(value, "control-catalog")
                 return self._catalog_root
@@ -3306,9 +3007,7 @@ class PromptSupervisorService:
         # when a service instance is actually used.
         from ..control.control_contracts import OPERATION_CATALOG_V2
 
-        self._catalog_root = _reference_cid(
-            OPERATION_CATALOG_V2.catalog_id, "control-catalog"
-        )
+        self._catalog_root = _reference_cid(OPERATION_CATALOG_V2.catalog_id, "control-catalog")
         return self._catalog_root
 
     def _persist(self, value: _WorkflowContract) -> None:
@@ -3323,9 +3022,7 @@ class PromptSupervisorService:
                 )
             self.receipt_store[value.content_id] = record
             return
-        put = getattr(self.receipt_store, "put", None) or getattr(
-            self.receipt_store, "store", None
-        )
+        put = getattr(self.receipt_store, "put", None) or getattr(self.receipt_store, "store", None)
         if not callable(put):
             raise PromptWorkflowReceiptError(
                 "receipt_store must be a mutable mapping or implement put"
@@ -3360,9 +3057,7 @@ class PromptSupervisorService:
         return scan
 
     @staticmethod
-    def _validate_scan(
-        request: PromptWorkflowRequest, scan: DirectoryScanReceipt
-    ) -> None:
+    def _validate_scan(request: PromptWorkflowRequest, scan: DirectoryScanReceipt) -> None:
         exact = (
             (scan.request_cid, request.request_cid, "request"),
             (scan.repository_root, request.repository_root, "repository path"),
@@ -3381,9 +3076,7 @@ class PromptSupervisorService:
         )
         for observed, expected, noun in exact:
             if observed != expected:
-                raise PromptWorkflowStaleRootError(
-                    f"scan is bound to a different {noun}"
-                )
+                raise PromptWorkflowStaleRootError(f"scan is bound to a different {noun}")
 
     @staticmethod
     def _validate_graph(
@@ -3392,17 +3085,11 @@ class PromptSupervisorService:
         graph: PromptGoalGraph,
     ) -> None:
         if graph.request_cid != request.request_cid:
-            raise PromptWorkflowStaleRootError(
-                "plan is bound to a different request root"
-            )
+            raise PromptWorkflowStaleRootError("plan is bound to a different request root")
         if graph.scan_cid != scan.scan_cid:
-            raise PromptWorkflowStaleRootError(
-                "plan is bound to a different scan root"
-            )
+            raise PromptWorkflowStaleRootError("plan is bound to a different scan root")
         if graph.program_root != request.program_root:
-            raise PromptWorkflowStaleRootError(
-                "plan is bound to a different program root"
-            )
+            raise PromptWorkflowStaleRootError("plan is bound to a different program root")
         roots = {
             request.policy_root,
             request.intent_ir_root,
@@ -3410,9 +3097,7 @@ class PromptSupervisorService:
             request.security_ir_root,
         }
         if set(graph.policy_roots) != roots:
-            raise PromptWorkflowStaleRootError(
-                "plan policy/IR roots differ from the request"
-            )
+            raise PromptWorkflowStaleRootError("plan policy/IR roots differ from the request")
 
     def _plan(
         self,
@@ -3521,9 +3206,7 @@ class PromptSupervisorService:
                 )
             self._validate_graph(request, scan, admitted_graph)
             if admitted_graph.plan_root_cid != graph.plan_root_cid:
-                raise PromptWorkflowReceiptError(
-                    "admission changed the candidate graph identity"
-                )
+                raise PromptWorkflowReceiptError("admission changed the candidate graph identity")
         return result
 
     @staticmethod
@@ -3538,9 +3221,7 @@ class PromptSupervisorService:
     ) -> tuple[str, ...]:
         effects: list[str] = []
         if request.output_policy.mode in {OutputMode.MARKDOWN, OutputMode.BOTH}:
-            effects.append(
-                f"write_markdown:{request.output_policy.markdown_path}"
-            )
+            effects.append(f"write_markdown:{request.output_policy.markdown_path}")
         if request.output_policy.mode in {OutputMode.DUCKDB, OutputMode.BOTH}:
             effects.append(f"write_duckdb:{request.output_policy.duckdb_path}")
         return tuple(sorted(effects))
@@ -3563,16 +3244,12 @@ class PromptSupervisorService:
             codes = tuple(getattr(admission, "reason_codes", ()) or ())
             reasons = [str(item) for item in codes] or ["admission_rejected"]
             branch_refs = [
-                prompt_workflow_cid(
-                    {"namespace": "prompt-admission-rejection", "code": code}
-                )
+                prompt_workflow_cid({"namespace": "prompt-admission-rejection", "code": code})
                 for code in reasons
             ]
         return tuple(sorted(set(branch_refs))), tuple(sorted(set(reasons)))
 
-    def _validate_preview_control(
-        self, control_request: Any | None
-    ) -> str:
+    def _validate_preview_control(self, control_request: Any | None) -> str:
         if control_request is None:
             return ""
         if self.control_service is None:
@@ -3591,8 +3268,7 @@ class PromptSupervisorService:
                 "workflow preview was rejected by the shared control service"
             )
         return _reference_cid(
-            getattr(result, "audit_receipt_id", "")
-            or getattr(result, "result_id", ""),
+            getattr(result, "audit_receipt_id", "") or getattr(result, "result_id", ""),
             "workflow-preview-control-receipt",
         )
 
@@ -3638,9 +3314,7 @@ class PromptSupervisorService:
                 else graph.plan_root_cid
             )
             if not plan_root:
-                raise PromptWorkflowReceiptError(
-                    "admission did not publish a plan root"
-                )
+                raise PromptWorkflowReceiptError("admission did not publish a plan root")
             artifact_refs = tuple(
                 sorted(
                     {
@@ -3648,11 +3322,7 @@ class PromptSupervisorService:
                         graph.plan_root_cid,
                         planner_ref,
                         admission_ref,
-                        *(
-                            (control_ref,)
-                            if control_ref
-                            else ()
-                        ),
+                        *((control_ref,) if control_ref else ()),
                     }
                 )
             )
@@ -3665,22 +3335,16 @@ class PromptSupervisorService:
                 program_root=request.program_root,
                 policy_roots=selected_graph.policy_roots,
                 admitted_goal_cids=(
-                    tuple(goal.goal_cid for goal in selected_graph.goals)
-                    if admitted
-                    else ()
+                    tuple(goal.goal_cid for goal in selected_graph.goals) if admitted else ()
                 ),
                 admitted_task_cids=(
-                    tuple(task.task_cid for task in selected_graph.tasks)
-                    if admitted
-                    else ()
+                    tuple(task.task_cid for task in selected_graph.tasks) if admitted else ()
                 ),
                 rejected_branch_cids=rejected_refs,
                 rejection_reasons=rejection_reasons,
                 provider_receipt_cid=planner_ref,
                 deterministic_fallback=fallback,
-                expected_materialization_effects=(
-                    self._expected_materialization_effects(request)
-                ),
+                expected_materialization_effects=(self._expected_materialization_effects(request)),
                 budget=request.budget,
                 intent_ir_root=request.intent_ir_root,
                 legal_ir_root=request.legal_ir_root,
@@ -3690,9 +3354,7 @@ class PromptSupervisorService:
                 planner_receipt_cid=planner_ref,
                 admission_receipt_cid=admission_ref,
                 artifact_refs=artifact_refs,
-                status=(
-                    RecordStatus.ADMITTED if admitted else RecordStatus.REJECTED
-                ),
+                status=(RecordStatus.ADMITTED if admitted else RecordStatus.REJECTED),
                 created_at_ms=now,
                 updated_at_ms=now,
             )
@@ -3718,9 +3380,7 @@ class PromptSupervisorService:
         )
         state = self._preview_by_receipt.get(ref)
         if state is None:
-            raise PromptWorkflowReceiptError(
-                "preview receipt is unavailable for safe continuation"
-            )
+            raise PromptWorkflowReceiptError("preview receipt is unavailable for safe continuation")
         return state
 
     def _verify_current(self, state: _PromptPreviewState) -> None:
@@ -3756,14 +3416,11 @@ class PromptSupervisorService:
                 ),
             )
             if not isinstance(observed, Mapping):
-                raise PromptWorkflowStaleRootError(
-                    "root observer did not return a root mapping"
-                )
+                raise PromptWorkflowStaleRootError("root observer did not return a root mapping")
             missing = set(expected).difference(observed)
             if missing:
                 raise PromptWorkflowStaleRootError(
-                    "root observer omitted required current roots: "
-                    + ", ".join(sorted(missing))
+                    "root observer omitted required current roots: " + ", ".join(sorted(missing))
                 )
             unknown = set(observed).difference(expected)
             if unknown:
@@ -3782,9 +3439,7 @@ class PromptSupervisorService:
             fresh.scan_cid != state.scan.scan_cid
             or fresh.dirty_worktree_root != state.scan.dirty_worktree_root
         ):
-            raise PromptWorkflowStaleRootError(
-                "repository scan root changed after preview"
-            )
+            raise PromptWorkflowStaleRootError("repository scan root changed after preview")
 
     @staticmethod
     def _failure_result(
@@ -3845,17 +3500,14 @@ class PromptSupervisorService:
         for key, expected in exact.items():
             observed = parameters.get(key)
             if observed not in (None, "") and observed != expected:
-                raise PromptWorkflowStaleRootError(
-                    f"materialization {key} differs from preview"
-                )
+                raise PromptWorkflowStaleRootError(f"materialization {key} differs from preview")
         if str(control_request.repository_root) != state.request.repository_root:
             raise PromptWorkflowStaleRootError(
                 "materialization repository root differs from preview"
             )
         result = self.control_service.workflow_materialize(control_request)
         receipt = _reference_cid(
-            getattr(result, "audit_receipt_id", "")
-            or getattr(result, "result_id", ""),
+            getattr(result, "audit_receipt_id", "") or getattr(result, "result_id", ""),
             "workflow-materialize-control-receipt",
         )
         return result, receipt
@@ -3880,28 +3532,16 @@ class PromptSupervisorService:
         selected_authorization = authorization or state.request.authority_cid
         selected_key = idempotency_key or state.request.idempotency_key
         selected_lease = lease_id or state.request.lease_id
-        selected_fence = (
-            fencing_epoch
-            if fencing_epoch is not None
-            else state.request.fencing_epoch
-        )
+        selected_fence = fencing_epoch if fencing_epoch is not None else state.request.fencing_epoch
         if hasattr(selected_authorization, "permitted") and not bool(
             selected_authorization.permitted
         ):
-            raise PromptWorkflowAuthorizationError(
-                "materialization authorization is not permitted"
-            )
+            raise PromptWorkflowAuthorizationError("materialization authorization is not permitted")
         authority_ref = _reference_cid(
-            getattr(selected_authorization, "content_id", "")
-            or selected_authorization,
+            getattr(selected_authorization, "content_id", "") or selected_authorization,
             "workflow-materialization-authority",
         )
-        if (
-            not authority_ref
-            or not selected_key
-            or not selected_lease
-            or selected_fence is None
-        ):
+        if not authority_ref or not selected_key or not selected_lease or selected_fence is None:
             raise PromptWorkflowAuthorizationError(
                 "materialization requires separate authority, idempotency, lease, and fence"
             )
@@ -3928,9 +3568,7 @@ class PromptSupervisorService:
         if isinstance(raw, Mapping):
             committed = bool(raw.get("committed", True))
             if not committed:
-                raise PromptWorkflowServiceError(
-                    f"{kind} projection did not commit"
-                )
+                raise PromptWorkflowServiceError(f"{kind} projection did not commit")
             projection_identity = (
                 raw.get("projection_cid")
                 or raw.get("projection_id")
@@ -3942,26 +3580,17 @@ class PromptSupervisorService:
             replayed = bool(raw.get("replayed", not changed))
             cursor = raw.get("event_cursor", raw.get("cursor", ""))
             source_schema = str(
-                raw.get("source_schema")
-                or raw.get("schema")
-                or f"prompt-{kind}-task-source"
+                raw.get("source_schema") or raw.get("schema") or f"prompt-{kind}-task-source"
             )
-            task_cids = tuple(
-                raw.get("task_cids")
-                or (task.task_cid for task in state.graph.tasks)
-            )
+            task_cids = tuple(raw.get("task_cids") or (task.task_cid for task in state.graph.tasks))
             root_id = str(
-                raw.get("plan_root_cid")
-                or raw.get("plan_root")
-                or state.receipt.plan_root_cid
+                raw.get("plan_root_cid") or raw.get("plan_root") or state.receipt.plan_root_cid
             )
             source_identity = raw.get("task_source_identity")
         else:
             committed = bool(getattr(raw, "committed", True))
             if not committed:
-                raise PromptWorkflowServiceError(
-                    f"{kind} projection did not commit"
-                )
+                raise PromptWorkflowServiceError(f"{kind} projection did not commit")
             projection = getattr(raw, "projection", None)
             snapshot = getattr(raw, "snapshot", None)
             projection_identity = (
@@ -3971,15 +3600,10 @@ class PromptSupervisorService:
                 or getattr(raw, "projection_cid", "")
             )
             revision = (
-                getattr(snapshot, "revision", None)
-                or getattr(projection, "revision", None)
-                or 1
+                getattr(snapshot, "revision", None) or getattr(projection, "revision", None) or 1
             )
             changed = bool(getattr(raw, "changed", False))
-            replayed = bool(
-                getattr(raw, "no_op", False)
-                or getattr(raw, "replayed", not changed)
-            )
+            replayed = bool(getattr(raw, "no_op", False) or getattr(raw, "replayed", not changed))
             cursor = getattr(raw, "event_cursor", "")
             source_schema = str(
                 getattr(snapshot, "source_schema", "")
@@ -4002,28 +3626,18 @@ class PromptSupervisorService:
         try:
             selected_revision = int(revision)
         except (TypeError, ValueError) as exc:
-            raise PromptWorkflowReceiptError(
-                f"{kind} projection revision is malformed"
-            ) from exc
+            raise PromptWorkflowReceiptError(f"{kind} projection revision is malformed") from exc
         if selected_revision < 1:
-            raise PromptWorkflowReceiptError(
-                f"{kind} projection revision is malformed"
-            )
+            raise PromptWorkflowReceiptError(f"{kind} projection revision is malformed")
         projection_cid = _reference_cid(
             projection_identity,
             f"{kind}-task-source-projection",
         )
         if not projection_cid:
-            raise PromptWorkflowReceiptError(
-                f"{kind} projection did not publish an identity"
-            )
+            raise PromptWorkflowReceiptError(f"{kind} projection did not publish an identity")
         if root_id != state.receipt.plan_root_cid:
-            raise PromptWorkflowStaleRootError(
-                f"{kind} task source published a foreign plan root"
-            )
-        expected_tasks = tuple(
-            sorted(task.task_cid for task in state.graph.tasks)
-        )
+            raise PromptWorkflowStaleRootError(f"{kind} task source published a foreign plan root")
+        expected_tasks = tuple(sorted(task.task_cid for task in state.graph.tasks))
         if tuple(sorted(str(item) for item in task_cids)) != expected_tasks:
             raise PromptWorkflowReceiptError(
                 f"{kind} task source population differs from admitted tasks"
@@ -4046,9 +3660,7 @@ class PromptSupervisorService:
         identity.setdefault("source_id", str(projection_identity))
         identity.setdefault("root_id", root_id)
         identity.setdefault("revision", selected_revision)
-        cursor_ref = self._cursor_reference(
-            cursor, f"{kind}-task-source-event-cursor"
-        )
+        cursor_ref = self._cursor_reference(cursor, f"{kind}-task-source-event-cursor")
         return MappingProxyType(
             {
                 "kind": kind,
@@ -4089,9 +3701,7 @@ class PromptSupervisorService:
         else:
             from ..task_sources.markdown_task_source import MarkdownTaskSource
 
-            absolute = (
-                Path(state.request.output_policy.output_root) / path
-            )
+            absolute = Path(state.request.output_policy.output_root) / path
             backend = MarkdownTaskSource(
                 absolute,
                 root=state.request.output_policy.output_root,
@@ -4154,12 +3764,8 @@ class PromptSupervisorService:
             from ..planning.formal_plan_compiler import prompt_goal_graph_to_formal_input
 
             if not DuckDBTaskSource.available():
-                raise PromptWorkflowServiceError(
-                    "optional DuckDB capability is unavailable"
-                )
-            absolute = (
-                Path(state.request.output_policy.output_root) / path
-            )
+                raise PromptWorkflowServiceError("optional DuckDB capability is unavailable")
+            absolute = Path(state.request.output_policy.output_root) / path
             backend = DuckDBTaskSource(
                 absolute,
                 expected_plan_root_cid=state.receipt.plan_root_cid,
@@ -4198,7 +3804,8 @@ class PromptSupervisorService:
                 "plan_root_cid": snapshot.plan_root_cid,
                 "revision": snapshot.revision,
                 "task_cids": tuple(
-                    record.task_cid for record in backend.list_tasks(limit=state.request.budget.max_tasks)
+                    record.task_cid
+                    for record in backend.list_tasks(limit=state.request.budget.max_tasks)
                 ),
                 "event_cursor": snapshot.event_cursor,
             }
@@ -4259,9 +3866,7 @@ class PromptSupervisorService:
                     completed=(state.receipt.receipt_cid,),
                     expected=expected,
                     continuation=(
-                        f"materialize:{state.receipt.receipt_cid}"
-                        if code != "stale_roots"
-                        else ""
+                        f"materialize:{state.receipt.receipt_cid}" if code != "stale_roots" else ""
                     ),
                 )
                 self._persist(result)
@@ -4335,9 +3940,7 @@ class PromptSupervisorService:
             for kind in kinds:
                 try:
                     projection = (
-                        self._materialize_markdown(
-                            state, idempotency_key=selected_key
-                        )
+                        self._materialize_markdown(state, idempotency_key=selected_key)
                         if kind == "markdown"
                         else self._materialize_duckdb(
                             state,
@@ -4347,9 +3950,8 @@ class PromptSupervisorService:
                         )
                     )
                 except Exception as exc:
-                    unavailable = (
-                        "unavailable" in str(exc).lower()
-                        or isinstance(exc, (ImportError, ModuleNotFoundError))
+                    unavailable = "unavailable" in str(exc).lower() or isinstance(
+                        exc, (ImportError, ModuleNotFoundError)
                     )
                     failures.append(
                         f"{kind}_capability_unavailable"
@@ -4359,12 +3961,8 @@ class PromptSupervisorService:
                     continue
                 completed_projections.append(projection)
 
-            observed = tuple(
-                sorted(str(item["effect"]) for item in completed_projections)
-            )
-            identities = tuple(
-                item["identity"] for item in completed_projections
-            )
+            observed = tuple(sorted(str(item["effect"]) for item in completed_projections))
+            identities = tuple(item["identity"] for item in completed_projections)
             cursors = {
                 str(item["kind"]): str(item["cursor"])
                 for item in completed_projections
@@ -4372,16 +3970,11 @@ class PromptSupervisorService:
             }
             completed = (
                 state.receipt.receipt_cid,
-                *(
-                    item["projection_cid"]
-                    for item in completed_projections
-                ),
+                *(item["projection_cid"] for item in completed_projections),
             )
             if failures:
                 outcome = (
-                    WorkflowOutcome.PARTIAL
-                    if completed_projections
-                    else WorkflowOutcome.FAILED
+                    WorkflowOutcome.PARTIAL if completed_projections else WorkflowOutcome.FAILED
                 )
                 result = self._failure_result(
                     state,
@@ -4405,12 +3998,8 @@ class PromptSupervisorService:
                 repository_root=state.request.repository_root,
                 output_root=state.request.output_policy.output_root,
                 mode=state.request.output_policy.mode,
-                projection_cids=tuple(
-                    item["projection_cid"] for item in completed_projections
-                ),
-                revision=max(
-                    int(item["revision"]) for item in completed_projections
-                ),
+                projection_cids=tuple(item["projection_cid"] for item in completed_projections),
+                revision=max(int(item["revision"]) for item in completed_projections),
                 scan_cid=state.scan.scan_cid,
                 program_root=state.request.program_root,
                 policy_roots=state.receipt.policy_roots,
@@ -4420,9 +4009,7 @@ class PromptSupervisorService:
                 expected_effects=expected,
                 observed_effects=observed,
                 event_cursors=cursors,
-                control_receipt_cid=(
-                    control_receipts[0] if control_receipts else ""
-                ),
+                control_receipt_cid=(control_receipts[0] if control_receipts else ""),
                 status=RecordStatus.READY,
                 created_at_ms=int(self._clock_ms()),
                 updated_at_ms=int(self._clock_ms()),
@@ -4540,19 +4127,12 @@ class PromptSupervisorService:
                     "materialization_ref": reference.materialization_cid,
                     "plan_root_cid": reference.plan_root_cid,
                     "task_source_root": prompt_workflow_cid(
-                        {
-                            "task_source_identities": _wire_value(
-                                reference.task_source_identities
-                            )
-                        }
+                        {"task_source_identities": _wire_value(reference.task_source_identities)}
                     ),
                 }
                 for key, expected_value in exact_parameters.items():
                     observed_value = parameters.get(key)
-                    if (
-                        observed_value not in (None, "")
-                        and observed_value != expected_value
-                    ):
+                    if observed_value not in (None, "") and observed_value != expected_value:
                         raise PromptWorkflowStaleRootError(
                             f"start {key} differs from materialization"
                         )
@@ -4562,9 +4142,7 @@ class PromptSupervisorService:
                     or state.request.supervisor_profile
                 )
                 if not profile:
-                    raise PromptWorkflowAuthorizationError(
-                        "start requires a supervisor profile"
-                    )
+                    raise PromptWorkflowAuthorizationError("start requires a supervisor profile")
                 self._verify_current(state)
             except (PromptWorkflowServiceError, ValueError, TypeError):
                 result = self._failure_result(
@@ -4653,12 +4231,8 @@ class PromptSupervisorService:
                     if bool(getattr(item, "applied", False))
                 )
             )
-            all_expected = tuple(
-                sorted({*expected_materialization, *start_expected})
-            )
-            all_observed = tuple(
-                sorted({*observed_materialization, *start_observed})
-            )
+            all_expected = tuple(sorted({*expected_materialization, *start_expected}))
+            all_observed = tuple(sorted({*observed_materialization, *start_observed}))
             control_receipts = tuple(
                 sorted(
                     {
@@ -4667,9 +4241,8 @@ class PromptSupervisorService:
                     }
                 )
             )
-            if (
-                not bool(getattr(control_result, "succeeded", False))
-                or set(start_observed) != set(start_expected)
+            if not bool(getattr(control_result, "succeeded", False)) or set(start_observed) != set(
+                start_expected
             ):
                 result = self._failure_result(
                     state,
@@ -4698,9 +4271,7 @@ class PromptSupervisorService:
                 or data.get("pid")
                 or ""
             )
-            process_cid = _reference_cid(
-                process_value, "supervisor-process-identity"
-            )
+            process_cid = _reference_cid(process_value, "supervisor-process-identity")
             run = SupervisorRunReference(
                 materialization_cid=reference.materialization_cid,
                 plan_root_cid=reference.plan_root_cid,
@@ -4808,9 +4379,7 @@ class PromptSupervisorService:
         )
         if materialized.outcome is not WorkflowOutcome.MATERIALIZED:
             return materialized
-        should_start = bool(
-            request.start_after_materialize or start_control_request is not None
-        )
+        should_start = bool(request.start_after_materialize or start_control_request is not None)
         if not should_start:
             return materialized
         if start_control_request is None:
@@ -4917,11 +4486,7 @@ def _read_exactly_one_prompt(
 ) -> PromptSource:
     """Resolve exactly one prompt source without logging the body."""
 
-    provided = sum(
-        1
-        for item in (prompt is not None, prompt_file is not None, stdin_flag)
-        if item
-    )
+    provided = sum(1 for item in (prompt is not None, prompt_file is not None, stdin_flag) if item)
     if provided != 1:
         raise PromptWorkflowCLIError(
             "provide exactly one of --prompt, --prompt-file, or --stdin "
@@ -4935,16 +4500,12 @@ def _read_exactly_one_prompt(
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
-            raise PromptWorkflowCLIError(
-                f"unable to read prompt file: {path}"
-            ) from exc
+            raise PromptWorkflowCLIError(f"unable to read prompt file: {path}") from exc
         if not text:
             raise PromptWorkflowCLIError("prompt file must be non-empty UTF-8 text")
         return PromptSource.file(path.name, text=text)
     if stdin_stream is None or getattr(stdin_stream, "isatty", lambda: False)():
-        raise PromptWorkflowCLIError(
-            "stdin prompt source requires piped non-empty UTF-8 text"
-        )
+        raise PromptWorkflowCLIError("stdin prompt source requires piped non-empty UTF-8 text")
     text = stdin_stream.read()
     if not text:
         raise PromptWorkflowCLIError("stdin prompt source must be non-empty")
@@ -5201,14 +4762,8 @@ def run_prompt_workflow_cli(
                     "prompt/parameter convenience flags"
                 )
         else:
-            parameters = dict(
-                _optional_json_object(
-                    args.parameters_json, noun="--parameters-json"
-                )
-            )
-            _merge_prompt_parameters(
-                args, stdin_stream=stdin, parameters=parameters
-            )
+            parameters = dict(_optional_json_object(args.parameters_json, noun="--parameters-json"))
+            _merge_prompt_parameters(args, stdin_stream=stdin, parameters=parameters)
             parameters_json = json.dumps(parameters, sort_keys=True)
 
         # Build a control_cli-compatible namespace so both entry points share one
@@ -5252,22 +4807,12 @@ def run_prompt_workflow_cli(
             validation_id=None,
             reason=None,
             requested_state=None,
-            expected_effects_json=(
-                None if has_complete_request else args.expected_effects_json
-            ),
-            idempotency_key=(
-                None if has_complete_request else args.idempotency_key
-            ),
-            authorization_json=(
-                None if has_complete_request else args.authorization_json
-            ),
-            authorization_file=(
-                None if has_complete_request else args.authorization_file
-            ),
+            expected_effects_json=(None if has_complete_request else args.expected_effects_json),
+            idempotency_key=(None if has_complete_request else args.idempotency_key),
+            authorization_json=(None if has_complete_request else args.authorization_json),
+            authorization_file=(None if has_complete_request else args.authorization_file),
             lease_id=None if has_complete_request else (args.lease_id or None),
-            fencing_epoch=(
-                None if has_complete_request else args.fencing_epoch
-            ),
+            fencing_epoch=(None if has_complete_request else args.fencing_epoch),
             dry_run=False if has_complete_request else dry_run,
             max_items=None,
             max_bytes=None,

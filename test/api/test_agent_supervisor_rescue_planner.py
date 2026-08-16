@@ -262,9 +262,9 @@ def test_exhaustion_must_be_bound_to_the_exact_current_incident() -> None:
     request = _request(incident, _exhaustion(foreign))
     calls: list[str] = []
 
-    result = RescuePlanner(
-        _policy(), provider=lambda prompt: calls.append(prompt) or "{}"
-    ).plan(request)
+    result = RescuePlanner(_policy(), provider=lambda prompt: calls.append(prompt) or "{}").plan(
+        request
+    )
 
     assert result.reason_code == "exhaustion_mismatch"
     assert calls == []
@@ -286,9 +286,7 @@ def test_prompt_contains_only_bounded_references_roots_diagnostics_and_catalog()
         "limits",
         "response_schema",
     }
-    assert payload["incident_reference"]["incident_cid"] == (
-        request.incident.incident_cid
-    )
+    assert payload["incident_reference"]["incident_cid"] == (request.incident.incident_cid)
     assert payload["exhaustion_reference"]["exhaustion_receipt_cid"] == (
         request.exhaustion_receipt.receipt_cid
     )
@@ -303,27 +301,19 @@ def test_prompt_contains_only_bounded_references_roots_diagnostics_and_catalog()
     assert "attempts" not in payload["exhaustion_reference"]
     assert "exhaustion_reason" not in payload["exhaustion_reference"]
     assert payload["response_schema"]["title"] == RESCUE_PLAN_RESPONSE_NAME
-    assert RescueOperation.REPAIR_ORPHANED_LOCK.value not in (
-        payload["closed_operation_catalog"]
-    )
-    assert RescueOperation.OBJECTIVE_RECONCILE.value not in (
-        payload["closed_operation_catalog"]
-    )
-    restart = payload["closed_operation_catalog"][
-        RescueOperation.RESTART_LANE.value
-    ]
+    assert RescueOperation.REPAIR_ORPHANED_LOCK.value not in (payload["closed_operation_catalog"])
+    assert RescueOperation.OBJECTIVE_RECONCILE.value not in (payload["closed_operation_catalog"])
+    restart = payload["closed_operation_catalog"][RescueOperation.RESTART_LANE.value]
     assert restart["exact_target_ids"] == ["lane:implementation"]
     schema = payload["response_schema"]
-    assert schema["properties"]["incident_cid"] == {
-        "const": request.incident.incident_cid
-    }
+    assert schema["properties"]["incident_cid"] == {"const": request.incident.incident_cid}
     assert schema["properties"]["repository_root_cid"] == {
         "const": request.current_repository_root_cid
     }
     action_variants = schema["properties"]["actions"]["items"]["oneOf"]
-    assert {
-        item["properties"]["operation"]["const"] for item in action_variants
-    } == set(payload["closed_operation_catalog"])
+    assert {item["properties"]["operation"]["const"] for item in action_variants} == set(
+        payload["closed_operation_catalog"]
+    )
     assert all(
         item["properties"]["target_id"]["enum"] == ["lane:implementation"]
         for item in action_variants
@@ -402,9 +392,7 @@ def test_unavailable_provider_returns_typed_no_plan_and_identical_call_is_suppre
     assert first.reason_code == "provider_unavailable"
     assert first.provider_invoked
     assert first.guidance is not None
-    assert first.guidance.next_steps[0] is (
-        RescueGuidanceStep.RETRY_PROVIDER_AFTER_BACKOFF
-    )
+    assert first.guidance.next_steps[0] is (RescueGuidanceStep.RETRY_PROVIDER_AFTER_BACKOFF)
     assert first.effects == ()
     assert second.reason_code == "identical_incident_circuit_break"
     assert not second.provider_invoked
@@ -533,9 +521,7 @@ def test_parser_rejects_a_foreign_exhaustion_context_before_parsing() -> None:
 def test_parser_rejects_an_operation_proven_inapplicable() -> None:
     request = _request()
     payload = _raw_response(request)
-    spec = DEFAULT_RESCUE_OPERATION_CATALOG[
-        RescueOperation.REPAIR_ORPHANED_LOCK
-    ]
+    spec = DEFAULT_RESCUE_OPERATION_CATALOG[RescueOperation.REPAIR_ORPHANED_LOCK]
     action = payload["actions"][0]
     action.pop("content_id", None)
     action.update(
@@ -569,9 +555,7 @@ def test_parser_rejects_an_operation_proven_inapplicable() -> None:
         {"access token": "redacted"},
         {
             "message": (
-                "eyJhbGciOiJIUzI1NiJ9."
-                "eyJzdWIiOiIxMjM0NTY3ODkwIn0."
-                "abcdefghijklmnopqrstuvwxyz"
+                "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnopqrstuvwxyz"
             )
         },
         {1: "non-json field name"},
@@ -587,9 +571,7 @@ def test_redaction_gate_rejects_credential_aliases_and_non_json_keys(
         calls += 1
         return "{}"
 
-    result = RescuePlanner(_policy(), provider=provider).plan(
-        _request(diagnostics=diagnostics)
-    )
+    result = RescuePlanner(_policy(), provider=provider).plan(_request(diagnostics=diagnostics))
 
     assert result.reason_code == "unredacted_evidence"
     assert not result.provider_invoked
@@ -609,17 +591,13 @@ def test_programmatic_cooldown_and_no_applicable_catalog_do_not_call_provider() 
         calls += 1
         return "{}"
 
-    cooldown = RescuePlanner(_policy(), provider=provider).plan(
-        _request(incident, exhaustion)
-    )
+    cooldown = RescuePlanner(_policy(), provider=provider).plan(_request(incident, exhaustion))
     assert cooldown.reason_code == "programmatic_cooldown_active"
     assert cooldown.guidance is not None
     assert cooldown.guidance.next_steps[0] is RescueGuidanceStep.WAIT_FOR_COOLDOWN
 
     no_operation = RescuePlanner(
-        _policy(
-            allowed_operations=(RescueOperation.REPAIR_ORPHANED_LOCK,)
-        ),
+        _policy(allowed_operations=(RescueOperation.REPAIR_ORPHANED_LOCK,)),
         provider=provider,
     ).plan(_request())
     assert no_operation.reason_code == "no_applicable_operations"
@@ -792,9 +770,7 @@ def _mutate_effect(payload: dict[str, Any], request: RescuePlanningRequest) -> N
 
 
 def _mutate_precondition(payload: dict[str, Any], request: RescuePlanningRequest) -> None:
-    payload["actions"][0]["precondition_cids"] = [
-        request.incident.incident_cid
-    ]
+    payload["actions"][0]["precondition_cids"] = [request.incident.incident_cid]
 
 
 def _mutate_evidence(payload: dict[str, Any], request: RescuePlanningRequest) -> None:
@@ -888,9 +864,7 @@ def test_operation_parameters_targets_and_catalog_conditions_are_typed() -> None
     objective_request = _request(objective)
     objective_payload = _raw_response(request)
     objective_payload["incident_cid"] = objective.incident_cid
-    objective_payload["exhaustion_receipt_cid"] = (
-        objective_request.exhaustion_receipt.receipt_cid
-    )
+    objective_payload["exhaustion_receipt_cid"] = objective_request.exhaustion_receipt.receipt_cid
     objective_payload["repository_root_cid"] = objective.repository_root_cid
     objective_payload["run_cid"] = objective.run_cid
     objective_payload["policy_root"] = objective.policy_root
@@ -899,9 +873,7 @@ def test_operation_parameters_targets_and_catalog_conditions_are_typed() -> None
         objective.incident_cid,
         objective_request.exhaustion_receipt.receipt_cid,
     ]
-    objective_payload["rationale_reference_cids"] = list(
-        objective.evidence_cids
-    )
+    objective_payload["rationale_reference_cids"] = list(objective.evidence_cids)
     objective_payload["actions"][0].pop("content_id", None)
     with pytest.raises(RescuePlannerValidationError) as target_error:
         parse_rescue_plan(

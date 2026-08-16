@@ -86,18 +86,14 @@ INTERFACE_IDENTITY_SCHEMA: Final[str] = (
 SOURCE_REFERENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/program-contract/source-reference@1"
 )
-TYPE_SHAPE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/program-contract/type-shape@1"
-)
+TYPE_SHAPE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/program-contract/type-shape@1"
 PARAMETER_SPEC_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/program-contract/parameter-spec@1"
 )
 RETURN_SPEC_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/program-contract/return-spec@1"
 )
-ERROR_SPEC_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/program-contract/error-spec@1"
-)
+ERROR_SPEC_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/program-contract/error-spec@1"
 SIDE_EFFECT_SPEC_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/program-contract/side-effect-spec@1"
 )
@@ -131,9 +127,7 @@ SYNC_ASYNC_SPEC_SCHEMA: Final[str] = (
 APPLICABILITY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/program-contract/applicability@1"
 )
-ASSUMPTION_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/program-contract/assumption@1"
-)
+ASSUMPTION_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/program-contract/assumption@1"
 UNSUPPORTED_SEMANTICS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/program-contract/unsupported-semantics@1"
 )
@@ -452,9 +446,7 @@ def _text(
     if "\x00" in result:
         raise ProgramContractError(f"{field_name} must not contain NUL")
     if len(result.encode("utf-8")) > maximum:
-        raise ContractBoundsError(
-            f"{field_name} exceeds {maximum} UTF-8 bytes"
-        )
+        raise ContractBoundsError(f"{field_name} exceeds {maximum} UTF-8 bytes")
     return result
 
 
@@ -475,9 +467,7 @@ def _integer(
         raise ProgramContractError(f"{field_name} must be an integer")
     if value < minimum or (maximum is not None and value > maximum):
         suffix = f" and at most {maximum}" if maximum is not None else ""
-        raise ContractBoundsError(
-            f"{field_name} must be at least {minimum}{suffix}"
-        )
+        raise ContractBoundsError(f"{field_name} must be at least {minimum}{suffix}")
     return value
 
 
@@ -501,9 +491,7 @@ def _enum(value: Any, enum_type: type[E], *, field_name: str) -> E:
         return enum_type(raw)
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum_type)
-        raise ProgramContractError(
-            f"{field_name} must be one of: {allowed}"
-        ) from exc
+        raise ProgramContractError(f"{field_name} must be one of: {allowed}") from exc
 
 
 def _strings(
@@ -529,9 +517,7 @@ def _strings(
             maximum=item_bytes,
         )
         if item in result:
-            raise ProgramContractError(
-                f"{field_name} must not contain duplicates"
-            )
+            raise ProgramContractError(f"{field_name} must not contain duplicates")
         result.append(item)
     if required and not result:
         raise ProgramContractError(f"{field_name} must not be empty")
@@ -543,9 +529,7 @@ def _sha256(value: Any, *, field_name: str, required: bool = False) -> str:
     if not result:
         return ""
     digest = result.removeprefix("sha256:")
-    if len(digest) != 64 or any(
-        character not in "0123456789abcdef" for character in digest
-    ):
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
         raise ProgramContractError(f"{field_name} must be a SHA-256 digest")
     return f"sha256:{digest}"
 
@@ -554,14 +538,10 @@ def _check_header(payload: Mapping[str, Any], expected_schema: str) -> None:
     if not isinstance(payload, Mapping):
         raise ProgramContractError("contract payload must be an object")
     if payload.get("schema") not in (None, "", expected_schema):
-        raise ProgramContractError(
-            f"unsupported schema; expected {expected_schema}"
-        )
+        raise ProgramContractError(f"unsupported schema; expected {expected_schema}")
     version = payload.get("contract_version", payload.get("schema_version"))
     if version not in (None, PROGRAM_CONTRACT_VERSION):
-        raise UnsupportedVersionError(
-            "unsupported program-contract version"
-        )
+        raise UnsupportedVersionError("unsupported program-contract version")
 
 
 def _reject_unknown(
@@ -571,9 +551,7 @@ def _reject_unknown(
     artifact_name: str,
 ) -> None:
     if set(payload).difference(allowed):
-        raise ProgramContractError(
-            f"{artifact_name} contains unsupported fields"
-        )
+        raise ProgramContractError(f"{artifact_name} contains unsupported fields")
 
 
 def _check_identity(
@@ -586,9 +564,7 @@ def _check_identity(
     for name in names:
         claimed = payload.get(name)
         if claimed not in (None, "") and claimed != actual:
-            raise ForgedIdentityError(
-                f"{artifact_name} content identity does not match payload"
-            )
+            raise ForgedIdentityError(f"{artifact_name} content identity does not match payload")
 
 
 def _bounded(
@@ -598,9 +574,7 @@ def _bounded(
     artifact_name: str,
 ) -> None:
     if len(value.canonical_bytes()) > maximum:
-        raise ContractBoundsError(
-            f"{artifact_name} exceeds {maximum} canonical bytes"
-        )
+        raise ContractBoundsError(f"{artifact_name} exceeds {maximum} canonical bytes")
 
 
 def _record(
@@ -616,9 +590,7 @@ def _record(
         return value
     if isinstance(value, Mapping):
         return record_type.from_dict(value)  # type: ignore[attr-defined]
-    raise ProgramContractError(
-        f"{field_name} must be a {record_type.__name__} record"
-    )
+    raise ProgramContractError(f"{field_name} must be a {record_type.__name__} record")
 
 
 def _records(
@@ -631,9 +603,7 @@ def _records(
 ) -> tuple[T, ...]:
     if values is None:
         values = ()
-    if isinstance(values, (str, bytes, bytearray)) or not isinstance(
-        values, Sequence
-    ):
+    if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
         raise ProgramContractError(f"{field_name} must be a sequence")
     if len(values) > maximum:
         raise ContractBoundsError(f"{field_name} exceeds {maximum} items")
@@ -646,9 +616,7 @@ def _records(
     if hasattr(normalized[0], "content_id"):
         identities = tuple(item.content_id for item in normalized)  # type: ignore[attr-defined]
         if len(identities) != len(set(identities)):
-            raise ProgramContractError(
-                f"{field_name} contains duplicate identities"
-            )
+            raise ProgramContractError(f"{field_name} contains duplicate identities")
         if not preserve_order:
             return tuple(sorted(normalized, key=lambda item: item.content_id))  # type: ignore[attr-defined]
     return normalized
@@ -694,9 +662,7 @@ class SymbolIdentity(_ProgramContract):
 
     def __post_init__(self) -> None:
         for name in ("repository_id", "tree_id", "module_path", "symbol_name"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "qualified_name",
@@ -816,9 +782,7 @@ class InterfaceIdentity(_ProgramContract):
 
     def __post_init__(self) -> None:
         for name in ("interface_name", "surface"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         for name in ("version", "method", "protocol", "media_type", "path_or_uri"):
             object.__setattr__(
                 self,
@@ -920,9 +884,7 @@ class SourceReference(_ProgramContract):
             "role",
             _enum(self.role, ProgramContractRole, field_name="role"),
         )
-        object.__setattr__(
-            self, "artifact_id", _text(self.artifact_id, field_name="artifact_id")
-        )
+        object.__setattr__(self, "artifact_id", _text(self.artifact_id, field_name="artifact_id"))
         for name in ("locator", "extractor_rule"):
             object.__setattr__(
                 self,
@@ -934,9 +896,7 @@ class SourceReference(_ProgramContract):
             "confidence",
             _enum(self.confidence, ConfidenceClass, field_name="confidence"),
         )
-        object.__setattr__(
-            self, "sha256", _sha256(self.sha256, field_name="sha256")
-        )
+        object.__setattr__(self, "sha256", _sha256(self.sha256, field_name="sha256"))
         if self.span_start is not None:
             object.__setattr__(
                 self,
@@ -959,9 +919,7 @@ class SourceReference(_ProgramContract):
             self.role is ProgramContractRole.EXPECTED
             and not self.source_kind.may_define_expectation
         ):
-            raise ForgedSourceError(
-                "implementation observations cannot define expectations"
-            )
+            raise ForgedSourceError("implementation observations cannot define expectations")
         if (
             self.role is ProgramContractRole.OBSERVED
             and self.source_kind is not ContractSourceKind.IMPLEMENTATION_OBSERVATION
@@ -1064,12 +1022,8 @@ class TypeShape(_ProgramContract):
             "constructor",
             _enum(self.constructor, TypeConstructor, field_name="constructor"),
         )
-        object.__setattr__(
-            self, "name", _text(self.name, field_name="name", required=False)
-        )
-        object.__setattr__(
-            self, "nullable", _boolean(self.nullable, field_name="nullable")
-        )
+        object.__setattr__(self, "name", _text(self.name, field_name="name", required=False))
+        object.__setattr__(self, "nullable", _boolean(self.nullable, field_name="nullable"))
         object.__setattr__(
             self,
             "support",
@@ -1111,14 +1065,10 @@ class TypeShape(_ProgramContract):
         raw_fields = self.fields or ()
         if isinstance(raw_fields, Mapping):
             raise ProgramContractError("fields must be a sequence of pairs")
-        if not isinstance(raw_fields, Sequence) or isinstance(
-            raw_fields, (str, bytes, bytearray)
-        ):
+        if not isinstance(raw_fields, Sequence) or isinstance(raw_fields, (str, bytes, bytearray)):
             raise ProgramContractError("fields must be a sequence of pairs")
         if len(raw_fields) > MAX_PARAMETERS:
-            raise ContractBoundsError(
-                f"fields exceeds {MAX_PARAMETERS} items"
-            )
+            raise ContractBoundsError(f"fields exceeds {MAX_PARAMETERS} items")
         seen_names: set[str] = set()
         for index, entry in enumerate(raw_fields):
             if (
@@ -1126,18 +1076,12 @@ class TypeShape(_ProgramContract):
                 or isinstance(entry, (str, bytes, bytearray))
                 or len(entry) != 2
             ):
-                raise ProgramContractError(
-                    f"fields[{index}] must be a (name, TypeShape) pair"
-                )
+                raise ProgramContractError(f"fields[{index}] must be a (name, TypeShape) pair")
             field_name = _text(entry[0], field_name=f"fields[{index}].name")
             if field_name in seen_names:
-                raise ProgramContractError(
-                    "fields must not contain duplicate names"
-                )
+                raise ProgramContractError("fields must not contain duplicate names")
             seen_names.add(field_name)
-            field_type = _record(
-                entry[1], TypeShape, field_name=f"fields[{index}].type"
-            )
+            field_type = _record(entry[1], TypeShape, field_name=f"fields[{index}].type")
             assert field_type is not None
             normalized_fields.append((field_name, field_type))
         object.__setattr__(
@@ -1157,9 +1101,7 @@ class TypeShape(_ProgramContract):
         )
         if self.constructor is TypeConstructor.ARRAY and self.item is None:
             if self.support is SupportStatus.SUPPORTED:
-                raise ProgramContractError(
-                    "array TypeShape requires an item type"
-                )
+                raise ProgramContractError("array TypeShape requires an item type")
         if self.constructor is TypeConstructor.UNSUPPORTED:
             object.__setattr__(self, "support", SupportStatus.UNSUPPORTED)
         _bounded(self, artifact_name="type shape")
@@ -1182,17 +1124,17 @@ class TypeShape(_ProgramContract):
         if other.constructor is TypeConstructor.UNION:
             return any(self.is_subtype_of(alt) for alt in other.alternatives)
         if self.constructor is TypeConstructor.UNION:
-            return all(
-                alt.is_subtype_of(other) for alt in self.alternatives
-            ) and bool(self.alternatives)
+            return all(alt.is_subtype_of(other) for alt in self.alternatives) and bool(
+                self.alternatives
+            )
         if self.constructor is TypeConstructor.INTERSECTION:
-            return any(
-                alt.is_subtype_of(other) for alt in self.alternatives
-            ) and bool(self.alternatives)
+            return any(alt.is_subtype_of(other) for alt in self.alternatives) and bool(
+                self.alternatives
+            )
         if other.constructor is TypeConstructor.INTERSECTION:
-            return all(
-                self.is_subtype_of(alt) for alt in other.alternatives
-            ) and bool(other.alternatives)
+            return all(self.is_subtype_of(alt) for alt in other.alternatives) and bool(
+                other.alternatives
+            )
         if self.constructor != other.constructor:
             return False
         if self.nullable and not other.nullable:
@@ -1200,9 +1142,7 @@ class TypeShape(_ProgramContract):
         if self.constructor is TypeConstructor.ENUM:
             if not self.enum_values:
                 return False
-            return set(self.enum_values).issubset(set(other.enum_values)) or (
-                not other.enum_values
-            )
+            return set(self.enum_values).issubset(set(other.enum_values)) or (not other.enum_values)
         if self.constructor is TypeConstructor.ARRAY:
             if self.item is None or other.item is None:
                 return self.item is None and other.item is None
@@ -1231,10 +1171,7 @@ class TypeShape(_ProgramContract):
             "name": self.name,
             "nullable": self.nullable,
             "item": None if self.item is None else self.item.to_dict(),
-            "fields": [
-                {"name": name, "type": shape.to_dict()}
-                for name, shape in self.fields
-            ],
+            "fields": [{"name": name, "type": shape.to_dict()} for name, shape in self.fields],
             "alternatives": [alt.to_dict() for alt in self.alternatives],
             "enum_values": list(self.enum_values),
             "reference": self.reference,
@@ -1273,9 +1210,7 @@ class TypeShape(_ProgramContract):
             elif isinstance(entry, Sequence) and len(entry) == 2:
                 pairs.append((entry[0], entry[1]))
             else:
-                raise ProgramContractError(
-                    "fields entries must be objects or pairs"
-                )
+                raise ProgramContractError("fields entries must be objects or pairs")
         result = cls(
             constructor=payload.get("constructor", ""),
             name=payload.get("name", ""),
@@ -1318,9 +1253,7 @@ class ParameterSpec(_ProgramContract):
             "type_shape",
             _record(self.type_shape, TypeShape, field_name="type_shape"),
         )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ParameterKind, field_name="kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ParameterKind, field_name="kind"))
         object.__setattr__(
             self,
             "optionality",
@@ -1528,21 +1461,15 @@ class ErrorSpec(_ProgramContract):
     support: SupportStatus = SupportStatus.SUPPORTED
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "error_name", _text(self.error_name, field_name="error_name")
-        )
+        object.__setattr__(self, "error_name", _text(self.error_name, field_name="error_name"))
         if self.error_type is not None:
             object.__setattr__(
                 self,
                 "error_type",
                 _record(self.error_type, TypeShape, field_name="error_type"),
             )
-        object.__setattr__(
-            self, "code", _text(self.code, field_name="code", required=False)
-        )
-        object.__setattr__(
-            self, "retriable", _boolean(self.retriable, field_name="retriable")
-        )
+        object.__setattr__(self, "code", _text(self.code, field_name="code", required=False))
+        object.__setattr__(self, "retriable", _boolean(self.retriable, field_name="retriable"))
         object.__setattr__(
             self,
             "conditions",
@@ -1569,9 +1496,7 @@ class ErrorSpec(_ProgramContract):
         return {
             "contract_version": CONTRACT_VERSION,
             "error_name": self.error_name,
-            "error_type": (
-                None if self.error_type is None else self.error_type.to_dict()
-            ),
+            "error_type": (None if self.error_type is None else self.error_type.to_dict()),
             "code": self.code,
             "retriable": self.retriable,
             "conditions": list(self.conditions),
@@ -1742,9 +1667,7 @@ class CapabilitySpec(_ProgramContract):
             "capability_name",
             _text(self.capability_name, field_name="capability_name"),
         )
-        object.__setattr__(
-            self, "mode", _enum(self.mode, CapabilityMode, field_name="mode")
-        )
+        object.__setattr__(self, "mode", _enum(self.mode, CapabilityMode, field_name="mode"))
         object.__setattr__(
             self,
             "version",
@@ -1879,14 +1802,10 @@ class AuthorizationSpec(_ProgramContract):
             return False
         if self.mode != other.mode and other.mode is not AuthorizationMode.UNKNOWN:
             return False
-        if other.principals and not set(other.principals).issuperset(
-            set(self.principals)
-        ):
+        if other.principals and not set(other.principals).issuperset(set(self.principals)):
             # Self must not introduce principals outside the expected set when
             # expected constrains the set.
-            if self.principals and not set(self.principals).issubset(
-                set(other.principals)
-            ):
+            if self.principals and not set(self.principals).issubset(set(other.principals)):
                 return False
         if other.scopes and self.scopes:
             return set(self.scopes).issubset(set(other.scopes))
@@ -1957,9 +1876,7 @@ class IdempotenceSpec(_ProgramContract):
         object.__setattr__(
             self,
             "key_parameters",
-            _strings(
-                self.key_parameters, field_name="key_parameters", maximum=32
-            ),
+            _strings(self.key_parameters, field_name="key_parameters", maximum=32),
         )
         object.__setattr__(
             self,
@@ -2040,15 +1957,11 @@ class OrderingSpec(_ProgramContract):
     support: SupportStatus = SupportStatus.SUPPORTED
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "mode", _enum(self.mode, OrderingMode, field_name="mode")
-        )
+        object.__setattr__(self, "mode", _enum(self.mode, OrderingMode, field_name="mode"))
         object.__setattr__(
             self,
             "related_symbols",
-            _strings(
-                self.related_symbols, field_name="related_symbols", maximum=64
-            ),
+            _strings(self.related_symbols, field_name="related_symbols", maximum=64),
         )
         object.__setattr__(
             self,
@@ -2116,9 +2029,7 @@ class AtomicitySpec(_ProgramContract):
     support: SupportStatus = SupportStatus.SUPPORTED
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "mode", _enum(self.mode, AtomicityMode, field_name="mode")
-        )
+        object.__setattr__(self, "mode", _enum(self.mode, AtomicityMode, field_name="mode"))
         object.__setattr__(
             self,
             "description",
@@ -2193,9 +2104,7 @@ class ConsistencySpec(_ProgramContract):
     support: SupportStatus = SupportStatus.SUPPORTED
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "mode", _enum(self.mode, ConsistencyMode, field_name="mode")
-        )
+        object.__setattr__(self, "mode", _enum(self.mode, ConsistencyMode, field_name="mode"))
         object.__setattr__(
             self,
             "description",
@@ -2406,9 +2315,7 @@ class FallbackSpec(_ProgramContract):
     support: SupportStatus = SupportStatus.SUPPORTED
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "mode", _enum(self.mode, DegradationMode, field_name="mode")
-        )
+        object.__setattr__(self, "mode", _enum(self.mode, DegradationMode, field_name="mode"))
         object.__setattr__(
             self,
             "fallback_symbol",
@@ -2517,12 +2424,8 @@ class SyncAsyncSpec(_ProgramContract):
     support: SupportStatus = SupportStatus.SUPPORTED
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "mode", _enum(self.mode, SyncMode, field_name="mode")
-        )
-        object.__setattr__(
-            self, "awaitable", _boolean(self.awaitable, field_name="awaitable")
-        )
+        object.__setattr__(self, "mode", _enum(self.mode, SyncMode, field_name="mode"))
+        object.__setattr__(self, "awaitable", _boolean(self.awaitable, field_name="awaitable"))
         object.__setattr__(
             self,
             "callback_style",
@@ -2543,9 +2446,7 @@ class SyncAsyncSpec(_ProgramContract):
             "support",
             _enum(self.support, SupportStatus, field_name="support"),
         )
-        if self.mode is SyncMode.ASYNC and not (
-            self.awaitable or self.callback_style
-        ):
+        if self.mode is SyncMode.ASYNC and not (self.awaitable or self.callback_style):
             # Async may still be supported without explicit style markers.
             pass
         _bounded(self, artifact_name="sync/async spec")
@@ -2650,9 +2551,7 @@ class Applicability(_ProgramContract):
             "versions",
             _strings(self.versions, field_name="versions", maximum=32),
         )
-        object.__setattr__(
-            self, "always", _boolean(self.always, field_name="always")
-        )
+        object.__setattr__(self, "always", _boolean(self.always, field_name="always"))
         object.__setattr__(
             self,
             "description",
@@ -2663,9 +2562,7 @@ class Applicability(_ProgramContract):
                 maximum=MAX_CLAUSE_BYTES,
             ),
         )
-        if self.always and (
-            self.conditions or self.surfaces or self.environments or self.versions
-        ):
+        if self.always and (self.conditions or self.surfaces or self.environments or self.versions):
             # Conditional applicability must not claim always=True.
             object.__setattr__(self, "always", False)
         _bounded(self, artifact_name="applicability")
@@ -2903,9 +2800,7 @@ class ContractRefinement(_ProgramContract):
             _text(self.refined_contract_id, field_name="refined_contract_id"),
         )
         if self.base_contract_id == self.refined_contract_id:
-            raise ProgramContractError(
-                "refinement must relate two distinct contracts"
-            )
+            raise ProgramContractError("refinement must relate two distinct contracts")
         object.__setattr__(
             self,
             "relation",
@@ -2915,9 +2810,7 @@ class ContractRefinement(_ProgramContract):
         if isinstance(aspects, str) or not isinstance(aspects, Sequence):
             raise ProgramContractError("aspects must be a sequence")
         if len(aspects) > MAX_COLLECTION_ITEMS:
-            raise ContractBoundsError(
-                f"aspects exceeds {MAX_COLLECTION_ITEMS} items"
-            )
+            raise ContractBoundsError(f"aspects exceeds {MAX_COLLECTION_ITEMS} items")
         normalized = tuple(
             _enum(item, SemanticAspect, field_name=f"aspects[{index}]")
             for index, item in enumerate(aspects)
@@ -3004,9 +2897,7 @@ class ContractConflict(_ProgramContract):
     resolved: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ConflictKind, field_name="kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ConflictKind, field_name="kind"))
         object.__setattr__(
             self,
             "aspect",
@@ -3047,9 +2938,7 @@ class ContractConflict(_ProgramContract):
                 maximum=MAX_CLAUSE_BYTES,
             ),
         )
-        object.__setattr__(
-            self, "resolved", _boolean(self.resolved, field_name="resolved")
-        )
+        object.__setattr__(self, "resolved", _boolean(self.resolved, field_name="resolved"))
         if self.resolved:
             raise ContractConflictError(
                 "conflicts must not be marked resolved inside the IR; "
@@ -3119,9 +3008,7 @@ class ContractConflict(_ProgramContract):
 # ---------------------------------------------------------------------------
 
 
-def _normalize_parameters(
-    values: Any, *, field_name: str
-) -> tuple[ParameterSpec, ...]:
+def _normalize_parameters(values: Any, *, field_name: str) -> tuple[ParameterSpec, ...]:
     return _records(
         values,
         ParameterSpec,
@@ -3136,9 +3023,7 @@ def _normalize_errors(values: Any) -> tuple[ErrorSpec, ...]:
 
 
 def _normalize_effects(values: Any) -> tuple[SideEffectSpec, ...]:
-    return _records(
-        values, SideEffectSpec, field_name="side_effects", maximum=MAX_EFFECTS
-    )
+    return _records(values, SideEffectSpec, field_name="side_effects", maximum=MAX_EFFECTS)
 
 
 def _normalize_capabilities(values: Any) -> tuple[CapabilitySpec, ...]:
@@ -3156,21 +3041,15 @@ def _normalize_sources(
     expected_role: ProgramContractRole,
     field_name: str = "sources",
 ) -> tuple[SourceReference, ...]:
-    sources = _records(
-        values, SourceReference, field_name=field_name, maximum=64
-    )
+    sources = _records(values, SourceReference, field_name=field_name, maximum=64)
     for source in sources:
         if source.role is not expected_role:
-            raise ForgedSourceError(
-                f"{field_name} role must be {expected_role.value}"
-            )
+            raise ForgedSourceError(f"{field_name} role must be {expected_role.value}")
         if (
             expected_role is ProgramContractRole.EXPECTED
             and not source.source_kind.may_define_expectation
         ):
-            raise CircularExpectationError(
-                "implementation observations cannot define expectations"
-            )
+            raise CircularExpectationError("implementation observations cannot define expectations")
     return sources
 
 
@@ -3233,17 +3112,13 @@ class ExpectedProgramContract(_ProgramContract):
         object.__setattr__(
             self,
             "sources",
-            _normalize_sources(
-                self.sources, expected_role=ProgramContractRole.EXPECTED
-            ),
+            _normalize_sources(self.sources, expected_role=ProgramContractRole.EXPECTED),
         )
         if not self.sources:
             raise ProgramContractError(
                 "expected contracts require at least one non-observation source"
             )
-        object.__setattr__(
-            self, "inputs", _normalize_parameters(self.inputs, field_name="inputs")
-        )
+        object.__setattr__(self, "inputs", _normalize_parameters(self.inputs, field_name="inputs"))
         if self.returns is not None:
             object.__setattr__(
                 self,
@@ -3257,12 +3132,8 @@ class ExpectedProgramContract(_ProgramContract):
                 "sync_async",
                 _record(self.sync_async, SyncAsyncSpec, field_name="sync_async"),
             )
-        object.__setattr__(
-            self, "side_effects", _normalize_effects(self.side_effects)
-        )
-        object.__setattr__(
-            self, "capabilities", _normalize_capabilities(self.capabilities)
-        )
+        object.__setattr__(self, "side_effects", _normalize_effects(self.side_effects))
+        object.__setattr__(self, "capabilities", _normalize_capabilities(self.capabilities))
         for name, typ in (
             ("authorization", AuthorizationSpec),
             ("idempotence", IdempotenceSpec),
@@ -3275,9 +3146,7 @@ class ExpectedProgramContract(_ProgramContract):
         ):
             value = getattr(self, name)
             if value is not None:
-                object.__setattr__(
-                    self, name, _record(value, typ, field_name=name)
-                )
+                object.__setattr__(self, name, _record(value, typ, field_name=name))
         object.__setattr__(
             self,
             "assumptions",
@@ -3381,9 +3250,7 @@ class ExpectedProgramContract(_ProgramContract):
                 return False
             # Contravariance: self parameter type must accept required values,
             # i.e. required.type is subtype of self.type.
-            if not required.type_shape.is_subtype_of(
-                self_inputs[name].type_shape
-            ):
+            if not required.type_shape.is_subtype_of(self_inputs[name].type_shape):
                 return False
         if other.returns is not None:
             if self.returns is None:
@@ -3422,8 +3289,7 @@ class ExpectedProgramContract(_ProgramContract):
                 {
                     effect.effect_kind
                     for effect in self.side_effects
-                    if effect.polarity
-                    in {EffectPolarity.REQUIRED, EffectPolarity.ALLOWED}
+                    if effect.polarity in {EffectPolarity.REQUIRED, EffectPolarity.ALLOWED}
                 }
             ):
                 return False
@@ -3440,41 +3306,19 @@ class ExpectedProgramContract(_ProgramContract):
             "inputs": [item.to_dict() for item in self.inputs],
             "returns": None if self.returns is None else self.returns.to_dict(),
             "errors": [item.to_dict() for item in self.errors],
-            "sync_async": (
-                None if self.sync_async is None else self.sync_async.to_dict()
-            ),
+            "sync_async": (None if self.sync_async is None else self.sync_async.to_dict()),
             "side_effects": [item.to_dict() for item in self.side_effects],
             "capabilities": [item.to_dict() for item in self.capabilities],
-            "authorization": (
-                None
-                if self.authorization is None
-                else self.authorization.to_dict()
-            ),
-            "idempotence": (
-                None if self.idempotence is None else self.idempotence.to_dict()
-            ),
-            "ordering": (
-                None if self.ordering is None else self.ordering.to_dict()
-            ),
-            "atomicity": (
-                None if self.atomicity is None else self.atomicity.to_dict()
-            ),
-            "consistency": (
-                None if self.consistency is None else self.consistency.to_dict()
-            ),
+            "authorization": (None if self.authorization is None else self.authorization.to_dict()),
+            "idempotence": (None if self.idempotence is None else self.idempotence.to_dict()),
+            "ordering": (None if self.ordering is None else self.ordering.to_dict()),
+            "atomicity": (None if self.atomicity is None else self.atomicity.to_dict()),
+            "consistency": (None if self.consistency is None else self.consistency.to_dict()),
             "resource_bounds": (
-                None
-                if self.resource_bounds is None
-                else self.resource_bounds.to_dict()
+                None if self.resource_bounds is None else self.resource_bounds.to_dict()
             ),
-            "fallback": (
-                None if self.fallback is None else self.fallback.to_dict()
-            ),
-            "applicability": (
-                None
-                if self.applicability is None
-                else self.applicability.to_dict()
-            ),
+            "fallback": (None if self.fallback is None else self.fallback.to_dict()),
+            "applicability": (None if self.applicability is None else self.applicability.to_dict()),
             "assumptions": [item.to_dict() for item in self.assumptions],
             "unsupported": [item.to_dict() for item in self.unsupported],
             "conflicts": [item.to_dict() for item in self.conflicts],
@@ -3536,9 +3380,7 @@ class ExpectedProgramContract(_ProgramContract):
         )
         role = payload.get("role")
         if role not in (None, "", ProgramContractRole.EXPECTED.value):
-            raise ForgedSourceError(
-                "expected program contract role must be 'expected'"
-            )
+            raise ForgedSourceError("expected program contract role must be 'expected'")
         result = cls(
             symbol=payload.get("symbol"),
             interface=payload.get("interface"),
@@ -3570,21 +3412,13 @@ class ExpectedProgramContract(_ProgramContract):
             artifact_name="expected program contract",
         )
         claimed_kind = payload.get("primary_source_kind")
-        if (
-            claimed_kind not in (None, "")
-            and claimed_kind != result.primary_source_kind.value
-        ):
-            raise ForgedIdentityError(
-                "primary_source_kind does not match derived state"
-            )
+        if claimed_kind not in (None, "") and claimed_kind != result.primary_source_kind.value:
+            raise ForgedIdentityError("primary_source_kind does not match derived state")
         claimed_conflicts = payload.get("has_conflicts")
         if claimed_conflicts is not None and (
-            not isinstance(claimed_conflicts, bool)
-            or claimed_conflicts is not result.has_conflicts
+            not isinstance(claimed_conflicts, bool) or claimed_conflicts is not result.has_conflicts
         ):
-            raise ForgedIdentityError(
-                "has_conflicts does not match derived state"
-            )
+            raise ForgedIdentityError("has_conflicts does not match derived state")
         return result
 
 
@@ -3650,30 +3484,23 @@ class ObservedProgramContract(_ProgramContract):
         object.__setattr__(
             self,
             "sources",
-            _normalize_sources(
-                self.sources, expected_role=ProgramContractRole.OBSERVED
-            ),
+            _normalize_sources(self.sources, expected_role=ProgramContractRole.OBSERVED),
         )
         if not self.sources:
-            raise ProgramContractError(
-                "observed contracts require at least one observation source"
-            )
+            raise ProgramContractError("observed contracts require at least one observation source")
         for source in self.sources:
             if source.source_kind is not ContractSourceKind.IMPLEMENTATION_OBSERVATION:
                 # Contextual sources may be attached but primary observation
                 # semantics must include at least one implementation observation.
                 pass
         if not any(
-            source.source_kind
-            is ContractSourceKind.IMPLEMENTATION_OBSERVATION
+            source.source_kind is ContractSourceKind.IMPLEMENTATION_OBSERVATION
             for source in self.sources
         ):
             raise ForgedSourceError(
                 "observed contracts require an implementation_observation source"
             )
-        object.__setattr__(
-            self, "inputs", _normalize_parameters(self.inputs, field_name="inputs")
-        )
+        object.__setattr__(self, "inputs", _normalize_parameters(self.inputs, field_name="inputs"))
         if self.returns is not None:
             object.__setattr__(
                 self,
@@ -3687,12 +3514,8 @@ class ObservedProgramContract(_ProgramContract):
                 "sync_async",
                 _record(self.sync_async, SyncAsyncSpec, field_name="sync_async"),
             )
-        object.__setattr__(
-            self, "side_effects", _normalize_effects(self.side_effects)
-        )
-        object.__setattr__(
-            self, "capabilities", _normalize_capabilities(self.capabilities)
-        )
+        object.__setattr__(self, "side_effects", _normalize_effects(self.side_effects))
+        object.__setattr__(self, "capabilities", _normalize_capabilities(self.capabilities))
         for name, typ in (
             ("authorization", AuthorizationSpec),
             ("idempotence", IdempotenceSpec),
@@ -3705,9 +3528,7 @@ class ObservedProgramContract(_ProgramContract):
         ):
             value = getattr(self, name)
             if value is not None:
-                object.__setattr__(
-                    self, name, _record(value, typ, field_name=name)
-                )
+                object.__setattr__(self, name, _record(value, typ, field_name=name))
         object.__setattr__(
             self,
             "assumptions",
@@ -3772,9 +3593,7 @@ class ObservedProgramContract(_ProgramContract):
     def as_expectation_source(self) -> None:
         """Refuse conversion of observations into expectations."""
 
-        raise CircularExpectationError(
-            "observed program contracts cannot define expectations"
-        )
+        raise CircularExpectationError("observed program contracts cannot define expectations")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -3788,41 +3607,19 @@ class ObservedProgramContract(_ProgramContract):
             "inputs": [item.to_dict() for item in self.inputs],
             "returns": None if self.returns is None else self.returns.to_dict(),
             "errors": [item.to_dict() for item in self.errors],
-            "sync_async": (
-                None if self.sync_async is None else self.sync_async.to_dict()
-            ),
+            "sync_async": (None if self.sync_async is None else self.sync_async.to_dict()),
             "side_effects": [item.to_dict() for item in self.side_effects],
             "capabilities": [item.to_dict() for item in self.capabilities],
-            "authorization": (
-                None
-                if self.authorization is None
-                else self.authorization.to_dict()
-            ),
-            "idempotence": (
-                None if self.idempotence is None else self.idempotence.to_dict()
-            ),
-            "ordering": (
-                None if self.ordering is None else self.ordering.to_dict()
-            ),
-            "atomicity": (
-                None if self.atomicity is None else self.atomicity.to_dict()
-            ),
-            "consistency": (
-                None if self.consistency is None else self.consistency.to_dict()
-            ),
+            "authorization": (None if self.authorization is None else self.authorization.to_dict()),
+            "idempotence": (None if self.idempotence is None else self.idempotence.to_dict()),
+            "ordering": (None if self.ordering is None else self.ordering.to_dict()),
+            "atomicity": (None if self.atomicity is None else self.atomicity.to_dict()),
+            "consistency": (None if self.consistency is None else self.consistency.to_dict()),
             "resource_bounds": (
-                None
-                if self.resource_bounds is None
-                else self.resource_bounds.to_dict()
+                None if self.resource_bounds is None else self.resource_bounds.to_dict()
             ),
-            "fallback": (
-                None if self.fallback is None else self.fallback.to_dict()
-            ),
-            "applicability": (
-                None
-                if self.applicability is None
-                else self.applicability.to_dict()
-            ),
+            "fallback": (None if self.fallback is None else self.fallback.to_dict()),
+            "applicability": (None if self.applicability is None else self.applicability.to_dict()),
             "assumptions": [item.to_dict() for item in self.assumptions],
             "unsupported": [item.to_dict() for item in self.unsupported],
             "summary": self.summary,
@@ -3883,16 +3680,12 @@ class ObservedProgramContract(_ProgramContract):
         )
         role = payload.get("role")
         if role not in (None, "", ProgramContractRole.OBSERVED.value):
-            raise ForgedSourceError(
-                "observed program contract role must be 'observed'"
-            )
+            raise ForgedSourceError("observed program contract role must be 'observed'")
         result = cls(
             symbol=payload.get("symbol"),
             interface=payload.get("interface"),
             policy_revision=payload.get("policy_revision", ""),
-            repository_observation_id=payload.get(
-                "repository_observation_id", ""
-            ),
+            repository_observation_id=payload.get("repository_observation_id", ""),
             sources=tuple(payload.get("sources") or ()),
             inputs=tuple(payload.get("inputs") or ()),
             returns=payload.get("returns"),
@@ -3944,9 +3737,7 @@ class ProgramContractBundle(_ProgramContract):
 
     def __post_init__(self) -> None:
         for name in ("repository_id", "tree_id", "policy_revision"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "expected",
@@ -3999,30 +3790,18 @@ class ProgramContractBundle(_ProgramContract):
         )
         for contract in self.expected:
             if contract.symbol.repository_id != self.repository_id:
-                raise ProgramContractError(
-                    "expected contract repository_id must match bundle"
-                )
+                raise ProgramContractError("expected contract repository_id must match bundle")
             if contract.symbol.tree_id != self.tree_id:
-                raise ProgramContractError(
-                    "expected contract tree_id must match bundle"
-                )
+                raise ProgramContractError("expected contract tree_id must match bundle")
             if contract.policy_revision != self.policy_revision:
-                raise ProgramContractError(
-                    "expected contract policy_revision must match bundle"
-                )
+                raise ProgramContractError("expected contract policy_revision must match bundle")
         for contract in self.observed:
             if contract.symbol.repository_id != self.repository_id:
-                raise ProgramContractError(
-                    "observed contract repository_id must match bundle"
-                )
+                raise ProgramContractError("observed contract repository_id must match bundle")
             if contract.symbol.tree_id != self.tree_id:
-                raise ProgramContractError(
-                    "observed contract tree_id must match bundle"
-                )
+                raise ProgramContractError("observed contract tree_id must match bundle")
             if contract.policy_revision != self.policy_revision:
-                raise ProgramContractError(
-                    "observed contract policy_revision must match bundle"
-                )
+                raise ProgramContractError("observed contract policy_revision must match bundle")
         # Refinements must reference expected contracts present in the bundle.
         expected_ids = {item.expected_contract_id for item in self.expected}
         for refinement in self.refinements:
@@ -4139,9 +3918,7 @@ class ProgramContractBundle(_ProgramContract):
         if claimed is not None and (
             not isinstance(claimed, bool) or claimed is not result.has_conflicts
         ):
-            raise ForgedIdentityError(
-                "has_conflicts does not match derived state"
-            )
+            raise ForgedIdentityError("has_conflicts does not match derived state")
         return result
 
 
@@ -4168,15 +3945,12 @@ def select_dominant_sources(
     expectation_sources = [
         source
         for source in sources
-        if source.role is ProgramContractRole.EXPECTED
-        and source.source_kind.may_define_expectation
+        if source.role is ProgramContractRole.EXPECTED and source.source_kind.may_define_expectation
     ]
     if not expectation_sources:
         return ()
     best = min(item.precedence_rank for item in expectation_sources)
-    return tuple(
-        item for item in expectation_sources if item.precedence_rank == best
-    )
+    return tuple(item for item in expectation_sources if item.precedence_rank == best)
 
 
 def detect_source_conflicts(
@@ -4203,9 +3977,7 @@ def detect_source_conflicts(
                     aspect=aspect,
                     left_source_id=left.source_id,
                     right_source_id=right.source_id,
-                    summary=(
-                        f"Equal-precedence sources disagree on {aspect.value}"
-                    ),
+                    summary=(f"Equal-precedence sources disagree on {aspect.value}"),
                     left_summary=left_summary,
                     right_summary=right_summary,
                     resolved=False,
@@ -4214,9 +3986,7 @@ def detect_source_conflicts(
     return tuple(conflicts)
 
 
-def compare_type_shapes(
-    left: TypeShape, right: TypeShape
-) -> RefinementRelation:
+def compare_type_shapes(left: TypeShape, right: TypeShape) -> RefinementRelation:
     """Compare two type shapes under structural subtyping."""
 
     left_sub = left.is_subtype_of(right)
@@ -4245,9 +4015,8 @@ def compare_expected_contracts(
     if base.is_refinement_of(refined):
         return RefinementRelation.STRICT_SUPERTYPE
     # Partial aspect compatibility without full refinement.
-    if (
-        refined.symbol.binds_same_subject(base.symbol)
-        and refined.interface.binds_same_surface(base.interface)
+    if refined.symbol.binds_same_subject(base.symbol) and refined.interface.binds_same_surface(
+        base.interface
     ):
         return RefinementRelation.INCOMPATIBLE
     return RefinementRelation.UNKNOWN

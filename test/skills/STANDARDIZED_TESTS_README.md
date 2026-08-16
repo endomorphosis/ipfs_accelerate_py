@@ -103,13 +103,12 @@ To add support for a new model architecture, add an entry to the `MODEL_INFO` di
 ```python
 MODEL_INFO = {
     # Existing entries...
-    
-    'new_model_family': {
-        'default_model': 'model-org/model-name',
-        'default_class': 'ModelClass',
-        'architecture': 'architecture-type',  # encoder-only, decoder-only, encoder-decoder, vision, etc.
-        'task': 'task-name',  # fill-mask, text-generation, etc.
-        'test_input': 'Example input text for testing'
+    "new_model_family": {
+        "default_model": "model-org/model-name",
+        "default_class": "ModelClass",
+        "architecture": "architecture-type",  # encoder-only, decoder-only, encoder-decoder, vision, etc.
+        "task": "task-name",  # fill-mask, text-generation, etc.
+        "test_input": "Example input text for testing",
     }
 }
 ```

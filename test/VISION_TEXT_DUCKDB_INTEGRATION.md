@@ -199,7 +199,7 @@ You can directly query the DuckDB database for advanced analytics:
 import duckdb
 
 # Connect to database
-conn = duckdb.connect('/home/barberb/ipfs_accelerate_py/test/benchmark_db.duckdb')
+conn = duckdb.connect("/home/barberb/ipfs_accelerate_py/test/benchmark_db.duckdb")
 
 # Get performance statistics for all vision-text models
 results = conn.execute("""

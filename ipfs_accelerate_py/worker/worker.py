@@ -1,7 +1,7 @@
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 import tempfile
 import json
 import hashlib
@@ -16,19 +16,13 @@ except (ImportError, ValueError):
 
 # Try to import datasets integration for task dispatch tracking
 try:
-    from ..datasets_integration import (
-        is_datasets_available,
-        ProvenanceLogger,
-        DatasetsManager
-    )
+    from ..datasets_integration import is_datasets_available, ProvenanceLogger, DatasetsManager
+
     HAVE_DATASETS_INTEGRATION = True
 except (ImportError, ValueError):
     try:
-        from datasets_integration import (
-            is_datasets_available,
-            ProvenanceLogger,
-            DatasetsManager
-        )
+        from datasets_integration import is_datasets_available, ProvenanceLogger, DatasetsManager
+
         HAVE_DATASETS_INTEGRATION = True
     except ImportError:
         HAVE_DATASETS_INTEGRATION = False
@@ -45,24 +39,27 @@ except Exception:
     from .ipfs_multiformats import ipfs_multiformats_py
 
 sys.path.append(os.path.join(os.path.dirname(__file__)))
-skillset_folder_files = os.listdir(os.path.join(os.path.dirname(__file__), 'skillset'))
-filter_skillset_folder_files = [x for x in skillset_folder_files if x.endswith(".py") and "hf_" in x]
+skillset_folder_files = os.listdir(os.path.join(os.path.dirname(__file__), "skillset"))
+filter_skillset_folder_files = [
+    x for x in skillset_folder_files if x.endswith(".py") and "hf_" in x
+]
 for file in filter_skillset_folder_files:
     if file.endswith(".py"):
         file_name = file.split(".")[0]
-        this_file = os.path.join(os.path.dirname(__file__), 'skillset', file)
+        this_file = os.path.join(os.path.dirname(__file__), "skillset", file)
         absolute_path = os.path.abspath(this_file)
         if file_name not in globals():
             try:
-                with open(absolute_path, encoding='utf-8') as f:
+                with open(absolute_path, encoding="utf-8") as f:
                     exec(f.read())
             except Exception as e:
                 print(e)
                 pass
-            with open(absolute_path, encoding='utf-8') as f:
+            with open(absolute_path, encoding="utf-8") as f:
                 globals()[file_name] = exec(f.read())
         else:
             pass
+
 
 class should_abort:
     def __init__(self, resources, metadata):
@@ -71,6 +68,7 @@ class should_abort:
 
     async def should_abort(self):
         return self.abort
+
 
 class TaskAbortion:
     def __init__(self, resources, metadata):
@@ -81,6 +79,7 @@ class TaskAbortion:
         self.abort = True
         return self.abort
 
+
 class dispatch_result:
     def __init__(self, resources, metadata):
         self.inbox = {}
@@ -90,6 +89,7 @@ class dispatch_result:
 
     async def dispatch_result(self, result):
         return None
+
 
 class worker_py:
     def __init__(self, resources=None, metadata=None):
@@ -117,12 +117,27 @@ class worker_py:
             self._storage = None
         self.storage = self._storage
 
-        self.hardware_backends = ["llama_cpp", "qualcomm", "apple", "cpu", "gpu", "openvino", "optimum", "optimum_intel", "optimum_openvino", "optimum_ipex", "optimum_neural_compressor", "webnn"]
+        self.hardware_backends = [
+            "llama_cpp",
+            "qualcomm",
+            "apple",
+            "cpu",
+            "gpu",
+            "openvino",
+            "optimum",
+            "optimum_intel",
+            "optimum_openvino",
+            "optimum_ipex",
+            "optimum_neural_compressor",
+            "webnn",
+        ]
         # self.hwtest = self.test_ipfs_accelerate
         # if "install_depends" not in globals():
         #     self.install_depends = install_depends_py(resources, metadata)
 
-        if "ipfs_multiformats_py" not in globals() and "ipfs_multiformats_py" not in list(self.resources.keys()):
+        if "ipfs_multiformats_py" not in globals() and "ipfs_multiformats_py" not in list(
+            self.resources.keys()
+        ):
             ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
             self.ipfs_multiformats = ipfs_multiformats
         elif "ipfs_multiformats_py" in list(self.resources.keys()):
@@ -131,8 +146,9 @@ class worker_py:
             ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
             self.ipfs_multiformats = ipfs_multiformats
 
-
-        if "dispatch_result" not in globals() and "dispatch_result" not in list(self.resources.keys()):
+        if "dispatch_result" not in globals() and "dispatch_result" not in list(
+            self.resources.keys()
+        ):
             self.dispatch_result = dispatch_result
         elif "dispatch_result" in list(self.resources.keys()):
             self.dispatch_result = self.resources["dispatch_result"]
@@ -167,7 +183,7 @@ class worker_py:
 
         for endpoint in self.endpoint_types:
             if endpoint not in dir(self):
-                    self.__dict__[endpoint] = {}
+                self.__dict__[endpoint] = {}
             for backend in self.hardware_backends:
                 if backend not in list(self.__dict__[endpoint].keys()):
                     self.__dict__[endpoint][backend] = {}
@@ -176,12 +192,14 @@ class worker_py:
     def init(self):
         if "transformers" not in globals() and "transformers" not in list(self.resources.keys()):
             import transformers
+
             self.transformers = transformers
             self.resources["transformers"] = self.transformers
         elif "transformers" in list(self.resources.keys()):
             self.transformers = self.resources["transformers"]
         elif "transformers" in globals():
             import transformers
+
             self.transformers = transformers
             self.resources["transformers"] = self.transformers
 
@@ -189,38 +207,45 @@ class worker_py:
 
         if "torch" not in globals() and "torch" not in list(self.resources.keys()):
             import torch
+
             self.torch = torch
             self.resources["torch"] = self.torch
         elif "torch" in list(self.resources.keys()):
             self.torch = self.resources["torch"]
         elif "torch" in globals():
             import torch
+
             self.torch = torch
             self.resources["torch"] = self.torch
 
         if "np" not in globals() and "np" not in list(self.resources.keys()):
             import numpy as np
+
             self.np = np
             self.resources["np"] = self.np
         elif "np" in list(self.resources.keys()):
             self.np = self.resources["np"]
         elif "np" in globals():
             import numpy as np
+
             self.np = np
             self.resources["np"] = self.np
 
         import importlib.util
-        classes_to_load = [ self.get_model_type(x) for x in self.metadata["models"]]
-        files_in_skills_folder = os.listdir(os.path.join(os.path.dirname(__file__), 'skillset'))
+
+        classes_to_load = [self.get_model_type(x) for x in self.metadata["models"]]
+        files_in_skills_folder = os.listdir(os.path.join(os.path.dirname(__file__), "skillset"))
         filter_files_for_hf_prefix = [x for x in files_in_skills_folder if x.startswith("hf_")]
         filer_files_remove_suffix = [x.split(".")[0] for x in filter_files_for_hf_prefix]
         filter_files_remove_prefix = [x.replace("hf_", "") for x in filer_files_remove_suffix]
-        filter_files_classes_to_load = [x for x in filter_files_remove_prefix if x in classes_to_load]
+        filter_files_classes_to_load = [
+            x for x in filter_files_remove_prefix if x in classes_to_load
+        ]
         for class_name in filter_files_classes_to_load:
             file = "hf_" + class_name + ".py"
             file_name = "hf_" + class_name
             if file_name not in sys.modules and file_name not in list(self.resources.keys()):
-                this_file = os.path.join(os.path.dirname(__file__), 'skillset', file)
+                this_file = os.path.join(os.path.dirname(__file__), "skillset", file)
                 this_file = os.path.abspath(this_file)
                 try:
                     spec = importlib.util.spec_from_file_location(file_name, this_file)
@@ -228,7 +253,7 @@ class worker_py:
                     spec.loader.exec_module(module)
                     this_class = getattr(module, file_name)
                     self.resources[file_name] = this_class(self.resources, self.metadata)
-                    self.__dict__[file_name] =  self.resources[file_name]
+                    self.__dict__[file_name] = self.resources[file_name]
                 except Exception as e:
                     print(e)
                     pass
@@ -256,8 +281,11 @@ class worker_py:
         return None
 
     def init_networking(self, model, device, networking_label):
-        if "ipfs_transformers_py" not in globals() and "ipfs_transformers_py" not in list(self.resources.keys()):
+        if "ipfs_transformers_py" not in globals() and "ipfs_transformers_py" not in list(
+            self.resources.keys()
+        ):
             from ipfs_transformers_py import ipfs_transformers
+
             self.resources["ipfs_transformers"] = ipfs_transformers
             self.ipfs_transformers = {
                 # "AutoDownloadModel" : ipfs_transformers.AutoDownloadModel()
@@ -266,6 +294,7 @@ class worker_py:
             self.ipfs_transformers = self.resources["ipfs_transformers"]
         elif "ipfs_transformers" in globals():
             from ipfs_transformers_py import ipfs_transformers
+
             self.resources["ipfs_transformers"] = ipfs_transformers
             self.ipfs_transformers = {
                 # "AutoDownloadModel" : ipfs_transformers.AutoDownloadModel()
@@ -275,9 +304,11 @@ class worker_py:
     def init_openvino(self):
         self.init()
         import optimum
+
         self.resources["optimum"] = optimum
         self.optimum = self.resources["optimum"]
         import openvino as ov
+
         self.resources["ov"] = ov
         self.ov = self.resources["ov"]
         try:
@@ -297,10 +328,14 @@ class worker_py:
     def get_model_type(self, model_name=None, model_type=None):
         if model_name is not None:
             if os.path.exists(model_name):
-                config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                config = self.transformers.AutoConfig.from_pretrained(
+                    model_name, trust_remote_code=True
+                )
                 model_type = config.__class__.model_type
             else:
-                config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                config = self.transformers.AutoConfig.from_pretrained(
+                    model_name, trust_remote_code=True
+                )
                 model_type = config.__class__.model_type
         return model_type
 
@@ -310,7 +345,11 @@ class worker_py:
     async def test_hardware(self):
         install_file_hash = None
         test_results_file = None
-        install_depends_filename = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "install_depends", "install_depends.py")
+        install_depends_filename = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "install_depends",
+            "install_depends.py",
+        )
         if os.path.exists(install_depends_filename):
             ## get the sha256 hash of the file
             sha256 = hashlib.sha256()
@@ -320,28 +359,30 @@ class worker_py:
                 try:
                     cached_data = self.storage.get_file(install_depends_filename)
                     if cached_data:
-                        file_content = cached_data.encode() if isinstance(cached_data, str) else cached_data
+                        file_content = (
+                            cached_data.encode() if isinstance(cached_data, str) else cached_data
+                        )
                         sha256.update(file_content)
                     else:
                         with open(install_depends_filename, "rb") as f:
                             file_content = f.read()
                             for i in range(0, len(file_content), 4096):
-                                sha256.update(file_content[i:i+4096])
+                                sha256.update(file_content[i : i + 4096])
                         # Cache for future use
                         self.storage.store_file(install_depends_filename, file_content, pin=False)
                 except Exception:
                     # Fallback to local filesystem
                     with open(install_depends_filename, "rb") as f:
-                        for byte_block in iter(lambda: f.read(4096),b""):
+                        for byte_block in iter(lambda: f.read(4096), b""):
                             sha256.update(byte_block)
             else:
                 with open(install_depends_filename, "rb") as f:
-                    for byte_block in iter(lambda: f.read(4096),b""):
+                    for byte_block in iter(lambda: f.read(4096), b""):
                         sha256.update(byte_block)
 
             install_file_hash = sha256.hexdigest()
             test_results_file = os.path.join(tempfile.gettempdir(), install_file_hash + ".json")
-            test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
+            test_results = {"cuda": True, "openvino": True, "llama_cpp": False, "ipex": False}
             if os.path.exists(test_results_file):
                 try:
                     # Try distributed storage first
@@ -354,18 +395,36 @@ class worker_py:
                                 with open(test_results_file, "r") as f:
                                     test_results = json.load(f)
                                 # Cache for future use
-                                self.storage.store_file(test_results_file, json.dumps(test_results), pin=False)
+                                self.storage.store_file(
+                                    test_results_file, json.dumps(test_results), pin=False
+                                )
                         except Exception:
                             with open(test_results_file, "r") as f:
                                 test_results = json.load(f)
                     else:
                         with open(test_results_file, "r") as f:
                             test_results = json.load(f)
-                    test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
+                    test_results = {
+                        "cuda": True,
+                        "openvino": True,
+                        "llama_cpp": False,
+                        "ipex": False,
+                        "qualcomm": False,
+                        "apple": False,
+                        "webnn": False,
+                    }
                     return test_results
                 except Exception as e:
                     try:
-                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
+                        test_results = {
+                            "cuda": True,
+                            "openvino": True,
+                            "llama_cpp": False,
+                            "ipex": False,
+                            "qualcomm": False,
+                            "apple": False,
+                            "webnn": False,
+                        }
                         # test_results = await self.install_depends.test_hardware()
                         test_results_json = json.dumps(test_results)
                         with open(test_results_file, "w") as f:
@@ -373,7 +432,9 @@ class worker_py:
                         # Update distributed storage
                         if self.storage:
                             try:
-                                self.storage.store_file(test_results_file, test_results_json, pin=False)
+                                self.storage.store_file(
+                                    test_results_file, test_results_json, pin=False
+                                )
                             except Exception:
                                 pass
                         return test_results
@@ -382,7 +443,15 @@ class worker_py:
                         return e
             else:
                 try:
-                    test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
+                    test_results = {
+                        "cuda": True,
+                        "openvino": True,
+                        "llama_cpp": False,
+                        "ipex": False,
+                        "qualcomm": False,
+                        "apple": False,
+                        "webnn": False,
+                    }
                     # test_results = await self.install_depends.test_hardware()
                     test_results_json = json.dumps(test_results)
                     with open(test_results_file, "w") as f:
@@ -405,6 +474,7 @@ class worker_py:
         if "transformers" not in dir(self):
             if "transformers" not in list(self.resources.keys()):
                 import transformers
+
                 self.resources["transformers"] = transformers
                 self.transformers = self.resources["transformers"]
             else:
@@ -413,7 +483,7 @@ class worker_py:
         # Get all model types from the MODEL_MAPPING
         model_types = []
         for config in self.transformers.MODEL_MAPPING.keys():
-            if hasattr(config, 'model_type'):
+            if hasattr(config, "model_type"):
                 model_types.append(config.model_type)
 
         # Add model types from the AutoModel registry
@@ -436,6 +506,7 @@ class worker_py:
         if "torch" not in dir(self):
             if "torch" not in list(self.resources.keys()):
                 import torch
+
                 self.resources["torch"] = torch
                 self.torch = self.resources["torch"]
             else:
@@ -450,7 +521,7 @@ class worker_py:
                 local_endpoints = {}
         else:
             pass
-        self.local_endpoints  = local_endpoints
+        self.local_endpoints = local_endpoints
         # local_endpoint_types = [ x[1] for x in local_endpoints if x[0] in models]
         # local_endpoint_models = [ x[0] for x in local_endpoints if x[0] in models]
         local_endpoint_models = list(local_endpoints.keys())
@@ -474,7 +545,11 @@ class worker_py:
         # local_endpoints = { model: { endpoint[1]: endpoint[2] for endpoint in local_endpoints if endpoint[0] == model} for model in models}
         self.local_endpoint_types = local_endpoint_types
         self.local_endpoint_models = local_endpoint_models
-        local = len(local_endpoints) > 0 if isinstance(self.local_endpoints, dict) and len(list(self.local_endpoints.keys())) > 0 else False
+        local = (
+            len(local_endpoints) > 0
+            if isinstance(self.local_endpoints, dict) and len(list(self.local_endpoints.keys())) > 0
+            else False
+        )
 
         if hwtest is None:
             if "hwtest" in list(self.__dict__.keys()):
@@ -531,6 +606,7 @@ class worker_py:
             torch_gpus = 0
         if openvino_test == True:
             from openvino import Core
+
             openvino_gpus = 1 if "GPU" in Core().available_devices else 0
             del Core
         gpus = torch_gpus if cuda == True else openvino_gpus if openvino_test == True else 0
@@ -561,8 +637,34 @@ class worker_py:
                 self.endpoint_handler[model] = {}
             if model not in list(self.batch_sizes.keys()):
                 self.batch_sizes[model] = {}
-            optimum_model_types = ["clip", "wav2vec", "wav2vec2", "bert", "t5", "xclip", "llava", "llava_next", "qwen2", "llama", "clap", "whisper" ]
-            openvino_model_types = ["clip", "wav2vec", "wav2vec2", "bert", "t5", "xclip", "llava", "llava_next", "qwen2", "llama", "clap", "whisper" ]
+            optimum_model_types = [
+                "clip",
+                "wav2vec",
+                "wav2vec2",
+                "bert",
+                "t5",
+                "xclip",
+                "llava",
+                "llava_next",
+                "qwen2",
+                "llama",
+                "clap",
+                "whisper",
+            ]
+            openvino_model_types = [
+                "clip",
+                "wav2vec",
+                "wav2vec2",
+                "bert",
+                "t5",
+                "xclip",
+                "llava",
+                "llava_next",
+                "qwen2",
+                "llama",
+                "clap",
+                "whisper",
+            ]
             openvino_genai_model_types = ["llava", "llava_next"]
             cuda_model_types = []
             qualcomm_model_types = []
@@ -580,23 +682,41 @@ class worker_py:
                 if cuda and torch_gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
                         for gpu in range(torch_gpus):
-                            device = 'cuda:' + str(gpu)
+                            device = "cuda:" + str(gpu)
                             cuda_label = device
-                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = this_method.init_cuda(
-                                model,
-                                device,
-                                cuda_label
-                            )
+                            (
+                                self.local_endpoints[model][cuda_label],
+                                self.tokenizer[model][cuda_label],
+                                self.endpoint_handler[model][cuda_label],
+                                self.queues[model][cuda_label],
+                                self.batch_sizes[model][cuda_label],
+                            ) = this_method.init_cuda(model, device, cuda_label)
                 if local > 0 and cpus > 0:
-                    if model_type in openvino_genai_model_types or model_type in openvino_model_types or model_type in optimum_model_types:
-                        if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                            openvino_local_endpont_types = [ x for x in local_endpoint_types if "openvino" in x]
+                    if (
+                        model_type in openvino_genai_model_types
+                        or model_type in openvino_model_types
+                        or model_type in optimum_model_types
+                    ):
+                        if (
+                            openvino_test
+                            and type(openvino_test) != ValueError
+                            and model_type != "llama_cpp"
+                        ):
+                            openvino_local_endpont_types = [
+                                x for x in local_endpoint_types if "openvino" in x
+                            ]
                             for openvino_endpoint in openvino_local_endpont_types:
                                 ov_count = openvino_endpoint.split(":")[1]
                                 openvino_label = "openvino:" + str(ov_count)
                                 device = "openvino:" + str(ov_count)
                                 if model_type in openvino_genai_model_types:
-                                    self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = this_method.init_openvino(
+                                    (
+                                        self.local_endpoints[model][openvino_label],
+                                        self.tokenizer[model][openvino_label],
+                                        self.endpoint_handler[model][openvino_label],
+                                        self.queues[model][openvino_label],
+                                        self.batch_sizes[model][openvino_label],
+                                    ) = this_method.init_openvino(
                                         model,
                                         model_type,
                                         device,
@@ -608,7 +728,13 @@ class worker_py:
                                         self.openvino_utils.openvino_cli_convert,
                                     )
                                 elif model_type in openvino_model_types:
-                                    self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = this_method.init_openvino(
+                                    (
+                                        self.local_endpoints[model][openvino_label],
+                                        self.tokenizer[model][openvino_label],
+                                        self.endpoint_handler[model][openvino_label],
+                                        self.queues[model][openvino_label],
+                                        self.batch_sizes[model][openvino_label],
+                                    ) = this_method.init_openvino(
                                         model,
                                         model_type,
                                         device,
@@ -619,7 +745,13 @@ class worker_py:
                                         self.openvino_utils.openvino_cli_convert,
                                     )
                                 elif model_type in optimum_model_types:
-                                    self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = this_method.init_openvino(
+                                    (
+                                        self.local_endpoints[model][openvino_label],
+                                        self.tokenizer[model][openvino_label],
+                                        self.endpoint_handler[model][openvino_label],
+                                        self.queues[model][openvino_label],
+                                        self.batch_sizes[model][openvino_label],
+                                    ) = this_method.init_openvino(
                                         model,
                                         model_type,
                                         device,
@@ -632,43 +764,51 @@ class worker_py:
                     elif model_type in cuda_model_types:
                         if cuda_test and type(cuda_test) != ValueError:
                             for gpu in range(torch_gpus):
-                                device = 'cuda:' + str(gpu)
+                                device = "cuda:" + str(gpu)
                                 cuda_label = device
-                                self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = this_method.init_cuda(
-                                    model,
-                                    device,
-                                    cuda_label
-                                )
+                                (
+                                    self.local_endpoints[model][cuda_label],
+                                    self.tokenizer[model][cuda_label],
+                                    self.endpoint_handler[model][cuda_label],
+                                    self.queues[model][cuda_label],
+                                    self.batch_sizes[model][cuda_label],
+                                ) = this_method.init_cuda(model, device, cuda_label)
                     elif model_type in qualcomm_model_types:
                         if qualcomm_test and type(qualcomm_test) != ValueError:
                             for gpu in range(torch_gpus):
-                                device = 'qualcomm:' + str(gpu)
+                                device = "qualcomm:" + str(gpu)
                                 qualcomm_label = device
-                                self.local_endpoints[model][qualcomm_label], self.tokenizer[model][qualcomm_label], self.endpoint_handler[model][qualcomm_label], self.queues[model][qualcomm_label], self.batch_sizes[model][qualcomm_label] = this_method.init_qualcomm(
-                                    model,
-                                    device,
-                                    qualcomm_label
-                                )
+                                (
+                                    self.local_endpoints[model][qualcomm_label],
+                                    self.tokenizer[model][qualcomm_label],
+                                    self.endpoint_handler[model][qualcomm_label],
+                                    self.queues[model][qualcomm_label],
+                                    self.batch_sizes[model][qualcomm_label],
+                                ) = this_method.init_qualcomm(model, device, qualcomm_label)
                     elif model_type in apple_model_types:
                         if apple_test and type(apple_test) != ValueError:
                             for gpu in range(torch_gpus):
-                                device = 'apple:' + str(gpu)
+                                device = "apple:" + str(gpu)
                                 apple_label = device
-                                self.local_endpoints[model][apple_label], self.tokenizer[model][apple_label], self.endpoint_handler[model][apple_label], self.queues[model][apple_label], self.batch_sizes[model][apple_label] = this_method.init_apple(
-                                    model,
-                                    device,
-                                    apple_label
-                                )
+                                (
+                                    self.local_endpoints[model][apple_label],
+                                    self.tokenizer[model][apple_label],
+                                    self.endpoint_handler[model][apple_label],
+                                    self.queues[model][apple_label],
+                                    self.batch_sizes[model][apple_label],
+                                ) = this_method.init_apple(model, device, apple_label)
                     elif model_type in webnn_model_types:
                         if webnn_test and type(webnn_test) != ValueError:
                             for gpu in range(torch_gpus):
-                                device = 'webnn:' + str(gpu)
+                                device = "webnn:" + str(gpu)
                                 webnn_label = device
-                                self.local_endpoints[model][webnn_label], self.tokenizer[model][webnn_label], self.endpoint_handler[model][webnn_label], self.queues[model][webnn_label], self.batch_sizes[model][webnn_label] = this_method.init_webnn(
-                                    model,
-                                    device,
-                                    webnn_label
-                                )
+                                (
+                                    self.local_endpoints[model][webnn_label],
+                                    self.tokenizer[model][webnn_label],
+                                    self.endpoint_handler[model][webnn_label],
+                                    self.queues[model][webnn_label],
+                                    self.batch_sizes[model][webnn_label],
+                                ) = this_method.init_webnn(model, device, webnn_label)
                     else:
                         pass
                 else:
@@ -679,7 +819,9 @@ class worker_py:
             worker_model_types.append(endpoint)
         worker_endpoint_types = []
         for this_model in worker_model_types:
-            worker_endpoint_types = worker_endpoint_types + list(self.endpoint_handler[this_model].keys())
+            worker_endpoint_types = worker_endpoint_types + list(
+                self.endpoint_handler[this_model].keys()
+            )
         local_endpoint_keys = list(self.local_endpoints.keys())
         for model in local_endpoint_keys:
             if model not in worker_model_types:
@@ -693,8 +835,18 @@ class worker_py:
                         pass
                 pass
 
-        resources = {"local_endpoints": self.local_endpoints, "tokenizer": self.tokenizer, "queues": self.queues, "batch_sizes": self.batch_sizes, "endpoint_handler": self.endpoint_handler , "local_endpoint_types": list(worker_endpoint_types), "local_endpoint_models": list(worker_model_types), "hwtest": self.hwtest}
+        resources = {
+            "local_endpoints": self.local_endpoints,
+            "tokenizer": self.tokenizer,
+            "queues": self.queues,
+            "batch_sizes": self.batch_sizes,
+            "endpoint_handler": self.endpoint_handler,
+            "local_endpoint_types": list(worker_endpoint_types),
+            "local_endpoint_models": list(worker_model_types),
+            "hwtest": self.hwtest,
+        }
         return resources
+
 
 # if __name__ == '__main__':
 #     # run(skillset=os.path.join(os.path.dirname(__file__), 'skillset'))
@@ -706,5 +858,3 @@ class worker_py:
 #     except Exception as e:
 #         print(e)
 #         pass
-
-

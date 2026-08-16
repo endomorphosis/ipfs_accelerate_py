@@ -195,22 +195,19 @@ from ipfs_accelerate_py.hf_model_server.config import ServerConfig
 
 config = ServerConfig(
     # Model Loading & Caching
-    max_loaded_models=10,        # Max models in cache
-    model_load_timeout=300,      # Load timeout in seconds
-    
+    max_loaded_models=10,  # Max models in cache
+    model_load_timeout=300,  # Load timeout in seconds
     # Request Batching
-    enable_batching=True,        # Enable/disable batching
-    max_batch_size=32,           # Max requests per batch
-    max_batch_wait_ms=100,       # Max wait before flush
-    
+    enable_batching=True,  # Enable/disable batching
+    max_batch_size=32,  # Max requests per batch
+    max_batch_wait_ms=100,  # Max wait before flush
     # Response Caching
-    enable_caching=True,         # Enable/disable caching
-    cache_max_size=1000,         # Max cached responses
-    cache_ttl_seconds=300,       # Cache TTL
-    
+    enable_caching=True,  # Enable/disable caching
+    cache_max_size=1000,  # Max cached responses
+    cache_ttl_seconds=300,  # Cache TTL
     # Circuit Breaker
-    enable_circuit_breaker=True, # Enable/disable circuit breaker
-    circuit_failure_threshold=5, # Failures before opening
+    enable_circuit_breaker=True,  # Enable/disable circuit breaker
+    circuit_failure_threshold=5,  # Failures before opening
     circuit_timeout_seconds=60,  # Time before retry
 )
 ```
@@ -261,24 +258,31 @@ The Phase 3 components are designed to integrate seamlessly:
 model_loader = ModelLoader(
     registry=skill_registry,
     hardware_selector=hardware_selector,
-    cache_size=config.max_loaded_models
+    cache_size=config.max_loaded_models,
 )
 
 # Initialize middleware
-batching = BatchingMiddleware(
-    max_batch_size=config.max_batch_size,
-    max_wait_ms=config.max_batch_wait_ms
-) if config.enable_batching else None
+batching = (
+    BatchingMiddleware(max_batch_size=config.max_batch_size, max_wait_ms=config.max_batch_wait_ms)
+    if config.enable_batching
+    else None
+)
 
-cache = ResponseCache(
-    max_size=config.cache_max_size,
-    ttl_seconds=config.cache_ttl_seconds
-) if config.enable_caching else None
+cache = (
+    ResponseCache(max_size=config.cache_max_size, ttl_seconds=config.cache_ttl_seconds)
+    if config.enable_caching
+    else None
+)
 
-circuit_breaker = CircuitBreaker(
-    failure_threshold=config.circuit_failure_threshold,
-    timeout_seconds=config.circuit_timeout_seconds
-) if config.enable_circuit_breaker else None
+circuit_breaker = (
+    CircuitBreaker(
+        failure_threshold=config.circuit_failure_threshold,
+        timeout_seconds=config.circuit_timeout_seconds,
+    )
+    if config.enable_circuit_breaker
+    else None
+)
+
 
 # Use in endpoints
 @app.post("/v1/completions")
@@ -288,10 +292,10 @@ async def completions(request: CompletionRequest):
         result = await cache.get_or_compute(
             model_id=request.model,
             request=request.dict(),
-            compute_fn=lambda: _do_completion(request)
+            compute_fn=lambda: _do_completion(request),
         )
         return result
-    
+
     # Otherwise proceed with loading and inference
     return await _do_completion(request)
 ```

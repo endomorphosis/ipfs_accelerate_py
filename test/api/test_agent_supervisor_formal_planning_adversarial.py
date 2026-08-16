@@ -134,9 +134,7 @@ def _assert_fail_closed(
 
 
 def test_exact_solver_evidence_is_admitted_but_never_promoted_above_solver() -> None:
-    result = FormalPlanningAdversarialGate().evaluate(
-        _binding(), _evidence(), _policy()
-    )
+    result = FormalPlanningAdversarialGate().evaluate(_binding(), _evidence(), _policy())
 
     assert result.admitted
     assert result.promotable
@@ -210,9 +208,7 @@ def test_canonical_identities_detect_mutation_of_binding_evidence_and_result() -
     with pytest.raises(AdversarialValidationError, match="identity mismatch"):
         ProverBoundaryEvidence.from_dict(evidence_payload)
 
-    result = FormalPlanningAdversarialGate().evaluate(
-        _binding(), _evidence(), _policy()
-    )
+    result = FormalPlanningAdversarialGate().evaluate(_binding(), _evidence(), _policy())
     result_payload = result.to_dict()
     result_payload["disposition"] = "rejected"
     with pytest.raises(AdversarialValidationError, match="identity mismatch"):
@@ -268,9 +264,7 @@ def test_unavailable_fake_nonconformant_and_malformed_tools_fail_closed(
     changes: dict[str, object],
     code: FindingCode,
 ) -> None:
-    result = FormalPlanningAdversarialGate().evaluate(
-        _binding(), _evidence(**changes), _policy()
-    )
+    result = FormalPlanningAdversarialGate().evaluate(_binding(), _evidence(**changes), _policy())
     _assert_fail_closed(result, code)
 
 
@@ -747,9 +741,7 @@ def test_crash_and_restart_never_manufacture_an_admission(tmp_path: Path) -> Non
         _policy(),
         evaluator=crash,  # type: ignore[arg-type]
     )
-    restarted = AdversarialValidationCoordinator(path).evaluate(
-        _binding(), _evidence(), _policy()
-    )
+    restarted = AdversarialValidationCoordinator(path).evaluate(_binding(), _evidence(), _policy())
 
     _assert_fail_closed(first.admission, FindingCode.SINGLE_FLIGHT_FAILED)
     _assert_fail_closed(restarted.admission, FindingCode.SINGLE_FLIGHT_FAILED)
@@ -793,6 +785,5 @@ def test_parallel_crash_claims_all_fail_closed(tmp_path: Path) -> None:
     assert calls == 1
     assert all(item.admission.fail_closed for item in results)
     assert all(
-        FindingCode.SINGLE_FLIGHT_FAILED.value in item.admission.reason_codes
-        for item in results
+        FindingCode.SINGLE_FLIGHT_FAILED.value in item.admission.reason_codes for item in results
     )

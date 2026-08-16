@@ -506,9 +506,7 @@ def _build_embedding_static_candidate(
     )
     provider_id = stable_id("provider", "embeddings", provider_name)
     model_id = stable_id("model", "embeddings", provider_name, model_name or "default")
-    deployment_id = stable_id(
-        "deployment", "embeddings", provider_name, device or "default"
-    )
+    deployment_id = stable_id("deployment", "embeddings", provider_name, device or "default")
     binding_id = stable_id(
         "binding", "embeddings", provider_name, model_name or "default", scope_id
     )
@@ -559,9 +557,7 @@ def _admission_result_to_trace(result: object) -> Dict[str, object]:
         "reservation_id": getattr(selected, "reservation_id", None) if selected else None,
         "receipt_id": getattr(receipt, "receipt_id", None) if receipt else None,
         "usage_revision": getattr(selected, "usage_revision", None) if selected else None,
-        "catalog_revision": getattr(selected, "catalog_revision", None)
-        if selected
-        else None,
+        "catalog_revision": getattr(selected, "catalog_revision", None) if selected else None,
         "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
     }
     if receipt is not None:
@@ -602,10 +598,7 @@ def _parse_provider_observation(
     try:
         from .endpoint_usage.adapters import parse_provider_observation
 
-        if any(
-            key in observation
-            for key in ("headers", "body", "family", "http_status", "usage")
-        ):
+        if any(key in observation for key in ("headers", "body", "family", "http_status", "usage")):
             payload = dict(observation)
             payload.setdefault("scope_id", scope_id)
             payload.setdefault("request_id", request_id)
@@ -721,15 +714,15 @@ def _embed_texts_with_usage_admission(
 
     # Cache lookup first: full cache hits create no remote charge.
     resolved_for_cache = provider_instance
-    cache_provider_name = _provider_name(
-        resolved_for_cache, requested=provider
-    ) if resolved_for_cache is not None else str(provider or "")
+    cache_provider_name = (
+        _provider_name(resolved_for_cache, requested=provider)
+        if resolved_for_cache is not None
+        else str(provider or "")
+    )
     if resolved_for_cache is None and provider:
         try:
             resolved_for_cache = get_embeddings_provider(provider, deps=deps)
-            cache_provider_name = _provider_name(
-                resolved_for_cache, requested=provider
-            )
+            cache_provider_name = _provider_name(resolved_for_cache, requested=provider)
         except Exception:
             resolved_for_cache = None
 
@@ -747,11 +740,7 @@ def _embed_texts_with_usage_admission(
                     kwargs=dict(kwargs),
                 )
                 getter = getattr(deps, "get_cached_or_remote", None)
-                cached = (
-                    getter(cache_key)
-                    if callable(getter)
-                    else deps.get_cached(cache_key)
-                )
+                cached = getter(cache_key) if callable(getter) else deps.get_cached(cache_key)
                 cached_vectors[index] = _normalize_embedding_vectors(
                     [cached],
                     expected_count=1,
@@ -763,9 +752,7 @@ def _embed_texts_with_usage_admission(
 
     cache_hits = len(inputs) - len(missing_indices)
     if not missing_indices:
-        result = _normalize_embedding_vectors(
-            cached_vectors, expected_count=len(inputs)
-        )
+        result = _normalize_embedding_vectors(cached_vectors, expected_count=len(inputs))
         _set_last_usage_admission(
             {
                 "success": True,
@@ -835,9 +822,7 @@ def _embed_texts_with_usage_admission(
         # Resolve a concrete provider for single-endpoint enforce.
         backend = provider_instance or get_embeddings_provider(provider, deps=deps)
         provider_used = _provider_name(backend, requested=provider)
-        scope_id = stable_id(
-            "scope", "embeddings", provider_used, model_name or "default"
-        )
+        scope_id = stable_id("scope", "embeddings", provider_used, model_name or "default")
         # Prefer an explicit scope from usage_request when present.
         ureq_probe = usage_request
         if isinstance(ureq_probe, Mapping):
@@ -873,9 +858,9 @@ def _embed_texts_with_usage_admission(
     if usage_expected_dimension is not None:
         origin_labels["embedding_dimensions"] = str(int(usage_expected_dimension))
     # Drop incompatible candidates before admission (never substitute).
-    candidates = _filter_compatible_candidates(
-        candidates, origin_labels=origin_labels
-    ) or list(candidates[:1])
+    candidates = _filter_compatible_candidates(candidates, origin_labels=origin_labels) or list(
+        candidates[:1]
+    )
 
     meta_by_binding = {
         cand.binding_id: meta_from_static(cand)  # type: ignore[attr-defined]
@@ -1074,10 +1059,7 @@ def _embed_texts_with_usage_admission(
             )
             # Prefer capacity classification for quota-shaped messages.
             message = str(exc).casefold()
-            if any(
-                token in message
-                for token in ("rate limit", "429", "quota", "capacity", "503")
-            ):
+            if any(token in message for token in ("rate limit", "429", "quota", "capacity", "503")):
                 error_class = ErrorSafetyClass.CAPACITY
             return InvokeOutcome(
                 success=False,
@@ -1109,9 +1091,7 @@ def _embed_texts_with_usage_admission(
             settled=settled,
         )
         result_holder["generated"] = generated
-        result_holder["provider_used"] = _provider_name(
-            active_backend, requested=provider
-        )
+        result_holder["provider_used"] = _provider_name(active_backend, requested=provider)
         result_holder["settled"] = settled
         return InvokeOutcome(
             success=True,
@@ -1128,9 +1108,7 @@ def _embed_texts_with_usage_admission(
     )
     # Explicit pins default to no fallback unless the pin allows it.
     effective_policy = policy
-    if getattr(pin, "is_exact", False) and not getattr(
-        pin, "allow_fallback_with_pin", False
-    ):
+    if getattr(pin, "is_exact", False) and not getattr(pin, "allow_fallback_with_pin", False):
         if policy.fallback is not FallbackClass.NONE:
             effective_policy = RoutingPolicy(
                 mode=policy.mode,
@@ -1199,9 +1177,7 @@ def _embed_texts_with_usage_admission(
         cache_model_name=used_model_name,
     )
     try:
-        final = _normalize_embedding_vectors(
-            cached_vectors, expected_count=len(inputs)
-        )
+        final = _normalize_embedding_vectors(cached_vectors, expected_count=len(inputs))
     except EmbeddingsRouterError:
         # Stale cache dimension conflict: recompute full batch under same reservation
         # is not possible (already settled). Re-run without cache for correctness.
@@ -1238,19 +1214,13 @@ def _embed_texts_with_usage_admission(
         cache_hits=cache_hits,
         cache_misses=len(missing_indices),
         fallback_used=fallback_used
-        or bool(
-            result.selected
-            and result.attempts
-            and len(result.attempts) > 1
-        ),
+        or bool(result.selected and result.attempts and len(result.attempts) > 1),
         usage_mode=str(getattr(policy.mode, "value", policy.mode)),
         remote_charged=True,
         reservation_id=getattr(result.selected, "reservation_id", None)
         if result.selected
         else None,
-        receipt_id=getattr(result.receipt, "receipt_id", None)
-        if result.receipt
-        else None,
+        receipt_id=getattr(result.receipt, "receipt_id", None) if result.receipt else None,
         elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
     )
     return final
@@ -1289,7 +1259,9 @@ def _record_usage_observe_shadow(
         "success": success,
         "final_status": "observed" if success else "observe_error",
         "reason_codes": [
-            "usage_observe" if mode is RoutingMode.OBSERVE or str(mode) == "observe" else "usage_shadow",
+            "usage_observe"
+            if mode is RoutingMode.OBSERVE or str(mode) == "observe"
+            else "usage_shadow",
             "no_selection_change",
         ],
         "attempt_count": 0,
@@ -1312,9 +1284,7 @@ def _record_usage_observe_shadow(
             payload["usage_revision"] = getattr(snap, "usage_revision", None)
             payload["scope_id"] = usage_scope_id
         except Exception:
-            payload["reason_codes"] = list(payload["reason_codes"]) + [
-                "snapshot_unavailable"
-            ]
+            payload["reason_codes"] = list(payload["reason_codes"]) + ["snapshot_unavailable"]
         # Optional diagnostic observation event (does not charge).
         if success and remote_count > 0 and str(getattr(mode, "value", mode)) == "shadow":
             try:
@@ -1324,8 +1294,7 @@ def _record_usage_observe_shadow(
                     usage_scope_id,
                     kind=UsageEventKind.OBSERVATION_SUCCESS,
                     units=_UsageVector(),
-                    request_id=usage_request_id
-                    or stable_id("ereq", "shadow", usage_scope_id),
+                    request_id=usage_request_id or stable_id("ereq", "shadow", usage_scope_id),
                     reason_codes=("shadow_observe",),
                 )
             except Exception:
@@ -1345,9 +1314,8 @@ def _cache_enabled() -> bool:
 
 
 def _response_cache_enabled() -> bool:
-    value = (
-        os.environ.get("IPFS_ACCELERATE_PY_ROUTER_RESPONSE_CACHE")
-        or os.environ.get("IPFS_DATASETS_PY_ROUTER_RESPONSE_CACHE")
+    value = os.environ.get("IPFS_ACCELERATE_PY_ROUTER_RESPONSE_CACHE") or os.environ.get(
+        "IPFS_DATASETS_PY_ROUTER_RESPONSE_CACHE"
     )
     if value is None:
         return True  # Default to enabled
@@ -1384,7 +1352,9 @@ def _text_digest(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest()[:16]
 
 
-def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs: Dict[str, object]) -> str:
+def _effective_model_key(
+    *, provider_key: str, model_name: Optional[str], kwargs: Dict[str, object]
+) -> str:
     """Best-effort model identifier for caching.
 
     Embeddings callers sometimes pass model via kwargs (e.g. ``model=...``), and
@@ -1443,7 +1413,9 @@ def _response_cache_key(
     kwargs: Dict[str, object],
 ) -> str:
     provider_key = (provider or "auto").strip().lower()
-    model_key = _effective_model_key(provider_key=provider_key, model_name=model_name, kwargs=kwargs)
+    model_key = _effective_model_key(
+        provider_key=provider_key, model_name=model_name, kwargs=kwargs
+    )
     device_key = (device or "").strip().lower()
 
     strategy = _response_cache_key_strategy()
@@ -1621,8 +1593,7 @@ def _normalize_embedding_vectors(
         raise EmbeddingsRouterError("embeddings provider must return a sequence")
     if len(value) != expected_count:
         raise EmbeddingsRouterError(
-            "embeddings provider returned "
-            f"{len(value)} vectors for {expected_count} inputs"
+            f"embeddings provider returned {len(value)} vectors for {expected_count} inputs"
         )
     if expected_count == 0:
         return []
@@ -1633,25 +1604,17 @@ def _normalize_embedding_vectors(
         if hasattr(row, "tolist") and callable(getattr(row, "tolist")):
             row = row.tolist()
         if not isinstance(row, (list, tuple)) or not row:
-            raise EmbeddingsRouterError(
-                "each embedding must be a non-empty numeric sequence"
-            )
+            raise EmbeddingsRouterError("each embedding must be a non-empty numeric sequence")
         try:
             vector = [float(item) for item in row]
         except (TypeError, ValueError) as exc:
-            raise EmbeddingsRouterError(
-                "embedding values must be numeric"
-            ) from exc
+            raise EmbeddingsRouterError("embedding values must be numeric") from exc
         if not all(math.isfinite(item) for item in vector):
-            raise EmbeddingsRouterError(
-                "embedding values must all be finite"
-            )
+            raise EmbeddingsRouterError("embedding values must all be finite")
         if dimension is None:
             dimension = len(vector)
         elif len(vector) != dimension:
-            raise EmbeddingsRouterError(
-                "embeddings provider returned inconsistent dimensions"
-            )
+            raise EmbeddingsRouterError("embeddings provider returned inconsistent dimensions")
         vectors.append(vector)
     return vectors
 
@@ -1803,9 +1766,7 @@ _BUILTIN_PROVIDER_SPECS: Tuple[_EmbeddingProviderSpec, ...] = (
         model_env=("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",),
     ),
 )
-_BUILTIN_PROVIDER_SPEC_BY_NAME = {
-    spec.name: spec for spec in _BUILTIN_PROVIDER_SPECS
-}
+_BUILTIN_PROVIDER_SPEC_BY_NAME = {spec.name: spec for spec in _BUILTIN_PROVIDER_SPECS}
 
 
 def _embedding_capability(
@@ -1852,9 +1813,7 @@ def _catalog_model_name(value: object) -> str:
 
 def _model_architecture(model_name: str) -> Optional[str]:
     normalized = str(model_name or "").casefold()
-    if normalized.startswith("sentence-transformers/") or normalized.startswith(
-        "meta-llama/"
-    ):
+    if normalized.startswith("sentence-transformers/") or normalized.startswith("meta-llama/"):
         return "transformer"
     return None
 
@@ -1891,9 +1850,7 @@ def _remote_provider_authorized(name: str) -> Optional[bool]:
     if name == "xai":
         return _env_has_value("XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY")
     if name == "meta_ai":
-        return _env_has_value(
-            "META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY"
-        )
+        return _env_has_value("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")
     return None
 
 
@@ -1945,9 +1902,7 @@ def _builtin_provider_state(
         )
         configured = None if not enabled else _truthy(enabled)
         return (
-            LifecycleState.CONFIGURED
-            if configured is True
-            else LifecycleState.DECLARED,
+            LifecycleState.CONFIGURED if configured is True else LifecycleState.DECLARED,
             OperationalState(
                 known=True,
                 configured=configured,
@@ -2002,8 +1957,7 @@ def _builtin_provider_descriptor(
 
 def _provider_descriptors_by_name() -> Dict[str, ProviderDescriptor]:
     descriptors = {
-        spec.name: _builtin_provider_descriptor(spec)
-        for spec in _BUILTIN_PROVIDER_SPECS
+        spec.name: _builtin_provider_descriptor(spec) for spec in _BUILTIN_PROVIDER_SPECS
     }
     with _PROVIDER_REGISTRY_LOCK:
         registered = tuple(_PROVIDER_REGISTRY.values())
@@ -2020,10 +1974,7 @@ def _provider_descriptors_by_name() -> Dict[str, ProviderDescriptor]:
 def list_providers() -> List[ProviderDescriptor]:
     """List provider descriptors without resolving or constructing providers."""
 
-    return [
-        descriptor
-        for _, descriptor in sorted(_provider_descriptors_by_name().items())
-    ]
+    return [descriptor for _, descriptor in sorted(_provider_descriptors_by_name().items())]
 
 
 def _canonical_provider_name(name: str) -> str:
@@ -2034,16 +1985,12 @@ def _canonical_provider_name(name: str) -> str:
     if requested in descriptors:
         return requested
     matches = sorted(
-        descriptor.name
-        for descriptor in descriptors.values()
-        if requested in descriptor.aliases
+        descriptor.name for descriptor in descriptors.values() if requested in descriptor.aliases
     )
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
-        raise ValueError(
-            f"Ambiguous embeddings provider alias {name!r}: {', '.join(matches)}"
-        )
+        raise ValueError(f"Ambiguous embeddings provider alias {name!r}: {', '.join(matches)}")
     raise ValueError(f"Unknown embeddings provider: {name}")
 
 
@@ -2076,9 +2023,7 @@ def _model_descriptor(
         state=provider.state,
         provenance=(Provenance(source="embeddings_router.static"),),
         labels={
-            "access_requirement": dict(provider.labels).get(
-                "access_requirement", "unknown"
-            ),
+            "access_requirement": dict(provider.labels).get("access_requirement", "unknown"),
             "batching": "supported",
             "device": dict(provider.labels).get("device", "unknown"),
             "input_types": "text",
@@ -2118,9 +2063,7 @@ def list_models(provider: Optional[str] = None) -> List[ModelDescriptor]:
     else:
         provider_names = tuple(sorted(_provider_descriptors_by_name()))
     models = [
-        model
-        for provider_name in provider_names
-        for model in _models_for_provider(provider_name)
+        model for provider_name in provider_names for model in _models_for_provider(provider_name)
     ]
     return sorted(
         models,
@@ -2168,9 +2111,7 @@ def _select_discovery_provider(
     for name in ("openrouter", "hf_inference_api", "xai", "meta_ai"):
         if _remote_provider_authorized(name):
             return name
-    if _module_available(
-        "ipfs_accelerate_py.cli_integrations.gemini_cli_integration"
-    ):
+    if _module_available("ipfs_accelerate_py.cli_integrations.gemini_cli_integration"):
         return "gemini_cli"
     if _module_available("transformers"):
         return "huggingface"
@@ -2204,16 +2145,12 @@ def resolve_model(
     if constraints:
         unknown = ", ".join(sorted(str(key) for key in constraints))
         raise TypeError(f"Unknown embedding resolution constraints: {unknown}")
-    operation_value = (
-        operation.value if isinstance(operation, Operation) else str(operation)
-    )
+    operation_value = operation.value if isinstance(operation, Operation) else str(operation)
     if operation_value not in {
         Operation.EMBEDDING_GENERATE.value,
         Operation.BATCH.value,
     }:
-        raise ValueError(
-            f"Embeddings router does not support operation {operation_value!r}"
-        )
+        raise ValueError(f"Embeddings router does not support operation {operation_value!r}")
 
     provider_name = _select_discovery_provider(provider, deps=deps)
     provider_descriptor = get_provider_descriptor(provider_name)
@@ -2358,20 +2295,26 @@ def _hf_embeddings_default_fallback_models() -> list[str]:
 def _hf_dynamic_model_discovery_enabled(*, kwargs: dict[str, object]) -> bool:
     raw = kwargs.get("hf_dynamic_model_discovery")
     if raw is None:
-        raw = _coalesce_env(
-            "IPFS_ACCELERATE_PY_HF_DYNAMIC_MODEL_DISCOVERY",
-            "IPFS_DATASETS_PY_HF_DYNAMIC_MODEL_DISCOVERY",
-        ) or "1"
+        raw = (
+            _coalesce_env(
+                "IPFS_ACCELERATE_PY_HF_DYNAMIC_MODEL_DISCOVERY",
+                "IPFS_DATASETS_PY_HF_DYNAMIC_MODEL_DISCOVERY",
+            )
+            or "1"
+        )
     return _truthy(str(raw))
 
 
 def _hf_embeddings_discovery_limit(*, kwargs: dict[str, object]) -> int:
     raw = kwargs.get("hf_embeddings_discovery_limit")
     if raw is None:
-        raw = _coalesce_env(
-            "IPFS_ACCELERATE_PY_HF_EMBEDDINGS_DISCOVERY_LIMIT",
-            "IPFS_DATASETS_PY_HF_EMBEDDINGS_DISCOVERY_LIMIT",
-        ) or "20"
+        raw = (
+            _coalesce_env(
+                "IPFS_ACCELERATE_PY_HF_EMBEDDINGS_DISCOVERY_LIMIT",
+                "IPFS_DATASETS_PY_HF_EMBEDDINGS_DISCOVERY_LIMIT",
+            )
+            or "20"
+        )
     try:
         return max(1, int(raw))
     except Exception:
@@ -2381,10 +2324,13 @@ def _hf_embeddings_discovery_limit(*, kwargs: dict[str, object]) -> int:
 def _hf_embeddings_discovery_tags(*, kwargs: dict[str, object]) -> list[str]:
     raw = kwargs.get("hf_embeddings_discovery_tags")
     if raw is None:
-        raw = _coalesce_env(
-            "IPFS_ACCELERATE_PY_HF_EMBEDDINGS_DISCOVERY_TAGS",
-            "IPFS_DATASETS_PY_HF_EMBEDDINGS_DISCOVERY_TAGS",
-        ) or "feature-extraction,sentence-similarity"
+        raw = (
+            _coalesce_env(
+                "IPFS_ACCELERATE_PY_HF_EMBEDDINGS_DISCOVERY_TAGS",
+                "IPFS_DATASETS_PY_HF_EMBEDDINGS_DISCOVERY_TAGS",
+            )
+            or "feature-extraction,sentence-similarity"
+        )
     return [item.strip() for item in str(raw).split(",") if item.strip()]
 
 
@@ -2499,7 +2445,7 @@ def _get_openrouter_provider() -> Optional[EmbeddingsProvider]:
                 f"{base_url}/embeddings",
                 data=json.dumps(payload).encode("utf-8"),
                 method="POST",
-                headers=headers
+                headers=headers,
             )
 
             try:
@@ -2554,9 +2500,7 @@ def _normalize_hf_embedding_payload(data: object) -> List[List[float]]:
         elif isinstance(item, dict) and isinstance(item.get("embedding"), list):
             vectors.append([float(value) for value in item["embedding"]])
         else:
-            raise RuntimeError(
-                "HF Inference API returned malformed embedding vector"
-            )
+            raise RuntimeError("HF Inference API returned malformed embedding vector")
     return vectors
 
 
@@ -2584,14 +2528,18 @@ def _get_hf_inference_api_provider() -> Optional[EmbeddingsProvider]:
             **kwargs: object,
         ) -> List[List[float]]:
             _ = device
-            model = model_name or _coalesce_env(
-                "IPFS_ACCELERATE_PY_HF_EMBEDDINGS_MODEL",
-                "IPFS_DATASETS_PY_HF_EMBEDDINGS_MODEL",
-                "IPFS_ACCELERATE_PY_HF_INFERENCE_MODEL",
-                "IPFS_DATASETS_PY_HF_INFERENCE_MODEL",
-                "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
-                "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
-            ) or "sentence-transformers/all-MiniLM-L6-v2"
+            model = (
+                model_name
+                or _coalesce_env(
+                    "IPFS_ACCELERATE_PY_HF_EMBEDDINGS_MODEL",
+                    "IPFS_DATASETS_PY_HF_EMBEDDINGS_MODEL",
+                    "IPFS_ACCELERATE_PY_HF_INFERENCE_MODEL",
+                    "IPFS_DATASETS_PY_HF_INFERENCE_MODEL",
+                    "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
+                    "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
+                )
+                or "sentence-transformers/all-MiniLM-L6-v2"
+            )
             inputs = list(texts)
             if not inputs:
                 return []
@@ -2604,9 +2552,7 @@ def _get_hf_inference_api_provider() -> Optional[EmbeddingsProvider]:
                 else bool(wait_for_model_raw)
             )
             use_cache = (
-                _truthy(use_cache_raw)
-                if isinstance(use_cache_raw, str)
-                else bool(use_cache_raw)
+                _truthy(use_cache_raw) if isinstance(use_cache_raw, str) else bool(use_cache_raw)
             )
             payload: dict[str, object] = {
                 "inputs": inputs,
@@ -2637,22 +2583,16 @@ def _get_hf_inference_api_provider() -> Optional[EmbeddingsProvider]:
                 with urllib.request.urlopen(request, timeout=timeout) as response:
                     raw = response.read().decode("utf-8", errors="replace")
             except urllib.error.HTTPError as exc:
-                detail = (
-                    exc.read().decode("utf-8", errors="replace") if exc.fp else ""
-                )
+                detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
                 raise RuntimeError(
                     f"HF Inference API HTTP {exc.code}: {detail or exc.reason}"
                 ) from exc
             except Exception as exc:
-                raise RuntimeError(
-                    f"HF Inference API request failed: {exc}"
-                ) from exc
+                raise RuntimeError(f"HF Inference API request failed: {exc}") from exc
             try:
                 data = json.loads(raw)
             except Exception as exc:
-                raise RuntimeError(
-                    "HF Inference API returned invalid JSON"
-                ) from exc
+                raise RuntimeError("HF Inference API returned invalid JSON") from exc
             vectors = _normalize_hf_embedding_payload(data)
             if not vectors:
                 raise RuntimeError("HF Inference API returned no embeddings")
@@ -2745,7 +2685,9 @@ def _get_meta_ai_embeddings_provider() -> Optional[EmbeddingsProvider]:
     if not api_key:
         return None
 
-    base_url = os.getenv("ipfs_accelerate_py_META_AI_BASE_URL", "https://api.llamameta.net/v1").rstrip("/")
+    base_url = os.getenv(
+        "ipfs_accelerate_py_META_AI_BASE_URL", "https://api.llamameta.net/v1"
+    ).rstrip("/")
 
     class _MetaAIEmbeddingsProvider:
         router_provider_name = "meta_ai"
@@ -2844,20 +2786,21 @@ def _get_gemini_cli_provider() -> Optional[EmbeddingsProvider]:
             client = self._get_client()
             if client is None:
                 raise RuntimeError("Gemini integration not available")
-            
+
             # Check if the client has an embed_texts method
-            if not hasattr(client, 'embed_texts'):
+            if not hasattr(client, "embed_texts"):
                 # Fallback: Use generate_embeddings if available
-                if hasattr(client, 'generate_embeddings'):
+                if hasattr(client, "generate_embeddings"):
                     inputs = list(texts)
                     result = client.generate_embeddings(
                         texts=inputs,
-                        model=model_name or os.getenv("IPFS_ACCELERATE_PY_GEMINI_EMBEDDINGS_MODEL", "embedding-001")
+                        model=model_name
+                        or os.getenv("IPFS_ACCELERATE_PY_GEMINI_EMBEDDINGS_MODEL", "embedding-001"),
                     )
                     if result.get("success") and "embeddings" in result:
                         return result["embeddings"]
                 raise RuntimeError("Gemini integration does not support embeddings")
-            
+
             inputs = list(texts)
             return client.embed_texts(inputs, model_name=model_name, device=device, **kwargs)
 
@@ -2886,21 +2829,30 @@ def _get_huggingface_provider() -> Optional[EmbeddingsProvider]:
             device: Optional[str] = None,
             **kwargs: object,
         ) -> List[List[float]]:
-            model = model_name or _coalesce_env(
-                "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
-                "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
-            ) or "sentence-transformers/all-MiniLM-L6-v2"
-            device_str = device or _coalesce_env(
-                "IPFS_ACCELERATE_PY_EMBEDDINGS_DEVICE",
-                "IPFS_DATASETS_PY_EMBEDDINGS_DEVICE",
-            ) or "cpu"
-            
+            model = (
+                model_name
+                or _coalesce_env(
+                    "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
+                    "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
+                )
+                or "sentence-transformers/all-MiniLM-L6-v2"
+            )
+            device_str = (
+                device
+                or _coalesce_env(
+                    "IPFS_ACCELERATE_PY_EMBEDDINGS_DEVICE",
+                    "IPFS_DATASETS_PY_EMBEDDINGS_DEVICE",
+                )
+                or "cpu"
+            )
+
             # Get or create model
             cache_key = f"{model}::{device_str}"
             with self._models_lock:
                 if cache_key not in self._models:
                     try:
                         from sentence_transformers import SentenceTransformer
+
                         self._models[cache_key] = SentenceTransformer(
                             model,
                             device=device_str,
@@ -2922,9 +2874,9 @@ def _get_huggingface_provider() -> Optional[EmbeddingsProvider]:
 
                 model_obj = self._models[cache_key]
             inputs = list(texts)
-            
+
             # Use SentenceTransformer if available
-            if hasattr(model_obj, 'encode'):
+            if hasattr(model_obj, "encode"):
                 encode_options = {
                     key: kwargs[key]
                     for key in (
@@ -2941,23 +2893,25 @@ def _get_huggingface_provider() -> Optional[EmbeddingsProvider]:
                     **encode_options,
                 )
                 return [emb.tolist() for emb in embeddings]
-            
+
             # Otherwise use transformers directly
             tokenizer, transformer_model, dev = model_obj
             import torch
-            
+
             embeddings = []
             for text in inputs:
-                encoded = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+                encoded = tokenizer(
+                    text, return_tensors="pt", padding=True, truncation=True, max_length=512
+                )
                 if dev == "cuda" and torch.cuda.is_available():
                     encoded = {k: v.to("cuda") for k, v in encoded.items()}
-                
+
                 with torch.no_grad():
                     output = transformer_model(**encoded)
                     # Use [CLS] token embedding or mean pooling
                     embedding = output.last_hidden_state[:, 0, :].squeeze().cpu().numpy()
                     embeddings.append(embedding.tolist())
-            
+
             return embeddings
 
     return _HuggingFaceEmbeddingsProvider()
@@ -3013,21 +2967,21 @@ def _get_local_adapter_provider(
             inputs = list(texts)
             if not inputs:
                 return []
-            model = model_name or _coalesce_env(
-                "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
-                "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
-            ) or "sentence-transformers/all-MiniLM-L6-v2"
+            model = (
+                model_name
+                or _coalesce_env(
+                    "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL",
+                    "IPFS_DATASETS_PY_EMBEDDINGS_MODEL",
+                )
+                or "sentence-transformers/all-MiniLM-L6-v2"
+            )
             device_name = device or _coalesce_env(
                 "IPFS_ACCELERATE_PY_EMBEDDINGS_DEVICE",
                 "IPFS_DATASETS_PY_EMBEDDINGS_DEVICE",
             )
             if not device_name:
                 try:
-                    device_name = (
-                        "cuda"
-                        if bool(torch_module.cuda.is_available())
-                        else "cpu"
-                    )
+                    device_name = "cuda" if bool(torch_module.cuda.is_available()) else "cpu"
                 except Exception:
                     device_name = "cpu"
 
@@ -3057,11 +3011,7 @@ def _get_local_adapter_provider(
             encoded = tokenizer(inputs, **tokenizer_kwargs)
             if isinstance(encoded, dict):
                 encoded = {
-                    key: (
-                        value.to(device_name)
-                        if callable(getattr(value, "to", None))
-                        else value
-                    )
+                    key: (value.to(device_name) if callable(getattr(value, "to", None)) else value)
                     for key, value in encoded.items()
                 }
             no_grad = getattr(torch_module, "no_grad", None)
@@ -3071,9 +3021,7 @@ def _get_local_adapter_provider(
                 output = model_object(**encoded)
                 hidden = getattr(output, "last_hidden_state", None)
                 if hidden is None:
-                    raise RuntimeError(
-                        "transformers model did not return last_hidden_state"
-                    )
+                    raise RuntimeError("transformers model did not return last_hidden_state")
                 pooled = hidden.mean(dim=1)
             detach = getattr(pooled, "detach", None)
             if callable(detach):
@@ -3099,9 +3047,8 @@ def _get_local_adapter_provider(
 
 
 def _get_accelerate_provider(deps: RouterDeps) -> Optional[EmbeddingsProvider]:
-    enable_value = (
-        os.getenv("IPFS_ACCELERATE_PY_ENABLE_IPFS_ACCELERATE")
-        or os.getenv("IPFS_DATASETS_PY_ENABLE_IPFS_ACCELERATE")
+    enable_value = os.getenv("IPFS_ACCELERATE_PY_ENABLE_IPFS_ACCELERATE") or os.getenv(
+        "IPFS_DATASETS_PY_ENABLE_IPFS_ACCELERATE"
     )
     if enable_value and not _truthy(enable_value):
         return None
@@ -3143,9 +3090,7 @@ def _get_accelerate_provider(deps: RouterDeps) -> Optional[EmbeddingsProvider]:
             embedded = result.get("embeddings")
             if isinstance(embedded, list):
                 return [[float(value) for value in row] for row in embedded]
-            raise RuntimeError(
-                "ipfs_accelerate_py provider did not return embeddings"
-            )
+            raise RuntimeError("ipfs_accelerate_py provider did not return embeddings")
 
     return _AccelerateEmbeddingsProvider()
 
@@ -3159,7 +3104,9 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[EmbeddingsProvid
         manager = deps.get_backend_manager(
             purpose="embeddings_router",
             enable_health_checks=True,
-            load_balancing_strategy=os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_LOAD_BALANCING", "round_robin"),
+            load_balancing_strategy=os.getenv(
+                "IPFS_ACCELERATE_PY_EMBEDDINGS_LOAD_BALANCING", "round_robin"
+            ),
         )
         if manager is None:
             return None
@@ -3179,26 +3126,20 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[EmbeddingsProvid
                 backend = manager.select_backend_for_task(
                     task="text-embedding",
                     model=model_name or os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL", ""),
-                    protocol="any"
+                    protocol="any",
                 )
-                
+
                 if backend is None:
                     raise RuntimeError("No available backend for text-embedding")
-                
+
                 # Execute inference via backend
                 inputs = list(texts)
-                payload = {
-                    "texts": inputs,
-                    "device": device,
-                    **kwargs
-                }
-                
+                payload = {"texts": inputs, "device": device, **kwargs}
+
                 result = manager.execute_inference(
-                    backend_id=backend["id"],
-                    task="text-embedding",
-                    payload=payload
+                    backend_id=backend["id"], task="text-embedding", payload=payload
                 )
-                
+
                 # Extract embeddings from result
                 embeddings = result.get("embeddings")
                 if isinstance(embeddings, list):
@@ -3365,7 +3306,9 @@ def get_embeddings_provider(
         cached = resolved_deps.get_cached(deps_key)
         if cached is not None:
             return cached
-        return resolved_deps.set_cached(deps_key, _resolve_provider_uncached(provider, deps=resolved_deps))
+        return resolved_deps.set_cached(
+            deps_key, _resolve_provider_uncached(provider, deps=resolved_deps)
+        )
 
     return _resolve_provider_cached(provider, _provider_cache_key())
 
@@ -3501,9 +3444,7 @@ def embed_texts(
                 )
                 getter = getattr(resolved_deps, "get_cached_or_remote", None)
                 cached = (
-                    getter(cache_key)
-                    if callable(getter)
-                    else resolved_deps.get_cached(cache_key)
+                    getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
                 )
                 cached_vectors[index] = _normalize_embedding_vectors(
                     [cached],
@@ -3584,9 +3525,7 @@ def embed_texts(
                 )
                 if value
             }
-            for fallback_model in _hf_embeddings_fallback_models(
-                kwargs=dict(kwargs)
-            ):
+            for fallback_model in _hf_embeddings_fallback_models(kwargs=dict(kwargs)):
                 if fallback_model in attempted:
                     continue
                 attempted.add(fallback_model)
@@ -3633,11 +3572,7 @@ def embed_texts(
             )
     except Exception as primary_error:
         logger.debug("Primary embeddings provider failed: %s", primary_error)
-        if (
-            provider is None
-            and provider_instance is None
-            and provider_used != "huggingface"
-        ):
+        if provider is None and provider_instance is None and provider_used != "huggingface":
             try:
                 fallback = get_embeddings_provider(
                     "huggingface",
@@ -3829,9 +3764,7 @@ def embed_texts_batched(
     if any(not isinstance(text, str) for text in items):
         raise TypeError("texts must contain only strings")
 
-    total_batches = (
-        (len(items) + batch_size - 1) // batch_size if items else 0
-    )
+    total_batches = (len(items) + batch_size - 1) // batch_size if items else 0
 
     def _report(**values: object) -> None:
         snapshot = _update_embedding_progress(**values)
@@ -3879,8 +3812,10 @@ def embed_texts_batched(
     # candidates/provider_instance are not supplied per binding.
     policy = _normalize_usage_policy(usage_policy)
     backend: Optional[EmbeddingsProvider]
-    if usage_coordinator is not None and _usage_mode_enforces(policy) and (
-        usage_candidates is not None or usage_provider_by_binding
+    if (
+        usage_coordinator is not None
+        and _usage_mode_enforces(policy)
+        and (usage_candidates is not None or usage_provider_by_binding)
     ):
         backend = provider_instance
     else:
@@ -3959,13 +3894,8 @@ def embed_texts_batched(
                     dimension=len(vectors[0]) if vectors else 0,
                 )
         else:
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=workers
-            ) as executor:
-                futures = {
-                    executor.submit(_embed_batch, start): start
-                    for start in ranges
-                }
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(_embed_batch, start): start for start in ranges}
                 completed_batches = 0
                 for future in concurrent.futures.as_completed(futures):
                     start = futures[future]
@@ -3988,9 +3918,7 @@ def embed_texts_batched(
                 for trace in traces
                 if trace.get("provider_used")
             ),
-            str(provider or "")
-            if backend is None
-            else _provider_name(backend, requested=provider),
+            str(provider or "") if backend is None else _provider_name(backend, requested=provider),
         )
         # Completed physical sub-batches already settled exactly once; preserve
         # that evidence on partial failure / cancel / timeout.
@@ -4006,9 +3934,7 @@ def embed_texts_batched(
                 "completed_sub_batches": len(traces),
                 "completed_items": completed_items,
                 "sub_batch_receipt_ids": [
-                    item.get("receipt_id")
-                    for item in batch_admissions
-                    if item.get("receipt_id")
+                    item.get("receipt_id") for item in batch_admissions if item.get("receipt_id")
                 ],
                 "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
             }
@@ -4031,22 +3957,12 @@ def embed_texts_batched(
         )
         raise
 
-    ordered = [
-        vector
-        for start in ranges
-        for vector in batch_results[start]
-    ]
+    ordered = [vector for start in ranges for vector in batch_results[start]]
     result = _normalize_embedding_vectors(ordered, expected_count=len(items))
     dimension = len(result[0]) if result else 0
     provider_used = next(
-        (
-            str(trace.get("provider_used") or "")
-            for trace in traces
-            if trace.get("provider_used")
-        ),
-        str(provider or "")
-        if backend is None
-        else _provider_name(backend, requested=provider),
+        (str(trace.get("provider_used") or "") for trace in traces if trace.get("provider_used")),
+        str(provider or "") if backend is None else _provider_name(backend, requested=provider),
     )
     _report(
         stage="done",
@@ -4063,14 +3979,10 @@ def embed_texts_batched(
                 "attempt_count": len(batch_admissions),
                 "completed_sub_batches": total_batches,
                 "sub_batch_receipt_ids": [
-                    item.get("receipt_id")
-                    for item in batch_admissions
-                    if item.get("receipt_id")
+                    item.get("receipt_id") for item in batch_admissions if item.get("receipt_id")
                 ],
                 "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
-                "remote_charged": any(
-                    item.get("remote_charged") for item in batch_admissions
-                ),
+                "remote_charged": any(item.get("remote_charged") for item in batch_admissions),
             }
         )
     _set_last_embedding_trace(
@@ -4116,14 +4028,14 @@ def embed_text(
     **kwargs: object,
 ) -> List[float]:
     """Generate an embedding for a single text.
-    
+
     Args:
         text: Text to embed
         model_name: Optional model name to use
         device: Optional device (cpu/cuda)
         provider: Optional provider name
         **kwargs: Additional arguments passed to the provider
-        
+
     Returns:
         Embedding vector
     """

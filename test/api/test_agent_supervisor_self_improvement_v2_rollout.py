@@ -44,9 +44,7 @@ def _evaluation(
     if corpus is None:
         corpus = build_frozen_v2_paired_corpus()
     if producers is None:
-        producers, default_ablations = (
-            build_frozen_v2_self_evaluation_inputs(corpus)
-        )
+        producers, default_ablations = build_frozen_v2_self_evaluation_inputs(corpus)
         if ablations is None:
             ablations = default_ablations
     if ablations is None:
@@ -61,14 +59,10 @@ def _evaluation(
 
 
 def _inputs():
-    qualification = _evaluation(
-        "evaluation:qualification@1", QUALIFIED_AT
-    )
+    qualification = _evaluation("evaluation:qualification@1", QUALIFIED_AT)
     current = _evaluation("evaluation:current@1", CURRENT_AT)
     binding = V2RolloutBinding.from_corpus(qualification.corpus)
-    automatic_policy = V2RolloutPolicy(
-        allowed_modes=tuple(V2RolloutMode)
-    )
+    automatic_policy = V2RolloutPolicy(allowed_modes=tuple(V2RolloutMode))
     return qualification, current, binding, automatic_policy
 
 
@@ -88,9 +82,7 @@ def test_complete_report_recomputes_all_zero_and_threshold_gates():
         "artifact-bound",
     }
     assert not any(result.zero_failure_counts.values())
-    assert tuple(result.threshold_status) == (
-        REQUIRED_V2_OBJECTIVE_DIMENSIONS
-    )
+    assert tuple(result.threshold_status) == (REQUIRED_V2_OBJECTIVE_DIMENSIONS)
     assert all(result.threshold_status.values())
     assert set(result.threshold_status) == {
         V2ObjectiveDimension.SAFETY,
@@ -118,9 +110,7 @@ def test_complete_report_recomputes_all_zero_and_threshold_gates():
         (V2RolloutMode.ASSIST, V2RolloutMode.ASSIST),
     ),
 )
-def test_off_shadow_and_assist_have_bound_deterministic_modes(
-    desired, expected
-):
+def test_off_shadow_and_assist_have_bound_deterministic_modes(desired, expected):
     qualification, _, binding, policy = _inputs()
 
     report = evaluate_v2_rollout(
@@ -133,14 +123,9 @@ def test_off_shadow_and_assist_have_bound_deterministic_modes(
     assert report.desired_mode is desired
     assert report.effective_mode is expected
     assert report.qualification_gate_passed
-    assert report.desired_binding_id != report.effective_binding_id or (
-        desired is expected
-    )
+    assert report.desired_binding_id != report.effective_binding_id or (desired is expected)
     assert report.to_dict()["binding"]["policy_id"] == binding.policy_id
-    assert (
-        report.to_dict()["binding"]["capability_id"]
-        == binding.capability_id
-    )
+    assert report.to_dict()["binding"]["capability_id"] == binding.capability_id
 
 
 def test_automatic_requires_explicit_policy_approval():
@@ -221,9 +206,7 @@ def test_stale_policy_capability_or_tree_binding_rolls_back_to_shadow():
     assert report.rollback_applied
     assert "stale-binding:qualification" in report.reason_codes
     assert "stale-binding:current" in report.reason_codes
-    assert report.to_dict()["affected_behavior_ids"] == [
-        binding.behavior_id
-    ]
+    assert report.to_dict()["affected_behavior_ids"] == [binding.behavior_id]
 
 
 def test_later_metric_deterioration_rolls_back_even_if_threshold_still_passes():
@@ -258,10 +241,7 @@ def test_later_metric_deterioration_rolls_back_even_if_threshold_still_passes():
 
     assert report.effective_mode is V2RolloutMode.SHADOW
     assert report.rollback_applied
-    assert (
-        "regression:cache:warm-exact-reuse-rate"
-        in report.reason_codes
-    )
+    assert "regression:cache:warm-exact-reuse-rate" in report.reason_codes
 
 
 def test_any_noncompensable_failure_forces_shadow():
@@ -308,11 +288,14 @@ def test_report_restore_replays_sources_and_rejects_tampering():
         current=current,
     )
     assert restored == report
-    assert verify_v2_rollout_report(
-        report,
-        qualification,
-        current_evaluation=current,
-    ) == report
+    assert (
+        verify_v2_rollout_report(
+            report,
+            qualification,
+            current_evaluation=current,
+        )
+        == report
+    )
     tampered = report.to_dict(include_report_id=True)
     tampered["effective_mode"] = "shadow"
     with pytest.raises(V2RolloutError, match="source replay"):

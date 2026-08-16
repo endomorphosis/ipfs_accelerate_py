@@ -26,29 +26,27 @@ except ImportError:
             from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
         except ImportError:
             HAVE_STORAGE_WRAPPER = False
+
             def get_storage_wrapper(*args, **kwargs):
                 return None
+
 
 # Constants
 VERIFICATION_RESULTS_PATH = os.path.join(os.path.dirname(__file__), "verification_results.json")
 SERVER_MODULE = "ipfs_accelerate_py.mcp.server"
 SERVER_PROCESS_STARTUP_TIME = 3  # seconds to wait for server to start
 
+
 class MCPVerifier:
     """Verify MCP server components"""
-    
+
     def __init__(self):
         self.server_process = None
         self.client = None
-        self.verification_results = {
-            "tools": [],
-            "resources": [],
-            "prompts": [],
-            "errors": []
-        }
+        self.verification_results = {"tools": [], "resources": [], "prompts": [], "errors": []}
         # Initialize storage wrapper
         self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
-    
+
     def start_server(self) -> bool:
         """Start the MCP server as a subprocess"""
         try:
@@ -59,17 +57,17 @@ class MCPVerifier:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 universal_newlines=True,
-                bufsize=1
+                bufsize=1,
             )
             print(f"MCP server started with PID: {self.server_process.pid}")
-            
+
             # Wait for server to start
             time.sleep(SERVER_PROCESS_STARTUP_TIME)
             return True
         except Exception as e:
             print(f"Error starting MCP server: {e}")
             return False
-    
+
     def stop_server(self):
         """Stop the MCP server subprocess"""
         if self.server_process:
@@ -82,7 +80,7 @@ class MCPVerifier:
                 # Force kill if terminate doesn't work
                 self.server_process.kill()
             print("MCP server stopped")
-    
+
     def connect_to_client(self) -> bool:
         """Connect to the MCP server via client"""
         try:
@@ -96,7 +94,7 @@ class MCPVerifier:
             print(f"Error connecting to MCP server: {e}")
             self.verification_results["errors"].append(f"Connection error: {str(e)}")
             return False
-    
+
     def verify_tools(self):
         """Verify registered tools"""
         print("\nVerifying Tools:")
@@ -105,10 +103,12 @@ class MCPVerifier:
             print(f"Found {len(tools)} tools:")
             for i, tool in enumerate(tools):
                 tool_info = {
-                    "name": tool.name if hasattr(tool, 'name') else f"Tool {i+1}",
-                    "description": tool.description if hasattr(tool, 'description') else "No description"
+                    "name": tool.name if hasattr(tool, "name") else f"Tool {i + 1}",
+                    "description": tool.description
+                    if hasattr(tool, "description")
+                    else "No description",
                 }
-                print(f"  {i+1}. {tool_info['name']}: {tool_info['description']}")
+                print(f"  {i + 1}. {tool_info['name']}: {tool_info['description']}")
                 self.verification_results["tools"].append(tool_info)
             return tools
         except Exception as e:
@@ -116,7 +116,7 @@ class MCPVerifier:
             print(error_msg)
             self.verification_results["errors"].append(error_msg)
             return []
-    
+
     def verify_resources(self):
         """Verify registered resources"""
         print("\nVerifying Resources:")
@@ -125,10 +125,12 @@ class MCPVerifier:
             print(f"Found {len(resources)} resources:")
             for i, resource in enumerate(resources):
                 resource_info = {
-                    "uri": resource.uri if hasattr(resource, 'uri') else f"Resource {i+1}",
-                    "description": resource.description if hasattr(resource, 'description') else "No description"
+                    "uri": resource.uri if hasattr(resource, "uri") else f"Resource {i + 1}",
+                    "description": resource.description
+                    if hasattr(resource, "description")
+                    else "No description",
                 }
-                print(f"  {i+1}. {resource_info['uri']}: {resource_info['description']}")
+                print(f"  {i + 1}. {resource_info['uri']}: {resource_info['description']}")
                 self.verification_results["resources"].append(resource_info)
             return resources
         except Exception as e:
@@ -136,7 +138,7 @@ class MCPVerifier:
             print(error_msg)
             self.verification_results["errors"].append(error_msg)
             return []
-    
+
     def verify_prompts(self):
         """Verify registered prompts"""
         print("\nVerifying Prompts:")
@@ -145,10 +147,12 @@ class MCPVerifier:
             print(f"Found {len(prompts)} prompts:")
             for i, prompt in enumerate(prompts):
                 prompt_info = {
-                    "name": prompt.name if hasattr(prompt, 'name') else f"Prompt {i+1}",
-                    "description": prompt.description if hasattr(prompt, 'description') else "No description"
+                    "name": prompt.name if hasattr(prompt, "name") else f"Prompt {i + 1}",
+                    "description": prompt.description
+                    if hasattr(prompt, "description")
+                    else "No description",
                 }
-                print(f"  {i+1}. {prompt_info['name']}: {prompt_info['description']}")
+                print(f"  {i + 1}. {prompt_info['name']}: {prompt_info['description']}")
                 self.verification_results["prompts"].append(prompt_info)
             return prompts
         except Exception as e:
@@ -156,40 +160,42 @@ class MCPVerifier:
             print(error_msg)
             self.verification_results["errors"].append(error_msg)
             return []
-    
+
     def save_verification_results(self):
         """Save verification results to file"""
         try:
             results_json = json.dumps(self.verification_results, indent=2)
-            
+
             # Try distributed storage first
             if self._storage:
                 try:
-                    cid = self._storage.write_file(results_json, VERIFICATION_RESULTS_PATH, pin=True)
+                    cid = self._storage.write_file(
+                        results_json, VERIFICATION_RESULTS_PATH, pin=True
+                    )
                     print(f"\nDetailed verification results saved to distributed storage: {cid}")
                 except Exception as e:
                     print(f"Distributed storage failed: {e}, using local storage")
-                    with open(VERIFICATION_RESULTS_PATH, 'w') as f:
+                    with open(VERIFICATION_RESULTS_PATH, "w") as f:
                         f.write(results_json)
                     print(f"\nDetailed verification results saved to: {VERIFICATION_RESULTS_PATH}")
             else:
-                with open(VERIFICATION_RESULTS_PATH, 'w') as f:
+                with open(VERIFICATION_RESULTS_PATH, "w") as f:
                     f.write(results_json)
                 print(f"\nDetailed verification results saved to: {VERIFICATION_RESULTS_PATH}")
         except Exception as e:
             print(f"Error saving verification results: {e}")
-    
+
     def print_summary(self, tools, resources, prompts):
         """Print verification summary"""
         print("\n" + "=" * 80)
         print("VERIFICATION SUMMARY")
         print("=" * 80)
-        
+
         # Calculate completion
         tools_count = len(tools) if tools else 0
         resources_count = len(resources) if resources else 0
         prompts_count = len(prompts) if prompts else 0
-        
+
         if tools_count == 0 or resources_count == 0 or prompts_count == 0:
             print("\nOverall Completion: Incomplete")
             print(f"- Tools: {tools_count}")
@@ -202,37 +208,38 @@ class MCPVerifier:
             print(f"- Resources: {resources_count}")
             print(f"- Prompts: {prompts_count}")
             print("\n✅ ALL COMPONENTS VERIFIED SUCCESSFULLY")
-    
+
     def run(self):
         """Run the verification process"""
         try:
             # Start server
             if not self.start_server():
                 return
-            
+
             # Connect to client
             if not self.connect_to_client():
                 self.stop_server()
                 return
-            
+
             # Verify components
             tools = self.verify_tools()
             resources = self.verify_resources()
             prompts = self.verify_prompts()
-            
+
             # Save results
             self.save_verification_results()
-            
+
             # Print summary
             self.print_summary(tools, resources, prompts)
         finally:
             # Always stop the server
             self.stop_server()
 
+
 if __name__ == "__main__":
     print("=" * 80)
     print("IPFS Accelerate MCP Server Verification")
     print("=" * 80)
-    
+
     verifier = MCPVerifier()
     verifier.run()

@@ -348,6 +348,7 @@ import ipfs_accelerate_py
 **Manual control available if needed**:
 ```python
 from ipfs_accelerate_py import auto_patch_transformers
+
 auto_patch_transformers.apply()  # Apply
 auto_patch_transformers.disable()  # Disable
 ```

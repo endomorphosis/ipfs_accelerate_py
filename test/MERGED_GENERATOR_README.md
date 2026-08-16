@@ -247,17 +247,20 @@ The exported model registry parquet file can be used with various tools:
 ```python
 # Python/Pandas
 import pandas as pd
+
 df = pd.read_parquet("model_registry.parquet")
 print(df.head())
 
 # DuckDB
 import duckdb
+
 conn = duckdb.connect()
 conn.execute("SELECT * FROM 'model_registry.parquet' WHERE category = 'vision'")
 results = conn.fetchall()
 
 # PySpark
 from pyspark.sql import SparkSession
+
 spark = SparkSession.builder.getOrCreate()
 df = spark.read.parquet("model_registry.parquet")
 df.createOrReplaceTempView("models")

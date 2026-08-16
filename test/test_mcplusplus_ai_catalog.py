@@ -36,10 +36,7 @@ TRUSTED_KEY = b"offline-trusted-issuer-key-for-federation-tests"
 def _peer_source(advertisements, transport, *, trust_domain="tenant-a", **kwargs):
     """Build a PeerCatalogSource with explicit trust configuration."""
 
-    if (
-        "trusted_issuers" not in kwargs
-        and "allow_peer_identity_hmac" not in kwargs
-    ):
+    if "trusted_issuers" not in kwargs and "allow_peer_identity_hmac" not in kwargs:
         kwargs["allow_peer_identity_hmac"] = True
     return PeerCatalogSource(
         advertisements,
@@ -130,9 +127,7 @@ class OfflineTransport:
         self.fail = set()
         self.mismatch = set()
 
-    def fetch_catalog_page(
-        self, advertisement, *, record_type, cursor, limit
-    ):
+    def fetch_catalog_page(self, advertisement, *, record_type, cursor, limit):
         self.calls.append(
             (
                 advertisement.peer_id,
@@ -150,11 +145,7 @@ class OfflineTransport:
             limit=limit,
             cursor=cursor,
         ).to_dict()
-        if (
-            advertisement.peer_id in self.mismatch
-            and record_type == "providers"
-            and page["items"]
-        ):
+        if advertisement.peer_id in self.mismatch and record_type == "providers" and page["items"]:
             # Keep the advertised page revision intact while changing canonical
             # content, exercising the final reconstructed-snapshot CID check.
             page["items"][0]["description"] = "tampered"
@@ -228,11 +219,7 @@ def test_dynamic_catalog_revision_is_broadcast_without_server_restart():
 
     trio.run(exercise)
 
-    announced = [
-        call[2]["record"]
-        for call in node.sent
-        if call[1] == "_mcppp_service_announce"
-    ]
+    announced = [call[2]["record"] for call in node.sent if call[1] == "_mcppp_service_announce"]
     assert [item["catalog_revision"] for item in announced] == [
         first.revision,
         second.revision,
@@ -275,9 +262,7 @@ def test_peer_source_rejects_transport_without_explicit_authorization():
     transport = OfflineTransport({"peer-a": snapshot})
     transport.authorized = False
 
-    result = _peer_source(
-        [record], transport, trust_domain="tenant-a"
-    ).refresh()
+    result = _peer_source([record], transport, trust_domain="tenant-a").refresh()
 
     assert result.snapshot.providers == ()
     assert [item.code for item in result.diagnostics] == ["peer_fetch_failed"]
@@ -290,9 +275,7 @@ def test_partial_and_duplicate_peers_are_isolated_and_deduplicated():
     good_record = _advertisement("peer-good", good)
     duplicate = ServiceRecord.from_dict(good_record.to_dict())
     bad_record = _advertisement("peer-bad", unavailable)
-    transport = OfflineTransport(
-        {"peer-good": good, "peer-bad": unavailable}
-    )
+    transport = OfflineTransport({"peer-good": good, "peer-bad": unavailable})
     transport.fail.add("peer-bad")
 
     result = _peer_source(
@@ -316,9 +299,7 @@ def test_cid_mismatch_and_stale_advertisements_fail_closed():
         issued_at=time.time() - 20.0,
         ttl=1.0,
     )
-    transport = OfflineTransport(
-        {"peer-mismatch": snapshot, "peer-expired": snapshot}
-    )
+    transport = OfflineTransport({"peer-mismatch": snapshot, "peer-expired": snapshot})
     transport.mismatch.add("peer-mismatch")
 
     result = _peer_source(
@@ -354,21 +335,33 @@ def test_restart_and_trust_domains_have_deterministic_isolated_identities():
     snapshot = _snapshot("remote", ("a",))
     record = _advertisement("peer-a", snapshot)
 
-    first = _peer_source(
-        [record],
-        OfflineTransport({"peer-a": snapshot}),
-        trust_domain="tenant-a",
-    ).refresh().snapshot
-    restarted = _peer_source(
-        [record],
-        OfflineTransport({"peer-a": snapshot}),
-        trust_domain="tenant-a",
-    ).refresh().snapshot
-    other_domain = _peer_source(
-        [record],
-        OfflineTransport({"peer-a": snapshot}),
-        trust_domain="tenant-b",
-    ).refresh().snapshot
+    first = (
+        _peer_source(
+            [record],
+            OfflineTransport({"peer-a": snapshot}),
+            trust_domain="tenant-a",
+        )
+        .refresh()
+        .snapshot
+    )
+    restarted = (
+        _peer_source(
+            [record],
+            OfflineTransport({"peer-a": snapshot}),
+            trust_domain="tenant-a",
+        )
+        .refresh()
+        .snapshot
+    )
+    other_domain = (
+        _peer_source(
+            [record],
+            OfflineTransport({"peer-a": snapshot}),
+            trust_domain="tenant-b",
+        )
+        .refresh()
+        .snapshot
+    )
 
     assert restarted.revision == first.revision
     assert restarted.providers[0].provider_id == first.providers[0].provider_id

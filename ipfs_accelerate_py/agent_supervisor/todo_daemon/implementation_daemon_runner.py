@@ -222,7 +222,9 @@ class ConfiguredImplementationDaemonRunner:
             objective_path=objective_path,
             objective_bundle_dir_key=objective_bundle_dir_key,
             objective_bundle_dir=objective_bundle_dir,
-            llm_merge_resolver_command=_resolved_daemon_merge_resolver_command(llm_merge_resolver_command),
+            llm_merge_resolver_command=_resolved_daemon_merge_resolver_command(
+                llm_merge_resolver_command
+            ),
             worktree_submodule_paths=worktree_submodule_paths,
             hooks=effective_hooks,
             pass_complete_message=pass_complete_message,
@@ -426,14 +428,10 @@ def build_configured_implementation_daemon_runner(
             else None
         ),
         default_objective_path=(
-            Path(default_objective_path)
-            if default_objective_path is not None
-            else None
+            Path(default_objective_path) if default_objective_path is not None else None
         ),
         default_objective_bundle_dir=(
-            Path(default_objective_bundle_dir)
-            if default_objective_bundle_dir is not None
-            else None
+            Path(default_objective_bundle_dir) if default_objective_bundle_dir is not None else None
         ),
         pass_complete_message=pass_complete_message,
     )
@@ -626,7 +624,9 @@ def build_implementation_daemon_defaults_from_paths(
         state_prefix=state_prefix,
         worktree_root=_path_from_mapping(paths, worktree_root_key),
         todo_path_flag=todo_path_flag,
-        objective_path=_optional_path_from_mapping(paths, key=objective_path_key, value=objective_path),
+        objective_path=_optional_path_from_mapping(
+            paths, key=objective_path_key, value=objective_path
+        ),
         objective_bundle_dir=_optional_path_from_mapping(
             paths,
             key=objective_bundle_dir_key,
@@ -659,9 +659,13 @@ def apply_portal_implementation_daemon_defaults(
     args = _with_optional_default(args, "--objective-path", defaults.objective_path)
     args = _with_optional_default(args, "--objective-bundle-dir", defaults.objective_bundle_dir)
     if defaults.llm_merge_resolver_command:
-        args = with_default(args, "--llm-merge-resolver-command", defaults.llm_merge_resolver_command)
+        args = with_default(
+            args, "--llm-merge-resolver-command", defaults.llm_merge_resolver_command
+        )
     if defaults.worktree_submodule_paths:
-        args = with_repeated_default(args, "--worktree-submodule-path", defaults.worktree_submodule_paths)
+        args = with_repeated_default(
+            args, "--worktree-submodule-path", defaults.worktree_submodule_paths
+        )
     return args
 
 
@@ -711,11 +715,7 @@ def _ordered_refill_entries(
     if order is None:
         return list(entries)
     by_name = {name: callback for name, callback in entries}
-    ordered: list[RefillHookEntry] = [
-        (name, by_name[name])
-        for name in order
-        if name in by_name
-    ]
+    ordered: list[RefillHookEntry] = [(name, by_name[name]) for name in order if name in by_name]
     ordered_names = {name for name, _callback in ordered}
     ordered.extend((name, callback) for name, callback in entries if name not in ordered_names)
     return ordered
@@ -1109,9 +1109,7 @@ def build_portal_implementation_daemon_from_args(
     apply_merge_resolver_environment(parsed)
     state_paths = implementation_state_paths(parsed)
     worktree_submodule_paths = (
-        getattr(parsed, "worktree_submodule_path", None)
-        or default_worktree_submodule_paths
-        or None
+        getattr(parsed, "worktree_submodule_path", None) or default_worktree_submodule_paths or None
     )
     implementation_protected_paths = (
         getattr(parsed, "implementation_protected_path", None)
@@ -1127,7 +1125,8 @@ def build_portal_implementation_daemon_from_args(
         task_header_prefix=parsed.task_prefix,
         implement=parsed.implement,
         implementation_command=parsed.implementation_command or None,
-        implementation_timeout=parsed.implementation_timeout or DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
+        implementation_timeout=parsed.implementation_timeout
+        or DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
         use_ephemeral_worktree=parsed.implement and not parsed.no_ephemeral_worktree,
         worktree_root=parsed.worktree_root,
         merge_target_branch=getattr(parsed, "merge_target_branch", "") or None,
@@ -1179,9 +1178,7 @@ def _run_hooks(
             logger.warning("Daemon hook timed out: %s", payload)
             continue
         should_log = (
-            result.generated_count > 0
-            if isinstance(result, RefillScanResult)
-            else bool(result)
+            result.generated_count > 0 if isinstance(result, RefillScanResult) else bool(result)
         )
         if should_log:
             logger.log(hook.log_level, hook.message, result)

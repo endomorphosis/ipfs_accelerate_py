@@ -36,12 +36,11 @@ def _load_acceleration_tools_api() -> Dict[str, Any]:
     except Exception:
         pass
 
-    logger.warning(
-        "Source acceleration_tools import unavailable, using fallback stubs"
-    )
+    logger.warning("Source acceleration_tools import unavailable, using fallback stubs")
 
     def _hw_info_fallback(ctx: Any = None) -> Dict[str, Any]:
         import platform
+
         return {
             "status": "success",
             "platform": platform.system(),
@@ -106,10 +105,16 @@ async def acceleration_accelerate_model(
 
             instance = ipfs_accelerate_py()
             result = await instance.accelerate(cid=cid, device=device)
-            return _normalize_payload(result if isinstance(result, dict) else {"cid": cid, "device": device, "accelerated": result})
+            return _normalize_payload(
+                result
+                if isinstance(result, dict)
+                else {"cid": cid, "device": device, "accelerated": result}
+            )
         except Exception:
             pass
-        return _normalize_payload({"cid": cid, "device": device, "accelerated": False, "backend_available": False})
+        return _normalize_payload(
+            {"cid": cid, "device": device, "accelerated": False, "backend_available": False}
+        )
     except Exception as exc:
         return _error_result(str(exc), cid=cid, device=device)
 
@@ -126,7 +131,11 @@ async def acceleration_benchmark_model(
 
             instance = ipfs_accelerate_py()
             result = await instance.benchmark(cid=cid, device=device, iterations=iterations)
-            return _normalize_payload(result if isinstance(result, dict) else {"cid": cid, "device": device, "iterations": iterations, "benchmark": result})
+            return _normalize_payload(
+                result
+                if isinstance(result, dict)
+                else {"cid": cid, "device": device, "iterations": iterations, "benchmark": result}
+            )
         except Exception:
             pass
         return _normalize_payload(
@@ -150,7 +159,9 @@ async def acceleration_model_status(cid: str) -> Dict[str, Any]:
 
             instance = ipfs_accelerate_py()
             result = await instance.status(cid=cid)
-            return _normalize_payload(result if isinstance(result, dict) else {"cid": cid, "status_data": result})
+            return _normalize_payload(
+                result if isinstance(result, dict) else {"cid": cid, "status_data": result}
+            )
         except Exception:
             pass
         return _normalize_payload({"cid": cid, "loaded": False, "backend_available": False})
@@ -221,9 +232,7 @@ def register_native_acceleration_tools(manager: Any) -> None:
         description="Get acceleration status for a model identified by IPFS CID.",
         input_schema={
             "type": "object",
-            "properties": {
-                "cid": {"type": "string", "description": "IPFS CID of the model."}
-            },
+            "properties": {"cid": {"type": "string", "description": "IPFS CID of the model."}},
             "required": ["cid"],
         },
         runtime="fastapi",

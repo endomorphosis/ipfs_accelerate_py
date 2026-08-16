@@ -158,10 +158,12 @@ Test the end-to-end workflow from model code generation to benchmarking:
 ```python
 # Create a model implementation
 from refactored_generator_suite.generate_simple_model import generate_model
+
 model_path = generate_model("bert-base-uncased")
 
 # Run benchmarks on the generated model
 from refactored_benchmark_suite.run_skillset_benchmark import run_benchmark
+
 benchmark_results = run_benchmark(model_path, hardware="cpu")
 
 # Verify results
@@ -176,6 +178,7 @@ Test the integration between test suite and API components:
 ```python
 # Run a test through the API
 from refactored_test_suite.api.test_client import ApiTestClient
+
 client = ApiTestClient()
 response = client.run_test("bert-base-uncased", hardware="cpu")
 
@@ -191,10 +194,12 @@ Test the complete stack from model generation to API serving:
 ```python
 # Generate model code
 from refactored_generator_suite.generate_simple_model import generate_model
+
 model_path = generate_model("bert-base-uncased")
 
 # Run the model through the API
 from unified_api.client import UnifiedApiClient
+
 client = UnifiedApiClient()
 response = client.run_inference(model_path, inputs={"text": "Test input"})
 
@@ -243,7 +248,7 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(
     title="IPFS Accelerate Python Framework API",
     description="Unified API for model generation, testing, and benchmarking",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # Enable CORS
@@ -255,11 +260,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Model generation endpoints
 @app.post("/api/generator/models")
 async def generate_model(request: ModelGenerationRequest):
     """Generate model implementation"""
     # Implementation...
+
 
 # Testing endpoints
 @app.post("/api/test/models")
@@ -267,11 +274,13 @@ async def test_model(request: ModelTestRequest):
     """Run model tests"""
     # Implementation...
 
+
 # Benchmarking endpoints
 @app.post("/api/benchmark/models")
 async def benchmark_model(request: ModelBenchmarkRequest):
     """Run model benchmarks"""
     # Implementation...
+
 
 # WebSocket for real-time updates
 @app.websocket("/api/ws/{client_id}")

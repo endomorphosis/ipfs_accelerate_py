@@ -10,7 +10,9 @@ from unittest.mock import patch
 import anyio
 
 from ipfs_accelerate_py.mcp.server import create_mcp_server
-from ipfs_accelerate_py.mcp_server.tools.rate_limiting_tools import native_rate_limiting_tools_category
+from ipfs_accelerate_py.mcp_server.tools.rate_limiting_tools import (
+    native_rate_limiting_tools_category,
+)
 
 
 class TestMCPServerUNI292RateLimitingToolsDispatchCompat(unittest.TestCase):
@@ -30,7 +32,9 @@ class TestMCPServerUNI292RateLimitingToolsDispatchCompat(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -45,21 +49,24 @@ class TestMCPServerUNI292RateLimitingToolsDispatchCompat(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_rate_limiting_tools_category._API,
-                {
-                    "configure_rate_limits": _contradictory_failure,
-                    "check_rate_limit": _contradictory_failure,
-                    "manage_rate_limits": _contradictory_failure,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_rate_limiting_tools_category._API,
+                    {
+                        "configure_rate_limits": _contradictory_failure,
+                        "check_rate_limit": _contradictory_failure,
+                        "manage_rate_limits": _contradictory_failure,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="rate-limiting-tools-dispatch-compat-errors")
                 dispatch = server.tools["tools_dispatch"]["function"]

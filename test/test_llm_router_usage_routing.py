@@ -68,9 +68,7 @@ def _now() -> datetime:
 
 
 def _rfc(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 @pytest.fixture(autouse=True)
@@ -311,12 +309,7 @@ def test_llm_fallback_compatible_rejects_locality_and_side_effect_drift() -> Non
         "model_name": "m1",
     }
     assert llm_fallback_compatible(origin, dict(origin)) is True
-    assert (
-        llm_fallback_compatible(
-            origin, dict(origin, router_provider="b")
-        )
-        is False
-    )
+    assert llm_fallback_compatible(origin, dict(origin, router_provider="b")) is False
     assert (
         llm_fallback_compatible(
             {"locality": "remote", "modality": "text"},
@@ -484,9 +477,7 @@ def test_enforce_denies_when_capacity_exhausted() -> None:
             "blocked",
             provider_instance=provider,
             usage_coordinator=coord,
-            usage_policy=RoutingPolicy(
-                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-            ),
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
             usage_candidates=[cand],
             usage_provider_by_binding={cand.binding_id: provider},
             usage_request=UsageRoutingRequest(
@@ -508,9 +499,7 @@ def test_enforce_reserves_cost_and_stream_dimensions() -> None:
     clock = FakeClock(_now())
     coord = _coord(clock)
     scope = _scope("cost-stream")
-    _configure_llm_limits(
-        coord, scope, requests=5, concurrent_streams=2, cost_micros=10_000
-    )
+    _configure_llm_limits(coord, scope, requests=5, concurrent_streams=2, cost_micros=10_000)
     cand = _candidate(provider_key="cost-stream", scope=scope)
     provider = _CountingProvider("cost-stream")
 
@@ -658,9 +647,7 @@ def test_cancel_before_dispatch_does_not_charge() -> None:
             "never",
             provider_instance=provider,
             usage_coordinator=coord,
-            usage_policy=RoutingPolicy(
-                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-            ),
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
             usage_candidates=[cand],
             usage_provider_by_binding={cand.binding_id: provider},
             usage_request=UsageRoutingRequest(
@@ -728,12 +715,8 @@ def test_compatible_fallback_advances_on_capacity_error() -> None:
     _configure_llm_limits(coord, scope_a, requests=10)
     _configure_llm_limits(coord, scope_b, requests=10)
     labels = {"modality": "text", "operation": LLM_USAGE_OPERATION, "locality": "remote"}
-    cand_a = _candidate(
-        provider_key="fb-a", scope=scope_a, score=50, labels=dict(labels)
-    )
-    cand_b = _candidate(
-        provider_key="fb-b", scope=scope_b, score=10, labels=dict(labels)
-    )
+    cand_a = _candidate(provider_key="fb-a", scope=scope_a, score=50, labels=dict(labels))
+    cand_b = _candidate(provider_key="fb-b", scope=scope_b, score=10, labels=dict(labels))
     provider_a = _CountingProvider(
         "fb-a",
         fail_times=1,
@@ -778,12 +761,8 @@ def test_semantic_context_error_does_not_fallback() -> None:
     _configure_llm_limits(coord, scope_a, requests=10)
     _configure_llm_limits(coord, scope_b, requests=10)
     labels = {"modality": "text", "operation": LLM_USAGE_OPERATION, "locality": "remote"}
-    cand_a = _candidate(
-        provider_key="sem-a", scope=scope_a, score=50, labels=dict(labels)
-    )
-    cand_b = _candidate(
-        provider_key="sem-b", scope=scope_b, score=10, labels=dict(labels)
-    )
+    cand_a = _candidate(provider_key="sem-a", scope=scope_a, score=50, labels=dict(labels))
+    cand_b = _candidate(provider_key="sem-b", scope=scope_b, score=10, labels=dict(labels))
     provider_a = _CountingProvider(
         "sem-a",
         fail_times=1,
@@ -825,12 +804,8 @@ def test_tool_side_effect_error_does_not_fallback() -> None:
     _configure_llm_limits(coord, scope_a, requests=10)
     _configure_llm_limits(coord, scope_b, requests=10)
     labels = {"modality": "text", "operation": LLM_USAGE_OPERATION, "locality": "remote"}
-    cand_a = _candidate(
-        provider_key="se-a", scope=scope_a, score=50, labels=dict(labels)
-    )
-    cand_b = _candidate(
-        provider_key="se-b", scope=scope_b, score=10, labels=dict(labels)
-    )
+    cand_a = _candidate(provider_key="se-a", scope=scope_a, score=50, labels=dict(labels))
+    cand_b = _candidate(provider_key="se-b", scope=scope_b, score=10, labels=dict(labels))
 
     class _SideEffectError(RuntimeError):
         side_effects_started = True

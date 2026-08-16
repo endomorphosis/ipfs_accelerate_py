@@ -35,7 +35,7 @@ config = {
     "device": "CPU",
     "model_type": "text",
     "precision": "FP32",
-    "use_optimum": True  # Enable optimum.intel integration
+    "use_optimum": True,  # Enable optimum.intel integration
 }
 
 # The backend will automatically use optimum.intel for HuggingFace models
@@ -45,7 +45,7 @@ result = backend.load_model("bert-base-uncased", config)
 inference_result = backend.run_inference(
     "bert-base-uncased",
     "This is a test sentence for inference.",
-    {"device": "CPU", "model_type": "text"}
+    {"device": "CPU", "model_type": "text"},
 )
 
 # Print results
@@ -70,12 +70,12 @@ backend = OpenVINOBackend()
 calibration_data = [
     {
         "input_ids": np.array([[101, 2054, 2003, 1996, 2034, 2035, 102]]),
-        "attention_mask": np.array([[1, 1, 1, 1, 1, 1, 1]])
+        "attention_mask": np.array([[1, 1, 1, 1, 1, 1, 1]]),
     },
     {
         "input_ids": np.array([[101, 2430, 2001, 1996, 2034, 2035, 102]]),
-        "attention_mask": np.array([[1, 1, 1, 1, 1, 1, 1]])
-    }
+        "attention_mask": np.array([[1, 1, 1, 1, 1, 1, 1]]),
+    },
 ]
 
 # Load model with INT8 quantization
@@ -85,7 +85,7 @@ config = {
     "precision": "INT8",
     "model_path": "model.onnx",
     "model_format": "ONNX",
-    "calibration_data": calibration_data  # Provide calibration data for better quantization
+    "calibration_data": calibration_data,  # Provide calibration data for better quantization
 }
 
 result = backend.load_model("quant_model", config)
@@ -105,7 +105,7 @@ fp32_config = {
     "device": "CPU",
     "model_type": "text",
     "precision": "FP32",
-    "model_path": "model.onnx"
+    "model_path": "model.onnx",
 }
 
 # FP16 precision
@@ -113,7 +113,7 @@ fp16_config = {
     "device": "CPU",
     "model_type": "text",
     "precision": "FP16",
-    "model_path": "model.onnx"
+    "model_path": "model.onnx",
 }
 
 # INT8 precision
@@ -121,7 +121,7 @@ int8_config = {
     "device": "CPU",
     "model_type": "text",
     "precision": "INT8",
-    "model_path": "model.onnx"
+    "model_path": "model.onnx",
 }
 
 # Load models with different precisions
@@ -150,18 +150,11 @@ example_inputs = {"input_ids": torch.ones(1, 128, dtype=torch.long)}
 
 # Convert to OpenVINO IR
 result = backend.convert_from_pytorch(
-    pt_model,
-    example_inputs,
-    "bert_openvino.xml",
-    {"precision": "FP16"}
+    pt_model, example_inputs, "bert_openvino.xml", {"precision": "FP16"}
 )
 
 # Convert ONNX to OpenVINO IR
-onnx_result = backend.convert_from_onnx(
-    "model.onnx",
-    "model_openvino.xml",
-    {"precision": "FP16"}
-)
+onnx_result = backend.convert_from_onnx("model.onnx", "model_openvino.xml", {"precision": "FP16"})
 ```
 
 ## Integration with Legacy Code
@@ -170,18 +163,12 @@ The enhanced OpenVINO backend maintains full compatibility with legacy code:
 
 ```python
 # Legacy code using standard OpenVINO
-backend.load_model("legacy_model", {
-    "device": "CPU",
-    "model_path": "model.xml",
-    "model_format": "IR"
-})
+backend.load_model(
+    "legacy_model", {"device": "CPU", "model_path": "model.xml", "model_format": "IR"}
+)
 
 # Enhanced code with optimum.intel integration
-backend.load_model("new_model", {
-    "device": "CPU",
-    "model_type": "text",
-    "use_optimum": True
-})
+backend.load_model("new_model", {"device": "CPU", "model_type": "text", "use_optimum": True})
 ```
 
 ## Testing the Enhanced Backend
@@ -238,7 +225,7 @@ To use a specific device:
 config = {
     "device": "GPU",  # Use Intel GPU
     "model_type": "text",
-    "precision": "FP16"
+    "precision": "FP16",
 }
 
 backend.load_model("gpu_model", config)
@@ -262,30 +249,15 @@ python scripts/generators/test_scripts/generators/simple_test_generator.py -g be
 
 ```python
 # Text models (BERT, T5, etc.)
-text_config = {
-    "device": "CPU",
-    "model_type": "text",
-    "precision": "FP16",
-    "use_optimum": True
-}
+text_config = {"device": "CPU", "model_type": "text", "precision": "FP16", "use_optimum": True}
 backend.load_model("bert-base-uncased", text_config)
 
 # Vision models (ViT, ResNet, etc.)
-vision_config = {
-    "device": "GPU",
-    "model_type": "vision",
-    "precision": "FP16",
-    "use_optimum": True
-}
+vision_config = {"device": "GPU", "model_type": "vision", "precision": "FP16", "use_optimum": True}
 backend.load_model("google/vit-base-patch16-224", vision_config)
 
 # Audio models (Whisper, Wav2Vec2, etc.)
-audio_config = {
-    "device": "CPU",
-    "model_type": "audio",
-    "precision": "INT8",
-    "use_optimum": True
-}
+audio_config = {"device": "CPU", "model_type": "audio", "precision": "INT8", "use_optimum": True}
 backend.load_model("openai/whisper-small", audio_config)
 ```
 
@@ -296,7 +268,7 @@ backend.load_model("openai/whisper-small", audio_config)
 cpu_config = {
     "device": "CPU",
     "cpu_threads": 8,  # Use 8 CPU threads for inference
-    "precision": "FP16"
+    "precision": "FP16",
 }
 backend.load_model("cpu_model", cpu_config)
 
@@ -304,7 +276,7 @@ backend.load_model("cpu_model", cpu_config)
 cache_config = {
     "device": "CPU",
     "cache_dir": "/tmp/openvino_cache",  # Cache compiled models
-    "precision": "FP16"
+    "precision": "FP16",
 }
 backend.load_model("cached_model", cache_config)
 
@@ -312,7 +284,7 @@ backend.load_model("cached_model", cache_config)
 shapes_config = {
     "device": "CPU",
     "dynamic_shapes": True,  # Enable dynamic shapes support
-    "precision": "FP16"
+    "precision": "FP16",
 }
 backend.load_model("dynamic_model", shapes_config)
 ```

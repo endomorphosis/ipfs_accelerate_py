@@ -205,13 +205,9 @@ def test_board_completion_validation_failure_is_incomplete() -> None:
     assert decision["pending_merge"] is False
 
 
-def test_prior_attempt_seed_plan_reuses_unmerged_commit(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_prior_attempt_seed_plan_reuses_unmerged_commit(tmp_path: Path, monkeypatch) -> None:
     daemon = _daemon(tmp_path)
-    monkeypatch.setattr(
-        daemon, "_main_branch_name", lambda: "feature/logic-intent-legal-gate"
-    )
+    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/logic-intent-legal-gate")
     monkeypatch.setattr(
         daemon,
         "_git_commit_exists_in_repo",
@@ -233,13 +229,9 @@ def test_prior_attempt_seed_plan_reuses_unmerged_commit(
     assert plan["reason"] == "prior_failed_attempt_commit"
 
 
-def test_prior_attempt_seed_plan_skips_when_already_on_target(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_prior_attempt_seed_plan_skips_when_already_on_target(tmp_path: Path, monkeypatch) -> None:
     daemon = _daemon(tmp_path)
-    monkeypatch.setattr(
-        daemon, "_main_branch_name", lambda: "feature/logic-intent-legal-gate"
-    )
+    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/logic-intent-legal-gate")
     monkeypatch.setattr(
         daemon,
         "_git_commit_exists_in_repo",
@@ -256,9 +248,7 @@ def test_prior_attempt_seed_plan_skips_when_already_on_target(
     assert plan["reason"] == "prior_already_on_merge_target"
 
 
-def test_prior_attempt_seed_plan_first_attempt_uses_baseline(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_prior_attempt_seed_plan_first_attempt_uses_baseline(tmp_path: Path, monkeypatch) -> None:
     daemon = _daemon(tmp_path)
     monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/x")
     state = PortalTaskState(last_implementation_commit="abc123prior")
@@ -324,9 +314,7 @@ def test_prior_seed_authority_filters_protected_paths_and_matches_globs(
     assert authority["dropped_receipt_paths"] == [protected]
 
 
-def test_apply_prior_attempt_seed_replays_without_moving_head(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_apply_prior_attempt_seed_replays_without_moving_head(tmp_path: Path, monkeypatch) -> None:
     daemon = _daemon(tmp_path)
     worktree = tmp_path / "wt"
     worktree.mkdir()
@@ -570,15 +558,14 @@ def test_prior_seed_fast_forward_replays_without_rejected_ancestry(
     assert not _is_ancestor(parent, seed, _git(worktree, "rev-parse", "HEAD"))
     assert not _is_ancestor(child, seed_child)
     seed_events = daemon._iter_events()
-    assert sum(
-        event["type"] == "implementation_proposal_validated"
-        for event in seed_events
-    ) == 1
-    assert sum(
-        event["type"]
-        == "implementation_prior_attempt_seed_pre_dispatch_validated"
-        for event in seed_events
-    ) == 1
+    assert sum(event["type"] == "implementation_proposal_validated" for event in seed_events) == 1
+    assert (
+        sum(
+            event["type"] == "implementation_prior_attempt_seed_pre_dispatch_validated"
+            for event in seed_events
+        )
+        == 1
+    )
     assert not any(
         event["type"]
         in {
@@ -594,9 +581,7 @@ def test_prior_seed_fast_forward_replays_without_rejected_ancestry(
         worktree,
         task,
         baseline_ref=baseline,
-        replayable_consumed_proposal_ids=(
-            result["proposal_authority"]["proposal_id"],
-        ),
+        replayable_consumed_proposal_ids=(result["proposal_authority"]["proposal_id"],),
     )
     assert later_validation.accepted is True
 
@@ -616,8 +601,8 @@ def test_prior_seed_fast_forward_replays_without_rejected_ancestry(
 def test_prior_seed_root_only_replay_keeps_configured_child_at_baseline(
     tmp_path: Path,
 ) -> None:
-    parent, baseline, baseline_child, _seed, _seed_child = (
-        _seed_prior_child_delta(tmp_path, divergent_baseline=False)
+    parent, baseline, baseline_child, _seed, _seed_child = _seed_prior_child_delta(
+        tmp_path, divergent_baseline=False
     )
     _git(parent, "checkout", "main")
     child = parent / "deps" / "child"
@@ -667,8 +652,8 @@ def test_prior_seed_root_only_replay_keeps_configured_child_at_baseline(
 def test_prior_seed_empty_tree_delta_is_explicit_no_change(
     tmp_path: Path,
 ) -> None:
-    parent, baseline, baseline_child, _seed, _seed_child = (
-        _seed_prior_child_delta(tmp_path, divergent_baseline=False)
+    parent, baseline, baseline_child, _seed, _seed_child = _seed_prior_child_delta(
+        tmp_path, divergent_baseline=False
     )
     _git(parent, "checkout", "main")
     child = parent / "deps" / "child"
@@ -714,8 +699,8 @@ def test_prior_seed_empty_tree_delta_is_explicit_no_change(
 def test_prior_seed_root_secret_fails_pre_dispatch_and_rolls_back(
     tmp_path: Path,
 ) -> None:
-    parent, baseline, baseline_child, _seed, _seed_child = (
-        _seed_prior_child_delta(tmp_path, divergent_baseline=False)
+    parent, baseline, baseline_child, _seed, _seed_child = _seed_prior_child_delta(
+        tmp_path, divergent_baseline=False
     )
     _git(parent, "checkout", "main")
     source_child = parent / "deps" / "child"
@@ -750,9 +735,7 @@ def test_prior_seed_root_secret_fails_pre_dispatch_and_rolls_back(
     retry_child = worktree / "deps" / "child"
     assert result["applied"] is False
     assert result["reason"] == "prior_seed_pre_dispatch_validation_failed"
-    assert "secret_change_forbidden" in (
-        result["pre_dispatch_proposal_gate"]["reason_codes"]
-    )
+    assert "secret_change_forbidden" in (result["pre_dispatch_proposal_gate"]["reason_codes"])
     assert result["rollback"]["reset"] is True
     assert _git(worktree, "rev-parse", "HEAD") == baseline
     assert _git(retry_child, "rev-parse", "HEAD") == baseline_child
@@ -769,8 +752,8 @@ def test_prior_seed_root_secret_fails_pre_dispatch_and_rolls_back(
 def test_prior_seed_child_secret_fails_pre_dispatch_and_rolls_back(
     tmp_path: Path,
 ) -> None:
-    parent, baseline, baseline_child, _seed, _seed_child = (
-        _seed_prior_child_delta(tmp_path, divergent_baseline=False)
+    parent, baseline, baseline_child, _seed, _seed_child = _seed_prior_child_delta(
+        tmp_path, divergent_baseline=False
     )
     source_child = parent / "deps" / "child"
     (source_child / "secret.py").write_text(
@@ -806,9 +789,7 @@ def test_prior_seed_child_secret_fails_pre_dispatch_and_rolls_back(
     retry_child = worktree / "deps" / "child"
     assert result["applied"] is False
     assert result["reason"] == "prior_seed_pre_dispatch_validation_failed"
-    assert "secret_change_forbidden" in (
-        result["pre_dispatch_proposal_gate"]["reason_codes"]
-    )
+    assert "secret_change_forbidden" in (result["pre_dispatch_proposal_gate"]["reason_codes"])
     assert result["rollback"]["reset"] is True
     assert _git(worktree, "rev-parse", "HEAD") == baseline
     assert _git(retry_child, "rev-parse", "HEAD") == baseline_child
@@ -876,10 +857,7 @@ def test_prior_seed_rejects_unreconciled_nested_gitlink_delta(
 
     assert result["applied"] is False
     assert result["reason"] == "prior_seed_submodule_preflight_failed"
-    assert (
-        result["submodule_reconciliation"]["reason"]
-        == "prior_seed_nested_gitlink_changed"
-    )
+    assert result["submodule_reconciliation"]["reason"] == "prior_seed_nested_gitlink_changed"
     assert _git(worktree, "rev-parse", "HEAD") == baseline
     assert daemon._proposal_index_gitlink_ref(worktree, "deps/child") == baseline_child
     assert _git(worktree / "deps" / "child", "rev-parse", "HEAD") == baseline_child
@@ -932,10 +910,7 @@ def test_prior_seed_rejects_unconfigured_root_gitlink_delta(
     )
 
     assert result["applied"] is False
-    assert (
-        result["submodule_reconciliation"]["reason"]
-        == "unconfigured_prior_seed_gitlink_changed"
-    )
+    assert result["submodule_reconciliation"]["reason"] == "unconfigured_prior_seed_gitlink_changed"
     assert _git(worktree, "rev-parse", "HEAD") == baseline
     assert daemon._proposal_index_gitlink_ref(worktree, "deps/child") == baseline_child
     assert not (worktree / "vendor" / "other").exists()
@@ -1149,10 +1124,13 @@ def test_prior_seed_preserves_configured_dependency_changed_only_on_main(
     assert result["applied"] is True, result
     assert _git(worktree, "rev-parse", "HEAD") == baseline
     assert _git(dependency, "rev-parse", "HEAD") == main_dependency
-    assert daemon._proposal_index_gitlink_ref(
-        worktree,
-        "deps/main-only",
-    ) == main_dependency
+    assert (
+        daemon._proposal_index_gitlink_ref(
+            worktree,
+            "deps/main-only",
+        )
+        == main_dependency
+    )
     assert _git(worktree, "diff", "--cached", "--name-only") == "allowed.txt"
     assert _git(dependency, "diff", "--cached", "--name-only") == ""
     assert not _is_ancestor(worktree, seed)
@@ -1322,9 +1300,7 @@ def test_prior_seed_reconciliation_failure_removes_staged_replay(
     assert not (child / "prior-two.txt").exists()
 
 
-def test_daemon_configured_merge_target_used_for_seed_baseline(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_daemon_configured_merge_target_used_for_seed_baseline(tmp_path: Path, monkeypatch) -> None:
     target = "feature/logic-intent-legal-gate"
     monkeypatch.setattr(
         PortalImplementationDaemon,
@@ -1343,9 +1319,7 @@ def test_daemon_configured_merge_target_used_for_seed_baseline(
     assert daemon.resolved_merge_target_branch == target
 
 
-def test_consume_merge_rejects_queue_target_mismatch(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_consume_merge_rejects_queue_target_mismatch(tmp_path: Path, monkeypatch) -> None:
     daemon = _daemon(tmp_path)
     daemon.resolved_merge_target_branch = "feature/logic-intent-legal-gate"
     monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/logic-intent-legal-gate")
@@ -1399,12 +1373,6 @@ def test_record_prior_attempt_seed_failure_writes_guidance(
     key = daemon._canonical_ref(task)
     assert key in daemon._implementation_seed_failure_guidance
     assert "abc123" in daemon._implementation_seed_failure_guidance[key]
-    guide = (
-        worktree
-        / "docs"
-        / "agent-supervisor"
-        / "rescue"
-        / "lig-016-attempt-2-seed-recovery.md"
-    )
+    guide = worktree / "docs" / "agent-supervisor" / "rescue" / "lig-016-attempt-2-seed-recovery.md"
     assert guide.is_file()
     assert "compactly" in guide.read_text(encoding="utf-8")

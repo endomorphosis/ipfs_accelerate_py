@@ -164,9 +164,7 @@ class EndpointToolSpec:
         object.__setattr__(self, "aliases", tuple(sorted(cleaned)))
         if not isinstance(self.description, str):
             raise ContractValidationError("description must be a string")
-        object.__setattr__(
-            self, "description", _clip_text(self.description, 1024)
-        )
+        object.__setattr__(self, "description", _clip_text(self.description, 1024))
 
     def all_names(self) -> tuple[str, ...]:
         return (self.name, *self.aliases)
@@ -249,20 +247,14 @@ class EndpointRecord:
                 available = False
                 self.health = EndpointHealth.DEGRADED
             else:
-                self.health = (
-                    EndpointHealth.READY
-                    if available
-                    else EndpointHealth.MISSING
-                )
+                self.health = EndpointHealth.READY if available else EndpointHealth.MISSING
         cli_path = getattr(self.adapter, "cli_path", None)
         acp_info: Optional[dict[str, Any]] = None
         client = self.acp_client
         if client is not None:
             try:
                 acp_info = {
-                    "state": getattr(
-                        getattr(client, "state", None), "value", None
-                    )
+                    "state": getattr(getattr(client, "state", None), "value", None)
                     or str(getattr(client, "state", None)),
                     "ready": bool(getattr(client, "is_ready", False)),
                     "sessions": len(client.list_sessions())
@@ -578,17 +570,13 @@ class CLIEndpointFactory:
                 aliases=tuple(spec.get("aliases") or ()),
                 description=str(spec.get("description") or ""),
                 adapter_class_name=str(spec.get("adapter_class_name") or ""),
-                supported_tasks=tuple(
-                    spec.get("supported_tasks") or ("text_generation",)
-                ),
+                supported_tasks=tuple(spec.get("supported_tasks") or ("text_generation",)),
                 metadata=dict(spec.get("metadata") or {}),
             )
         elif isinstance(spec, EndpointToolSpec):
             tool_spec = spec
         else:
-            raise ContractValidationError(
-                "spec must be EndpointToolSpec or mapping"
-            )
+            raise ContractValidationError("spec must be EndpointToolSpec or mapping")
 
         if factory is not None and not callable(factory):
             raise TypeError("adapter factory must be callable or None")
@@ -678,9 +666,7 @@ class CLIEndpointFactory:
             factory = self._factories.get(canonical)
             spec = self._specs[canonical]
         if factory is None:
-            raise UnsupportedEndpointToolError(
-                tool, supported=self.list_tool_names()
-            )
+            raise UnsupportedEndpointToolError(tool, supported=self.list_tool_names())
         adapter = factory(endpoint_id, cli_path, config or {})
         # Guard: refuse abstract instances if a bad factory was injected.
         import inspect
@@ -792,9 +778,7 @@ class CLIEndpointRegistry:
                 available = bool(adapter.is_available())
             except Exception:  # noqa: BLE001
                 available = False
-            health = (
-                EndpointHealth.READY if available else EndpointHealth.MISSING
-            )
+            health = EndpointHealth.READY if available else EndpointHealth.MISSING
             available_flag = available
         else:
             # Lazy: do not probe on registration.
@@ -902,9 +886,7 @@ class CLIEndpointRegistry:
             )
 
         try:
-            return self.register_adapter(
-                adapter, tool=canonical, replace=replace, probe=probe
-            )
+            return self.register_adapter(adapter, tool=canonical, replace=replace, probe=probe)
         except RegistryCollisionError as exc:
             return error_envelope(
                 exc.record.message,
@@ -935,9 +917,7 @@ class CLIEndpointRegistry:
             try:
                 client.stop()
             except Exception:  # noqa: BLE001
-                logger.debug(
-                    "ACP stop on unregister failed for %s", endpoint_id
-                )
+                logger.debug("ACP stop on unregister failed for %s", endpoint_id)
             record.acp_client = None
         return True
 
@@ -947,9 +927,7 @@ class CLIEndpointRegistry:
             records = list(self._records.values())
         return [record.describe(probe=probe) for record in records]
 
-    def describe(
-        self, endpoint_id: str, *, probe: bool = False
-    ) -> dict[str, Any]:
+    def describe(self, endpoint_id: str, *, probe: bool = False) -> dict[str, Any]:
         record = self.get_record(endpoint_id)
         if record is None:
             return error_envelope(
@@ -1068,9 +1046,7 @@ class CLIEndpointRegistry:
                 "error": f"readiness probe failed: {type(exc).__name__}",
                 "error_code": CLIRuntimeErrorCode.PROVIDER_LOAD_FAILED.value,
             }
-        record.health = (
-            EndpointHealth.READY if available else EndpointHealth.MISSING
-        )
+        record.health = EndpointHealth.READY if available else EndpointHealth.MISSING
         return {
             "status": "success" if available else "error",
             "success": available,
@@ -1141,9 +1117,7 @@ class CLIEndpointRegistry:
 
         start = time.time()
         try:
-            raw = record.adapter.execute(
-                bound, task_type=task_type, timeout=timeout, **kwargs
-            )
+            raw = record.adapter.execute(bound, task_type=task_type, timeout=timeout, **kwargs)
         except NonzeroExitError as exc:
             elapsed = time.time() - start
             record.stats.record_failure(elapsed)
@@ -1210,9 +1184,7 @@ class CLIEndpointRegistry:
             if "result" in result and isinstance(result["result"], str):
                 result["result"] = bound_result_text(result["result"])
             if "stderr" in result and isinstance(result["stderr"], str):
-                result["stderr"] = _clip_text(
-                    result["stderr"], MAX_STDERR_DIAGNOSTIC_CHARS
-                )
+                result["stderr"] = _clip_text(result["stderr"], MAX_STDERR_DIAGNOSTIC_CHARS)
             return result
 
         # Success path: bound the result text.
@@ -1287,11 +1259,7 @@ class CLIEndpointRegistry:
                         else CLIRuntimeErrorCode.INTERNAL.value
                     ),
                     "uncertain_side_effects": uncertain,
-                    "failure_kind": (
-                        FAILURE_KIND_UNCERTAIN_SIDE_EFFECT
-                        if uncertain
-                        else None
-                    ),
+                    "failure_kind": (FAILURE_KIND_UNCERTAIN_SIDE_EFFECT if uncertain else None),
                 }
             return
 
@@ -1380,8 +1348,7 @@ class CLIEndpointRegistry:
             "status": "success",
             "success": True,
             "endpoint_id": endpoint_id,
-            "cancelled": active_id is not None
-            or bool((acp_result or {}).get("cancelled_pending")),
+            "cancelled": active_id is not None or bool((acp_result or {}).get("cancelled_pending")),
             "request_id": active_id,
             "acp": acp_result,
         }
@@ -1725,9 +1692,7 @@ class CLIEndpointRegistry:
                 details={"error_type": type(exc).__name__},
             )
 
-    def session_close(
-        self, endpoint_id: str, session_id: str, **kwargs: Any
-    ) -> dict[str, Any]:
+    def session_close(self, endpoint_id: str, session_id: str, **kwargs: Any) -> dict[str, Any]:
         record = self.get_record(endpoint_id)
         if record is None:
             return error_envelope(
@@ -1826,8 +1791,7 @@ class CLIEndpointRegistry:
             uncertain = bool(
                 getattr(exc, "uncertain_side_effects", False)
                 or (exc.details or {}).get("uncertain_side_effects")
-                or (exc.details or {}).get("failure_kind")
-                == FAILURE_KIND_UNCERTAIN_SIDE_EFFECT
+                or (exc.details or {}).get("failure_kind") == FAILURE_KIND_UNCERTAIN_SIDE_EFFECT
             )
             envelope = error_envelope(
                 exc.record.message,
@@ -1838,9 +1802,7 @@ class CLIEndpointRegistry:
                 session_id=session_id,
                 side_effects_started=True if uncertain else False,
                 uncertain_side_effects=uncertain,
-                failure_kind=(
-                    FAILURE_KIND_UNCERTAIN_SIDE_EFFECT if uncertain else None
-                ),
+                failure_kind=(FAILURE_KIND_UNCERTAIN_SIDE_EFFECT if uncertain else None),
                 cacheable=False,
                 retryable=False,
             )
@@ -1917,9 +1879,7 @@ class CLIEndpointRegistry:
                 )
             return list(self.stream(endpoint_id, prompt, **kwargs))
         if operation is EndpointLifecycleOp.CANCEL:
-            return self.cancel(
-                endpoint_id, session_id=kwargs.get("session_id")
-            )
+            return self.cancel(endpoint_id, session_id=kwargs.get("session_id"))
         if operation is EndpointLifecycleOp.ACP_START:
             return self.acp_start(endpoint_id, **kwargs)
         if operation is EndpointLifecycleOp.ACP_STOP:
@@ -1962,9 +1922,7 @@ class CLIEndpointRegistry:
                     code=CLIRuntimeErrorCode.INVALID_CONTRACT,
                     endpoint_id=endpoint_id,
                 )
-            return self.session_prompt(
-                endpoint_id, str(session_id), prompt, **kwargs
-            )
+            return self.session_prompt(endpoint_id, str(session_id), prompt, **kwargs)
         if operation is EndpointLifecycleOp.SESSION_CANCEL:
             session_id = kwargs.get("session_id")
             return self.cancel(endpoint_id, session_id=session_id)
@@ -2017,9 +1975,7 @@ class _RegistryAdapterView(MutableMapping):
 
     def items(self):  # type: ignore[override]
         with self._registry._lock:
-            return [
-                (eid, r.adapter) for eid, r in self._registry._records.items()
-            ]
+            return [(eid, r.adapter) for eid, r in self._registry._records.items()]
 
     def clear(self) -> None:  # type: ignore[override]
         self._registry.clear()
@@ -2063,9 +2019,7 @@ def reset_default_endpoint_registry() -> None:
         if _DEFAULT_REGISTRY is not None:
             # Stop any endpoint-local ACP clients before clearing.
             try:
-                for record in list(
-                    getattr(_DEFAULT_REGISTRY, "_records", {}).values()
-                ):
+                for record in list(getattr(_DEFAULT_REGISTRY, "_records", {}).values()):
                     client = getattr(record, "acp_client", None)
                     if client is not None:
                         try:
@@ -2153,9 +2107,7 @@ def register_cli_endpoint(
     registry = get_default_endpoint_registry()
     if adapter is not None:
         try:
-            return registry.register_adapter(
-                adapter, tool=tool, replace=replace, probe=probe
-            )
+            return registry.register_adapter(adapter, tool=tool, replace=replace, probe=probe)
         except RegistryCollisionError as exc:
             return error_envelope(
                 exc.record.message,

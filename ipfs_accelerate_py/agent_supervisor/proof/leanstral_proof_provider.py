@@ -91,12 +91,8 @@ DEFAULT_LEANSTRAL_MAX_PATCH_BYTES: Final = 2 * 1024 * 1024
 DEFAULT_LEANSTRAL_MAX_PATCH_FILES: Final = 128
 DEFAULT_LEANSTRAL_PATCH_TIMEOUT_SECONDS: Final = 300.0
 DEFAULT_LEANSTRAL_VALIDATION_OUTPUT_BYTES: Final = 256 * 1024
-LEANSTRAL_PROOF_GATE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/leanstral-proof-gate@1"
-)
-LEANSTRAL_PATCH_GATE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/leanstral-patch-gate@1"
-)
+LEANSTRAL_PROOF_GATE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/leanstral-proof-gate@1"
+LEANSTRAL_PATCH_GATE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/leanstral-patch-gate@1"
 
 _ROUTER_ALIASES = frozenset({"", "auto", "default", "llm_router", "router"})
 _CANONICAL_MUTATION_KEYS = frozenset(
@@ -174,12 +170,8 @@ class LeanstralResourceIsolation:
     kernel_resource_class: str = LEAN_KERNEL_RESOURCE_CLASS
 
     def __post_init__(self) -> None:
-        model = _nonempty_text(
-            self.model_resource_class, field_name="model_resource_class"
-        )
-        kernel = _nonempty_text(
-            self.kernel_resource_class, field_name="kernel_resource_class"
-        )
+        model = _nonempty_text(self.model_resource_class, field_name="model_resource_class")
+        kernel = _nonempty_text(self.kernel_resource_class, field_name="kernel_resource_class")
         if model == kernel:
             raise ValueError(
                 "Leanstral inference and kernel checking need different resource classes"
@@ -220,19 +212,13 @@ class LeanstralProofProviderConfig:
                 self.llm_provider != DEFAULT_LEANSTRAL_LLM_PROVIDER
                 and self.llm_provider != self.provider
             ):
-                raise ValueError(
-                    "provider and llm_provider cannot select different routes"
-                )
+                raise ValueError("provider and llm_provider cannot select different routes")
             configured_provider = self.provider
         if not isinstance(configured_provider, str) or not configured_provider.strip():
-            raise ValueError(
-                "llm_provider must identify a concrete llm_router provider"
-            )
+            raise ValueError("llm_provider must identify a concrete llm_router provider")
         provider = configured_provider.strip()
         if provider.casefold() in _ROUTER_ALIASES:
-            raise ValueError(
-                "llm_provider must identify a concrete llm_router provider"
-            )
+            raise ValueError("llm_provider must identify a concrete llm_router provider")
         model = _nonempty_text(self.model, field_name="model")
         if (
             isinstance(self.timeout_seconds, bool)
@@ -334,9 +320,7 @@ class LeanstralProofDraft:
             "output_sha256",
             "resource_class",
         ):
-            object.__setattr__(
-                self, name, _nonempty_text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _nonempty_text(getattr(self, name), field_name=name))
         if self.schema_version != LEANSTRAL_DRAFT_SCHEMA_VERSION:
             raise ValueError("unsupported Leanstral draft schema")
         if self.resource_class == LEAN_KERNEL_RESOURCE_CLASS:
@@ -361,8 +345,7 @@ class LeanstralProofDraft:
         if proposal_kind not in {"proof", "decomposition", "raw"}:
             raise ValueError("proposal_kind must be proof, decomposition, or raw")
         decomposition = tuple(
-            _json_mapping(item, field_name="decomposition item")
-            for item in self.decomposition
+            _json_mapping(item, field_name="decomposition item") for item in self.decomposition
         )
         if proposal_kind == "decomposition" and not decomposition:
             raise ValueError("decomposition proposal must contain subgoals")
@@ -432,9 +415,7 @@ class LeanstralProofDraft:
             "theorem_equivalence_key": self.theorem_equivalence_key,
             "context_capsule_id": self.context_capsule_id,
             "proposal_kind": self.proposal_kind,
-            "proposal_schema": (
-                LEANSTRAL_PROOF_OUTPUT_SCHEMA if self.theorem_id else ""
-            ),
+            "proposal_schema": (LEANSTRAL_PROOF_OUTPUT_SCHEMA if self.theorem_id else ""),
             "decomposition": [dict(item) for item in self.decomposition],
             "reused_artifact_ids": list(self.reused_artifact_ids),
             "prompt_tokens": self.prompt_tokens,
@@ -490,19 +471,13 @@ class LeanstralProofDraft:
             output_sha256=payload.get("output_sha256", ""),
             timeout_ms=payload.get("timeout_ms", 0),
             token_budget=payload.get("token_budget", 0),
-            resource_class=payload.get(
-                "resource_class", LEANSTRAL_MODEL_RESOURCE_CLASS
-            ),
+            resource_class=payload.get("resource_class", LEANSTRAL_MODEL_RESOURCE_CLASS),
             theorem_id=payload.get("theorem_id", ""),
-            theorem_equivalence_key=payload.get(
-                "theorem_equivalence_key", ""
-            ),
+            theorem_equivalence_key=payload.get("theorem_equivalence_key", ""),
             context_capsule_id=payload.get("context_capsule_id", ""),
             proposal_kind=payload.get("proposal_kind", "proof"),
             decomposition=tuple(raw_decomposition),
-            reused_artifact_ids=tuple(
-                payload.get("reused_artifact_ids") or ()
-            ),
+            reused_artifact_ids=tuple(payload.get("reused_artifact_ids") or ()),
             prompt_tokens=payload.get("prompt_tokens", 0),
             response_tokens=payload.get("response_tokens", 0),
             metadata=payload.get("metadata") or {},
@@ -542,9 +517,7 @@ class LeanstralProofGateResult:
         if not isinstance(self.admission, LeanProofAdmission):
             raise ValueError("admission must be LeanProofAdmission")
         if not isinstance(self.kernel_verification, KernelVerificationResult):
-            raise ValueError(
-                "kernel_verification must be KernelVerificationResult"
-            )
+            raise ValueError("kernel_verification must be KernelVerificationResult")
         codes = _identifiers(self.reason_codes, field_name="reason_codes")
         object.__setattr__(self, "reason_codes", codes)
         if (status is LeanstralGateStatus.ACCEPTED) != (
@@ -567,11 +540,14 @@ class LeanstralProofGateResult:
     @property
     def artifact_id(self) -> str:
         payload = self.to_dict()
-        return "leanstral-proof-gate-" + hashlib.sha256(
-            json.dumps(
-                payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-            ).encode("utf-8")
-        ).hexdigest()
+        return (
+            "leanstral-proof-gate-"
+            + hashlib.sha256(
+                json.dumps(
+                    payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+                ).encode("utf-8")
+            ).hexdigest()
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -598,9 +574,7 @@ class LeanstralProofGateResult:
                     "authoritative": self.kernel_verification.accepted,
                     "resource_class": LEAN_KERNEL_RESOURCE_CLASS,
                 },
-                "derived_from": {
-                    "kernel_candidate": self.model_artifact.artifact_id
-                },
+                "derived_from": {"kernel_candidate": self.model_artifact.artifact_id},
             },
             "authoritative_assurance": self.assurance.value,
             "authoritative": self.authoritative,
@@ -621,10 +595,7 @@ def _default_llm_generate(prompt: str, **kwargs: Any) -> str:
 
     # Strip migration-only kwargs so they never reach the router.
     router_kwargs = dict(kwargs)
-    usage_consumer = str(
-        router_kwargs.pop("usage_consumer_id", "")
-        or "leanstral_proof_provider"
-    )
+    usage_consumer = str(router_kwargs.pop("usage_consumer_id", "") or "leanstral_proof_provider")
     usage_migrate = bool(router_kwargs.pop("usage_migrate", True))
 
     def _raw_generate() -> str:
@@ -645,9 +616,9 @@ def _default_llm_generate(prompt: str, **kwargs: Any) -> str:
             )
         return generate(prompt, **router_kwargs)
 
-    mode_raw = str(
-        os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")
-    ).strip().casefold()
+    mode_raw = (
+        str(os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")).strip().casefold()
+    )
     if (not usage_migrate) or mode_raw in {"", "off"}:
         return _raw_generate()
 
@@ -661,9 +632,7 @@ def _default_llm_generate(prompt: str, **kwargs: Any) -> str:
 
     mode = resolve_usage_mode(mode_raw)
     provider_id = str(
-        router_kwargs.get("provider")
-        or router_kwargs.get("llm_provider")
-        or "llm_router:auto"
+        router_kwargs.get("provider") or router_kwargs.get("llm_provider") or "llm_router:auto"
     )
     try:
         consumer = ConsumerId(usage_consumer)
@@ -680,15 +649,9 @@ def _default_llm_generate(prompt: str, **kwargs: Any) -> str:
         task_id=str(router_kwargs.get("task_id") or consumer.value),
         goal_id=f"goal:{consumer.value}",
         objective_id=consumer.value,
-        estimated_output_tokens=max(
-            0, int(router_kwargs.get("max_new_tokens") or 0)
-        ),
+        estimated_output_tokens=max(0, int(router_kwargs.get("max_new_tokens") or 0)),
         metadata={
-            "model": str(
-                router_kwargs.get("model_name")
-                or router_kwargs.get("model")
-                or ""
-            ),
+            "model": str(router_kwargs.get("model_name") or router_kwargs.get("model") or ""),
             "side_effect": "generate_text",
         },
     )
@@ -879,8 +842,7 @@ def _validate_draft_integrity(
         raise ValueError("model artifact obligation does not match the fixed theorem")
     if (
         theorem.canonical_source_digest
-        and draft.canonical_source_digest
-        != theorem.canonical_source_digest
+        and draft.canonical_source_digest != theorem.canonical_source_digest
     ):
         raise ValueError("model artifact canonical source binding changed")
     actual_output = hashlib.sha256(draft.draft_text.encode("utf-8")).hexdigest()
@@ -899,11 +861,14 @@ def _validate_draft_integrity(
         "prompt_sha256": draft.prompt_sha256,
         "output_sha256": draft.output_sha256,
     }
-    expected_artifact_id = "leanstral-draft-" + hashlib.sha256(
-        json.dumps(
-            identity, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-        ).encode("utf-8")
-    ).hexdigest()
+    expected_artifact_id = (
+        "leanstral-draft-"
+        + hashlib.sha256(
+            json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+    )
     if draft.artifact_id != expected_artifact_id:
         raise ValueError("model artifact identity is corrupt")
 
@@ -947,9 +912,7 @@ def verify_leanstral_draft(
             native_source,
         )
         if fixed.declaration_name not in declarations:
-            raise ValueError(
-                "canonical Lean source does not contain the fixed declaration"
-            )
+            raise ValueError("canonical Lean source does not contain the fixed declaration")
     digest_match = re.fullmatch(
         r"(?:sha256:)?([0-9a-fA-F]{64})",
         fixed.canonical_source_digest,
@@ -992,11 +955,7 @@ def verify_leanstral_draft(
     )
     reason_codes = tuple(item for item in reason_codes if item)
     return LeanstralProofGateResult(
-        status=(
-            LeanstralGateStatus.ACCEPTED
-            if accepted
-            else LeanstralGateStatus.REJECTED
-        ),
+        status=(LeanstralGateStatus.ACCEPTED if accepted else LeanstralGateStatus.REJECTED),
         reason_codes=reason_codes,
         model_artifact=model_artifact,
         admission=admission,
@@ -1031,14 +990,10 @@ class LeanstralPatchGatePolicy:
                 if not command:
                     raise ValueError("validation command must not be empty")
                 commands.append(command)
-            elif isinstance(raw, Sequence) and not isinstance(
-                raw, (bytes, bytearray)
-            ):
+            elif isinstance(raw, Sequence) and not isinstance(raw, (bytes, bytearray)):
                 command_tuple = tuple(str(item).strip() for item in raw)
                 if not command_tuple or any(not item for item in command_tuple):
-                    raise ValueError(
-                        "validation argv must contain non-empty strings"
-                    )
+                    raise ValueError("validation argv must contain non-empty strings")
                 commands.append(command_tuple)
             else:
                 raise ValueError("validation command must be text or argv")
@@ -1089,9 +1044,7 @@ class LeanstralPatchGateResult:
         object.__setattr__(
             self,
             "model_artifact_id",
-            _nonempty_text(
-                self.model_artifact_id, field_name="model_artifact_id"
-            ),
+            _nonempty_text(self.model_artifact_id, field_name="model_artifact_id"),
         )
         object.__setattr__(
             self,
@@ -1144,9 +1097,7 @@ class LeanstralPatchGateResult:
             },
             "touched_paths": list(self.touched_paths),
             "apply_check": dict(self.apply_check),
-            "validation_artifacts": [
-                dict(item) for item in self.validation_results
-            ],
+            "validation_artifacts": [dict(item) for item in self.validation_results],
             "assurance": AssuranceLevel.UNVERIFIED.value,
             "authoritative": False,
             "can_apply": False,
@@ -1160,12 +1111,7 @@ def _safe_patch_path(value: Any, *, allow_directory: bool = False) -> str:
     directory = allow_directory and raw.endswith("/")
     if raw.startswith(("a/", "b/")) and not allow_directory:
         raw = raw[2:]
-    if (
-        not raw
-        or raw.startswith("/")
-        or "\x00" in raw
-        or any(ord(char) < 32 for char in raw)
-    ):
+    if not raw or raw.startswith("/") or "\x00" in raw or any(ord(char) < 32 for char in raw):
         raise ValueError(f"unsafe patch path: {raw!r}")
     path = PurePosixPath(raw)
     if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
@@ -1228,9 +1174,7 @@ def _paths_from_patch(patch_text: str, *, max_files: int) -> tuple[str, ...]:
 
 def _path_in_task_scope(path: str, allowed_paths: Sequence[str]) -> bool:
     return any(
-        path == allowed.rstrip("/")
-        if not allowed.endswith("/")
-        else path.startswith(allowed)
+        path == allowed.rstrip("/") if not allowed.endswith("/") else path.startswith(allowed)
         for allowed in allowed_paths
     )
 
@@ -1248,9 +1192,7 @@ def _task_declared_scope(
             try:
                 raw = candidate.resolve().relative_to(repo_root).as_posix()
             except ValueError as exc:
-                raise ValueError(
-                    "task-declared path is outside repo_root"
-                ) from exc
+                raise ValueError("task-declared path is outside repo_root") from exc
             if directory:
                 raw += "/"
         item = _safe_patch_path(raw, allow_directory=True)
@@ -1281,9 +1223,7 @@ def _command_payload(
         code = int(returncode)
     except (TypeError, ValueError):
         code = 1
-    combined = (str(stdout or "") + str(stderr or "")).encode(
-        "utf-8", errors="replace"
-    )
+    combined = (str(stdout or "") + str(stderr or "")).encode("utf-8", errors="replace")
     truncated = len(combined) > max_output_bytes
     clipped = combined[:max_output_bytes].decode("utf-8", errors="replace")
     return {
@@ -1314,8 +1254,7 @@ def _execute_patch_command(
                 "Leanstral command runner signature cannot be inspected"
             ) from exc
         if not any(
-            parameter.kind is inspect.Parameter.VAR_KEYWORD
-            or parameter.name == "environment"
+            parameter.kind is inspect.Parameter.VAR_KEYWORD or parameter.name == "environment"
             for parameter in parameters
         ):
             raise ValidationRuntimeError(
@@ -1337,9 +1276,7 @@ def _execute_patch_command(
                 stdin=input_text,
                 environment=validation_environment,
             )
-        return _command_payload(
-            raw, command=command, max_output_bytes=max_output_bytes
-        )
+        return _command_payload(raw, command=command, max_output_bytes=max_output_bytes)
     try:
         completed = subprocess.run(
             list(command),
@@ -1364,9 +1301,7 @@ def _execute_patch_command(
             "stderr": exc.stderr or "",
             "timed_out": True,
         }
-    return _command_payload(
-        raw_result, command=command, max_output_bytes=max_output_bytes
-    )
+    return _command_payload(raw_result, command=command, max_output_bytes=max_output_bytes)
 
 
 def check_leanstral_patch_proposal(
@@ -1388,9 +1323,7 @@ def check_leanstral_patch_proposal(
     the caller's worktree.
     """
 
-    artifact_id = _nonempty_text(
-        model_artifact_id, field_name="model_artifact_id"
-    )
+    artifact_id = _nonempty_text(model_artifact_id, field_name="model_artifact_id")
     if not isinstance(patch_text, str) or not patch_text.strip():
         raise ValueError("patch_text must be non-empty text")
     root = Path(repo_root).resolve()
@@ -1398,8 +1331,7 @@ def check_leanstral_patch_proposal(
         raise ValueError("repo_root must be an existing directory")
     declared_scope = _task_declared_scope(root, task_declared_paths)
     supplied_validations = tuple(
-        item if isinstance(item, str) else tuple(item)
-        for item in validation_commands
+        item if isinstance(item, str) else tuple(item) for item in validation_commands
     )
     if policy is None:
         effective_policy = LeanstralPatchGatePolicy(
@@ -1410,9 +1342,7 @@ def check_leanstral_patch_proposal(
         combined_validations = tuple(
             dict.fromkeys((*policy.validation_commands, *supplied_validations))
         )
-        effective_policy = replace(
-            policy, validation_commands=combined_validations
-        )
+        effective_policy = replace(policy, validation_commands=combined_validations)
     else:
         raise ValueError("policy must be LeanstralPatchGatePolicy")
     if not isinstance(effective_policy, LeanstralPatchGatePolicy):
@@ -1433,7 +1363,8 @@ def check_leanstral_patch_proposal(
             model_artifact_id=artifact_id,
             patch_sha256=patch_sha256,
             touched_paths=touched,
-            apply_check=apply_check or {
+            apply_check=apply_check
+            or {
                 "command": ["git", "apply", "--check"],
                 "returncode": 1,
                 "passed": False,
@@ -1447,9 +1378,7 @@ def check_leanstral_patch_proposal(
     if len(patch_bytes) > effective_policy.max_patch_bytes:
         return rejected("patch_too_large")
     try:
-        touched = _paths_from_patch(
-            patch_text, max_files=effective_policy.max_patch_files
-        )
+        touched = _paths_from_patch(patch_text, max_files=effective_policy.max_patch_files)
     except ValueError:
         return rejected("malformed_or_unsafe_patch")
     if any(
@@ -1643,9 +1572,7 @@ class LeanstralProofProvider:
 
         return verify_leanstral_draft(draft, theorem, **kwargs)
 
-    def check_patch_proposal(
-        self, patch_text: str, **kwargs: Any
-    ) -> LeanstralPatchGateResult:
+    def check_patch_proposal(self, patch_text: str, **kwargs: Any) -> LeanstralPatchGateResult:
         """Check an untrusted patch without giving the provider apply authority."""
 
         return check_leanstral_patch_proposal(patch_text, **kwargs)
@@ -1754,9 +1681,7 @@ class LeanstralProofProvider:
                     payload.get("theorem_identity", payload.get("theorem")),
                 )
                 if not isinstance(raw_theorem, Mapping):
-                    raise ProofContextError(
-                        "fixed_theorem is required with context_capsule"
-                    )
+                    raise ProofContextError("fixed_theorem is required with context_capsule")
                 context = self.build_prompt(
                     capsule,
                     raw_theorem,
@@ -1793,9 +1718,7 @@ class LeanstralProofProvider:
                     field_name="obligation_ids",
                 )
                 if supplied_ids and supplied_ids != obligation_ids:
-                    raise ProofContextError(
-                        "request obligation_ids do not match the fixed theorem"
-                    )
+                    raise ProofContextError("request obligation_ids do not match the fixed theorem")
                 supplied_digest = str(
                     payload.get(
                         "canonical_source_digest",
@@ -1821,13 +1744,9 @@ class LeanstralProofProvider:
                     or ""
                 ).strip()
         except ProofContextBudgetError as exc:
-            raise ProofProviderError(
-                ProviderFailureCode.RESOURCE_EXHAUSTED, str(exc)
-            ) from exc
+            raise ProofProviderError(ProviderFailureCode.RESOURCE_EXHAUSTED, str(exc)) from exc
         except (ValueError, ProofContextError) as exc:
-            raise ProofProviderError(
-                ProviderFailureCode.MALFORMED_REQUEST, str(exc)
-            ) from exc
+            raise ProofProviderError(ProviderFailureCode.MALFORMED_REQUEST, str(exc)) from exc
         prompt_bytes = prompt.encode("utf-8")
         if len(prompt_bytes) > self.config.max_prompt_bytes:
             raise ProofProviderError(
@@ -1842,9 +1761,7 @@ class LeanstralProofProvider:
                 "Leanstral prompt exceeded the configured token limit",
                 details={"limit_tokens": self.config.max_prompt_tokens},
             )
-        requested_class = str(
-            payload.get("resource_class", self.model_resource_class)
-        ).strip()
+        requested_class = str(payload.get("resource_class", self.model_resource_class)).strip()
         if requested_class != self.model_resource_class:
             raise ProofProviderError(
                 ProviderFailureCode.MALFORMED_REQUEST,
@@ -1864,9 +1781,7 @@ class LeanstralProofProvider:
         try:
             metadata = _json_mapping(raw_metadata, field_name="metadata")
         except ValueError as exc:
-            raise ProofProviderError(
-                ProviderFailureCode.MALFORMED_REQUEST, str(exc)
-            ) from exc
+            raise ProofProviderError(ProviderFailureCode.MALFORMED_REQUEST, str(exc)) from exc
         # Canonical objects are bindings owned by the supervisor.  They are not
         # forwarded as writable structures or copied into model-produced fields.
         forbidden = sorted(_CANONICAL_MUTATION_KEYS.intersection(metadata))
@@ -1973,23 +1888,20 @@ class LeanstralProofProvider:
         context_capsule_id = ""
         reused_artifact_ids: tuple[str, ...] = ()
         if invocation.context is not None:
-            proposal_kind, normalized_text, decomposition = (
-                _parse_fixed_theorem_response(draft_text, invocation.context)
+            proposal_kind, normalized_text, decomposition = _parse_fixed_theorem_response(
+                draft_text, invocation.context
             )
             draft_text = normalized_text
             theorem_id = invocation.context.theorem.theorem_id
             theorem_equivalence_key = invocation.context.theorem.equivalence_key
             context_capsule_id = invocation.context.capsule_id
             reused_artifact_ids = tuple(
-                item.artifact_id
-                for item in invocation.context.reusable_untrusted_drafts
+                item.artifact_id for item in invocation.context.reusable_untrusted_drafts
             )
             metadata = {
                 **metadata,
                 "structured_output": True,
-                "fixed_theorem_identity_digest": (
-                    invocation.context.theorem.identity_digest
-                ),
+                "fixed_theorem_identity_digest": (invocation.context.theorem.identity_digest),
             }
 
         prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
@@ -2050,13 +1962,9 @@ class LeanstralProofProvider:
                 "kernel_checked": False,
             }
             with self._draft_lock:
-                bucket = self._drafts_by_equivalence.setdefault(
-                    theorem_equivalence_key, []
-                )
+                bucket = self._drafts_by_equivalence.setdefault(theorem_equivalence_key, [])
                 bucket[:] = [
-                    item
-                    for item in bucket
-                    if item.get("artifact_id") != result["artifact_id"]
+                    item for item in bucket if item.get("artifact_id") != result["artifact_id"]
                 ]
                 bucket.append(reusable)
                 del bucket[:-DEFAULT_MAX_LEANSTRAL_REUSABLE_DRAFTS]

@@ -189,9 +189,9 @@ To debug the template processing:
 3. Add post-processing verification:
    ```python
    # After processing
-   for i, line in enumerate(content.split('\n')):
+   for i, line in enumerate(content.split("\n")):
        if "if " in line and not line.endswith(":"):
-           logger.warning(f"Potential issue at line {i+1}: {line}")
+           logger.warning(f"Potential issue at line {i + 1}: {line}")
    ```
 
 ### Manual Intervention

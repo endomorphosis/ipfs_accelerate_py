@@ -100,7 +100,9 @@ class TestMCPServerUNI139InvestigationTools(unittest.TestCase):
             self.assertEqual(result.get("status"), "error")
             self.assertIn("entity_id", str(result.get("error", "")))
 
-            result = await analyze_entity_timeline(corpus_data="{}", entity_id="e1", time_granularity="year")
+            result = await analyze_entity_timeline(
+                corpus_data="{}", entity_id="e1", time_granularity="year"
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("time_granularity", str(result.get("error", "")))
 
@@ -128,7 +130,9 @@ class TestMCPServerUNI139InvestigationTools(unittest.TestCase):
             self.assertEqual(result.get("status"), "error")
             self.assertIn("document_paths", str(result.get("error", "")))
 
-            result = await analyze_deontological_conflicts(corpus_data="{}", severity_threshold="urgent")
+            result = await analyze_deontological_conflicts(
+                corpus_data="{}", severity_threshold="urgent"
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("severity_threshold", str(result.get("error", "")))
 
@@ -170,7 +174,9 @@ class TestMCPServerUNI139InvestigationTools(unittest.TestCase):
             self.assertIn(map_result.get("status"), ["success", "error"])
             self.assertEqual(map_result.get("max_depth"), 2)
 
-            explore_result = await explore_entity(entity_id="entity-1", corpus_data='{"documents": []}')
+            explore_result = await explore_entity(
+                entity_id="entity-1", corpus_data='{"documents": []}'
+            )
             self.assertIn(explore_result.get("status"), ["success", "error"])
             self.assertEqual(explore_result.get("entity_id"), "entity-1")
 
@@ -253,7 +259,9 @@ class TestMCPServerUNI139InvestigationTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_investigation_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_investigation_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 
@@ -270,7 +278,9 @@ class TestMCPServerUNI139InvestigationTools(unittest.TestCase):
             ):
                 analyzed = await analyze_entities(corpus_data='{"documents": []}')
                 mapped = await map_relationships(corpus_data='{"documents": []}')
-                geo = await query_geographic_context(query="incident", corpus_data='{"documents": []}')
+                geo = await query_geographic_context(
+                    query="incident", corpus_data='{"documents": []}'
+                )
                 article = await ingest_news_article(url="https://example.com/article")
 
             self.assertEqual(analyzed.get("status"), "error")

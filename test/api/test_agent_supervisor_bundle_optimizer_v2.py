@@ -97,12 +97,8 @@ def test_multifactor_plan_beats_title_and_goal_only_context_cost() -> None:
             plan.metrics["context_model_cost"]
             < plan.heuristic_metrics[baseline]["context_model_cost"]
         )
-        assert plan.regression_guards[
-            f"no_conflict_rate_regression_vs_{baseline}"
-        ]
-        assert plan.regression_guards[
-            f"no_model_call_regression_vs_{baseline}"
-        ]
+        assert plan.regression_guards[f"no_conflict_rate_regression_vs_{baseline}"]
+        assert plan.regression_guards[f"no_model_call_regression_vs_{baseline}"]
 
 
 def test_context_cost_reuse_requires_an_immutable_content_identity() -> None:
@@ -132,9 +128,7 @@ def test_context_cost_reuse_requires_an_immutable_content_identity() -> None:
 
     assert mutable_plan.metrics["context_model_cost"] == 200
     assert immutable_plan.metrics["context_model_cost"] == 100
-    assert immutable_plan.bundles[0].shared_immutable_context_keys == (
-        "context-cid/shared",
-    )
+    assert immutable_plan.bundles[0].shared_immutable_context_keys == ("context-cid/shared",)
 
 
 def test_existing_prerequisite_wave_does_not_gain_redundant_conflict_depth() -> None:
@@ -155,11 +149,7 @@ def test_existing_prerequisite_wave_does_not_gain_redundant_conflict_depth() -> 
         (child, independent, root),
         policy=BundleOptimizationPolicy(max_tasks_per_bundle=1),
     )
-    wave = {
-        cid: bundle.execution_wave
-        for bundle in plan.bundles
-        for cid in bundle.task_cids
-    }
+    wave = {cid: bundle.execution_wave for bundle in plan.bundles for cid in bundle.task_cids}
 
     assert wave["cid-root"] == 0
     assert wave["cid-child"] == 1
@@ -209,11 +199,7 @@ def test_path_symbol_and_interface_conflicts_are_all_serialized() -> None:
         if edge["blocks_concurrency"]
         for key in edge["overlaps"]
     }
-    wave = {
-        cid: bundle.execution_wave
-        for bundle in plan.bundles
-        for cid in bundle.task_cids
-    }
+    wave = {cid: bundle.execution_wave for bundle in plan.bundles for cid in bundle.task_cids}
 
     assert {"files", "ast_symbols", "interfaces"}.issubset(overlaps)
     assert wave["cid-path-a"] != wave["cid-path-b"]
@@ -260,9 +246,7 @@ def test_typed_rebundle_changes_pending_only_and_is_deterministic() -> None:
         initial_tasks,
         policy=BundleOptimizationPolicy(max_tasks_per_bundle=1),
     )
-    active_bundle = next(
-        bundle for bundle in previous.bundles if "cid-active" in bundle.task_cids
-    )
+    active_bundle = next(bundle for bundle in previous.bundles if "cid-active" in bundle.task_cids)
     changed_tasks = [
         {
             **initial_tasks[0],
@@ -318,9 +302,7 @@ def test_typed_rebundle_changes_pending_only_and_is_deterministic() -> None:
         frozenset(("cid-pending-a", "cid-pending-b")),
     }
     assert first.to_dict() == second.to_dict()
-    covered = [
-        cid for bundle in first.plan.bundles for cid in bundle.task_cids
-    ]
+    covered = [cid for bundle in first.plan.bundles for cid in bundle.task_cids]
     assert len(covered) == len(set(covered)) == 3
 
 

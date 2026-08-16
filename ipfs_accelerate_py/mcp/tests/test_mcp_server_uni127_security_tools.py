@@ -61,6 +61,7 @@ class TestMCPServerUNI127SecurityTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION"
             ) as mock_impl:
+
                 async def _impl(**kwargs):
                     return {"allowed": True, "backend": "stub", **kwargs}
 
@@ -87,6 +88,7 @@ class TestMCPServerUNI127SecurityTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION"
             ) as mock_impl:
+
                 async def _impl(**kwargs):
                     _ = kwargs
                     return "granted"
@@ -111,6 +113,7 @@ class TestMCPServerUNI127SecurityTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION"
             ) as mock_impl:
+
                 async def _impl(**kwargs):
                     _ = kwargs
                     raise RuntimeError("backend failure")
@@ -135,6 +138,7 @@ class TestMCPServerUNI127SecurityTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION"
             ) as mock_impl:
+
                 async def _impl(**kwargs):
                     _ = kwargs
                     return {"error": "backend denied"}
@@ -155,11 +159,14 @@ class TestMCPServerUNI127SecurityTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_check_access_permission_contradictory_failed_delegate_payload_infers_error(self) -> None:
+    def test_check_access_permission_contradictory_failed_delegate_payload_infers_error(
+        self,
+    ) -> None:
         async def _run() -> None:
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION"
             ) as mock_impl:
+
                 async def _impl(**kwargs):
                     _ = kwargs
                     return {"status": "success", "success": False, "error": "backend denied"}
@@ -244,6 +251,7 @@ class TestMCPServerUNI127SecurityTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION"
             ) as mock_impl:
+
                 async def _impl(**kwargs):
                     if kwargs.get("resource_id") == "resource-1":
                         return {"error": "backend denied"}
@@ -253,8 +261,16 @@ class TestMCPServerUNI127SecurityTools(unittest.TestCase):
 
                 result = await check_access_permissions_batch(
                     requests=[
-                        {"resource_id": "resource-1", "user_id": "user-1", "permission_type": "read"},
-                        {"resource_id": "resource-2", "user_id": "user-2", "permission_type": "read"},
+                        {
+                            "resource_id": "resource-1",
+                            "user_id": "user-1",
+                            "permission_type": "read",
+                        },
+                        {
+                            "resource_id": "resource-2",
+                            "user_id": "user-2",
+                            "permission_type": "read",
+                        },
                     ],
                     fail_fast=False,
                 )

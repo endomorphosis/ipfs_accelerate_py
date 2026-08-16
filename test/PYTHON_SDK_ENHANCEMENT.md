@@ -80,24 +80,17 @@ print(f"Worker initialized with hardware: {worker_status['hwtest']}")
 
 # Select optimal hardware for a model based on existing worker architecture
 optimal_device = worker.get_optimal_hardware(
-    model_name="bert-base-uncased",
-    task_type="text-embedding", 
-    batch_size=16
+    model_name="bert-base-uncased", task_type="text-embedding", batch_size=16
 )
 
 # Create hardware profile for CUDA with custom settings
 cuda_profile = HardwareProfile(
-    backend="cuda",
-    memory_limit="4GB",
-    precision="fp16",
-    optimization_level="performance"
+    backend="cuda", memory_limit="4GB", precision="fp16", optimization_level="performance"
 )
 
 # Load model with specific configuration (using worker skillset architecture)
 model_endpoints = worker.init_worker(
-    models=["bert-base-uncased"],
-    local_endpoints={},
-    hwtest=worker_status['hwtest']
+    models=["bert-base-uncased"], local_endpoints={}, hwtest=worker_status["hwtest"]
 )
 
 # Run inference on optimal hardware
@@ -109,10 +102,10 @@ benchmark = Benchmark(
     hardware_profiles=[
         HardwareProfile(backend="cuda"),
         HardwareProfile(backend="cpu"),
-        HardwareProfile(backend="qualcomm", precision="int8")
+        HardwareProfile(backend="qualcomm", precision="int8"),
     ],
     metrics=["latency", "throughput", "memory"],
-    worker=worker
+    worker=worker,
 )
 results = benchmark.run()
 ```
@@ -281,9 +274,19 @@ Both SDKs implement a consistent hardware abstraction with specialized backends,
 Python backends in current codebase:
 ```python
 self.hardware_backends = [
-    "llama_cpp", "qualcomm", "apple", "cpu", "gpu", "cuda", 
-    "openvino", "optimum", "optimum_intel", "optimum_openvino", 
-    "optimum_ipex", "optimum_neural_compressor", "webnn"
+    "llama_cpp",
+    "qualcomm",
+    "apple",
+    "cpu",
+    "gpu",
+    "cuda",
+    "openvino",
+    "optimum",
+    "optimum_intel",
+    "optimum_openvino",
+    "optimum_ipex",
+    "optimum_neural_compressor",
+    "webnn",
 ]
 ```
 
@@ -313,14 +316,14 @@ optimizer = ModelOptimizer(worker=worker)
 optimization_config = {
     "optimization_goal": "latency",
     "constraints": {"max_memory_usage": "4GB"},
-    "techniques": ["quantization", "pruning", "knowledge_distillation"]
+    "techniques": ["quantization", "pruning", "knowledge_distillation"],
 }
 
 # Apply optimizations (integrates with existing skillset functionality)
 optimized_model_info = optimizer.optimize(
     model_name="bert-base-uncased",
     hardware_profile=HardwareProfile(backend="cuda"),
-    optimization_config=optimization_config
+    optimization_config=optimization_config,
 )
 
 # The optimized model is accessible through the worker endpoints
@@ -389,25 +392,17 @@ benchmark_config = BenchmarkConfig(
     hardware_profiles=[
         HardwareProfile(backend="cuda", precision="fp16"),
         HardwareProfile(backend="cpu", optimization_level="high"),
-        HardwareProfile(backend="qualcomm", precision="int8")
+        HardwareProfile(backend="qualcomm", precision="int8"),
     ],
     metrics=["latency", "throughput", "memory", "power"],
     iterations=100,
     warmup_iterations=10,
-    options={
-        "store_results": True,
-        "verbose": True,
-        "collect_metrics_per_iteration": True
-    }
+    options={"store_results": True, "verbose": True, "collect_metrics_per_iteration": True},
 )
 
 # Create benchmark runner with DuckDB storage (builds on existing db system)
 storage = DuckDBStorage(db_path="./benchmark_db.duckdb")
-benchmark_runner = BenchmarkRunner(
-    worker=worker,
-    config=benchmark_config,
-    storage=storage
-)
+benchmark_runner = BenchmarkRunner(worker=worker, config=benchmark_config, storage=storage)
 
 # Run benchmarks (results stored in DuckDB)
 benchmark_id, results = benchmark_runner.run()
@@ -418,7 +413,7 @@ report = benchmark_runner.generate_report(
     benchmark_id=benchmark_id,
     format="html",
     output_path="benchmark_report.html",
-    include_comparison=True
+    include_comparison=True,
 )
 
 # Query specific results from database
@@ -426,17 +421,18 @@ filtered_results = storage.query_results(
     model_names=["bert-base-uncased"],
     hardware_backends=["cuda"],
     metrics=["latency"],
-    group_by="model_name"
+    group_by="model_name",
 )
 
 # Generate comparison charts
 import matplotlib.pyplot as plt
+
 benchmark_runner.plot_comparison(
     results=filtered_results,
     metric="latency",
     output_path="latency_comparison.png",
     title="BERT Model Latency Across Hardware",
-    include_error_bars=True
+    include_error_bars=True,
 )
 ```
 
@@ -534,8 +530,8 @@ calibration_dataset = CalibrationDataset.from_examples(
     examples=[
         "This is a sample sentence for calibration.",
         "Machine learning models benefit from proper quantization calibration.",
-        "Multiple examples ensure representative activation distributions."
-    ]
+        "Multiple examples ensure representative activation distributions.",
+    ],
 )
 
 # Create quantization engine with worker architecture
@@ -548,21 +544,16 @@ quantization_configs = {
         "scheme": "symmetric",
         "mixed_precision": True,
         "per_channel": True,
-        "layer_exclusions": ["embeddings", "output_projection"]
+        "layer_exclusions": ["embeddings", "output_projection"],
     },
-    "8bit": {
-        "bits": 8,
-        "scheme": "asymmetric",
-        "mixed_precision": False,
-        "per_channel": True
-    },
+    "8bit": {"bits": 8, "scheme": "asymmetric", "mixed_precision": False, "per_channel": True},
     "2bit": {
         "bits": 2,
         "scheme": "symmetric",
         "mixed_precision": True,
         "per_channel": True,
-        "use_kd": True  # Knowledge distillation for accuracy preservation
-    }
+        "use_kd": True,  # Knowledge distillation for accuracy preservation
+    },
 }
 
 # Apply 4-bit quantization (integrates with worker.py architecture)
@@ -570,7 +561,7 @@ quantized_model = quantizer.quantize(
     model_name="bert-base-uncased",
     hardware_profile=HardwareProfile(backend="cuda"),
     quantization_config=quantization_configs["4bit"],
-    calibration_dataset=calibration_dataset
+    calibration_dataset=calibration_dataset,
 )
 
 # Run inference on quantized model through worker
@@ -582,7 +573,7 @@ comparison = quantizer.benchmark_comparison(
     model_name="bert-base-uncased",
     quantized_model=quantized_model,
     hardware_profile=HardwareProfile(backend="cuda"),
-    metrics=["latency", "memory", "accuracy"]
+    metrics=["latency", "memory", "accuracy"],
 )
 
 print(f"Quantization comparison: {comparison}")
@@ -674,7 +665,7 @@ models = registry.search(
     max_parameters=100_000_000,
     compatible_hardware=["cuda", "qualcomm"],
     model_families=["bert", "roberta"],
-    min_performance_score=0.8
+    min_performance_score=0.8,
 )
 
 # Get detailed model information
@@ -696,28 +687,28 @@ registry.register_model(
             "supported": True,
             "performance_score": 0.95,
             "recommended_batch_size": 32,
-            "recommended_precision": "fp16"
+            "recommended_precision": "fp16",
         },
         "cpu": {
-            "supported": True, 
+            "supported": True,
             "performance_score": 0.7,
             "recommended_batch_size": 8,
-            "recommended_precision": "int8"
+            "recommended_precision": "int8",
         },
         "qualcomm": {
             "supported": True,
             "performance_score": 0.85,
             "recommended_batch_size": 16,
-            "recommended_precision": "int8"
-        }
+            "recommended_precision": "int8",
+        },
     },
     metadata={
         "description": "Optimized BERT model for high-throughput text classification",
         "license": "MIT",
         "training_data": "custom dataset with 1M examples",
         "original_model": "bert-base-uncased",
-        "optimization_techniques": ["quantization", "knowledge_distillation"]
-    }
+        "optimization_techniques": ["quantization", "knowledge_distillation"],
+    },
 )
 
 # Get hardware-specific deployment recommendations
@@ -725,7 +716,7 @@ deployment_options = registry.get_deployment_options(
     model_id="bert-base-uncased",
     target_latency_ms=10,
     target_hardware=["cuda", "openvino", "qualcomm"],
-    batch_size_range=(1, 64)
+    batch_size_range=(1, 64),
 )
 ```
 
@@ -840,7 +831,7 @@ generator = ModelTestGenerator(
     hardware_backends=["cpu", "cuda", "qualcomm", "webgpu", "webnn"],
     output_dir="test/generated_tests",
     template_db_path="templates/model_templates.duckdb",
-    worker=worker  # Pass worker for hardware-aware generation
+    worker=worker,  # Pass worker for hardware-aware generation
 )
 
 # Generate comprehensive test files
@@ -848,7 +839,7 @@ generator.generate_test_files(
     include_benchmarking=True,
     include_cross_hardware_validation=True,
     include_python_tests=True,
-    include_javascript_tests=True
+    include_javascript_tests=True,
 )
 
 # Generate targeted tests for specific hardware
@@ -858,13 +849,10 @@ cuda_generator = ModelTestGenerator(
     output_dir="test/generated_tests/cuda_specific",
     template_db_path="templates/model_templates.duckdb",
     worker=worker,
-    optimization_level="aggressive"
+    optimization_level="aggressive",
 )
 
-cuda_generator.generate_test_files(
-    include_benchmarking=True,
-    cuda_specific_optimizations=True
-)
+cuda_generator.generate_test_files(include_benchmarking=True, cuda_specific_optimizations=True)
 
 # Generate tests for the full set of model families
 from generators.skill_generators import SkillGenerator
@@ -874,7 +862,7 @@ skill_generator = SkillGenerator(
     hardware_backends=["cuda", "cpu", "openvino", "qualcomm", "webgpu", "webnn"],
     output_dir="test/generated_skills",
     template_db_path="templates/skill_templates.duckdb",
-    worker=worker
+    worker=worker,
 )
 
 skill_generator.generate_all_skills()
@@ -895,7 +883,7 @@ benchmark_generator = BenchmarkGenerator(
     hardware_backends=["cuda", "cpu", "openvino", "webgpu"],
     output_dir="test/generated_benchmarks",
     template_db_path="templates/benchmark_templates.duckdb",
-    db_storage=DuckDBStorage(db_path="./benchmark_db.duckdb")
+    db_storage=DuckDBStorage(db_path="./benchmark_db.duckdb"),
 )
 
 # Generate comprehensive benchmark suites
@@ -903,7 +891,7 @@ benchmark_generator.generate_benchmark_suites(
     benchmark_levels=["quick", "comprehensive", "extended"],
     include_power_metrics=True,
     include_memory_tracking=True,
-    include_multi_batch_tests=True
+    include_multi_batch_tests=True,
 )
 
 # Generate specialized benchmark for WebGPU
@@ -912,13 +900,11 @@ webgpu_benchmark_generator = BenchmarkGenerator(
     hardware_backends=["webgpu"],
     output_dir="test/generated_data/benchmarks/web",
     template_db_path="templates/benchmark_templates.duckdb",
-    db_storage=DuckDBStorage(db_path="./web_benchmark.duckdb")
+    db_storage=DuckDBStorage(db_path="./web_benchmark.duckdb"),
 )
 
 webgpu_benchmark_generator.generate_benchmark_suites(
-    benchmark_levels=["browser"],
-    include_shader_metrics=True,
-    include_browser_metrics=True
+    benchmark_levels=["browser"], include_shader_metrics=True, include_browser_metrics=True
 )
 ```
 

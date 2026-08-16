@@ -326,9 +326,7 @@ def _goal_task(goal_id: str = "G1") -> PortalTask:
 def _passing_completion_decision(*, evaluated_children=None):
     evaluated_evidence = {
         "acceptance_criteria": ["criterion one"],
-        "coverage": {
-            "criteria": [{"criterion": "criterion one", "status": "verified"}]
-        },
+        "coverage": {"criteria": [{"criterion": "criterion one", "status": "verified"}]},
         "validation_evidence": [{"valid": True, "evidence": {"provenance_cid": "bafy-proof"}}],
         "analyzer_health": {"status": "healthy"},
         "exhaustion_quorum": {"satisfied": True, "member_count": 2},
@@ -362,7 +360,9 @@ def _passing_completion_decision(*, evaluated_children=None):
 
 def test_reopened_goal_remains_schedulable_and_keeps_linked_work_open():
     result = reconcile_objective_task_strategy(
-        goals=[ObjectiveGoal("G1", "Regressed objective", {"status": "reopened", "priority": "P0"})],
+        goals=[
+            ObjectiveGoal("G1", "Regressed objective", {"status": "reopened", "priority": "P0"})
+        ],
         tasks=[_goal_task()],
         strategy={},
         now="2026-07-22T00:00:00+00:00",
@@ -504,10 +504,7 @@ def test_missing_work_reopen_can_be_disabled_without_completion_reconciliation()
     assert result["reopened_goal_ids"] == []
     assert result["missing_work_reopen_enabled"] is False
     assert result["strategy"]["objective_task_janitor_force_goal_ids"] == []
-    assert (
-        result["strategy"]["objective_task_janitor_missing_work_reopen_enabled"]
-        is False
-    )
+    assert result["strategy"]["objective_task_janitor_missing_work_reopen_enabled"] is False
 
 
 def test_supervisor_disables_missing_work_reopen_when_completion_reconciliation_is_off(
@@ -749,9 +746,7 @@ def test_external_completion_evidence_loader_supports_per_goal_revisions(tmp_pat
     assert records["G1"][0].analyzer_version == "docs-verifier/v1"
     assert records["G2"][0].objective_revision == "bafy-objective-two"
     assert records["G2"][0].configuration_revision == "sha256:config-two"
-    assert {records["G1"][0].repository_tree, records["G2"][0].repository_tree} == {
-        "sha256:tree"
-    }
+    assert {records["G1"][0].repository_tree, records["G2"][0].repository_tree} == {"sha256:tree"}
 
 
 def test_combined_gate_bundle_exposes_embedded_typed_completion_evidence() -> None:
@@ -934,9 +929,7 @@ def test_contradiction_reopens_goal_parent_and_dependent_and_schedules_work():
         {"goal_id": "G1.S1", **historical_completion}
     ]
     assert len(result["goal_reopening_receipts"]) == 3
-    assert result["strategy"]["objective_completion_decisions"] == {
-        "G1.S1": historical_completion
-    }
+    assert result["strategy"]["objective_completion_decisions"] == {"G1.S1": historical_completion}
 
 
 def test_identical_contradiction_replay_is_idempotent_and_preserves_force_state():

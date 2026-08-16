@@ -155,9 +155,7 @@ def test_all_required_property_lanes_present(certificate: dict[str, Any]) -> Non
         # Unavailable tools must only appear in their own blocked/unavailable sets.
         for tool_id in lane["unavailable_tool_ids"]:
             assert tool_id in lane["tool_ids"]
-            assert tool_id in lane["blocked_tool_ids"] or tool_id not in lane[
-                "certified_tool_ids"
-            ]
+            assert tool_id in lane["blocked_tool_ids"] or tool_id not in lane["certified_tool_ids"]
 
 
 def test_absent_tools_do_not_fail_unrelated_lanes(
@@ -170,15 +168,11 @@ def test_absent_tools_do_not_fail_unrelated_lanes(
 
     # Pick any unavailable tool and ensure other lanes without it can still
     # be promotion_ready when they have a certified member.
-    unavailable = [
-        tid for tid, entry in tools.items() if entry.get("unavailable")
-    ]
+    unavailable = [tid for tid, entry in tools.items() if entry.get("unavailable")]
     assert unavailable, "expected at least one unavailable optional tool on host"
 
     for lane_id, lane in lanes.items():
-        foreign_unavailable = [
-            tid for tid in unavailable if tid not in lane["tool_ids"]
-        ]
+        foreign_unavailable = [tid for tid in unavailable if tid not in lane["tool_ids"]]
         # Foreign unavailable tools must not appear in this lane's blocked set.
         for tid in foreign_unavailable:
             assert tid not in lane["blocked_tool_ids"]
@@ -186,11 +180,7 @@ def test_absent_tools_do_not_fail_unrelated_lanes(
 
     # SMT lane must not be failed solely because ATP tools are missing.
     smt = lanes["smt"]
-    atp_missing = [
-        tid
-        for tid in lanes["atp"]["tool_ids"]
-        if tools[tid].get("unavailable")
-    ]
+    atp_missing = [tid for tid in lanes["atp"]["tool_ids"] if tools[tid].get("unavailable")]
     if atp_missing and smt["certified_tool_ids"]:
         assert smt["promotion_ready"] is True
 
@@ -200,9 +190,7 @@ def test_absent_tools_do_not_fail_unrelated_lanes(
 # ---------------------------------------------------------------------------
 
 
-def test_path_presence_is_not_usability_encoded(
-    certifier, certificate: dict[str, Any]
-) -> None:
+def test_path_presence_is_not_usability_encoded(certifier, certificate: dict[str, Any]) -> None:
     assert certifier.detect_lean_shim_toolchain_mismatch(
         "leanprover/lean4:v4.32.2",
         ["leanprover/lean4:v4.31.0"],
@@ -224,21 +212,13 @@ def test_path_presence_is_not_usability_encoded(
 
 
 def test_version_mismatch_blocks_production_certification(certifier) -> None:
-    assert certifier.detect_locked_version_mismatch(
-        "1.3.3", "This is cvc5 version 1.2.0"
-    )
-    assert not certifier.detect_locked_version_mismatch(
-        "1.3.3", "This is cvc5 version 1.3.3 [git]"
-    )
+    assert certifier.detect_locked_version_mismatch("1.3.3", "This is cvc5 version 1.2.0")
+    assert not certifier.detect_locked_version_mismatch("1.3.3", "This is cvc5 version 1.3.3 [git]")
     assert not certifier.detect_locked_version_mismatch(
         ">=4.12.0,<5.0.0", "Z3 version 4.16.0 - 64 bit"
     )
-    assert certifier.detect_locked_version_mismatch(
-        ">=4.12.0,<5.0.0", "Z3 version 3.1.0"
-    )
-    assert certifier.detect_locked_version_mismatch(
-        "v4.31.0", "Lean (version 4.32.2"
-    )
+    assert certifier.detect_locked_version_mismatch(">=4.12.0,<5.0.0", "Z3 version 3.1.0")
+    assert certifier.detect_locked_version_mismatch("v4.31.0", "Lean (version 4.32.2")
 
 
 def test_every_tool_has_four_check_slots(certificate: dict[str, Any]) -> None:
@@ -277,9 +257,7 @@ def test_available_smt_tools_pass_live_matrix(certificate: dict[str, Any]) -> No
         live_smt.append(tool_id)
         by_kind = {check["kind"]: check for check in entry["checks"]}
         for kind in CHECK_KINDS:
-            assert by_kind[kind]["status"] == "passed", (
-                f"{tool_id}.{kind}: {by_kind[kind]}"
-            )
+            assert by_kind[kind]["status"] == "passed", f"{tool_id}.{kind}: {by_kind[kind]}"
         assert entry["identity_probed"] is True
         assert entry["version_string"]
         assert entry["production_certified"] is True
@@ -287,9 +265,7 @@ def test_available_smt_tools_pass_live_matrix(certificate: dict[str, Any]) -> No
 
     # On this program's audit hosts at least one SMT solver is expected; if
     # the hermetic environment truly has none, the lane must still be explicit.
-    smt_lane = next(
-        lane for lane in certificate["property_lanes"] if lane["lane_id"] == "smt"
-    )
+    smt_lane = next(lane for lane in certificate["property_lanes"] if lane["lane_id"] == "smt")
     if live_smt:
         assert smt_lane["promotion_ready"] is True
         assert set(live_smt) <= set(smt_lane["certified_tool_ids"])
@@ -343,9 +319,7 @@ def test_disagreement_quarantine_blocks_promotion(certifier) -> None:
             CheckResult("cvc5.positive", "positive", "failed", "unsat", "sat"),
         ],
     )
-    quarantine = certifier.quarantine_smt_disagreement(
-        {"z3": z3, "cvc5": cvc5}
-    )
+    quarantine = certifier.quarantine_smt_disagreement({"z3": z3, "cvc5": cvc5})
     assert quarantine is not None
     assert quarantine.status == "quarantined"
     assert quarantine.reason == "cross_provider_disagreement"
@@ -360,10 +334,7 @@ def test_disagreement_quarantine_blocks_promotion(certifier) -> None:
             CheckResult("cvc5.positive", "positive", "passed", "unsat", "unsat"),
         ],
     )
-    assert (
-        certifier.quarantine_smt_disagreement({"z3": z3, "cvc5": cvc5_agree})
-        is None
-    )
+    assert certifier.quarantine_smt_disagreement({"z3": z3, "cvc5": cvc5_agree}) is None
 
 
 def test_live_certificate_quarantines_are_structured(

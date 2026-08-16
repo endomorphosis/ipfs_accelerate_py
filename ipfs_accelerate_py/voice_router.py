@@ -201,9 +201,8 @@ def _cache_enabled() -> bool:
 
 
 def _response_cache_enabled() -> bool:
-    value = (
-        os.environ.get("IPFS_ACCELERATE_PY_ROUTER_RESPONSE_CACHE")
-        or os.environ.get("IPFS_DATASETS_PY_ROUTER_RESPONSE_CACHE")
+    value = os.environ.get("IPFS_ACCELERATE_PY_ROUTER_RESPONSE_CACHE") or os.environ.get(
+        "IPFS_DATASETS_PY_ROUTER_RESPONSE_CACHE"
     )
     if value is None:
         return True
@@ -247,9 +246,7 @@ def _provider_instance_cache_identity(
     if provider_instance is None:
         normalized_name = str(provider_name or "").strip().lower()
         environment_key_factory = globals().get("_provider_cache_key")
-        environment_key = (
-            environment_key_factory() if callable(environment_key_factory) else ()
-        )
+        environment_key = environment_key_factory() if callable(environment_key_factory) else ()
         digest = hashlib.sha256(repr(environment_key).encode("utf-8")).hexdigest()[:16]
         if normalized_name:
             revisions = globals().get("_PROVIDER_REGISTRY_REVISIONS", {})
@@ -262,9 +259,7 @@ def _provider_instance_cache_identity(
     provider_type = provider_instance.__class__
     type_name = f"{provider_type.__module__}.{provider_type.__qualname__}"
     if explicit is not None and str(explicit).strip():
-        explicit_digest = hashlib.sha256(
-            str(explicit).strip().encode("utf-8")
-        ).hexdigest()[:16]
+        explicit_digest = hashlib.sha256(str(explicit).strip().encode("utf-8")).hexdigest()[:16]
         return f"instance::{type_name}::{explicit_digest}"
     # An injected instance with no declared stable identity is intentionally
     # process-local. Reusing a remote cache entry from another instance could
@@ -434,9 +429,7 @@ class VoiceProviderCapabilities:
 class ProviderInfo:
     name: str
     factory: ProviderFactory
-    capabilities: VoiceProviderCapabilities = field(
-        default_factory=VoiceProviderCapabilities
-    )
+    capabilities: VoiceProviderCapabilities = field(default_factory=VoiceProviderCapabilities)
 
     def __post_init__(self) -> None:
         name = str(self.name or "").strip().lower()
@@ -445,9 +438,7 @@ class ProviderInfo:
         if not callable(self.factory):
             raise TypeError("ProviderInfo.factory must be callable")
         if not isinstance(self.capabilities, VoiceProviderCapabilities):
-            raise TypeError(
-                "ProviderInfo.capabilities must be VoiceProviderCapabilities"
-            )
+            raise TypeError("ProviderInfo.capabilities must be VoiceProviderCapabilities")
         object.__setattr__(self, "name", name)
 
     def to_dict(self) -> Dict[str, object]:
@@ -474,9 +465,7 @@ def register_voice_provider(
         raise ValueError("Provider name must be non-empty")
     if not callable(factory):
         raise TypeError("Provider factory must be callable")
-    if capabilities is not None and not isinstance(
-        capabilities, VoiceProviderCapabilities
-    ):
+    if capabilities is not None and not isinstance(capabilities, VoiceProviderCapabilities):
         raise TypeError("capabilities must be VoiceProviderCapabilities or None")
     _PROVIDER_REGISTRY[normalized_name] = ProviderInfo(
         name=normalized_name,
@@ -776,22 +765,16 @@ def _provider_configuration(name: str) -> Tuple[Optional[bool], Optional[bool]]:
     if name in _PROVIDER_REGISTRY:
         return True, None
     if name == "openai":
-        configured = bool(
-            _coalesce_env("IPFS_ACCELERATE_PY_OPENAI_API_KEY", "OPENAI_API_KEY")
-        )
+        configured = bool(_coalesce_env("IPFS_ACCELERATE_PY_OPENAI_API_KEY", "OPENAI_API_KEY"))
         return configured, configured
     if name == "elevenlabs":
         configured = bool(
-            _coalesce_env(
-                "IPFS_ACCELERATE_PY_ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY"
-            )
+            _coalesce_env("IPFS_ACCELERATE_PY_ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY")
         )
         return configured, configured
     if name == "assemblyai":
         configured = bool(
-            _coalesce_env(
-                "IPFS_ACCELERATE_PY_ASSEMBLYAI_API_KEY", "ASSEMBLYAI_API_KEY"
-            )
+            _coalesce_env("IPFS_ACCELERATE_PY_ASSEMBLYAI_API_KEY", "ASSEMBLYAI_API_KEY")
         )
         return configured, configured
     if name == "abby_indextts":
@@ -929,18 +912,10 @@ def _provider_descriptor(name: str) -> ProviderDescriptor:
     if metadata.default_voice:
         labels["audio.default_voice"] = metadata.default_voice
     if metadata.sample_rates_hz:
-        labels["audio.sample_rates_hz"] = ",".join(
-            str(value) for value in metadata.sample_rates_hz
-        )
+        labels["audio.sample_rates_hz"] = ",".join(str(value) for value in metadata.sample_rates_hz)
     if metadata.max_duration_seconds:
-        labels["audio.max_duration_seconds"] = str(
-            metadata.max_duration_seconds
-        )
-    lifecycle = (
-        LifecycleState.CONFIGURED
-        if state.configured is True
-        else LifecycleState.DECLARED
-    )
+        labels["audio.max_duration_seconds"] = str(metadata.max_duration_seconds)
+    lifecycle = LifecycleState.CONFIGURED if state.configured is True else LifecycleState.DECLARED
     return ProviderDescriptor(
         name=name,
         display_name=metadata.display_name,
@@ -956,9 +931,7 @@ def _provider_descriptor(name: str) -> ProviderDescriptor:
 
 def _catalog_provider_names() -> Tuple[str, ...]:
     # Registry entries replace same-named built-ins, exactly as invocation does.
-    return tuple(
-        sorted(set(_BUILTIN_PROVIDER_CAPABILITIES) | set(_PROVIDER_REGISTRY))
-    )
+    return tuple(sorted(set(_BUILTIN_PROVIDER_CAPABILITIES) | set(_PROVIDER_REGISTRY)))
 
 
 def _model_names_for_provider(
@@ -1027,10 +1000,7 @@ def _model_descriptors_for_provider(
         capability_records = tuple(
             capability
             for capability in provider_descriptor.capabilities
-            if any(
-                model_operation in capability.operations
-                for model_operation in model_operations
-            )
+            if any(model_operation in capability.operations for model_operation in model_operations)
         )
         labels = {
             "router": "voice_router",
@@ -1038,22 +1008,12 @@ def _model_descriptors_for_provider(
             "device": metadata.device,
             "streaming": str(
                 Operation.STREAM
-                in {
-                    item
-                    for capability in capability_records
-                    for item in capability.operations
-                }
+                in {item for capability in capability_records for item in capability.operations}
             ).lower(),
-            "batching": (
-                "true"
-                if provider_descriptor.name == "abby_indextts"
-                else "false"
-            ),
+            "batching": ("true" if provider_descriptor.name == "abby_indextts" else "false"),
             "audio.languages": metadata.languages,
             "audio.voices": metadata.voices,
-            "audio.operations": ",".join(
-                sorted(item.value for item in set(model_operations))
-            ),
+            "audio.operations": ",".join(sorted(item.value for item in set(model_operations))),
         }
         if provider_descriptor.name == "abby_indextts":
             labels["backend"] = "publicus_gradio"
@@ -1064,9 +1024,7 @@ def _model_descriptors_for_provider(
                 str(value) for value in metadata.sample_rates_hz
             )
         if metadata.max_duration_seconds:
-            labels["audio.max_duration_seconds"] = str(
-                metadata.max_duration_seconds
-            )
+            labels["audio.max_duration_seconds"] = str(metadata.max_duration_seconds)
         records.append(
             ModelDescriptor(
                 provider_id=provider_descriptor.provider_id,
@@ -1084,12 +1042,10 @@ def _model_descriptors_for_provider(
 
 
 def _descriptor_operations(
-    descriptor: Union[ProviderDescriptor, ModelDescriptor]
+    descriptor: Union[ProviderDescriptor, ModelDescriptor],
 ) -> frozenset[Operation]:
     return frozenset(
-        operation
-        for capability in descriptor.capabilities
-        for operation in capability.operations
+        operation for capability in descriptor.capabilities for operation in capability.operations
     )
 
 
@@ -1132,7 +1088,11 @@ def _matches_catalog_constraints(
             if item.strip()
         }
         requested_device = str(device).strip().casefold()
-        if actual_devices and "provider-defined" not in actual_devices and requested_device not in actual_devices:
+        if (
+            actual_devices
+            and "provider-defined" not in actual_devices
+            and requested_device not in actual_devices
+        ):
             return False
     if language is not None:
         languages = (_label(descriptor, "audio.languages") or "").casefold()
@@ -1155,9 +1115,7 @@ def _matches_catalog_constraints(
         if not requested_media:
             return False
         known_media = {
-            item
-            for capability in descriptor.capabilities
-            for item in capability.media_types
+            item for capability in descriptor.capabilities for item in capability.media_types
         }
         if known_media and "audio/*" not in known_media and requested_media[0] not in known_media:
             return False
@@ -1216,9 +1174,7 @@ def list_providers(
 ) -> Tuple[ProviderDescriptor, ...]:
     """List canonical voice providers without resolving or constructing one."""
     selected_operation = _canonical_operation(operation)
-    records = tuple(
-        _provider_descriptor(name) for name in _catalog_provider_names()
-    )
+    records = tuple(_provider_descriptor(name) for name in _catalog_provider_names())
     return tuple(
         record
         for record in records
@@ -1274,17 +1230,11 @@ def list_models(
 ) -> Tuple[ModelDescriptor, ...]:
     """List configured model hints projected from provider defaults."""
     selected_operation = _canonical_operation(operation)
-    providers = (
-        (get_provider_descriptor(provider),)
-        if provider is not None
-        else list_providers()
-    )
+    providers = (get_provider_descriptor(provider),) if provider is not None else list_providers()
     records = tuple(
         model
         for provider_record in providers
-        for model in _model_descriptors_for_provider(
-            provider_record, selected_operation
-        )
+        for model in _model_descriptors_for_provider(provider_record, selected_operation)
     )
     return tuple(
         sorted(
@@ -1364,8 +1314,7 @@ def resolve_model(
         matches = tuple(
             candidate
             for candidate in candidates
-            if canonical_model == candidate.name
-            or canonical_model in candidate.aliases
+            if canonical_model == candidate.name or canonical_model in candidate.aliases
         )
         if matches:
             candidates = matches
@@ -1392,16 +1341,13 @@ def resolve_model(
                 capability_records = tuple(
                     capability
                     for capability in provider_record.capabilities
-                    if selected_operation is None
-                    or selected_operation in capability.operations
+                    if selected_operation is None or selected_operation in capability.operations
                 )
                 return ModelDescriptor(
                     provider_id=provider_record.provider_id,
                     name=canonical_model,
                     display_name=canonical_model,
-                    description=(
-                        f"Explicit voice model override for {provider_record.name}."
-                    ),
+                    description=(f"Explicit voice model override for {provider_record.name}."),
                     capabilities=capability_records,
                     lifecycle=provider_record.lifecycle,
                     state=provider_record.state,
@@ -1419,9 +1365,7 @@ def resolve_model(
 
     if provider is None:
         statically_viable = tuple(
-            candidate
-            for candidate in candidates
-            if candidate.state.routable is not False
+            candidate for candidate in candidates if candidate.state.routable is not False
         )
         if statically_viable:
             candidates = statically_viable
@@ -1434,9 +1378,7 @@ def resolve_model(
             preferred_id = None
         if preferred_id is not None:
             preferred = tuple(
-                candidate
-                for candidate in candidates
-                if candidate.provider_id == preferred_id
+                candidate for candidate in candidates if candidate.provider_id == preferred_id
             )
             if preferred:
                 return preferred[0]
@@ -1457,9 +1399,7 @@ def resolve_model(
             "abby_indextts",
         ),
     }
-    provider_by_id = {
-        descriptor.provider_id: descriptor.name for descriptor in list_providers()
-    }
+    provider_by_id = {descriptor.provider_id: descriptor.name for descriptor in list_providers()}
     order = operation_order.get(selected_operation, ())
     rank = {name: index for index, name in enumerate(order)}
     return min(
@@ -1476,9 +1416,7 @@ def get_catalog_snapshot() -> CatalogSnapshot:
     """Project the current voice router registry into one immutable snapshot."""
     providers = list_providers()
     models = tuple(
-        model
-        for provider in providers
-        for model in _model_descriptors_for_provider(provider)
+        model for provider in providers for model in _model_descriptors_for_provider(provider)
     )
     bindings = tuple(
         RouterBinding(
@@ -1544,8 +1482,7 @@ def _coalesce_env(*names: str) -> str:
 # ---------------------------------------------------------------------------
 
 DEFAULT_GROUNDED_FALLBACK = (
-    "I couldn't verify enough current information to answer safely. "
-    "Please contact 211 for help."
+    "I couldn't verify enough current information to answer safely. Please contact 211 for help."
 )
 
 
@@ -1719,14 +1656,11 @@ class VoiceStageTrace:
             raise ValueError("VoiceStageTrace.stage must be non-empty")
         if status not in VOICE_STAGE_STATUSES:
             raise ValueError(
-                "VoiceStageTrace.status must be one of "
-                + ", ".join(sorted(VOICE_STAGE_STATUSES))
+                "VoiceStageTrace.status must be one of " + ", ".join(sorted(VOICE_STAGE_STATUSES))
             )
         duration_ms = float(self.duration_ms)
         if not math.isfinite(duration_ms) or duration_ms < 0:
-            raise ValueError(
-                "VoiceStageTrace.duration_ms must be finite and non-negative"
-            )
+            raise ValueError("VoiceStageTrace.duration_ms must be finite and non-negative")
         provider = str(self.provider).strip() if self.provider is not None else None
         error = str(self.error).strip() if self.error is not None else None
         object.__setattr__(self, "stage", stage)
@@ -1734,9 +1668,7 @@ class VoiceStageTrace:
         object.__setattr__(self, "duration_ms", duration_ms)
         object.__setattr__(self, "provider", provider or None)
         object.__setattr__(self, "error", error or None)
-        object.__setattr__(
-            self, "details", MappingProxyType(dict(self.details or {}))
-        )
+        object.__setattr__(self, "details", MappingProxyType(dict(self.details or {})))
 
     def to_dict(self) -> Dict[str, object]:
         return {
@@ -1794,27 +1726,18 @@ class VoiceTurnRequest:
         if self.audio is not None and not isinstance(self.audio, (str, bytes)):
             raise TypeError("VoiceTurnRequest.audio must be bytes, a path/URL string, or None")
         minimum_confidence = float(self.minimum_template_confidence)
-        if (
-            not math.isfinite(minimum_confidence)
-            or not 0.0 <= minimum_confidence <= 1.0
-        ):
+        if not math.isfinite(minimum_confidence) or not 0.0 <= minimum_confidence <= 1.0:
             raise ValueError("minimum_template_confidence must be between 0 and 1")
         if int(self.max_template_results) < 1:
             raise ValueError("max_template_results must be at least 1")
         fallback_text = str(self.fallback_text or "").strip()
         if not fallback_text:
             raise ValueError("fallback_text must be non-empty")
-        request_id = (
-            str(self.request_id).strip() if self.request_id is not None else ""
-        )
+        request_id = str(self.request_id).strip() if self.request_id is not None else ""
         object.__setattr__(self, "transcript", transcript or None)
         object.__setattr__(self, "request_id", request_id or None)
-        object.__setattr__(
-            self, "context", MappingProxyType(dict(self.context or {}))
-        )
-        object.__setattr__(
-            self, "grounding", MappingProxyType(dict(self.grounding or {}))
-        )
+        object.__setattr__(self, "context", MappingProxyType(dict(self.context or {})))
+        object.__setattr__(self, "grounding", MappingProxyType(dict(self.grounding or {})))
         for field_name in (
             "language",
             "locale",
@@ -1825,24 +1748,18 @@ class VoiceTurnRequest:
             "output_format",
         ):
             raw_value = getattr(self, field_name)
-            normalized = (
-                str(raw_value).strip() if raw_value is not None else ""
-            )
+            normalized = str(raw_value).strip() if raw_value is not None else ""
             object.__setattr__(self, field_name, normalized or None)
         for field_name in ("stt_provider", "tts_provider"):
             raw_value = getattr(self, field_name)
-            normalized = (
-                str(raw_value).strip().lower() if raw_value is not None else ""
-            )
+            normalized = str(raw_value).strip().lower() if raw_value is not None else ""
             object.__setattr__(self, field_name, normalized or None)
         object.__setattr__(
             self,
             "stt_providers",
             tuple(
                 dict.fromkeys(
-                    str(name).strip().lower()
-                    for name in self.stt_providers
-                    if str(name).strip()
+                    str(name).strip().lower() for name in self.stt_providers if str(name).strip()
                 )
             ),
         )
@@ -1851,23 +1768,15 @@ class VoiceTurnRequest:
             "tts_providers",
             tuple(
                 dict.fromkeys(
-                    str(name).strip().lower()
-                    for name in self.tts_providers
-                    if str(name).strip()
+                    str(name).strip().lower() for name in self.tts_providers if str(name).strip()
                 )
             ),
         )
-        object.__setattr__(
-            self, "minimum_template_confidence", minimum_confidence
-        )
+        object.__setattr__(self, "minimum_template_confidence", minimum_confidence)
         object.__setattr__(self, "max_template_results", int(self.max_template_results))
         object.__setattr__(self, "fallback_text", fallback_text)
-        object.__setattr__(
-            self, "stt_options", MappingProxyType(dict(self.stt_options or {}))
-        )
-        object.__setattr__(
-            self, "tts_options", MappingProxyType(dict(self.tts_options or {}))
-        )
+        object.__setattr__(self, "stt_options", MappingProxyType(dict(self.stt_options or {})))
+        object.__setattr__(self, "tts_options", MappingProxyType(dict(self.tts_options or {})))
 
     @property
     def effective_language(self) -> Optional[str]:
@@ -1904,9 +1813,7 @@ class VoiceTurnRequest:
             "request_id": self.request_id,
             "transcript": self.transcript,
             "input_audio_sha256": self.input_audio_sha256,
-            "input_audio_size_bytes": len(self.audio)
-            if isinstance(self.audio, bytes)
-            else None,
+            "input_audio_size_bytes": len(self.audio) if isinstance(self.audio, bytes) else None,
             "context": _json_safe(self.context),
             "grounding": _json_safe(self.grounding),
             "language": self.language,
@@ -2043,27 +1950,19 @@ class VoiceTurnProvenance:
             "output_audio_sha256",
         ):
             raw_value = getattr(self, field_name)
-            normalized = (
-                str(raw_value).strip() if raw_value is not None else ""
-            )
+            normalized = str(raw_value).strip() if raw_value is not None else ""
             object.__setattr__(self, field_name, normalized or None)
         pipeline = str(self.pipeline or "").strip()
         if not pipeline:
             raise ValueError("VoiceTurnProvenance.pipeline must be non-empty")
-        if any(
-            not isinstance(item, GroundingEvidence) for item in (self.evidence or ())
-        ):
+        if any(not isinstance(item, GroundingEvidence) for item in (self.evidence or ())):
             raise TypeError("VoiceTurnProvenance.evidence entries must be GroundingEvidence")
-        if any(
-            not isinstance(item, GroundedSlot) for item in (self.grounded_slots or ())
-        ):
+        if any(not isinstance(item, GroundedSlot) for item in (self.grounded_slots or ())):
             raise TypeError("VoiceTurnProvenance.grounded_slots entries must be GroundedSlot")
         object.__setattr__(self, "pipeline", pipeline)
         object.__setattr__(self, "evidence", tuple(self.evidence or ()))
         object.__setattr__(self, "grounded_slots", tuple(self.grounded_slots or ()))
-        object.__setattr__(
-            self, "metadata", MappingProxyType(dict(self.metadata or {}))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata or {})))
 
     def to_dict(self) -> Dict[str, object]:
         return {
@@ -2105,16 +2004,13 @@ class VoiceTurnResult:
             raise ValueError("VoiceTurnResult.request_id must be non-empty")
         if status not in VOICE_TURN_STATUSES:
             raise ValueError(
-                "VoiceTurnResult.status must be one of "
-                + ", ".join(sorted(VOICE_TURN_STATUSES))
+                "VoiceTurnResult.status must be one of " + ", ".join(sorted(VOICE_TURN_STATUSES))
             )
         if not isinstance(self.transcript, str):
             raise TypeError("VoiceTurnResult.transcript must be a string")
         if not isinstance(self.response_text, str) or not self.response_text.strip():
             raise ValueError("VoiceTurnResult.response_text must be non-empty")
-        if self.audio is not None and (
-            not isinstance(self.audio, bytes) or not self.audio
-        ):
+        if self.audio is not None and (not isinstance(self.audio, bytes) or not self.audio):
             raise TypeError("VoiceTurnResult.audio must be non-empty bytes or None")
         if not isinstance(self.provenance, VoiceTurnProvenance):
             raise TypeError("VoiceTurnResult.provenance must be VoiceTurnProvenance")
@@ -2133,9 +2029,7 @@ class VoiceTurnResult:
             if self.audio_format is not None
             else None
         )
-        cache_key = (
-            str(self.cache_key).strip() if self.cache_key is not None else None
-        )
+        cache_key = str(self.cache_key).strip() if self.cache_key is not None else None
         object.__setattr__(self, "request_id", request_id)
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "response_text", self.response_text.strip())
@@ -2297,11 +2191,7 @@ def _coerce_evidence(value: object, *, default_id: Optional[str] = None) -> Grou
         or value.get("cid")
         or value.get("uri")
     )
-    metadata = (
-        dict(value.get("metadata"))
-        if isinstance(value.get("metadata"), Mapping)
-        else {}
-    )
+    metadata = dict(value.get("metadata")) if isinstance(value.get("metadata"), Mapping) else {}
     for key, item in value.items():
         if key not in {
             "source_id",
@@ -2330,10 +2220,7 @@ def _normalize_evidence(raw: object) -> Tuple[GroundingEvidence, ...]:
     if isinstance(raw, Mapping):
         if any(key in raw for key in ("source_id", "id", "cid", "uri", "facts")):
             return (_coerce_evidence(raw),)
-        return tuple(
-            _coerce_evidence(value, default_id=str(key))
-            for key, value in raw.items()
-        )
+        return tuple(_coerce_evidence(value, default_id=str(key)) for key, value in raw.items())
     if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)):
         return tuple(_coerce_evidence(value) for value in raw)
     raise ValueError("GraphRAG evidence must be a mapping or sequence")
@@ -2345,9 +2232,7 @@ def _source_ids_for_fact(
     evidence: Sequence[GroundingEvidence],
 ) -> Tuple[str, ...]:
     exact = tuple(
-        item.source_id
-        for item in evidence
-        if name in item.facts and item.facts[name] == value
+        item.source_id for item in evidence if name in item.facts and item.facts[name] == value
     )
     if exact:
         return exact
@@ -2409,18 +2294,13 @@ def _coerce_response_plan(value: object) -> VoiceResponsePlan:
     return VoiceResponsePlan(
         template_id=str(value.get("template_id") or value.get("id") or ""),
         template=str(
-            value.get("template")
-            or value.get("template_text")
-            or value.get("response_frame")
-            or ""
+            value.get("template") or value.get("template_text") or value.get("response_frame") or ""
         ),
         slots=tuple(slots),
         evidence=evidence,
         confidence=float(value.get("confidence", value.get("score", 1.0))),
         intent=str(value["intent"]) if value.get("intent") is not None else None,
-        metadata=value.get("metadata")
-        if isinstance(value.get("metadata"), Mapping)
-        else {},
+        metadata=value.get("metadata") if isinstance(value.get("metadata"), Mapping) else {},
     )
 
 
@@ -2507,9 +2387,7 @@ class GraphRAGVoiceTemplateProvider:
             "context": dict(prompt_parts["context"]),
             "language": prompt_parts["language"],
             "grounding": (
-                dict(grounding)
-                if isinstance(grounding, Mapping)
-                else list(grounding or ())
+                dict(grounding) if isinstance(grounding, Mapping) else list(grounding or ())
             ),
             "max_results": prompt_parts["max_results"],
         }
@@ -2556,15 +2434,16 @@ class GraphRAGVoiceTemplateProvider:
 # Built-in provider implementations
 # ---------------------------------------------------------------------------
 
+
 def _get_openai_provider() -> Optional[VoiceProvider]:
     """Get OpenAI voice provider (TTS via /audio/speech + STT via /audio/transcriptions)."""
-    credential_value = _coalesce_env(
-        "IPFS_ACCELERATE_PY_OPENAI_API_KEY", "OPENAI_API_KEY"
-    )
+    credential_value = _coalesce_env("IPFS_ACCELERATE_PY_OPENAI_API_KEY", "OPENAI_API_KEY")
     if not credential_value:
         return None
 
-    base_url = os.getenv("IPFS_ACCELERATE_PY_OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    base_url = os.getenv("IPFS_ACCELERATE_PY_OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip(
+        "/"
+    )
 
     class _OpenAIVoiceProvider:
         def synthesize(
@@ -2584,16 +2463,8 @@ def _get_openai_provider() -> Optional[VoiceProvider]:
                 or os.getenv("IPFS_ACCELERATE_PY_TTS_MODEL")
                 or "tts-1"
             )
-            selected_voice = (
-                voice
-                or os.getenv("IPFS_ACCELERATE_PY_OPENAI_TTS_VOICE")
-                or "alloy"
-            )
-            fmt = (
-                output_format
-                or os.getenv("IPFS_ACCELERATE_PY_TTS_OUTPUT_FORMAT")
-                or "mp3"
-            )
+            selected_voice = voice or os.getenv("IPFS_ACCELERATE_PY_OPENAI_TTS_VOICE") or "alloy"
+            fmt = output_format or os.getenv("IPFS_ACCELERATE_PY_TTS_OUTPUT_FORMAT") or "mp3"
 
             payload: Dict[str, object] = {
                 "model": model,
@@ -2712,9 +2583,7 @@ def _get_openai_provider() -> Optional[VoiceProvider]:
 
 def _get_elevenlabs_provider() -> Optional[VoiceProvider]:
     """Get ElevenLabs voice provider (TTS only)."""
-    credential_value = _coalesce_env(
-        "IPFS_ACCELERATE_PY_ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY"
-    )
+    credential_value = _coalesce_env("IPFS_ACCELERATE_PY_ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY")
     if not credential_value:
         return None
 
@@ -2731,11 +2600,7 @@ def _get_elevenlabs_provider() -> Optional[VoiceProvider]:
         ) -> bytes:
             _ = device
             _ = output_format
-            voice_id = (
-                voice
-                or os.getenv("IPFS_ACCELERATE_PY_ELEVENLABS_VOICE_ID")
-                or "Rachel"
-            )
+            voice_id = voice or os.getenv("IPFS_ACCELERATE_PY_ELEVENLABS_VOICE_ID") or "Rachel"
             model_id = (
                 model_name
                 or os.getenv("IPFS_ACCELERATE_PY_ELEVENLABS_MODEL_ID")
@@ -2788,9 +2653,7 @@ def _get_elevenlabs_provider() -> Optional[VoiceProvider]:
 
 def _get_assemblyai_provider() -> Optional[VoiceProvider]:
     """Get AssemblyAI voice provider (STT only)."""
-    credential_value = _coalesce_env(
-        "IPFS_ACCELERATE_PY_ASSEMBLYAI_API_KEY", "ASSEMBLYAI_API_KEY"
-    )
+    credential_value = _coalesce_env("IPFS_ACCELERATE_PY_ASSEMBLYAI_API_KEY", "ASSEMBLYAI_API_KEY")
     if not credential_value:
         return None
 
@@ -2839,7 +2702,9 @@ def _get_assemblyai_provider() -> Optional[VoiceProvider]:
                         },
                     )
                     try:
-                        with urllib.request.urlopen(upload_req, timeout=float(kwargs.get("timeout", 120))) as resp:
+                        with urllib.request.urlopen(
+                            upload_req, timeout=float(kwargs.get("timeout", 120))
+                        ) as resp:
                             upload_data = json.loads(resp.read().decode("utf-8"))
                         audio_url = upload_data["upload_url"]
                     except Exception as exc:
@@ -2855,7 +2720,9 @@ def _get_assemblyai_provider() -> Optional[VoiceProvider]:
                     },
                 )
                 try:
-                    with urllib.request.urlopen(upload_req, timeout=float(kwargs.get("timeout", 120))) as resp:
+                    with urllib.request.urlopen(
+                        upload_req, timeout=float(kwargs.get("timeout", 120))
+                    ) as resp:
                         upload_data = json.loads(resp.read().decode("utf-8"))
                     audio_url = upload_data["upload_url"]
                 except Exception as exc:
@@ -2876,7 +2743,9 @@ def _get_assemblyai_provider() -> Optional[VoiceProvider]:
                 },
             )
             try:
-                with urllib.request.urlopen(transcript_req, timeout=float(kwargs.get("timeout", 120))) as resp:
+                with urllib.request.urlopen(
+                    transcript_req, timeout=float(kwargs.get("timeout", 120))
+                ) as resp:
                     transcript_data = json.loads(resp.read().decode("utf-8"))
                 transcript_id = transcript_data["id"]
             except Exception as exc:
@@ -2940,9 +2809,7 @@ def _get_huggingface_provider() -> Optional[VoiceProvider]:
             import numpy as np
             import scipy.io.wavfile as wav_io
 
-            model = model_name or os.getenv(
-                "IPFS_ACCELERATE_PY_TTS_MODEL", "suno/bark-small"
-            )
+            model = model_name or os.getenv("IPFS_ACCELERATE_PY_TTS_MODEL", "suno/bark-small")
             device_str = (
                 device
                 or os.getenv("IPFS_ACCELERATE_PY_TTS_DEVICE")
@@ -2963,7 +2830,9 @@ def _get_huggingface_provider() -> Optional[VoiceProvider]:
                     )
                     self._tts_models[cache_key] = pipe
                 except Exception as exc:
-                    raise RuntimeError(f"Failed to load HuggingFace TTS model '{model}': {exc}") from exc
+                    raise RuntimeError(
+                        f"Failed to load HuggingFace TTS model '{model}': {exc}"
+                    ) from exc
 
             pipe = self._tts_models[cache_key]
             forward_kwargs: Dict[str, object] = {}
@@ -2998,9 +2867,7 @@ def _get_huggingface_provider() -> Optional[VoiceProvider]:
         ) -> str:
             import io
 
-            model = model_name or os.getenv(
-                "IPFS_ACCELERATE_PY_STT_MODEL", "openai/whisper-base"
-            )
+            model = model_name or os.getenv("IPFS_ACCELERATE_PY_STT_MODEL", "openai/whisper-base")
             device_str = (
                 device
                 or os.getenv("IPFS_ACCELERATE_PY_STT_DEVICE")
@@ -3021,7 +2888,9 @@ def _get_huggingface_provider() -> Optional[VoiceProvider]:
                     )
                     self._stt_models[cache_key] = pipe
                 except Exception as exc:
-                    raise RuntimeError(f"Failed to load HuggingFace STT model '{model}': {exc}") from exc
+                    raise RuntimeError(
+                        f"Failed to load HuggingFace STT model '{model}': {exc}"
+                    ) from exc
 
             pipe = self._stt_models[cache_key]
 
@@ -3035,7 +2904,10 @@ def _get_huggingface_provider() -> Optional[VoiceProvider]:
                     sample_rate, data = wav_io.read(buf)
                     if data.ndim > 1:
                         data = data.mean(axis=1)
-                    audio_input: object = {"array": data.astype(np.float32) / 32768.0, "sampling_rate": sample_rate}
+                    audio_input: object = {
+                        "array": data.astype(np.float32) / 32768.0,
+                        "sampling_rate": sample_rate,
+                    }
                 except Exception:
                     # Fall back to raw bytes path — some pipelines accept it
                     audio_input = audio
@@ -3043,10 +2915,9 @@ def _get_huggingface_provider() -> Optional[VoiceProvider]:
                 audio_input = audio
 
             generate_kwargs: Dict[str, object] = {}
-            english_only_whisper = (
-                "whisper" in model.casefold()
-                and model.casefold().rsplit("/", 1)[-1].endswith(".en")
-            )
+            english_only_whisper = "whisper" in model.casefold() and model.casefold().rsplit(
+                "/", 1
+            )[-1].endswith(".en")
             if language and not english_only_whisper:
                 selected_language = str(language).strip()
                 if "whisper" in model.casefold():
@@ -3175,12 +3046,14 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[VoiceProvider]:
                 if output_format:
                     payload["output_format"] = output_format
 
-                result = _await_from_sync(manager.execute_task(
-                    task="text-to-speech",
-                    model=model,
-                    inputs=[str(text)],
-                    parameters=payload,
-                ))
+                result = _await_from_sync(
+                    manager.execute_task(
+                        task="text-to-speech",
+                        model=model,
+                        inputs=[str(text)],
+                        parameters=payload,
+                    )
+                )
 
                 audio = _backend_manager_result_value(
                     result,
@@ -3226,12 +3099,14 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[VoiceProvider]:
                 if language:
                     payload["language"] = language
 
-                result = _await_from_sync(manager.execute_task(
-                    task="automatic-speech-recognition",
-                    model=model,
-                    inputs=[audio_payload],
-                    parameters=payload,
-                ))
+                result = _await_from_sync(
+                    manager.execute_task(
+                        task="automatic-speech-recognition",
+                        model=model,
+                        inputs=[audio_payload],
+                        parameters=payload,
+                    )
+                )
 
                 text = _backend_manager_result_value(
                     result,
@@ -3252,6 +3127,7 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[VoiceProvider]:
 # ---------------------------------------------------------------------------
 # Provider resolution
 # ---------------------------------------------------------------------------
+
 
 def _provider_cache_key() -> tuple:
     return (
@@ -3274,23 +3150,13 @@ def _provider_cache_key() -> tuple:
         os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_TOKEN", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_MODEL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_BACKEND", "").strip(),
-        os.getenv(
-            "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_REFERENCE_AUDIO", ""
-        ).strip(),
-        os.getenv(
-            "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_REFERENCE_AUDIO_REMOTE_PATH", ""
-        ).strip(),
-        os.getenv(
-            "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_VOICE_DESCRIPTION", ""
-        ).strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_REFERENCE_AUDIO", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_REFERENCE_AUDIO_REMOTE_PATH", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_VOICE_DESCRIPTION", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_API_NAME", "").strip(),
-        os.getenv(
-            "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_BATCH_API_NAME", ""
-        ).strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_BATCH_API_NAME", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_FN_INDEX", "").strip(),
-        os.getenv(
-            "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_BATCH_FN_INDEX", ""
-        ).strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_BATCH_FN_INDEX", "").strip(),
         os.getenv("WALLET_INDEXTTS_SPACE_URL", "").strip(),
         os.getenv("WALLET_INDEXTTS_FALLBACK_SPACE_URL", "").strip(),
         os.getenv("WALLET_INDEXTTS_MODEL_NAME", "").strip(),
@@ -3424,9 +3290,7 @@ def get_voice_provider(
     if deps is not None:
         cache_key = _provider_cache_key()
         normalized_provider = (provider or "").strip().lower()
-        registry_revision = _PROVIDER_REGISTRY_REVISIONS.get(
-            normalized_provider, 0
-        )
+        registry_revision = _PROVIDER_REGISTRY_REVISIONS.get(normalized_provider, 0)
         deps_key = (
             f"voice_provider::{normalized_provider}::revision-{registry_revision}"
             f"::{hashlib.sha256(repr(cache_key).encode()).hexdigest()[:16]}"
@@ -3444,6 +3308,7 @@ def get_voice_provider(
 # ---------------------------------------------------------------------------
 # Unified grounded voice-turn orchestration
 # ---------------------------------------------------------------------------
+
 
 def _provider_display_name(provider: object, fallback: Optional[str] = None) -> str:
     for attribute in ("name", "provider_name"):
@@ -3478,9 +3343,7 @@ def _collaborator_cache_identity(
     return f"{type_name}::{id(collaborator)}"
 
 
-def _safe_stage_error(
-    error: Exception, *, sensitive_values: Sequence[object] = ()
-) -> str:
+def _safe_stage_error(error: Exception, *, sensitive_values: Sequence[object] = ()) -> str:
     """Normalize adapter errors without embedding caller audio or tracebacks."""
     message = " ".join(str(error).replace("\x00", "").split())
     # Credentials occasionally appear as URL query values in remote errors.
@@ -3501,11 +3364,7 @@ def _safe_stage_error(
     )
     for sensitive in sensitive_values:
         if isinstance(sensitive, bytes):
-            sample = (
-                sensitive
-                if len(sensitive) <= 8192
-                else sensitive[:4096] + sensitive[-4096:]
-            )
+            sample = sensitive if len(sensitive) <= 8192 else sensitive[:4096] + sensitive[-4096:]
             decoded = sample.decode("utf-8", errors="ignore")
             fragments = re.findall(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{7,}", decoded)
             for fragment in tuple(fragments):
@@ -3541,9 +3400,7 @@ def _voice_turn_cache_key(
     payload = {
         "pipeline": "abby-grounded-voice-v1",
         "audio_sha256": request.input_audio_sha256,
-        "transcript_sha256": _sha256_text(request.transcript)
-        if request.transcript
-        else None,
+        "transcript_sha256": _sha256_text(request.transcript) if request.transcript else None,
         "context": _json_safe(request.context),
         "grounding": _json_safe(request.grounding),
         "language": request.effective_language,
@@ -3561,12 +3418,8 @@ def _voice_turn_cache_key(
         "fallback_text_sha256": _sha256_text(request.fallback_text),
         "stt_options": _json_safe(request.stt_options),
         "tts_options": _json_safe(request.tts_options),
-        "stt_provider_instance": _collaborator_cache_identity(
-            stt_provider, request.stt_provider
-        ),
-        "tts_provider_instance": _collaborator_cache_identity(
-            tts_provider, request.tts_provider
-        ),
+        "stt_provider_instance": _collaborator_cache_identity(stt_provider, request.stt_provider),
+        "tts_provider_instance": _collaborator_cache_identity(tts_provider, request.tts_provider),
         "template_provider": _collaborator_cache_identity(
             template_provider, _template_provider_name(template_provider)
         ),
@@ -3766,9 +3619,7 @@ def _normalize_telephone_slot_value(name: str, value: object) -> str:
         # and downstream telephone codecs from producing "negative".
         spoken = re.sub(
             r"(?<!\w)\d+(?:\s*[-–—]\s*\d+)+(?!\w)",
-            lambda match: _telephone_digits_to_words(
-                re.sub(r"\D", "", match.group(0))
-            ),
+            lambda match: _telephone_digits_to_words(re.sub(r"\D", "", match.group(0))),
             spoken,
         )
         spoken = re.sub(
@@ -3793,9 +3644,9 @@ def _normalize_telephone_slot_value(name: str, value: object) -> str:
     # without asking a speech provider to pronounce the delimiters.
     spoken = re.sub(
         r"\((?P<content>[^()]*)\)",
-        lambda match: f", {match.group('content').strip()}, "
-        if match.group("content").strip()
-        else " ",
+        lambda match: (
+            f", {match.group('content').strip()}, " if match.group("content").strip() else " "
+        ),
         spoken,
     )
     return " ".join(spoken.split())
@@ -3821,8 +3672,7 @@ def _render_grounded_plan(
 ) -> Tuple[str, Tuple[GroundedSlot, ...]]:
     if plan.confidence < minimum_confidence:
         raise ValueError(
-            "template_below_confidence: "
-            f"{plan.confidence:.3f} < {minimum_confidence:.3f}"
+            f"template_below_confidence: {plan.confidence:.3f} < {minimum_confidence:.3f}"
         )
 
     fields = _template_fields(plan.template)
@@ -3834,9 +3684,7 @@ def _render_grounded_plan(
             duplicate_names.add(slot.name)
         slots_by_name[slot.name] = slot
     if duplicate_names:
-        raise ValueError(
-            "duplicate_template_slots: " + ", ".join(sorted(duplicate_names))
-        )
+        raise ValueError("duplicate_template_slots: " + ", ".join(sorted(duplicate_names)))
 
     missing = [name for name in fields if name not in slots_by_name]
     if missing:
@@ -3852,9 +3700,7 @@ def _render_grounded_plan(
             raise ValueError(f"ungrounded_slot: {name} has no evidence source")
         unknown = [source_id for source_id in slot.source_ids if source_id not in evidence_by_id]
         if unknown:
-            raise ValueError(
-                f"ungrounded_slot: {name} cites unknown sources {', '.join(unknown)}"
-            )
+            raise ValueError(f"ungrounded_slot: {name} cites unknown sources {', '.join(unknown)}")
         fact_sources = [
             evidence_by_id[source_id]
             for source_id in slot.source_ids
@@ -3863,17 +3709,14 @@ def _render_grounded_plan(
         fact_matches = [
             source
             for source in fact_sources
-            if source.facts[name] == slot.value
-            or str(source.facts[name]) == str(slot.value)
+            if source.facts[name] == slot.value or str(source.facts[name]) == str(slot.value)
         ]
         # A structured fact, when present, must match exactly. Evidence stores
         # that only expose a cited document/excerpt remain usable; the router
         # cannot invent a conflicting value because the slot still has to cite
         # that current record.
         if fact_sources and not fact_matches:
-            raise ValueError(
-                f"ungrounded_slot: {name} does not match a cited current fact"
-            )
+            raise ValueError(f"ungrounded_slot: {name} does not match a cited current fact")
         rendered_values[name] = (
             _normalize_telephone_slot_value(name, slot.value)
             if telephone_safe
@@ -3928,8 +3771,7 @@ def _voice_tts_artifact_policy() -> VoiceArtifactPolicy:
             ) from error
         if maximum < 0:
             raise ValueError(
-                "IPFS_ACCELERATE_PY_VOICE_MAX_TTS_TRAILING_SILENCE_MS "
-                "must be non-negative"
+                "IPFS_ACCELERATE_PY_VOICE_MAX_TTS_TRAILING_SILENCE_MS must be non-negative"
             )
     return VoiceArtifactPolicy(max_tts_trailing_silence_ms=maximum)
 
@@ -3958,11 +3800,7 @@ def _validate_router_tts_audio(
         media_type = "audio/flac"
     else:
         codec = str(requested_format or "wav").strip().lower().lstrip(".")
-        media_type = (
-            "audio/mpeg"
-            if codec in {"mp3", "mpeg"}
-            else f"audio/{codec}"
-        )
+        media_type = "audio/mpeg" if codec in {"mp3", "mpeg"} else f"audio/{codec}"
     return validate_generated_audio_bytes(
         audio,
         media_type=media_type,
@@ -3976,20 +3814,14 @@ def _synthesis_identity_from_request(request: VoiceTurnRequest) -> SynthesisIden
 
     options = dict(request.tts_options or {})
     provider = (
-        request.tts_provider
-        or str(options.get("provider") or "").strip().lower()
-        or "precomputed"
+        request.tts_provider or str(options.get("provider") or "").strip().lower() or "precomputed"
     )
     model = (
         request.tts_model
         or str(options.get("model") or options.get("model_name") or "").strip()
         or "default"
     )
-    voice = (
-        request.voice
-        or str(options.get("voice") or "").strip()
-        or "default"
-    )
+    voice = request.voice or str(options.get("voice") or "").strip() or "default"
     locale = (
         request.locale
         or request.language
@@ -4001,9 +3833,10 @@ def _synthesis_identity_from_request(request: VoiceTurnRequest) -> SynthesisIden
         or str(options.get("codec") or options.get("output_format") or "").strip()
         or "wav"
     )
-    provider_version = str(
-        options.get("provider_version") or options.get("version") or "unspecified"
-    ).strip() or "unspecified"
+    provider_version = (
+        str(options.get("provider_version") or options.get("version") or "unspecified").strip()
+        or "unspecified"
+    )
     sample_rate_hz = int(options.get("sample_rate_hz") or options.get("sample_rate") or 24_000)
     channels = int(options.get("channels") or 1)
     reference = options.get("reference_audio_sha256")
@@ -4108,8 +3941,7 @@ def process_voice_turn(
                         _duration_ms(started_at),
                         provider=provider_name,
                         error=_safe_stage_error(
-                            resolution_error
-                            or RuntimeError("provider could not be resolved")
+                            resolution_error or RuntimeError("provider could not be resolved")
                         ),
                         details=attempt_details,
                     )
@@ -4141,9 +3973,7 @@ def process_voice_turn(
                     )
                 )
                 provider_receipt = getattr(provider_object, "last_receipt", None)
-                if transcription_failures or bool(
-                    getattr(provider_receipt, "degraded", False)
-                ):
+                if transcription_failures or bool(getattr(provider_receipt, "degraded", False)):
                     fallback_reasons.append("stt_provider_fallback")
                 break
             except Exception as error:
@@ -4154,9 +3984,7 @@ def process_voice_turn(
                         "failed",
                         _duration_ms(started_at),
                         provider=provider_name,
-                        error=_safe_stage_error(
-                            error, sensitive_values=(request.audio,)
-                        ),
+                        error=_safe_stage_error(error, sensitive_values=(request.audio,)),
                         details={
                             **attempt_details,
                             **_provider_receipt_details(provider_object),
@@ -4288,9 +4116,7 @@ def process_voice_turn(
                 plan,
                 grounding=request.grounding,
                 minimum_confidence=request.minimum_template_confidence,
-                telephone_safe=str(request.context.get("surface") or "")
-                .strip()
-                .casefold()
+                telephone_safe=str(request.context.get("surface") or "").strip().casefold()
                 in {"telephone", "telephony", "sip", "twilio"},
             )
             traces.append(
@@ -4363,9 +4189,7 @@ def process_voice_turn(
                             "precomputed": True,
                             "runtime_resolution": True,
                             "resolver_reason": precomputed_resolution.reason,
-                            "spoken_text_sha256": precomputed_spoken_text_sha256(
-                                response_text
-                            ),
+                            "spoken_text_sha256": precomputed_spoken_text_sha256(response_text),
                             "synthesis_identity": synthesis_identity.to_dict(),
                             **dict(precomputed_resolution.details),
                         },
@@ -4386,9 +4210,7 @@ def process_voice_turn(
                             "precomputed": False,
                             "runtime_resolution": True,
                             "resolver_reason": precomputed_resolution.reason,
-                            "spoken_text_sha256": precomputed_spoken_text_sha256(
-                                response_text
-                            ),
+                            "spoken_text_sha256": precomputed_spoken_text_sha256(response_text),
                             "synthesis_identity": synthesis_identity.to_dict(),
                             "live_tts_fallback": True,
                             **dict(precomputed_resolution.details),
@@ -4418,9 +4240,7 @@ def process_voice_turn(
             if synthesis_identity is not None:
                 failure_details.update(
                     {
-                        "spoken_text_sha256": precomputed_spoken_text_sha256(
-                            response_text
-                        ),
+                        "spoken_text_sha256": precomputed_spoken_text_sha256(response_text),
                         "synthesis_identity": synthesis_identity.to_dict(),
                     }
                 )
@@ -4430,9 +4250,7 @@ def process_voice_turn(
                     "failed",
                     _duration_ms(started_at),
                     provider="precomputed",
-                    error=_safe_stage_error(
-                        error, sensitive_values=(response_text,)
-                    ),
+                    error=_safe_stage_error(error, sensitive_values=(response_text,)),
                     details=failure_details,
                 )
             )
@@ -4465,8 +4283,7 @@ def process_voice_turn(
                         _duration_ms(started_at),
                         provider=provider_name,
                         error=_safe_stage_error(
-                            resolution_error
-                            or RuntimeError("provider could not be resolved")
+                            resolution_error or RuntimeError("provider could not be resolved")
                         ),
                         details=attempt_details,
                     )
@@ -4509,9 +4326,7 @@ def process_voice_turn(
                     )
                 )
                 provider_receipt = getattr(provider_object, "last_receipt", None)
-                if synthesis_failures or bool(
-                    getattr(provider_receipt, "degraded", False)
-                ):
+                if synthesis_failures or bool(getattr(provider_receipt, "degraded", False)):
                     fallback_reasons.append("tts_provider_fallback")
                 break
             except Exception as error:
@@ -4522,9 +4337,7 @@ def process_voice_turn(
                         "failed",
                         _duration_ms(started_at),
                         provider=provider_name,
-                        error=_safe_stage_error(
-                            error, sensitive_values=(response_text,)
-                        ),
+                        error=_safe_stage_error(error, sensitive_values=(response_text,)),
                         details={
                             **attempt_details,
                             **_provider_receipt_details(provider_object),
@@ -4555,9 +4368,7 @@ def process_voice_turn(
         input_audio_sha256=request.input_audio_sha256,
         transcript_sha256=_sha256_text(transcript) if transcript else None,
         response_text_sha256=_sha256_text(response_text),
-        output_audio_sha256=_sha256_bytes(output_audio)
-        if output_audio is not None
-        else None,
+        output_audio_sha256=_sha256_bytes(output_audio) if output_audio is not None else None,
         metadata={
             "intent": plan.intent if plan is not None else None,
             "response_template": plan.template if plan is not None else None,
@@ -4569,18 +4380,12 @@ def process_voice_turn(
                     "telephone": "telephone",
                     "telephony": "telephone",
                     "twilio": "telephone",
-                }.get(
-                    str(request.context.get("surface") or "")
-                    .strip()
-                    .casefold()
-                )
+                }.get(str(request.context.get("surface") or "").strip().casefold())
             ),
             "template_confidence": plan.confidence if plan is not None else None,
             "fallback_reasons": fallback_tuple,
             "precomputed_audio": (
-                precomputed_resolution.to_dict()
-                if precomputed_resolution is not None
-                else None
+                precomputed_resolution.to_dict() if precomputed_resolution is not None else None
             ),
         },
     )
@@ -4656,9 +4461,7 @@ def process_telephone_turn(
             template_id=None,
             tts_provider=None,
             input_audio_sha256=request.input_audio_sha256,
-            transcript_sha256=(
-                _sha256_text(request.transcript) if request.transcript else None
-            ),
+            transcript_sha256=(_sha256_text(request.transcript) if request.transcript else None),
             response_text_sha256=_sha256_text(request.fallback_text),
             metadata={
                 "telephone": {
@@ -4725,8 +4528,7 @@ def process_telephone_turn(
 
     intent = str(result.intent or "").strip().casefold()
     explicit_handoff = bool(
-        request.context.get("human_escalation_requested")
-        or request.context.get("request_human")
+        request.context.get("human_escalation_requested") or request.context.get("request_human")
     )
     escalation_reason: Optional[str] = None
     if explicit_handoff or intent in {
@@ -4754,9 +4556,7 @@ def process_telephone_turn(
     }
     provenance_metadata = dict(result.provenance.metadata)
     provenance_metadata["telephone"] = telephone_metadata
-    provenance_metadata["fallback_reasons"] = tuple(
-        dict.fromkeys(fallback_reasons)
-    )
+    provenance_metadata["fallback_reasons"] = tuple(dict.fromkeys(fallback_reasons))
     provenance = replace(result.provenance, metadata=provenance_metadata)
     escalation_trace = VoiceStageTrace(
         "telephone_escalation",
@@ -4850,9 +4650,7 @@ def _parse_wav_duration_seconds(payload: bytes) -> Optional[float]:
         if chunk_id == b"fmt " and chunk_size >= 16 and data_end <= len(payload):
             channels = int.from_bytes(payload[data_start + 2 : data_start + 4], "little")
             sample_rate = int.from_bytes(payload[data_start + 4 : data_start + 8], "little")
-            bits_per_sample = int.from_bytes(
-                payload[data_start + 14 : data_start + 16], "little"
-            )
+            bits_per_sample = int.from_bytes(payload[data_start + 14 : data_start + 16], "little")
         elif chunk_id == b"data":
             data_size = chunk_size
             break
@@ -5019,9 +4817,7 @@ def settle_synthesis_usage(
     if not isinstance(text, str):
         raise TypeError("text must be a string")
     char_count = int(characters) if characters is not None else len(text)
-    token_count = (
-        int(tokens) if tokens is not None else estimate_synthesis_tokens(text)
-    )
+    token_count = int(tokens) if tokens is not None else estimate_synthesis_tokens(text)
     amounts: Dict[str, int] = {
         "requests": 1,
         "characters": max(0, char_count),
@@ -5264,7 +5060,12 @@ def voice_fallback_compatible(
         "device",
         "model_name",
     ):
-        if key in origin and origin[key] not in {"", "unknown", "provider-defined", "provider-managed"}:
+        if key in origin and origin[key] not in {
+            "",
+            "unknown",
+            "provider-defined",
+            "provider-managed",
+        }:
             if candidate.get(key, origin[key]) != origin[key]:
                 return False
 
@@ -5330,9 +5131,7 @@ def _build_voice_static_candidate(
     )
     provider_id = stable_id("provider", "voice", provider_name)
     model_id = stable_id("model", "voice", provider_name, model_name or "default")
-    deployment_id = stable_id(
-        "deployment", "voice", provider_name, device or "default"
-    )
+    deployment_id = stable_id("deployment", "voice", provider_name, device or "default")
     binding_id = stable_id(
         "binding", "voice", provider_name, operation, model_name or "default", scope_id
     )
@@ -5383,9 +5182,7 @@ def _admission_result_to_trace(result: object) -> Dict[str, object]:
         "reservation_id": getattr(selected, "reservation_id", None) if selected else None,
         "receipt_id": getattr(receipt, "receipt_id", None) if receipt else None,
         "usage_revision": getattr(selected, "usage_revision", None) if selected else None,
-        "catalog_revision": getattr(selected, "catalog_revision", None)
-        if selected
-        else None,
+        "catalog_revision": getattr(selected, "catalog_revision", None) if selected else None,
         "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
     }
     if receipt is not None:
@@ -5422,9 +5219,7 @@ def _parse_provider_observation(
         # Guard: observation must target the exact reserved scope.
         obs_scope = getattr(observation, "scope_id", None)
         if obs_scope and str(obs_scope) != str(scope_id):
-            logger.debug(
-                "voice usage observation scope mismatch; ignoring (exact-scope only)"
-            )
+            logger.debug("voice usage observation scope mismatch; ignoring (exact-scope only)")
             return None
         return observation
     if not isinstance(observation, Mapping):
@@ -5432,17 +5227,12 @@ def _parse_provider_observation(
     # Provider metadata updates apply only to the exact reserved scope.
     obs_scope = observation.get("scope_id")
     if obs_scope is not None and str(obs_scope) != str(scope_id):
-        logger.debug(
-            "voice usage observation scope mismatch; ignoring (exact-scope only)"
-        )
+        logger.debug("voice usage observation scope mismatch; ignoring (exact-scope only)")
         return None
     try:
         from .endpoint_usage.adapters import parse_provider_observation
 
-        if any(
-            key in observation
-            for key in ("headers", "body", "family", "http_status", "usage")
-        ):
+        if any(key in observation for key in ("headers", "body", "family", "http_status", "usage")):
             payload = dict(observation)
             payload["scope_id"] = scope_id
             payload.setdefault("request_id", request_id)
@@ -5575,9 +5365,7 @@ def _effective_policy_for_pin(policy: object, pin: object) -> object:
 
     if not isinstance(policy, RoutingPolicy):
         policy = _normalize_usage_policy(policy)
-    if getattr(pin, "is_exact", False) and not getattr(
-        pin, "allow_fallback_with_pin", False
-    ):
+    if getattr(pin, "is_exact", False) and not getattr(pin, "allow_fallback_with_pin", False):
         if policy.fallback is not FallbackClass.NONE:
             return RoutingPolicy(
                 mode=policy.mode,
@@ -5778,9 +5566,7 @@ def _legacy_text_to_speech(
         _validate_router_tts_audio(audio_bytes, output_format)
         _tts_cache_store(
             deps=deps,
-            provider_identity=_provider_instance_cache_identity(
-                provider_instance, provider
-            ),
+            provider_identity=_provider_instance_cache_identity(provider_instance, provider),
             model_name=model_name,
             text=text,
             voice=voice,
@@ -5868,9 +5654,7 @@ def _legacy_speech_to_text(
             )
         _stt_cache_store(
             deps=deps,
-            provider_identity=_provider_instance_cache_identity(
-                provider_instance, provider
-            ),
+            provider_identity=_provider_instance_cache_identity(provider_instance, provider),
             model_name=model_name,
             audio=audio,
             language=language,
@@ -5941,14 +5725,8 @@ def _record_voice_usage_observe_shadow(
             payload["usage_revision"] = getattr(snap, "usage_revision", None)
             payload["scope_id"] = usage_scope_id
         except Exception:
-            payload["reason_codes"] = list(payload["reason_codes"]) + [
-                "snapshot_unavailable"
-            ]
-        if (
-            success
-            and remote_charged
-            and str(getattr(mode, "value", mode)) == "shadow"
-        ):
+            payload["reason_codes"] = list(payload["reason_codes"]) + ["snapshot_unavailable"]
+        if success and remote_charged and str(getattr(mode, "value", mode)) == "shadow":
             try:
                 from .endpoint_usage.schema import UsageVector as _UsageVector
 
@@ -5956,8 +5734,7 @@ def _record_voice_usage_observe_shadow(
                     usage_scope_id,
                     kind=UsageEventKind.OBSERVATION_SUCCESS,
                     units=_UsageVector(),
-                    request_id=usage_request_id
-                    or stable_id("vreq", "shadow", usage_scope_id),
+                    request_id=usage_request_id or stable_id("vreq", "shadow", usage_scope_id),
                     reason_codes=("shadow_observe",),
                 )
             except Exception:
@@ -6070,27 +5847,19 @@ def _text_to_speech_with_usage_admission(
         streaming=usage_streaming,
         remote=True,
     )
-    request_id = usage_request_id or stable_id(
-        "vreq", "tts", str(time.time_ns()), str(len(text))
-    )
-    idempotency_key = usage_idempotency_key or stable_id(
-        "videm", request_id, "tts"
-    )
+    request_id = usage_request_id or stable_id("vreq", "tts", str(time.time_ns()), str(len(text)))
+    idempotency_key = usage_idempotency_key or stable_id("videm", request_id, "tts")
     catalog_revision = usage_catalog_revision or stable_id(
         "cat", "voice_router", USAGE_ROUTING_REQUIREMENT_ID
     )
-    pin = _resolve_usage_pin(
-        pin=usage_pin, provider=provider, allow_fallback_with_pin=False
-    )
+    pin = _resolve_usage_pin(pin=usage_pin, provider=provider, allow_fallback_with_pin=False)
 
     if usage_candidates is not None:
         candidates: List[object] = list(usage_candidates)
     else:
         backend = provider_instance or get_voice_provider(provider, deps=deps)
         provider_used = _provider_display_name(backend, provider)
-        scope_id = stable_id(
-            "scope", "voice", "tts", provider_used, model_name or "default"
-        )
+        scope_id = stable_id("scope", "voice", "tts", provider_used, model_name or "default")
         ureq_probe = usage_request
         if isinstance(ureq_probe, Mapping):
             preferred_scope = ureq_probe.get("preferred_scope_id")
@@ -6128,9 +5897,7 @@ def _text_to_speech_with_usage_admission(
     if voice:
         origin_labels.setdefault("voice", str(voice))
     if output_format:
-        origin_labels.setdefault(
-            "codec", str(output_format).strip().lower().lstrip(".")
-        )
+        origin_labels.setdefault("codec", str(output_format).strip().lower().lstrip("."))
     candidates = _filter_compatible_voice_candidates(
         candidates, origin_labels=origin_labels
     ) or list(candidates[:1])
@@ -6140,9 +5907,7 @@ def _text_to_speech_with_usage_admission(
         for cand in candidates
         if isinstance(cand, StaticCandidate)
     }
-    ureq = _bind_usage_routing_request(
-        usage_request=usage_request, requested=requested
-    )
+    ureq = _bind_usage_routing_request(usage_request=usage_request, requested=requested)
     provider_map: Dict[str, VoiceProvider] = dict(usage_provider_by_binding or {})
     result_holder: Dict[str, object] = {}
     invoke_error_holder: Dict[str, BaseException] = {}
@@ -6200,9 +5965,7 @@ def _text_to_speech_with_usage_admission(
                 )
             router_name = labels.get("router_provider") or provider
             try:
-                active_backend = provider_instance or get_voice_provider(
-                    router_name, deps=deps
-                )
+                active_backend = provider_instance or get_voice_provider(router_name, deps=deps)
             except Exception as exc:
                 return InvokeOutcome(
                     success=False,
@@ -6244,10 +6007,7 @@ def _text_to_speech_with_usage_admission(
             invoke_error_holder["error"] = exc
             error_class = classify_invoke_error(reason_codes=(type(exc).__name__,))
             message = str(exc).casefold()
-            if any(
-                token in message
-                for token in ("rate limit", "429", "quota", "capacity", "503")
-            ):
+            if any(token in message for token in ("rate limit", "429", "quota", "capacity", "503")):
                 error_class = ErrorSafetyClass.CAPACITY
             # Capacity/transient failures must remain fallback-safe; do not
             # mark side_effecting or the admission protocol will refuse reroute.
@@ -6273,9 +6033,7 @@ def _text_to_speech_with_usage_admission(
             return InvokeOutcome(
                 success=False,
                 error_class=(
-                    ErrorSafetyClass.TRANSIENT
-                    if exc.retryable
-                    else ErrorSafetyClass.SEMANTIC
+                    ErrorSafetyClass.TRANSIENT if exc.retryable else ErrorSafetyClass.SEMANTIC
                 ),
                 reason_codes=(
                     "output_validation_failed",
@@ -6293,9 +6051,7 @@ def _text_to_speech_with_usage_admission(
                 cost_currency=usage_cost_currency,
             )
             result_holder["audio_bytes"] = audio_bytes
-            result_holder["provider_used"] = _provider_display_name(
-                active_backend, provider
-            )
+            result_holder["provider_used"] = _provider_display_name(active_backend, provider)
             result_holder["settled"] = settled_timeout
             result_holder["timeout_after_dispatch"] = True
             obs = _parse_provider_observation(
@@ -6325,9 +6081,7 @@ def _text_to_speech_with_usage_admission(
             settled=settled,
         )
         result_holder["audio_bytes"] = audio_bytes
-        result_holder["provider_used"] = _provider_display_name(
-            active_backend, provider
-        )
+        result_holder["provider_used"] = _provider_display_name(active_backend, provider)
         result_holder["settled"] = settled
         return InvokeOutcome(
             success=True,
@@ -6418,9 +6172,7 @@ def _text_to_speech_with_usage_admission(
         reservation_id=getattr(result.selected, "reservation_id", None)
         if result.selected
         else None,
-        receipt_id=getattr(result.receipt, "receipt_id", None)
-        if result.receipt
-        else None,
+        receipt_id=getattr(result.receipt, "receipt_id", None) if result.receipt else None,
         elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
     )
     return _write_output_path(audio_bytes, output_path)
@@ -6533,15 +6285,11 @@ def _speech_to_text_with_usage_admission(
     request_id = usage_request_id or stable_id(
         "vreq", "stt", str(time.time_ns()), str(_audio_media_bytes(audio))
     )
-    idempotency_key = usage_idempotency_key or stable_id(
-        "videm", request_id, "stt"
-    )
+    idempotency_key = usage_idempotency_key or stable_id("videm", request_id, "stt")
     catalog_revision = usage_catalog_revision or stable_id(
         "cat", "voice_router", USAGE_ROUTING_REQUIREMENT_ID
     )
-    pin = _resolve_usage_pin(
-        pin=usage_pin, provider=provider, allow_fallback_with_pin=False
-    )
+    pin = _resolve_usage_pin(pin=usage_pin, provider=provider, allow_fallback_with_pin=False)
 
     if usage_candidates is not None:
         candidates = list(usage_candidates)
@@ -6561,9 +6309,7 @@ def _speech_to_text_with_usage_admission(
         else:
             backend = provider_instance or get_voice_provider(provider, deps=deps)
         provider_used = _provider_display_name(backend, provider)
-        scope_id = stable_id(
-            "scope", "voice", "stt", provider_used, model_name or "default"
-        )
+        scope_id = stable_id("scope", "voice", "stt", provider_used, model_name or "default")
         ureq_probe = usage_request
         if isinstance(ureq_probe, Mapping):
             preferred_scope = ureq_probe.get("preferred_scope_id")
@@ -6608,9 +6354,7 @@ def _speech_to_text_with_usage_admission(
         for cand in candidates
         if isinstance(cand, StaticCandidate)
     }
-    ureq = _bind_usage_routing_request(
-        usage_request=usage_request, requested=requested
-    )
+    ureq = _bind_usage_routing_request(usage_request=usage_request, requested=requested)
     provider_map: Dict[str, VoiceProvider] = dict(usage_provider_by_binding or {})
     result_holder: Dict[str, object] = {}
     invoke_error_holder: Dict[str, BaseException] = {}
@@ -6668,9 +6412,7 @@ def _speech_to_text_with_usage_admission(
                 )
             router_name = labels.get("router_provider") or provider
             try:
-                active_backend = provider_instance or get_voice_provider(
-                    router_name, deps=deps
-                )
+                active_backend = provider_instance or get_voice_provider(router_name, deps=deps)
             except Exception as exc:
                 return InvokeOutcome(
                     success=False,
@@ -6710,10 +6452,7 @@ def _speech_to_text_with_usage_admission(
             invoke_error_holder["error"] = exc
             error_class = classify_invoke_error(reason_codes=(type(exc).__name__,))
             message = str(exc).casefold()
-            if any(
-                token in message
-                for token in ("rate limit", "429", "quota", "capacity", "503")
-            ):
+            if any(token in message for token in ("rate limit", "429", "quota", "capacity", "503")):
                 error_class = ErrorSafetyClass.CAPACITY
             # Capacity/transient failures must remain fallback-safe; do not
             # mark side_effecting or the admission protocol will refuse reroute.
@@ -6751,9 +6490,7 @@ def _speech_to_text_with_usage_admission(
         # leak into receipts — only length metadata.
         result_holder["transcription"] = transcription
         result_holder["transcript_chars"] = len(transcription)
-        result_holder["provider_used"] = _provider_display_name(
-            active_backend, provider
-        )
+        result_holder["provider_used"] = _provider_display_name(active_backend, provider)
         result_holder["settled"] = settled
         reason_codes = ["transcribed"]
         if deadline is not None and time.perf_counter() > deadline:
@@ -6791,9 +6528,9 @@ def _speech_to_text_with_usage_admission(
     if result_holder.get("stream_partials"):
         admission_trace["stream_partials"] = result_holder["stream_partials"]
     if result_holder.get("timeout_after_dispatch"):
-        admission_trace["reason_codes"] = list(
-            admission_trace.get("reason_codes") or []
-        ) + ["timeout_after_dispatch"]
+        admission_trace["reason_codes"] = list(admission_trace.get("reason_codes") or []) + [
+            "timeout_after_dispatch"
+        ]
     # Explicitly ensure no transcript leaks into admission payload.
     admission_trace.pop("transcription", None)
     admission_trace.pop("transcript", None)
@@ -6850,9 +6587,7 @@ def _speech_to_text_with_usage_admission(
         reservation_id=getattr(result.selected, "reservation_id", None)
         if result.selected
         else None,
-        receipt_id=getattr(result.receipt, "receipt_id", None)
-        if result.receipt
-        else None,
+        receipt_id=getattr(result.receipt, "receipt_id", None) if result.receipt else None,
         elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
     )
     return transcription
@@ -6972,11 +6707,14 @@ def text_to_speech(
         deps=resolved_deps,
         kwargs=dict(kwargs),
     )
-    provider_used = _provider_display_name(provider_instance, provider) if provider_instance else str(provider or "")
+    provider_used = (
+        _provider_display_name(provider_instance, provider)
+        if provider_instance
+        else str(provider or "")
+    )
     if usage_coordinator is not None and _usage_mode_observes_only(policy):
         remote = not (
-            isinstance(result, bytes)
-            and False  # cache path already returned above only in enforce
+            isinstance(result, bytes) and False  # cache path already returned above only in enforce
         )
         # Observe after legacy path: if cache was hit, no remote charge.
         # We cannot always know cache hit without re-checking; treat as remote

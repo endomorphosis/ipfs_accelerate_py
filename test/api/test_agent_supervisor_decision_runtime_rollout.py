@@ -92,15 +92,11 @@ def test_binding_or_safety_regression_returns_affected_behavior_to_shadow():
     assert "stale-binding:tree_id" in decision.reason_codes
 
     escaped = next(
-        item
-        for item in current.benchmark.receipts
-        if item.adversarial_fixture is not None
+        item for item in current.benchmark.receipts if item.adversarial_fixture is not None
     )
     unsafe_benchmark = DecisionRuntimeBenchmark(
         tuple(
-            replace(item, escape_count=1)
-            if item.receipt_id == escaped.receipt_id
-            else item
+            replace(item, escape_count=1) if item.receipt_id == escaped.receipt_id else item
             for item in current.benchmark.receipts
         )
     )

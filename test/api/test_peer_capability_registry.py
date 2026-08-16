@@ -31,7 +31,9 @@ def test_peer_capability_registry_persists_and_scores(tmp_path):
     assert "text-generation" in record.supported_tasks
 
     score_supported = registry.score_peer_for_task(peer_id="peer-a", task_type="text-generation")
-    score_unsupported = registry.score_peer_for_task(peer_id="peer-a", task_type="vision-generation")
+    score_unsupported = registry.score_peer_for_task(
+        peer_id="peer-a", task_type="vision-generation"
+    )
     assert score_supported > score_unsupported
 
     reloaded = PeerCapabilityRegistry(path=registry_path)

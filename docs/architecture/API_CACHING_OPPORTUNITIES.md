@@ -158,11 +158,7 @@ from ipfs_accelerate_py.common.llm_cache import get_global_llm_cache
 cache = get_global_llm_cache()
 
 # Before API call
-cached_response = cache.get_completion(
-    prompt=prompt,
-    model=model,
-    temperature=temperature
-)
+cached_response = cache.get_completion(prompt=prompt, model=model, temperature=temperature)
 
 if cached_response:
     return cached_response
@@ -171,12 +167,7 @@ if cached_response:
 response = openai.ChatCompletion.create(...)
 
 # Cache response
-cache.cache_completion(
-    prompt=prompt,
-    response=response,
-    model=model,
-    temperature=temperature
-)
+cache.cache_completion(prompt=prompt, response=response, model=model, temperature=temperature)
 
 return response
 ```
@@ -250,10 +241,7 @@ for cache_name, cache in get_all_caches().items():
 
 Before:
 ```python
-response = openai.ChatCompletion.create(
-    model="gpt-4",
-    messages=messages
-)
+response = openai.ChatCompletion.create(model="gpt-4", messages=messages)
 ```
 
 After:
@@ -268,10 +256,7 @@ if cached:
     response = cached
 else:
     # Make API call
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=messages
-    )
+    response = openai.ChatCompletion.create(model="gpt-4", messages=messages)
     # Cache result
     cache.cache_chat_completion(messages=messages, response=response, model="gpt-4")
 ```

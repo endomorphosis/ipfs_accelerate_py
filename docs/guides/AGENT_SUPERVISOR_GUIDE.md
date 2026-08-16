@@ -232,9 +232,7 @@ assert frozenset(AGENT_SUPERVISOR_V2_EXPORT_MODULES) == frozenset(
 
 manifest = agent_supervisor_v2_discovery_manifest()
 publication = agent_supervisor_v2_control_surface_publication()
-assert manifest.operations == tuple(
-    sorted(Operation, key=lambda item: item.value)
-)
+assert manifest.operations == tuple(sorted(Operation, key=lambda item: item.value))
 assert publication.catalog_id == OPERATION_CATALOG_V2.catalog_id
 ```
 
@@ -307,13 +305,11 @@ client = service.client(
 )
 
 goals = client.goals(
-    objective_path="docs/architecture/"
-    "agent_supervisor_self_improvement.objectives.md",
+    objective_path="docs/architecture/agent_supervisor_self_improvement.objectives.md",
     limit=20,
 )
 tasks = client.tasks(
-    todo_path="docs/architecture/"
-    "agent_supervisor_self_improvement.todo.md",
+    todo_path="docs/architecture/agent_supervisor_self_improvement.todo.md",
     task_header_prefix="## ASI-",
     limit=20,
 )
@@ -1130,6 +1126,7 @@ from ipfs_accelerate_py.agent_supervisor import (
     REQUIRED_PAIRED_FIXTURE_KINDS,
     evaluate_paired_self_improvement_rollout,
 )
+
 
 def verify_shadow_population(fixtures, *, repository_id, tree_id, report_dir):
     # The harness supplies one paired measurement for every reviewed kind.

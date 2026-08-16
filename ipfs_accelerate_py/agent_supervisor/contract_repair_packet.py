@@ -44,9 +44,7 @@ CONTRACT_REPAIR_PACKET_VERSION: Final[int] = 1
 COMPACT_REPAIR_PACKET_EVIDENCE: Final[str] = "vfs/compact-repair-packet@1"
 DELTA_REPAIR_CONTEXT_EVIDENCE: Final[str] = "vfs/delta-repair-context@1"
 
-REPAIR_PACKET_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/contract-repair-packet@1"
-)
+REPAIR_PACKET_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/contract-repair-packet@1"
 REPAIR_PACKET_REQUEST_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-repair-packet-request@1"
 )
@@ -215,9 +213,7 @@ def _sorted_unique(
 
 def _positive_int(value: Any, name: str, *, minimum: int = 1) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise ContractRepairPacketError(
-            f"{name} must be an integer >= {minimum}"
-        )
+        raise ContractRepairPacketError(f"{name} must be an integer >= {minimum}")
     return value
 
 
@@ -227,9 +223,7 @@ def _enum(value: Any, enum_type: type[Enum], name: str) -> Any:
     try:
         return enum_type(str(value or "").strip())
     except ValueError as exc:
-        raise ContractRepairPacketError(
-            f"unsupported {name}: {value!r}"
-        ) from exc
+        raise ContractRepairPacketError(f"unsupported {name}: {value!r}") from exc
 
 
 def _redact_inline(value: str) -> tuple[str, int]:
@@ -276,9 +270,7 @@ def _plain(value: Any, path: str = "value") -> Any:
         result: dict[str, Any] = {}
         for raw_key, raw_value in value.items():
             if not isinstance(raw_key, str) or not raw_key.strip():
-                raise ContractRepairPacketError(
-                    f"{path} keys must be non-empty strings"
-                )
+                raise ContractRepairPacketError(f"{path} keys must be non-empty strings")
             key = raw_key.strip()
             lowered = key.casefold().replace("-", "_")
             if lowered in _FORBIDDEN_BODY_KEYS:
@@ -294,19 +286,13 @@ def _plain(value: Any, path: str = "value") -> Any:
         return result
     if isinstance(value, Sequence):
         return [_plain(item, f"{path}[]") for item in value]
-    raise ContractRepairPacketError(
-        f"{path} has unsupported value type {type(value).__name__}"
-    )
+    raise ContractRepairPacketError(f"{path} has unsupported value type {type(value).__name__}")
 
 
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return MappingProxyType(
-            {key: _freeze(item) for key, item in value.items()}
-        )
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return tuple(_freeze(item) for item in value)
     return value
 
@@ -314,9 +300,7 @@ def _freeze(value: Any) -> Any:
 def _thaw(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {key: _thaw(item) for key, item in value.items()}
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [_thaw(item) for item in value]
     return value
 
@@ -324,11 +308,7 @@ def _thaw(value: Any) -> Any:
 def estimate_tokens(payload: Any) -> int:
     """Deterministic conservative token estimate for packet size comparisons."""
 
-    raw = (
-        payload
-        if isinstance(payload, (bytes, bytearray))
-        else canonical_json_bytes(payload)
-    )
+    raw = payload if isinstance(payload, (bytes, bytearray)) else canonical_json_bytes(payload)
     return max(1, (len(raw) + BYTES_PER_TOKEN - 1) // BYTES_PER_TOKEN)
 
 
@@ -389,9 +369,7 @@ class RepairPacketLimits:
             "max_handle_count",
             "max_call_slice_steps",
         ):
-            object.__setattr__(
-                self, name, _positive_int(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _positive_int(getattr(self, name), name))
         budget = self.provider_input_budget_bytes
         if isinstance(budget, bool) or not isinstance(budget, int) or budget < 0:
             raise ContractRepairPacketError(
@@ -418,29 +396,15 @@ class RepairPacketLimits:
         if not isinstance(value, Mapping):
             raise ContractRepairPacketError("limits must be a mapping")
         return cls(
-            max_packet_bytes=int(
-                value.get("max_packet_bytes", DEFAULT_MAX_PACKET_BYTES)
-            ),
-            max_span_bytes=int(
-                value.get("max_span_bytes", DEFAULT_MAX_SPAN_BYTES)
-            ),
-            max_span_lines=int(
-                value.get("max_span_lines", DEFAULT_MAX_SPAN_LINES)
-            ),
-            max_span_count=int(
-                value.get("max_span_count", DEFAULT_MAX_SPAN_COUNT)
-            ),
-            max_handle_count=int(
-                value.get("max_handle_count", DEFAULT_MAX_HANDLE_COUNT)
-            ),
+            max_packet_bytes=int(value.get("max_packet_bytes", DEFAULT_MAX_PACKET_BYTES)),
+            max_span_bytes=int(value.get("max_span_bytes", DEFAULT_MAX_SPAN_BYTES)),
+            max_span_lines=int(value.get("max_span_lines", DEFAULT_MAX_SPAN_LINES)),
+            max_span_count=int(value.get("max_span_count", DEFAULT_MAX_SPAN_COUNT)),
+            max_handle_count=int(value.get("max_handle_count", DEFAULT_MAX_HANDLE_COUNT)),
             max_call_slice_steps=int(
-                value.get(
-                    "max_call_slice_steps", DEFAULT_MAX_CALL_SLICE_STEPS
-                )
+                value.get("max_call_slice_steps", DEFAULT_MAX_CALL_SLICE_STEPS)
             ),
-            provider_input_budget_bytes=int(
-                value.get("provider_input_budget_bytes", 0) or 0
-            ),
+            provider_input_budget_bytes=int(value.get("provider_input_budget_bytes", 0) or 0),
         )
 
 
@@ -462,19 +426,15 @@ class BoundedSourceSpan:
         start = _positive_int(self.start_line, "start_line", minimum=1)
         end = _positive_int(self.end_line, "end_line", minimum=1)
         if end < start:
-            raise ContractRepairPacketError(
-                "end_line must be >= start_line"
-            )
+            raise ContractRepairPacketError("end_line must be >= start_line")
         object.__setattr__(self, "start_line", start)
         object.__setattr__(self, "end_line", end)
-        object.__setattr__(
-            self, "symbol", _optional_text(self.symbol, "symbol")
-        )
+        object.__setattr__(self, "symbol", _optional_text(self.symbol, "symbol"))
         excerpt = _optional_text(self.excerpt, "excerpt")
         excerpt, _ = _redact_inline(excerpt)
         if len(excerpt.encode("utf-8")) > DEFAULT_MAX_SPAN_BYTES:
             # Hard truncate to bound; full body lives behind content_id.
-            encoded = excerpt.encode("utf-8")[: DEFAULT_MAX_SPAN_BYTES]
+            encoded = excerpt.encode("utf-8")[:DEFAULT_MAX_SPAN_BYTES]
             excerpt = encoded.decode("utf-8", errors="ignore") + OMITTED
         object.__setattr__(self, "excerpt", excerpt)
         object.__setattr__(
@@ -538,16 +498,10 @@ class CallSliceStepRef:
     content_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "step_id", _required_text(self.step_id, "step_id")
-        )
-        object.__setattr__(
-            self, "symbol", _optional_text(self.symbol, "symbol")
-        )
+        object.__setattr__(self, "step_id", _required_text(self.step_id, "step_id"))
+        object.__setattr__(self, "symbol", _optional_text(self.symbol, "symbol"))
         object.__setattr__(self, "path", _optional_text(self.path, "path"))
-        object.__setattr__(
-            self, "kind", _optional_text(self.kind, "kind") or "call"
-        )
+        object.__setattr__(self, "kind", _optional_text(self.kind, "kind") or "call")
         object.__setattr__(
             self,
             "contract_ref",
@@ -597,12 +551,8 @@ class CallSliceRef:
     SCHEMA: ClassVar[str] = CALL_SLICE_REF_SCHEMA
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "slice_id", _required_text(self.slice_id, "slice_id")
-        )
-        object.__setattr__(
-            self, "root_symbol", _optional_text(self.root_symbol, "root_symbol")
-        )
+        object.__setattr__(self, "slice_id", _required_text(self.slice_id, "slice_id"))
+        object.__setattr__(self, "root_symbol", _optional_text(self.root_symbol, "root_symbol"))
         object.__setattr__(self, "complete", bool(self.complete))
         steps_raw = self.steps or ()
         if isinstance(steps_raw, Mapping):
@@ -669,17 +619,13 @@ class CounterexampleSliceRef:
             "counterexample_id",
             _required_text(self.counterexample_id, "counterexample_id"),
         )
-        object.__setattr__(
-            self, "kind", _optional_text(self.kind, "kind") or "counterexample"
-        )
+        object.__setattr__(self, "kind", _optional_text(self.kind, "kind") or "counterexample")
         summary = _optional_text(self.summary, "summary")
         summary, _ = _redact_inline(summary)
         if len(summary) > DEFAULT_MAX_TEXT_CHARS:
             summary = summary[:DEFAULT_MAX_TEXT_CHARS] + OMITTED
         object.__setattr__(self, "summary", summary)
-        object.__setattr__(
-            self, "content_id", _optional_text(self.content_id, "content_id")
-        )
+        object.__setattr__(self, "content_id", _optional_text(self.content_id, "content_id"))
         object.__setattr__(
             self,
             "proof_receipt_ref",
@@ -702,12 +648,9 @@ class CounterexampleSliceRef:
         if isinstance(value, cls):
             return value
         if not isinstance(value, Mapping):
-            raise ContractRepairPacketError(
-                "counterexample_slice must be a mapping"
-            )
+            raise ContractRepairPacketError("counterexample_slice must be a mapping")
         return cls(
-            counterexample_id=value.get("counterexample_id", "")
-            or value.get("id", ""),
+            counterexample_id=value.get("counterexample_id", "") or value.get("id", ""),
             kind=value.get("kind", "counterexample") or "counterexample",
             summary=value.get("summary", "") or "",
             content_id=value.get("content_id", "") or "",
@@ -740,39 +683,24 @@ class RepairExpansionHandle:
         object.__setattr__(
             self,
             "referenced_content_id",
-            _required_text(
-                self.referenced_content_id, "referenced_content_id"
-            ),
+            _required_text(self.referenced_content_id, "referenced_content_id"),
         )
         object.__setattr__(
             self,
             "reference_id",
-            _optional_text(self.reference_id, "reference_id")
-            or self.referenced_content_id,
+            _optional_text(self.reference_id, "reference_id") or self.referenced_content_id,
         )
-        object.__setattr__(
-            self, "reason", _optional_text(self.reason, "reason")
-        )
-        object.__setattr__(
-            self, "locator", _optional_text(self.locator, "locator")
-        )
-        object.__setattr__(
-            self, "tree_id", _optional_text(self.tree_id, "tree_id")
-        )
-        object.__setattr__(
-            self, "forest_id", _optional_text(self.forest_id, "forest_id")
-        )
+        object.__setattr__(self, "reason", _optional_text(self.reason, "reason"))
+        object.__setattr__(self, "locator", _optional_text(self.locator, "locator"))
+        object.__setattr__(self, "tree_id", _optional_text(self.tree_id, "tree_id"))
+        object.__setattr__(self, "forest_id", _optional_text(self.forest_id, "forest_id"))
         if not isinstance(self.metadata, Mapping):
             raise ContractRepairPacketError("metadata must be a mapping")
-        object.__setattr__(
-            self, "metadata", _freeze(_plain(self.metadata, "metadata"))
-        )
+        object.__setattr__(self, "metadata", _freeze(_plain(self.metadata, "metadata")))
         computed = content_identity(self._identity_payload())
         supplied = _optional_text(self.handle_id, "handle_id")
         if supplied and supplied != computed:
-            raise RepairPacketIntegrityError(
-                "expansion handle_id does not match content identity"
-            )
+            raise RepairPacketIntegrityError("expansion handle_id does not match content identity")
         object.__setattr__(self, "handle_id", computed)
 
     def _identity_payload(self) -> dict[str, Any]:
@@ -796,9 +724,7 @@ class RepairExpansionHandle:
         if isinstance(value, cls):
             return value
         if not isinstance(value, Mapping):
-            raise ContractRepairPacketError(
-                "expansion handle must be a mapping"
-            )
+            raise ContractRepairPacketError("expansion handle must be a mapping")
         return cls(
             handle_id=value.get("handle_id", "") or "",
             kind=value.get("kind", ExpansionHandleKind.OTHER.value),
@@ -827,9 +753,7 @@ class RepairAuthority:
         mode = _optional_text(self.mode, "mode") or "proposal"
         if mode not in {"proposal", "proposal_only", "model_proposal"}:
             # Only proposal modes are admitted for model packets.
-            raise ContractRepairPacketError(
-                "repair packet authority.mode must be a proposal mode"
-            )
+            raise ContractRepairPacketError("repair packet authority.mode must be a proposal mode")
         object.__setattr__(self, "mode", mode)
         object.__setattr__(self, "semantic_authority", False)
         object.__setattr__(self, "completion_authoritative", False)
@@ -860,17 +784,11 @@ class RepairAuthority:
             raise ContractRepairPacketError("authority must be a mapping")
         # Reject attempts to claim authority via dict forgery.
         if value.get("semantic_authority") is True:
-            raise ContractRepairPacketError(
-                "repair packets cannot claim semantic_authority"
-            )
+            raise ContractRepairPacketError("repair packets cannot claim semantic_authority")
         if value.get("completion_authoritative") is True:
-            raise ContractRepairPacketError(
-                "repair packets cannot claim completion_authoritative"
-            )
+            raise ContractRepairPacketError("repair packets cannot claim completion_authoritative")
         if value.get("proof_authoritative") is True:
-            raise ContractRepairPacketError(
-                "repair packets cannot claim proof_authoritative"
-            )
+            raise ContractRepairPacketError("repair packets cannot claim proof_authoritative")
         return cls(
             mode=value.get("mode", "proposal") or "proposal",
             allowed_paths=tuple(value.get("allowed_paths") or ()),
@@ -919,40 +837,26 @@ class RepairPacketRequest:
     SCHEMA: ClassVar[str] = REPAIR_PACKET_REQUEST_SCHEMA
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "task_id", _required_text(self.task_id, "task_id")
-        )
+        object.__setattr__(self, "task_id", _required_text(self.task_id, "task_id"))
         object.__setattr__(
             self,
             "finding_ids",
             _sorted_unique(self.finding_ids, name="finding_ids", required=True),
         )
-        object.__setattr__(
-            self, "forest_id", _required_text(self.forest_id, "forest_id")
-        )
-        object.__setattr__(
-            self, "tree_id", _required_text(self.tree_id, "tree_id")
-        )
-        object.__setattr__(
-            self, "policy_id", _required_text(self.policy_id, "policy_id")
-        )
+        object.__setattr__(self, "forest_id", _required_text(self.forest_id, "forest_id"))
+        object.__setattr__(self, "tree_id", _required_text(self.tree_id, "tree_id"))
+        object.__setattr__(self, "policy_id", _required_text(self.policy_id, "policy_id"))
         object.__setattr__(
             self,
             "expected_contract_ref",
-            _required_text(
-                self.expected_contract_ref, "expected_contract_ref"
-            ),
+            _required_text(self.expected_contract_ref, "expected_contract_ref"),
         )
         object.__setattr__(
             self,
             "observed_contract_ref",
-            _required_text(
-                self.observed_contract_ref, "observed_contract_ref"
-            ),
+            _required_text(self.observed_contract_ref, "observed_contract_ref"),
         )
-        object.__setattr__(
-            self, "call_slice", CallSliceRef.from_dict(self.call_slice)
-        )
+        object.__setattr__(self, "call_slice", CallSliceRef.from_dict(self.call_slice))
         object.__setattr__(
             self,
             "edit_scope",
@@ -980,9 +884,7 @@ class RepairPacketRequest:
         object.__setattr__(
             self,
             "proof_commands",
-            _sorted_unique(
-                self.proof_commands, name="proof_commands", required=True
-            ),
+            _sorted_unique(self.proof_commands, name="proof_commands", required=True),
         )
         object.__setattr__(
             self,
@@ -994,21 +896,15 @@ class RepairPacketRequest:
             "policy_revision",
             _optional_text(self.policy_revision, "policy_revision"),
         )
-        object.__setattr__(
-            self, "goal_id", _optional_text(self.goal_id, "goal_id")
-        )
-        object.__setattr__(
-            self, "symbols", _sorted_unique(self.symbols, name="symbols")
-        )
+        object.__setattr__(self, "goal_id", _optional_text(self.goal_id, "goal_id"))
+        object.__setattr__(self, "symbols", _sorted_unique(self.symbols, name="symbols"))
         object.__setattr__(
             self,
             "interfaces",
             _sorted_unique(self.interfaces, name="interfaces"),
         )
         if self.counterexample_slice is None:
-            cex = CounterexampleSliceRef(
-                counterexample_id="none", kind="none", summary=""
-            )
+            cex = CounterexampleSliceRef(counterexample_id="none", kind="none", summary="")
         else:
             cex = CounterexampleSliceRef.from_dict(self.counterexample_slice)
         object.__setattr__(self, "counterexample_slice", cex)
@@ -1019,12 +915,8 @@ class RepairPacketRequest:
         optional: list[Mapping[str, Any]] = []
         for index, item in enumerate(self.optional_evidence or ()):
             if not isinstance(item, Mapping):
-                raise ContractRepairPacketError(
-                    f"optional_evidence[{index}] must be a mapping"
-                )
-            optional.append(
-                _freeze(_plain(item, f"optional_evidence[{index}]"))
-            )
+                raise ContractRepairPacketError(f"optional_evidence[{index}] must be a mapping")
+            optional.append(_freeze(_plain(item, f"optional_evidence[{index}]")))
         object.__setattr__(self, "optional_evidence", tuple(optional))
         handles: list[RepairExpansionHandle] = []
         for item in self.expansion_candidates or ():
@@ -1033,20 +925,14 @@ class RepairPacketRequest:
         object.__setattr__(
             self,
             "related_finding_ids",
-            _sorted_unique(
-                self.related_finding_ids, name="related_finding_ids"
-            ),
+            _sorted_unique(self.related_finding_ids, name="related_finding_ids"),
         )
         object.__setattr__(
             self,
             "superseded_finding_ids",
-            _sorted_unique(
-                self.superseded_finding_ids, name="superseded_finding_ids"
-            ),
+            _sorted_unique(self.superseded_finding_ids, name="superseded_finding_ids"),
         )
-        object.__setattr__(
-            self, "authority", RepairAuthority.from_dict(self.authority)
-        )
+        object.__setattr__(self, "authority", RepairAuthority.from_dict(self.authority))
         # Bind edit scope into authority allowed_paths when empty.
         if not self.authority.allowed_paths:
             object.__setattr__(
@@ -1057,14 +943,10 @@ class RepairPacketRequest:
                     allowed_paths=self.edit_scope,
                 ),
             )
-        object.__setattr__(
-            self, "limits", RepairPacketLimits.from_value(self.limits)
-        )
+        object.__setattr__(self, "limits", RepairPacketLimits.from_value(self.limits))
         if not isinstance(self.metadata, Mapping):
             raise ContractRepairPacketError("metadata must be a mapping")
-        object.__setattr__(
-            self, "metadata", _freeze(_plain(self.metadata, "metadata"))
-        )
+        object.__setattr__(self, "metadata", _freeze(_plain(self.metadata, "metadata")))
         object.__setattr__(
             self,
             "repository_id",
@@ -1076,13 +958,9 @@ class RepairPacketRequest:
             _optional_text(self.decision_id, "decision_id"),
         )
         if len(self.call_slice.steps) > self.limits.max_call_slice_steps:
-            raise ContractRepairPacketError(
-                "call slice exceeds limits.max_call_slice_steps"
-            )
+            raise ContractRepairPacketError("call slice exceeds limits.max_call_slice_steps")
         if len(self.source_spans) > self.limits.max_span_count:
-            raise ContractRepairPacketError(
-                "source_spans exceed limits.max_span_count"
-            )
+            raise ContractRepairPacketError("source_spans exceed limits.max_span_count")
 
     @property
     def request_id(self) -> str:
@@ -1115,9 +993,7 @@ class RepairPacketRequest:
             "interfaces": list(self.interfaces),
             "source_spans": [span.to_dict() for span in self.source_spans],
             "optional_evidence": [_thaw(item) for item in self.optional_evidence],
-            "expansion_candidates": [
-                item.to_dict() for item in self.expansion_candidates
-            ],
+            "expansion_candidates": [item.to_dict() for item in self.expansion_candidates],
             "related_finding_ids": list(self.related_finding_ids),
             "superseded_finding_ids": list(self.superseded_finding_ids),
             "authority": self.authority.to_dict(),
@@ -1230,36 +1106,24 @@ class ContractRepairPacket:
     SCHEMA: ClassVar[str] = REPAIR_PACKET_SCHEMA
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "task_id", _required_text(self.task_id, "task_id")
-        )
+        object.__setattr__(self, "task_id", _required_text(self.task_id, "task_id"))
         object.__setattr__(
             self,
             "finding_ids",
             _sorted_unique(self.finding_ids, name="finding_ids", required=True),
         )
-        object.__setattr__(
-            self, "forest_id", _required_text(self.forest_id, "forest_id")
-        )
-        object.__setattr__(
-            self, "tree_id", _required_text(self.tree_id, "tree_id")
-        )
-        object.__setattr__(
-            self, "policy_id", _required_text(self.policy_id, "policy_id")
-        )
+        object.__setattr__(self, "forest_id", _required_text(self.forest_id, "forest_id"))
+        object.__setattr__(self, "tree_id", _required_text(self.tree_id, "tree_id"))
+        object.__setattr__(self, "policy_id", _required_text(self.policy_id, "policy_id"))
         object.__setattr__(
             self,
             "expected_contract_ref",
-            _required_text(
-                self.expected_contract_ref, "expected_contract_ref"
-            ),
+            _required_text(self.expected_contract_ref, "expected_contract_ref"),
         )
         object.__setattr__(
             self,
             "observed_contract_ref",
-            _required_text(
-                self.observed_contract_ref, "observed_contract_ref"
-            ),
+            _required_text(self.observed_contract_ref, "observed_contract_ref"),
         )
         object.__setattr__(
             self,
@@ -1288,9 +1152,7 @@ class ContractRepairPacket:
         object.__setattr__(
             self,
             "proof_commands",
-            _sorted_unique(
-                self.proof_commands, name="proof_commands", required=True
-            ),
+            _sorted_unique(self.proof_commands, name="proof_commands", required=True),
         )
         object.__setattr__(
             self,
@@ -1302,12 +1164,8 @@ class ContractRepairPacket:
             "policy_revision",
             _optional_text(self.policy_revision, "policy_revision"),
         )
-        object.__setattr__(
-            self, "goal_id", _optional_text(self.goal_id, "goal_id")
-        )
-        object.__setattr__(
-            self, "symbols", _sorted_unique(self.symbols, name="symbols")
-        )
+        object.__setattr__(self, "goal_id", _optional_text(self.goal_id, "goal_id"))
+        object.__setattr__(self, "symbols", _sorted_unique(self.symbols, name="symbols"))
         object.__setattr__(
             self,
             "interfaces",
@@ -1316,23 +1174,17 @@ class ContractRepairPacket:
         object.__setattr__(
             self,
             "related_finding_ids",
-            _sorted_unique(
-                self.related_finding_ids, name="related_finding_ids"
-            ),
+            _sorted_unique(self.related_finding_ids, name="related_finding_ids"),
         )
         object.__setattr__(
             self,
             "superseded_finding_ids",
-            _sorted_unique(
-                self.superseded_finding_ids, name="superseded_finding_ids"
-            ),
+            _sorted_unique(self.superseded_finding_ids, name="superseded_finding_ids"),
         )
         object.__setattr__(
             self,
             "omitted_optional_ids",
-            _sorted_unique(
-                self.omitted_optional_ids, name="omitted_optional_ids"
-            ),
+            _sorted_unique(self.omitted_optional_ids, name="omitted_optional_ids"),
         )
         object.__setattr__(
             self,
@@ -1344,22 +1196,14 @@ class ContractRepairPacket:
             "decision_id",
             _optional_text(self.decision_id, "decision_id"),
         )
-        object.__setattr__(
-            self, "status", _enum(self.status, RepairPacketStatus, "status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, RepairPacketStatus, "status"))
         object.__setattr__(
             self,
             "incomplete_reasons",
-            _sorted_unique(
-                self.incomplete_reasons, name="incomplete_reasons"
-            ),
+            _sorted_unique(self.incomplete_reasons, name="incomplete_reasons"),
         )
-        object.__setattr__(
-            self, "authority", RepairAuthority.from_dict(self.authority)
-        )
-        object.__setattr__(
-            self, "call_slice", CallSliceRef.from_dict(self.call_slice)
-        )
+        object.__setattr__(self, "authority", RepairAuthority.from_dict(self.authority))
+        object.__setattr__(self, "call_slice", CallSliceRef.from_dict(self.call_slice))
         object.__setattr__(
             self,
             "counterexample_slice",
@@ -1368,34 +1212,22 @@ class ContractRepairPacket:
         object.__setattr__(
             self,
             "expansion_handles",
-            tuple(
-                RepairExpansionHandle.from_dict(item)
-                for item in self.expansion_handles or ()
-            ),
+            tuple(RepairExpansionHandle.from_dict(item) for item in self.expansion_handles or ()),
         )
         object.__setattr__(
             self,
             "source_spans",
-            tuple(
-                BoundedSourceSpan.from_dict(item)
-                for item in self.source_spans or ()
-            ),
+            tuple(BoundedSourceSpan.from_dict(item) for item in self.source_spans or ()),
         )
         optional: list[Mapping[str, Any]] = []
         for index, item in enumerate(self.optional_evidence or ()):
             if not isinstance(item, Mapping):
-                raise ContractRepairPacketError(
-                    f"optional_evidence[{index}] must be a mapping"
-                )
-            optional.append(
-                _freeze(_plain(item, f"optional_evidence[{index}]"))
-            )
+                raise ContractRepairPacketError(f"optional_evidence[{index}] must be a mapping")
+            optional.append(_freeze(_plain(item, f"optional_evidence[{index}]")))
         object.__setattr__(self, "optional_evidence", tuple(optional))
         if not isinstance(self.metadata, Mapping):
             raise ContractRepairPacketError("metadata must be a mapping")
-        object.__setattr__(
-            self, "metadata", _freeze(_plain(self.metadata, "metadata"))
-        )
+        object.__setattr__(self, "metadata", _freeze(_plain(self.metadata, "metadata")))
         # Recompute size fields if not supplied (or zero).
         core = self._core_payload()
         core_bytes = len(canonical_json_bytes(core))
@@ -1443,9 +1275,7 @@ class ContractRepairPacket:
             "superseded_finding_ids": list(self.superseded_finding_ids),
             "optional_evidence": [_thaw(item) for item in self.optional_evidence],
             "omitted_optional_ids": list(self.omitted_optional_ids),
-            "expansion_handles": [
-                item.to_dict() for item in self.expansion_handles
-            ],
+            "expansion_handles": [item.to_dict() for item in self.expansion_handles],
             "authority": self.authority.to_dict(),
             "status": self.status.value,
             "incomplete_reasons": list(self.incomplete_reasons),
@@ -1534,13 +1364,9 @@ class ContractRepairPacket:
             symbols=tuple(value.get("symbols") or ()),
             interfaces=tuple(value.get("interfaces") or ()),
             related_finding_ids=tuple(value.get("related_finding_ids") or ()),
-            superseded_finding_ids=tuple(
-                value.get("superseded_finding_ids") or ()
-            ),
+            superseded_finding_ids=tuple(value.get("superseded_finding_ids") or ()),
             optional_evidence=tuple(value.get("optional_evidence") or ()),
-            omitted_optional_ids=tuple(
-                value.get("omitted_optional_ids") or ()
-            ),
+            omitted_optional_ids=tuple(value.get("omitted_optional_ids") or ()),
             repository_id=value.get("repository_id", "") or "",
             decision_id=value.get("decision_id", "") or "",
             status=value.get("status", RepairPacketStatus.COMPLETE.value),
@@ -1552,9 +1378,7 @@ class ContractRepairPacket:
         )
         supplied = value.get("packet_id") or value.get("content_id")
         if supplied and supplied != packet.packet_id:
-            raise RepairPacketIntegrityError(
-                "packet_id does not match content identity"
-            )
+            raise RepairPacketIntegrityError("packet_id does not match content identity")
         return packet
 
 
@@ -1580,9 +1404,7 @@ class RepairPacketReceipt:
     SCHEMA: ClassVar[str] = REPAIR_PACKET_RECEIPT_SCHEMA
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "status", _enum(self.status, RepairPacketStatus, "status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, RepairPacketStatus, "status"))
         for name in (
             "packet_id",
             "request_id",
@@ -1590,9 +1412,7 @@ class RepairPacketReceipt:
             "forest_id",
             "policy_id",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
 
     @property
     def receipt_id(self) -> str:
@@ -1640,20 +1460,14 @@ class RepairPacketReceipt:
             span_byte_count=int(value.get("span_byte_count", 0) or 0),
             estimated_tokens=int(value.get("estimated_tokens", 0) or 0),
             required_fields=tuple(value.get("required_fields") or ()),
-            expansion_handle_ids=tuple(
-                value.get("expansion_handle_ids") or ()
-            ),
-            omitted_optional_ids=tuple(
-                value.get("omitted_optional_ids") or ()
-            ),
+            expansion_handle_ids=tuple(value.get("expansion_handle_ids") or ()),
+            omitted_optional_ids=tuple(value.get("omitted_optional_ids") or ()),
             incomplete_reasons=tuple(value.get("incomplete_reasons") or ()),
             decision_id=value.get("decision_id", "") or "",
         )
         supplied = value.get("receipt_id")
         if supplied and supplied != receipt.receipt_id:
-            raise RepairPacketIntegrityError(
-                "receipt_id does not match content identity"
-            )
+            raise RepairPacketIntegrityError("receipt_id does not match content identity")
         return receipt
 
 
@@ -1704,12 +1518,8 @@ class DeltaEvidenceItem:
             "evidence_id",
             _required_text(self.evidence_id, "evidence_id"),
         )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, DeltaEvidenceKind, "delta kind")
-        )
-        object.__setattr__(
-            self, "content_id", _required_text(self.content_id, "content_id")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, DeltaEvidenceKind, "delta kind"))
+        object.__setattr__(self, "content_id", _required_text(self.content_id, "content_id"))
         summary = _optional_text(self.summary, "summary")
         summary, _ = _redact_inline(summary)
         if len(summary) > DEFAULT_MAX_TEXT_CHARS:
@@ -1717,9 +1527,7 @@ class DeltaEvidenceItem:
         object.__setattr__(self, "summary", summary)
         if not isinstance(self.payload, Mapping):
             raise ContractRepairPacketError("delta payload must be a mapping")
-        object.__setattr__(
-            self, "payload", _freeze(_plain(self.payload, "payload"))
-        )
+        object.__setattr__(self, "payload", _freeze(_plain(self.payload, "payload")))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1735,9 +1543,7 @@ class DeltaEvidenceItem:
         if isinstance(value, cls):
             return value
         if not isinstance(value, Mapping):
-            raise ContractRepairPacketError(
-                "delta evidence item must be a mapping"
-            )
+            raise ContractRepairPacketError("delta evidence item must be a mapping")
         return cls(
             evidence_id=value.get("evidence_id", "") or value.get("id", ""),
             kind=value.get("kind", DeltaEvidenceKind.CHANGED.value),
@@ -1775,48 +1581,29 @@ class RepairPacketDelta:
             "parent_forest_id",
             "parent_policy_id",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
-        object.__setattr__(
-            self, "status", _enum(self.status, RepairPacketStatus, "status")
-        )
-        changed = tuple(
-            DeltaEvidenceItem.from_dict(item)
-            for item in self.changed_evidence or ()
-        )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
+        object.__setattr__(self, "status", _enum(self.status, RepairPacketStatus, "status"))
+        changed = tuple(DeltaEvidenceItem.from_dict(item) for item in self.changed_evidence or ())
         requested = tuple(
-            DeltaEvidenceItem.from_dict(item)
-            for item in self.requested_evidence or ()
+            DeltaEvidenceItem.from_dict(item) for item in self.requested_evidence or ()
         )
         object.__setattr__(self, "changed_evidence", changed)
         object.__setattr__(self, "requested_evidence", requested)
         object.__setattr__(
             self,
             "expansion_handles",
-            tuple(
-                RepairExpansionHandle.from_dict(item)
-                for item in self.expansion_handles or ()
-            ),
+            tuple(RepairExpansionHandle.from_dict(item) for item in self.expansion_handles or ()),
         )
         object.__setattr__(
             self,
             "incomplete_reasons",
-            _sorted_unique(
-                self.incomplete_reasons, name="incomplete_reasons"
-            ),
+            _sorted_unique(self.incomplete_reasons, name="incomplete_reasons"),
         )
         if not isinstance(self.metadata, Mapping):
             raise ContractRepairPacketError("metadata must be a mapping")
-        object.__setattr__(
-            self, "metadata", _freeze(_plain(self.metadata, "metadata"))
-        )
+        object.__setattr__(self, "metadata", _freeze(_plain(self.metadata, "metadata")))
         # Delta must transmit something.
-        if (
-            not changed
-            and not requested
-            and self.status is not RepairPacketStatus.INVALIDATED
-        ):
+        if not changed and not requested and self.status is not RepairPacketStatus.INVALIDATED:
             raise ContractRepairPacketError(
                 "delta retry must include changed or requested evidence"
             )
@@ -1825,9 +1612,7 @@ class RepairPacketDelta:
         if self.delta_byte_count <= 0:
             object.__setattr__(self, "delta_byte_count", byte_count)
         if self.estimated_tokens <= 0:
-            object.__setattr__(
-                self, "estimated_tokens", estimate_tokens(payload)
-            )
+            object.__setattr__(self, "estimated_tokens", estimate_tokens(payload))
 
     @property
     def delta_id(self) -> str:
@@ -1843,15 +1628,9 @@ class RepairPacketDelta:
             "parent_tree_id": self.parent_tree_id,
             "parent_forest_id": self.parent_forest_id,
             "parent_policy_id": self.parent_policy_id,
-            "changed_evidence": [
-                item.to_dict() for item in self.changed_evidence
-            ],
-            "requested_evidence": [
-                item.to_dict() for item in self.requested_evidence
-            ],
-            "expansion_handles": [
-                item.to_dict() for item in self.expansion_handles
-            ],
+            "changed_evidence": [item.to_dict() for item in self.changed_evidence],
+            "requested_evidence": [item.to_dict() for item in self.requested_evidence],
+            "expansion_handles": [item.to_dict() for item in self.expansion_handles],
             "status": self.status.value,
             "incomplete_reasons": list(self.incomplete_reasons),
             "delta_byte_count": int(self.delta_byte_count),
@@ -1890,9 +1669,7 @@ class RepairPacketDelta:
         )
         supplied = value.get("delta_id")
         if supplied and supplied != delta.delta_id:
-            raise RepairPacketIntegrityError(
-                "delta_id does not match content identity"
-            )
+            raise RepairPacketIntegrityError("delta_id does not match content identity")
         return delta
 
 
@@ -2045,10 +1822,7 @@ def compile_repair_packet(
             "required repair packet core exceeds max_packet_bytes; "
             "required fields are never truncated"
         )
-    if (
-        limits.provider_input_budget_bytes
-        and empty_bytes > limits.provider_input_budget_bytes
-    ):
+    if limits.provider_input_budget_bytes and empty_bytes > limits.provider_input_budget_bytes:
         raise RepairPacketBudgetError(
             "required repair packet core exceeds provider_input_budget_bytes; "
             "required fields survive provider budgets by failing closed"
@@ -2077,9 +1851,7 @@ def compile_repair_packet(
                 tree_id=request.tree_id,
                 forest_id=request.forest_id,
                 reason=(
-                    "deferred_for_packet_budget"
-                    if over_packet
-                    else "deferred_for_provider_budget"
+                    "deferred_for_packet_budget" if over_packet else "deferred_for_provider_budget"
                 ),
             )
             if len(handles) >= limits.max_handle_count:
@@ -2185,10 +1957,7 @@ def compile_repair_packet(
         and packet_bytes > limits.provider_input_budget_bytes
         and included_optional
     ):
-        while (
-            packet_bytes > limits.provider_input_budget_bytes
-            and included_optional
-        ):
+        while packet_bytes > limits.provider_input_budget_bytes and included_optional:
             item = included_optional.pop()
             index = len(included_optional)
             evidence_id = _optional_evidence_id(item, index)
@@ -2244,9 +2013,7 @@ def compile_repair_packet(
     )
 
     if not packet.required_core_present:
-        raise ContractRepairPacketError(
-            "compiled packet is missing required core fields"
-        )
+        raise ContractRepairPacketError("compiled packet is missing required core fields")
     if packet.packet_byte_count > limits.max_packet_bytes:
         raise RepairPacketBudgetError(
             "compiled packet core exceeds max_packet_bytes after admission"
@@ -2263,9 +2030,7 @@ def compile_repair_packet(
         span_byte_count=packet.span_byte_count,
         estimated_tokens=packet.estimated_tokens,
         required_fields=REQUIRED_CORE_FIELDS,
-        expansion_handle_ids=tuple(
-            item.handle_id for item in packet.expansion_handles
-        ),
+        expansion_handle_ids=tuple(item.handle_id for item in packet.expansion_handles),
         omitted_optional_ids=packet.omitted_optional_ids,
         incomplete_reasons=packet.incomplete_reasons,
         decision_id=decision_id,
@@ -2300,18 +2065,12 @@ def compile_repair_packet_delta(
     elif isinstance(parent, Mapping):
         parent_packet = ContractRepairPacket.from_dict(parent)
     else:
-        raise ContractRepairPacketError(
-            "parent must be a ContractRepairPacket or mapping"
-        )
+        raise ContractRepairPacketError("parent must be a ContractRepairPacket or mapping")
 
     parent_decision = parent_packet.decision_id or parent_packet.packet_id
     current_tree = tree_id if tree_id is not None else parent_packet.tree_id
-    current_forest = (
-        forest_id if forest_id is not None else parent_packet.forest_id
-    )
-    current_policy = (
-        policy_id if policy_id is not None else parent_packet.policy_id
-    )
+    current_forest = forest_id if forest_id is not None else parent_packet.forest_id
+    current_policy = policy_id if policy_id is not None else parent_packet.policy_id
 
     if (
         current_tree != parent_packet.tree_id
@@ -2370,10 +2129,7 @@ def compile_repair_packet_delta(
             raw.setdefault("kind", DeltaEvidenceKind.REQUESTED.value)
             requested.append(DeltaEvidenceItem.from_dict(raw))
 
-    handles = [
-        RepairExpansionHandle.from_dict(item)
-        for item in expansion_handles or ()
-    ]
+    handles = [RepairExpansionHandle.from_dict(item) for item in expansion_handles or ()]
 
     # Parent-bound handles only; reject stale tree/forest bindings.
     for handle in handles:
@@ -2388,8 +2144,7 @@ def compile_repair_packet_delta(
 
     if not changed and not requested and not handles:
         raise ContractRepairPacketError(
-            "delta retry requires changed evidence, requested evidence, "
-            "or expansion handles"
+            "delta retry requires changed evidence, requested evidence, or expansion handles"
         )
 
     return RepairPacketDelta(
@@ -2425,18 +2180,12 @@ def reconstruct_repair_packet(
         delta = RepairPacketDelta.from_dict(delta)
 
     if delta.status is RepairPacketStatus.INVALIDATED:
-        raise RepairPacketIntegrityError(
-            "cannot reconstruct from an invalidated delta"
-        )
+        raise RepairPacketIntegrityError("cannot reconstruct from an invalidated delta")
     if delta.parent_packet_id != parent_packet.packet_id:
-        raise RepairPacketIntegrityError(
-            "delta parent_packet_id does not match parent packet"
-        )
+        raise RepairPacketIntegrityError("delta parent_packet_id does not match parent packet")
     parent_decision = parent_packet.decision_id or parent_packet.packet_id
     if delta.parent_decision_id != parent_decision:
-        raise RepairPacketIntegrityError(
-            "delta parent_decision_id does not match parent decision"
-        )
+        raise RepairPacketIntegrityError("delta parent_decision_id does not match parent decision")
     if delta.parent_tree_id != parent_packet.tree_id:
         raise RepairPacketIntegrityError("delta parent_tree_id is stale")
     if delta.parent_forest_id != parent_packet.forest_id:
@@ -2482,9 +2231,7 @@ def reconstruct_repair_packet(
         proof_commands=parent_packet.proof_commands,
         risks=parent_packet.risks,
         authority=parent_packet.authority,
-        expansion_handles=tuple(
-            handles_by_id[key] for key in sorted(handles_by_id)
-        ),
+        expansion_handles=tuple(handles_by_id[key] for key in sorted(handles_by_id)),
         counterexample_slice=parent_packet.counterexample_slice,
         source_spans=parent_packet.source_spans,
         policy_revision=parent_packet.policy_revision,
@@ -2493,9 +2240,7 @@ def reconstruct_repair_packet(
         interfaces=parent_packet.interfaces,
         related_finding_ids=parent_packet.related_finding_ids,
         superseded_finding_ids=parent_packet.superseded_finding_ids,
-        optional_evidence=tuple(
-            optional_by_id[key] for key in sorted(optional_by_id)
-        ),
+        optional_evidence=tuple(optional_by_id[key] for key in sorted(optional_by_id)),
         omitted_optional_ids=parent_packet.omitted_optional_ids,
         repository_id=parent_packet.repository_id,
         decision_id=parent_packet.decision_id,
@@ -2508,9 +2253,7 @@ def reconstruct_repair_packet(
         },
     )
     if not reconstructed.required_core_present:
-        raise RepairPacketIntegrityError(
-            "reconstruction lost required core fields"
-        )
+        raise RepairPacketIntegrityError("reconstruction lost required core fields")
     return reconstructed
 
 
@@ -2544,16 +2287,12 @@ def expand_repair_handle(
             None,
         )
         if match is None:
-            raise RepairPacketIntegrityError(
-                "expansion handle is not bound to the packet"
-            )
+            raise RepairPacketIntegrityError("expansion handle is not bound to the packet")
         handle_obj = match
     else:
         handle_obj = RepairExpansionHandle.from_dict(handle)
 
-    known_ids = {
-        item.handle_id for item in packet_obj.expansion_handles
-    } | {
+    known_ids = {item.handle_id for item in packet_obj.expansion_handles} | {
         item.referenced_content_id for item in packet_obj.expansion_handles
     }
     if (
@@ -2562,24 +2301,16 @@ def expand_repair_handle(
         and handle_obj.reference_id
         not in {item.reference_id for item in packet_obj.expansion_handles}
     ):
-        raise RepairPacketIntegrityError(
-            "expansion handle is not admitted on the packet"
-        )
+        raise RepairPacketIntegrityError("expansion handle is not admitted on the packet")
     if handle_obj.tree_id and handle_obj.tree_id != packet_obj.tree_id:
         raise RepairPacketIntegrityError("expansion handle tree_id is stale")
     if handle_obj.forest_id and handle_obj.forest_id != packet_obj.forest_id:
-        raise RepairPacketIntegrityError(
-            "expansion handle forest_id is stale"
-        )
+        raise RepairPacketIntegrityError("expansion handle forest_id is stale")
     if store is None:
-        raise ContractRepairPacketError(
-            "expansion requires a content-addressed store"
-        )
+        raise ContractRepairPacketError("expansion requires a content-addressed store")
     body = store.get(handle_obj.referenced_content_id)
     if body is None:
-        raise RepairPacketIntegrityError(
-            "expansion handle target is missing from store"
-        )
+        raise RepairPacketIntegrityError("expansion handle target is missing from store")
     # Never return raw forbidden private material; re-sanitize.
     if isinstance(body, Mapping):
         return _freeze(_plain(body, "expansion_body"))
@@ -2646,9 +2377,7 @@ class ContractRepairPacketCompiler:
     def cache_size(self) -> int:
         return len(self._cache)
 
-    def compile(
-        self, request: RepairPacketRequest | Mapping[str, Any]
-    ) -> CompiledRepairPacket:
+    def compile(self, request: RepairPacketRequest | Mapping[str, Any]) -> CompiledRepairPacket:
         if not isinstance(request, RepairPacketRequest):
             request = RepairPacketRequest.from_dict(request)
         key = request.request_id

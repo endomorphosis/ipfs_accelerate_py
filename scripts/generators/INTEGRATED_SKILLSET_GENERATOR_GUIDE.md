@@ -136,17 +136,15 @@ def init_webnn(self, model_name, model_type, precision="fp32"):
         # Load and optimize model for WebNN
         # Convert PyTorch model to ONNX first
         onnx_model = self._export_to_onnx(model_name)
-        
+
         # Initialize WebNN runtime and session
         webnn_model = self._convert_onnx_to_webnn(onnx_model, precision)
-        
+
         # Create appropriate handlers
         handler = self.create_webnn_endpoint_handler(
-            endpoint_model=model_name,
-            endpoint=webnn_model,
-            precision=precision
+            endpoint_model=model_name, endpoint=webnn_model, precision=precision
         )
-        
+
         return webnn_model, handler
     except Exception as e:
         # Return mock implementation for graceful degradation
@@ -178,19 +176,17 @@ def init_webgpu(self, model_name, model_type, precision="fp32"):
             "model": model_name,
             "quantization": precision if precision != "fp32" else None,
             "cache": True,
-            "accelerationMode": "webgpu"
+            "accelerationMode": "webgpu",
         }
-        
+
         # Initialize transformers.js pipeline
         pipeline = self._create_transformers_js_pipeline(model_type, config)
-        
+
         # Create asynchronous handler for browser environment
         handler = self.create_webgpu_endpoint_handler(
-            endpoint_model=model_name,
-            endpoint=pipeline,
-            precision=precision
+            endpoint_model=model_name, endpoint=pipeline, precision=precision
         )
-        
+
         return pipeline, handler
     except Exception as e:
         # Return mock implementation for graceful degradation
@@ -212,6 +208,7 @@ print(f"WebNN result: {result}")
 
 # Load model with WebGPU/transformers.js backend
 webgpu_model, webgpu_handler = model.init_webgpu("bert-base-uncased", "text-classification")
+
 
 # Process text with WebGPU backend (async in browser)
 async def process_with_webgpu():
@@ -254,15 +251,16 @@ The generator analyzes test results to determine hardware compatibility for each
 ```python
 # Example hardware compatibility dictionary (March 2025 update)
 hardware_compatibility = {
-    "cpu": True,          # Always true for all models
-    "cuda": True,         # For NVIDIA GPUs
-    "openvino": True,     # For Intel CPUs and GPUs with OpenVINO
-    "mps": True,          # For Apple Silicon (M1/M2/M3)
-    "rocm": True,         # For AMD GPUs with ROCm
-    "qualcomm": True,     # For Qualcomm AI Engine on mobile/edge devices
-    "webnn": True,        # For WebNN in browsers
-    "webgpu": True        # For WebGPU/transformers.js in browsers
+    "cpu": True,  # Always true for all models
+    "cuda": True,  # For NVIDIA GPUs
+    "openvino": True,  # For Intel CPUs and GPUs with OpenVINO
+    "mps": True,  # For Apple Silicon (M1/M2/M3)
+    "rocm": True,  # For AMD GPUs with ROCm
+    "qualcomm": True,  # For Qualcomm AI Engine on mobile/edge devices
+    "webnn": True,  # For WebNN in browsers
+    "webgpu": True,  # For WebGPU/transformers.js in browsers
 }
+
 
 # Modality-specific initialization based on hardware
 def initialize_model(model_id, hardware, modality):
@@ -310,6 +308,7 @@ To add support for new modality types:
    ```python
    if modality == "new_modality":
        from transformers import AutoNewModalityProcessor
+
        processor = AutoNewModalityProcessor.from_pretrained(model_id)
    ```
 3. Add input preparation logic for the new modality

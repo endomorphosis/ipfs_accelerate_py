@@ -130,7 +130,11 @@ def test_refill_scan_result_has_versioned_terminal_taxonomy_and_explicit_legacy_
             ScanTerminalReason.DUPLICATE_ONLY, "force", "test/v1", repo, started_at
         ),
         ScanTerminalReason.THRESHOLD_SATISFIED: build_scan_result(
-            ScanTerminalReason.THRESHOLD_SATISFIED, "open_task_threshold", "test/v1", repo, started_at
+            ScanTerminalReason.THRESHOLD_SATISFIED,
+            "open_task_threshold",
+            "test/v1",
+            repo,
+            started_at,
         ),
         ScanTerminalReason.COOLDOWN: build_scan_result(
             ScanTerminalReason.COOLDOWN, "cooldown", "test/v1", repo, started_at
@@ -139,7 +143,12 @@ def test_refill_scan_result_has_versioned_terminal_taxonomy_and_explicit_legacy_
             ScanTerminalReason.DISABLED, "disabled", "test/v1", repo, started_at
         ),
         ScanTerminalReason.PARTIAL: build_scan_result(
-            ScanTerminalReason.PARTIAL, "incremental", "test/v1", repo, started_at, ({"id": "partial"},)
+            ScanTerminalReason.PARTIAL,
+            "incremental",
+            "test/v1",
+            repo,
+            started_at,
+            ({"id": "partial"},),
         ),
         ScanTerminalReason.FAILED: build_scan_result(
             ScanTerminalReason.FAILED, "force", "test/v1", repo, started_at, error="analyzer failed"
@@ -285,7 +294,9 @@ def test_commit_generated_dirty_outputs_commits_nested_repo_and_parent_gitlink(t
     (repo / "README.md").write_text("root\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "seed root")
-    _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(source), "hallucinate_app")
+    _git(
+        repo, "-c", "protocol.file.allow=always", "submodule", "add", str(source), "hallucinate_app"
+    )
     _git(repo, "commit", "-am", "add submodule")
 
     nested = repo / "hallucinate_app"
@@ -348,7 +359,15 @@ def test_commit_generated_dirty_outputs_repairs_recursive_clean_gitlinks(tmp_pat
     (repo / "README.md").write_text("root\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "seed root")
-    _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(parent_source), "modules/parent")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(parent_source),
+        "modules/parent",
+    )
     _git(repo, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
     _git(repo, "commit", "-am", "add parent submodule")
 
@@ -388,7 +407,9 @@ def test_commit_generated_dirty_outputs_repairs_stale_nested_index_lock(tmp_path
     (repo / "README.md").write_text("root\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "seed root")
-    _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(source), "hallucinate_app")
+    _git(
+        repo, "-c", "protocol.file.allow=always", "submodule", "add", str(source), "hallucinate_app"
+    )
     _git(repo, "commit", "-am", "add submodule")
 
     nested = repo / "hallucinate_app"
@@ -421,7 +442,9 @@ def test_commit_generated_dirty_outputs_defers_during_merge(tmp_path):
     _git(repo, "commit", "-m", "seed generated")
 
     generated.write_text("# Generated\n\nupdated\n", encoding="utf-8")
-    (_git_dir(repo) / "MERGE_HEAD").write_text(f"{_git(repo, 'rev-parse', 'HEAD')}\n", encoding="utf-8")
+    (_git_dir(repo) / "MERGE_HEAD").write_text(
+        f"{_git(repo, 'rev-parse', 'HEAD')}\n", encoding="utf-8"
+    )
 
     result = commit_generated_dirty_outputs(
         repo_root=repo,
@@ -462,12 +485,8 @@ def test_commit_generated_dirty_outputs_tags_only_selected_protected_paths(
 
     assert ordinary_result["committed_count"] == 1
     assert ordinary_result["selected_path_count"] == 1
-    assert _git(repo, "log", "-1", "--pretty=%ae") == (
-        "agent-supervisor@example.invalid"
-    )
-    assert _git(repo, "log", "-1", "--pretty=%s") == (
-        "Agent: persist generated outputs"
-    )
+    assert _git(repo, "log", "-1", "--pretty=%ae") == ("agent-supervisor@example.invalid")
+    assert _git(repo, "log", "-1", "--pretty=%s") == ("Agent: persist generated outputs")
     assert "unknown.txt" in _git(repo, "status", "--short")
 
     protected.write_text("objective v2\n", encoding="utf-8")
@@ -481,14 +500,10 @@ def test_commit_generated_dirty_outputs_tags_only_selected_protected_paths(
 
     assert protected_result["committed_count"] == 1
     assert protected_result["selected_path_count"] == 1
-    assert _git(repo, "log", "-1", "--pretty=%ae") == (
-        BACKLOG_REFINERY_AUTHOR_EMAIL
-    )
+    assert _git(repo, "log", "-1", "--pretty=%ae") == (BACKLOG_REFINERY_AUTHOR_EMAIL)
     protected_subject = _git(repo, "log", "-1", "--pretty=%s")
     assert protected_subject.endswith(GENERATED_PROTECTED_BOARD_COMMIT_MARKER)
-    assert protected_result["results"][0]["protected_board_paths"] == [
-        "docs/objectives.md"
-    ]
+    assert protected_result["results"][0]["protected_board_paths"] == ["docs/objectives.md"]
     assert "unknown.txt" in _git(repo, "status", "--short")
 
 
@@ -555,7 +570,10 @@ def test_namespace_recorder_factories_bind_standard_paths(tmp_path):
     assert objective_recorder.discovery_dir == namespace_paths.discovery_dir
     assert objective_recorder.default_bundle_dir == namespace_paths.objective_bundle_dir
     assert objective_recorder.default_dataset_dir == namespace_paths.objective_dataset_dir
-    assert objective_recorder.todo_vector_index_path == namespace_paths.objective_todo_vector_index_path
+    assert (
+        objective_recorder.todo_vector_index_path
+        == namespace_paths.objective_todo_vector_index_path
+    )
     assert objective_recorder.depends_on_if_present == ("EX-001",)
     assert objective_recorder.min_open_tasks == 2
     assert objective_recorder.commit_subject == "EX: record objective findings"
@@ -619,21 +637,27 @@ def test_configured_backlog_recorder_bundle_delegates_to_runtime_factories(monke
     )
 
     assert isinstance(bundle, ConfiguredBacklogRecorderBundle)
-    assert bundle.daemon_refill_hooks_factory(
-        discovery_dir=tmp_path / "discovery",
-        objective_path_key="objective_path",
-        repo_root=tmp_path,
-        retry_budget_extra_kwargs={"discovery_output_path": "data/discovery"},
-        scope_label="Example",
-        after_order=("retry-budget", "objective-goal"),
-    ) == "daemon-hooks"
-    assert bundle.supervisor_refill_hooks_factory(
-        discovery_dir_key="discovery_dir",
-        objective_path=tmp_path / "objective.md",
-        codebase_scan_extra_kwargs={"force": True},
-        scope_label="Example",
-        after_once_order=("retry-budget", "objective-goal"),
-    ) == "supervisor-hooks"
+    assert (
+        bundle.daemon_refill_hooks_factory(
+            discovery_dir=tmp_path / "discovery",
+            objective_path_key="objective_path",
+            repo_root=tmp_path,
+            retry_budget_extra_kwargs={"discovery_output_path": "data/discovery"},
+            scope_label="Example",
+            after_order=("retry-budget", "objective-goal"),
+        )
+        == "daemon-hooks"
+    )
+    assert (
+        bundle.supervisor_refill_hooks_factory(
+            discovery_dir_key="discovery_dir",
+            objective_path=tmp_path / "objective.md",
+            codebase_scan_extra_kwargs={"force": True},
+            scope_label="Example",
+            after_once_order=("retry-budget", "objective-goal"),
+        )
+        == "supervisor-hooks"
+    )
 
     assert captured["daemon"]["objective_recorder"] is objective_recorder
     assert captured["daemon"]["codebase_scan_recorder"] is codebase_recorder
@@ -641,7 +665,9 @@ def test_configured_backlog_recorder_bundle_delegates_to_runtime_factories(monke
     assert captured["daemon"]["discovery_dir"] == tmp_path / "discovery"
     assert captured["daemon"]["objective_path_key"] == "objective_path"
     assert captured["daemon"]["repo_root"] == tmp_path
-    assert captured["daemon"]["retry_budget_extra_kwargs"] == {"discovery_output_path": "data/discovery"}
+    assert captured["daemon"]["retry_budget_extra_kwargs"] == {
+        "discovery_output_path": "data/discovery"
+    }
     assert captured["daemon"]["after_order"] == ("retry-budget", "objective-goal")
 
     assert captured["supervisor"]["objective_recorder"] is objective_recorder
@@ -703,8 +729,12 @@ def test_backlog_refinery_appends_missing_task_blocks_in_order(tmp_path):
     updated = todo_path.read_text(encoding="utf-8")
     assert changed
     assert "Duplicate task" not in updated
-    assert updated.index("## AUTO-002 First appended task") < updated.index("## AUTO-003 Second appended task")
-    assert not ensure_task_blocks_present(todo_path, (("AUTO-002", "## AUTO-002 First appended task"),))
+    assert updated.index("## AUTO-002 First appended task") < updated.index(
+        "## AUTO-003 Second appended task"
+    )
+    assert not ensure_task_blocks_present(
+        todo_path, (("AUTO-002", "## AUTO-002 First appended task"),)
+    )
 
     callback_path = tmp_path / "callback-tasks.todo.md"
     callback_path.write_text("# Agent Todos\n", encoding="utf-8")
@@ -926,8 +956,7 @@ def test_codebase_scan_receipt_accounts_inventory_candidates_and_durable_details
     assert limited.candidate_accounting.is_balanced
     assert limited.details_artifact is not None
     summaries = {
-        summary.reason_code.value: summary
-        for summary in limited.reason_summaries["exclusions"]
+        summary.reason_code.value: summary for summary in limited.reason_summaries["exclusions"]
     }
     assert set(summaries) == {"todo_board", "unsupported_suffix"}
     assert summaries["todo_board"].representative_paths == ("todo.md",)
@@ -1047,8 +1076,7 @@ def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
     todo_path.write_text(
         todo_path.read_text(encoding="utf-8").replace(
             "- Validation: test -f README.md",
-            "- Validation: test -f README.md\n"
-            "- Board namespace: swissknife-vfs-assurance-v1",
+            "- Validation: test -f README.md\n- Board namespace: swissknife-vfs-assurance-v1",
         ),
         encoding="utf-8",
     )
@@ -1169,9 +1197,8 @@ def test_stale_fingerprint_cannot_certify_exhaustion_or_suppress_later_refill(tm
     # a forced/non-exhaustive pass must not turn it into completion proof.
     board = todo_path.read_text(encoding="utf-8")
     generated_heading = board.index("## AUTO-002")
-    completed_generated = (
-        board[:generated_heading]
-        + board[generated_heading:].replace("- Status: todo", "- Status: completed", 1)
+    completed_generated = board[:generated_heading] + board[generated_heading:].replace(
+        "- Status: todo", "- Status: completed", 1
     )
     todo_path.write_text(completed_generated, encoding="utf-8")
     source.write_text("ROUTE_READY = True\n", encoding="utf-8")
@@ -1421,8 +1448,7 @@ def test_backlog_refinery_goal_alignment_uses_declared_goal_outputs_and_records_
     )
 
     assert [
-        (finding.root_relative_path, finding.objective_goal_ids)
-        for finding in admitted.findings
+        (finding.root_relative_path, finding.objective_goal_ids) for finding in admitted.findings
     ] == [
         ("docs/current-state.md", ("DOC-G000",)),
         ("src/api/router.py", ("API-G000",)),
@@ -1763,10 +1789,10 @@ def test_objective_revision_invalidates_codebase_refill_cooldown(tmp_path):
 
     first = _record_codebase_scan_findings(**kwargs)
     objective_path.write_text(
-            objective_path.read_text(encoding="utf-8").replace(
-                "- Outputs: docs",
-                "- Outputs: src/runtime.py",
-            ),
+        objective_path.read_text(encoding="utf-8").replace(
+            "- Outputs: docs",
+            "- Outputs: src/runtime.py",
+        ),
         encoding="utf-8",
     )
     second = _record_codebase_scan_findings(**kwargs)
@@ -1839,10 +1865,9 @@ def test_objective_backed_refill_rejects_unscoped_escape_hatch(tmp_path):
     assert receipt.terminal_reason is ScanTerminalReason.FAILED
     assert "only valid when no objective heap is configured" in str(receipt.error)
     assert receipt.items == ()
-    assert [
-        item.reason_code.value
-        for item in receipt.accounting.admission_rejections
-    ] == ["incompatible_unscoped_refill"]
+    assert [item.reason_code.value for item in receipt.accounting.admission_rejections] == [
+        "incompatible_unscoped_refill"
+    ]
     assert todo_path.read_text(encoding="utf-8") == original_board
 
 
@@ -1864,7 +1889,9 @@ def test_backlog_refinery_codebase_scan_skips_vanished_git_roots(tmp_path, monke
     vanished = tmp_path / "deleted-worktree"
     vanished.mkdir()
     vanished.rmdir()
-    monkeypatch.setattr(backlog_refinery, "discover_git_worktrees", lambda *_args, **_kwargs: [repo, vanished])
+    monkeypatch.setattr(
+        backlog_refinery, "discover_git_worktrees", lambda *_args, **_kwargs: [repo, vanished]
+    )
 
     findings = scan_codebase_findings(repo, max_findings=5)
 
@@ -1954,7 +1981,10 @@ def test_backlog_refinery_dependency_guardrail_adds_ready_repair_task(tmp_path):
         repo_root=repo,
     )
     assert repeated == []
-    assert todo_path.read_text(encoding="utf-8").count("Resolve dependency guardrail for AUTO-001") == 1
+    assert (
+        todo_path.read_text(encoding="utf-8").count("Resolve dependency guardrail for AUTO-001")
+        == 1
+    )
 
 
 def test_backlog_refinery_dependency_guardrail_detects_dependency_cycle(tmp_path):
@@ -2004,7 +2034,9 @@ def test_backlog_refinery_dependency_guardrail_detects_dependency_cycle(tmp_path
     assert findings[0]["dependency_cycle"] == ["AUTO-001", "AUTO-002", "AUTO-001"]
     discovery = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
     assert "Dependency cycle: AUTO-001 -> AUTO-002 -> AUTO-001" in discovery
-    assert "## AUTO-003 Resolve dependency guardrail for AUTO-001" in todo_path.read_text(encoding="utf-8")
+    assert "## AUTO-003 Resolve dependency guardrail for AUTO-001" in todo_path.read_text(
+        encoding="utf-8"
+    )
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-001"]
 
@@ -2035,14 +2067,9 @@ def test_dependency_guardrail_reports_cycle_members_not_downstream_waiters(
         encoding="utf-8",
     )
 
-    records = backlog_refinery.dependency_guardrail_records(
-        parse_task_file(todo_path, "## AUTO-")
-    )
+    records = backlog_refinery.dependency_guardrail_records(parse_task_file(todo_path, "## AUTO-"))
 
-    assert {
-        record["source_task_id"]: record["dependency_cycle"]
-        for record in records
-    } == {
+    assert {record["source_task_id"]: record["dependency_cycle"] for record in records} == {
         "AUTO-001": ["AUTO-001", "AUTO-002", "AUTO-001"],
         "AUTO-002": ["AUTO-002", "AUTO-001", "AUTO-002"],
     }
@@ -2101,10 +2128,10 @@ def test_backlog_refinery_dependency_guardrail_preserves_prior_batches(tmp_path)
     assert [item["source_task_id"] for item in first] == ["AUTO-001"]
     assert [item["source_task_id"] for item in second] == ["AUTO-002"]
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
-    assert {
-        item["source_task_id"]
-        for item in strategy["dependency_guardrail_findings"]
-    } == {"AUTO-001", "AUTO-002"}
+    assert {item["source_task_id"] for item in strategy["dependency_guardrail_findings"]} == {
+        "AUTO-001",
+        "AUTO-002",
+    }
     assert strategy["blocked_tasks"] == ["AUTO-001", "AUTO-002"]
 
 
@@ -2240,7 +2267,10 @@ def test_backlog_refinery_dependency_guardrail_detects_duplicate_task_ids(tmp_pa
         repo_root=repo,
     )
     assert repeated == []
-    assert todo_path.read_text(encoding="utf-8").count("Resolve dependency guardrail for AUTO-001") == 1
+    assert (
+        todo_path.read_text(encoding="utf-8").count("Resolve dependency guardrail for AUTO-001")
+        == 1
+    )
 
 
 def test_backlog_refinery_releases_completed_guardrail_block(tmp_path):
@@ -2308,7 +2338,7 @@ def test_backlog_refinery_releases_completed_guardrail_block(tmp_path):
             "follow_up_task_id": "",
             "guardrail_kind": "stale_strategy_block",
             "reason": "missing_task",
-        }
+        },
     ]
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == []
@@ -2474,18 +2504,14 @@ def test_backlog_refinery_retires_retry_repair_for_completed_source_only(
         }
     ]
     todo_text = todo_path.read_text(encoding="utf-8")
-    completed_repair = todo_text.split("## AUTO-002", 1)[1].split(
-        "## AUTO-003", 1
-    )[0]
+    completed_repair = todo_text.split("## AUTO-002", 1)[1].split("## AUTO-003", 1)[0]
     active_repair = todo_text.split("## AUTO-004", 1)[1]
     assert "- Status: completed" in completed_repair
     assert "- Status: todo" in active_repair
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-003"]
     assert strategy["retry_budget_findings"] == [active_finding]
-    assert strategy[
-        "last_source_completed_retry_repair_retired_task_ids"
-    ] == ["AUTO-002"]
+    assert strategy["last_source_completed_retry_repair_retired_task_ids"] == ["AUTO-002"]
 
 
 def test_backlog_refinery_prunes_peer_retired_retry_projection(tmp_path):
@@ -2548,17 +2574,13 @@ def test_backlog_refinery_prunes_peer_retired_retry_projection(tmp_path):
             "follow_up_task_id": "AUTO-002",
             "guardrail_kind": "retry_budget",
             "failure_kind": "merge",
-            "reason": (
-                "source_completed_retry_repair_projection_repaired"
-            ),
+            "reason": ("source_completed_retry_repair_projection_repaired"),
         }
     ]
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == []
     assert strategy["retry_budget_findings"] == []
-    assert strategy[
-        "last_repaired_source_completed_retry_projection_task_ids"
-    ] == ["AUTO-002"]
+    assert strategy["last_repaired_source_completed_retry_projection_task_ids"] == ["AUTO-002"]
     assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
     strategy_after_first_pass = strategy_path.read_bytes()
 
@@ -2798,7 +2820,7 @@ def test_backlog_refinery_releases_recursive_retry_repair_block(tmp_path):
             "reason": "recursive_retry_repair_task_retired",
             "parent_repair_task_id": "AUTO-002",
             "original_source_task_id": "AUTO-001",
-        }
+        },
     ]
     assert "- Status: completed" in todo_path.read_text(encoding="utf-8").split("## AUTO-003", 1)[1]
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
@@ -2946,17 +2968,13 @@ def test_backlog_refinery_releases_stale_dependency_guardrail_after_metadata_rep
             "follow_up_task_id": "AUTO-002",
             "guardrail_kind": "dependency_guardrail",
             "reason": "resolved_repair_task_retired",
-        }
+        },
     ]
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == []
     assert strategy["dependency_guardrail_findings"] == []
-    assert strategy["last_resolved_dependency_guardrail_task_ids"] == [
-        "AUTO-002"
-    ]
-    repair_block = todo_path.read_text(encoding="utf-8").split(
-        "## AUTO-002", 1
-    )[1]
+    assert strategy["last_resolved_dependency_guardrail_task_ids"] == ["AUTO-002"]
+    repair_block = todo_path.read_text(encoding="utf-8").split("## AUTO-002", 1)[1]
     assert "- Status: completed" in repair_block
 
 
@@ -3039,25 +3057,19 @@ def test_backlog_refinery_repairs_generated_packet_self_goal_and_retires_guardra
     )
 
     todo_text = todo_path.read_text(encoding="utf-8")
-    packet_block = todo_text.split("## AUTO-002", 1)[1].split(
-        "## AUTO-003", 1
-    )[0]
+    packet_block = todo_text.split("## AUTO-002", 1)[1].split("## AUTO-003", 1)[0]
     repair_block = todo_text.split("## AUTO-003", 1)[1]
     assert "- Depends on: AUTO-001" in packet_block
-    assert "VAIOS-G101" not in packet_block.split(
-        "- Depends on:", 1
-    )[1].splitlines()[0]
+    assert "VAIOS-G101" not in packet_block.split("- Depends on:", 1)[1].splitlines()[0]
     assert "- Status: completed" in repair_block
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == []
     assert strategy["dependency_guardrail_findings"] == []
-    assert strategy["last_objective_packet_dependency_repairs"][0][
-        "removed_dependencies"
-    ] == ["VAIOS-G101", "VAIOS-G102"]
-    assert {
-        release.get("reason")
-        for release in releases
-    } == {
+    assert strategy["last_objective_packet_dependency_repairs"][0]["removed_dependencies"] == [
+        "VAIOS-G101",
+        "VAIOS-G102",
+    ]
+    assert {release.get("reason") for release in releases} == {
         "objective_packet_internal_dependency_removed",
         "dependency_metadata_resolved",
         "resolved_repair_task_retired",
@@ -3085,11 +3097,9 @@ def test_generated_packet_dependency_repair_leaves_unproven_metadata_fail_closed
 - Candidate kind: goal_packet_aggregate
 """
 
-    updated, repairs = (
-        backlog_refinery.repair_generated_packet_internal_dependencies(
-            todo_text,
-            task_prefix="AUTO-",
-        )
+    updated, repairs = backlog_refinery.repair_generated_packet_internal_dependencies(
+        todo_text,
+        task_prefix="AUTO-",
     )
 
     assert updated == todo_text
@@ -3100,9 +3110,10 @@ def test_generated_packet_dependency_repair_leaves_unproven_metadata_fail_closed
         todo_path,
         "## AUTO-",
     )
-    assert backlog_refinery.dependency_guardrail_records(tasks)[0][
-        "dependency_cycle"
-    ] == ["AUTO-001", "AUTO-001"]
+    assert backlog_refinery.dependency_guardrail_records(tasks)[0]["dependency_cycle"] == [
+        "AUTO-001",
+        "AUTO-001",
+    ]
 
 
 def test_backlog_refinery_retires_dependency_repair_and_releases_lost_finding(
@@ -3165,9 +3176,7 @@ def test_backlog_refinery_retires_dependency_repair_and_releases_lost_finding(
     ]
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == []
-    repair_block = todo_path.read_text(encoding="utf-8").split(
-        "## AUTO-002", 1
-    )[1]
+    repair_block = todo_path.read_text(encoding="utf-8").split("## AUTO-002", 1)[1]
     assert "- Status: completed" in repair_block
 
 
@@ -3321,9 +3330,7 @@ def test_backlog_refinery_retires_clean_reconciliation_guardrail_and_refiles_reg
         task_prefix="AUTO-",
         repo_root=repo,
     )
-    assert [finding["follow_up_task_id"] for finding in first] == [
-        "AUTO-001"
-    ]
+    assert [finding["follow_up_task_id"] for finding in first] == ["AUTO-001"]
 
     releases = release_completed_guardrail_blocks(
         todo_path=todo_path,
@@ -3364,17 +3371,13 @@ def test_backlog_refinery_retires_clean_reconciliation_guardrail_and_refiles_reg
     assert strategy["blocked_tasks"] == []
     assert strategy["reconciliation_guardrail_findings"] == []
     assert strategy["reconciliation_guardrail_seen_fingerprints"] == []
-    assert strategy[
-        "last_resolved_reconciliation_guardrail_task_ids"
-    ] == ["AUTO-001"]
+    assert strategy["last_resolved_reconciliation_guardrail_task_ids"] == ["AUTO-001"]
 
     # A crash between the protected board write and lane-local strategy write
     # must be replayable without reopening or duplicating the completed card.
     strategy["blocked_tasks"] = ["AUTO-001"]
     strategy["reconciliation_guardrail_findings"] = [first[0]]
-    strategy["reconciliation_guardrail_seen_fingerprints"] = [
-        first[0]["fingerprint"]
-    ]
+    strategy["reconciliation_guardrail_seen_fingerprints"] = [first[0]["fingerprint"]]
     strategy_path.write_text(json.dumps(strategy), encoding="utf-8")
     projection_repair = release_completed_guardrail_blocks(
         todo_path=todo_path,
@@ -3410,13 +3413,9 @@ def test_backlog_refinery_retires_clean_reconciliation_guardrail_and_refiles_reg
         task_prefix="AUTO-",
         repo_root=repo,
     )
-    assert [finding["follow_up_task_id"] for finding in second] == [
-        "AUTO-002"
-    ]
+    assert [finding["follow_up_task_id"] for finding in second] == ["AUTO-002"]
     todo_text = todo_path.read_text(encoding="utf-8")
-    assert todo_text.count(
-        "Dedupe key: reconciliation_guardrail:main_checkout_dirty"
-    ) == 2
+    assert todo_text.count("Dedupe key: reconciliation_guardrail:main_checkout_dirty") == 2
     assert "- Status: blocked" in todo_text.split("## AUTO-002", 1)[1]
 
 
@@ -3452,9 +3451,7 @@ def test_backlog_refinery_retires_reconciliation_guardrail_after_candidates_reac
         json.dumps(
             {
                 "blocked_tasks": ["AUTO-001"],
-                "reconciliation_guardrail_seen_fingerprints": [
-                    "dirty-fingerprint"
-                ],
+                "reconciliation_guardrail_seen_fingerprints": ["dirty-fingerprint"],
                 "reconciliation_guardrail_findings": [
                     {
                         "follow_up_task_id": "AUTO-001",
@@ -3698,9 +3695,7 @@ def test_backlog_refinery_zero_candidate_reconciliation_proof_fails_closed():
             {
                 **cleanup,
                 "skipped_count": 1,
-                "dirty_worktree_groups": {
-                    "content_not_in_target": {"count": 1}
-                },
+                "dirty_worktree_groups": {"content_not_in_target": {"count": 1}},
                 "skipped": [{"reason": "dirty_worktree"}],
             },
         ),
@@ -3726,11 +3721,14 @@ def test_backlog_refinery_zero_candidate_reconciliation_proof_fails_closed():
         ),
     ]
     for label, bad_reconciliation, bad_replay, bad_cleanup in bad_proofs:
-        assert backlog_refinery.resolved_reconciliation_guardrail_keys(
-            reconciliation_result=bad_reconciliation,
-            replay_result=bad_replay,
-            cleanup_result=bad_cleanup,
-        ) == set(), label
+        assert (
+            backlog_refinery.resolved_reconciliation_guardrail_keys(
+                reconciliation_result=bad_reconciliation,
+                replay_result=bad_replay,
+                cleanup_result=bad_cleanup,
+            )
+            == set()
+        ), label
 
 
 def test_backlog_refinery_reconciliation_guardrail_retirement_fails_closed(
@@ -3765,9 +3763,7 @@ def test_backlog_refinery_reconciliation_guardrail_retirement_fails_closed(
         json.dumps(
             {
                 "blocked_tasks": ["AUTO-001"],
-                "reconciliation_guardrail_seen_fingerprints": [
-                    "dirty-fingerprint"
-                ],
+                "reconciliation_guardrail_seen_fingerprints": ["dirty-fingerprint"],
                 "reconciliation_guardrail_findings": [
                     {
                         "follow_up_task_id": "AUTO-001",
@@ -3924,14 +3920,11 @@ def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
             "error": "validation_command_failed",
             "reason": "declared_validation_failed",
             "failed_command": "pytest tests/test_runtime.py",
-            "failed_tests": [
-                "tests/test_runtime.py::test_runtime_contract"
-            ],
+            "failed_tests": ["tests/test_runtime.py::test_runtime_contract"],
             "failed_test_paths": ["tests/test_runtime.py"],
             "validation_impact_paths": ["tests/test_runtime.py"],
             "failure_head": (
-                "FAILED tests/test_runtime.py::test_runtime_contract - "
-                "AssertionError"
+                "FAILED tests/test_runtime.py::test_runtime_contract - AssertionError"
             ),
         },
         "log_path": "state/implementation_logs/auto-001-attempt-1.log",
@@ -3961,19 +3954,13 @@ def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
     discovery_path = Path(findings[0]["discovery_path"])
     assert discovery_path.exists()
     discovery_text = discovery_path.read_text(encoding="utf-8")
-    assert (
-        "tests/test_runtime.py::test_runtime_contract"
-        in discovery_text
-    )
+    assert "tests/test_runtime.py::test_runtime_contract" in discovery_text
     assert "- Failed test paths: tests/test_runtime.py" in discovery_text
-    assert "- Validation target paths: tests/test_runtime.py" in (
-        discovery_text
-    )
+    assert "- Validation target paths: tests/test_runtime.py" in (discovery_text)
     assert "AssertionError" in discovery_text
     assert (
         "The declared validation target paths "
-        "(tests/test_runtime.py) are bounded diagnostic and repair scope"
-        in todo_text
+        "(tests/test_runtime.py) are bounded diagnostic and repair scope" in todo_text
     )
     assert "do not weaken correct assertions or policy" in todo_text
 
@@ -3986,8 +3973,7 @@ def test_summarize_test_failure_parses_playwright_identifiers_and_paths():
                 "tests/abby-style.spec.ts:42:3 › home layout stays bounded"
                 "\x1b[39m",
                 "",
-                "  1) [Desktop Chrome] › "
-                "tests/abby-style.spec.ts:42:3 › home layout stays bounded",
+                "  1) [Desktop Chrome] › tests/abby-style.spec.ts:42:3 › home layout stays bounded",
                 "    AssertionError: expect(locator).toBeVisible() failed",
                 "",
                 "  2) [Mobile Safari] › "
@@ -3997,10 +3983,8 @@ def test_summarize_test_failure_parses_playwright_identifiers_and_paths():
     )
 
     assert summary["failed_tests"] == [
-        "[Desktop Chrome] › tests/abby-style.spec.ts:42:3 › "
-        "home layout stays bounded",
-        "[Mobile Safari] › tests/world-id-ux.spec.ts:268:1 › "
-        "raw nullifier stays hidden",
+        "[Desktop Chrome] › tests/abby-style.spec.ts:42:3 › home layout stays bounded",
+        "[Mobile Safari] › tests/world-id-ux.spec.ts:268:1 › raw nullifier stays hidden",
     ]
     assert summary["failed_test_paths"] == [
         "tests/abby-style.spec.ts",
@@ -4008,10 +3992,13 @@ def test_summarize_test_failure_parses_playwright_identifiers_and_paths():
     ]
     assert "tests/abby-style.spec.ts:42:3" in summary["failure_head"]
     assert "AssertionError" in summary["exception_types"]
-    assert normalize_reported_test_failure_path(
-        "npm --prefix wallet_interface/ui test -- --runInBand",
-        summary["failed_test_paths"][1],
-    ) == "wallet_interface/ui/tests/world-id-ux.spec.ts"
+    assert (
+        normalize_reported_test_failure_path(
+            "npm --prefix wallet_interface/ui test -- --runInBand",
+            summary["failed_test_paths"][1],
+        )
+        == "wallet_interface/ui/tests/world-id-ux.spec.ts"
+    )
 
 
 def test_summarize_test_failure_ignores_passed_and_skipped_playwright_results():
@@ -4065,29 +4052,37 @@ def test_summarize_test_failure_ignores_passed_and_skipped_playwright_results():
 
 
 def test_playwright_retry_focus_falls_back_for_unqualified_or_unsafe_paths():
-    broad_command = (
-        "npm --prefix wallet_interface/ui test -- --runInBand"
-    )
+    broad_command = "npm --prefix wallet_interface/ui test -- --runInBand"
 
-    assert backlog_refinery._focused_npm_playwright_retry_command(
-        broad_command,
-        failed_test_paths=("tests/world-id-ux.spec.ts",),
-    ) == broad_command
-    assert backlog_refinery._focused_npm_playwright_retry_command(
-        broad_command,
-        failed_test_paths=("../outside.spec.ts",),
-    ) == broad_command
-    assert backlog_refinery._focused_npm_playwright_retry_command(
-        broad_command,
-        failed_test_paths=("wallet_interface/ui/tests/*.spec.ts",),
-    ) == broad_command
+    assert (
+        backlog_refinery._focused_npm_playwright_retry_command(
+            broad_command,
+            failed_test_paths=("tests/world-id-ux.spec.ts",),
+        )
+        == broad_command
+    )
+    assert (
+        backlog_refinery._focused_npm_playwright_retry_command(
+            broad_command,
+            failed_test_paths=("../outside.spec.ts",),
+        )
+        == broad_command
+    )
+    assert (
+        backlog_refinery._focused_npm_playwright_retry_command(
+            broad_command,
+            failed_test_paths=("wallet_interface/ui/tests/*.spec.ts",),
+        )
+        == broad_command
+    )
     compound_command = f"{broad_command} || echo unsafe"
-    assert backlog_refinery._focused_npm_playwright_retry_command(
-        compound_command,
-        failed_test_paths=(
-            "wallet_interface/ui/tests/world-id-ux.spec.ts",
-        ),
-    ) == compound_command
+    assert (
+        backlog_refinery._focused_npm_playwright_retry_command(
+            compound_command,
+            failed_test_paths=("wallet_interface/ui/tests/world-id-ux.spec.ts",),
+        )
+        == compound_command
+    )
 
 
 def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
@@ -4120,10 +4115,7 @@ def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
         "tests/world-id-ux.spec.ts:268:1 › raw nullifier stays hidden\n"
         "    Error: expect(locator).toHaveCount(0) failed\n"
     )
-    rooted_paths = [
-        f"wallet_interface/ui/{path}"
-        for path in summary["failed_test_paths"]
-    ]
+    rooted_paths = [f"wallet_interface/ui/{path}" for path in summary["failed_test_paths"]]
     failure = {
         "type": "implementation_finished",
         "task_id": "AUTO-001",
@@ -4134,9 +4126,7 @@ def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
             "returncode": 1,
             "error": "validation_command_failed",
             "reason": "declared_validation_failed",
-            "failed_command": (
-                "npm --prefix wallet_interface/ui test -- --runInBand"
-            ),
+            "failed_command": ("npm --prefix wallet_interface/ui test -- --runInBand"),
             "failed_tests": summary["failed_tests"],
             "failed_test_paths": rooted_paths,
             "validation_impact_paths": ["wallet_interface/ui"],
@@ -4145,10 +4135,7 @@ def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
         "log_path": "state/implementation_logs/auto-001-attempt-1.log",
     }
     events_path.write_text(
-        json.dumps(failure)
-        + "\n"
-        + json.dumps({**failure, "attempt": 2})
-        + "\n",
+        json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n",
         encoding="utf-8",
     )
 
@@ -4168,24 +4155,20 @@ def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
     assert (
         "The declared validation target paths "
         "(wallet_interface/ui/tests/world-id-ux.spec.ts) are bounded "
-        "diagnostic and repair scope"
-        in todo_text
+        "diagnostic and repair scope" in todo_text
     )
     assert (
         "The declared validation target paths (wallet_interface/ui) "
-        "are bounded diagnostic and repair scope"
-        not in todo_text
+        "are bounded diagnostic and repair scope" not in todo_text
     )
     assert (
         "- Outputs: wallet_interface/ui/src/WorldIdPanel.tsx, "
         "data/agent_supervisor/discovery, "
-        "wallet_interface/ui/tests/world-id-ux.spec.ts"
-        in todo_text
+        "wallet_interface/ui/tests/world-id-ux.spec.ts" in todo_text
     )
     assert (
         "- Validation: npm --prefix wallet_interface/ui test -- "
-        "--runInBand tests/world-id-ux.spec.ts"
-        in todo_text
+        "--runInBand tests/world-id-ux.spec.ts" in todo_text
     )
     repair_task = parse_task_file(
         todo_path,
@@ -4197,17 +4180,9 @@ def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
     assert retry_budget_repair_validation_paths(repair_task) == (
         "wallet_interface/ui/tests/world-id-ux.spec.ts",
     )
-    assert repair_task.outputs[-1] == (
-        "wallet_interface/ui/tests/world-id-ux.spec.ts"
-    )
-    discovery_text = Path(findings[0]["discovery_path"]).read_text(
-        encoding="utf-8"
-    )
-    assert (
-        "- Failed test paths: "
-        "wallet_interface/ui/tests/world-id-ux.spec.ts"
-        in discovery_text
-    )
+    assert repair_task.outputs[-1] == ("wallet_interface/ui/tests/world-id-ux.spec.ts")
+    discovery_text = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
+    assert "- Failed test paths: wallet_interface/ui/tests/world-id-ux.spec.ts" in discovery_text
 
 
 def test_retry_budget_classifies_pre_dispatch_validation_stall(tmp_path):
@@ -4248,10 +4223,7 @@ def test_retry_budget_classifies_pre_dispatch_validation_stall(tmp_path):
         "log_path": "state/implementation_logs/auto-001-attempt-1.log",
     }
     events_path.write_text(
-        json.dumps(failure)
-        + "\n"
-        + json.dumps({**failure, "attempt": 2})
-        + "\n",
+        json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n",
         encoding="utf-8",
     )
 
@@ -4275,9 +4247,7 @@ def test_retry_budget_classifies_pre_dispatch_validation_stall(tmp_path):
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "Resolve validation retry-budget failure for AUTO-001" in todo_text
     assert "- Validation: test -f " in todo_text
-    discovery_text = Path(findings[0]["discovery_path"]).read_text(
-        encoding="utf-8"
-    )
+    discovery_text = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
     assert "Validation attempted: `False`" in discovery_text
     assert "no_required_validation_declared" in discovery_text
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
@@ -4329,7 +4299,9 @@ def test_backlog_refinery_configured_retry_budget_adds_present_dependency(tmp_pa
         },
         "log_path": "state/implementation_logs/auto-001-attempt-1.log",
     }
-    events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+    events_path.write_text(
+        json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8"
+    )
 
     findings = record_configured_retry_budget_findings(
         todo_path=todo_path,
@@ -4388,7 +4360,9 @@ def test_backlog_refinery_configured_retry_budget_recorder_uses_aliases(tmp_path
         },
         "log_path": "state/implementation_logs/auto-001-attempt-1.log",
     }
-    events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+    events_path.write_text(
+        json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8"
+    )
     prepared: list[str] = []
 
     recorder = ConfiguredRetryBudgetRecorder(
@@ -4452,7 +4426,9 @@ def test_backlog_refinery_retry_budget_blocks_implementation_loop(tmp_path):
         "worktree_path": "worktrees/auto-001-attempt-1",
         "branch": "implementation/auto-001-attempt-1",
     }
-    events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+    events_path.write_text(
+        json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8"
+    )
 
     findings = record_retry_budget_findings(
         todo_path=todo_path,
@@ -4525,7 +4501,9 @@ def test_backlog_refinery_retry_budget_skips_recursive_repair_tasks(tmp_path):
         },
         "log_path": "state/implementation_logs/auto-002-attempt-1.log",
     }
-    events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+    events_path.write_text(
+        json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8"
+    )
 
     findings = record_retry_budget_findings(
         todo_path=todo_path,
@@ -4583,7 +4561,9 @@ def test_backlog_refinery_retry_budget_blocks_merge_loop(tmp_path):
         "log_path": "state/implementation_logs/auto-001-attempt-1.log",
     }
     events_path.parent.mkdir(parents=True)
-    events_path.write_text(json.dumps(event) + "\n" + json.dumps({**event, "attempt": 2}) + "\n", encoding="utf-8")
+    events_path.write_text(
+        json.dumps(event) + "\n" + json.dumps({**event, "attempt": 2}) + "\n", encoding="utf-8"
+    )
 
     findings = record_retry_budget_findings(
         todo_path=todo_path,
@@ -4637,7 +4617,9 @@ def test_backlog_refinery_retry_budget_blocks_merge_reconcile_skips(tmp_path):
         "reason": "implementation_branch_missing",
     }
     events_path.parent.mkdir(parents=True)
-    events_path.write_text(json.dumps(event) + "\n" + json.dumps({**event, "attempt": 2}) + "\n", encoding="utf-8")
+    events_path.write_text(
+        json.dumps(event) + "\n" + json.dumps({**event, "attempt": 2}) + "\n", encoding="utf-8"
+    )
 
     findings = record_retry_budget_findings(
         todo_path=todo_path,
@@ -4813,15 +4795,9 @@ def test_codebase_scan_canary_failure_keeps_generated_work_but_returns_partial(
     _git(repo, "commit", "-m", "seed canary failure")
     failed_canaries = AnalyzerCanaryReport(
         backlog_refinery.CODEBASE_SCAN_ANALYZER_VERSION,
-        (
-            AnalyzerCanaryResult(
-                "broken", "line_source", ("annotated_followup",), ()
-            ),
-        ),
+        (AnalyzerCanaryResult("broken", "line_source", ("annotated_followup",), ()),),
     )
-    monkeypatch.setattr(
-        backlog_refinery, "run_codebase_analyzer_canaries", lambda: failed_canaries
-    )
+    monkeypatch.setattr(backlog_refinery, "run_codebase_analyzer_canaries", lambda: failed_canaries)
 
     receipt = record_codebase_scan_findings(
         todo_path=todo_path,

@@ -107,24 +107,15 @@ def test_canonical_attempt_limit_blocks_cooldown_fallback_retry(
     )
     assert second_state.implementation_attempts_by_cid[canonical_task_cid] == 1
 
-    events = [
-        json.loads(line)
-        for line in events_path.read_text(encoding="utf-8").splitlines()
-    ]
-    backpressure = [
-        event
-        for event in events
-        if event["type"] == "task_attempt_limit_backpressure"
-    ]
+    events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+    backpressure = [event for event in events if event["type"] == "task_attempt_limit_backpressure"]
     assert len(backpressure) == 1
     assert backpressure[0]["reason"] == "max_task_attempts_reached"
     assert backpressure[0]["max_task_attempts"] == 1
     assert backpressure[0]["limited_tasks"] == [
         {
             "task_id": "TASK-001",
-            "canonical_task_key": first_state.task_identities["TASK-001"][
-                "canonical_task_key"
-            ],
+            "canonical_task_key": first_state.task_identities["TASK-001"]["canonical_task_key"],
             "canonical_task_cid": canonical_task_cid,
             "attempt_count": 1,
         }
@@ -167,9 +158,7 @@ def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
     exhausted_state = PortalTaskState(
         task_identities={source_task.task_id: source_identity.to_dict()},
         implementation_attempts={source_task.task_id: 1},
-        implementation_attempts_by_cid={
-            source_identity.canonical_task_cid: 1
-        },
+        implementation_attempts_by_cid={source_identity.canonical_task_cid: 1},
         last_implementation_task_id=source_task.task_id,
         last_implementation_task_key=source_identity.canonical_task_key,
         last_implementation_task_cid=source_identity.canonical_task_cid,
@@ -212,20 +201,12 @@ def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
 
     assert launched_attempts == [1]
     assert first["retry_budget_resets"][0]["source_task_id"] == "TASK-001"
-    assert first["retry_budget_resets"][0][
-        "previous_display_attempt_count"
-    ] == 1
+    assert first["retry_budget_resets"][0]["previous_display_attempt_count"] == 1
     assert first["attempt_limited_task_ids"] == []
-    assert reset_state.retry_budget_repair_receipts == {
-        "TASK-001": "TASK-002"
-    }
+    assert reset_state.retry_budget_repair_receipts == {"TASK-001": "TASK-002"}
     assert reset_state.implementation_attempts["TASK-001"] == 1
-    assert reset_state.implementation_attempts_by_cid[
-        source_identity.canonical_task_cid
-    ] == 1
-    assert daemon.task_queue.is_cooled_down(
-        source_identity.canonical_task_cid
-    ) is False
+    assert reset_state.implementation_attempts_by_cid[source_identity.canonical_task_cid] == 1
+    assert daemon.task_queue.is_cooled_down(source_identity.canonical_task_cid) is False
     assert second["retry_budget_resets"] == []
     assert second["attempt_limited_task_ids"] == ["TASK-001"]
 
@@ -275,9 +256,12 @@ def test_max_task_attempts_threads_from_bundle_to_daemon_command(tmp_path) -> No
     daemon_command = PortalImplementationSupervisor(config)._build_daemon_command()
     daemon_flag = daemon_command.index("--max-task-attempts")
     assert daemon_command[daemon_flag + 1] == "1"
-    assert parse_daemon_args(
-        ["--max-task-attempts", daemon_command[daemon_flag + 1]]
-    ).max_task_attempts == 1
+    assert (
+        parse_daemon_args(
+            ["--max-task-attempts", daemon_command[daemon_flag + 1]]
+        ).max_task_attempts
+        == 1
+    )
 
 
 def test_planned_lane_uses_same_positive_attempt_limit_for_queue_and_worker(
@@ -302,9 +286,7 @@ def test_planned_lane_uses_same_positive_attempt_limit_for_queue_and_worker(
                 "source_todo": "docs/tasks.todo.md",
                 "bundles": {
                     "objective/runtime": {
-                        "shard_path": str(
-                            shard_path.relative_to(index_path.parent)
-                        ),
+                        "shard_path": str(shard_path.relative_to(index_path.parent)),
                         "parallel_lane": "objective/runtime",
                         "tasks": [{"task_id": "TASK-001"}],
                     }
@@ -363,9 +345,12 @@ def test_planned_lane_uses_same_positive_attempt_limit_for_queue_and_worker(
 
 
 def test_max_task_attempts_defaults_to_unlimited() -> None:
-    assert build_bundle_arg_parser().parse_args(
-        ["--bundle-index-path", "bundles.json"]
-    ).max_task_attempts == 0
+    assert (
+        build_bundle_arg_parser()
+        .parse_args(["--bundle-index-path", "bundles.json"])
+        .max_task_attempts
+        == 0
+    )
     assert parse_supervisor_args([]).max_task_attempts == 0
     assert parse_daemon_args([]).max_task_attempts == 0
 
@@ -447,9 +432,12 @@ def test_default_planned_lane_is_unlimited_in_worker_and_coordinator(
         assert expiring is not None
         assert expiring.attempt == 5
         assert expiring.lease_until is not None
-        assert task_queue.recover_expired_leases(
-            now=expiring.lease_until + 1,
-        ) == 1
+        assert (
+            task_queue.recover_expired_leases(
+                now=expiring.lease_until + 1,
+            )
+            == 1
+        )
         recovered = task_queue.claim_next(worker_id="worker-b")
         assert recovered is not None
         assert recovered.attempt == 6
@@ -499,9 +487,12 @@ def test_merge_target_branch_threads_from_bundle_to_daemon_command(tmp_path) -> 
     daemon_command = PortalImplementationSupervisor(config)._build_daemon_command()
     daemon_flag = daemon_command.index("--merge-target-branch")
     assert daemon_command[daemon_flag + 1] == "world-aid-duckdb-supervisor"
-    assert parse_daemon_args(
-        ["--merge-target-branch", daemon_command[daemon_flag + 1]]
-    ).merge_target_branch == "world-aid-duckdb-supervisor"
+    assert (
+        parse_daemon_args(
+            ["--merge-target-branch", daemon_command[daemon_flag + 1]]
+        ).merge_target_branch
+        == "world-aid-duckdb-supervisor"
+    )
 
 
 def test_started_attempt_survives_abrupt_daemon_death(
@@ -550,9 +541,7 @@ def test_started_attempt_survives_abrupt_daemon_death(
     assert result["implementation_result"] is None
     assert result["attempt_limited_task_ids"] == ["TASK-001"]
     assert recovered.implementation_attempts["TASK-001"] == 1
-    assert recovered.implementation_attempts_by_cid[
-        identity.canonical_task_cid
-    ] == 1
+    assert recovered.implementation_attempts_by_cid[identity.canonical_task_cid] == 1
     assert recovered.implementation_in_progress is False
 
 
@@ -599,7 +588,7 @@ def test_classify_provider_capacity_detects_grok_402_balance_exhausted() -> None
     )
 
     text = (
-        'Internal error: {\n'
+        "Internal error: {\n"
         '  "message": "API error (status 402 Payment Required): '
         'Grok Build usage balance exhausted",\n'
         '  "http_status": 402\n'
@@ -654,10 +643,7 @@ def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:
 
     assert result["attempt_consumed"] is False
     assert task.task_id not in recovered.implementation_attempts
-    assert (
-        identity.canonical_task_cid
-        not in recovered.implementation_attempts_by_cid
-    )
+    assert identity.canonical_task_cid not in recovered.implementation_attempts_by_cid
     assert daemon._task_attempt(recovered, task) == 1
 
 
@@ -792,6 +778,4 @@ def test_new_canonical_revision_gets_fresh_attempt_budget(
     assert identity_b.canonical_task_cid != identity_a.canonical_task_cid
     assert launched_attempts == [1]
     assert result["attempt_limited_task_ids"] == []
-    assert updated.implementation_attempts_by_cid[
-        identity_a.canonical_task_cid
-    ] == 1
+    assert updated.implementation_attempts_by_cid[identity_a.canonical_task_cid] == 1

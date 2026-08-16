@@ -81,8 +81,7 @@ def test_partial_event_tail_is_quarantined_from_checkpoint(
         repository_id="repository:current",
         tree_id="tree:merged",
         event_log_path=event_log,
-        verify=lambda restored: restored.checkpoint_id
-        == checkpoint.checkpoint_id,
+        verify=lambda restored: restored.checkpoint_id == checkpoint.checkpoint_id,
     )
 
     assert receipt.disposition is RecoveryDisposition.RECOVERED
@@ -92,9 +91,7 @@ def test_partial_event_tail_is_quarantined_from_checkpoint(
     assert receipt.evidence_claim_ids == (BOUNDED_RECOVERY_REQUIREMENT_ID,)
     assert len(receipt.quarantined_paths) == 1
     assert Path(receipt.quarantined_paths[0]).read_bytes() == b'{"type":"partial"'
-    assert [event["type"] for event in read_jsonl_events(event_log)] == [
-        "task_changed"
-    ]
+    assert [event["type"] for event in read_jsonl_events(event_log)] == ["task_changed"]
 
 
 def test_corrupt_latest_checkpoint_falls_back_to_last_valid(
@@ -194,11 +191,14 @@ def test_receipt_identity_detects_tampering_and_tree_staleness(
         repository_id="repository:current",
         tree_id="tree:merged",
     )
-    assert verify_repair_receipt(
-        receipt,
-        repository_id="repository:current",
-        tree_id="tree:merged",
-    ) is receipt
+    assert (
+        verify_repair_receipt(
+            receipt,
+            repository_id="repository:current",
+            tree_id="tree:merged",
+        )
+        is receipt
+    )
     tampered = receipt.to_dict()
     tampered["reason_code"] = "invented_success"
     with pytest.raises(RecoveryIntegrityError):
@@ -227,9 +227,7 @@ def test_missing_checkpoint_fails_closed_with_exact_receipt(
         repository_id="repository:current",
         tree_id="tree:merged",
     )
-    persisted = json.loads(
-        manager._receipt_path(receipt.incident_id).read_text(encoding="utf-8")
-    )
+    persisted = json.loads(manager._receipt_path(receipt.incident_id).read_text(encoding="utf-8"))
     assert receipt.disposition is RecoveryDisposition.FAILED_CLOSED
     assert receipt.reason_code == "no_valid_checkpoint"
     assert RepairReceipt.from_dict(persisted) == receipt

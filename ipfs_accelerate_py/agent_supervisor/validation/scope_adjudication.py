@@ -21,16 +21,12 @@ from ..proof.formal_verification_contracts import canonical_json, content_identi
 from .validation_commands import infer_validation_impact_paths
 
 
-SCOPE_ADJUDICATION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/scope-adjudication-receipt@1"
-)
+SCOPE_ADJUDICATION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/scope-adjudication-receipt@1"
 SCOPE_ADJUDICATION_POLICY_VERSION = "deterministic-scope-expansion-v1"
 DEFAULT_MAX_SCOPE_EXPANSION_PATHS = 8
 DEFAULT_MAX_IMPORT_CLOSURE_DEPTH = 4
 DEFAULT_MAX_IMPORT_CLOSURE_FILES = 128
-_SUPPORTED_CHANGE_KINDS = frozenset(
-    {DiffChangeKind.ADD, DiffChangeKind.MODIFY}
-)
+_SUPPORTED_CHANGE_KINDS = frozenset({DiffChangeKind.ADD, DiffChangeKind.MODIFY})
 
 
 class ScopeExpansionVerdict(str, Enum):
@@ -46,12 +42,8 @@ class ScopeExpansionReason(str, Enum):
     EXPLICIT_VALIDATION_TARGET = "explicit_validation_target"
     DECLARED_PATH_IMPORTS_CANDIDATE = "declared_path_imports_candidate"
     CANDIDATE_IMPORTS_DECLARED_PATH = "candidate_imports_declared_path"
-    DECLARED_PATH_TRANSITIVELY_IMPORTS_CANDIDATE = (
-        "declared_path_transitively_imports_candidate"
-    )
-    REGRESSION_TEST_IMPORTS_DECLARED_PATH = (
-        "regression_test_imports_declared_path"
-    )
+    DECLARED_PATH_TRANSITIVELY_IMPORTS_CANDIDATE = "declared_path_transitively_imports_candidate"
+    REGRESSION_TEST_IMPORTS_DECLARED_PATH = "regression_test_imports_declared_path"
     INITIAL_GATE_NOT_SCOPE_ONLY = "initial_gate_not_scope_only"
     SCOPE_NOT_DECLARED = "scope_not_declared"
     EXPANSION_LIMIT_EXCEEDED = "expansion_limit_exceeded"
@@ -69,26 +61,13 @@ def _normalize_path(value: Any) -> str:
     path = str(value or "").strip().replace("\\", "/")
     while path.startswith("./"):
         path = path[2:]
-    if (
-        not path
-        or path.startswith("/")
-        or "\0" in path
-        or ".." in PurePosixPath(path).parts
-    ):
+    if not path or path.startswith("/") or "\0" in path or ".." in PurePosixPath(path).parts:
         return ""
     return PurePosixPath(path).as_posix()
 
 
 def _normalized_paths(values: Iterable[Any]) -> tuple[str, ...]:
-    return tuple(
-        sorted(
-            {
-                path
-                for value in values
-                if (path := _normalize_path(value))
-            }
-        )
-    )
+    return tuple(sorted({path for value in values if (path := _normalize_path(value))}))
 
 
 def _path_matches(path: str, pattern: str) -> bool:
@@ -100,9 +79,8 @@ def _path_matches(path: str, pattern: str) -> bool:
         return fnmatch.fnmatchcase(normalized_path, normalized_pattern)
     if str(pattern).strip().replace("\\", "/").endswith("/"):
         return normalized_path.startswith(normalized_pattern.rstrip("/") + "/")
-    return (
-        normalized_path == normalized_pattern
-        or normalized_path.startswith(normalized_pattern.rstrip("/") + "/")
+    return normalized_path == normalized_pattern or normalized_path.startswith(
+        normalized_pattern.rstrip("/") + "/"
     )
 
 
@@ -152,9 +130,7 @@ def _imported_modules(
         else:
             base_parts = []
         if node.module:
-            base_parts.extend(
-                part for part in node.module.split(".") if part
-            )
+            base_parts.extend(part for part in node.module.split(".") if part)
         base = ".".join(base_parts)
         if base:
             imported.add(base)
@@ -179,14 +155,9 @@ def _test_shape(tree: ast.AST) -> tuple[frozenset[str], int]:
         elif isinstance(node, ast.Call):
             function = node.func
             if isinstance(function, ast.Attribute):
-                if (
-                    function.attr.startswith("assert")
-                    or function.attr == "raises"
-                ):
+                if function.attr.startswith("assert") or function.attr == "raises":
                     assertions += 1
-            elif isinstance(function, ast.Name) and function.id.startswith(
-                "assert"
-            ):
+            elif isinstance(function, ast.Name) and function.id.startswith("assert"):
                 assertions += 1
     return frozenset(tests), assertions
 
@@ -207,10 +178,7 @@ def _test_change_preserves_checks(
     except (SyntaxError, TypeError, ValueError):
         return False
     before_tests, before_assertions = _test_shape(before_tree)
-    return (
-        before_tests.issubset(after_tests)
-        and after_assertions >= before_assertions
-    )
+    return before_tests.issubset(after_tests) and after_assertions >= before_assertions
 
 
 def _read_source(
@@ -280,9 +248,7 @@ def _bounded_import_closure_evidence(
     discovered_paths: set[str] = set(import_cache)
 
     for declared in sorted(set(declared_paths)):
-        queue: list[tuple[str, tuple[str, ...], int]] = [
-            (declared, (declared,), 0)
-        ]
+        queue: list[tuple[str, tuple[str, ...], int]] = [(declared, (declared,), 0)]
         visited = {declared}
         discovered_paths.add(declared)
         while queue and len(discovered_paths) <= max_files:
@@ -312,15 +278,10 @@ def _bounded_import_closure_evidence(
                             next_chain,
                         ) < (len(previous), previous):
                             evidence[imported_path] = next_chain
-                    if (
-                        imported_path not in visited
-                        and len(discovered_paths) < max_files
-                    ):
+                    if imported_path not in visited and len(discovered_paths) < max_files:
                         visited.add(imported_path)
                         discovered_paths.add(imported_path)
-                        queue.append(
-                            (imported_path, next_chain, depth + 1)
-                        )
+                        queue.append((imported_path, next_chain, depth + 1))
     return evidence
 
 
@@ -345,10 +306,7 @@ class ScopePathDecision:
         )
         reasons = tuple(
             sorted(
-                {
-                    ScopeExpansionReason(reason)
-                    for reason in self.reason_codes
-                },
+                {ScopeExpansionReason(reason) for reason in self.reason_codes},
                 key=lambda item: item.value,
             )
         )
@@ -358,21 +316,14 @@ class ScopePathDecision:
             ScopeExpansionReason.EXPLICIT_VALIDATION_TARGET,
             ScopeExpansionReason.DECLARED_PATH_IMPORTS_CANDIDATE,
             ScopeExpansionReason.CANDIDATE_IMPORTS_DECLARED_PATH,
-            (
-                ScopeExpansionReason
-                .DECLARED_PATH_TRANSITIVELY_IMPORTS_CANDIDATE
-            ),
+            (ScopeExpansionReason.DECLARED_PATH_TRANSITIVELY_IMPORTS_CANDIDATE),
             ScopeExpansionReason.REGRESSION_TEST_IMPORTS_DECLARED_PATH,
         }
         if self.verdict is ScopeExpansionVerdict.JUSTIFIED:
             if any(reason not in justified_reasons for reason in reasons):
-                raise ValueError(
-                    "justified scope decisions require positive evidence"
-                )
+                raise ValueError("justified scope decisions require positive evidence")
         elif any(reason in justified_reasons for reason in reasons):
-            raise ValueError(
-                "denied scope decisions cannot claim positive evidence"
-            )
+            raise ValueError("denied scope decisions cannot claim positive evidence")
         object.__setattr__(self, "reason_codes", reasons)
         object.__setattr__(
             self,
@@ -400,12 +351,9 @@ class ScopePathDecision:
             raise ValueError("scope path decision contains unsupported fields")
         return cls(
             path=str(payload.get("path") or ""),
-            verdict=ScopeExpansionVerdict(
-                str(payload.get("verdict") or "")
-            ),
+            verdict=ScopeExpansionVerdict(str(payload.get("verdict") or "")),
             reason_codes=tuple(
-                ScopeExpansionReason(str(reason))
-                for reason in payload.get("reason_codes") or ()
+                ScopeExpansionReason(str(reason)) for reason in payload.get("reason_codes") or ()
             ),
             evidence_paths=tuple(payload.get("evidence_paths") or ()),
         )
@@ -462,11 +410,7 @@ class ScopeAdjudicationReceipt:
             "initial_finding_codes",
             tuple(
                 sorted(
-                    {
-                        str(code).strip()
-                        for code in self.initial_finding_codes
-                        if str(code).strip()
-                    }
+                    {str(code).strip() for code in self.initial_finding_codes if str(code).strip()}
                 )
             ),
         )
@@ -476,17 +420,10 @@ class ScopeAdjudicationReceipt:
         expected_decision_paths = tuple(
             path
             for path in self.candidate_paths
-            if not any(
-                _path_matches(path, declared)
-                for declared in self.original_scope_paths
-            )
+            if not any(_path_matches(path, declared) for declared in self.original_scope_paths)
         )
-        if tuple(decision.path for decision in decisions) != (
-            expected_decision_paths
-        ):
-            raise ValueError(
-                "scope decisions must cover every undeclared candidate path"
-            )
+        if tuple(decision.path for decision in decisions) != (expected_decision_paths):
+            raise ValueError("scope decisions must cover every undeclared candidate path")
         object.__setattr__(self, "decisions", decisions)
 
     @property
@@ -567,13 +504,8 @@ class ScopeAdjudicationReceipt:
             raise ValueError("authorized policy ID is required")
         if not self.justified:
             raise ValueError("a denied expansion cannot authorize a policy")
-        if (
-            self.authorized_policy_id
-            and self.authorized_policy_id != normalized
-        ):
-            raise ValueError(
-                "scope adjudication is already bound to another policy"
-            )
+        if self.authorized_policy_id and self.authorized_policy_id != normalized:
+            raise ValueError("scope adjudication is already bound to another policy")
         return replace(self, authorized_policy_id=normalized)
 
     @classmethod
@@ -599,9 +531,7 @@ class ScopeAdjudicationReceipt:
             "policy_version",
         }
         if required.difference(payload):
-            raise ValueError(
-                "scope adjudication is missing required fields"
-            )
+            raise ValueError("scope adjudication is missing required fields")
         decisions = tuple(
             ScopePathDecision.from_dict(item)
             for item in payload.get("decisions") or ()
@@ -612,25 +542,14 @@ class ScopeAdjudicationReceipt:
             proposal_id=str(payload.get("proposal_id") or ""),
             initial_policy_id=str(payload.get("initial_policy_id") or ""),
             repository_id=str(payload.get("repository_id") or ""),
-            repository_tree_id=str(
-                payload.get("repository_tree_id") or ""
-            ),
+            repository_tree_id=str(payload.get("repository_tree_id") or ""),
             baseline_id=str(payload.get("baseline_id") or ""),
-            original_scope_paths=tuple(
-                payload.get("original_scope_paths") or ()
-            ),
+            original_scope_paths=tuple(payload.get("original_scope_paths") or ()),
             candidate_paths=tuple(payload.get("candidate_paths") or ()),
-            initial_finding_codes=tuple(
-                payload.get("initial_finding_codes") or ()
-            ),
+            initial_finding_codes=tuple(payload.get("initial_finding_codes") or ()),
             decisions=decisions,
-            authorized_policy_id=str(
-                payload.get("authorized_policy_id") or ""
-            ),
-            policy_version=str(
-                payload.get("policy_version")
-                or SCOPE_ADJUDICATION_POLICY_VERSION
-            ),
+            authorized_policy_id=str(payload.get("authorized_policy_id") or ""),
+            policy_version=str(payload.get("policy_version") or SCOPE_ADJUDICATION_POLICY_VERSION),
         )
         for field_name, expected in (
             ("justified_paths", list(result.justified_paths)),
@@ -643,15 +562,11 @@ class ScopeAdjudicationReceipt:
             ("receipt_id", result.receipt_id),
         ):
             if field_name in payload and payload[field_name] != expected:
-                raise ValueError(
-                    f"scope adjudication {field_name} is inconsistent"
-                )
+                raise ValueError(f"scope adjudication {field_name} is inconsistent")
         # Reject hidden fields while permitting the derived public projection.
         allowed = set(result.to_record())
         if set(payload).difference(allowed):
-            raise ValueError(
-                "scope adjudication contains unsupported fields"
-            )
+            raise ValueError("scope adjudication contains unsupported fields")
         return result
 
 
@@ -702,10 +617,7 @@ def adjudicate_scope_expansion(
         raise ValueError("max_expansion_paths must be a positive integer")
     scope_paths = _normalized_paths(original_scope_paths)
     candidate_paths = _normalized_paths(
-        path
-        for entry in candidate_diff
-        for path in (entry.old_path, entry.new_path)
-        if path
+        path for entry in candidate_diff for path in (entry.old_path, entry.new_path) if path
     )
     extra_paths = tuple(
         path
@@ -713,13 +625,7 @@ def adjudicate_scope_expansion(
         if not any(_path_matches(path, declared) for declared in scope_paths)
     )
     normalized_findings = tuple(
-        sorted(
-            {
-                str(code).strip()
-                for code in initial_finding_codes
-                if str(code).strip()
-            }
-        )
+        sorted({str(code).strip() for code in initial_finding_codes if str(code).strip()})
     )
 
     def receipt(
@@ -782,11 +688,7 @@ def adjudicate_scope_expansion(
         sorted(
             {
                 *concrete_scope_paths,
-                *(
-                    path
-                    for path in extra_paths
-                    if path.lower().endswith((".py", ".pyi"))
-                ),
+                *(path for path in extra_paths if path.lower().endswith((".py", ".pyi"))),
             }
         )
     )
@@ -812,11 +714,7 @@ def adjudicate_scope_expansion(
             continue
         imports[path] = imported
         trees[path] = tree
-        if (
-            entry is not None
-            and entry.before_source is not None
-            and _is_test_path(path)
-        ):
+        if entry is not None and entry.before_source is not None and _is_test_path(path):
             try:
                 imported_before, _ = _imported_modules(
                     path,
@@ -825,11 +723,7 @@ def adjudicate_scope_expansion(
             except (SyntaxError, TypeError, ValueError):
                 imported_before = set()
             before_imports[path] = imported_before
-    modules = {
-        path: module
-        for path in python_paths
-        if (module := _module_name(path))
-    }
+    modules = {path: module for path in python_paths if (module := _module_name(path))}
     transitive_import_evidence = _bounded_import_closure_evidence(
         workspace_path=workspace_path,
         declared_paths=concrete_scope_paths,
@@ -863,9 +757,7 @@ def adjudicate_scope_expansion(
                 ScopePathDecision(
                     path=path,
                     verdict=ScopeExpansionVerdict.DENIED,
-                    reason_codes=(
-                        ScopeExpansionReason.UNSUPPORTED_CHANGE_KIND,
-                    ),
+                    reason_codes=(ScopeExpansionReason.UNSUPPORTED_CHANGE_KIND,),
                 )
             )
             continue
@@ -876,9 +768,7 @@ def adjudicate_scope_expansion(
                 ScopePathDecision(
                     path=path,
                     verdict=ScopeExpansionVerdict.DENIED,
-                    reason_codes=(
-                        ScopeExpansionReason.TEST_CHANGE_UNVERIFIABLE,
-                    ),
+                    reason_codes=(ScopeExpansionReason.TEST_CHANGE_UNVERIFIABLE,),
                 )
             )
             continue
@@ -888,9 +778,7 @@ def adjudicate_scope_expansion(
                     ScopePathDecision(
                         path=path,
                         verdict=ScopeExpansionVerdict.DENIED,
-                        reason_codes=(
-                            ScopeExpansionReason.SOURCE_UNAVAILABLE,
-                        ),
+                        reason_codes=(ScopeExpansionReason.SOURCE_UNAVAILABLE,),
                     )
                 )
                 continue
@@ -899,9 +787,7 @@ def adjudicate_scope_expansion(
                     ScopePathDecision(
                         path=path,
                         verdict=ScopeExpansionVerdict.DENIED,
-                        reason_codes=(
-                            ScopeExpansionReason.PYTHON_SYNTAX_ERROR,
-                        ),
+                        reason_codes=(ScopeExpansionReason.PYTHON_SYNTAX_ERROR,),
                     )
                 )
                 continue
@@ -928,9 +814,7 @@ def adjudicate_scope_expansion(
                 ScopePathDecision(
                     path=path,
                     verdict=ScopeExpansionVerdict.JUSTIFIED,
-                    reason_codes=(
-                        ScopeExpansionReason.EXPLICIT_VALIDATION_TARGET,
-                    ),
+                    reason_codes=(ScopeExpansionReason.EXPLICIT_VALIDATION_TARGET,),
                     evidence_paths=targeted_by,
                 )
             )
@@ -939,14 +823,9 @@ def adjudicate_scope_expansion(
         path_module = modules.get(path, "")
         path_imports = imports.get(path, set())
         candidate_imports_declared = tuple(
-            declared
-            for declared in concrete_scope_paths
-            if modules.get(declared) in path_imports
+            declared for declared in concrete_scope_paths if modules.get(declared) in path_imports
         )
-        if (
-            is_test
-            and entry.change_kind is not DiffChangeKind.ADD
-        ):
+        if is_test and entry.change_kind is not DiffChangeKind.ADD:
             previous_modules = before_imports.get(path, set())
             candidate_imports_declared = tuple(
                 declared
@@ -963,9 +842,7 @@ def adjudicate_scope_expansion(
                 ScopePathDecision(
                     path=path,
                     verdict=ScopeExpansionVerdict.JUSTIFIED,
-                    reason_codes=(
-                        ScopeExpansionReason.REGRESSION_TEST_IMPORTS_DECLARED_PATH,
-                    ),
+                    reason_codes=(ScopeExpansionReason.REGRESSION_TEST_IMPORTS_DECLARED_PATH,),
                     evidence_paths=candidate_imports_declared,
                 )
             )
@@ -974,9 +851,7 @@ def adjudicate_scope_expansion(
                 ScopePathDecision(
                     path=path,
                     verdict=ScopeExpansionVerdict.JUSTIFIED,
-                    reason_codes=(
-                        ScopeExpansionReason.DECLARED_PATH_IMPORTS_CANDIDATE,
-                    ),
+                    reason_codes=(ScopeExpansionReason.DECLARED_PATH_IMPORTS_CANDIDATE,),
                     evidence_paths=declared_imports_candidate,
                 )
             )
@@ -985,9 +860,7 @@ def adjudicate_scope_expansion(
                 ScopePathDecision(
                     path=path,
                     verdict=ScopeExpansionVerdict.JUSTIFIED,
-                    reason_codes=(
-                        ScopeExpansionReason.CANDIDATE_IMPORTS_DECLARED_PATH,
-                    ),
+                    reason_codes=(ScopeExpansionReason.CANDIDATE_IMPORTS_DECLARED_PATH,),
                     evidence_paths=candidate_imports_declared,
                 )
             )
@@ -997,8 +870,7 @@ def adjudicate_scope_expansion(
                     path=path,
                     verdict=ScopeExpansionVerdict.JUSTIFIED,
                     reason_codes=(
-                        ScopeExpansionReason
-                        .DECLARED_PATH_TRANSITIVELY_IMPORTS_CANDIDATE,
+                        ScopeExpansionReason.DECLARED_PATH_TRANSITIVELY_IMPORTS_CANDIDATE,
                     ),
                     evidence_paths=transitive_import_evidence[path],
                 )

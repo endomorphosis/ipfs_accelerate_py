@@ -150,11 +150,9 @@ def _fresh(
     observed = _datetime(value)
     if observed is None:
         return False
-    return (
-        observed <= current + timedelta(seconds=max(0.0, clock_skew_seconds))
-        and current - observed
-        <= timedelta(seconds=max(0.0, freshness_seconds))
-    )
+    return observed <= current + timedelta(
+        seconds=max(0.0, clock_skew_seconds)
+    ) and current - observed <= timedelta(seconds=max(0.0, freshness_seconds))
 
 
 def evaluate_self_improvement_root_completion(
@@ -169,9 +167,7 @@ def evaluate_self_improvement_root_completion(
     coverage: Any = None,
     analyzer_health: Any = None,
     exhaustion_quorum: Any = None,
-    required_exhaustive_receipts: int = (
-        SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS
-    ),
+    required_exhaustive_receipts: int = (SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS),
     now: Any = None,
     freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     clock_skew_seconds: float = DEFAULT_CLOCK_SKEW_SECONDS,
@@ -190,8 +186,7 @@ def evaluate_self_improvement_root_completion(
     if (
         isinstance(required_exhaustive_receipts, bool)
         or not isinstance(required_exhaustive_receipts, int)
-        or required_exhaustive_receipts
-        != SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS
+        or required_exhaustive_receipts != SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS
     ):
         raise ValueError(
             "required_exhaustive_receipts must equal the configured ASI-G000 "
@@ -202,17 +197,12 @@ def evaluate_self_improvement_root_completion(
     current = _now(now)
 
     task_values = [_payload(item) for item in producing_tasks]
-    task_ids = [
-        str(item.get("task_id", item.get("id", "")) or "").strip()
-        for item in task_values
-    ]
+    task_ids = [str(item.get("task_id", item.get("id", "")) or "").strip() for item in task_values]
     producer_population_complete = (
         len(task_ids) == len(set(task_ids))
-        and tuple(sorted(task_ids))
-        == tuple(sorted(SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS))
+        and tuple(sorted(task_ids)) == tuple(sorted(SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS))
         and all(
-            _normalized(item.get("status", item.get("state", "")))
-            in _SUCCESSFUL_TASK_STATES
+            _normalized(item.get("status", item.get("state", ""))) in _SUCCESSFUL_TASK_STATES
             for item in task_values
         )
     )
@@ -221,13 +211,9 @@ def evaluate_self_improvement_root_completion(
     coverage_value = _payload(coverage)
     rows_value = coverage_value.get("criteria")
     rows = rows_value if isinstance(rows_value, list) else []
-    expected_criteria = {
-        _normalized(item) for item in SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA
-    }
+    expected_criteria = {_normalized(item) for item in SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA}
     row_keys = [
-        _normalized(
-            row.get("criterion", row.get("acceptance_criterion", ""))
-        )
+        _normalized(row.get("criterion", row.get("acceptance_criterion", "")))
         for row in rows
         if isinstance(row, Mapping)
     ]
@@ -260,11 +246,7 @@ def evaluate_self_improvement_root_completion(
         coverage_value = {
             **coverage_value,
             "verified": False,
-            "reason_codes": list(
-                dict.fromkeys(
-                    [*reasons, "coverage_validation_receipt_unbound"]
-                )
-            ),
+            "reason_codes": list(dict.fromkeys([*reasons, "coverage_validation_receipt_unbound"])),
         }
 
     expected_binding = {
@@ -275,17 +257,14 @@ def evaluate_self_improvement_root_completion(
     }
     health_value = _payload(analyzer_health)
     health_binding_value = health_value.get("binding")
-    health_binding = (
-        dict(health_binding_value)
-        if isinstance(health_binding_value, Mapping)
-        else {}
-    )
-    binding_complete = all(
-        health_binding.get(name) == value
-        for name, value in expected_binding.items()
-    ) and all(expected_binding.values()) and all(
-        str(health_binding.get(name) or "").strip()
-        for name in ("analyzer_version", "configuration_revision")
+    health_binding = dict(health_binding_value) if isinstance(health_binding_value, Mapping) else {}
+    binding_complete = (
+        all(health_binding.get(name) == value for name, value in expected_binding.items())
+        and all(expected_binding.values())
+        and all(
+            str(health_binding.get(name) or "").strip()
+            for name in ("analyzer_version", "configuration_revision")
+        )
     )
     health_valid = (
         _normalized(health_value.get("status")) == "healthy"
@@ -304,30 +283,18 @@ def evaluate_self_improvement_root_completion(
     members_value = quorum_value.get("members")
     members = members_value if isinstance(members_value, list) else []
     quorum_binding_value = quorum_value.get("binding")
-    quorum_binding = (
-        dict(quorum_binding_value)
-        if isinstance(quorum_binding_value, Mapping)
-        else {}
-    )
+    quorum_binding = dict(quorum_binding_value) if isinstance(quorum_binding_value, Mapping) else {}
 
     def unique_member_field(name: str) -> bool:
         values = [
-            str(member.get(name) or "").strip()
-            for member in members
-            if isinstance(member, Mapping)
+            str(member.get(name) or "").strip() for member in members if isinstance(member, Mapping)
         ]
-        return (
-            len(values) == len(members)
-            and all(values)
-            and len(values) == len(set(values))
-        )
+        return len(values) == len(members) and all(values) and len(values) == len(set(values))
 
     quorum_valid = (
-        quorum_value.get("required_members")
-        == SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS
+        quorum_value.get("required_members") == SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("member_count") == len(members)
-        and len(members)
-        >= SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and len(members) >= SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("satisfied") is True
         and quorum_binding == health_binding
         and unique_member_field("member_id")
@@ -352,14 +319,11 @@ def evaluate_self_improvement_root_completion(
 
     child_values = [_payload(item) for item in child_goals]
     child_ids = [
-        str(item.get("goal_id", item.get("id", "")) or "").strip()
-        for item in child_values
+        str(item.get("goal_id", item.get("id", "")) or "").strip() for item in child_values
     ]
-    child_population_complete = (
-        len(child_ids) == len(set(child_ids))
-        and tuple(sorted(child_ids))
-        == tuple(sorted(SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS))
-    )
+    child_population_complete = len(child_ids) == len(set(child_ids)) and tuple(
+        sorted(child_ids)
+    ) == tuple(sorted(SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS))
     child_bindings_complete = child_population_complete and all(
         _child_goal_is_current(
             item,
@@ -379,9 +343,7 @@ def evaluate_self_improvement_root_completion(
                 "verified": False,
                 "completion_gate": {
                     "passed": False,
-                    "reason_code": (
-                        "required_descendant_population_or_binding_incomplete"
-                    ),
+                    "reason_code": ("required_descendant_population_or_binding_incomplete"),
                 },
             }
         )
@@ -419,9 +381,7 @@ def _child_goal_is_current(
     gate_value = child.get("completion_gate", child.get("gate"))
     gate = gate_value if isinstance(gate_value, Mapping) else {}
     evaluated_value = gate.get("evaluated_evidence")
-    evaluated = (
-        evaluated_value if isinstance(evaluated_value, Mapping) else {}
-    )
+    evaluated = evaluated_value if isinstance(evaluated_value, Mapping) else {}
     validations = evaluated.get("validation_evidence")
     proof_requirements = child.get(
         "proof_requirements",
@@ -452,8 +412,7 @@ def _child_goal_is_current(
         )
     )
     return bool(
-        str(child.get("state", child.get("next_state", ""))).strip().lower()
-        == "verified_complete"
+        str(child.get("state", child.get("next_state", ""))).strip().lower() == "verified_complete"
         and child.get("verified") is True
         and gate.get("passed") is True
         and evaluated.get("repository_tree") == repository_tree

@@ -43,20 +43,17 @@ from fixed_web_platform.webgpu_ultra_low_precision import configure_precision
 # Configure mixed precision with ultra-low bits
 precision_config = configure_precision(
     model_name="llama-7b",
-    default_bits=2,         # 2-bit for most weights
-    attention_bits=8,       # 8-bit for attention (more sensitive)
-    feed_forward_bits=2,    # 2-bit for feed-forward
-    embedding_bits=8,       # 8-bit for embeddings
-    lm_head_bits=8,         # 8-bit for language model head
-    adaptive=True           # Enable adaptive precision
+    default_bits=2,  # 2-bit for most weights
+    attention_bits=8,  # 8-bit for attention (more sensitive)
+    feed_forward_bits=2,  # 2-bit for feed-forward
+    embedding_bits=8,  # 8-bit for embeddings
+    lm_head_bits=8,  # 8-bit for language model head
+    adaptive=True,  # Enable adaptive precision
 )
 
 # Initialize model with ultra-low precision
 model = LargeLanguageModel("llama-7b")
-result = init_webgpu(
-    model=model,
-    precision_config=precision_config
-)
+result = init_webgpu(model=model, precision_config=precision_config)
 ```
 
 ### Memory Savings by Precision
@@ -75,22 +72,19 @@ For optimal performance, use different precision for different layers:
 ```python
 # Detailed layer-specific precision
 layer_precision = {
-    "embeddings": 8,         # Higher precision for embeddings
-    "attention.query": 8,    # Higher precision for attention
-    "attention.key": 4,      # Medium precision for key projections
-    "attention.value": 4,    # Medium precision for value projections
-    "attention.output": 8,   # Higher precision for attention output
-    "mlp.up": 3,             # Lower precision for MLP up projection
-    "mlp.down": 3,           # Lower precision for MLP down projection
-    "mlp.gate": 3,           # Lower precision for MLP gate
-    "lm_head": 8             # Higher precision for final projection
+    "embeddings": 8,  # Higher precision for embeddings
+    "attention.query": 8,  # Higher precision for attention
+    "attention.key": 4,  # Medium precision for key projections
+    "attention.value": 4,  # Medium precision for value projections
+    "attention.output": 8,  # Higher precision for attention output
+    "mlp.up": 3,  # Lower precision for MLP up projection
+    "mlp.down": 3,  # Lower precision for MLP down projection
+    "mlp.gate": 3,  # Lower precision for MLP gate
+    "lm_head": 8,  # Higher precision for final projection
 }
 
 # Apply to precision configuration
-precision_config = configure_precision(
-    model_name="llama-7b", 
-    layer_precision=layer_precision
-)
+precision_config = configure_precision(model_name="llama-7b", layer_precision=layer_precision)
 ```
 
 ## Progressive Loading Strategies
@@ -105,14 +99,14 @@ loader = ProgressiveModelLoader(
     model_path="llama-7b",
     config={
         "priority_components": [
-            "embeddings",      # Load first (needed immediately)
-            "layers.0",        # First layer
-            "lm_head"          # Output projections
+            "embeddings",  # Load first (needed immediately)
+            "layers.0",  # First layer
+            "lm_head",  # Output projections
         ],
         "background_loading": True,
         "unload_unused_layers": True,
-        "memory_threshold_mb": 2000  # Start unloading when memory exceeds 2GB
-    }
+        "memory_threshold_mb": 2000,  # Start unloading when memory exceeds 2GB
+    },
 )
 
 # Load critical components first
@@ -138,8 +132,7 @@ from fixed_web_platform.progressive_model_loader import MultimodalComponentManag
 
 # Create component manager
 component_manager = MultimodalComponentManager(
-    model_name="llava",
-    components=["vision_encoder", "text_encoder", "cross_attention", "decoder"]
+    model_name="llava", components=["vision_encoder", "text_encoder", "cross_attention", "decoder"]
 )
 
 # Load specific components for image processing
@@ -149,10 +142,7 @@ await component_manager.load_components(["vision_encoder", "cross_attention"])
 image_embeddings = component_manager.process_image(image)
 
 # Unload vision components and load text components
-await component_manager.swap_modality(
-    unload=["vision_encoder"],
-    load=["text_encoder", "decoder"]
-)
+await component_manager.swap_modality(unload=["vision_encoder"], load=["text_encoder", "decoder"])
 
 # Generate text based on image embeddings
 response = component_manager.generate_text(image_embeddings, prompt)
@@ -172,11 +162,11 @@ kv_cache = KVCacheManager(
     head_dim=128,
     max_seq_len=8192,
     config={
-        "default_bits": 2,           # 2-bit cache for most tokens
-        "recent_token_bits": 8,      # 8-bit for recent tokens
-        "rolling_window": 1024,      # Only keep recent tokens in higher precision
-        "prune_attn_threshold": 0.05 # Prune attention scores below this threshold
-    }
+        "default_bits": 2,  # 2-bit cache for most tokens
+        "recent_token_bits": 8,  # 8-bit for recent tokens
+        "rolling_window": 1024,  # Only keep recent tokens in higher precision
+        "prune_attn_threshold": 0.05,  # Prune attention scores below this threshold
+    },
 )
 
 # During generation, update KV cache with new token
@@ -193,11 +183,11 @@ For long context generation, implement cache pruning to maintain efficiency:
 ```python
 # Configure KV cache pruning
 kv_cache.configure_pruning(
-    strategy="threshold",      # Prune based on attention score
-    threshold=0.01,           # Remove entries below this score
-    min_tokens_to_keep=512,   # Always keep at least this many tokens
-    max_tokens_to_drop=0.5,   # Drop up to 50% of the cache when needed
-    frequency_aware=True      # Consider token frequency in pruning decisions
+    strategy="threshold",  # Prune based on attention score
+    threshold=0.01,  # Remove entries below this score
+    min_tokens_to_keep=512,  # Always keep at least this many tokens
+    max_tokens_to_drop=0.5,  # Drop up to 50% of the cache when needed
+    frequency_aware=True,  # Consider token frequency in pruning decisions
 )
 
 # Execute pruning when memory pressure is detected
@@ -217,22 +207,19 @@ from fixed_web_platform.model_sharding import ModelShardingManager
 sharding_manager = ModelShardingManager(
     model_name="llama-13b",
     config={
-        "num_shards": 4,              # Split model across 4 tabs
-        "sharding_type": "layer",     # Shard by layers
+        "num_shards": 4,  # Split model across 4 tabs
+        "sharding_type": "layer",  # Shard by layers
         "worker_urls": ["worker.html"],
-        "coordinator_port": 8765,     # Port for coordination
-        "memory_per_shard_mb": 2000   # Target memory per shard
-    }
+        "coordinator_port": 8765,  # Port for coordination
+        "memory_per_shard_mb": 2000,  # Target memory per shard
+    },
 )
 
 # Initialize sharding (opens browser tabs as workers)
 await sharding_manager.initialize()
 
 # Run inference across shards
-output = await sharding_manager.generate(
-    prompt="Explain WebGPU",
-    max_tokens=100
-)
+output = await sharding_manager.generate(prompt="Explain WebGPU", max_tokens=100)
 ```
 
 ## Memory Pressure Handling
@@ -245,15 +232,15 @@ from fixed_web_platform.memory_pressure_handler import MemoryPressureHandler
 # Configure memory pressure handler
 memory_handler = MemoryPressureHandler(
     thresholds={
-        "warning": 0.7,      # 70% of available memory
-        "critical": 0.85,    # 85% of available memory
-        "emergency": 0.95    # 95% of available memory
+        "warning": 0.7,  # 70% of available memory
+        "critical": 0.85,  # 85% of available memory
+        "emergency": 0.95,  # 95% of available memory
     },
     actions={
         "warning": ["gc", "compress_tensors"],
         "critical": ["unload_unused_components", "reduce_precision", "prune_kv_cache"],
-        "emergency": ["reduce_batch_size", "reduce_context_window", "abort_current_operation"]
-    }
+        "emergency": ["reduce_batch_size", "reduce_context_window", "abort_current_operation"],
+    },
 )
 
 # Register components for memory monitoring
@@ -305,21 +292,21 @@ if browser == "firefox":
 ```python
 if browser == "safari":
     # Safari has more restricted memory, use higher precision but fewer layers
-    
+
     # Use 8-bit precision for better numerical stability in Safari
     recommended_bits = 8
-    
+
     # Use smaller workgroup sizes to avoid memory issues
     workgroup_config = {"x": 64, "y": 1, "z": 1}
-    
+
     # Prioritize WebAssembly fallback for better memory management
     use_wasm_fallback = True
-    
+
     # Enable aggressive progressive loading
     progressive_loading_config = {
         "load_threshold": 0.1,  # Load components gradually in smaller chunks
         "unload_threshold": 0.7,  # Unload components more aggressively
-        "prioritize_current_layer": True  # Focus memory on active layer
+        "prioritize_current_layer": True,  # Focus memory on active layer
     }
 ```
 
@@ -336,7 +323,7 @@ monitor = MemoryMonitor()
 # Start monitoring with callback
 monitor.start(
     interval_ms=2000,
-    callback=lambda stats: print(f"Memory: {stats['used_mb']}MB/{stats['total_mb']}MB")
+    callback=lambda stats: print(f"Memory: {stats['used_mb']}MB/{stats['total_mb']}MB"),
 )
 
 # Get detailed memory breakdown
@@ -377,50 +364,47 @@ If you encounter "Out of Memory" errors:
 1. **Implement Ultra-Low Precision**
    ```python
    # Lower precision from 4-bit to 2-bit
-   precision_config = configure_precision(
-       model_name="llama-7b",
-       default_bits=2,
-       adaptive=True
-   )
+   precision_config = configure_precision(model_name="llama-7b", default_bits=2, adaptive=True)
    ```
 
 2. **Enable Component Unloading**
    ```python
    # Unload unused components
-   loader.configure({
-       "unload_unused_layers": True,
-       "keep_n_layers_loaded": 4  # Only keep 4 layers in memory at once
-   })
+   loader.configure(
+       {
+           "unload_unused_layers": True,
+           "keep_n_layers_loaded": 4,  # Only keep 4 layers in memory at once
+       }
+   )
    ```
 
 3. **Implement KV Cache Pruning**
    ```python
    # Prune KV cache when it gets too large
    kv_cache.enable_auto_pruning(
-       max_tokens=2048,       # Maximum tokens to keep
-       pruning_interval=512   # Prune every 512 tokens
+       max_tokens=2048,  # Maximum tokens to keep
+       pruning_interval=512,  # Prune every 512 tokens
    )
    ```
 
 4. **Use Model Sharding**
    ```python
    # Split model across tabs if single tab memory is insufficient
-   sharding_manager = ModelShardingManager(
-       model_name="llama-13b",
-       num_shards=4
-   )
+   sharding_manager = ModelShardingManager(model_name="llama-13b", num_shards=4)
    ```
 
 5. **Implement Memory Pressure Handling**
    ```python
    # Configure emergency actions for memory pressure
-   memory_handler.configure_emergency_actions([
-       "gc",                      # Force garbage collection
-       "unload_unused_components", # Unload components not in use
-       "reduce_batch_size",       # Reduce batch size dynamically
-       "truncate_kv_cache",       # Truncate KV cache to recent tokens only
-       "reduce_context_window"    # Reduce context window temporarily
-   ])
+   memory_handler.configure_emergency_actions(
+       [
+           "gc",  # Force garbage collection
+           "unload_unused_components",  # Unload components not in use
+           "reduce_batch_size",  # Reduce batch size dynamically
+           "truncate_kv_cache",  # Truncate KV cache to recent tokens only
+           "reduce_context_window",  # Reduce context window temporarily
+       ]
+   )
    ```
 
 For more detailed information, refer to the [Web Platform Integration Guide](../web_platform_integration_guide.md) and the [Model Performance Optimization Guide](../WEB_PLATFORM_OPTIMIZATION_GUIDE.md).

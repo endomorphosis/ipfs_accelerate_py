@@ -130,14 +130,10 @@ def test_drift_inventory_covers_surface_families_and_canonical_operations() -> N
     sources = {item.source_id: item for item in pack.sources}
 
     assert {
-        surface_kind
-        for finding in inventory.findings
-        for surface_kind in finding.surface_kinds
+        surface_kind for finding in inventory.findings for surface_kind in finding.surface_kinds
     } == set(DriftSurfaceKind)
     assert {
-        operation
-        for finding in inventory.findings
-        for operation in finding.canonical_operations
+        operation for finding in inventory.findings for operation in finding.canonical_operations
     } == set(VfsOperation)
     assert {item.locator for item in inventory.evidence} >= {
         "ipfs_kit_py/ipfs_kit_py/ipfs_fsspec.py",
@@ -161,15 +157,10 @@ def test_drift_inventory_covers_surface_families_and_canonical_operations() -> N
             for operation in finding.canonical_operations
         )
         assert all(
-            sources[source_id].expectation_authority
-            for source_id in finding.source_contract_ids
+            sources[source_id].expectation_authority for source_id in finding.source_contract_ids
         )
 
-    core = next(
-        item
-        for item in inventory.findings
-        if item.finding_id == "finding:vfs-core-fsspec"
-    )
+    core = next(item for item in inventory.findings if item.finding_id == "finding:vfs-core-fsspec")
     assert set(core.canonical_operations) == set(VfsOperation)
     assert {"VFSCore", "IPFSFSSpecFileSystem"}.issubset(
         evidence["evidence:vfs-core-fsspec"].observed_symbols
@@ -187,25 +178,19 @@ def test_inventory_findings_are_separate_from_repair_decisions() -> None:
     assert all(item.repair_decision is None for item in inventory.findings)
 
     variants = [
-        item
-        for item in inventory.findings
-        if item.kind is DriftFindingKind.VARIANT_PRESENCE
+        item for item in inventory.findings if item.kind is DriftFindingKind.VARIANT_PRESENCE
     ]
     assert variants
     assert all(item.variant_presence_only for item in variants)
     assert all(item.assessment is DriftAssessment.OBSERVED for item in variants)
     duplicate = next(
-        item
-        for item in inventory.findings
-        if item.kind is DriftFindingKind.DUPLICATE_CANDIDATE
+        item for item in inventory.findings if item.kind is DriftFindingKind.DUPLICATE_CANDIDATE
     )
     assert duplicate.assessment is DriftAssessment.UNRESOLVED
     assert duplicate.defect_label is None
 
     manifest = next(
-        item
-        for item in inventory.findings
-        if item.kind is DriftFindingKind.MANIFEST_DRIFT
+        item for item in inventory.findings if item.kind is DriftFindingKind.MANIFEST_DRIFT
     )
     assert manifest.assessment is DriftAssessment.DRIFT
     assert set(manifest.evidence_ids) == {
@@ -213,9 +198,7 @@ def test_inventory_findings_are_separate_from_repair_decisions() -> None:
         "evidence:mcp-js-tools-manifest",
     }
     placeholder = next(
-        item
-        for item in inventory.findings
-        if item.kind is DriftFindingKind.CONTRACT_DRIFT
+        item for item in inventory.findings if item.kind is DriftFindingKind.CONTRACT_DRIFT
     )
     assert placeholder.assessment is DriftAssessment.DRIFT
 
@@ -232,9 +215,7 @@ def test_drift_inventory_fails_closed_on_incomplete_or_unreviewed_mapping() -> N
     inventory = build_vfs_drift_inventory(pack)
 
     without_manifest = tuple(
-        item
-        for item in inventory.findings
-        if item.kind is not DriftFindingKind.MANIFEST_DRIFT
+        item for item in inventory.findings if item.kind is not DriftFindingKind.MANIFEST_DRIFT
     )
     with pytest.raises(VfsContractPackError):
         replace(inventory, findings=without_manifest)
@@ -394,18 +375,14 @@ def test_every_public_surface_has_an_explicit_operation_mapping() -> None:
         PublicSurface.MCP_PLUS_PLUS,
         PublicSurface.LIBP2P,
     ):
-        assert set(pack.surface_contract(surface_kind).supported_operations) == set(
-            VfsOperation
-        )
+        assert set(pack.surface_contract(surface_kind).supported_operations) == set(VfsOperation)
 
 
 def test_sources_are_reviewed_and_missing_expectations_remain_unresolved() -> None:
     pack = build_vfs_contract_pack()
     sources = {item.source_id: item for item in pack.sources}
 
-    authoritative = [
-        source for source in pack.sources if source.expectation_authority
-    ]
+    authoritative = [source for source in pack.sources if source.expectation_authority]
     assert authoritative
     assert all(source.available and source.reviewed for source in authoritative)
     assert all(source.kind.may_define_expectation for source in authoritative)
@@ -523,10 +500,7 @@ def test_canonical_vectors_cover_semantic_edge_cases() -> None:
     )
     assert vectors["vector:write:utf8-byte-accounting"].expected["size"] == 2
     assert vectors["vector:journal:duplicate-replay"].expected["commits"] == 1
-    assert (
-        vectors["vector:degradation:no-silent-fallback"].expected["degraded"]
-        is False
-    )
+    assert vectors["vector:degradation:no-silent-fallback"].expected["degraded"] is False
     assert all(vector.state is ExpectationState.RESOLVED for vector in vectors.values())
     assert all(vector.invariant_ids for vector in vectors.values())
 
@@ -542,13 +516,9 @@ def test_facade_examples_include_compatible_incompatible_and_unresolved_cases() 
         FacadeCompatibility.UNRESOLVED,
     }
     for example in pack.facade_examples:
-        source_contracts = [
-            sources[source_id] for source_id in example.source_contract_ids
-        ]
+        source_contracts = [sources[source_id] for source_id in example.source_contract_ids]
         if example.compatibility is FacadeCompatibility.UNRESOLVED:
-            assert not any(
-                source.expectation_authority for source in source_contracts
-            )
+            assert not any(source.expectation_authority for source in source_contracts)
         else:
             assert any(source.expectation_authority for source in source_contracts)
 
@@ -570,12 +540,7 @@ def test_alias_validation_and_atomic_publication(tmp_path) -> None:
 
     inventory = canonical_vfs_drift_inventory()
     inventory_destination = tmp_path / "nested" / "vfs-drift-inventory.json"
-    inventory_published = publish_vfs_drift_inventory(
-        inventory_destination, inventory
-    )
+    inventory_published = publish_vfs_drift_inventory(inventory_destination, inventory)
     assert inventory_published == inventory_destination.resolve()
-    assert (
-        json.loads(inventory_destination.read_text(encoding="utf-8"))
-        == inventory.to_record()
-    )
+    assert json.loads(inventory_destination.read_text(encoding="utf-8")) == inventory.to_record()
     assert not list(inventory_destination.parent.glob("*.tmp"))

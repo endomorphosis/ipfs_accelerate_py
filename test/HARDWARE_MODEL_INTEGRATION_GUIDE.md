@@ -33,7 +33,7 @@ from hardware_model_integration import get_hardware_aware_model_classification
 result = get_hardware_aware_model_classification(
     model_name="bert-base-uncased",
     model_class="BertModel",
-    tasks=["fill-mask", "feature-extraction"]
+    tasks=["fill-mask", "feature-extraction"],
 )
 
 print(f"Model family: {result['family']}")
@@ -53,7 +53,7 @@ from hardware_model_integration import HardwareAwareModelClassifier
 classifier = HardwareAwareModelClassifier(
     hardware_cache_path="./hardware_cache.json",
     model_db_path="./model_database.json",
-    force_refresh=False
+    force_refresh=False,
 )
 
 # Get detailed classification
@@ -61,7 +61,7 @@ classification = classifier.classify_model(
     model_name="gpt2",
     model_class="GPT2LMHeadModel",
     tasks=["text-generation"],
-    methods=["generate", "forward"]
+    methods=["generate", "forward"],
 )
 
 # Access detailed results
@@ -116,19 +116,22 @@ if config["resource_pool_config"]["low_memory_mode"]:
 classification = classifier.classify_model("bert-base-uncased")
 recommended_hw = classification["recommended_hardware"]
 
+
 # Create a hardware-aware model constructor
 def create_model():
     import torch
     from transformers import AutoModel
+
     model = AutoModel.from_pretrained("bert-base-uncased")
     return model  # ResourcePool will handle device placement
 
+
 # Get model from resource pool with hardware preferences
 model = pool.get_model(
-    classification["family"], 
-    "bert-base-uncased", 
+    classification["family"],
+    "bert-base-uncased",
     constructor=create_model,
-    hardware_preferences={"device": recommended_hw}
+    hardware_preferences={"device": recommended_hw},
 )
 ```
 
@@ -169,8 +172,7 @@ classifier = HardwareAwareModelClassifier()
 
 # Get model recommendations for text generation with hardware constraints
 recommendations = classifier.recommend_model_for_task(
-    task="text-generation",
-    hardware_constraints=["cuda"]
+    task="text-generation", hardware_constraints=["cuda"]
 )
 
 # Print recommendations
@@ -198,11 +200,11 @@ classifier = HardwareAwareModelClassifier()
 
 # Define a list of models to check
 models = [
-    "bert-base-uncased", 
-    "gpt2", 
-    "t5-small", 
+    "bert-base-uncased",
+    "gpt2",
+    "t5-small",
     "facebook/wav2vec2-base",
-    "llava-hf/llava-1.5-7b-hf"
+    "llava-hf/llava-1.5-7b-hf",
 ]
 
 # Check compatibility with different hardware platforms
@@ -262,7 +264,9 @@ test_content = template.render(
     model_subfamily=classification.get("subfamily"),
     recommended_hardware=classification["recommended_hardware"],
     resource_requirements=classification["resource_requirements"],
-    torch_device=classification.get("torch_device", "cuda:0" if classification["recommended_hardware"] == "cuda" else "cpu")
+    torch_device=classification.get(
+        "torch_device", "cuda:0" if classification["recommended_hardware"] == "cuda" else "cpu"
+    ),
 )
 
 # Save the test file
@@ -413,14 +417,13 @@ custom_hw_profile = {
     "cuda": {"compatible": True, "memory_usage": {"peak": 2000}},
     "mps": {"compatible": False},
     "openvino": {"compatible": True},
-    "webnn": {"compatible": False}
+    "webnn": {"compatible": False},
 }
 
 # Use custom profile in classification
 classifier = HardwareAwareModelClassifier()
 classification = classifier.classify_model(
-    model_name="my-custom-model",
-    hw_compat_override=custom_hw_profile
+    model_name="my-custom-model", hw_compat_override=custom_hw_profile
 )
 ```
 
@@ -441,7 +444,7 @@ detector = HardwareDetector()
 cuda_details = detector.get_cuda_details()
 custom_device = detector.get_torch_device_with_priority(
     priority_list=["cuda", "mps", "cpu"],
-    preferred_index=1  # Use second GPU if available
+    preferred_index=1,  # Use second GPU if available
 )
 
 # Use hardware info with model classification

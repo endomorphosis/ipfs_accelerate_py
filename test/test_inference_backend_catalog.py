@@ -234,16 +234,17 @@ def test_typed_registration_drives_lookup_alias_selection_and_snapshot():
     assert backend.models == registration.models
     assert backend.deployments == registration.deployments
     assert backend.bindings == registration.bindings
-    assert value.get_backend_by_deployment(
-        registration.deployments[0].deployment_id
-    ) is backend
+    assert value.get_backend_by_deployment(registration.deployments[0].deployment_id) is backend
     assert value.get_provider_descriptor("acme-ai") == registration.provider
-    assert value.select_backend_for_task(
-        "text-generation",
-        model="chat-latest",
-        provider="acme-ai",
-        deployment_id=registration.deployments[0].deployment_id,
-    ) is backend
+    assert (
+        value.select_backend_for_task(
+            "text-generation",
+            model="chat-latest",
+            provider="acme-ai",
+            deployment_id=registration.deployments[0].deployment_id,
+        )
+        is backend
+    )
 
     snapshot = value.get_catalog_snapshot()
     assert snapshot.providers == (registration.provider,)

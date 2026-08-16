@@ -31,15 +31,11 @@ from ..proof.formal_verification_contracts import canonical_json, content_identi
 
 
 PLAN_FAILURE_MEMORY_VERSION: Final[int] = 1
-PLAN_FAILURE_MEMORY_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/plan-failure-memory@1"
-)
+PLAN_FAILURE_MEMORY_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/plan-failure-memory@1"
 BRANCH_FAILURE_RECORD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/branch-failure-record@1"
 )
-DELTA_REPLAN_REQUIREMENT_ID: Final[str] = (
-    "285414268422632231306428376746151397491"
-)
+DELTA_REPLAN_REQUIREMENT_ID: Final[str] = "285414268422632231306428376746151397491"
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@=-]{0,255}$")
 
@@ -67,9 +63,7 @@ def _identifiers(
 ) -> tuple[str, ...]:
     if isinstance(values, (str, bytes, bytearray)):
         raise PlanFailureMemoryError(f"{name} must be an array")
-    result = tuple(
-        sorted({_identifier(value, name) for value in values})
-    )
+    result = tuple(sorted({_identifier(value, name) for value in values}))
     if not result and not allow_empty:
         raise PlanFailureMemoryError(f"{name} must not be empty")
     return result
@@ -77,9 +71,7 @@ def _identifiers(
 
 def _integer(value: Any, name: str, *, minimum: int = 0) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise PlanFailureMemoryError(
-            f"{name} must be an integer of at least {minimum}"
-        )
+        raise PlanFailureMemoryError(f"{name} must be an integer of at least {minimum}")
     return value
 
 
@@ -112,25 +104,18 @@ class FailureMemoryScope:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            object.__setattr__(
-                self, name, _identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
 
     @property
     def scope_id(self) -> str:
         return content_identity(self.to_dict())
 
     def to_dict(self) -> dict[str, str]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "FailureMemoryScope":
-        if not isinstance(payload, Mapping) or set(payload) != set(
-            cls.__dataclass_fields__
-        ):
+        if not isinstance(payload, Mapping) or set(payload) != set(cls.__dataclass_fields__):
             raise PlanFailureMemoryError("failure scope must use the closed schema")
         return cls(**dict(payload))
 
@@ -165,16 +150,10 @@ class TypedBranchFailure:
         if not isinstance(self.scope, FailureMemoryScope):
             if not isinstance(self.scope, Mapping):
                 raise PlanFailureMemoryError("scope must be FailureMemoryScope")
-            object.__setattr__(
-                self, "scope", FailureMemoryScope.from_dict(self.scope)
-            )
+            object.__setattr__(self, "scope", FailureMemoryScope.from_dict(self.scope))
         object.__setattr__(self, "kind", BranchFailureKind(self.kind))
-        object.__setattr__(
-            self, "failure_code", _identifier(self.failure_code, "failure_code")
-        )
-        object.__setattr__(
-            self, "branch_id", _identifier(self.branch_id, "branch_id")
-        )
+        object.__setattr__(self, "failure_code", _identifier(self.failure_code, "failure_code"))
+        object.__setattr__(self, "branch_id", _identifier(self.branch_id, "branch_id"))
         for name in (
             "step_ids",
             "obligation_ids",
@@ -185,9 +164,7 @@ class TypedBranchFailure:
             "conflict_scope_ids",
             "resource_ids",
         ):
-            object.__setattr__(
-                self, name, _identifiers(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _identifiers(getattr(self, name), name))
         binding_fields = {
             BranchFailureKind.COUNTEREXAMPLE: (
                 self.step_ids
@@ -202,9 +179,7 @@ class TypedBranchFailure:
             BranchFailureKind.RESOURCE_INFEASIBILITY: self.resource_ids,
         }
         if not binding_fields[self.kind]:
-            raise PlanFailureMemoryError(
-                f"{self.kind.value} requires its typed failure binding"
-            )
+            raise PlanFailureMemoryError(f"{self.kind.value} requires its typed failure binding")
 
     @property
     def diagnostic_id(self) -> str:
@@ -224,9 +199,7 @@ class TypedBranchFailure:
             "obligation_ids": list(self.obligation_ids),
             "alternative_ids": list(self.alternative_ids),
             "constraint_ids": list(self.constraint_ids),
-            "validation_signature_ids": list(
-                self.validation_signature_ids
-            ),
+            "validation_signature_ids": list(self.validation_signature_ids),
             "capability_ids": list(self.capability_ids),
             "conflict_scope_ids": list(self.conflict_scope_ids),
             "resource_ids": list(self.resource_ids),
@@ -234,12 +207,8 @@ class TypedBranchFailure:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "TypedBranchFailure":
-        if not isinstance(payload, Mapping) or set(payload) != set(
-            cls.__dataclass_fields__
-        ):
-            raise PlanFailureMemoryError(
-                "typed branch failure must use the closed schema"
-            )
+        if not isinstance(payload, Mapping) or set(payload) != set(cls.__dataclass_fields__):
+            raise PlanFailureMemoryError("typed branch failure must use the closed schema")
         return cls(**dict(payload))
 
 
@@ -263,15 +232,9 @@ class BranchFailureObservation:
     def __post_init__(self) -> None:
         if not isinstance(self.features, TypedBranchFailure):
             if not isinstance(self.features, Mapping):
-                raise PlanFailureMemoryError(
-                    "features must be TypedBranchFailure"
-                )
-            object.__setattr__(
-                self, "features", TypedBranchFailure.from_dict(self.features)
-            )
-        object.__setattr__(
-            self, "evidence_id", _identifier(self.evidence_id, "evidence_id")
-        )
+                raise PlanFailureMemoryError("features must be TypedBranchFailure")
+            object.__setattr__(self, "features", TypedBranchFailure.from_dict(self.features))
+        object.__setattr__(self, "evidence_id", _identifier(self.evidence_id, "evidence_id"))
         object.__setattr__(
             self,
             "delivery_id",
@@ -298,9 +261,7 @@ class BranchFailureObservation:
             "features",
             "evidence_id",
         }:
-            raise PlanFailureMemoryError(
-                "branch failure observation must use the closed schema"
-            )
+            raise PlanFailureMemoryError("branch failure observation must use the closed schema")
         return cls(**dict(payload))
 
 
@@ -325,25 +286,16 @@ class FailureBackoffPolicy:
                 _integer(getattr(self, name), name, minimum=1),
             )
         if self.base_backoff_milliseconds > self.max_backoff_milliseconds:
-            raise PlanFailureMemoryError(
-                "base backoff cannot exceed maximum backoff"
-            )
+            raise PlanFailureMemoryError("base backoff cannot exceed maximum backoff")
         if self.max_records_per_branch > self.max_records:
-            raise PlanFailureMemoryError(
-                "per-branch record bound cannot exceed total record bound"
-            )
+            raise PlanFailureMemoryError("per-branch record bound cannot exceed total record bound")
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "FailureBackoffPolicy":
-        if not isinstance(payload, Mapping) or set(payload) != set(
-            cls.__dataclass_fields__
-        ):
+        if not isinstance(payload, Mapping) or set(payload) != set(cls.__dataclass_fields__):
             raise PlanFailureMemoryError("backoff policy must use the closed schema")
         return cls(**dict(payload))
 
@@ -371,9 +323,7 @@ class BranchFailureRecord:
         if not isinstance(self.features, TypedBranchFailure):
             if not isinstance(self.features, Mapping):
                 raise PlanFailureMemoryError("record features are invalid")
-            object.__setattr__(
-                self, "features", TypedBranchFailure.from_dict(self.features)
-            )
+            object.__setattr__(self, "features", TypedBranchFailure.from_dict(self.features))
         object.__setattr__(
             self,
             "last_evidence_id",
@@ -384,25 +334,16 @@ class BranchFailureRecord:
             "first_observed_at_milliseconds",
             "last_observed_at_milliseconds",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name, minimum=1)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name, minimum=1))
         if self.occurrence_count > 1_000_000:
-            raise PlanFailureMemoryError(
-                "occurrence_count exceeds the durable memory bound"
-            )
+            raise PlanFailureMemoryError("occurrence_count exceeds the durable memory bound")
         object.__setattr__(
             self,
             "identical_attempts",
             _integer(self.identical_attempts, "identical_attempts"),
         )
-        if (
-            self.last_observed_at_milliseconds
-            < self.first_observed_at_milliseconds
-        ):
-            raise PlanFailureMemoryError(
-                "failure record observation times are inconsistent"
-            )
+        if self.last_observed_at_milliseconds < self.first_observed_at_milliseconds:
+            raise PlanFailureMemoryError("failure record observation times are inconsistent")
 
     @property
     def diagnostic_id(self) -> str:
@@ -417,9 +358,7 @@ class BranchFailureRecord:
             "last_evidence_id": self.last_evidence_id,
             "occurrence_count": self.occurrence_count,
             "identical_attempts": self.identical_attempts,
-            "first_observed_at_milliseconds": (
-                self.first_observed_at_milliseconds
-            ),
+            "first_observed_at_milliseconds": (self.first_observed_at_milliseconds),
             "last_observed_at_milliseconds": self.last_observed_at_milliseconds,
         }
 
@@ -437,27 +376,19 @@ class BranchFailureRecord:
             "last_observed_at_milliseconds",
         }
         if not isinstance(payload, Mapping) or set(payload) != expected:
-            raise PlanFailureMemoryError(
-                "branch failure record must use the closed schema"
-            )
+            raise PlanFailureMemoryError("branch failure record must use the closed schema")
         if (
             payload.get("schema") != BRANCH_FAILURE_RECORD_SCHEMA
             or payload.get("memory_version") != PLAN_FAILURE_MEMORY_VERSION
         ):
-            raise PlanFailureMemoryError(
-                "branch failure record version is unsupported"
-            )
+            raise PlanFailureMemoryError("branch failure record version is unsupported")
         result = cls(
             features=payload.get("features") or {},
             last_evidence_id=payload.get("last_evidence_id", ""),
             occurrence_count=payload.get("occurrence_count", 0),
             identical_attempts=payload.get("identical_attempts", 0),
-            first_observed_at_milliseconds=payload.get(
-                "first_observed_at_milliseconds", 0
-            ),
-            last_observed_at_milliseconds=payload.get(
-                "last_observed_at_milliseconds", 0
-            ),
+            first_observed_at_milliseconds=payload.get("first_observed_at_milliseconds", 0),
+            last_observed_at_milliseconds=payload.get("last_observed_at_milliseconds", 0),
         )
         if payload.get("diagnostic_id") != result.diagnostic_id:
             raise PlanFailureMemoryError(
@@ -486,10 +417,7 @@ class FailureMemoryDecision:
 
     @property
     def exhausted(self) -> bool:
-        return (
-            self.disposition
-            is FailureMemoryDisposition.IDENTICAL_FAILURE_EXHAUSTED
-        )
+        return self.disposition is FailureMemoryDisposition.IDENTICAL_FAILURE_EXHAUSTED
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -513,33 +441,22 @@ class PlanFailureMemorySnapshot:
         if not isinstance(self.policy, FailureBackoffPolicy):
             if not isinstance(self.policy, Mapping):
                 raise PlanFailureMemoryError("snapshot policy is invalid")
-            object.__setattr__(
-                self, "policy", FailureBackoffPolicy.from_dict(self.policy)
-            )
+            object.__setattr__(self, "policy", FailureBackoffPolicy.from_dict(self.policy))
         records = tuple(
-            item
-            if isinstance(item, BranchFailureRecord)
-            else BranchFailureRecord.from_dict(item)
+            item if isinstance(item, BranchFailureRecord) else BranchFailureRecord.from_dict(item)
             for item in self.records
         )
         ids = [item.diagnostic_id for item in records]
         if len(ids) != len(set(ids)):
-            raise PlanFailureMemoryError(
-                "failure memory contains duplicate diagnostics"
-            )
+            raise PlanFailureMemoryError("failure memory contains duplicate diagnostics")
         if len(records) > self.policy.max_records:
             raise PlanFailureMemoryError("failure memory exceeds its record bound")
         branch_counts: dict[tuple[str, str], int] = {}
         for record in records:
             key = (record.features.scope.scope_id, record.features.branch_id)
             branch_counts[key] = branch_counts.get(key, 0) + 1
-        if any(
-            count > self.policy.max_records_per_branch
-            for count in branch_counts.values()
-        ):
-            raise PlanFailureMemoryError(
-                "failure memory exceeds its per-branch bound"
-            )
+        if any(count > self.policy.max_records_per_branch for count in branch_counts.values()):
+            raise PlanFailureMemoryError("failure memory exceeds its per-branch bound")
         object.__setattr__(
             self,
             "records",
@@ -562,9 +479,7 @@ class PlanFailureMemorySnapshot:
         return payload
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "PlanFailureMemorySnapshot":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PlanFailureMemorySnapshot":
         expected = {
             "schema",
             "memory_version",
@@ -573,27 +488,20 @@ class PlanFailureMemorySnapshot:
             "records",
         }
         if not isinstance(payload, Mapping) or set(payload) != expected:
-            raise PlanFailureMemoryError(
-                "failure memory snapshot must use the closed schema"
-            )
+            raise PlanFailureMemoryError("failure memory snapshot must use the closed schema")
         if (
             payload.get("schema") != PLAN_FAILURE_MEMORY_SCHEMA
             or payload.get("memory_version") != PLAN_FAILURE_MEMORY_VERSION
         ):
-            raise PlanFailureMemoryError(
-                "failure memory snapshot version is unsupported"
-            )
+            raise PlanFailureMemoryError("failure memory snapshot version is unsupported")
         result = cls(
             policy=FailureBackoffPolicy.from_dict(payload.get("policy") or {}),
             records=tuple(
-                BranchFailureRecord.from_dict(item)
-                for item in payload.get("records") or ()
+                BranchFailureRecord.from_dict(item) for item in payload.get("records") or ()
             ),
         )
         if payload.get("state_id") != result.state_id:
-            raise PlanFailureMemoryError(
-                "failure memory state identity does not match content"
-            )
+            raise PlanFailureMemoryError("failure memory state identity does not match content")
         return result
 
 
@@ -616,9 +524,7 @@ class PlanFailureMemory:
                     "persisted failure-memory policy does not match requested policy"
                 )
             self.policy = snapshot.policy
-            self._records = {
-                item.diagnostic_id: item for item in snapshot.records
-            }
+            self._records = {item.diagnostic_id: item for item in snapshot.records}
 
     @staticmethod
     def _resolve_path(path: str | Path | None) -> Path | None:
@@ -630,9 +536,7 @@ class PlanFailureMemory:
         elif not candidate.suffix:
             candidate = candidate / "plan_failure_memory.json"
         if candidate.is_symlink():
-            raise PlanFailureMemoryError(
-                "failure-memory state cannot be a symlink"
-            )
+            raise PlanFailureMemoryError("failure-memory state cannot be a symlink")
         return candidate
 
     @property
@@ -652,16 +556,11 @@ class PlanFailureMemory:
         scope: FailureMemoryScope | None = None,
     ) -> BranchFailureRecord | None:
         if isinstance(diagnostic_or_features, TypedBranchFailure):
-            if (
-                scope is not None
-                and diagnostic_or_features.scope != scope
-            ):
+            if scope is not None and diagnostic_or_features.scope != scope:
                 return None
             identity = diagnostic_or_features.diagnostic_id
         else:
-            identity = _identifier(
-                diagnostic_or_features, "diagnostic_id"
-            )
+            identity = _identifier(diagnostic_or_features, "diagnostic_id")
         record = self._records.get(identity)
         if record is not None and scope is not None and record.features.scope != scope:
             return None
@@ -721,13 +620,9 @@ class PlanFailureMemory:
             record = replace(
                 existing,
                 last_evidence_id=value.evidence_id,
-                occurrence_count=min(
-                    1_000_000, existing.occurrence_count + 1
-                ),
+                occurrence_count=min(1_000_000, existing.occurrence_count + 1),
                 identical_attempts=0,
-                last_observed_at_milliseconds=max(
-                    now, existing.last_observed_at_milliseconds
-                ),
+                last_observed_at_milliseconds=max(now, existing.last_observed_at_milliseconds),
             )
             disposition = FailureMemoryDisposition.CHANGED_EVIDENCE
             should_replan = True
@@ -741,20 +636,14 @@ class PlanFailureMemory:
             )
             record = replace(
                 existing,
-                occurrence_count=min(
-                    1_000_000, existing.occurrence_count + 1
-                ),
+                occurrence_count=min(1_000_000, existing.occurrence_count + 1),
                 identical_attempts=attempts,
-                last_observed_at_milliseconds=max(
-                    now, existing.last_observed_at_milliseconds
-                ),
+                last_observed_at_milliseconds=max(now, existing.last_observed_at_milliseconds),
             )
             reused = True
             backoff_attempt = attempts
             if attempts >= self.policy.max_identical_failures:
-                disposition = (
-                    FailureMemoryDisposition.IDENTICAL_FAILURE_EXHAUSTED
-                )
+                disposition = FailureMemoryDisposition.IDENTICAL_FAILURE_EXHAUSTED
                 should_replan = False
                 backoff = 0
             else:
@@ -762,8 +651,7 @@ class PlanFailureMemory:
                 should_replan = False
                 backoff = min(
                     self.policy.max_backoff_milliseconds,
-                    self.policy.base_backoff_milliseconds
-                    * (2 ** min(attempts - 1, 30)),
+                    self.policy.base_backoff_milliseconds * (2 ** min(attempts - 1, 30)),
                 )
         self._records[value.diagnostic_id] = record
         self.persist()
@@ -797,10 +685,7 @@ class PlanFailureMemory:
             for item in self._records.values()
             if item.features.scope == scope
             and item.features.branch_id == resolved_branch
-            and (
-                not selected_ids
-                or item.diagnostic_id in selected_ids
-            )
+            and (not selected_ids or item.diagnostic_id in selected_ids)
         ]
         # Unique typed diagnostics matter more than redelivery count.  Each
         # diagnostic contributes at most 125k and the prior can never hard
@@ -814,13 +699,9 @@ class PlanFailureMemory:
             return None
         path = self.path
         if path.exists() and path.is_symlink():
-            raise PlanFailureMemoryError(
-                "failure-memory state cannot be a symlink"
-            )
+            raise PlanFailureMemoryError("failure-memory state cannot be a symlink")
         path.parent.mkdir(parents=True, exist_ok=True)
-        encoded = (canonical_json(self.snapshot().to_dict()) + "\n").encode(
-            "utf-8"
-        )
+        encoded = (canonical_json(self.snapshot().to_dict()) + "\n").encode("utf-8")
         temporary_name = ""
         try:
             with tempfile.NamedTemporaryFile(
@@ -850,9 +731,7 @@ class PlanFailureMemory:
     @staticmethod
     def _load_path(path: Path) -> PlanFailureMemorySnapshot:
         if path.is_symlink() or not path.is_file():
-            raise PlanFailureMemoryError(
-                "failure-memory state is unavailable or unsafe"
-            )
+            raise PlanFailureMemoryError("failure-memory state is unavailable or unsafe")
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:

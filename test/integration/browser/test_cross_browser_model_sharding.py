@@ -24,51 +24,53 @@ try:
 except ImportError:
     pass
 
+
 # Integration test fixtures
 @pytest.fixture
 def browsers():
     """Set up multiple browsers for cross-browser testing."""
     browser_types = os.environ.get("TEST_BROWSERS", "chrome,firefox").split(",")
-    
+
     # For each browser type, decide if we need to skip the test
     available_browsers = []
     for browser in browser_types:
         if browser not in ["chrome", "firefox", "edge"]:
             logging.warning(f"Unsupported browser type: {browser}")
             continue
-        
+
         # Check if browser is installed
         try:
             if browser == "chrome":
                 options = ChromeOptions()
-                options.add_argument('--headless')
-                options.add_argument('--no-sandbox')
-                options.add_argument('--disable-dev-shm-usage')
-                options.add_argument('--enable-features=Vulkan,WebGPU')
+                options.add_argument("--headless")
+                options.add_argument("--no-sandbox")
+                options.add_argument("--disable-dev-shm-usage")
+                options.add_argument("--enable-features=Vulkan,WebGPU")
                 driver = webdriver.Chrome(options=options)
                 available_browsers.append(("chrome", driver))
             elif browser == "firefox":
                 options = FirefoxOptions()
-                options.add_argument('-headless')
+                options.add_argument("-headless")
                 driver = webdriver.Firefox(options=options)
                 available_browsers.append(("firefox", driver))
             elif browser == "edge":
                 options = EdgeOptions()
-                options.add_argument('--headless')
+                options.add_argument("--headless")
                 driver = webdriver.Edge(options=options)
                 available_browsers.append(("edge", driver))
         except Exception as e:
             logging.warning(f"Failed to initialize {browser}: {e}")
-    
+
     # Skip test if we don't have at least 2 browsers
     if len(available_browsers) < 2:
         pytest.skip(f"At least 2 browsers are needed. Available: {len(available_browsers)}")
-    
+
     yield available_browsers
-    
+
     # Close all browsers
     for _, driver in available_browsers:
         driver.quit()
+
 
 @pytest.fixture
 def model_sharding_page(temp_dir):
@@ -192,35 +194,36 @@ def model_sharding_page(temp_dir):
     </body>
     </html>
     """
-    
-    file_path = os.path.join(temp_dir, 'model_sharding_test.html')
-    with open(file_path, 'w') as f:
+
+    file_path = os.path.join(temp_dir, "model_sharding_test.html")
+    with open(file_path, "w") as f:
         f.write(html_content)
-    
+
     return file_path
+
 
 @pytest.mark.integration
 @pytest.mark.browser
 class TestCrossBrowserModelSharding:
     """
     Tests for cross-browser model sharding.
-    
+
     These tests verify that models can be sharded across multiple
     browsers, with each browser handling different components.
     """
-    
+
     def test_browser_availability(self, browsers):
         """Test that multiple browsers are available."""
         assert len(browsers) >= 2, f"At least 2 browsers are required, found {len(browsers)}"
         browser_types = [t for t, _ in browsers]
         logging.info(f"Available browsers: {browser_types}")
-    
+
     def test_browser_capabilities(self, browsers):
         """Test browser capabilities detection."""
         for browser_type, driver in browsers:
             # Navigate to about:blank
             driver.get("about:blank")
-            
+
             # Inject and execute JavaScript to detect capabilities
             script = """
             return {
@@ -232,70 +235,78 @@ class TestCrossBrowserModelSharding:
             """
             capabilities = driver.execute_script(script)
             logging.info(f"Browser {browser_type} capabilities: {capabilities}")
-            
+
             # At least one acceleration technology should be available
-            assert capabilities["webgl"] or capabilities["webgpu"] or capabilities["webnn"], \
+            assert capabilities["webgl"] or capabilities["webgpu"] or capabilities["webnn"], (
                 f"Browser {browser_type} does not support any acceleration technology"
-    
+            )
+
     def test_basic_model_sharding(self, browsers, model_sharding_page):
         """Test basic model sharding across browsers."""
         shard_results = []
-        
+
         # Load test page in each browser with appropriate query parameter
         for browser_type, driver in browsers:
             url = f"file://{model_sharding_page}?browser={browser_type}"
             driver.get(url)
-            
+
             # Wait for sharding to complete
             time.sleep(3)
-            
+
             # Check result status
-            result_element = driver.find_element(By.ID, 'result')
-            status_element = driver.find_element(By.ID, 'status')
-            
-            assert result_element.text == 'Shard Ready', f"Shard not ready in {browser_type}: {result_element.text}"
-            assert f"{browser_type} shard initialized successfully" in status_element.text, \
+            result_element = driver.find_element(By.ID, "result")
+            status_element = driver.find_element(By.ID, "status")
+
+            assert result_element.text == "Shard Ready", (
+                f"Shard not ready in {browser_type}: {result_element.text}"
+            )
+            assert f"{browser_type} shard initialized successfully" in status_element.text, (
                 f"Unexpected status in {browser_type}: {status_element.text}"
-            
+            )
+
             # Get shard information
-            shard_info_element = driver.find_element(By.ID, 'shard-info')
+            shard_info_element = driver.find_element(By.ID, "shard-info")
             try:
                 shard_info = json.loads(shard_info_element.text)
-                shard_info['actual_browser_type'] = browser_type
+                shard_info["actual_browser_type"] = browser_type
                 shard_results.append(shard_info)
             except json.JSONDecodeError:
                 pytest.fail(f"Invalid shard info in {browser_type}: {shard_info_element.text}")
-        
+
         # Verify we have enough shards
-        assert len(shard_results) >= 2, f"At least 2 shards are required, found {len(shard_results)}"
-        
+        assert len(shard_results) >= 2, (
+            f"At least 2 shards are required, found {len(shard_results)}"
+        )
+
         # Verify shard assignments are complementary
-        shard_types = [s['shardConfig']['shardType'] for s in shard_results]
-        assert 'attention' in shard_types, "No attention shard found"
-        assert 'feedforward' in shard_types, "No feedforward shard found"
-        
+        shard_types = [s["shardConfig"]["shardType"] for s in shard_results]
+        assert "attention" in shard_types, "No attention shard found"
+        assert "feedforward" in shard_types, "No feedforward shard found"
+
         # Verify layer coverage - we need full coverage of layers 0-12
         covered_layers = set()
         for shard in shard_results:
-            layer_range = shard['shardConfig']['layerRange']
+            layer_range = shard["shardConfig"]["layerRange"]
             for layer in range(layer_range[0], layer_range[1]):
                 covered_layers.add(layer)
-        
+
         assert len(covered_layers) == 12, f"Incomplete layer coverage: {sorted(covered_layers)}"
-        
+
         # Log shard allocation for debugging
         for shard in shard_results:
-            browser = shard['actual_browser_type']
-            shard_type = shard['shardConfig']['shardType']
-            layers = shard['shardConfig']['layerRange']
-            backend = shard['shardConfig']['preferredBackend']
-            logging.info(f"Browser {browser} assigned {shard_type} shard for layers {layers} using {backend}")
-    
+            browser = shard["actual_browser_type"]
+            shard_type = shard["shardConfig"]["shardType"]
+            layers = shard["shardConfig"]["layerRange"]
+            backend = shard["shardConfig"]["preferredBackend"]
+            logging.info(
+                f"Browser {browser} assigned {shard_type} shard for layers {layers} using {backend}"
+            )
+
     @pytest.mark.skip(reason="Advanced test requiring real model inference")
     def test_integrated_model_inference(self, browsers, model_sharding_page):
         """
         Test integrated model inference across browsers.
-        
+
         This test simulates full model inference by coordinating multiple browser shards.
         Skipped by default as it requires real model inference.
         """

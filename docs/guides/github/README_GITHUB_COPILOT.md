@@ -195,7 +195,7 @@ from ipfs_accelerate_py.github_cli import WorkflowQueue
 queue = WorkflowQueue()
 queues = queue.create_workflow_queues(
     owner="myorg",
-    since_days=1  # Repositories updated in last day
+    since_days=1,  # Repositories updated in last day
 )
 
 # Returns dict mapping repo names to workflow lists
@@ -212,7 +212,7 @@ from ipfs_accelerate_py.github_cli import RunnerManager
 runner_mgr = RunnerManager()
 provisioning = runner_mgr.provision_runners_for_queue(
     queues,
-    max_runners=None  # Defaults to system CPU cores
+    max_runners=None,  # Defaults to system CPU cores
 )
 
 # Returns dict with registration tokens for each repository
@@ -294,19 +294,16 @@ sdk = CopilotSDK(model="gpt-4o", enable_cache=True)
 session = sdk.create_session(streaming=True)
 
 # Send a message
-response = sdk.send_message(
-    session,
-    "Write a Python function to reverse a linked list"
-)
+response = sdk.send_message(session, "Write a Python function to reverse a linked list")
+
 
 # Stream a message with callback
 def on_chunk(chunk):
     print(chunk, end="", flush=True)
 
+
 streaming_response = sdk.stream_message(
-    session,
-    "Explain the Factory pattern in Python",
-    on_chunk=on_chunk
+    session, "Explain the Factory pattern in Python", on_chunk=on_chunk
 )
 
 # Clean up
@@ -415,11 +412,7 @@ queue = WorkflowQueue()
 queues = queue.create_workflow_queues(owner="myorg", since_days=1)
 
 # Find repos with most workflows
-busy_repos = sorted(
-    queues.items(),
-    key=lambda x: len(x[1]),
-    reverse=True
-)[:5]  # Top 5
+busy_repos = sorted(queues.items(), key=lambda x: len(x[1]), reverse=True)[:5]  # Top 5
 
 # Provision runners for busy repos
 runner_mgr = RunnerManager()
@@ -445,14 +438,14 @@ session = sdk.create_session(streaming=False)
 tasks = [
     "Write a Python class for a binary search tree",
     "Add a method to find the height of the tree",
-    "Add a method to balance the tree"
+    "Add a method to balance the tree",
 ]
 
 for task in tasks:
     response = sdk.send_message(session, task)
-    if response.get('success'):
+    if response.get("success"):
         print(f"\nTask: {task}")
-        for msg in response['messages']:
+        for msg in response["messages"]:
             print(f"{msg['content']}\n")
 
 # Clean up

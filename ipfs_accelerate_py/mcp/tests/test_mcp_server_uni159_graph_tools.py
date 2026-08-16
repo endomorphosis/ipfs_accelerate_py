@@ -93,7 +93,9 @@ class TestMCPServerUNI159GraphTools(unittest.TestCase):
                 parameters=["bad"],  # type: ignore[arg-type]
             )
             self.assertEqual(invalid_query_params.get("status"), "error")
-            self.assertIn("parameters must be an object", str(invalid_query_params.get("error", "")))
+            self.assertIn(
+                "parameters must be an object", str(invalid_query_params.get("error", ""))
+            )
 
         anyio.run(_run)
 
@@ -123,7 +125,9 @@ class TestMCPServerUNI159GraphTools(unittest.TestCase):
                 ir_ops=["bad"],  # type: ignore[list-item]
             )
             self.assertEqual(invalid_ir_ops.get("status"), "error")
-            self.assertIn("ir_ops must be null or a list of objects", str(invalid_ir_ops.get("error", "")))
+            self.assertIn(
+                "ir_ops must be null or a list of objects", str(invalid_ir_ops.get("error", ""))
+            )
 
             invalid_format = await native_graph_tools.graph_visualize(format="svg")
             self.assertEqual(invalid_format.get("status"), "error")
@@ -154,7 +158,9 @@ class TestMCPServerUNI159GraphTools(unittest.TestCase):
         async def _run() -> None:
             invalid_tx = await native_graph_tools.graph_transaction_commit(transaction_id="   ")
             self.assertEqual(invalid_tx.get("status"), "error")
-            self.assertIn("transaction_id must be a non-empty string", str(invalid_tx.get("error", "")))
+            self.assertIn(
+                "transaction_id must be a non-empty string", str(invalid_tx.get("error", ""))
+            )
 
             invalid_index = await native_graph_tools.graph_index_create(
                 index_name="people-name",
@@ -162,7 +168,9 @@ class TestMCPServerUNI159GraphTools(unittest.TestCase):
                 properties=[],
             )
             self.assertEqual(invalid_index.get("status"), "error")
-            self.assertIn("properties must be a non-empty array", str(invalid_index.get("error", "")))
+            self.assertIn(
+                "properties must be a non-empty array", str(invalid_index.get("error", ""))
+            )
 
             invalid_constraint = await native_graph_tools.graph_constraint_add(
                 constraint_name="person-email",
@@ -171,17 +179,23 @@ class TestMCPServerUNI159GraphTools(unittest.TestCase):
                 properties=["email"],
             )
             self.assertEqual(invalid_constraint.get("status"), "error")
-            self.assertIn("constraint_type must be one of", str(invalid_constraint.get("error", "")))
+            self.assertIn(
+                "constraint_type must be one of", str(invalid_constraint.get("error", ""))
+            )
 
             begun = await native_graph_tools.graph_transaction_begin()
             self.assertEqual(begun.get("status"), "success")
             transaction_id = begun.get("transaction_id")
             self.assertIsInstance(transaction_id, str)
 
-            committed = await native_graph_tools.graph_transaction_commit(transaction_id=transaction_id)
+            committed = await native_graph_tools.graph_transaction_commit(
+                transaction_id=transaction_id
+            )
             self.assertEqual(committed.get("status"), "success")
 
-            rolled_back_missing = await native_graph_tools.graph_transaction_rollback(transaction_id="tx-missing")
+            rolled_back_missing = await native_graph_tools.graph_transaction_rollback(
+                transaction_id="tx-missing"
+            )
             self.assertEqual(rolled_back_missing.get("status"), "error")
 
             created_index = await native_graph_tools.graph_index_create(

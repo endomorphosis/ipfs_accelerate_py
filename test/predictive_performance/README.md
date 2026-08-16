@@ -65,11 +65,13 @@ prediction = predictor.predict(
     model_name="bert-base-uncased",
     model_type="text_embedding",
     hardware_platform="cuda",
-    batch_size=4
+    batch_size=4,
 )
 
 # Print prediction with confidence
-print(f"Predicted throughput: {prediction['throughput']:.2f} items/sec (confidence: {prediction.get('confidence_score', 0)*100:.1f}%)")
+print(
+    f"Predicted throughput: {prediction['throughput']:.2f} items/sec (confidence: {prediction.get('confidence_score', 0) * 100:.1f}%)"
+)
 
 # Get hardware recommendation
 hw_recommender = HardwareRecommender(predictor=predictor)
@@ -77,7 +79,7 @@ recommendation = hw_recommender.recommend_hardware(
     model_name="bert-base-uncased",
     model_type="text_embedding",
     batch_size=4,
-    optimization_metric="throughput"
+    optimization_metric="throughput",
 )
 
 # Print recommendation
@@ -89,19 +91,17 @@ configurations = active_learner.recommend_configurations(budget=5)
 
 # Print high-value configurations
 for i, config in enumerate(configurations):
-    print(f"Configuration #{i+1}: {config['model_name']} on {config['hardware']}")
+    print(f"Configuration #{i + 1}: {config['model_name']} on {config['hardware']}")
     print(f"  Expected information gain: {config.get('expected_information_gain', 0):.4f}")
 
 # Generate integrated recommendations
 integrated_results = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=5,
-    optimize_for="throughput"
+    hardware_recommender=hw_recommender, test_budget=5, optimize_for="throughput"
 )
 
 # Print integrated recommendations
 for i, config in enumerate(integrated_results["recommendations"]):
-    print(f"Integrated recommendation #{i+1}: {config['model_name']} on {config['hardware']}")
+    print(f"Integrated recommendation #{i + 1}: {config['model_name']} on {config['hardware']}")
     print(f"  Recommended hardware: {config.get('recommended_hardware', 'N/A')}")
     print(f"  Combined score: {config.get('combined_score', 0):.4f}")
 ```
@@ -226,16 +226,14 @@ from predictive_performance.multi_model_web_integration import MultiModelWebInte
 
 # Create and initialize integration
 integration = MultiModelWebIntegration(
-    enable_validation=True,
-    enable_tensor_sharing=True,
-    browser_capability_detection=True
+    enable_validation=True, enable_tensor_sharing=True, browser_capability_detection=True
 )
 integration.initialize()
 
 # Define model configurations
 model_configs = [
     {"model_name": "bert-base-uncased", "model_type": "text_embedding", "batch_size": 4},
-    {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1}
+    {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1},
 ]
 
 # Get optimal browser for models
@@ -246,7 +244,7 @@ result = integration.execute_models(
     model_configs=model_configs,
     optimization_goal="throughput",
     browser=browser,
-    validate_predictions=True
+    validate_predictions=True,
 )
 
 # Print results
@@ -257,9 +255,7 @@ print(f"Memory usage: {result['memory_usage']:.2f} MB")
 
 # Compare different execution strategies
 comparison = integration.compare_strategies(
-    model_configs=model_configs,
-    browser=browser,
-    optimization_goal="throughput"
+    model_configs=model_configs, browser=browser, optimization_goal="throughput"
 )
 
 print(f"Best strategy: {comparison['best_strategy']}")

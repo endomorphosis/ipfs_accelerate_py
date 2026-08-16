@@ -8,7 +8,9 @@ from unittest.mock import patch
 
 import anyio
 
-from ipfs_accelerate_py.mcp_server.tools.legacy_mcp_tools import native_legacy_mcp_tools as legacy_mod
+from ipfs_accelerate_py.mcp_server.tools.legacy_mcp_tools import (
+    native_legacy_mcp_tools as legacy_mod,
+)
 
 
 class _DummyManager:
@@ -54,7 +56,11 @@ class TestMCPServerUNI145LegacyMcpTools(unittest.TestCase):
 
     def test_inventory_minimal_success_defaults(self) -> None:
         async def _run() -> None:
-            with patch.object(legacy_mod, "_normalize_payload", return_value={"status": "success", "deprecated": True}):
+            with patch.object(
+                legacy_mod,
+                "_normalize_payload",
+                return_value={"status": "success", "deprecated": True},
+            ):
                 result = await legacy_mod.legacy_tools_inventory()
 
             self.assertEqual(result.get("status"), "success")
@@ -64,7 +70,9 @@ class TestMCPServerUNI145LegacyMcpTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_normalize_payload_infers_error_status_from_contradictory_delegate_payload(self) -> None:
+    def test_normalize_payload_infers_error_status_from_contradictory_delegate_payload(
+        self,
+    ) -> None:
         result = legacy_mod._normalize_payload(
             {"status": "success", "success": False, "error": "delegate failure", "deprecated": True}
         )

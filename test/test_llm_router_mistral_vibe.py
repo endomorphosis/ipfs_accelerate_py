@@ -126,9 +126,7 @@ def test_mistral_vibe_provider_explains_labs_permission_gate(monkeypatch):
         llm_router,
         "_run_cli_command",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            llm_router.LLMRouterError(
-                "Model labs-leanstral-1-5 is a Labs model (code 1913)"
-            )
+            llm_router.LLMRouterError("Model labs-leanstral-1-5 is a Labs model (code 1913)")
         ),
     )
     provider = llm_router._get_mistral_vibe_provider()

@@ -117,16 +117,10 @@ print(f"CUDA available: {hardware_info['cuda']['available']}")
 
 # Convert model
 converter_class = ModelConverterRegistry.get_converter(
-    source_format='pytorch', 
-    target_format='onnx',
-    model_type='bert'
+    source_format="pytorch", target_format="onnx", model_type="bert"
 )
 converter = converter_class()
-result = converter.convert(
-    model_path='model.pth', 
-    output_path='model.onnx',
-    model_type='bert'
-)
+result = converter.convert(model_path="model.pth", output_path="model.onnx", model_type="bert")
 
 if result.success:
     print(f"Conversion successful: {result.output_path}")
@@ -205,19 +199,21 @@ Example:
 from refactored_model_conversion_generator.core import ModelConverter, ConversionResult
 from refactored_model_conversion_generator.core import register_converter
 
-@register_converter(source_format='tensorflow', target_format='onnx')
+
+@register_converter(source_format="tensorflow", target_format="onnx")
 class TensorflowToOnnxConverter(ModelConverter):
     def _get_source_format(self) -> str:
-        return 'tensorflow'
-        
+        return "tensorflow"
+
     def _get_target_format(self) -> str:
-        return 'onnx'
-        
+        return "onnx"
+
     def _get_supported_model_types(self) -> List[str]:
-        return ['bert', 'vit', 'resnet']
-        
-    def _execute_conversion(self, model_path: str, output_path: str, 
-                           model_type: Optional[str] = None, **kwargs) -> ConversionResult:
+        return ["bert", "vit", "resnet"]
+
+    def _execute_conversion(
+        self, model_path: str, output_path: str, model_type: Optional[str] = None, **kwargs
+    ) -> ConversionResult:
         # Implement conversion logic here
         pass
 ```

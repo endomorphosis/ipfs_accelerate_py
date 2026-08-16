@@ -176,9 +176,7 @@ def _canonical_value(value: Any, depth: int, reject_secrets: bool) -> Any:
         if len(value.encode("utf-8")) > MAX_STRING_BYTES:
             raise CanonicalizationError("string exceeds canonical size bound")
         if reject_secrets and is_secret_value(value):
-            raise CanonicalizationError(
-                "credential-shaped string is not canonical catalog data"
-            )
+            raise CanonicalizationError("credential-shaped string is not canonical catalog data")
         return value
     if isinstance(value, Mapping):
         if len(value) > MAX_CONTAINER_ITEMS:
@@ -188,9 +186,7 @@ def _canonical_value(value: Any, depth: int, reject_secrets: bool) -> Any:
             if not isinstance(key, str):
                 raise CanonicalizationError("canonical JSON mapping keys must be strings")
             if reject_secrets and is_secret_key(key) and item != REDACTED:
-                raise CanonicalizationError(
-                    "credential-bearing field is forbidden: %s" % key
-                )
+                raise CanonicalizationError("credential-bearing field is forbidden: %s" % key)
             if key in result:
                 raise CanonicalizationError("duplicate canonical mapping key: %s" % key)
             result[key] = _canonical_value(item, depth + 1, reject_secrets)
@@ -204,9 +200,7 @@ def _canonical_value(value: Any, depth: int, reject_secrets: bool) -> Any:
         if len(value) > MAX_CONTAINER_ITEMS:
             raise CanonicalizationError("sequence exceeds canonical item bound")
         return [_canonical_value(item, depth + 1, reject_secrets) for item in value]
-    raise CanonicalizationError(
-        "unsupported canonical value type: %s" % type(value).__name__
-    )
+    raise CanonicalizationError("unsupported canonical value type: %s" % type(value).__name__)
 
 
 def canonical_data(value: Any, *, reject_secrets: bool = True) -> Any:
@@ -253,9 +247,7 @@ def stable_id(kind: str, *components: Any) -> str:
     return "%s_%s" % (kind, digest)
 
 
-def _require_text(
-    value: Any, field: str, *, maximum: int = MAX_NAME_BYTES
-) -> str:
+def _require_text(value: Any, field: str, *, maximum: int = MAX_NAME_BYTES) -> str:
     if not isinstance(value, str):
         raise UsageIdentityError("%s must be a string" % field)
     if value != value.strip() and value.strip():
@@ -332,9 +324,7 @@ def endpoint_fingerprint(endpoint_uri: Any) -> str:
     )
 
 
-def credential_configuration_pseudonym(
-    config_reference: Any, *, key_id: Any
-) -> str:
+def credential_configuration_pseudonym(config_reference: Any, *, key_id: Any) -> str:
     """Derive a keyed local pseudonym for a credential *configuration* reference.
 
     The reference names where a credential is configured (for example
@@ -345,13 +335,9 @@ def credential_configuration_pseudonym(
 
     reference = _require_text(config_reference, "config_reference", maximum=256)
     if is_secret_value(reference) or contains_bearer_url(reference):
-        raise UsageIdentityError(
-            "config_reference must not carry credential material"
-        )
+        raise UsageIdentityError("config_reference must not carry credential material")
     if not _CONFIG_REF.fullmatch(reference):
-        raise UsageIdentityError(
-            "config_reference must be a typed non-secret configuration handle"
-        )
+        raise UsageIdentityError("config_reference must be a typed non-secret configuration handle")
     key = _require_text(key_id, "key_id", maximum=128)
     if not _KEY_ID.fullmatch(key):
         raise UsageIdentityError("key_id is not a valid ledger key identifier")
@@ -444,9 +430,7 @@ def scope_identity_components(
             "credential_pseudonym": credential_pseudonym_value,
         }
     if not deployment_id and not endpoint_fingerprint_value:
-        raise UsageIdentityError(
-            "scope requires deployment_id or endpoint_fingerprint"
-        )
+        raise UsageIdentityError("scope requires deployment_id or endpoint_fingerprint")
     return {
         "identity_policy_version": IDENTITY_POLICY_VERSION,
         "unknown_scope": False,
@@ -535,9 +519,7 @@ def assert_no_prompt_media_or_output(value: Any, path: str = "$") -> None:
             name = str(key)
             folded = name.casefold()
             if folded in _FORBIDDEN_PAYLOAD_KEYS or is_secret_key(name):
-                raise UsageIdentityError(
-                    "%s contains forbidden field %r" % (path, name)
-                )
+                raise UsageIdentityError("%s contains forbidden field %r" % (path, name))
             assert_no_prompt_media_or_output(item, "%s.%s" % (path, name))
         return
     if isinstance(value, (list, tuple, set, frozenset)):

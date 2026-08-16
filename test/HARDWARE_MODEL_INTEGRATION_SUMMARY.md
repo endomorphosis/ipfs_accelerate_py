@@ -45,10 +45,10 @@ classifier = HardwareAwareModelClassifier()
 classification = classifier.classify_model("bert-base-uncased")
 
 # Results include both model family and hardware recommendations
-family = classification["family"]                       # embedding
-recommended_hw = classification["recommended_hardware"] # cuda
-template = classification["recommended_template"]       # hf_embedding_template.py
-resources = classification["resource_requirements"]     # memory, cores, etc.
+family = classification["family"]  # embedding
+recommended_hw = classification["recommended_hardware"]  # cuda
+template = classification["recommended_template"]  # hf_embedding_template.py
+resources = classification["resource_requirements"]  # memory, cores, etc.
 ```
 
 This provides a unified interface for obtaining both model family information and hardware recommendations.
@@ -63,7 +63,7 @@ resource_requirements = {
     "recommended_memory_mb": 8000,
     "cpu_cores": 4,
     "disk_space_mb": 500,
-    "batch_size": 4
+    "batch_size": 4,
 }
 ```
 
@@ -75,8 +75,7 @@ The new `recommend_model_for_task()` method provides model recommendations for s
 
 ```python
 recommendations = classifier.recommend_model_for_task(
-    task="text-generation", 
-    hardware_constraints=["cuda", "mps"]
+    task="text-generation", hardware_constraints=["cuda", "mps"]
 )
 ```
 
@@ -87,9 +86,7 @@ This allows users to quickly find models suitable for their task and hardware en
 The system now generates optimal ResourcePool configurations for sets of models:
 
 ```python
-config = classifier.get_optimal_resource_pool_config([
-    "bert-base-uncased", "t5-small", "gpt2"
-])
+config = classifier.get_optimal_resource_pool_config(["bert-base-uncased", "t5-small", "gpt2"])
 ```
 
 This configuration considers the combined resource requirements of all models to optimize resource allocation.
@@ -108,10 +105,7 @@ classifier = HardwareAwareModelClassifier()
 classification = classifier.classify_model("bert-base-uncased")
 
 # Create hardware preferences based on classification
-hardware_preferences = {
-    "priority_list": [CUDA, CPU],
-    "preferred_index": 0
-}
+hardware_preferences = {"priority_list": [CUDA, CPU], "preferred_index": 0}
 
 # Load model with optimal hardware configuration
 pool = get_global_resource_pool()
@@ -119,7 +113,7 @@ model = pool.get_model(
     classification["family"],
     "bert-base-uncased",
     constructor=lambda: AutoModel.from_pretrained("bert-base-uncased"),
-    hardware_preferences=hardware_preferences
+    hardware_preferences=hardware_preferences,
 )
 ```
 
@@ -143,8 +137,12 @@ vision_prefs = {"priority_list": [CUDA, OPENVINO, CPU], "preferred_index": 1}
 
 # Load models with appropriate preferences
 pool = get_global_resource_pool()
-llm_model = pool.get_model("text_generation", "gpt2", constructor=lambda: ..., hardware_preferences=llm_prefs)
-vision_model = pool.get_model("vision", "vit-base-patch16-224", constructor=lambda: ..., hardware_preferences=vision_prefs)
+llm_model = pool.get_model(
+    "text_generation", "gpt2", constructor=lambda: ..., hardware_preferences=llm_prefs
+)
+vision_model = pool.get_model(
+    "vision", "vit-base-patch16-224", constructor=lambda: ..., hardware_preferences=vision_prefs
+)
 ```
 
 This allows efficient distribution of models across multiple GPUs based on their resource requirements.

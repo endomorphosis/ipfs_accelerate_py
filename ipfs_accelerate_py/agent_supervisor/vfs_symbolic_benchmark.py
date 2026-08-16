@@ -26,15 +26,9 @@ from typing import Any, Final
 
 
 SYMBOLIC_BENCHMARK_VERSION: Final = 1
-SYMBOLIC_BENCHMARK_EVIDENCE_SCHEMA: Final = (
-    "vfs/symbolic-efficiency-benchmark@1"
-)
-SYMBOLIC_BENCHMARK_OBSERVATION_SCHEMA: Final = (
-    "vfs/symbolic-efficiency-observation@1"
-)
-SYMBOLIC_BENCHMARK_POPULATION_SCHEMA: Final = (
-    "vfs/symbolic-efficiency-population@1"
-)
+SYMBOLIC_BENCHMARK_EVIDENCE_SCHEMA: Final = "vfs/symbolic-efficiency-benchmark@1"
+SYMBOLIC_BENCHMARK_OBSERVATION_SCHEMA: Final = "vfs/symbolic-efficiency-observation@1"
+SYMBOLIC_BENCHMARK_POPULATION_SCHEMA: Final = "vfs/symbolic-efficiency-population@1"
 
 DETERMINISTIC_STAGE_NAMES: Final[tuple[str, ...]] = (
     "inventory",
@@ -126,9 +120,7 @@ def _canonical_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise SymbolicBenchmarkError(
-            "benchmark data must be canonical JSON"
-        ) from exc
+        raise SymbolicBenchmarkError("benchmark data must be canonical JSON") from exc
 
 
 def _identity(value: Any) -> str:
@@ -160,9 +152,7 @@ def _text(value: Any, name: str, maximum: int = 512) -> str:
         raise SymbolicBenchmarkError(f"{name} must be non-empty text")
     result = value.strip()
     if "\x00" in result or len(result.encode("utf-8")) > maximum:
-        raise SymbolicBenchmarkError(
-            f"{name} is unsafe or exceeds its {maximum}-byte bound"
-        )
+        raise SymbolicBenchmarkError(f"{name} is unsafe or exceeds its {maximum}-byte bound")
     return result
 
 
@@ -187,15 +177,8 @@ def _count(
     minimum: int = 0,
     maximum: int = MAX_COUNTER,
 ) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < minimum
-        or value > maximum
-    ):
-        raise SymbolicBenchmarkError(
-            f"{name} must be an integer from {minimum} through {maximum}"
-        )
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum or value > maximum:
+        raise SymbolicBenchmarkError(f"{name} must be an integer from {minimum} through {maximum}")
     return value
 
 
@@ -218,9 +201,7 @@ def _items(
     *,
     allow_empty: bool = True,
 ) -> tuple[Any, ...]:
-    if isinstance(value, (str, bytes, bytearray)) or not isinstance(
-        value, Sequence
-    ):
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
         raise SymbolicBenchmarkError(f"{name} must be a sequence")
     result = tuple(value)
     if (not allow_empty and not result) or len(result) > MAX_COLLECTION_ITEMS:
@@ -234,9 +215,9 @@ def _codes(
     *,
     allow_empty: bool = True,
 ) -> tuple[str, ...]:
-    result = tuple(_code(item, f"{name} item") for item in _items(
-        value, name, allow_empty=allow_empty
-    ))
+    result = tuple(
+        _code(item, f"{name} item") for item in _items(value, name, allow_empty=allow_empty)
+    )
     if len(result) != len(set(result)):
         raise SymbolicBenchmarkError(f"{name} contains duplicates")
     return tuple(sorted(result))
@@ -270,15 +251,11 @@ class FixtureIdentity:
         return _identity(self.to_dict())
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            name: getattr(self, name) for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "FixtureIdentity":
-        return cls(**{
-            name: value[name] for name in cls.__dataclass_fields__
-        })
+        return cls(**{name: value[name] for name in cls.__dataclass_fields__})
 
 
 @dataclass(frozen=True)
@@ -308,15 +285,11 @@ class ToolchainIdentity:
         return _identity(self.to_dict())
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            name: getattr(self, name) for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "ToolchainIdentity":
-        return cls(**{
-            name: value[name] for name in cls.__dataclass_fields__
-        })
+        return cls(**{name: value[name] for name in cls.__dataclass_fields__})
 
 
 @dataclass(frozen=True)
@@ -342,56 +315,51 @@ class BenchmarkProfile:
     max_idle_write_bytes: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "profile_id", _text(
-            self.profile_id, "profile_id"
-        ))
-        object.__setattr__(self, "profile_revision", _text(
-            self.profile_revision, "profile_revision"
-        ))
+        object.__setattr__(self, "profile_id", _text(self.profile_id, "profile_id"))
+        object.__setattr__(
+            self, "profile_revision", _text(self.profile_revision, "profile_revision")
+        )
         for name in self.__dataclass_fields__:
             if name in {"profile_id", "profile_revision"}:
                 continue
-            minimum = 1 if name in {
-                "minimum_samples_per_mode",
-                "minimum_packet_pairs",
-                "packet_input_budget_bytes",
-                "max_counterexample_time_ns",
-                "max_wall_time_ns",
-                "max_cpu_time_ns",
-                "max_peak_rss_bytes",
-                "max_process_count",
-                "max_disk_growth_bytes",
-                "max_artifact_bytes",
-                "minimum_idle_observation_ns",
-            } else 0
+            minimum = (
+                1
+                if name
+                in {
+                    "minimum_samples_per_mode",
+                    "minimum_packet_pairs",
+                    "packet_input_budget_bytes",
+                    "max_counterexample_time_ns",
+                    "max_wall_time_ns",
+                    "max_cpu_time_ns",
+                    "max_peak_rss_bytes",
+                    "max_process_count",
+                    "max_disk_growth_bytes",
+                    "max_artifact_bytes",
+                    "minimum_idle_observation_ns",
+                }
+                else 0
+            )
             object.__setattr__(
                 self,
                 name,
                 _count(getattr(self, name), name, minimum=minimum),
             )
         if self.minimum_provider_reduction_basis_points > 10_000:
-            raise SymbolicBenchmarkError(
-                "minimum_provider_reduction_basis_points exceeds 10000"
-            )
+            raise SymbolicBenchmarkError("minimum_provider_reduction_basis_points exceeds 10000")
         if self.max_idle_cpu_millionths > 1_000_000:
-            raise SymbolicBenchmarkError(
-                "max_idle_cpu_millionths exceeds 1000000"
-            )
+            raise SymbolicBenchmarkError("max_idle_cpu_millionths exceeds 1000000")
 
     @property
     def identity_id(self) -> str:
         return _identity(self.to_dict())
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            name: getattr(self, name) for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "BenchmarkProfile":
-        return cls(**{
-            name: value[name] for name in cls.__dataclass_fields__
-        })
+        return cls(**{name: value[name] for name in cls.__dataclass_fields__})
 
 
 @dataclass(frozen=True)
@@ -424,41 +392,27 @@ class InventoryMeasurement:
             _codes(self.unexplained_gap_codes, "unexplained_gap_codes"),
         )
         if self.emitted_paths + self.omitted_paths != self.observed_paths:
-            raise SymbolicBenchmarkError(
-                "inventory emitted plus omitted must equal observed"
-            )
+            raise SymbolicBenchmarkError("inventory emitted plus omitted must equal observed")
         if self.included_paths + self.excluded_paths != self.emitted_paths:
-            raise SymbolicBenchmarkError(
-                "inventory included plus excluded must equal emitted"
-            )
-        if self.exhaustive and (
-            self.omitted_paths or self.unexplained_gap_codes
-        ):
-            raise SymbolicBenchmarkError(
-                "exhaustive inventory cannot contain unexplained gaps"
-            )
+            raise SymbolicBenchmarkError("inventory included plus excluded must equal emitted")
+        if self.exhaustive and (self.omitted_paths or self.unexplained_gap_codes):
+            raise SymbolicBenchmarkError("exhaustive inventory cannot contain unexplained gaps")
 
     @property
     def complete(self) -> bool:
-        return (
-            self.exhaustive
-            and self.omitted_paths == 0
-            and not self.unexplained_gap_codes
-        )
+        return self.exhaustive and self.omitted_paths == 0 and not self.unexplained_gap_codes
 
     def to_dict(self) -> dict[str, Any]:
-        return _plain({
-            name: getattr(self, name) for name in self.__dataclass_fields__
-        })
+        return _plain({name: getattr(self, name) for name in self.__dataclass_fields__})
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "InventoryMeasurement":
-        return cls(**{
-            name: value.get(name, ())
-            if name == "unexplained_gap_codes"
-            else value[name]
-            for name in cls.__dataclass_fields__
-        })
+        return cls(
+            **{
+                name: value.get(name, ()) if name == "unexplained_gap_codes" else value[name]
+                for name in cls.__dataclass_fields__
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -482,20 +436,14 @@ class CacheMeasurement:
         if self.hits > self.lookups:
             raise SymbolicBenchmarkError("cache hits exceed lookups")
         if self.reused_artifacts > self.hits:
-            raise SymbolicBenchmarkError(
-                "reused artifacts exceed cache hits"
-            )
+            raise SymbolicBenchmarkError("reused artifacts exceed cache hits")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            name: getattr(self, name) for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "CacheMeasurement":
-        return cls(**{
-            name: value[name] for name in cls.__dataclass_fields__
-        })
+        return cls(**{name: value[name] for name in cls.__dataclass_fields__})
 
 
 @dataclass(frozen=True)
@@ -512,38 +460,26 @@ class InvalidationMeasurement:
                 _codes(getattr(self, name), name),
             )
         if not self.changed_source_ids:
-            raise SymbolicBenchmarkError(
-                "delta invalidation needs at least one changed source"
-            )
+            raise SymbolicBenchmarkError("delta invalidation needs at least one changed source")
 
     @property
     def false_invalidations(self) -> tuple[str, ...]:
-        return tuple(sorted(
-            set(self.actual_invalidated_ids)
-            - set(self.expected_invalidated_ids)
-        ))
+        return tuple(sorted(set(self.actual_invalidated_ids) - set(self.expected_invalidated_ids)))
 
     @property
     def missed_invalidations(self) -> tuple[str, ...]:
-        return tuple(sorted(
-            set(self.expected_invalidated_ids)
-            - set(self.actual_invalidated_ids)
-        ))
+        return tuple(sorted(set(self.expected_invalidated_ids) - set(self.actual_invalidated_ids)))
 
     @property
     def precise(self) -> bool:
         return not self.false_invalidations and not self.missed_invalidations
 
     def to_dict(self) -> dict[str, Any]:
-        return _plain({
-            name: getattr(self, name) for name in self.__dataclass_fields__
-        })
+        return _plain({name: getattr(self, name) for name in self.__dataclass_fields__})
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "InvalidationMeasurement":
-        return cls(**{
-            name: tuple(value[name]) for name in cls.__dataclass_fields__
-        })
+        return cls(**{name: tuple(value[name]) for name in cls.__dataclass_fields__})
 
 
 @dataclass(frozen=True)
@@ -588,29 +524,17 @@ class FindingMeasurement:
                 ),
             )
         if self.observed_truth is FindingTruth.TRUE:
-            if (
-                self.counterexample_id is None
-                or self.time_to_counterexample_ns is None
-            ):
-                raise SymbolicBenchmarkError(
-                    "true findings require a timed counterexample"
-                )
-        elif (
-            self.counterexample_id is not None
-            or self.time_to_counterexample_ns is not None
-        ):
-            raise SymbolicBenchmarkError(
-                "non-true findings cannot claim a counterexample"
-            )
+            if self.counterexample_id is None or self.time_to_counterexample_ns is None:
+                raise SymbolicBenchmarkError("true findings require a timed counterexample")
+        elif self.counterexample_id is not None or self.time_to_counterexample_ns is not None:
+            raise SymbolicBenchmarkError("non-true findings cannot claim a counterexample")
 
     @property
     def covered(self) -> bool:
         return self.expected_truth is self.observed_truth
 
     def to_dict(self) -> dict[str, Any]:
-        return _plain({
-            name: getattr(self, name) for name in self.__dataclass_fields__
-        })
+        return _plain({name: getattr(self, name) for name in self.__dataclass_fields__})
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "FindingMeasurement":
@@ -619,9 +543,7 @@ class FindingMeasurement:
             expected_truth=value["expected_truth"],
             observed_truth=value["observed_truth"],
             evidence_ids=tuple(value["evidence_ids"]),
-            time_to_counterexample_ns=value.get(
-                "time_to_counterexample_ns"
-            ),
+            time_to_counterexample_ns=value.get("time_to_counterexample_ns"),
             counterexample_id=value.get("counterexample_id"),
         )
 
@@ -648,27 +570,16 @@ class TaskMeasurement:
             _codes(self.duplicate_group_ids, "duplicate_group_ids"),
         )
         if self.eligible_findings > self.candidate_findings:
-            raise SymbolicBenchmarkError(
-                "eligible findings exceed candidates"
-            )
-        if (
-            self.emitted_tasks + self.deduplicated_findings
-            != self.eligible_findings
-        ):
+            raise SymbolicBenchmarkError("eligible findings exceed candidates")
+        if self.emitted_tasks + self.deduplicated_findings != self.eligible_findings:
             raise SymbolicBenchmarkError(
                 "task yield and deduplication do not close eligible findings"
             )
-        if bool(self.deduplicated_findings) != bool(
-            self.duplicate_group_ids
-        ):
-            raise SymbolicBenchmarkError(
-                "deduplicated findings require duplicate group identities"
-            )
+        if bool(self.deduplicated_findings) != bool(self.duplicate_group_ids):
+            raise SymbolicBenchmarkError("deduplicated findings require duplicate group identities")
 
     def to_dict(self) -> dict[str, Any]:
-        return _plain({
-            name: getattr(self, name) for name in self.__dataclass_fields__
-        })
+        return _plain({name: getattr(self, name) for name in self.__dataclass_fields__})
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "TaskMeasurement":
@@ -728,31 +639,23 @@ class ProviderPacketMeasurement:
 
     @property
     def evidence_preserved(self) -> bool:
-        return set(self.baseline_required_evidence_ids).issubset(
-            self.packet_evidence_ids
-        )
+        return set(self.baseline_required_evidence_ids).issubset(self.packet_evidence_ids)
 
     @property
     def seeded_coverage_preserved(self) -> bool:
-        return set(self.baseline_seed_coverage_ids).issubset(
-            self.packet_seed_coverage_ids
-        )
+        return set(self.baseline_seed_coverage_ids).issubset(self.packet_seed_coverage_ids)
 
     def to_dict(self) -> dict[str, Any]:
-        return _plain({
-            name: getattr(self, name) for name in self.__dataclass_fields__
-        })
+        return _plain({name: getattr(self, name) for name in self.__dataclass_fields__})
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "ProviderPacketMeasurement":
-        return cls(**{
-            name: tuple(value[name])
-            if name.endswith("_ids")
-            else value[name]
-            for name in cls.__dataclass_fields__
-        })
+    def from_dict(cls, value: Mapping[str, Any]) -> "ProviderPacketMeasurement":
+        return cls(
+            **{
+                name: tuple(value[name]) if name.endswith("_ids") else value[name]
+                for name in cls.__dataclass_fields__
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -771,11 +674,16 @@ class ResourceMeasurement:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            minimum = 1 if name in {
-                "wall_time_ns",
-                "peak_process_count",
-                "idle_observation_ns",
-            } else 0
+            minimum = (
+                1
+                if name
+                in {
+                    "wall_time_ns",
+                    "peak_process_count",
+                    "idle_observation_ns",
+                }
+                else 0
+            )
             object.__setattr__(
                 self,
                 name,
@@ -788,30 +696,23 @@ class ResourceMeasurement:
 
     @property
     def idle_cpu_millionths(self) -> int:
-        return (
-            self.idle_cpu_time_ns * 1_000_000
-        ) // self.idle_observation_ns
+        return (self.idle_cpu_time_ns * 1_000_000) // self.idle_observation_ns
 
     def to_dict(self) -> dict[str, Any]:
-        result = {
-            name: getattr(self, name) for name in self.__dataclass_fields__
-        }
+        result = {name: getattr(self, name) for name in self.__dataclass_fields__}
         result["disk_growth_bytes"] = self.disk_growth_bytes
         result["idle_cpu_millionths"] = self.idle_cpu_millionths
         return result
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "ResourceMeasurement":
-        result = cls(**{
-            name: value[name] for name in cls.__dataclass_fields__
-        })
-        if value.get("disk_growth_bytes", result.disk_growth_bytes) != (
-            result.disk_growth_bytes
-        ):
+        result = cls(**{name: value[name] for name in cls.__dataclass_fields__})
+        if value.get("disk_growth_bytes", result.disk_growth_bytes) != (result.disk_growth_bytes):
             raise SymbolicBenchmarkError("disk growth metric mismatch")
-        if value.get(
-            "idle_cpu_millionths", result.idle_cpu_millionths
-        ) != result.idle_cpu_millionths:
+        if (
+            value.get("idle_cpu_millionths", result.idle_cpu_millionths)
+            != result.idle_cpu_millionths
+        ):
             raise SymbolicBenchmarkError("idle CPU metric mismatch")
         return result
 
@@ -837,9 +738,7 @@ class SymbolicBenchmarkObservation:
     source_receipt_ids: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "mode", _enum(self.mode, ScanMode, "scan mode")
-        )
+        object.__setattr__(self, "mode", _enum(self.mode, ScanMode, "scan mode"))
         object.__setattr__(
             self,
             "sample_index",
@@ -849,9 +748,7 @@ class SymbolicBenchmarkObservation:
             raise SymbolicBenchmarkError("fixture identity is invalid")
         if not isinstance(self.toolchain, ToolchainIdentity):
             raise SymbolicBenchmarkError("toolchain identity is invalid")
-        object.__setattr__(
-            self, "profile_id", _text(self.profile_id, "profile_id")
-        )
+        object.__setattr__(self, "profile_id", _text(self.profile_id, "profile_id"))
         object.__setattr__(
             self,
             "profile_revision",
@@ -878,23 +775,14 @@ class SymbolicBenchmarkObservation:
             "deterministic_stage_llm_calls",
             allow_empty=False,
         ):
-            if (
-                not isinstance(raw, (tuple, list))
-                or len(raw) != 2
-            ):
-                raise SymbolicBenchmarkError(
-                    "stage call measurement must be a name/count pair"
-                )
+            if not isinstance(raw, (tuple, list)) or len(raw) != 2:
+                raise SymbolicBenchmarkError("stage call measurement must be a name/count pair")
             stage = _code(raw[0], "deterministic stage")
             if stage in calls:
-                raise SymbolicBenchmarkError(
-                    "duplicate deterministic stage measurement"
-                )
+                raise SymbolicBenchmarkError("duplicate deterministic stage measurement")
             calls[stage] = _count(raw[1], "deterministic stage LLM calls")
         if set(calls) != set(DETERMINISTIC_STAGE_NAMES):
-            raise SymbolicBenchmarkError(
-                "all deterministic stages must record LLM call counts"
-            )
+            raise SymbolicBenchmarkError("all deterministic stages must record LLM call counts")
         object.__setattr__(
             self,
             "deterministic_stage_llm_calls",
@@ -908,21 +796,13 @@ class SymbolicBenchmarkObservation:
             raise SymbolicBenchmarkError("duplicate seeded finding")
         expected = {item.expected_truth for item in findings}
         if expected != set(FindingTruth):
-            raise SymbolicBenchmarkError(
-                "true, false, and unknown seeded findings are required"
-            )
-        object.__setattr__(
-            self, "findings", tuple(sorted(findings, key=lambda item: item.seed_id))
-        )
+            raise SymbolicBenchmarkError("true, false, and unknown seeded findings are required")
+        object.__setattr__(self, "findings", tuple(sorted(findings, key=lambda item: item.seed_id)))
         if self.mode is ScanMode.DELTA:
             if not isinstance(self.invalidation, InvalidationMeasurement):
-                raise SymbolicBenchmarkError(
-                    "delta scans require invalidation measurement"
-                )
+                raise SymbolicBenchmarkError("delta scans require invalidation measurement")
         elif self.invalidation is not None:
-            raise SymbolicBenchmarkError(
-                "only delta scans may record invalidation"
-            )
+            raise SymbolicBenchmarkError("only delta scans may record invalidation")
         if not isinstance(self.tasks, TaskMeasurement):
             raise SymbolicBenchmarkError("task measurement is invalid")
         if not isinstance(self.packet, ProviderPacketMeasurement):
@@ -947,9 +827,7 @@ class SymbolicBenchmarkObservation:
     def total_llm_calls(self) -> int:
         return sum(count for _, count in self.deterministic_stage_llm_calls)
 
-    def to_dict(
-        self, *, include_observation_id: bool = True
-    ) -> dict[str, Any]:
+    def to_dict(self, *, include_observation_id: bool = True) -> dict[str, Any]:
         payload = {
             "schema": SYMBOLIC_BENCHMARK_OBSERVATION_SCHEMA,
             "version": SYMBOLIC_BENCHMARK_VERSION,
@@ -962,14 +840,10 @@ class SymbolicBenchmarkObservation:
             "inventory": self.inventory.to_dict(),
             "caches": [item.to_dict() for item in self.caches],
             "deterministic_stage_llm_calls": [
-                [stage, count]
-                for stage, count in self.deterministic_stage_llm_calls
+                [stage, count] for stage, count in self.deterministic_stage_llm_calls
             ],
             "findings": [item.to_dict() for item in self.findings],
-            "invalidation": (
-                None if self.invalidation is None
-                else self.invalidation.to_dict()
-            ),
+            "invalidation": (None if self.invalidation is None else self.invalidation.to_dict()),
             "tasks": self.tasks.to_dict(),
             "packet": self.packet.to_dict(),
             "resources": self.resources.to_dict(),
@@ -980,9 +854,7 @@ class SymbolicBenchmarkObservation:
         return payload
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "SymbolicBenchmarkObservation":
+    def from_dict(cls, value: Mapping[str, Any]) -> "SymbolicBenchmarkObservation":
         if (
             value.get("schema") != SYMBOLIC_BENCHMARK_OBSERVATION_SCHEMA
             or value.get("version") != SYMBOLIC_BENCHMARK_VERSION
@@ -991,20 +863,13 @@ class SymbolicBenchmarkObservation:
         result = cls(
             mode=value["mode"],
             sample_index=value["sample_index"],
-            fixture=FixtureIdentity.from_dict(_mapping(
-                value["fixture"], "fixture"
-            )),
-            toolchain=ToolchainIdentity.from_dict(_mapping(
-                value["toolchain"], "toolchain"
-            )),
+            fixture=FixtureIdentity.from_dict(_mapping(value["fixture"], "fixture")),
+            toolchain=ToolchainIdentity.from_dict(_mapping(value["toolchain"], "toolchain")),
             profile_id=value["profile_id"],
             profile_revision=value["profile_revision"],
-            inventory=InventoryMeasurement.from_dict(_mapping(
-                value["inventory"], "inventory"
-            )),
+            inventory=InventoryMeasurement.from_dict(_mapping(value["inventory"], "inventory")),
             caches=tuple(
-                CacheMeasurement.from_dict(_mapping(item, "cache"))
-                for item in value["caches"]
+                CacheMeasurement.from_dict(_mapping(item, "cache")) for item in value["caches"]
             ),
             deterministic_stage_llm_calls=tuple(
                 tuple(item) for item in value["deterministic_stage_llm_calls"]
@@ -1016,24 +881,16 @@ class SymbolicBenchmarkObservation:
             invalidation=(
                 None
                 if value.get("invalidation") is None
-                else InvalidationMeasurement.from_dict(_mapping(
-                    value["invalidation"], "invalidation"
-                ))
+                else InvalidationMeasurement.from_dict(
+                    _mapping(value["invalidation"], "invalidation")
+                )
             ),
-            tasks=TaskMeasurement.from_dict(_mapping(
-                value["tasks"], "tasks"
-            )),
-            packet=ProviderPacketMeasurement.from_dict(_mapping(
-                value["packet"], "packet"
-            )),
-            resources=ResourceMeasurement.from_dict(_mapping(
-                value["resources"], "resources"
-            )),
+            tasks=TaskMeasurement.from_dict(_mapping(value["tasks"], "tasks")),
+            packet=ProviderPacketMeasurement.from_dict(_mapping(value["packet"], "packet")),
+            resources=ResourceMeasurement.from_dict(_mapping(value["resources"], "resources")),
             source_receipt_ids=tuple(value["source_receipt_ids"]),
         )
-        if value.get(
-            "observation_id", result.observation_id
-        ) != result.observation_id:
+        if value.get("observation_id", result.observation_id) != result.observation_id:
             raise SymbolicBenchmarkError("observation ID mismatch")
         if len(_canonical_bytes(result.to_dict())) > MAX_OBSERVATION_BYTES:
             raise SymbolicBenchmarkError("observation exceeds byte bound")
@@ -1043,9 +900,7 @@ class SymbolicBenchmarkObservation:
         return _canonical_bytes(self.to_dict()).decode("utf-8")
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "SymbolicBenchmarkObservation":
+    def from_json(cls, value: str | bytes | bytearray) -> "SymbolicBenchmarkObservation":
         return cls.from_dict(_load_json(value, "symbolic observation"))
 
 
@@ -1059,15 +914,10 @@ class SymbolicBenchmarkPopulation:
     def __post_init__(self) -> None:
         if not isinstance(self.profile, BenchmarkProfile):
             raise SymbolicBenchmarkError("benchmark profile is invalid")
-        observations = _items(
-            self.observations, "observations", allow_empty=False
-        )
+        observations = _items(self.observations, "observations", allow_empty=False)
         if len(observations) > MAX_OBSERVATIONS:
             raise SymbolicBenchmarkError("too many benchmark observations")
-        if any(
-            not isinstance(item, SymbolicBenchmarkObservation)
-            for item in observations
-        ):
+        if any(not isinstance(item, SymbolicBenchmarkObservation) for item in observations):
             raise SymbolicBenchmarkError("observation population is invalid")
         ids = [item.observation_id for item in observations]
         if len(ids) != len(set(ids)):
@@ -1085,23 +935,15 @@ class SymbolicBenchmarkPopulation:
             for item in observations
         ]
         if len(coordinates) != len(set(coordinates)):
-            raise SymbolicBenchmarkError(
-                "duplicate fixture/toolchain/mode/sample coordinate"
-            )
+            raise SymbolicBenchmarkError("duplicate fixture/toolchain/mode/sample coordinate")
         for item in observations:
             if (
                 item.profile_id != self.profile.profile_id
                 or item.profile_revision != self.profile.profile_revision
             ):
-                raise SymbolicBenchmarkError(
-                    "observation is detached from benchmark profile"
-                )
-            if item.packet.packet_input_bytes > (
-                self.profile.packet_input_budget_bytes
-            ):
-                raise SymbolicBenchmarkError(
-                    "compact packet exceeds profile input budget"
-                )
+                raise SymbolicBenchmarkError("observation is detached from benchmark profile")
+            if item.packet.packet_input_bytes > (self.profile.packet_input_budget_bytes):
+                raise SymbolicBenchmarkError("compact packet exceeds profile input budget")
         object.__setattr__(
             self,
             "observations",
@@ -1114,44 +956,32 @@ class SymbolicBenchmarkPopulation:
     def population_id(self) -> str:
         return _identity(self.to_dict(include_population_id=False))
 
-    def to_dict(
-        self, *, include_population_id: bool = True
-    ) -> dict[str, Any]:
+    def to_dict(self, *, include_population_id: bool = True) -> dict[str, Any]:
         payload = {
             "schema": SYMBOLIC_BENCHMARK_POPULATION_SCHEMA,
             "version": SYMBOLIC_BENCHMARK_VERSION,
             "profile": self.profile.to_dict(),
-            "observations": [
-                item.to_dict() for item in self.observations
-            ],
+            "observations": [item.to_dict() for item in self.observations],
         }
         if include_population_id:
             payload["population_id"] = self.population_id
         return payload
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "SymbolicBenchmarkPopulation":
+    def from_dict(cls, value: Mapping[str, Any]) -> "SymbolicBenchmarkPopulation":
         if (
             value.get("schema") != SYMBOLIC_BENCHMARK_POPULATION_SCHEMA
             or value.get("version") != SYMBOLIC_BENCHMARK_VERSION
         ):
             raise SymbolicBenchmarkError("unsupported population schema")
         result = cls(
-            profile=BenchmarkProfile.from_dict(_mapping(
-                value["profile"], "profile"
-            )),
+            profile=BenchmarkProfile.from_dict(_mapping(value["profile"], "profile")),
             observations=tuple(
-                SymbolicBenchmarkObservation.from_dict(_mapping(
-                    item, "observation"
-                ))
+                SymbolicBenchmarkObservation.from_dict(_mapping(item, "observation"))
                 for item in value["observations"]
             ),
         )
-        if value.get("population_id", result.population_id) != (
-            result.population_id
-        ):
+        if value.get("population_id", result.population_id) != (result.population_id):
             raise SymbolicBenchmarkError("population ID mismatch")
         return result
 
@@ -1159,9 +989,7 @@ class SymbolicBenchmarkPopulation:
         return _canonical_bytes(self.to_dict()).decode("utf-8")
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "SymbolicBenchmarkPopulation":
+    def from_json(cls, value: str | bytes | bytearray) -> "SymbolicBenchmarkPopulation":
         return cls.from_dict(_load_json(value, "symbolic population"))
 
 
@@ -1174,12 +1002,8 @@ class BenchmarkGate:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _code(self.name, "gate name"))
-        object.__setattr__(
-            self, "status", _enum(self.status, GateStatus, "gate status")
-        )
-        object.__setattr__(
-            self, "observed", _text(self.observed, "gate observed", 2048)
-        )
+        object.__setattr__(self, "status", _enum(self.status, GateStatus, "gate status"))
+        object.__setattr__(self, "observed", _text(self.observed, "gate observed", 2048))
         object.__setattr__(
             self,
             "requirement",
@@ -1187,9 +1011,7 @@ class BenchmarkGate:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return _plain({
-            name: getattr(self, name) for name in self.__dataclass_fields__
-        })
+        return _plain({name: getattr(self, name) for name in self.__dataclass_fields__})
 
 
 def _median_fraction(values: Sequence[int]) -> Fraction:
@@ -1274,25 +1096,25 @@ class SymbolicEfficiencyBenchmarkReport:
         object.__setattr__(
             self,
             "fixture_identity_ids",
-            tuple(sorted(_content_id(
-                item, "fixture identity"
-            ) for item in self.fixture_identity_ids)),
+            tuple(
+                sorted(_content_id(item, "fixture identity") for item in self.fixture_identity_ids)
+            ),
         )
         object.__setattr__(
             self,
             "toolchain_identity_ids",
-            tuple(sorted(_content_id(
-                item, "toolchain identity"
-            ) for item in self.toolchain_identity_ids)),
+            tuple(
+                sorted(
+                    _content_id(item, "toolchain identity") for item in self.toolchain_identity_ids
+                )
+            ),
         )
         gates = tuple(self.gates)
         if any(not isinstance(item, BenchmarkGate) for item in gates):
             raise SymbolicBenchmarkError("invalid benchmark gate")
         if len({item.name for item in gates}) != len(gates):
             raise SymbolicBenchmarkError("duplicate benchmark gate")
-        object.__setattr__(
-            self, "gates", tuple(sorted(gates, key=lambda item: item.name))
-        )
+        object.__setattr__(self, "gates", tuple(sorted(gates, key=lambda item: item.name)))
         object.__setattr__(
             self,
             "conclusion",
@@ -1335,10 +1157,7 @@ class SymbolicEfficiencyBenchmarkReport:
         payload = {
             "schema": SYMBOLIC_BENCHMARK_EVIDENCE_SCHEMA,
             "version": SYMBOLIC_BENCHMARK_VERSION,
-            **{
-                name: _plain(getattr(self, name))
-                for name in self.__dataclass_fields__
-            },
+            **{name: _plain(getattr(self, name)) for name in self.__dataclass_fields__},
             "authoritative": False,
             "completion_authoritative": False,
             "promotion_authoritative": False,
@@ -1359,9 +1178,7 @@ class SymbolicEfficiencyBenchmarkReport:
     ) -> "SymbolicEfficiencyBenchmarkReport":
         replayed = evaluate_symbolic_efficiency(population)
         if _canonical_bytes(value) != _canonical_bytes(replayed.to_dict()):
-            raise SymbolicBenchmarkError(
-                "report does not match complete population replay"
-            )
+            raise SymbolicBenchmarkError("report does not match complete population replay")
         return replayed
 
     @classmethod
@@ -1388,7 +1205,9 @@ def _gate(
     status = (
         GateStatus.INSUFFICIENT_SAMPLES
         if insufficient
-        else GateStatus.PASSED if passed else GateStatus.FAILED
+        else GateStatus.PASSED
+        if passed
+        else GateStatus.FAILED
     )
     return BenchmarkGate(name, status, observed, requirement)
 
@@ -1399,256 +1218,224 @@ def evaluate_symbolic_efficiency(
     """Recompute all VFS-G121 gates from the closed observation population."""
 
     if not isinstance(population, SymbolicBenchmarkPopulation):
-        raise SymbolicBenchmarkError(
-            "population must be SymbolicBenchmarkPopulation"
-        )
+        raise SymbolicBenchmarkError("population must be SymbolicBenchmarkPopulation")
     observations = population.observations
     profile = population.profile
     by_mode = Counter(item.mode.value for item in observations)
     sufficient_modes = all(
-        by_mode[mode] >= profile.minimum_samples_per_mode
-        for mode in REQUIRED_SCAN_MODES
+        by_mode[mode] >= profile.minimum_samples_per_mode for mode in REQUIRED_SCAN_MODES
     )
-    sufficient_pairs = (
-        len(observations) >= profile.minimum_packet_pairs
-    )
+    sufficient_pairs = len(observations) >= profile.minimum_packet_pairs
 
     gates: list[BenchmarkGate] = []
-    gates.append(_gate(
-        "sample-sufficiency",
-        sufficient_modes and sufficient_pairs,
-        ",".join(f"{mode}={by_mode[mode]}" for mode in REQUIRED_SCAN_MODES),
-        (
-            f">={profile.minimum_samples_per_mode} per mode and "
-            f">={profile.minimum_packet_pairs} packet pairs"
-        ),
-        insufficient=not (sufficient_modes and sufficient_pairs),
-    ))
-    inventory_complete = all(item.inventory.complete for item in observations)
-    gates.append(_gate(
-        "inventory-completeness",
-        inventory_complete,
-        f"{sum(item.inventory.complete for item in observations)}/"
-        f"{len(observations)} complete",
-        "every inventory is exhaustive with zero unexplained omissions",
-    ))
-    deterministic_calls = sum(
-        item.total_llm_calls for item in observations
+    gates.append(
+        _gate(
+            "sample-sufficiency",
+            sufficient_modes and sufficient_pairs,
+            ",".join(f"{mode}={by_mode[mode]}" for mode in REQUIRED_SCAN_MODES),
+            (
+                f">={profile.minimum_samples_per_mode} per mode and "
+                f">={profile.minimum_packet_pairs} packet pairs"
+            ),
+            insufficient=not (sufficient_modes and sufficient_pairs),
+        )
     )
-    gates.append(_gate(
-        "deterministic-zero-llm",
-        deterministic_calls == 0,
-        str(deterministic_calls),
-        "zero LLM calls in inventory/scan/parse/identity/graph/contract/cache/proof",
-    ))
+    inventory_complete = all(item.inventory.complete for item in observations)
+    gates.append(
+        _gate(
+            "inventory-completeness",
+            inventory_complete,
+            f"{sum(item.inventory.complete for item in observations)}/{len(observations)} complete",
+            "every inventory is exhaustive with zero unexplained omissions",
+        )
+    )
+    deterministic_calls = sum(item.total_llm_calls for item in observations)
+    gates.append(
+        _gate(
+            "deterministic-zero-llm",
+            deterministic_calls == 0,
+            str(deterministic_calls),
+            "zero LLM calls in inventory/scan/parse/identity/graph/contract/cache/proof",
+        )
+    )
 
-    caches = [
-        (item.mode, cache)
-        for item in observations
-        for cache in item.caches
-    ]
-    exact_cache = [
-        cache for mode, cache in caches if mode is ScanMode.EXACT
-    ]
-    warm_cache = [
-        cache for mode, cache in caches if mode is ScanMode.WARM
-    ]
-    delta_cache = [
-        cache for mode, cache in caches if mode is ScanMode.DELTA
-    ]
+    caches = [(item.mode, cache) for item in observations for cache in item.caches]
+    exact_cache = [cache for mode, cache in caches if mode is ScanMode.EXACT]
+    warm_cache = [cache for mode, cache in caches if mode is ScanMode.WARM]
+    delta_cache = [cache for mode, cache in caches if mode is ScanMode.DELTA]
     exact_reuse = bool(exact_cache) and all(
-        cache.lookups > 0
-        and cache.hits == cache.lookups
-        and cache.reused_artifacts == cache.hits
+        cache.lookups > 0 and cache.hits == cache.lookups and cache.reused_artifacts == cache.hits
         for cache in exact_cache
     )
     warm_reuse = bool(warm_cache) and all(
-        cache.lookups > 0 and cache.hits > 0
-        for cache in warm_cache
+        cache.lookups > 0 and cache.hits > 0 for cache in warm_cache
     )
     delta_reuse = bool(delta_cache) and all(
-        cache.lookups > 0 and cache.hits > 0
-        for cache in delta_cache
+        cache.lookups > 0 and cache.hits > 0 for cache in delta_cache
     )
-    gates.append(_gate(
-        "cache-reuse",
-        exact_reuse and warm_reuse and delta_reuse,
-        (
-            f"exact={int(exact_reuse)},warm={int(warm_reuse)},"
-            f"delta={int(delta_reuse)}"
-        ),
-        "AST/graph/contract/proof exact hits and warm/delta reuse",
-    ))
+    gates.append(
+        _gate(
+            "cache-reuse",
+            exact_reuse and warm_reuse and delta_reuse,
+            (f"exact={int(exact_reuse)},warm={int(warm_reuse)},delta={int(delta_reuse)}"),
+            "AST/graph/contract/proof exact hits and warm/delta reuse",
+        )
+    )
 
-    invalidations = [
-        item.invalidation
-        for item in observations
-        if item.mode is ScanMode.DELTA
-    ]
+    invalidations = [item.invalidation for item in observations if item.mode is ScanMode.DELTA]
     precise_invalidation = bool(invalidations) and all(
         item is not None and item.precise for item in invalidations
     )
-    gates.append(_gate(
-        "invalidation-precision",
-        precise_invalidation,
-        (
-            f"false-positive={sum(len(item.false_invalidations) for item in invalidations if item)},"
-            f"false-negative={sum(len(item.missed_invalidations) for item in invalidations if item)}"
-        ),
-        "actual invalidation closure equals expected transitive closure",
-    ))
+    gates.append(
+        _gate(
+            "invalidation-precision",
+            precise_invalidation,
+            (
+                f"false-positive={sum(len(item.false_invalidations) for item in invalidations if item)},"
+                f"false-negative={sum(len(item.missed_invalidations) for item in invalidations if item)}"
+            ),
+            "actual invalidation closure equals expected transitive closure",
+        )
+    )
 
-    findings = [
-        finding
-        for observation in observations
-        for finding in observation.findings
-    ]
+    findings = [finding for observation in observations for finding in observation.findings]
     finding_coverage = all(item.covered for item in findings)
-    gates.append(_gate(
-        "seeded-finding-coverage",
-        finding_coverage,
-        f"{sum(item.covered for item in findings)}/{len(findings)}",
-        "all seeded true/false/unknown classifications match",
-    ))
+    gates.append(
+        _gate(
+            "seeded-finding-coverage",
+            finding_coverage,
+            f"{sum(item.covered for item in findings)}/{len(findings)}",
+            "all seeded true/false/unknown classifications match",
+        )
+    )
     counterexamples = [
         item.time_to_counterexample_ns
         for item in findings
-        if item.expected_truth is FindingTruth.TRUE
-        and item.time_to_counterexample_ns is not None
+        if item.expected_truth is FindingTruth.TRUE and item.time_to_counterexample_ns is not None
     ]
-    counterexample_latency = (
-        len(counterexamples)
-        == sum(
-            item.expected_truth is FindingTruth.TRUE for item in findings
-        )
-        and all(
-            item <= profile.max_counterexample_time_ns
-            for item in counterexamples
+    counterexample_latency = len(counterexamples) == sum(
+        item.expected_truth is FindingTruth.TRUE for item in findings
+    ) and all(item <= profile.max_counterexample_time_ns for item in counterexamples)
+    gates.append(
+        _gate(
+            "counterexample-latency",
+            counterexample_latency,
+            (
+                f"max={max(counterexamples) if counterexamples else 0}ns,"
+                f"count={len(counterexamples)}"
+            ),
+            f"every true seed <= {profile.max_counterexample_time_ns}ns",
         )
     )
-    gates.append(_gate(
-        "counterexample-latency",
-        counterexample_latency,
-        (
-            f"max={max(counterexamples) if counterexamples else 0}ns,"
-            f"count={len(counterexamples)}"
-        ),
-        f"every true seed <= {profile.max_counterexample_time_ns}ns",
-    ))
 
     tasks_close = all(
-        item.tasks.emitted_tasks + item.tasks.deduplicated_findings
-        == item.tasks.eligible_findings
+        item.tasks.emitted_tasks + item.tasks.deduplicated_findings == item.tasks.eligible_findings
         for item in observations
     )
-    gates.append(_gate(
-        "task-yield-deduplication",
-        tasks_close,
-        (
-            f"eligible={sum(item.tasks.eligible_findings for item in observations)},"
-            f"tasks={sum(item.tasks.emitted_tasks for item in observations)},"
-            f"deduplicated={sum(item.tasks.deduplicated_findings for item in observations)}"
-        ),
-        "emitted tasks plus same-root deduplications close eligible findings",
-    ))
+    gates.append(
+        _gate(
+            "task-yield-deduplication",
+            tasks_close,
+            (
+                f"eligible={sum(item.tasks.eligible_findings for item in observations)},"
+                f"tasks={sum(item.tasks.emitted_tasks for item in observations)},"
+                f"deduplicated={sum(item.tasks.deduplicated_findings for item in observations)}"
+            ),
+            "emitted tasks plus same-root deduplications close eligible findings",
+        )
+    )
 
     packet_parity = all(
-        item.packet.evidence_preserved
-        and item.packet.seeded_coverage_preserved
+        item.packet.evidence_preserved and item.packet.seeded_coverage_preserved
         for item in observations
     )
-    gates.append(_gate(
-        "packet-evidence-parity",
-        packet_parity,
-        f"{sum(item.packet.evidence_preserved and item.packet.seeded_coverage_preserved for item in observations)}/{len(observations)}",
-        "compact packet preserves required evidence and baseline seeded coverage",
-    ))
-    median_baseline_bytes = _median_fraction([
-        item.packet.baseline_input_bytes for item in observations
-    ])
-    median_packet_bytes = _median_fraction([
-        item.packet.packet_input_bytes for item in observations
-    ])
-    median_baseline_tokens = _median_fraction([
-        item.packet.baseline_input_tokens for item in observations
-    ])
-    median_packet_tokens = _median_fraction([
-        item.packet.packet_input_tokens for item in observations
-    ])
-    byte_reduction = _reduction_basis_points(
-        median_baseline_bytes, median_packet_bytes
+    gates.append(
+        _gate(
+            "packet-evidence-parity",
+            packet_parity,
+            f"{sum(item.packet.evidence_preserved and item.packet.seeded_coverage_preserved for item in observations)}/{len(observations)}",
+            "compact packet preserves required evidence and baseline seeded coverage",
+        )
     )
-    token_reduction = _reduction_basis_points(
-        median_baseline_tokens, median_packet_tokens
+    median_baseline_bytes = _median_fraction(
+        [item.packet.baseline_input_bytes for item in observations]
     )
+    median_packet_bytes = _median_fraction(
+        [item.packet.packet_input_bytes for item in observations]
+    )
+    median_baseline_tokens = _median_fraction(
+        [item.packet.baseline_input_tokens for item in observations]
+    )
+    median_packet_tokens = _median_fraction(
+        [item.packet.packet_input_tokens for item in observations]
+    )
+    byte_reduction = _reduction_basis_points(median_baseline_bytes, median_packet_bytes)
+    token_reduction = _reduction_basis_points(median_baseline_tokens, median_packet_tokens)
     # Provider medians are promotion evidence only when the entire paired
     # benchmark design is sufficiently sampled, including every scan mode.
     reduction_insufficient = not (sufficient_modes and sufficient_pairs)
-    gates.append(_gate(
-        "provider-byte-reduction",
-        byte_reduction
-        >= profile.minimum_provider_reduction_basis_points,
-        f"{byte_reduction} basis points",
-        f">={profile.minimum_provider_reduction_basis_points} basis points",
-        insufficient=reduction_insufficient,
-    ))
-    gates.append(_gate(
-        "provider-token-reduction",
-        token_reduction
-        >= profile.minimum_provider_reduction_basis_points,
-        f"{token_reduction} basis points",
-        f">={profile.minimum_provider_reduction_basis_points} basis points",
-        insufficient=reduction_insufficient,
-    ))
+    gates.append(
+        _gate(
+            "provider-byte-reduction",
+            byte_reduction >= profile.minimum_provider_reduction_basis_points,
+            f"{byte_reduction} basis points",
+            f">={profile.minimum_provider_reduction_basis_points} basis points",
+            insufficient=reduction_insufficient,
+        )
+    )
+    gates.append(
+        _gate(
+            "provider-token-reduction",
+            token_reduction >= profile.minimum_provider_reduction_basis_points,
+            f"{token_reduction} basis points",
+            f">={profile.minimum_provider_reduction_basis_points} basis points",
+            insufficient=reduction_insufficient,
+        )
+    )
 
     resource_passed = all(
         item.resources.wall_time_ns <= profile.max_wall_time_ns
         and item.resources.cpu_time_ns <= profile.max_cpu_time_ns
         and item.resources.peak_rss_bytes <= profile.max_peak_rss_bytes
         and item.resources.peak_process_count <= profile.max_process_count
-        and item.resources.disk_growth_bytes
-        <= profile.max_disk_growth_bytes
+        and item.resources.disk_growth_bytes <= profile.max_disk_growth_bytes
         and item.resources.artifact_bytes <= profile.max_artifact_bytes
         for item in observations
     )
-    gates.append(_gate(
-        "resource-ceilings",
-        resource_passed,
-        (
-            f"peak-rss={max(item.resources.peak_rss_bytes for item in observations)},"
-            f"peak-processes={max(item.resources.peak_process_count for item in observations)},"
-            f"artifact-bytes={sum(item.resources.artifact_bytes for item in observations)}"
-        ),
-        "every observation is within the frozen CPU/RSS/process/disk/artifact ceilings",
-    ))
+    gates.append(
+        _gate(
+            "resource-ceilings",
+            resource_passed,
+            (
+                f"peak-rss={max(item.resources.peak_rss_bytes for item in observations)},"
+                f"peak-processes={max(item.resources.peak_process_count for item in observations)},"
+                f"artifact-bytes={sum(item.resources.artifact_bytes for item in observations)}"
+            ),
+            "every observation is within the frozen CPU/RSS/process/disk/artifact ceilings",
+        )
+    )
     idle_passed = all(
-        item.resources.idle_observation_ns
-        >= profile.minimum_idle_observation_ns
-        and item.resources.idle_cpu_millionths
-        <= profile.max_idle_cpu_millionths
-        and item.resources.idle_write_operations
-        <= profile.max_idle_write_operations
-        and item.resources.idle_write_bytes
-        <= profile.max_idle_write_bytes
+        item.resources.idle_observation_ns >= profile.minimum_idle_observation_ns
+        and item.resources.idle_cpu_millionths <= profile.max_idle_cpu_millionths
+        and item.resources.idle_write_operations <= profile.max_idle_write_operations
+        and item.resources.idle_write_bytes <= profile.max_idle_write_bytes
         for item in observations
     )
-    gates.append(_gate(
-        "idle-quiescence",
-        idle_passed,
-        (
-            f"max-cpu-millionths={max(item.resources.idle_cpu_millionths for item in observations)},"
-            f"writes={sum(item.resources.idle_write_operations for item in observations)},"
-            f"write-bytes={sum(item.resources.idle_write_bytes for item in observations)}"
-        ),
-        "idle window meets duration with CPU and writes below profile ceilings",
-    ))
+    gates.append(
+        _gate(
+            "idle-quiescence",
+            idle_passed,
+            (
+                f"max-cpu-millionths={max(item.resources.idle_cpu_millionths for item in observations)},"
+                f"writes={sum(item.resources.idle_write_operations for item in observations)},"
+                f"write-bytes={sum(item.resources.idle_write_bytes for item in observations)}"
+            ),
+            "idle window meets duration with CPU and writes below profile ceilings",
+        )
+    )
 
-    hard_failures = sorted(
-        gate.name for gate in gates if gate.status is GateStatus.FAILED
-    )
-    insufficient = any(
-        gate.status is GateStatus.INSUFFICIENT_SAMPLES for gate in gates
-    )
+    hard_failures = sorted(gate.name for gate in gates if gate.status is GateStatus.FAILED)
+    insufficient = any(gate.status is GateStatus.INSUFFICIENT_SAMPLES for gate in gates)
     if hard_failures:
         conclusion = BenchmarkConclusion.FAILED
     elif insufficient:
@@ -1666,64 +1453,38 @@ def evaluate_symbolic_efficiency(
         cache_reused[item.stage] += item.reused_artifacts
         cache_bytes[item.stage] += item.reused_bytes
     expected_truth = Counter(item.expected_truth.value for item in findings)
-    covered_truth = Counter(
-        item.expected_truth.value for item in findings if item.covered
-    )
+    covered_truth = Counter(item.expected_truth.value for item in findings if item.covered)
     invalidation_expected = sum(
-        len(item.expected_invalidated_ids)
-        for item in invalidations if item is not None
+        len(item.expected_invalidated_ids) for item in invalidations if item is not None
     )
     invalidation_actual = sum(
-        len(item.actual_invalidated_ids)
-        for item in invalidations if item is not None
+        len(item.actual_invalidated_ids) for item in invalidations if item is not None
     )
     false_positive = sum(
-        len(item.false_invalidations)
-        for item in invalidations if item is not None
+        len(item.false_invalidations) for item in invalidations if item is not None
     )
     false_negative = sum(
-        len(item.missed_invalidations)
-        for item in invalidations if item is not None
+        len(item.missed_invalidations) for item in invalidations if item is not None
     )
     counterexample_median = _median_fraction(counterexamples)
 
     report = SymbolicEfficiencyBenchmarkReport(
         population_id=population.population_id,
         profile_identity_id=profile.identity_id,
-        fixture_identity_ids=tuple(sorted({
-            item.fixture.identity_id for item in observations
-        })),
-        toolchain_identity_ids=tuple(sorted({
-            item.toolchain.identity_id for item in observations
-        })),
-        sample_counts_by_mode=tuple(
-            (mode, by_mode[mode]) for mode in REQUIRED_SCAN_MODES
-        ),
+        fixture_identity_ids=tuple(sorted({item.fixture.identity_id for item in observations})),
+        toolchain_identity_ids=tuple(sorted({item.toolchain.identity_id for item in observations})),
+        sample_counts_by_mode=tuple((mode, by_mode[mode]) for mode in REQUIRED_SCAN_MODES),
         observation_count=len(observations),
-        inventory_observed_paths=sum(
-            item.inventory.observed_paths for item in observations
-        ),
-        inventory_emitted_paths=sum(
-            item.inventory.emitted_paths for item in observations
-        ),
-        inventory_included_paths=sum(
-            item.inventory.included_paths for item in observations
-        ),
-        inventory_excluded_paths=sum(
-            item.inventory.excluded_paths for item in observations
-        ),
-        inventory_omitted_paths=sum(
-            item.inventory.omitted_paths for item in observations
-        ),
-        inventory_complete_observations=sum(
-            item.inventory.complete for item in observations
-        ),
+        inventory_observed_paths=sum(item.inventory.observed_paths for item in observations),
+        inventory_emitted_paths=sum(item.inventory.emitted_paths for item in observations),
+        inventory_included_paths=sum(item.inventory.included_paths for item in observations),
+        inventory_excluded_paths=sum(item.inventory.excluded_paths for item in observations),
+        inventory_omitted_paths=sum(item.inventory.omitted_paths for item in observations),
+        inventory_complete_observations=sum(item.inventory.complete for item in observations),
         cache_lookups_by_stage=tuple(
             (stage, cache_lookups[stage]) for stage in REQUIRED_CACHE_STAGES
         ),
-        cache_hits_by_stage=tuple(
-            (stage, cache_hits[stage]) for stage in REQUIRED_CACHE_STAGES
-        ),
+        cache_hits_by_stage=tuple((stage, cache_hits[stage]) for stage in REQUIRED_CACHE_STAGES),
         cache_reused_artifacts_by_stage=tuple(
             (stage, cache_reused[stage]) for stage in REQUIRED_CACHE_STAGES
         ),
@@ -1735,31 +1496,21 @@ def evaluate_symbolic_efficiency(
         invalidation_false_positive_count=false_positive,
         invalidation_false_negative_count=false_negative,
         seeded_expected_by_truth=tuple(
-            (truth.value, expected_truth[truth.value])
-            for truth in FindingTruth
+            (truth.value, expected_truth[truth.value]) for truth in FindingTruth
         ),
         seeded_covered_by_truth=tuple(
-            (truth.value, covered_truth[truth.value])
-            for truth in FindingTruth
+            (truth.value, covered_truth[truth.value]) for truth in FindingTruth
         ),
         counterexample_count=len(counterexamples),
         median_counterexample_time_ns=_fraction_dict(counterexample_median),
-        artifact_bytes=sum(
-            item.resources.artifact_bytes for item in observations
-        ),
-        wall_time_ns=sum(
-            item.resources.wall_time_ns for item in observations
-        ),
-        cpu_time_ns=sum(
-            item.resources.cpu_time_ns for item in observations
-        ),
+        artifact_bytes=sum(item.resources.artifact_bytes for item in observations),
+        wall_time_ns=sum(item.resources.wall_time_ns for item in observations),
+        cpu_time_ns=sum(item.resources.cpu_time_ns for item in observations),
         scan_wall_time_ns_by_mode=tuple(
             (
                 mode,
                 sum(
-                    item.resources.wall_time_ns
-                    for item in observations
-                    if item.mode.value == mode
+                    item.resources.wall_time_ns for item in observations if item.mode.value == mode
                 ),
             )
             for mode in REQUIRED_SCAN_MODES
@@ -1767,44 +1518,20 @@ def evaluate_symbolic_efficiency(
         scan_cpu_time_ns_by_mode=tuple(
             (
                 mode,
-                sum(
-                    item.resources.cpu_time_ns
-                    for item in observations
-                    if item.mode.value == mode
-                ),
+                sum(item.resources.cpu_time_ns for item in observations if item.mode.value == mode),
             )
             for mode in REQUIRED_SCAN_MODES
         ),
-        peak_rss_bytes=max(
-            item.resources.peak_rss_bytes for item in observations
-        ),
-        peak_process_count=max(
-            item.resources.peak_process_count for item in observations
-        ),
-        disk_growth_bytes=sum(
-            item.resources.disk_growth_bytes for item in observations
-        ),
-        idle_cpu_time_ns=sum(
-            item.resources.idle_cpu_time_ns for item in observations
-        ),
-        idle_write_operations=sum(
-            item.resources.idle_write_operations for item in observations
-        ),
-        idle_write_bytes=sum(
-            item.resources.idle_write_bytes for item in observations
-        ),
-        candidate_findings=sum(
-            item.tasks.candidate_findings for item in observations
-        ),
-        eligible_findings=sum(
-            item.tasks.eligible_findings for item in observations
-        ),
-        emitted_tasks=sum(
-            item.tasks.emitted_tasks for item in observations
-        ),
-        deduplicated_findings=sum(
-            item.tasks.deduplicated_findings for item in observations
-        ),
+        peak_rss_bytes=max(item.resources.peak_rss_bytes for item in observations),
+        peak_process_count=max(item.resources.peak_process_count for item in observations),
+        disk_growth_bytes=sum(item.resources.disk_growth_bytes for item in observations),
+        idle_cpu_time_ns=sum(item.resources.idle_cpu_time_ns for item in observations),
+        idle_write_operations=sum(item.resources.idle_write_operations for item in observations),
+        idle_write_bytes=sum(item.resources.idle_write_bytes for item in observations),
+        candidate_findings=sum(item.tasks.candidate_findings for item in observations),
+        eligible_findings=sum(item.tasks.eligible_findings for item in observations),
+        emitted_tasks=sum(item.tasks.emitted_tasks for item in observations),
+        deduplicated_findings=sum(item.tasks.deduplicated_findings for item in observations),
         provider_pair_count=len(observations),
         median_baseline_input_bytes=_fraction_dict(median_baseline_bytes),
         median_packet_input_bytes=_fraction_dict(median_packet_bytes),
@@ -1823,8 +1550,7 @@ def evaluate_symbolic_efficiency(
 
 
 def build_symbolic_efficiency_report(
-    observations: Sequence[SymbolicBenchmarkObservation]
-    | SymbolicBenchmarkPopulation,
+    observations: Sequence[SymbolicBenchmarkObservation] | SymbolicBenchmarkPopulation,
     *,
     profile: BenchmarkProfile | None = None,
 ) -> SymbolicEfficiencyBenchmarkReport:
@@ -1832,15 +1558,11 @@ def build_symbolic_efficiency_report(
 
     if isinstance(observations, SymbolicBenchmarkPopulation):
         if profile is not None and profile != observations.profile:
-            raise SymbolicBenchmarkError(
-                "profile conflicts with the closed population"
-            )
+            raise SymbolicBenchmarkError("profile conflicts with the closed population")
         population = observations
     else:
         if profile is None:
-            raise SymbolicBenchmarkError(
-                "profile is required with raw observations"
-            )
+            raise SymbolicBenchmarkError("profile is required with raw observations")
         population = SymbolicBenchmarkPopulation(
             profile=profile,
             observations=tuple(observations),
@@ -1860,9 +1582,7 @@ def verify_symbolic_efficiency_report(
         replayed = evaluate_symbolic_efficiency(population)
     except SymbolicBenchmarkError:
         return False
-    return _canonical_bytes(report.to_dict()) == _canonical_bytes(
-        replayed.to_dict()
-    )
+    return _canonical_bytes(report.to_dict()) == _canonical_bytes(replayed.to_dict())
 
 
 __all__ = [

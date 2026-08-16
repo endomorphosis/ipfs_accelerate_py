@@ -88,9 +88,7 @@ def _event_type(value: Any) -> CatalogEventType:
         raise ValueError("unknown catalog event type") from exc
 
 
-def _views(
-    values: Optional[Iterable[Any]], kind: CatalogEventType
-) -> Tuple[CatalogView, ...]:
+def _views(values: Optional[Iterable[Any]], kind: CatalogEventType) -> Tuple[CatalogView, ...]:
     if values is None:
         return _DEFAULT_VIEWS[kind]
     if isinstance(values, (str, bytes, Mapping)):
@@ -133,9 +131,7 @@ class CatalogInvalidationEvent:
             raise ValueError("record_ids must be a bounded array")
         record_ids = tuple(sorted(set(self.record_ids)))
         if len(record_ids) > MAX_EVENT_RECORDS or any(
-            not isinstance(item, str)
-            or not item
-            or len(item.encode("utf-8")) > 256
+            not isinstance(item, str) or not item or len(item.encode("utf-8")) > 256
             for item in record_ids
         ):
             raise ValueError("record_ids are invalid or excessive")
@@ -144,9 +140,7 @@ class CatalogInvalidationEvent:
         for field in ("previous_revision", "revision"):
             value = getattr(self, field)
             if value is not None and (
-                not isinstance(value, str)
-                or not value
-                or len(value.encode("utf-8")) > 512
+                not isinstance(value, str) or not value or len(value.encode("utf-8")) > 512
             ):
                 raise ValueError("%s is invalid" % field)
 
@@ -201,9 +195,7 @@ InvalidationEvent = CatalogInvalidationEvent
 CatalogEvent = CatalogInvalidationEvent
 
 
-def registration_event(
-    source: str, record_ids: Iterable[str] = ()
-) -> CatalogInvalidationEvent:
+def registration_event(source: str, record_ids: Iterable[str] = ()) -> CatalogInvalidationEvent:
     return CatalogInvalidationEvent(
         CatalogEventType.REGISTRATION,
         source=source,
@@ -221,9 +213,7 @@ def deployment_lifecycle_event(
     )
 
 
-def credential_state_event(
-    source: str, record_ids: Iterable[str] = ()
-) -> CatalogInvalidationEvent:
+def credential_state_event(source: str, record_ids: Iterable[str] = ()) -> CatalogInvalidationEvent:
     return CatalogInvalidationEvent(
         CatalogEventType.CREDENTIAL_STATE,
         source=source,
@@ -270,17 +260,12 @@ class CatalogEventBus:
             or not isinstance(max_subscribers, int)
             or not 1 <= max_subscribers <= MAX_EVENT_SUBSCRIBERS
         ):
-            raise ValueError(
-                "max_subscribers must be between 1 and %d"
-                % MAX_EVENT_SUBSCRIBERS
-            )
+            raise ValueError("max_subscribers must be between 1 and %d" % MAX_EVENT_SUBSCRIBERS)
         self.max_subscribers = max_subscribers
         self._lock = threading.RLock()
         self._subscribers = []  # type: list[Callable[[CatalogInvalidationEvent], Any]]
 
-    def subscribe(
-        self, callback: Callable[[CatalogInvalidationEvent], Any]
-    ) -> Callable[[], None]:
+    def subscribe(self, callback: Callable[[CatalogInvalidationEvent], Any]) -> Callable[[], None]:
         if not callable(callback):
             raise TypeError("event subscriber must be callable")
         with self._lock:
@@ -294,9 +279,7 @@ class CatalogEventBus:
 
         return unsubscribe
 
-    def unsubscribe(
-        self, callback: Callable[[CatalogInvalidationEvent], Any]
-    ) -> bool:
+    def unsubscribe(self, callback: Callable[[CatalogInvalidationEvent], Any]) -> bool:
         with self._lock:
             if callback not in self._subscribers:
                 return False
@@ -418,9 +401,7 @@ class CatalogMetrics:
             self._sources.add(canonical)
         return canonical
 
-    def _labels(
-        self, metric: str, labels: Mapping[str, Any]
-    ) -> Tuple[Tuple[str, str], ...]:
+    def _labels(self, metric: str, labels: Mapping[str, Any]) -> Tuple[Tuple[str, str], ...]:
         expected = _METRIC_LABELS.get(metric)
         if expected is None:
             raise ValueError("unknown catalog metric: %s" % metric)
@@ -436,10 +417,7 @@ class CatalogMetrics:
                 allowed = _BOUNDED_VALUES[name]
                 if selected not in allowed:
                     selected = "other" if "other" in allowed else "unknown"
-            if (
-                len(selected.encode("utf-8")) > 64
-                or not _LABEL_VALUE.fullmatch(selected)
-            ):
+            if len(selected.encode("utf-8")) > 64 or not _LABEL_VALUE.fullmatch(selected):
                 selected = "other"
             result.append((name, selected))
         return tuple(result)
@@ -461,8 +439,8 @@ class CatalogMetrics:
         with self._lock:
             if key not in self._values and len(self._values) >= self.max_series:
                 return
-            self._values[key] = float(amount) if gauge else (
-                self._values.get(key, 0.0) + float(amount)
+            self._values[key] = (
+                float(amount) if gauge else (self._values.get(key, 0.0) + float(amount))
             )
 
     def record_source_latency(self, source: str, seconds: float) -> None:

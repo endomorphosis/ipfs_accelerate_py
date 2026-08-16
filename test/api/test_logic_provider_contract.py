@@ -42,12 +42,7 @@ from ipfs_datasets_py.logic.backends.provider import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATASETS_PROVIDER_SOURCE = (
-    REPO_ROOT
-    / "ipfs_datasets_py"
-    / "ipfs_datasets_py"
-    / "logic"
-    / "backends"
-    / "provider.py"
+    REPO_ROOT / "ipfs_datasets_py" / "ipfs_datasets_py" / "logic" / "backends" / "provider.py"
 )
 
 
@@ -92,9 +87,7 @@ def _canonical_request(**overrides: object) -> LogicProviderRequest:
             provider_quota=1,
             network_allowed=True,
         ),
-        "cancellation": ProviderCancellation(
-            cancellation_id="cancel:request-canonical-1"
-        ),
+        "cancellation": ProviderCancellation(cancellation_id="cancel:request-canonical-1"),
         "network_allowed": True,
         "deadline_unix_ms": 4_102_444_800_000,
     }
@@ -247,18 +240,14 @@ def test_dataset_dispatch_represents_cancellation_deadlines_and_correlation() ->
                 provider_version=self.provider_version,
             )
 
-    mismatch = dispatch_logic_provider_request(
-        MismatchedProvider(), _canonical_request()
-    )
+    mismatch = dispatch_logic_provider_request(MismatchedProvider(), _canonical_request())
     assert mismatch.error is not None
     assert mismatch.error.code is LogicProviderFailureCode.MALFORMED_RESPONSE
 
     class WrongProtocolProvider(FixtureLogicProvider):
         protocol_version = 2
 
-    protocol_error = dispatch_logic_provider_request(
-        WrongProtocolProvider(), _canonical_request()
-    )
+    protocol_error = dispatch_logic_provider_request(WrongProtocolProvider(), _canonical_request())
     assert protocol_error.error is not None
     assert protocol_error.error.code is LogicProviderFailureCode.PROTOCOL_ERROR
 

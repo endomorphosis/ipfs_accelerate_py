@@ -140,13 +140,9 @@ def test_canonical_cursor_replay_is_gapless_exactly_once_across_restart_and_rota
     assert [item["sequence"] for item in first_page.events] == [1, 2, 3]
     assert first_page.next_cursor.position == 3
     assert first_page.next_cursor.last_event_id == written[2]["event_id"]
-    assert write_event_cursor_checkpoint(
-        checkpoint_path, first_page.next_cursor
-    )
+    assert write_event_cursor_checkpoint(checkpoint_path, first_page.next_cursor)
     checkpoint_identity = _file_identity(checkpoint_path)
-    assert not write_event_cursor_checkpoint(
-        checkpoint_path, first_page.next_cursor
-    )
+    assert not write_event_cursor_checkpoint(checkpoint_path, first_page.next_cursor)
     assert _file_identity(checkpoint_path) == checkpoint_identity
 
     rotation = rotate_event_log_if_needed(
@@ -166,9 +162,7 @@ def test_canonical_cursor_replay_is_gapless_exactly_once_across_restart_and_rota
     # Model the exact overlapping tail which can survive a crash between
     # archive installation and active-tail replacement. Cursor replay must
     # coalesce it by canonical sequence and event identity.
-    duplicate_tail = events_path.with_name(
-        f"{events_path.name}.rotated-recovery-duplicate"
-    )
+    duplicate_tail = events_path.with_name(f"{events_path.name}.rotated-recovery-duplicate")
     shutil.copy2(events_path, duplicate_tail)
     events_path.with_name(f"{events_path.name}.manifest.json").unlink()
 
@@ -394,9 +388,7 @@ def test_parallel_lane_bookkeeping_is_not_a_repository_wake(
         sibling_state.write_text('{"heartbeat": 1}\n', encoding="utf-8")
         watcher.notify()
         bookkeeping_event = coordinator.wait(timeout=15.0)
-        assert bookkeeping_event.kinds == (
-            RuntimeWakeKind.OBSERVATION_WINDOW,
-        )
+        assert bookkeeping_event.kinds == (RuntimeWakeKind.OBSERVATION_WINDOW,)
         coordinator.acknowledge(bookkeeping_event)
 
         head_path.write_text("ref: refs/heads/release\n", encoding="utf-8")
@@ -622,10 +614,7 @@ def test_drained_board_ten_minute_logical_fixture_uses_under_two_percent_cpu_and
     assert all(result["unchanged"] is True for result in results)
     assert all(result["write_count"] == 0 for result in results)
     assert all(result["projection_delta"] == {} for result in results)
-    assert all(
-        result["wake_kinds"] == ["observation_window"]
-        for result in results
-    )
+    assert all(result["wake_kinds"] == ["observation_window"] for result in results)
     assert {path: _file_identity(path) for path in durable_paths} == before
 
 
@@ -685,9 +674,7 @@ def test_ephemeral_merge_consumer_lease_is_not_a_runtime_wake_source(
     daemon = _drained_daemon(tmp_path)
     lease_paths = daemon._runtime_source_paths()["lease"]
     merge_queue_root = Path(daemon.merge_queue_dir)
-    shared_claim_dir = (
-        tmp_path / ".git" / "implementation-task-claims"
-    )
+    shared_claim_dir = tmp_path / ".git" / "implementation-task-claims"
 
     assert daemon.merge_queue.database_path in lease_paths
     assert daemon.merge_queue.pending_dir in lease_paths

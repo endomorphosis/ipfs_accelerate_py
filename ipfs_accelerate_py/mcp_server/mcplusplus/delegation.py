@@ -17,7 +17,10 @@ from typing import Any, Dict, Iterable, List, Tuple
 try:
     from cryptography.exceptions import InvalidSignature
     from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey,
+        Ed25519PublicKey,
+    )
 
     HAVE_CRYPTO_ED25519 = True
 except Exception:  # pragma: no cover - optional dependency guard
@@ -86,7 +89,9 @@ def _compute_proof_lineage(chain: Iterable[UcanDelegation]) -> list[str]:
 
     lineage: list[str] = []
     for delegation in chain:
-        proof_cid = str(delegation.proof_cid or "").strip() or compute_delegation_proof_cid(delegation)
+        proof_cid = str(delegation.proof_cid or "").strip() or compute_delegation_proof_cid(
+            delegation
+        )
         lineage.append(proof_cid)
     return lineage
 
@@ -168,11 +173,15 @@ def _canonical_delegation_payload(delegation: UcanDelegation) -> bytes:
     payload = {
         "issuer": delegation.issuer,
         "audience": delegation.audience,
-        "capabilities": [{"resource": c.resource, "ability": c.ability} for c in delegation.capabilities],
+        "capabilities": [
+            {"resource": c.resource, "ability": c.ability} for c in delegation.capabilities
+        ],
         "expiry": delegation.expiry,
         "caveats": list(delegation.caveats),
     }
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+        "utf-8"
+    )
 
 
 def compute_delegation_proof_cid(delegation: UcanDelegation) -> str:
@@ -431,9 +440,7 @@ def _caveats_allow(
             return False
         abilities = caveat.get("ability_in")
         if isinstance(abilities, (list, tuple, set)):
-            allowed_abilities = {
-                str(x or "").strip() for x in abilities if str(x or "").strip()
-            }
+            allowed_abilities = {str(x or "").strip() for x in abilities if str(x or "").strip()}
             if allowed_abilities and str(ability or "") not in allowed_abilities:
                 return False
 
@@ -443,9 +450,7 @@ def _caveats_allow(
 
         actor_values = caveat.get("actor_in")
         if isinstance(actor_values, (list, tuple, set)):
-            allowed_actors = {
-                str(x or "").strip() for x in actor_values if str(x or "").strip()
-            }
+            allowed_actors = {str(x or "").strip() for x in actor_values if str(x or "").strip()}
             if allowed_actors and str(actor or "") not in allowed_actors:
                 return False
 
@@ -467,9 +472,7 @@ def _caveats_allow(
 
         any_context = caveat.get("context_cids_any")
         if isinstance(any_context, (list, tuple, set)):
-            any_context_set = {
-                str(x or "").strip() for x in any_context if str(x or "").strip()
-            }
+            any_context_set = {str(x or "").strip() for x in any_context if str(x or "").strip()}
             if any_context_set and context_set.isdisjoint(any_context_set):
                 return False
 
@@ -507,7 +510,9 @@ def parse_delegation_chain(raw_chain: Iterable[Dict[str, Any]]) -> List[UcanDele
                     except (TypeError, ValueError):
                         expiry = None
 
-                proof_cid = str(item.get("proof_cid") or "").strip() or _extract_token_proof_cid(token_payload)
+                proof_cid = str(item.get("proof_cid") or "").strip() or _extract_token_proof_cid(
+                    token_payload
+                )
                 caveats_raw = item.get("caveats")
                 if caveats_raw is None:
                     caveats_raw = token_payload.get("fct")
@@ -642,7 +647,7 @@ def validate_delegation_chain(
     # attenuation: each child must be subset of parent capabilities
     for idx in range(len(parsed) - 1):
         if not _covers(parsed[idx], parsed[idx + 1]):
-            return _result(False, f"capability_escalation_at_hop_{idx+1}", idx + 1)
+            return _result(False, f"capability_escalation_at_hop_{idx + 1}", idx + 1)
 
     leaf = parsed[-1]
     if actor and leaf.audience != actor:

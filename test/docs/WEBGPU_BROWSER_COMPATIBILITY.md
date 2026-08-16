@@ -47,7 +47,7 @@ The `FallbackManager` in `fixed_web_platform/unified_framework/fallback_manager.
 fallback_mgr = FallbackManager(
     browser_info={"name": "safari", "version": "17.0"},
     model_type="text",
-    enable_layer_processing=True
+    enable_layer_processing=True,
 )
 
 # Check if operation needs fallback
@@ -163,8 +163,9 @@ fallback_mgr = FallbackManager(
     browser_info={"name": browser_name, "version": browser_version},
     model_type=model_type,
     config=config,
-    enable_layer_processing=True
+    enable_layer_processing=True,
 )
+
 
 # Using the fallback manager
 def run_operation(operation, inputs):

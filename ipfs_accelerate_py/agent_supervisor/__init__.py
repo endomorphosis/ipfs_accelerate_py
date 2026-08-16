@@ -144,19 +144,11 @@ AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES = _MappingProxyType(
 # ---------------------------------------------------------------------------
 AGENT_SUPERVISOR_CUTOVER_GOAL_ID = AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_GOAL_ID
 AGENT_SUPERVISOR_CUTOVER_TASK_ID = AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_TASK_ID
-AGENT_SUPERVISOR_CUTOVER_GOAL_PACKET = (
-    AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_GOAL_PACKET
-)
-AGENT_SUPERVISOR_CUTOVER_PACKET_TASK_IDS = (
-    AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_PACKET_TASK_IDS
-)
+AGENT_SUPERVISOR_CUTOVER_GOAL_PACKET = AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_GOAL_PACKET
+AGENT_SUPERVISOR_CUTOVER_PACKET_TASK_IDS = AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_PACKET_TASK_IDS
 AGENT_SUPERVISOR_CUTOVER_TASK_IDS = AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_TASK_IDS
-AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050 = (
-    AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS
-)
-AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080 = (
-    AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS
-)
+AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050 = AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS
+AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080 = AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS
 AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE = AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS
 AGENT_SUPERVISOR_G020_PACKAGES = AGENT_SUPERVISOR_CORE_PACKAGES
 AGENT_SUPERVISOR_G030_PACKAGES = AGENT_SUPERVISOR_CONTROL_PACKAGES
@@ -165,9 +157,7 @@ AGENT_SUPERVISOR_G050_PACKAGES = AGENT_SUPERVISOR_CONTEXT_PROMPT_PACKAGES
 AGENT_SUPERVISOR_G060_PACKAGES = AGENT_SUPERVISOR_ANALYSIS_PROOF_PACKAGES
 AGENT_SUPERVISOR_G070_PACKAGES = AGENT_SUPERVISOR_OPERATIONS_PACKAGES
 AGENT_SUPERVISOR_G080_PACKAGES = AGENT_SUPERVISOR_INTEGRATIONS_DAEMON_PACKAGES
-AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES = (
-    AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES
-)
+AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES = AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES
 AGENT_SUPERVISOR_PACKAGE_GOAL_OWNERS = AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES
 
 # Dual-copied stems that already live under a domain package. Public and lazy
@@ -519,9 +509,7 @@ AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES = _MappingProxyType(
     }
 )
 AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_STEMS = tuple(
-    stem
-    for stems in AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES.values()
-    for stem in stems
+    stem for stems in AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES.values() for stem in stems
 )
 
 # Landed stems under operations packages (subset of LANDED_MODULE_TO_PACKAGE).
@@ -542,9 +530,7 @@ AGENT_SUPERVISOR_TODO_DAEMON_STEMS = (
 AGENT_SUPERVISOR_G020_CORE_STEMS = AGENT_SUPERVISOR_CORE_STEMS
 AGENT_SUPERVISOR_G030_CONTROL_STEMS = AGENT_SUPERVISOR_CONTROL_STEMS
 AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS = AGENT_SUPERVISOR_TASK_SOURCES_STEMS
-AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES = (
-    AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES
-)
+AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES = AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES
 AGENT_SUPERVISOR_G050_PLANNED_STEMS = AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_STEMS
 AGENT_SUPERVISOR_G070_LANDED_STEMS = AGENT_SUPERVISOR_OPERATIONS_LANDED_STEMS
 AGENT_SUPERVISOR_G080_TODO_DAEMON_STEMS = AGENT_SUPERVISOR_TODO_DAEMON_STEMS
@@ -564,9 +550,7 @@ def _agent_supervisor_reload(module):  # type: ignore[no-untyped-def]
     """
 
     name = getattr(module, "__name__", "") or ""
-    under_pytest = ("pytest" in _sys.modules) or bool(
-        _os.environ.get("PYTEST_CURRENT_TEST")
-    )
+    under_pytest = ("pytest" in _sys.modules) or bool(_os.environ.get("PYTEST_CURRENT_TEST"))
     if under_pytest and name.endswith(".proposal_validation"):
         return module
     return _ORIGINAL_IMPORTLIB_RELOAD(module)
@@ -1496,6 +1480,8 @@ from .objectives.goal_completion import (
     reopen_goal_for_contradictions,
     validate_completion_evidence,
 )
+
+
 # Load self_improvement_completion without executing self_improvement/__init__.py.
 # That package __init__ still re-exports the heavy flat self_improvement.py, which
 # pulls todo_daemon.llm -> optional ipfs_datasets_py onto cold import (ASREF-G090
@@ -1515,11 +1501,7 @@ def _load_self_improvement_completion_cold():
     existing_cold = _sys.modules.get(cold_name)
     if existing_cold is not None:
         return existing_cold
-    path = (
-        Path(__file__).resolve().parent
-        / "self_improvement"
-        / "self_improvement_completion.py"
-    )
+    path = Path(__file__).resolve().parent / "self_improvement" / "self_improvement_completion.py"
     # Load under an isolated module name so we never leave a stub
     # self_improvement package in sys.modules (that would block the real package
     # __init__ later). Relative imports resolve via __package__ alone.
@@ -1540,9 +1522,7 @@ SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA = (
 SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS = (
     _self_improvement_completion.SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS
 )
-SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID = (
-    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID
-)
+SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID = _self_improvement_completion.SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID
 SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION = (
     _self_improvement_completion.SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION
 )
@@ -3201,17 +3181,12 @@ _missing_control_export = object()
 for _control_module in _CONTROL_PUBLIC_MODULES:
     for _control_name in _control_module.__all__:
         _control_value = getattr(_control_module, _control_name)
-        _existing_control_value = globals().get(
-            _control_name, _missing_control_export
-        )
+        _existing_control_value = globals().get(_control_name, _missing_control_export)
         if (
             _existing_control_value is not _missing_control_export
             and _existing_control_value is not _control_value
         ):
-            raise RuntimeError(
-                "ambiguous agent_supervisor public export: "
-                f"{_control_name}"
-            )
+            raise RuntimeError(f"ambiguous agent_supervisor public export: {_control_name}")
         globals()[_control_name] = _control_value
     __all__.extend(_control_module.__all__)
 del (
@@ -3228,9 +3203,7 @@ del (
 # observing a fresh interpreter while the package root and every stable export
 # are resolved.  Keeping the canonical goal beside the requirement prevents a
 # stale discovery label from redirecting that evidence.
-PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID = (
-    "300500866741873729474343907613893393545"
-)
+PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID = "300500866741873729474343907613893393545"
 PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID = "ASI-G114"
 
 # Stable rollout contracts are kept off the cold-import path.  This public,
@@ -3300,9 +3273,7 @@ del _stable_export_names
 # A caller can also verify that a root object is the exact object owned by the
 # named module; transports must not wrap or recreate these contracts.
 AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION = 2
-V2_LAZY_PUBLIC_API_REQUIREMENT_ID = (
-    "309385021661773043261965122618904035729"
-)
+V2_LAZY_PUBLIC_API_REQUIREMENT_ID = "309385021661773043261965122618904035729"
 _AGENT_SUPERVISOR_V2_EXPORT_GROUPS = (
     (
         f"{__name__}.control.control_contracts",
@@ -3501,12 +3472,8 @@ if len(_agent_supervisor_v2_export_pairs) != len(
     {name for name, _module_name in _agent_supervisor_v2_export_pairs}
 ):
     raise RuntimeError("generation-2 stable export names must be unique")
-AGENT_SUPERVISOR_V2_EXPORT_MODULES = _MappingProxyType(
-    dict(_agent_supervisor_v2_export_pairs)
-)
-AGENT_SUPERVISOR_V2_STABLE_EXPORTS = tuple(
-    AGENT_SUPERVISOR_V2_EXPORT_MODULES
-)
+AGENT_SUPERVISOR_V2_EXPORT_MODULES = _MappingProxyType(dict(_agent_supervisor_v2_export_pairs))
+AGENT_SUPERVISOR_V2_STABLE_EXPORTS = tuple(AGENT_SUPERVISOR_V2_EXPORT_MODULES)
 # Semantic alias: reviewed package-root public API symbol set.
 AGENT_SUPERVISOR_PUBLIC_API_EXPORTS = AGENT_SUPERVISOR_V2_STABLE_EXPORTS
 # Concise compatibility spelling for clients which negotiated generation 2.
@@ -4321,7 +4288,12 @@ def __getattr__(name: str):
         from . import leased_lane
 
         return getattr(leased_lane, name)
-    if name in {"build_merge_prompt", "invoke_llm_resolver", "latest_failed_merge_event", "resolver_payload"}:
+    if name in {
+        "build_merge_prompt",
+        "invoke_llm_resolver",
+        "latest_failed_merge_event",
+        "resolver_payload",
+    }:
         from .merge import merge_resolver
 
         return getattr(merge_resolver, name)
@@ -4626,6 +4598,8 @@ def __getattr__(name: str):
 
         return getattr(task_proposal_router, name)
     raise AttributeError(name)
+
+
 from .rescue.codex_failure_policy import (
     COMPLETED_PATCH_STATUSES,
     TRANSIENT_MAIN_APPLY_STATUSES,

@@ -135,36 +135,36 @@ async def _start_election(self):
     self.current_term += 1
     self.voted_for = self.node_id
     await self._save_persistent_state()
-    
+
     # Vote for self
     votes_received = 1
-    
+
     # Request votes from all peers
     for peer in self.peers:
         try:
             last_log_index = len(self.log) - 1
             last_log_term = self.log[last_log_index]["term"] if last_log_index >= 0 else 0
-            
+
             request = {
                 "term": self.current_term,
                 "candidate_id": self.node_id,
                 "last_log_index": last_log_index,
-                "last_log_term": last_log_term
+                "last_log_term": last_log_term,
             }
-            
+
             response = await self.request_vote(peer["id"], request)
-            
+
             if response and response.get("vote_granted"):
                 votes_received += 1
-                
+
                 # Check if we have majority
                 if votes_received > (len(self.peers) + 1) // 2:
                     await self._become_leader()
                     return True
-                    
+
         except Exception as e:
             logger.warning(f"Error requesting vote from {peer['id']}: {e}")
-    
+
     return False
 ```
 
@@ -177,30 +177,27 @@ async def append_log(self, command):
     """Append a command to the log and replicate to followers."""
     if self.role != NodeRole.LEADER:
         return False
-        
+
     # Create log entry
-    entry = {
-        "term": self.current_term,
-        "command": command
-    }
-    
+    entry = {"term": self.current_term, "command": command}
+
     # Append to local log
     self.log.append(entry)
     log_index = len(self.log) - 1
-    
+
     # Save persistent state
     await self._save_persistent_state()
-    
+
     # Replicate to followers
     replication_success = await self._replicate_to_followers(log_index)
-    
+
     if replication_success:
         # Update commit index
         self._update_commit_index()
-        
+
         # Apply to state machine
         await self._apply_logs()
-        
+
     return replication_success
 ```
 
@@ -213,28 +210,31 @@ async def _sync_state_to_followers(self):
     """Synchronize full state to followers."""
     if self.role != NodeRole.LEADER:
         return
-        
+
     # Get full state from coordinator
     state = self.coordinator.get_full_state()
-    
+
     # Send state to all followers
     for peer in self.peers:
         try:
             url = f"http://{peer['host']}:{peer['port']}/api/raft/sync_state"
-            
+
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, json={
-                    "term": self.current_term,
-                    "leader_id": self.node_id,
-                    "state": state,
-                    "last_applied": self.last_applied
-                }) as response:
+                async with session.post(
+                    url,
+                    json={
+                        "term": self.current_term,
+                        "leader_id": self.node_id,
+                        "state": state,
+                        "last_applied": self.last_applied,
+                    },
+                ) as response:
                     if response.status == 200:
                         result = await response.json()
                         logger.debug(f"State sync to {peer['id']} successful: {result}")
                     else:
                         logger.warning(f"State sync to {peer['id']} failed: HTTP {response.status}")
-                        
+
         except Exception as e:
             logger.warning(f"Error syncing state to {peer['id']}: {e}")
 ```
@@ -248,32 +248,32 @@ async def _send_heartbeats(self):
     """Send heartbeats to all followers."""
     if self.role != NodeRole.LEADER:
         return
-        
+
     for peer in self.peers:
         try:
             prev_log_index = self.next_index[peer["id"]] - 1
             prev_log_term = 0
-            
+
             if prev_log_index >= 0 and prev_log_index < len(self.log):
                 prev_log_term = self.log[prev_log_index]["term"]
-                
+
             entries = []
-            
+
             # Include entries that the follower might be missing
             if prev_log_index < len(self.log) - 1:
-                entries = self.log[prev_log_index + 1:]
-                
+                entries = self.log[prev_log_index + 1 :]
+
             request = {
                 "term": self.current_term,
                 "leader_id": self.node_id,
                 "prev_log_index": prev_log_index,
                 "prev_log_term": prev_log_term,
                 "entries": entries,
-                "leader_commit": self.commit_index
+                "leader_commit": self.commit_index,
             }
-            
+
             response = await self.append_entries(peer["id"], request)
-            
+
             if response:
                 if response.get("success"):
                     # Update follower state
@@ -283,7 +283,7 @@ async def _send_heartbeats(self):
                 else:
                     # Follower is behind, decrement next_index and retry
                     self.next_index[peer["id"]] = max(1, self.next_index[peer["id"]] - 1)
-                    
+
         except Exception as e:
             logger.warning(f"Error sending heartbeat to {peer['id']}: {e}")
 ```
@@ -297,11 +297,11 @@ def _init_redundancy_manager(self):
     """Initialize the redundancy manager."""
     if not self.enable_redundancy:
         return None
-        
+
     try:
         # Import redundancy module
         from .coordinator_redundancy import RedundancyManager, NodeRole
-        
+
         # Parse peers
         peers = []
         for peer in self.peers.split(","):
@@ -310,7 +310,7 @@ def _init_redundancy_manager(self):
             port = int(parts[1]) if len(parts) > 1 else 8080
             peer_id = f"node-{len(peers) + 1}"
             peers.append({"id": peer_id, "host": host, "port": port})
-            
+
         # Create redundancy manager
         manager = RedundancyManager(
             node_id=self.node_id,
@@ -318,14 +318,14 @@ def _init_redundancy_manager(self):
             port=self.port,
             peers=peers,
             data_dir=self.data_dir,
-            coordinator=self
+            coordinator=self,
         )
-        
+
         # Register callbacks
         manager.register_on_leadership_change(self._on_leadership_change)
-        
+
         return manager
-        
+
     except ImportError:
         logger.warning("Redundancy manager not available - running in single node mode")
         return None
@@ -339,13 +339,13 @@ The coordinator includes API routes for Raft protocol communication:
 def _setup_routes(self):
     """Set up API routes."""
     # ... existing routes ...
-    
+
     # Raft protocol routes
     if self.redundancy_manager:
-        self.app.router.add_post('/api/raft/request_vote', self._handle_raft_request_vote)
-        self.app.router.add_post('/api/raft/append_entries', self._handle_raft_append_entries)
-        self.app.router.add_post('/api/raft/sync_state', self._handle_raft_sync_state)
-        self.app.router.add_get('/api/status', self._handle_status)
+        self.app.router.add_post("/api/raft/request_vote", self._handle_raft_request_vote)
+        self.app.router.add_post("/api/raft/append_entries", self._handle_raft_append_entries)
+        self.app.router.add_post("/api/raft/sync_state", self._handle_raft_sync_state)
+        self.app.router.add_get("/api/status", self._handle_status)
 ```
 
 ## Command-Line Options

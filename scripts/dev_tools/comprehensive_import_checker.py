@@ -138,13 +138,13 @@ def _is_guarded_optional_import(node: ast.AST) -> bool:
 
 def _local_module_exists(file_path: Path, module_name: str) -> bool:
     """Check for bare-module fallbacks resolved from the current file's package ancestry."""
-    module_parts = module_name.split('.')
+    module_parts = module_name.split(".")
     search_dir = file_path.parent
     while True:
         target = search_dir.joinpath(*module_parts)
-        if target.with_suffix('.py').exists() or (target / '__init__.py').exists():
+        if target.with_suffix(".py").exists() or (target / "__init__.py").exists():
             return True
-        if not (search_dir / '__init__.py').exists() or search_dir.parent == search_dir:
+        if not (search_dir / "__init__.py").exists() or search_dir.parent == search_dir:
             break
         search_dir = search_dir.parent
     return False
@@ -160,21 +160,22 @@ def _relative_import_exists(file_path: Path, node: ast.ImportFrom) -> bool:
 
     candidate_dirs = [base_dir]
     ancestor = base_dir.parent
-    while ancestor != ancestor.parent and (ancestor / '__init__.py').exists():
+    while ancestor != ancestor.parent and (ancestor / "__init__.py").exists():
         candidate_dirs.append(ancestor)
         ancestor = ancestor.parent
 
     if node.module:
         for candidate_dir in candidate_dirs:
-            target = candidate_dir.joinpath(*node.module.split('.'))
-            if target.with_suffix('.py').exists() or (target / '__init__.py').exists():
+            target = candidate_dir.joinpath(*node.module.split("."))
+            if target.with_suffix(".py").exists() or (target / "__init__.py").exists():
                 return True
         return False
 
     # `from . import foo` may refer to a sibling module or a package attribute.
     # Treat an existing package context as sufficient to avoid false positives.
-    return (base_dir / '__init__.py').exists() or any(
-        (base_dir / alias.name).with_suffix('.py').exists() or (base_dir / alias.name / '__init__.py').exists()
+    return (base_dir / "__init__.py").exists() or any(
+        (base_dir / alias.name).with_suffix(".py").exists()
+        or (base_dir / alias.name / "__init__.py").exists()
         for alias in node.names
     )
 
@@ -182,7 +183,7 @@ def _relative_import_exists(file_path: Path, node: ast.ImportFrom) -> bool:
 def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
     """Check if all imports in a file are valid."""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             source = f.read()
 
         tree = ast.parse(source, filename=str(file_path))
@@ -195,31 +196,40 @@ def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
                     # Check if module exists
                     if not (
                         _is_optional_module(alias.name)
-                        or _is_optional_module(alias.name.split('.')[0])
+                        or _is_optional_module(alias.name.split(".")[0])
                         or _module_exists(alias.name)
-                        or _module_exists(alias.name.split('.')[0])
+                        or _module_exists(alias.name.split(".")[0])
                         or _local_module_exists(file_path, alias.name)
                         or _is_guarded_optional_import(node)
-                        or (_is_nested_import(node) and not _module_exists(alias.name.split('.')[0]))
+                        or (
+                            _is_nested_import(node) and not _module_exists(alias.name.split(".")[0])
+                        )
                     ):
                         errors.append(f"Cannot import '{alias.name}'")
 
             elif isinstance(node, ast.ImportFrom):
                 if node.level > 0:
-                    if not _relative_import_exists(file_path, node) and not _is_guarded_optional_import(node):
+                    if not _relative_import_exists(
+                        file_path, node
+                    ) and not _is_guarded_optional_import(node):
                         module_name = node.module or ""
-                        errors.append(f"Cannot import from relative module '{'.' * node.level}{module_name}'")
+                        errors.append(
+                            f"Cannot import from relative module '{'.' * node.level}{module_name}'"
+                        )
                     continue
 
                 if node.module:
                     if not (
                         _is_optional_module(node.module)
-                        or _is_optional_module(node.module.split('.')[0])
+                        or _is_optional_module(node.module.split(".")[0])
                         or _module_exists(node.module)
-                        or _module_exists(node.module.split('.')[0])
+                        or _module_exists(node.module.split(".")[0])
                         or _local_module_exists(file_path, node.module)
                         or _is_guarded_optional_import(node)
-                        or (_is_nested_import(node) and not _module_exists(node.module.split('.')[0]))
+                        or (
+                            _is_nested_import(node)
+                            and not _module_exists(node.module.split(".")[0])
+                        )
                     ):
                         errors.append(f"Cannot import from '{node.module}'")
 
@@ -235,7 +245,7 @@ def find_python_files(directory: Path, exclude_patterns: List[str]) -> List[Path
     """Find all Python files in directory."""
     python_files = []
 
-    for py_file in directory.glob('**/*.py'):
+    for py_file in directory.glob("**/*.py"):
         if py_file.is_file():
             should_exclude = False
             for pattern in exclude_patterns:
@@ -251,13 +261,13 @@ def find_python_files(directory: Path, exclude_patterns: List[str]) -> List[Path
 
 def main():
     parser = argparse.ArgumentParser(description="Check Python imports")
-    parser.add_argument('--directory', required=True, help='Directory to scan')
-    parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+    parser.add_argument("--directory", required=True, help="Directory to scan")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     parser.add_argument(
-        '--exclude',
-        nargs='*',
-        default=['__pycache__', '.venv', 'venv', '.git', 'build', 'dist'],
-        help='Patterns to exclude',
+        "--exclude",
+        nargs="*",
+        default=["__pycache__", ".venv", "venv", ".git", "build", "dist"],
+        help="Patterns to exclude",
     )
 
     args = parser.parse_args()
@@ -296,17 +306,17 @@ def main():
             for error in errors:
                 print(f"  {error}")
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("IMPORT CHECK SUMMARY")
-    print("="*60)
+    print("=" * 60)
     print(f"Total files checked: {len(python_files)}")
     print(f"Successful: {successful}")
     print(f"Failed: {failed}")
     if len(python_files) > 0:
-        print(f"Success rate: {successful/len(python_files)*100:.1f}%")
+        print(f"Success rate: {successful / len(python_files) * 100:.1f}%")
 
     return 0 if failed == 0 else 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

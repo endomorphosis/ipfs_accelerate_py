@@ -74,23 +74,24 @@ CREATE TABLE IF NOT EXISTS aggregate_results_cache (
 AGGREGATION_SCHEMA_LIST = [
     PERFORMANCE_ANOMALIES_SCHEMA,
     PERFORMANCE_TRENDS_SCHEMA,
-    AGGREGATE_RESULTS_CACHE_SCHEMA
+    AGGREGATE_RESULTS_CACHE_SCHEMA,
 ]
+
 
 # Function to create all result aggregation tables
 def create_aggregation_tables(conn):
     """Create all result aggregation tables in the database.
-    
+
     Args:
         conn: DuckDB connection object
     """
     cursor = conn.cursor()
-    
+
     for schema in AGGREGATION_SCHEMA_LIST:
         cursor.execute(schema)
-        
+
     conn.commit()
-    
+
     # Add any views or other schema objects
     cursor.execute("""
         CREATE VIEW IF NOT EXISTS recent_anomalies AS
@@ -99,7 +100,7 @@ def create_aggregation_tables(conn):
         WHERE detected_at > CURRENT_TIMESTAMP - INTERVAL 7 DAY
         ORDER BY detected_at DESC
     """)
-    
+
     cursor.execute("""
         CREATE VIEW IF NOT EXISTS significant_trends AS
         SELECT *
@@ -107,5 +108,5 @@ def create_aggregation_tables(conn):
         WHERE is_significant = TRUE
         ORDER BY detected_at DESC
     """)
-    
+
     conn.commit()

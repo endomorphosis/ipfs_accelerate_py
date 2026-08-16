@@ -82,26 +82,22 @@ Each test file follows a standardized structure:
 # Model registry with specific models for each family
 MODEL_REGISTRY = {...}
 
+
 class TestModelFamily:
     # Test initialization
-    def __init__(self, model_id=None):
-        ...
-        
+    def __init__(self, model_id=None): ...
+
     # Pipeline API testing
-    def test_pipeline(self, device="auto"):
-        ...
-        
+    def test_pipeline(self, device="auto"): ...
+
     # Direct model testing
-    def test_from_pretrained(self, device="auto"):
-        ...
-        
+    def test_from_pretrained(self, device="auto"): ...
+
     # OpenVINO testing
-    def test_with_openvino(self):
-        ...
-        
+    def test_with_openvino(self): ...
+
     # Run all tests
-    def run_tests(self, all_hardware=False):
-        ...
+    def run_tests(self, all_hardware=False): ...
 ```
 
 ## Documentation

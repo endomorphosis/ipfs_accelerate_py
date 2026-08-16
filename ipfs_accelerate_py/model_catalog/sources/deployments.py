@@ -117,20 +117,14 @@ def _timestamp(value: Any, field_name: str) -> str:
         if not raw:
             raise ValueError("%s must not be empty" % field_name)
         try:
-            parsed = datetime.fromisoformat(
-                raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-            )
+            parsed = datetime.fromisoformat(raw[:-1] + "+00:00" if raw.endswith("Z") else raw)
         except ValueError as exc:
             raise ValueError("%s must be an RFC 3339 timestamp" % field_name) from exc
     else:
         raise ValueError("%s must be a timestamp" % field_name)
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return (
-        parsed.astimezone(timezone.utc)
-        .isoformat(timespec="microseconds")
-        .replace("+00:00", "Z")
-    )
+    return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _optional_timestamp(value: Any, field_name: str) -> Optional[str]:
@@ -200,9 +194,7 @@ def _ttl(value: Any) -> int:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError("ttl_seconds must be a positive number")
     if value <= 0 or value > MAX_HEALTH_TTL_SECONDS:
-        raise ValueError(
-            "ttl_seconds must be between 1 and %d" % MAX_HEALTH_TTL_SECONDS
-        )
+        raise ValueError("ttl_seconds must be between 1 and %d" % MAX_HEALTH_TTL_SECONDS)
     return int(value)
 
 
@@ -211,9 +203,7 @@ def _sequence(value: Any, field_name: str, maximum: int = 64) -> Tuple[Any, ...]
         return ()
     if isinstance(value, str):
         values = (value,)
-    elif isinstance(value, Mapping) or not isinstance(
-        value, (Sequence, set, frozenset)
-    ):
+    elif isinstance(value, Mapping) or not isinstance(value, (Sequence, set, frozenset)):
         raise ValueError("%s must be an array" % field_name)
     else:
         values = tuple(value)
@@ -343,10 +333,7 @@ def _sanitize_endpoint(
     if scheme not in ("http", "https", "unix"):
         raise ValueError("endpoint URI has an unsupported scheme")
     redacted = bool(
-        parts.username is not None
-        or parts.password is not None
-        or parts.query
-        or parts.fragment
+        parts.username is not None or parts.password is not None or parts.query or parts.fragment
     )
     if scheme == "unix":
         if not parts.path.startswith("/"):
@@ -362,8 +349,7 @@ def _sanitize_endpoint(
     if ":" in host and not host.startswith("["):
         host = "[%s]" % host
     if port is not None and not (
-        (scheme == "http" and port == 80)
-        or (scheme == "https" and port == 443)
+        (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
     ):
         host = "%s:%d" % (host, port)
     path = parts.path or "/"
@@ -400,8 +386,10 @@ def _protocol(row: Mapping[str, Any], endpoint: str, served: bool) -> str:
         values = _sequence(protocols, "protocols") if protocols is not None else ()
         raw = values[0] if len(values) == 1 else None
     if raw is None:
-        raw = "openai.http" if served else (
-            "in-process" if urlsplit(endpoint).scheme == "unix" else "http"
+        raw = (
+            "openai.http"
+            if served
+            else ("in-process" if urlsplit(endpoint).scheme == "unix" else "http")
         )
     if isinstance(raw, Enum):
         raw = raw.value
@@ -509,9 +497,7 @@ def _lifecycle(row: Mapping[str, Any]) -> LifecycleState:
 def _explicit_state(row: Mapping[str, Any], *, configured_default: bool) -> OperationalState:
     return OperationalState(
         known=True,
-        configured=_bool_or_none(
-            row.get("configured", configured_default), "configured"
-        ),
+        configured=_bool_or_none(row.get("configured", configured_default), "configured"),
         authorized=_bool_or_none(row.get("authorized"), "authorized"),
         reachable=_bool_or_none(row.get("reachable"), "reachable"),
         healthy=_bool_or_none(row.get("healthy"), "healthy"),
@@ -571,14 +557,10 @@ class HealthSample:
 
     def __post_init__(self) -> None:
         deployment_id = _safe_text(self.deployment_id, 128)
-        if not deployment_id or not re.fullmatch(
-            r"deployment_[0-9a-f]{64}", deployment_id
-        ):
+        if not deployment_id or not re.fullmatch(r"deployment_[0-9a-f]{64}", deployment_id):
             raise ValueError("deployment_id is not a stable deployment identity")
         object.__setattr__(self, "deployment_id", deployment_id)
-        object.__setattr__(
-            self, "observed_at", _timestamp(self.observed_at, "observed_at")
-        )
+        object.__setattr__(self, "observed_at", _timestamp(self.observed_at, "observed_at"))
         object.__setattr__(self, "ttl_seconds", _ttl(self.ttl_seconds))
         provenance = _canonical_name(self.provenance, "provenance")
         object.__setattr__(self, "provenance", provenance)
@@ -590,12 +572,8 @@ class HealthSample:
             "healthy",
             "routable",
         ):
-            object.__setattr__(
-                self, name, _bool_or_none(getattr(self, name), name)
-            )
-        diagnostics = _sequence(
-            self.diagnostics, "health diagnostics", MAX_HEALTH_DIAGNOSTICS
-        )
+            object.__setattr__(self, name, _bool_or_none(getattr(self, name), name))
+        diagnostics = _sequence(self.diagnostics, "health diagnostics", MAX_HEALTH_DIAGNOSTICS)
         object.__setattr__(
             self,
             "diagnostics",
@@ -604,9 +582,7 @@ class HealthSample:
 
     @property
     def expires_at(self) -> str:
-        expiry = _as_datetime(self.observed_at, "observed_at") + timedelta(
-            seconds=self.ttl_seconds
-        )
+        expiry = _as_datetime(self.observed_at, "observed_at") + timedelta(seconds=self.ttl_seconds)
         return _timestamp(expiry, "expires_at")
 
     @property
@@ -744,9 +720,7 @@ def _input_sample(
     return HealthSample(
         deployment_id=deployment_id,
         observed_at=observed,
-        ttl_seconds=observation.get(
-            "ttl_seconds", row.get("health_ttl_seconds", default_ttl)
-        ),
+        ttl_seconds=observation.get("ttl_seconds", row.get("health_ttl_seconds", default_ttl)),
         provenance=observation.get("provenance", source),
         diagnostics=tuple(_sequence(diagnostics, "health diagnostics")),
         **values,
@@ -763,19 +737,11 @@ def _project_sample(
     state = deployment.state
     projected = OperationalState(
         known=state.known,
-        configured=(
-            sample.configured
-            if sample.configured is not None
-            else state.configured
-        ),
+        configured=(sample.configured if sample.configured is not None else state.configured),
         authorized=state.authorized,
-        reachable=(
-            sample.reachable if sample.reachable is not None else state.reachable
-        ),
+        reachable=(sample.reachable if sample.reachable is not None else state.reachable),
         healthy=sample.healthy if sample.healthy is not None else state.healthy,
-        routable=(
-            sample.routable if sample.routable is not None else state.routable
-        ),
+        routable=(sample.routable if sample.routable is not None else state.routable),
     )
     lifecycle = deployment.lifecycle
     if sample.ready is True:
@@ -877,9 +843,7 @@ class DeploymentCatalogSource:
         self.observed_at = (
             _timestamp(observed_at, "observed_at") if observed_at is not None else None
         )
-        self.default_provider = _canonical_name(
-            default_provider, "default_provider"
-        )
+        self.default_provider = _canonical_name(default_provider, "default_provider")
         self.default_service = _canonical_name(default_service, "default_service")
         self.default_protocol = (
             _canonical_name(default_protocol, "default_protocol")
@@ -940,9 +904,7 @@ class DeploymentCatalogSource:
             provider_raw = row.get("transport")
         if provider_raw is None and backend_type == "api":
             provider_raw = backend_id.removeprefix("api_").removeprefix("api-")
-        provider_name = _canonical_name(
-            provider_raw, "provider", default=self.default_provider
-        )
+        provider_name = _canonical_name(provider_raw, "provider", default=self.default_provider)
 
         model_raw = model_override
         if model_raw is None:
@@ -956,16 +918,12 @@ class DeploymentCatalogSource:
                     "transport_model_id",
                 ),
             )
-        model_name = (
-            _canonical_name(model_raw, "model") if model_raw is not None else None
-        )
+        model_name = _canonical_name(model_raw, "model") if model_raw is not None else None
         provider = ProviderDescriptor(
             name=provider_name,
             lifecycle=LifecycleState.CONFIGURED,
             state=OperationalState(known=True, configured=True),
-            provenance=(
-                Provenance(source=self.source, source_record_id=backend_id),
-            ),
+            provenance=(Provenance(source=self.source, source_record_id=backend_id),),
             labels={
                 "service": service,
                 "locality": locality,
@@ -999,9 +957,7 @@ class DeploymentCatalogSource:
                 labels={"service": service, "locality": locality},
             )
 
-        endpoint_id = stable_id(
-            "endpoint", service, protocol, endpoint, locality
-        )
+        endpoint_id = stable_id("endpoint", service, protocol, endpoint, locality)
         identity = DeploymentIdentity(
             service=service,
             model=model_name or "",
@@ -1017,9 +973,7 @@ class DeploymentCatalogSource:
             locality,
             suffix,
         )
-        source_record_id = _safe_text(
-            _first(row, ("backend_id", "transport_model_id", "id")), 512
-        )
+        source_record_id = _safe_text(_first(row, ("backend_id", "transport_model_id", "id")), 512)
         state = _explicit_state(row, configured_default=True)
         deployment = DeploymentDescriptor(
             provider_id=provider.provider_id,
@@ -1032,9 +986,7 @@ class DeploymentCatalogSource:
             created_at=_optional_timestamp(
                 _first(row, ("created_at", "registered_at")), "created_at"
             ),
-            updated_at=_optional_timestamp(
-                _first(row, ("updated_at", "last_seen")), "updated_at"
-            ),
+            updated_at=_optional_timestamp(_first(row, ("updated_at", "last_seen")), "updated_at"),
             provenance=(
                 Provenance(
                     source=self.source,
@@ -1089,16 +1041,12 @@ class DeploymentCatalogSource:
                     model_values = (None,)
                 remaining = self.max_records - len(candidates)
                 if len(model_values) > remaining:
-                    raise ValueError(
-                        "expanded deployment source exceeds maximum record count"
-                    )
+                    raise ValueError("expanded deployment source exceeds maximum record count")
                 for model_value in sorted(
                     model_values,
                     key=lambda value: str(value),
                 ):
-                    candidate, redacted = self._candidate(
-                        raw, model_override=model_value
-                    )
+                    candidate, redacted = self._candidate(raw, model_override=model_value)
                     candidates.append(candidate)
                     if redacted:
                         redacted_fields += 1
@@ -1137,9 +1085,7 @@ class DeploymentCatalogSource:
             current_rank = (
                 (
                     canonical_json(current.deployment),
-                    canonical_json(
-                        current.input_sample.to_dict(), reject_secrets=False
-                    )
+                    canonical_json(current.input_sample.to_dict(), reject_secrets=False)
                     if current.input_sample is not None
                     else "",
                 )

@@ -131,25 +131,25 @@ def mock_inference(model_id: str, input_text: str):
         "model_id": model_id,
         "input": input_text,
         "output": f"[MOCK] Processed by {model_id}",
-        "note": "This is mock inference for testing only"
+        "note": "This is mock inference for testing only",
     }
 ```
 
 Add to dashboard endpoint:
 ```python
-@app.route('/api/models/test', methods=['POST'])
+@app.route("/api/models/test", methods=["POST"])
 def test_model():
     data = request.json
-    model_id = data.get('model_id')
-    
+    model_id = data.get("model_id")
+
     # Check if real model files exist
     model_path = Path(f"mcp_model_cache/models/{model_id}")
     has_weights = (model_path / "pytorch_model.bin").exists()
-    
+
     if not has_weights:
         # Use mock inference for placeholder downloads
-        return jsonify(mock_inference(model_id, data.get('text', '')))
-    
+        return jsonify(mock_inference(model_id, data.get("text", "")))
+
     # Real inference here...
 ```
 
@@ -184,21 +184,20 @@ The system provides feedback on download type:
 ```python
 from pathlib import Path
 
+
 def model_ready_for_inference(model_id: str) -> bool:
     """Check if model has actual weights (not just metadata)"""
     model_path = Path(f"mcp_model_cache/models/{model_id.replace('/', '_')}")
-    
+
     # Check for essential files
     has_config = (model_path / "config.json").exists()
-    has_weights = (
-        (model_path / "pytorch_model.bin").exists() or
-        (model_path / "model.safetensors").exists()
-    )
-    has_tokenizer = (
-        (model_path / "tokenizer_config.json").exists() or
-        (model_path / "vocab.txt").exists()
-    )
-    
+    has_weights = (model_path / "pytorch_model.bin").exists() or (
+        model_path / "model.safetensors"
+    ).exists()
+    has_tokenizer = (model_path / "tokenizer_config.json").exists() or (
+        model_path / "vocab.txt"
+    ).exists()
+
     return has_config and has_weights and has_tokenizer
 ```
 

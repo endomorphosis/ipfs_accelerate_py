@@ -66,13 +66,17 @@ def test_claim_waits_for_latest_successful_prerequisite_receipt(tmp_path: Path) 
         assert missing["repair_evidence"][0]["kind"] == "missing_dependency"
 
         prerequisite_task = coordinator.register_bundle(prerequisite, created_at_ms=1)
-        failed_grant = coordinator.claim(prerequisite_task["task_cid"], "did:web:prerequisite.example")
+        failed_grant = coordinator.claim(
+            prerequisite_task["task_cid"], "did:web:prerequisite.example"
+        )
         coordinator.receipt(failed_grant, status="failed", failure_class="validation")
         failed = coordinator.claimability(dependent_task["task_cid"])
         assert failed["claimable"] is False
         assert failed["repair_evidence"][0]["latest_status"] == "failed"
 
-        successful_grant = coordinator.claim(prerequisite_task["task_cid"], "did:web:prerequisite.example")
+        successful_grant = coordinator.claim(
+            prerequisite_task["task_cid"], "did:web:prerequisite.example"
+        )
         coordinator.receipt(successful_grant, status="succeeded", output={"merge_commit": "abc123"})
         ready = coordinator.claimability(dependent_task["task_cid"])
         assert ready["claimable"] is True
@@ -80,7 +84,9 @@ def test_claim_waits_for_latest_successful_prerequisite_receipt(tmp_path: Path) 
         assert coordinator.claim(dependent_task["task_cid"], "did:web:dependent.example")
 
 
-def test_claimability_evidence_is_bounded_and_aliases_resolve_to_bundle_receipts(tmp_path: Path) -> None:
+def test_claimability_evidence_is_bounded_and_aliases_resolve_to_bundle_receipts(
+    tmp_path: Path,
+) -> None:
     prerequisite = _named_bundle("PRE-ALIAS")
     member_cid = profile_g_cid({"member": "PRE-ALIAS"})
     prerequisite["tasks"][0]["canonical_task_cid"] = member_cid  # type: ignore[index]
@@ -265,7 +271,9 @@ def test_explicit_empty_projection_overrides_stale_embedded_dependencies(tmp_pat
         assert coordinator.claimability(registered["task_cid"])["claimable"] is True
 
 
-def test_planner_structural_repairs_block_claims_without_resolved_dependency_cids(tmp_path: Path) -> None:
+def test_planner_structural_repairs_block_claims_without_resolved_dependency_cids(
+    tmp_path: Path,
+) -> None:
     blocked = {
         **_named_bundle("PLANNER-BLOCKED"),
         "dependency_repair_evidence": [
@@ -387,30 +395,14 @@ def test_registration_rejects_poisoned_embedded_profile_g_attempt_policy(
 
         recomputed_poison = json.loads(json.dumps(embedded))
         recomputed_poison["goal"]["unknown_field"] = "poison"
-        recomputed_poison["goal_cid"] = profile_g_cid(
-            recomputed_poison["goal"]
-        )
-        recomputed_poison["subgoal"]["goal_cid"] = recomputed_poison[
-            "goal_cid"
-        ]
-        recomputed_poison["subgoal_cid"] = profile_g_cid(
-            recomputed_poison["subgoal"]
-        )
-        recomputed_poison["plan_branch"]["subgoal_cid"] = recomputed_poison[
-            "subgoal_cid"
-        ]
-        recomputed_poison["plan_branch_cid"] = profile_g_cid(
-            recomputed_poison["plan_branch"]
-        )
-        recomputed_poison["selection"]["subgoal_cid"] = recomputed_poison[
-            "subgoal_cid"
-        ]
-        recomputed_poison["selection"]["plan_branch_cid"] = recomputed_poison[
-            "plan_branch_cid"
-        ]
-        recomputed_poison["selection_cid"] = profile_g_cid(
-            recomputed_poison["selection"]
-        )
+        recomputed_poison["goal_cid"] = profile_g_cid(recomputed_poison["goal"])
+        recomputed_poison["subgoal"]["goal_cid"] = recomputed_poison["goal_cid"]
+        recomputed_poison["subgoal_cid"] = profile_g_cid(recomputed_poison["subgoal"])
+        recomputed_poison["plan_branch"]["subgoal_cid"] = recomputed_poison["subgoal_cid"]
+        recomputed_poison["plan_branch_cid"] = profile_g_cid(recomputed_poison["plan_branch"])
+        recomputed_poison["selection"]["subgoal_cid"] = recomputed_poison["subgoal_cid"]
+        recomputed_poison["selection"]["plan_branch_cid"] = recomputed_poison["plan_branch_cid"]
+        recomputed_poison["selection_cid"] = profile_g_cid(recomputed_poison["selection"])
         recomputed_poison["task"].update(
             {
                 "subgoal_cid": recomputed_poison["subgoal_cid"],
@@ -418,17 +410,13 @@ def test_registration_rejects_poisoned_embedded_profile_g_attempt_policy(
                 "selection_cid": recomputed_poison["selection_cid"],
             }
         )
-        recomputed_poison["task_cid"] = profile_g_cid(
-            recomputed_poison["task"]
-        )
+        recomputed_poison["task_cid"] = profile_g_cid(recomputed_poison["task"])
         recomputed_poison["task_spec_cid"] = recomputed_poison["task_cid"]
         recomputed_poison["artifacts"] = {
             recomputed_poison[f"{name}_cid"]: recomputed_poison[name]
             for name in ("goal", "subgoal", "plan_branch", "selection")
         }
-        recomputed_poison["artifacts"][
-            recomputed_poison["task_cid"]
-        ] = recomputed_poison["task"]
+        recomputed_poison["artifacts"][recomputed_poison["task_cid"]] = recomputed_poison["task"]
         with pytest.raises(ValueError, match="goal artifact is invalid"):
             coordinator.register_bundle(
                 {**base, "profile_g": recomputed_poison},
@@ -456,11 +444,14 @@ def test_regenerated_bundle_keeps_one_canonical_lease_identity(tmp_path: Path) -
 
         assert registered_first["task_spec_cid"] != registered_second["task_spec_cid"]
         assert registered_first["task_cid"] == registered_second["task_cid"] == grant.task_cid
-        assert coordinator.claim(
-            registered_second["task_cid"],
-            "did:web:lane-a.example",
-            requested_lease_ms=10_000,
-        ).goal_cid == grant.goal_cid
+        assert (
+            coordinator.claim(
+                registered_second["task_cid"],
+                "did:web:lane-a.example",
+                requested_lease_ms=10_000,
+            ).goal_cid
+            == grant.goal_cid
+        )
         with pytest.raises(LeaseConflictError):
             coordinator.claim(
                 registered_second["task_cid"],
@@ -485,12 +476,8 @@ def test_identical_registration_is_a_duckdb_noop(tmp_path: Path) -> None:
 
     connection = duckdb.connect(str(path), read_only=True)
     try:
-        artifact_count = connection.execute(
-            "SELECT count(*) FROM artifacts"
-        ).fetchone()[0]
-        alias_count = connection.execute(
-            "SELECT count(*) FROM task_aliases"
-        ).fetchone()[0]
+        artifact_count = connection.execute("SELECT count(*) FROM artifacts").fetchone()[0]
+        alias_count = connection.execute("SELECT count(*) FROM task_aliases").fetchone()[0]
     finally:
         connection.close()
 
@@ -604,9 +591,7 @@ def test_unlimited_retry_policy_still_bounds_terminal_block_admission(
             )
             state = coordinator.task_state(registered["task_cid"])
             assert state["max_attempts"] == 0
-            assert state["state"] == (
-                "blocked" if expected_attempt == 3 else "ready"
-            )
+            assert state["state"] == ("blocked" if expected_attempt == 3 else "ready")
 
         with pytest.raises(LeaseConflictError, match="attempt budget"):
             coordinator.claim(
@@ -678,28 +663,38 @@ def test_changed_bundle_revision_cannot_overlap_its_active_execution_scope(
                 requested_lease_ms=10_000,
             )
         assert raised.value.code == "G_EXECUTION_SCOPE_CONFLICT"
-        assert coordinator.claim_ready(
-            "did:web:lane-b.example",
-            requested_lease_ms=10_000,
-            eligible_task_cids=(second["task_cid"],),
-        ) is None
+        assert (
+            coordinator.claim_ready(
+                "did:web:lane-b.example",
+                requested_lease_ms=10_000,
+                eligible_task_cids=(second["task_cid"],),
+            )
+            is None
+        )
 
         coordinator.release(first_grant)
-        assert coordinator.claim(
-            second["task_cid"],
-            "did:web:lane-b.example",
-            requested_lease_ms=10_000,
-        ).task_cid == second["task_cid"]
+        assert (
+            coordinator.claim(
+                second["task_cid"],
+                "did:web:lane-b.example",
+                requested_lease_ms=10_000,
+            ).task_cid
+            == second["task_cid"]
+        )
 
 
 def test_claim_renew_heartbeat_release_and_receipt_are_fenced(tmp_path: Path) -> None:
     now = 1_783_872_000_000
     with LeaseCoordinator(tmp_path / "leases.sqlite3", clock_ms=lambda: now) as coordinator:
         adapted = coordinator.register_bundle(_bundle(), created_at_ms=now)
-        grant = coordinator.claim(adapted["task_cid"], "did:web:lane-a.example", requested_lease_ms=10_000)
+        grant = coordinator.claim(
+            adapted["task_cid"], "did:web:lane-a.example", requested_lease_ms=10_000
+        )
 
         with pytest.raises(LeaseConflictError):
-            coordinator.claim(adapted["task_cid"], "did:web:lane-b.example", requested_lease_ms=10_000)
+            coordinator.claim(
+                adapted["task_cid"], "did:web:lane-b.example", requested_lease_ms=10_000
+            )
 
         renewed = coordinator.renew(grant, requested_lease_ms=20_000, now_ms=now + 1_000)
         assert renewed.fencing_token == grant.fencing_token == 1
@@ -756,9 +751,7 @@ def test_heartbeat_history_is_bounded_per_lease(tmp_path: Path) -> None:
 
     connection = duckdb.connect(str(path), read_only=True)
     try:
-        heartbeat_count = connection.execute(
-            "SELECT count(*) FROM heartbeats"
-        ).fetchone()[0]
+        heartbeat_count = connection.execute("SELECT count(*) FROM heartbeats").fetchone()[0]
         artifact_count = connection.execute(
             "SELECT count(*) FROM artifacts WHERE kind='DaemonHeartbeat'"
         ).fetchone()[0]
@@ -766,9 +759,7 @@ def test_heartbeat_history_is_bounded_per_lease(tmp_path: Path) -> None:
         connection.close()
 
     assert latest is not None
-    assert latest["created_at_ms"] == (
-        now + MAX_PERSISTED_HEARTBEATS_PER_LEASE + 3
-    )
+    assert latest["created_at_ms"] == (now + MAX_PERSISTED_HEARTBEATS_PER_LEASE + 3)
     assert latest_after_compaction == latest
     assert heartbeat_count == MAX_PERSISTED_HEARTBEATS_PER_LEASE
     assert artifact_count == MAX_PERSISTED_HEARTBEATS_PER_LEASE
@@ -780,7 +771,9 @@ def test_expired_lane_is_recovered_with_higher_epoch_and_token(tmp_path: Path) -
     now = 1_783_872_000_000
     with LeaseCoordinator(tmp_path / "leases.sqlite3", clock_ms=lambda: now) as coordinator:
         adapted = coordinator.register_bundle(_bundle(), created_at_ms=now)
-        old = coordinator.claim(adapted["task_cid"], "did:web:lane-a.example", requested_lease_ms=5_000)
+        old = coordinator.claim(
+            adapted["task_cid"], "did:web:lane-a.example", requested_lease_ms=5_000
+        )
         replacement = coordinator.claim(
             adapted["task_cid"],
             "did:web:lane-b.example",
@@ -801,12 +794,17 @@ def test_release_allows_a_fenced_takeover(tmp_path: Path) -> None:
     now = 1_783_872_000_000
     with LeaseCoordinator(tmp_path / "leases.sqlite3", clock_ms=lambda: now) as coordinator:
         adapted = coordinator.register_bundle(_bundle(), created_at_ms=now)
-        old = coordinator.claim(adapted["task_cid"], "did:web:lane-a.example", requested_lease_ms=5_000)
+        old = coordinator.claim(
+            adapted["task_cid"], "did:web:lane-a.example", requested_lease_ms=5_000
+        )
         resolution_cid = coordinator.release(old, now_ms=now + 100)
         assert coordinator.get_artifact(resolution_cid)["outcome"] == "released"
 
         replacement = coordinator.claim(
-            adapted["task_cid"], "did:web:lane-b.example", requested_lease_ms=5_000, now_ms=now + 101
+            adapted["task_cid"],
+            "did:web:lane-b.example",
+            requested_lease_ms=5_000,
+            now_ms=now + 101,
         )
         assert replacement.fencing_token == old.fencing_token + 1
         with pytest.raises((LeaseExpiredError, StaleFencingTokenError)):
@@ -816,9 +814,18 @@ def test_release_allows_a_fenced_takeover(tmp_path: Path) -> None:
 def test_queue_bridge_carries_goal_task_adapters(tmp_path: Path) -> None:
     index = tmp_path / "index.json"
     index.write_text(
-        json.dumps({"source_todo": "tasks.todo.md", "bundles": {"objective/test": {
-            "shard_path": "test.todo.md", "parallel_lane": "test", "tasks": [{"task_id": "T-1"}]
-        }}}),
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "objective/test": {
+                        "shard_path": "test.todo.md",
+                        "parallel_lane": "test",
+                        "tasks": [{"task_id": "T-1"}],
+                    }
+                },
+            }
+        ),
         encoding="utf-8",
     )
     payload = build_bundle_task_payloads(index)[0]
@@ -994,20 +1001,36 @@ def test_queue_bridge_backs_off_dependency_block_without_starving_ready_work(
         queue.close()
 
 
-def test_bundle_launcher_runs_only_an_accepted_lease(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_bundle_launcher_runs_only_an_accepted_lease(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     index = repo / "index.json"
-    index.write_text(json.dumps({"bundles": {"objective/test": {
-        "shard_path": "test.todo.md", "parallel_lane": "test", "tasks": [{"task_id": "T-1"}]
-    }}}), encoding="utf-8")
+    index.write_text(
+        json.dumps(
+            {
+                "bundles": {
+                    "objective/test": {
+                        "shard_path": "test.todo.md",
+                        "parallel_lane": "test",
+                        "tasks": [{"task_id": "T-1"}],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     (repo / "test.todo.md").write_text(
         "## T-1 Planned task\n\n- Status: todo\n",
         encoding="utf-8",
     )
     lanes = plan_bundle_lanes(
-        bundle_index_path=index, repo_root=repo, state_root=repo / "state",
-        worktree_root=repo / "worktrees", log_dir=repo / "logs",
+        bundle_index_path=index,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
     )
     starts: list[list[str]] = []
 
@@ -1018,10 +1041,17 @@ def test_bundle_launcher_runs_only_an_accepted_lease(monkeypatch: pytest.MonkeyP
         starts.append(list(command))
         return Process()
 
-    monkeypatch.setattr("ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.subprocess.Popen", fake_popen)
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.subprocess.Popen",
+        fake_popen,
+    )
     coordination = repo / "coordination.sqlite3"
-    first = launch_bundle_lanes(lanes, repo_root=repo, coordination_path=coordination, claimant_did="did:web:lane-a.example")
-    second = launch_bundle_lanes(lanes, repo_root=repo, coordination_path=coordination, claimant_did="did:web:lane-b.example")
+    first = launch_bundle_lanes(
+        lanes, repo_root=repo, coordination_path=coordination, claimant_did="did:web:lane-a.example"
+    )
+    second = launch_bundle_lanes(
+        lanes, repo_root=repo, coordination_path=coordination, claimant_did="did:web:lane-b.example"
+    )
 
     assert first[0]["accepted"] is True
     assert "ipfs_accelerate_py.agent_supervisor.merge.leased_lane" in first[0]["command"]
@@ -1125,9 +1155,9 @@ def test_bundle_launcher_propagates_only_the_leased_execution_slice(
             "canonical_task_cid": leased_cid,
         }
     ]
-    assert wrapper_command[
-        wrapper_command.index("--completion-events-path") + 1
-    ].endswith("_events.jsonl")
+    assert wrapper_command[wrapper_command.index("--completion-events-path") + 1].endswith(
+        "_events.jsonl"
+    )
     assert [
         supervisor_command[index + 1]
         for index, value in enumerate(supervisor_command)

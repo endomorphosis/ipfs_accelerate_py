@@ -199,9 +199,9 @@ def test_bounded_refinement_caps_children_and_preserves_ancestry(tmp_path):
     assert all(goal.parent_goal_id == "root" for goal in outcome.new_goals)
     assert all(goal.ancestor_goal_ids == ("root",) for goal in outcome.new_goals)
     assert all(goal.depth == 1 for goal in outcome.new_goals)
-    assert {
-        diagnostic.disposition for diagnostic in outcome.diagnostics
-    } >= {FindingDisposition.CHILD_LIMIT}
+    assert {diagnostic.disposition for diagnostic in outcome.diagnostics} >= {
+        FindingDisposition.CHILD_LIMIT
+    }
 
 
 def test_ambiguous_family_and_invalid_imported_forest_fail_closed(tmp_path):
@@ -339,9 +339,7 @@ def test_exhausted_retries_create_exactly_one_bounded_review_task(tmp_path):
         "status": "failed",
         "attempts": 3,
     }
-    state = RefillState(
-        semantic_task_ids=((finding.semantic_key_id, "failed-repair"),)
-    )
+    state = RefillState(semantic_task_ids=((finding.semantic_key_id, "failed-repair"),))
 
     outcome = _refill(ledger, receipts, tasks=(failed,), state=state)
 
@@ -405,14 +403,9 @@ def test_dependency_dag_is_topological_and_cycles_create_no_work(tmp_path):
     )
 
     assert len(outcome.new_tasks) == 3
-    positions = {
-        task.finding_semantic_key: index
-        for index, task in enumerate(outcome.new_tasks)
-    }
+    positions = {task.finding_semantic_key: index for index, task in enumerate(outcome.new_tasks)}
     assert positions[a] < positions[b] < positions[c]
-    tasks_by_key = {
-        task.finding_semantic_key: task for task in outcome.new_tasks
-    }
+    tasks_by_key = {task.finding_semantic_key: task for task in outcome.new_tasks}
     assert tasks_by_key[b].depends_on == (tasks_by_key[a].task_id,)
     assert tasks_by_key[c].depends_on == (tasks_by_key[b].task_id,)
 

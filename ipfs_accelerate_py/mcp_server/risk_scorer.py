@@ -171,5 +171,7 @@ def make_default_risk_policy() -> RiskScoringPolicy:
     return RiskScoringPolicy()
 
 
-def score_intent(tool: str, actor: str = "", params: Optional[Dict[str, Any]] = None) -> RiskAssessment:
+def score_intent(
+    tool: str, actor: str = "", params: Optional[Dict[str, Any]] = None
+) -> RiskAssessment:
     return RiskScorer().score_intent(tool=tool, actor=actor, params=params)

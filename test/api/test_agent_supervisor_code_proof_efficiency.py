@@ -72,9 +72,7 @@ def test_preregistered_suite_spans_required_families_and_mutation_kinds():
         assert case.bulk.path is ContextPath.BULK_SOURCE
         assert case.obligation_first.path is ContextPath.OBLIGATION_FIRST
         assert case.bulk.channel is ResultChannel.DETERMINISTIC_FIXTURE
-        assert (
-            case.obligation_first.channel is ResultChannel.DETERMINISTIC_FIXTURE
-        )
+        assert case.obligation_first.channel is ResultChannel.DETERMINISTIC_FIXTURE
         assert case.bulk.task_reference == case.obligation_first.task_reference
 
 
@@ -84,10 +82,7 @@ def test_fixture_gates_pass_with_required_thresholds():
     assert report.fixture_gates_authoritative
     assert report.false_admit_count == 0
     assert report.required_coverage_loss_count == 0
-    assert (
-        report.tokens_per_criterion_reduction_bps
-        >= MIN_INPUT_TOKEN_REDUCTION_BPS
-    )
+    assert report.tokens_per_criterion_reduction_bps >= MIN_INPUT_TOKEN_REDUCTION_BPS
     assert report.retry_token_reduction_bps >= MIN_RETRY_TOKEN_REDUCTION_BPS
     assert report.warm_prove_cost_reduction_bps > 0
     assert CODEBASE_PROOF_EFFICIENCY_REQUIREMENT_ID in report.evidence_claim_references
@@ -108,9 +103,7 @@ def test_report_covers_status_family_tier_and_assurance_dimensions():
     for status in REQUIRED_CLAIM_STATUSES:
         assert status.value in report.status_counts
     # Fixture population includes the six lifecycle statuses used by claims.
-    observed_statuses = {
-        key for key, value in report.status_counts.items() if value > 0
-    }
+    observed_statuses = {key for key, value in report.status_counts.items() if value > 0}
     assert ClaimStatus.SATISFIED.value in observed_statuses
     assert ClaimStatus.OPEN.value in observed_statuses
     assert ClaimStatus.STALE.value in observed_statuses
@@ -122,9 +115,7 @@ def test_report_covers_status_family_tier_and_assurance_dimensions():
         assert bucket["satisfied"] >= 1
 
     assert report.evidence_tier_counts.get(EvidenceTier.KERNEL_PROOF.value, 0) >= 1
-    assert (
-        report.assurance_counts.get(AssuranceLevel.KERNEL_VERIFIED.value, 0) >= 1
-    )
+    assert report.assurance_counts.get(AssuranceLevel.KERNEL_VERIFIED.value, 0) >= 1
 
 
 def test_report_includes_all_required_efficiency_and_quality_metrics():
@@ -170,9 +161,7 @@ def test_report_includes_all_required_efficiency_and_quality_metrics():
 
 
 def test_live_model_channel_is_reported_separately_from_fixture_gates():
-    suite = build_preregistered_codebase_proof_suite(
-        include_live_model_channel=True
-    )
+    suite = build_preregistered_codebase_proof_suite(include_live_model_channel=True)
     assert suite.live_model_channel is not None
     assert suite.live_model_channel.to_dict()["authoritative_for_fixture_gates"] is False
     report = evaluate_codebase_proof_benchmark(suite)
@@ -197,7 +186,9 @@ def test_report_is_recomputed_and_tampering_fails_closed():
 
     payload = suite.to_dict()
     payload["paired_cases"] = payload["paired_cases"][1:]
-    with pytest.raises(CodebaseProofBenchmarkError, match="preregistration_digest|required claim families"):
+    with pytest.raises(
+        CodebaseProofBenchmarkError, match="preregistration_digest|required claim families"
+    ):
         CodebaseProofBenchmarkSuite.from_dict(payload)
 
 
@@ -210,7 +201,7 @@ def test_suite_round_trip_and_alias():
     assert "prompt" not in encoded.lower() or "prompt" not in suite.to_dict()
     # Forbidden payload keys must not appear as field names.
     blob = json.dumps(suite.to_dict())
-    for forbidden in ("source_body", "decoded_output", "proof_body", "patch\""):
+    for forbidden in ("source_body", "decoded_output", "proof_body", 'patch"'):
         assert forbidden not in blob
 
 
@@ -219,14 +210,8 @@ def test_efficiency_metrics_extension_meets_cbp_thresholds():
     efficiency = build_code_proof_efficiency_report(suite.paired_cases)
     assert isinstance(efficiency, CodeProofEfficiencyReport)
     assert efficiency.passed
-    assert (
-        efficiency.tokens_per_criterion_reduction_bps
-        >= CODE_PROOF_MIN_INPUT_TOKEN_REDUCTION_BPS
-    )
-    assert (
-        efficiency.retry_token_reduction_bps
-        >= CODE_PROOF_MIN_RETRY_TOKEN_REDUCTION_BPS
-    )
+    assert efficiency.tokens_per_criterion_reduction_bps >= CODE_PROOF_MIN_INPUT_TOKEN_REDUCTION_BPS
+    assert efficiency.retry_token_reduction_bps >= CODE_PROOF_MIN_RETRY_TOKEN_REDUCTION_BPS
     assert efficiency.warm_prove_cost_reduction_bps > 0
     assert efficiency.required_coverage_preserved
     assert CODE_PROOF_EFFICIENCY_EVIDENCE_ID in efficiency.evidence_claim_references
@@ -260,9 +245,7 @@ def test_false_admit_seed_fails_zero_false_admission_gate():
             )
             bulk = CodeProofArmObservation.from_dict(case.bulk.to_dict())
             bulk_payload = bulk.to_dict()
-            bulk_payload["claims"] = list(bulk_payload["claims"]) + [
-                bad_claim.to_dict()
-            ]
+            bulk_payload["claims"] = list(bulk_payload["claims"]) + [bad_claim.to_dict()]
             # Rebuild arm without schema-derived keys that confuse from_dict.
             for key in (
                 "input_tokens_per_accepted_criterion",
@@ -298,9 +281,7 @@ def test_false_admit_seed_fails_zero_false_admission_gate():
     assert report.false_admit_count >= 1
     assert not report.passed
     gate = next(
-        g
-        for g in report.gates
-        if g.name is CodeProofGateName.ZERO_FALSE_AUTHORITATIVE_ADMISSIONS
+        g for g in report.gates if g.name is CodeProofGateName.ZERO_FALSE_AUTHORITATIVE_ADMISSIONS
     )
     assert not gate.passed
     assert report.evidence_claim_references == ()

@@ -6,6 +6,7 @@ This script creates a simple MCP test server that runs on a test port.
 
 Note: This is a FastMCP smoke script; execution_context metadata is not used here.
 """
+
 import os
 import sys
 import logging
@@ -61,41 +62,38 @@ try:
     # Start the server process
     logger.info("Starting MCP test server...")
     port = 8765
-    
+
     # Start server in a subprocess
     server_process = Popen(
-        [sys.executable, temp_file, "--port", str(port)],
-        stdout=PIPE,
-        stderr=PIPE,
-        text=True
+        [sys.executable, temp_file, "--port", str(port)], stdout=PIPE, stderr=PIPE, text=True
     )
-    
+
     # Wait for the server to start
     logger.info("Waiting for server to start...")
     time.sleep(3)
-    
+
     # Check server output
     if server_process.stdout:
         stdout_data = server_process.stdout.read()
         if stdout_data:
             logger.info(f"Server stdout: {stdout_data}")
-    
+
     if server_process.stderr:
         stderr_data = server_process.stderr.read()
         if stderr_data:
             logger.error(f"Server stderr: {stderr_data}")
-    
+
     # Check if server is running
     server_url = f"http://127.0.0.1:{port}"
     logger.info(f"Testing server at {server_url}")
-    
+
     # Try to connect to the server
     try:
         response = requests.get(server_url)
         if response.status_code == 200:
             logger.info("Server is running!")
             logger.info(f"Response: {response.text}")
-            
+
             # Try to access a tool
             tool_url = f"{server_url}/tools/add"
             logger.info(f"Testing tool at {tool_url}")
@@ -105,7 +103,7 @@ try:
                 logger.info(f"Tool result: {result}")
             else:
                 logger.error(f"Tool error: {tool_response.status_code} - {tool_response.text}")
-                
+
             # Try to access a resource
             resource_url = f"{server_url}/resources/test://greeting"
             logger.info(f"Testing resource at {resource_url}")
@@ -114,36 +112,39 @@ try:
                 result = resource_response.json()
                 logger.info(f"Resource result: {result}")
             else:
-                logger.error(f"Resource error: {resource_response.status_code} - {resource_response.text}")
+                logger.error(
+                    f"Resource error: {resource_response.status_code} - {resource_response.text}"
+                )
         else:
             logger.error(f"Server returned status code {response.status_code}")
-    
+
     except requests.exceptions.ConnectionError:
         logger.error(f"Could not connect to server at {server_url}")
-        
+
 except Exception as e:
     logger.error(f"Error: {str(e)}")
     import traceback
+
     traceback.print_exc()
-    
+
 finally:
     # Cleanup
     logger.info("Cleaning up...")
-    
+
     # Stop the server
-    if 'server_process' in locals():
+    if "server_process" in locals():
         logger.info("Terminating server process...")
         server_process.terminate()
         server_process.wait(5)  # Wait up to 5 seconds
-        
+
         # Force kill if still running
         if server_process.poll() is None:
             logger.info("Server process still running, sending SIGKILL...")
             server_process.kill()
-    
+
     # Remove temporary file
     if os.path.exists(temp_file):
         logger.info(f"Removing temporary file {temp_file}...")
         os.unlink(temp_file)
-        
+
     logger.info("Test completed.")

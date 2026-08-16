@@ -154,9 +154,7 @@ def detect_lean_shim_toolchain_mismatch(
 
     if not selected_toolchain or not str(selected_toolchain).strip():
         return False
-    installed = {
-        item.strip() for item in installed_toolchains if item and str(item).strip()
-    }
+    installed = {item.strip() for item in installed_toolchains if item and str(item).strip()}
     return selected_toolchain.strip() not in installed
 
 
@@ -557,9 +555,7 @@ def test_offline_toolchain_probes_respect_lock_and_detect_mismatches() -> None:
             "version_string": banner,
             "locked_version": pin_version,
             "locked_version_mismatch": (
-                detect_locked_version_mismatch(pin_version, banner)
-                if pin_version
-                else False
+                detect_locked_version_mismatch(pin_version, banner) if pin_version else False
             ),
         }
 

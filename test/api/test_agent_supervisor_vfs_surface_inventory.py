@@ -161,9 +161,7 @@ def test_inventory_classifies_every_surface_and_maps_relationships(
     }
     assert set(SurfaceClassification) <= observed_classifications
 
-    observed_kinds = {
-        kind for surface in inventory.surfaces for kind in surface.kinds
-    }
+    observed_kinds = {kind for surface in inventory.surfaces for kind in surface.kinds}
     assert {
         SurfaceKind.FSSPEC,
         SurfaceKind.VFS_MANAGER,
@@ -233,8 +231,7 @@ def test_variants_are_discovered_but_never_defects_by_presence(
     assert VARIANT_PRESENCE_IS_DEFECT is False
     assert any(item.code == "variant_observed" for item in inventory.diagnostics)
     assert not any(
-        item.code == "variant_observed" and item.is_defect
-        for item in inventory.diagnostics
+        item.code == "variant_observed" and item.is_defect for item in inventory.diagnostics
     )
     assert inventory.by_path()["sdk/mcp-sdk.full.js"].variant_suffix == ".full"
 

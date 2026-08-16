@@ -34,4 +34,7 @@ def test_development_package_exports_supported_native_functions() -> None:
     assert vscode_cli_install_extension is native_development_tools.vscode_cli_install_extension
     assert vscode_cli_uninstall_extension is native_development_tools.vscode_cli_uninstall_extension
     assert vscode_cli_tunnel_login is native_development_tools.vscode_cli_tunnel_login
-    assert vscode_cli_tunnel_install_service is native_development_tools.vscode_cli_tunnel_install_service
+    assert (
+        vscode_cli_tunnel_install_service
+        is native_development_tools.vscode_cli_tunnel_install_service
+    )

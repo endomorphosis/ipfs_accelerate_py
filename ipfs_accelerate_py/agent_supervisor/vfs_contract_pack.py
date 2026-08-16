@@ -23,12 +23,8 @@ from typing import Any, Final, Iterable, Mapping, Sequence
 
 from .program_contracts import SOURCE_PRECEDENCE, ContractSourceKind
 
-VFS_CONTRACT_PACK_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/vfs-contract-pack@1"
-)
-VFS_CANONICAL_OPERATION_MATRIX_SCHEMA: Final[str] = (
-    "vfs/canonical-operation-matrix@1"
-)
+VFS_CONTRACT_PACK_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/vfs-contract-pack@1"
+VFS_CANONICAL_OPERATION_MATRIX_SCHEMA: Final[str] = "vfs/canonical-operation-matrix@1"
 VFS_DRIFT_INVENTORY_SCHEMA: Final[str] = "vfs/drift-inventory@1"
 VFS_CONTRACT_PACK_VERSION: Final[str] = "vfs-contract-pack/v1"
 VFS_CONTRACT_PACK_GOAL_ID: Final[str] = "VFS-026"
@@ -37,9 +33,7 @@ VFS_DRIFT_INVENTORY_TASK_ID: Final[str] = "VFS-045"
 VFS_DRIFT_INVENTORY_OBJECTIVE_REVISION: Final[str] = (
     "baguqeerahsnzkm2u6e6qvh6hnjyrwwwhyf6usdlocisaibw5zyk4ujektotq"
 )
-VFS_DRIFT_INVENTORY_SOURCE_REVISION: Final[str] = (
-    "git:f6a574375febbcf9a46fcd24bbc7bc5cfb551de5"
-)
+VFS_DRIFT_INVENTORY_SOURCE_REVISION: Final[str] = "git:f6a574375febbcf9a46fcd24bbc7bc5cfb551de5"
 
 # Authority bounds: this is a comparison contract, not proof of repository
 # correctness or permission to select/modify an implementation.
@@ -286,9 +280,7 @@ class SourceContract:
             or type(self.available) is not bool
             or type(self.expectation_authority) is not bool
         ):
-            raise VfsContractPackError(
-                "source authority flags must be booleans"
-            )
+            raise VfsContractPackError("source authority flags must be booleans")
         if self.expectation_authority:
             if not self.available or not self.reviewed:
                 raise VfsContractPackError(
@@ -344,10 +336,7 @@ class InvariantContract:
             raise VfsContractPackError(
                 f"resolved invariant {self.invariant_id!r} needs a source contract"
             )
-        if (
-            self.state is ExpectationState.CONFLICTING
-            and len(self.source_contract_ids) < 2
-        ):
+        if self.state is ExpectationState.CONFLICTING and len(self.source_contract_ids) < 2:
             raise VfsContractPackError(
                 f"conflicting invariant {self.invariant_id!r} needs two sources"
             )
@@ -385,9 +374,7 @@ class OperationContract:
         _require_identifier(self.summary, "summary")
         _require_unique((item.value for item in self.input_modes), "input_modes")
         _require_unique((item.value for item in self.output_modes), "output_modes")
-        _require_unique(
-            (item.value for item in self.execution_modes), "execution_modes"
-        )
+        _require_unique((item.value for item in self.execution_modes), "execution_modes")
         _require_unique(self.invariant_ids, "invariant_ids")
         _require_unique((item.value for item in self.error_codes), "error_codes")
         _require_unique(self.source_contract_ids, "source_contract_ids")
@@ -403,10 +390,7 @@ class OperationContract:
             raise VfsContractPackError(
                 f"resolved operation {self.operation.value!r} needs a source contract"
             )
-        if (
-            self.state is ExpectationState.CONFLICTING
-            and len(self.source_contract_ids) < 2
-        ):
+        if self.state is ExpectationState.CONFLICTING and len(self.source_contract_ids) < 2:
             raise VfsContractPackError(
                 f"conflicting operation {self.operation.value!r} needs two sources"
             )
@@ -441,13 +425,9 @@ class SurfaceOperationContract:
             raise VfsContractPackError(
                 f"resolved surface operation {self.operation.value!r} needs a source"
             )
-        if (
-            self.support is OperationSupport.CONFLICTING
-            and len(self.source_contract_ids) < 2
-        ):
+        if self.support is OperationSupport.CONFLICTING and len(self.source_contract_ids) < 2:
             raise VfsContractPackError(
-                f"conflicting surface operation {self.operation.value!r} "
-                "needs two sources"
+                f"conflicting surface operation {self.operation.value!r} needs two sources"
             )
         if self.entrypoint is not None:
             _require_identifier(self.entrypoint, "entrypoint")
@@ -473,26 +453,18 @@ class PublicSurfaceContract:
 
     def __post_init__(self) -> None:
         _require_identifier(self.contract_name, "contract_name")
-        _require_unique(
-            (item.value for item in self.execution_modes), "execution_modes"
-        )
+        _require_unique((item.value for item in self.execution_modes), "execution_modes")
         _require_unique(
             (item.operation.value for item in self.operations),
             f"{self.surface.value} operations",
         )
         _require_unique(self.source_contract_ids, "source_contract_ids")
         if not self.execution_modes:
-            raise VfsContractPackError(
-                f"{self.surface.value} needs an execution mode"
-            )
+            raise VfsContractPackError(f"{self.surface.value} needs an execution mode")
         if not self.source_contract_ids:
-            raise VfsContractPackError(
-                f"{self.surface.value} needs a source contract"
-            )
+            raise VfsContractPackError(f"{self.surface.value} needs a source contract")
         if type(self.transport_error_mapping_required) is not bool:
-            raise VfsContractPackError(
-                "transport_error_mapping_required must be a boolean"
-            )
+            raise VfsContractPackError("transport_error_mapping_required must be a boolean")
         found = {item.operation for item in self.operations}
         required = set(VfsOperation)
         if found != required:
@@ -506,9 +478,7 @@ class PublicSurfaceContract:
     @property
     def supported_operations(self) -> tuple[VfsOperation, ...]:
         return tuple(
-            item.operation
-            for item in self.operations
-            if item.support is OperationSupport.SUPPORTED
+            item.operation for item in self.operations if item.support is OperationSupport.SUPPORTED
         )
 
     @property
@@ -516,8 +486,7 @@ class PublicSurfaceContract:
         return tuple(
             item.operation
             for item in self.operations
-            if item.support
-            in {OperationSupport.UNRESOLVED, OperationSupport.CONFLICTING}
+            if item.support in {OperationSupport.UNRESOLVED, OperationSupport.CONFLICTING}
         )
 
     def support_for(self, operation: VfsOperation) -> SurfaceOperationContract:
@@ -562,17 +531,13 @@ class ExpectationIssue:
                 raise VfsContractPackError("missing expectations cannot have a resolution")
         else:
             if self.state is not ExpectationState.CONFLICTING:
-                raise VfsContractPackError(
-                    "conflicting expectations must stay conflicting"
-                )
+                raise VfsContractPackError("conflicting expectations must stay conflicting")
             if len(self.source_contract_ids) < 2 or len(self.positions) < 2:
                 raise VfsContractPackError(
                     "a conflict needs at least two sources and two positions"
                 )
             if self.resolution is not None:
-                raise VfsContractPackError(
-                    "conflicting expectations cannot select a resolution"
-                )
+                raise VfsContractPackError("conflicting expectations cannot select a resolution")
 
     def to_record(self) -> dict[str, Any]:
         return {
@@ -608,13 +573,8 @@ class CanonicalVector:
             raise VfsContractPackError(
                 f"resolved vector {self.vector_id!r} needs a source contract"
             )
-        if (
-            self.state is ExpectationState.CONFLICTING
-            and len(self.source_contract_ids) < 2
-        ):
-            raise VfsContractPackError(
-                f"conflicting vector {self.vector_id!r} needs two sources"
-            )
+        if self.state is ExpectationState.CONFLICTING and len(self.source_contract_ids) < 2:
+            raise VfsContractPackError(f"conflicting vector {self.vector_id!r} needs two sources")
 
     def to_record(self) -> dict[str, Any]:
         return {
@@ -738,9 +698,7 @@ class VfsDriftFinding:
     def __post_init__(self) -> None:
         _require_identifier(self.finding_id, "finding_id")
         _require_identifier(self.summary, "summary")
-        _require_unique(
-            (item.value for item in self.surface_kinds), "surface_kinds"
-        )
+        _require_unique((item.value for item in self.surface_kinds), "surface_kinds")
         _require_unique(self.evidence_ids, "evidence_ids")
         _require_unique(
             (item.value for item in self.canonical_operations),
@@ -748,9 +706,7 @@ class VfsDriftFinding:
         )
         _require_unique(self.source_contract_ids, "source_contract_ids")
         if not self.surface_kinds:
-            raise VfsContractPackError(
-                f"drift finding {self.finding_id!r} needs a surface kind"
-            )
+            raise VfsContractPackError(f"drift finding {self.finding_id!r} needs a surface kind")
         if not self.evidence_ids:
             raise VfsContractPackError(
                 f"drift finding {self.finding_id!r} needs observation evidence"
@@ -762,10 +718,7 @@ class VfsDriftFinding:
         if type(self.variant_presence_only) is not bool:
             raise VfsContractPackError("variant_presence_only must be a boolean")
         if self.kind is DriftFindingKind.VARIANT_PRESENCE:
-            if (
-                not self.variant_presence_only
-                or self.assessment is not DriftAssessment.OBSERVED
-            ):
+            if not self.variant_presence_only or self.assessment is not DriftAssessment.OBSERVED:
                 raise VfsContractPackError(
                     "variant presence must remain an observation, not a drift verdict"
                 )
@@ -774,13 +727,9 @@ class VfsDriftFinding:
                 "variant_presence_only is reserved for variant-presence findings"
             )
         if self.defect_label is not None:
-            raise VfsContractPackError(
-                "inventory findings cannot assign a defect label"
-            )
+            raise VfsContractPackError("inventory findings cannot assign a defect label")
         if self.repair_decision is not None:
-            raise VfsContractPackError(
-                "inventory findings cannot contain repair decisions"
-            )
+            raise VfsContractPackError("inventory findings cannot contain repair decisions")
 
     def to_record(self) -> dict[str, Any]:
         return {
@@ -831,9 +780,7 @@ class VfsDriftInventory:
         )
         for actual, expected, field_name in expected_identity:
             if actual != expected:
-                raise VfsContractPackError(
-                    f"{field_name} must be {expected!r}, got {actual!r}"
-                )
+                raise VfsContractPackError(f"{field_name} must be {expected!r}, got {actual!r}")
         _require_identifier(self.contract_pack_id, "contract_pack_id")
         _require_unique((item.evidence_id for item in self.evidence), "evidence ids")
         _require_unique((item.finding_id for item in self.findings), "finding ids")
@@ -842,9 +789,7 @@ class VfsDriftInventory:
 
         evidence_ids = {item.evidence_id for item in self.evidence}
         referenced_evidence = {
-            evidence_id
-            for finding in self.findings
-            for evidence_id in finding.evidence_ids
+            evidence_id for finding in self.findings for evidence_id in finding.evidence_ids
         }
         if referenced_evidence != evidence_ids:
             missing = sorted(referenced_evidence - evidence_ids)
@@ -854,60 +799,35 @@ class VfsDriftInventory:
             )
 
         covered_surfaces = {
-            surface_kind
-            for finding in self.findings
-            for surface_kind in finding.surface_kinds
+            surface_kind for finding in self.findings for surface_kind in finding.surface_kinds
         }
         if covered_surfaces != set(DriftSurfaceKind):
-            missing = sorted(
-                item.value for item in set(DriftSurfaceKind) - covered_surfaces
-            )
-            extra = sorted(
-                item.value for item in covered_surfaces - set(DriftSurfaceKind)
-            )
+            missing = sorted(item.value for item in set(DriftSurfaceKind) - covered_surfaces)
+            extra = sorted(item.value for item in covered_surfaces - set(DriftSurfaceKind))
             raise VfsContractPackError(
                 f"drift surface coverage differs; missing={missing}, extra={extra}"
             )
 
         covered_operations = {
-            operation
-            for finding in self.findings
-            for operation in finding.canonical_operations
+            operation for finding in self.findings for operation in finding.canonical_operations
         }
         if covered_operations != set(VfsOperation):
-            missing = sorted(
-                item.value for item in set(VfsOperation) - covered_operations
-            )
-            raise VfsContractPackError(
-                f"drift operation mapping is incomplete; missing={missing}"
-            )
-        if not any(
-            item.kind is DriftFindingKind.MANIFEST_DRIFT for item in self.findings
-        ):
+            missing = sorted(item.value for item in set(VfsOperation) - covered_operations)
+            raise VfsContractPackError(f"drift operation mapping is incomplete; missing={missing}")
+        if not any(item.kind is DriftFindingKind.MANIFEST_DRIFT for item in self.findings):
             raise VfsContractPackError(
                 "drift inventory must contain an evidence-backed manifest finding"
             )
-        if not any(
-            item.kind is DriftFindingKind.VARIANT_PRESENCE for item in self.findings
-        ):
-            raise VfsContractPackError(
-                "drift inventory must record variant presence separately"
-            )
-        if not any(
-            item.kind is DriftFindingKind.DUPLICATE_CANDIDATE
-            for item in self.findings
-        ):
+        if not any(item.kind is DriftFindingKind.VARIANT_PRESENCE for item in self.findings):
+            raise VfsContractPackError("drift inventory must record variant presence separately")
+        if not any(item.kind is DriftFindingKind.DUPLICATE_CANDIDATE for item in self.findings):
             raise VfsContractPackError(
                 "drift inventory must record duplicate candidates separately"
             )
 
     @property
     def drift_findings(self) -> tuple[VfsDriftFinding, ...]:
-        return tuple(
-            item
-            for item in self.findings
-            if item.assessment is DriftAssessment.DRIFT
-        )
+        return tuple(item for item in self.findings if item.assessment is DriftAssessment.DRIFT)
 
     @property
     def repair_decisions(self) -> tuple[Any, ...]:
@@ -929,9 +849,7 @@ class VfsDriftInventory:
                 "completion_evidence": DRIFT_INVENTORY_IS_COMPLETION_EVIDENCE,
                 "correctness_evidence": DRIFT_INVENTORY_IS_CORRECTNESS_EVIDENCE,
                 "authorizes_repair": DRIFT_INVENTORY_AUTHORIZES_REPAIR,
-                "variant_presence_is_defect": (
-                    DRIFT_INVENTORY_VARIANT_PRESENCE_IS_DEFECT
-                ),
+                "variant_presence_is_defect": (DRIFT_INVENTORY_VARIANT_PRESENCE_IS_DEFECT),
             },
             "evidence": [item.to_record() for item in self.evidence],
             "inventory_findings": [item.to_record() for item in self.findings],
@@ -985,22 +903,14 @@ class VfsContractPack:
         )
         for actual, expected, field_name in expected_identity:
             if actual != expected:
-                raise VfsContractPackError(
-                    f"{field_name} must be {expected!r}, got {actual!r}"
-                )
+                raise VfsContractPackError(f"{field_name} must be {expected!r}, got {actual!r}")
         _require_unique((item.source_id for item in self.sources), "source ids")
-        _require_unique(
-            (item.invariant_id for item in self.invariants), "invariant ids"
-        )
-        _require_unique(
-            (item.operation.value for item in self.operations), "operations"
-        )
+        _require_unique((item.invariant_id for item in self.invariants), "invariant ids")
+        _require_unique((item.operation.value for item in self.operations), "operations")
         _require_unique((item.surface.value for item in self.surfaces), "surfaces")
         _require_unique((item.issue_id for item in self.issues), "issue ids")
         _require_unique((item.vector_id for item in self.vectors), "vector ids")
-        _require_unique(
-            (item.example_id for item in self.facade_examples), "example ids"
-        )
+        _require_unique((item.example_id for item in self.facade_examples), "example ids")
         if {item.operation for item in self.operations} != set(VfsOperation):
             raise VfsContractPackError(
                 "operation contracts must cover the complete VfsOperation vocabulary"
@@ -1019,17 +929,14 @@ class VfsContractPack:
         sources = {item.source_id: item for item in self.sources}
         invariants = {item.invariant_id: item for item in self.invariants}
 
-        def check_sources(
-            owner: str, source_ids: Sequence[str], resolved: bool
-        ) -> None:
+        def check_sources(owner: str, source_ids: Sequence[str], resolved: bool) -> None:
             unknown = sorted(set(source_ids) - sources.keys())
             if unknown:
                 raise VfsContractPackError(
                     f"{owner} references unknown source contracts: {unknown}"
                 )
             if resolved and not any(
-                sources[source_id].expectation_authority
-                for source_id in source_ids
+                sources[source_id].expectation_authority for source_id in source_ids
             ):
                 raise VfsContractPackError(
                     f"{owner} resolves an expectation without reviewed authority"
@@ -1069,8 +976,7 @@ class VfsContractPack:
                     error.value for error in inherited_errors - set(item.error_codes)
                 )
                 raise VfsContractPackError(
-                    f"operation {item.operation.value} omits invariant errors: "
-                    f"{missing_errors}"
+                    f"operation {item.operation.value} omits invariant errors: {missing_errors}"
                 )
             check_sources(
                 item.operation.value,
@@ -1100,8 +1006,7 @@ class VfsContractPack:
             )
             if inapplicable:
                 raise VfsContractPackError(
-                    f"vector {vector.vector_id} uses inapplicable invariants: "
-                    f"{inapplicable}"
+                    f"vector {vector.vector_id} uses inapplicable invariants: {inapplicable}"
                 )
             check_sources(
                 vector.vector_id,
@@ -1138,8 +1043,7 @@ class VfsContractPack:
         return tuple(
             item
             for item in self.issues
-            if item.state
-            in {ExpectationState.UNRESOLVED, ExpectationState.CONFLICTING}
+            if item.state in {ExpectationState.UNRESOLVED, ExpectationState.CONFLICTING}
         )
 
     def to_record(self) -> dict[str, Any]:
@@ -1160,9 +1064,7 @@ class VfsContractPack:
             "surfaces": [item.to_record() for item in self.surfaces],
             "issues": [item.to_record() for item in self.issues],
             "vectors": [item.to_record() for item in self.vectors],
-            "facade_examples": [
-                item.to_record() for item in self.facade_examples
-            ],
+            "facade_examples": [item.to_record() for item in self.facade_examples],
         }
         record["content_id"] = _content_id(record)
         return record
@@ -1442,9 +1344,7 @@ def _canonical_operations(
     invariants: Sequence[InvariantContract],
 ) -> tuple[OperationContract, ...]:
     invariant_map = {
-        operation: tuple(
-            item.invariant_id for item in invariants if operation in item.applies_to
-        )
+        operation: tuple(item.invariant_id for item in invariants if operation in item.applies_to)
         for operation in VfsOperation
     }
     error_map = {
@@ -1607,8 +1507,7 @@ def _canonical_sources() -> tuple[SourceContract, ...]:
         locator="missing://backend/atomicity-capability-contract",
         revision="unavailable",
         summary=(
-            "Required backend-specific atomicity capability contract was not "
-            "provided to this pack."
+            "Required backend-specific atomicity capability contract was not provided to this pack."
         ),
         reviewed=False,
         available=False,
@@ -1941,8 +1840,7 @@ def _canonical_drift_evidence() -> tuple[VfsDriftEvidence, ...]:
             locator="ipfs_kit_py/ipfs_kit_py/vfs_manager.py",
             revision="git-blob:dd679f5e3ab15ed0873473719fc962389abf17fc",
             summary=(
-                "The VFS manager exposes a generic operation dispatcher and "
-                "namespace helpers."
+                "The VFS manager exposes a generic operation dispatcher and namespace helpers."
             ),
             observed_symbols=(
                 "VFSManager",
@@ -1959,8 +1857,7 @@ def _canonical_drift_evidence() -> tuple[VfsDriftEvidence, ...]:
             locator="ipfs_kit_py/ipfs_kit_py/bucket_vfs_manager.py",
             revision="git-blob:d8504612125b8e3cf4be19b9984f82890274a85b",
             summary=(
-                "BucketVFSManager and BucketVFS expose a competing bucket-oriented "
-                "file namespace."
+                "BucketVFSManager and BucketVFS expose a competing bucket-oriented file namespace."
             ),
             observed_symbols=(
                 "BucketVFSManager",
@@ -1976,8 +1873,7 @@ def _canonical_drift_evidence() -> tuple[VfsDriftEvidence, ...]:
             locator="ipfs_kit_py/ipfs_kit_py/filesystem_journal.py",
             revision="git-blob:5287ae3eb0cb06e062eb4ab7a15f837be10864ae",
             summary=(
-                "The filesystem journal records, replays, and directly applies "
-                "namespace mutations."
+                "The filesystem journal records, replays, and directly applies namespace mutations."
             ),
             observed_symbols=(
                 "FilesystemJournal",
@@ -2027,10 +1923,7 @@ def _canonical_drift_evidence() -> tuple[VfsDriftEvidence, ...]:
         ),
         VfsDriftEvidence(
             evidence_id="evidence:mcp-vfs-handler",
-            locator=(
-                "ipfs_kit_py/ipfs_kit_py/mcp/handlers/"
-                "mcp_vfs_action_handler.py"
-            ),
+            locator=("ipfs_kit_py/ipfs_kit_py/mcp/handlers/mcp_vfs_action_handler.py"),
             revision="git-blob:921bf3a40a4548d934b688ae13fcfa49c3737379",
             summary=(
                 "The MCP vfs.action handler returns a success envelope around an "
@@ -2063,29 +1956,21 @@ def _canonical_drift_evidence() -> tuple[VfsDriftEvidence, ...]:
         ),
         VfsDriftEvidence(
             evidence_id="evidence:vfs-endpoints-fixed",
-            locator=(
-                "ipfs_kit_py/ipfs_kit_py/mcp/ipfs_kit/api/"
-                "vfs_endpoints_fixed.py"
-            ),
+            locator=("ipfs_kit_py/ipfs_kit_py/mcp/ipfs_kit/api/vfs_endpoints_fixed.py"),
             revision="git-blob:7f473fd50cc22851fa6dfc34ce8752760d78af78",
             summary="A separately named fixed endpoint variant is present.",
             observed_symbols=("VFSEndpoints", "vfs_endpoints_fixed.py"),
         ),
         VfsDriftEvidence(
             evidence_id="evidence:vfs-endpoints-optimized",
-            locator=(
-                "ipfs_kit_py/ipfs_kit_py/mcp/ipfs_kit/api/"
-                "vfs_endpoints_optimized.py"
-            ),
+            locator=("ipfs_kit_py/ipfs_kit_py/mcp/ipfs_kit/api/vfs_endpoints_optimized.py"),
             revision="git-blob:2144f72856847266b861d2fbd45cc7f3bf406312",
             summary="A separately named optimized endpoint variant is present.",
             observed_symbols=("vfs_endpoints_optimized.py",),
         ),
         VfsDriftEvidence(
             evidence_id="evidence:mcp-vfs-tools",
-            locator=(
-                "ipfs_kit_py/ipfs_kit_py/mcp/ipfs_kit/mcp_tools/vfs_tools.py"
-            ),
+            locator=("ipfs_kit_py/ipfs_kit_py/mcp/ipfs_kit/mcp_tools/vfs_tools.py"),
             revision="git-blob:c439f866bb240202a663cc06872f7a7f2fc75423",
             summary=(
                 "The Python MCP VFS tool surface exposes statistics, cache, vector "
@@ -2101,10 +1986,7 @@ def _canonical_drift_evidence() -> tuple[VfsDriftEvidence, ...]:
         ),
         VfsDriftEvidence(
             evidence_id="evidence:mcp-js-tools-manifest",
-            locator=(
-                "ipfs_kit_py/ipfs_kit_py/mcp_server/js_sdk/"
-                "tools-manifest.json"
-            ),
+            locator=("ipfs_kit_py/ipfs_kit_py/mcp_server/js_sdk/tools-manifest.json"),
             revision="git-blob:af7a5cffeefab111f9f16bd3ba1d7426ffd6e45f",
             summary=(
                 "The JS SDK manifest registers files_* operations but none of the "
@@ -2422,22 +2304,17 @@ def assert_vfs_drift_inventory_complete(
         unknown_sources = sorted(set(finding.source_contract_ids) - sources.keys())
         if unknown_sources:
             raise VfsContractPackError(
-                f"{finding.finding_id} references unknown contract sources: "
-                f"{unknown_sources}"
+                f"{finding.finding_id} references unknown contract sources: {unknown_sources}"
             )
         if not all(
-            sources[source_id].expectation_authority
-            for source_id in finding.source_contract_ids
+            sources[source_id].expectation_authority for source_id in finding.source_contract_ids
         ):
-            raise VfsContractPackError(
-                f"{finding.finding_id} lacks reviewed mapping authority"
-            )
+            raise VfsContractPackError(f"{finding.finding_id} lacks reviewed mapping authority")
         for operation in finding.canonical_operations:
             operation_contract = pack.operation_contract(operation)
             if operation_contract.state is not ExpectationState.RESOLVED:
                 raise VfsContractPackError(
-                    f"{finding.finding_id} maps to unresolved operation "
-                    f"{operation.value!r}"
+                    f"{finding.finding_id} maps to unresolved operation {operation.value!r}"
                 )
 
 

@@ -65,12 +65,8 @@ from ipfs_accelerate_py.agent_supervisor.program_assurance_contracts import Clai
 def _public_inputs(**overrides: str):
     base = {
         "forest_commitment": commitment_identity("forest", {"root": "repo:alpha"}),
-        "inventory_commitment": commitment_identity(
-            "inventory", {"files": ["a.py", "b.py"]}
-        ),
-        "contract_commitment": commitment_identity(
-            "contract", {"symbol": "pkg.api.call"}
-        ),
+        "inventory_commitment": commitment_identity("inventory", {"files": ["a.py", "b.py"]}),
+        "contract_commitment": commitment_identity("contract", {"symbol": "pkg.api.call"}),
         "call_slice_commitment": commitment_identity(
             "call_slice", {"path": ["main", "pkg.api.call"]}
         ),
@@ -133,9 +129,7 @@ def _crypto_envelope(**public_overrides: str):
     )
 
 
-def _honest_crypto_verify(
-    proof: bytes, key: bytes, fields: tuple[int, ...]
-) -> bool:
+def _honest_crypto_verify(proof: bytes, key: bytes, fields: tuple[int, ...]) -> bool:
     del fields
     return bool(proof) and bool(key) and not proof_bytes_are_simulated(proof)
 
@@ -151,14 +145,10 @@ def test_default_probe_is_shadow_only_and_non_authoritative() -> None:
     assert report.shadow_only is True
     assert report.rollout_mode is ProgramZkpRolloutMode.SHADOW
     assert report.authoritative_allowed is False
-    assert (
-        report.to_dict()["evidence"] == PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE
-    )
+    assert report.to_dict()["evidence"] == PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE
     dims = {check.dimension for check in report.checks}
     assert dims == set(REQUIRED_CAPABILITY_DIMENSIONS)
-    assert ProgramZkpAuthorityDenialReason.SHADOW_ONLY_ROLLOUT.value in (
-        report.denial_reasons
-    )
+    assert ProgramZkpAuthorityDenialReason.SHADOW_ONLY_ROLLOUT.value in (report.denial_reasons)
 
 
 def test_probe_covers_every_required_dimension() -> None:
@@ -204,10 +194,7 @@ def test_simulated_defaults_fail_closed() -> None:
         backend_id="backend:simulated-v0.1",
     )
     assert report.production_eligible is False
-    assert (
-        ProgramZkpAuthorityDenialReason.SIMULATED_DEFAULT.value
-        in report.denial_reasons
-    )
+    assert ProgramZkpAuthorityDenialReason.SIMULATED_DEFAULT.value in report.denial_reasons
     backend = report.checks_by_dimension[ProgramZkpCapabilityDimension.BACKEND]
     assert backend.production_eligible is False
     with pytest.raises(ProgramZkpAuthorityError, match="production ZK authority denied"):
@@ -230,10 +217,7 @@ def test_knowledge_graph_fail_open_fails_closed() -> None:
         cancellation_supported=True,
     )
     assert tainted.production_eligible is False
-    assert (
-        ProgramZkpAuthorityDenialReason.KNOWLEDGE_GRAPH_FAIL_OPEN.value
-        in tainted.denial_reasons
-    )
+    assert ProgramZkpAuthorityDenialReason.KNOWLEDGE_GRAPH_FAIL_OPEN.value in tainted.denial_reasons
 
 
 def test_placeholder_field_encoding_fails_closed() -> None:
@@ -248,10 +232,7 @@ def test_placeholder_field_encoding_fails_closed() -> None:
         independent_verifier_available=True,
     )
     assert report.production_eligible is False
-    assert (
-        ProgramZkpAuthorityDenialReason.PLACEHOLDER_FIELD_ENCODING.value
-        in report.denial_reasons
-    )
+    assert ProgramZkpAuthorityDenialReason.PLACEHOLDER_FIELD_ENCODING.value in report.denial_reasons
     with pytest.raises(ProgramZkpAuthorityError, match="placeholder"):
         encode_public_input_field_vector(
             _public_inputs(),
@@ -272,10 +253,7 @@ def test_v1_nonzero_only_circuit_fails_closed() -> None:
         independent_verifier_available=True,
     )
     assert report.production_eligible is False
-    assert (
-        ProgramZkpAuthorityDenialReason.V1_NONZERO_ONLY_CIRCUIT.value
-        in report.denial_reasons
-    )
+    assert ProgramZkpAuthorityDenialReason.V1_NONZERO_ONLY_CIRCUIT.value in report.denial_reasons
     assert classify_circuit_family("circuit:foo-nonzero-only@2") is (
         ProgramZkpCircuitFamily.NONZERO_ONLY_V1
     )
@@ -297,9 +275,7 @@ def test_incompatible_tdfol_only_circuit_fails_closed() -> None:
         ProgramZkpAuthorityDenialReason.INCOMPATIBLE_TDFOL_ONLY_CIRCUIT.value
         in report.denial_reasons
     )
-    assert classify_circuit_family("circuit:tdfol-only@9") is (
-        ProgramZkpCircuitFamily.TDFOL_ONLY
-    )
+    assert classify_circuit_family("circuit:tdfol-only@9") is (ProgramZkpCircuitFamily.TDFOL_ONLY)
 
 
 def test_unversioned_and_missing_artifacts_fail_closed() -> None:
@@ -317,9 +293,7 @@ def test_unversioned_and_missing_artifacts_fail_closed() -> None:
     reasons = set(report.denial_reasons)
     assert ProgramZkpAuthorityDenialReason.UNVERSIONED_ARTIFACT.value in reasons
     assert ProgramZkpAuthorityDenialReason.MISSING_ARTIFACT.value in reasons
-    assert (
-        ProgramZkpAuthorityDenialReason.INDEPENDENT_VERIFIER_ABSENT.value in reasons
-    )
+    assert ProgramZkpAuthorityDenialReason.INDEPENDENT_VERIFIER_ABSENT.value in reasons
 
 
 def test_stale_capability_fails_closed() -> None:
@@ -337,9 +311,7 @@ def test_stale_capability_fails_closed() -> None:
         cancellation_supported=True,
     )
     assert stale.production_eligible is False
-    assert (
-        ProgramZkpAuthorityDenialReason.STALE_CAPABILITY.value in stale.denial_reasons
-    )
+    assert ProgramZkpAuthorityDenialReason.STALE_CAPABILITY.value in stale.denial_reasons
     assert stale.shadow_only is True
 
 
@@ -468,9 +440,7 @@ def test_corrupted_key_is_rejected() -> None:
 def test_corrupted_public_input_is_rejected() -> None:
     capability = build_production_ready_capability_fixture()
     envelope = _crypto_envelope()
-    drifted = _public_inputs(
-        forest_commitment=commitment_identity("forest", {"root": "other"})
-    )
+    drifted = _public_inputs(forest_commitment=commitment_identity("forest", {"root": "other"}))
     with pytest.raises(ProgramZkpTamperError, match="public inputs"):
         verify_program_zkp_independently(
             envelope,
@@ -544,9 +514,7 @@ def test_capability_loss_invalidates_prior_authority() -> None:
     assert receipt.authoritative is True
 
     # New probe with different architecture → different capability epoch.
-    current = build_production_ready_capability_fixture(
-        architecture="fixture-linux-aarch64"
-    )
+    current = build_production_ready_capability_fixture(architecture="fixture-linux-aarch64")
     assert current.capability_epoch != previous.capability_epoch
     assert grants_production_authority(receipt, current) is False
     with pytest.raises(ProgramZkpAuthorityError, match="authority denied"):
@@ -574,9 +542,7 @@ def test_capability_loss_when_probe_degrades() -> None:
         verifying_key_material=b"vk-fixture-material-v1",
         cryptographic_verify=_honest_crypto_verify,
     )
-    degraded = probe_program_analysis_zkp_capability(
-        backend_mode=ProgramZkpBackendMode.SIMULATED
-    )
+    degraded = probe_program_analysis_zkp_capability(backend_mode=ProgramZkpBackendMode.SIMULATED)
     assert degraded.production_eligible is False
     invalidated = invalidate_authority_on_capability_loss(
         receipt,
@@ -670,9 +636,7 @@ def test_bounds_probe_rejects_overflow() -> None:
     )
     bounds = report.checks_by_dimension[ProgramZkpCapabilityDimension.BOUNDS]
     assert bounds.production_eligible is False
-    assert (
-        ProgramZkpAuthorityDenialReason.BOUNDS_EXCEEDED.value in bounds.denial_reasons
-    )
+    assert ProgramZkpAuthorityDenialReason.BOUNDS_EXCEEDED.value in bounds.denial_reasons
 
 
 # ---------------------------------------------------------------------------

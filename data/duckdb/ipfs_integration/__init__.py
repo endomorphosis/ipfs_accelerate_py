@@ -75,26 +75,26 @@ except ImportError as e:
 
 __all__ = [
     # Phase 2A - Core Infrastructure
-    'IPFSStorage',
-    'IPFSStorageBackend',
-    'IPFSConfig',
-    'get_ipfs_config',
-    'set_ipfs_config',
-    'reset_ipfs_config',
-    'DistributedOperations',
-    'BenchmarkKnowledgeGraph',
-    'IPFSCacheManager',
+    "IPFSStorage",
+    "IPFSStorageBackend",
+    "IPFSConfig",
+    "get_ipfs_config",
+    "set_ipfs_config",
+    "reset_ipfs_config",
+    "DistributedOperations",
+    "BenchmarkKnowledgeGraph",
+    "IPFSCacheManager",
     # Phase 2B - Storage Integration
-    'IPFSDBBackend',
-    'IPFSDBMigration',
-    'create_ipfs_backend',
+    "IPFSDBBackend",
+    "IPFSDBMigration",
+    "create_ipfs_backend",
     # Phase 2C - Distributed Features
-    'DistributedQueryExecutor',
-    'P2PSynchronizer',
-    'KnowledgeGraphPopulator',
+    "DistributedQueryExecutor",
+    "P2PSynchronizer",
+    "KnowledgeGraphPopulator",
     # Phase 2D - Advanced Features
-    'QueryOptimizer',
-    'PerformanceMonitor',
+    "QueryOptimizer",
+    "PerformanceMonitor",
 ]
 
-__version__ = '2.2.0'  # Phase 2C & 2D Complete
+__version__ = "2.2.0"  # Phase 2C & 2D Complete

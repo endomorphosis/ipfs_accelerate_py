@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 # Helpers to mock out heavy deps before import
 # ---------------------------------------------------------------------------
 
+
 def _make_mock_cache():
     cache = MagicMock()
     cache.get_chat_completion.return_value = None
@@ -36,6 +37,7 @@ def _make_mock_cache():
 # ---------------------------------------------------------------------------
 # Test suite
 # ---------------------------------------------------------------------------
+
 
 class TestXAIGrokCLIIntegration(unittest.TestCase):
     """Unit tests for XAIGrokCLIIntegration."""
@@ -75,6 +77,7 @@ class TestXAIGrokCLIIntegration(unittest.TestCase):
             XAIGrokCLIIntegration,
             get_xai_grok_cli_integration,
         )
+
         self.XAIGrokCLIIntegration = XAIGrokCLIIntegration
         self.get_xai_grok_cli_integration = get_xai_grok_cli_integration
 
@@ -87,6 +90,7 @@ class TestXAIGrokCLIIntegration(unittest.TestCase):
 
         # Reset global singleton between tests
         import ipfs_accelerate_py.cli_integrations.xai_grok_cli_integration as mod
+
         mod._global_xai_grok_cli = None
 
     # ------------------------------------------------------------------
@@ -143,6 +147,7 @@ class TestXAIGrokCLIIntegration(unittest.TestCase):
         from ipfs_accelerate_py.cli_integrations.xai_grok_cli_integration import (
             XAIGrokCLIIntegration,
         )
+
         text = "## Plan\n1. Step one\n2. Step two\n## Implementation\n```python\npass\n```"
         plan, impl = XAIGrokCLIIntegration._split_plan_impl(text)
         self.assertIn("Step one", plan)
@@ -152,6 +157,7 @@ class TestXAIGrokCLIIntegration(unittest.TestCase):
         from ipfs_accelerate_py.cli_integrations.xai_grok_cli_integration import (
             XAIGrokCLIIntegration,
         )
+
         text = "Just some response text."
         plan, impl = XAIGrokCLIIntegration._split_plan_impl(text)
         self.assertEqual(plan, text)
@@ -161,6 +167,7 @@ class TestXAIGrokCLIIntegration(unittest.TestCase):
         from ipfs_accelerate_py.cli_integrations.xai_grok_cli_integration import (
             XAIGrokCLIIntegration,
         )
+
         text = "## Plan\n1. Only a plan here."
         plan, impl = XAIGrokCLIIntegration._split_plan_impl(text)
         self.assertIn("Only a plan", plan)
@@ -172,17 +179,14 @@ class TestXAIGrokCLIIntegration(unittest.TestCase):
 
     def _make_chat_sdk_mock(self, response_text: str):
         """Return a mock _chat_sdk that yields a fixed response."""
-        mock = MagicMock(
-            return_value={"response": response_text, "cached": False, "mode": "SDK"}
-        )
+        mock = MagicMock(return_value={"response": response_text, "cached": False, "mode": "SDK"})
         return mock
 
     def test_plan_mode_headless_auto_approves(self):
         """In headless mode plan_mode returns approved=True without prompting."""
         integration = self.XAIGrokCLIIntegration(headless=True)
         response = (
-            "## Plan\n1. Analyse\n2. Write code\n"
-            "## Implementation\n```python\nprint('hello')\n```"
+            "## Plan\n1. Analyse\n2. Write code\n## Implementation\n```python\nprint('hello')\n```"
         )
         with patch.object(integration, "_chat_sdk", self._make_chat_sdk_mock(response)):
             result = integration.plan_mode("Write hello world")
@@ -194,10 +198,7 @@ class TestXAIGrokCLIIntegration(unittest.TestCase):
     def test_plan_mode_interactive_approved(self):
         """User types 'y' → plan is approved and implementation returned."""
         integration = self.XAIGrokCLIIntegration(headless=False)
-        response = (
-            "## Plan\n1. Step A\n"
-            "## Implementation\n```python\nx = 1\n```"
-        )
+        response = "## Plan\n1. Step A\n## Implementation\n```python\nx = 1\n```"
         with patch.object(integration, "_chat_sdk", self._make_chat_sdk_mock(response)):
             with patch("builtins.input", return_value="y"):
                 result = integration.plan_mode("Do something")
@@ -208,10 +209,7 @@ class TestXAIGrokCLIIntegration(unittest.TestCase):
     def test_plan_mode_interactive_rejected(self):
         """User types 'n' → implementation is suppressed."""
         integration = self.XAIGrokCLIIntegration(headless=False)
-        response = (
-            "## Plan\n1. Step A\n"
-            "## Implementation\n```python\nx = 1\n```"
-        )
+        response = "## Plan\n1. Step A\n## Implementation\n```python\nx = 1\n```"
         with patch.object(integration, "_chat_sdk", self._make_chat_sdk_mock(response)):
             with patch("builtins.input", return_value="n"):
                 result = integration.plan_mode("Do something")
@@ -404,6 +402,7 @@ class TestXAIGrokCLIIntegration(unittest.TestCase):
 # Import-level smoke test
 # ---------------------------------------------------------------------------
 
+
 class TestXAIGrokCLIImport(unittest.TestCase):
     """Verify the integration is properly exported from the package."""
 
@@ -412,11 +411,13 @@ class TestXAIGrokCLIImport(unittest.TestCase):
             XAIGrokCLIIntegration,
             get_xai_grok_cli_integration,
         )
+
         self.assertTrue(callable(XAIGrokCLIIntegration))
         self.assertTrue(callable(get_xai_grok_cli_integration))
 
     def test_present_in_all(self):
         import ipfs_accelerate_py.cli_integrations as mod
+
         self.assertIn("XAIGrokCLIIntegration", mod.__all__)
         self.assertIn("get_xai_grok_cli_integration", mod.__all__)
 
@@ -425,18 +426,23 @@ class TestXAIGrokCLIImport(unittest.TestCase):
 # api_backends/xai.py unit tests
 # ---------------------------------------------------------------------------
 
+
 class TestXAIBackend(unittest.TestCase):
     """Unit tests for the xai API backend class."""
 
     def test_import(self):
         from ipfs_accelerate_py.api_backends.xai import xai, ALL_MODELS, CHAT_MODELS
+
         self.assertIn("grok-3", CHAT_MODELS)
         self.assertIn("grok-2-vision-1212", CHAT_MODELS)
         self.assertIsInstance(ALL_MODELS, dict)
 
     def test_init_no_key(self):
         from ipfs_accelerate_py.api_backends.xai import xai as xai_cls
-        saved = {k: os.environ.pop(k, None) for k in ("XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY")}
+
+        saved = {
+            k: os.environ.pop(k, None) for k in ("XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY")
+        }
         try:
             client = xai_cls(resources={}, metadata={})
             self.assertIsNone(client.api_key)
@@ -448,6 +454,7 @@ class TestXAIBackend(unittest.TestCase):
 
     def test_init_with_metadata(self):
         from ipfs_accelerate_py.api_backends.xai import xai as xai_cls
+
         client = xai_cls(
             resources={},
             metadata={
@@ -464,6 +471,7 @@ class TestXAIBackend(unittest.TestCase):
 
     def test_list_models(self):
         from ipfs_accelerate_py.api_backends.xai import xai as xai_cls
+
         client = xai_cls()
         models = client.list_models()
         self.assertIsInstance(models, list)
@@ -471,6 +479,7 @@ class TestXAIBackend(unittest.TestCase):
 
     def test_get_model_info_known(self):
         from ipfs_accelerate_py.api_backends.xai import xai as xai_cls
+
         client = xai_cls()
         info = client.get_model_info("grok-3")
         self.assertIsInstance(info, dict)
@@ -478,27 +487,29 @@ class TestXAIBackend(unittest.TestCase):
 
     def test_get_model_info_unknown(self):
         from ipfs_accelerate_py.api_backends.xai import xai as xai_cls
+
         client = xai_cls()
         self.assertIsNone(client.get_model_info("nonexistent-model"))
 
     def test_generate_returns_string_on_successful_response(self):
         from ipfs_accelerate_py.api_backends.xai import xai as xai_cls
+
         client = xai_cls(metadata={"api_key": "dummy"})
-        fake_response = {
-            "choices": [{"message": {"content": "Hello from Grok!"}}]
-        }
+        fake_response = {"choices": [{"message": {"content": "Hello from Grok!"}}]}
         with patch.object(client, "_make_request", return_value=fake_response):
             result = client.generate("Hello")
         self.assertEqual(result, "Hello from Grok!")
 
     def test_generate_returns_empty_on_empty_choices(self):
         from ipfs_accelerate_py.api_backends.xai import xai as xai_cls
+
         client = xai_cls(metadata={"api_key": "dummy"})
         with patch.object(client, "_make_request", return_value={"choices": []}):
             self.assertEqual(client.generate("Hello"), "")
 
     def test_embed_returns_list_of_vectors(self):
         from ipfs_accelerate_py.api_backends.xai import xai as xai_cls
+
         client = xai_cls(metadata={"api_key": "dummy"})
         fake_response = {"data": [{"embedding": [0.1, 0.2, 0.3]}]}
         with patch.object(client, "_make_request", return_value=fake_response):
@@ -507,7 +518,10 @@ class TestXAIBackend(unittest.TestCase):
 
     def test_make_request_raises_without_key(self):
         from ipfs_accelerate_py.api_backends.xai import xai as xai_cls
-        saved = {k: os.environ.pop(k, None) for k in ("XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY")}
+
+        saved = {
+            k: os.environ.pop(k, None) for k in ("XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY")
+        }
         try:
             client = xai_cls()
             with self.assertRaises(RuntimeError, msg="should raise without API key"):
@@ -522,12 +536,14 @@ class TestXAIBackend(unittest.TestCase):
 # embeddings_router integration tests for xAI
 # ---------------------------------------------------------------------------
 
+
 class TestXAIEmbeddingsRouter(unittest.TestCase):
     """Verify the xAI provider is wired into the embeddings router."""
 
     def test_builtin_provider_by_name_xai(self):
         from ipfs_accelerate_py.embeddings_router import _builtin_provider_by_name
         from ipfs_accelerate_py.router_deps import get_default_router_deps
+
         os.environ["XAI_API_KEY"] = "dummy"
         try:
             provider = _builtin_provider_by_name("xai", get_default_router_deps())
@@ -539,6 +555,7 @@ class TestXAIEmbeddingsRouter(unittest.TestCase):
     def test_alias_grok(self):
         from ipfs_accelerate_py.embeddings_router import _builtin_provider_by_name
         from ipfs_accelerate_py.router_deps import get_default_router_deps
+
         os.environ["XAI_API_KEY"] = "dummy"
         try:
             self.assertIsNotNone(_builtin_provider_by_name("grok", get_default_router_deps()))
@@ -547,7 +564,10 @@ class TestXAIEmbeddingsRouter(unittest.TestCase):
 
     def test_no_provider_without_key(self):
         from ipfs_accelerate_py.embeddings_router import _get_xai_embeddings_provider
-        saved = {k: os.environ.pop(k, None) for k in ("XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY")}
+
+        saved = {
+            k: os.environ.pop(k, None) for k in ("XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY")
+        }
         try:
             self.assertIsNone(_get_xai_embeddings_provider())
         finally:
@@ -557,6 +577,7 @@ class TestXAIEmbeddingsRouter(unittest.TestCase):
 
     def test_cache_key_includes_xai_vars(self):
         from ipfs_accelerate_py.embeddings_router import _provider_cache_key
+
         os.environ["XAI_API_KEY"] = "key1"
         k1 = _provider_cache_key()
         os.environ["XAI_API_KEY"] = "key2"
@@ -569,12 +590,14 @@ class TestXAIEmbeddingsRouter(unittest.TestCase):
 # multimodal_router integration tests for xAI
 # ---------------------------------------------------------------------------
 
+
 class TestXAIMultimodalRouter(unittest.TestCase):
     """Verify the xAI provider is wired into the multimodal router."""
 
     def test_builtin_provider_by_name_xai(self):
         from ipfs_accelerate_py.multimodal_router import _builtin_provider_by_name
         from ipfs_accelerate_py.router_deps import get_default_router_deps
+
         os.environ["XAI_API_KEY"] = "dummy"
         try:
             provider = _builtin_provider_by_name("xai", get_default_router_deps())
@@ -585,7 +608,10 @@ class TestXAIMultimodalRouter(unittest.TestCase):
 
     def test_no_provider_without_key(self):
         from ipfs_accelerate_py.multimodal_router import _get_xai_multimodal_provider
-        saved = {k: os.environ.pop(k, None) for k in ("XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY")}
+
+        saved = {
+            k: os.environ.pop(k, None) for k in ("XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY")
+        }
         try:
             self.assertIsNone(_get_xai_multimodal_provider())
         finally:
@@ -595,6 +621,7 @@ class TestXAIMultimodalRouter(unittest.TestCase):
 
     def test_cache_key_includes_xai_vars(self):
         from ipfs_accelerate_py.multimodal_router import _provider_cache_key
+
         os.environ["XAI_API_KEY"] = "key1"
         k1 = _provider_cache_key()
         os.environ["XAI_API_KEY"] = "key2"

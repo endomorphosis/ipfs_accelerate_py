@@ -65,9 +65,15 @@ from ..task_sources.taskboard_store import (
 )
 
 
-DEFAULT_EMBEDDING_DIMENSIONS = int(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_DIMENSIONS", "64"))
-DEFAULT_EMBEDDING_MIN_SCORE = float(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_MIN_SCORE", "0.62"))
-DEFAULT_BUNDLE_CLUSTER_MIN_SCORE = float(os.environ.get("IPFS_ACCELERATE_AGENT_BUNDLE_CLUSTER_MIN_SCORE", "0.42"))
+DEFAULT_EMBEDDING_DIMENSIONS = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_DIMENSIONS", "64")
+)
+DEFAULT_EMBEDDING_MIN_SCORE = float(
+    os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_MIN_SCORE", "0.62")
+)
+DEFAULT_BUNDLE_CLUSTER_MIN_SCORE = float(
+    os.environ.get("IPFS_ACCELERATE_AGENT_BUNDLE_CLUSTER_MIN_SCORE", "0.42")
+)
 DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX = os.environ.get(
     "IPFS_ACCELERATE_AGENT_OBJECTIVE_TASK_SUMMARY_PREFIX",
     "Close objective gap",
@@ -75,39 +81,30 @@ DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX = os.environ.get(
 
 TASK_GENERATION_EVIDENCE_PRODUCER_BINDINGS: dict[str, str] = {
     "127990245919649912156052660092678945998": (
-        "task_quality.prove_task_split_refill:"
-        "TaskSplitRefillEvidence"
+        "task_quality.prove_task_split_refill:TaskSplitRefillEvidence"
     ),
     "061582446926920746660485801841658333166": (
-        "bundle_optimizer.prove_critical_path_width:"
-        "CriticalPathWidthEvidence"
+        "bundle_optimizer.prove_critical_path_width:CriticalPathWidthEvidence"
     ),
     "187052702852200236079602798955260586139": (
-        "bundle_optimizer.propagate_goal_packet_completion:"
-        "PacketCompletionBindingEvidence"
+        "bundle_optimizer.propagate_goal_packet_completion:PacketCompletionBindingEvidence"
     ),
 }
 
 TASK_GENERATION_OBJECTIVE_REVISION = "ASI-G050@asi-084"
-TASK_GENERATION_COMPLETION_ANALYZER_VERSION = (
-    "task-generation-completion@1"
-)
-TASK_GENERATION_COMPLETION_CONFIGURATION_REVISION = (
-    "task-generation-completion-policy@1"
-)
+TASK_GENERATION_COMPLETION_ANALYZER_VERSION = "task-generation-completion@1"
+TASK_GENERATION_COMPLETION_CONFIGURATION_REVISION = "task-generation-completion-policy@1"
+
+
 def task_generation_evidence_producer_bindings(
     requirements: Iterable[str],
 ) -> dict[str, str]:
     """Return explicit producer routing for known task-generation evidence."""
 
-    values: Iterable[str] = (
-        (requirements,) if isinstance(requirements, str) else requirements
-    )
+    values: Iterable[str] = (requirements,) if isinstance(requirements, str) else requirements
     return {
         requirement: TASK_GENERATION_EVIDENCE_PRODUCER_BINDINGS[requirement]
-        for requirement in sorted(
-            {str(value).strip() for value in values if str(value).strip()}
-        )
+        for requirement in sorted({str(value).strip() for value in values if str(value).strip()})
         if requirement in TASK_GENERATION_EVIDENCE_PRODUCER_BINDINGS
     }
 
@@ -124,9 +121,7 @@ def evaluate_task_generation_completion(
     coverage: Any = None,
     analyzer_health: Any = None,
     exhaustion_quorum: Any = None,
-    required_exhaustive_receipts: int = (
-        TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS
-    ),
+    required_exhaustive_receipts: int = (TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS),
     now: Any = None,
     freshness_seconds: float = 3600.0,
     clock_skew_seconds: float = 300.0,
@@ -150,8 +145,7 @@ def evaluate_task_generation_completion(
     if (
         isinstance(required_exhaustive_receipts, bool)
         or not isinstance(required_exhaustive_receipts, int)
-        or required_exhaustive_receipts
-        != TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS
+        or required_exhaustive_receipts != TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS
     ):
         raise ValueError(
             "required_exhaustive_receipts must equal the configured "
@@ -188,9 +182,7 @@ def evaluate_task_generation_completion(
             result = value
         elif isinstance(value, str) and value.strip():
             try:
-                result = datetime.fromisoformat(
-                    value.strip().replace("Z", "+00:00")
-                )
+                result = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
             except ValueError:
                 return None
         else:
@@ -219,9 +211,7 @@ def evaluate_task_generation_completion(
         "objective_id": TASK_GENERATION_OBJECTIVE_ID,
         "objective_revision": TASK_GENERATION_OBJECTIVE_REVISION,
         "analyzer_version": TASK_GENERATION_COMPLETION_ANALYZER_VERSION,
-        "configuration_revision": (
-            TASK_GENERATION_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "configuration_revision": (TASK_GENERATION_COMPLETION_CONFIGURATION_REVISION),
     }
 
     successful_states = frozenset(
@@ -236,37 +226,26 @@ def evaluate_task_generation_completion(
         }
     )
     task_values = [payload(item) for item in producing_tasks]
-    task_ids = [
-        str(item.get("task_id", item.get("id", "")) or "").strip()
-        for item in task_values
-    ]
+    task_ids = [str(item.get("task_id", item.get("id", "")) or "").strip() for item in task_values]
     producer_population_complete = bool(
         repository_id
         and repository_tree
         and len(task_ids) == len(set(task_ids))
-        and tuple(sorted(task_ids))
-        == tuple(sorted(TASK_GENERATION_PRODUCING_TASK_IDS))
+        and tuple(sorted(task_ids)) == tuple(sorted(TASK_GENERATION_PRODUCING_TASK_IDS))
         and all(
-            normalized(item.get("status", item.get("state", "")))
-            in successful_states
+            normalized(item.get("status", item.get("state", ""))) in successful_states
             for item in task_values
         )
     )
 
-    expected_criteria = {
-        normalized(item) for item in TASK_GENERATION_ACCEPTANCE_CRITERIA
-    }
+    expected_criteria = {normalized(item) for item in TASK_GENERATION_ACCEPTANCE_CRITERIA}
     evidence_values: list[dict[str, Any]] = []
     receipt_ids_by_criterion: dict[str, set[str]] = {}
     evidence_criteria: list[str] = []
     for item in evidence:
         record = payload(item)
         source_value = record.get("evidence", record)
-        source = (
-            dict(source_value)
-            if isinstance(source_value, Mapping)
-            else record
-        )
+        source = dict(source_value) if isinstance(source_value, Mapping) else record
         evidence_values.append(source)
         criterion = normalized(
             source.get(
@@ -286,9 +265,7 @@ def evaluate_task_generation_completion(
             or ""
         ).strip()
         if criterion and receipt_id:
-            receipt_ids_by_criterion.setdefault(criterion, set()).add(
-                receipt_id
-            )
+            receipt_ids_by_criterion.setdefault(criterion, set()).add(receipt_id)
     evidence_population_complete = bool(
         len(evidence_values) == len(expected_criteria)
         and len(evidence_criteria) == len(set(evidence_criteria))
@@ -305,9 +282,7 @@ def evaluate_task_generation_completion(
             projected = coverage_projection(TASK_GENERATION_OBJECTIVE_ID)
         except (TypeError, ValueError):
             projected = {}
-        coverage_value = (
-            dict(projected) if isinstance(projected, Mapping) else {}
-        )
+        coverage_value = dict(projected) if isinstance(projected, Mapping) else {}
     else:
         coverage_value = payload(coverage)
     rows_value = coverage_value.get("criteria")
@@ -353,16 +328,9 @@ def evaluate_task_generation_completion(
         )
         if isinstance(raw, str):
             raw = (raw,)
-        if not (
-            isinstance(raw, Sequence)
-            and not isinstance(raw, (str, bytes, bytearray))
-        ):
+        if not (isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray))):
             return set()
-        return {
-            str(item or "").strip()
-            for item in raw
-            if str(item or "").strip()
-        }
+        return {str(item or "").strip() for item in raw if str(item or "").strip()}
 
     coverage_bound = bool(
         evidence_population_complete
@@ -415,11 +383,7 @@ def evaluate_task_generation_completion(
 
     health_value = payload(analyzer_health)
     raw_health_binding = health_value.get("binding")
-    health_binding = (
-        dict(raw_health_binding)
-        if isinstance(raw_health_binding, Mapping)
-        else {}
-    )
+    health_binding = dict(raw_health_binding) if isinstance(raw_health_binding, Mapping) else {}
     health_valid = bool(
         all(expected_binding.values())
         and health_binding == expected_binding
@@ -443,27 +407,16 @@ def evaluate_task_generation_completion(
     members_value = quorum_value.get("members")
     members = members_value if isinstance(members_value, list) else []
     raw_quorum_binding = quorum_value.get("binding")
-    quorum_binding = (
-        dict(raw_quorum_binding)
-        if isinstance(raw_quorum_binding, Mapping)
-        else {}
-    )
+    quorum_binding = dict(raw_quorum_binding) if isinstance(raw_quorum_binding, Mapping) else {}
 
     def independent_member_field(name: str) -> bool:
         values = [
-            str(member.get(name) or "").strip()
-            for member in members
-            if isinstance(member, Mapping)
+            str(member.get(name) or "").strip() for member in members if isinstance(member, Mapping)
         ]
-        return bool(
-            len(values) == len(members)
-            and all(values)
-            and len(values) == len(set(values))
-        )
+        return bool(len(values) == len(members) and all(values) and len(values) == len(set(values)))
 
     quorum_valid = bool(
-        quorum_value.get("required_members")
-        == TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS
+        quorum_value.get("required_members") == TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("member_count") == len(members)
         and len(members) == TASK_GENERATION_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("satisfied") is True
@@ -507,12 +460,8 @@ def evaluate_task_generation_completion(
                     "exhaustive": True,
                     "conclusive": True,
                     "uncontradicted": True,
-                    "analyzer_version": expected_binding[
-                        "analyzer_version"
-                    ],
-                    "scan_mode": (
-                        "audit" if "audit" in channel else "exhaustive"
-                    ),
+                    "analyzer_version": expected_binding["analyzer_version"],
+                    "scan_mode": ("audit" if "audit" in channel else "exhaustive"),
                 }
             )
         quorum_value = {
@@ -524,11 +473,7 @@ def evaluate_task_generation_completion(
         gate_value = child.get("completion_gate", child.get("gate"))
         gate = gate_value if isinstance(gate_value, Mapping) else {}
         evaluated_value = gate.get("evaluated_evidence")
-        evaluated = (
-            evaluated_value
-            if isinstance(evaluated_value, Mapping)
-            else {}
-        )
+        evaluated = evaluated_value if isinstance(evaluated_value, Mapping) else {}
         validations = evaluated.get("validation_evidence")
         proof_requirements = child.get(
             "proof_requirements",
@@ -537,10 +482,7 @@ def evaluate_task_generation_completion(
         if isinstance(proof_requirements, Mapping):
             proof_requirements = (proof_requirements,)
         return bool(
-            normalized(
-                child.get("state", child.get("next_state", ""))
-            )
-            == "verified_complete"
+            normalized(child.get("state", child.get("next_state", ""))) == "verified_complete"
             and child.get("verified") is True
             and gate.get("passed") is True
             and evaluated.get("repository_tree") == repository_tree
@@ -552,8 +494,7 @@ def evaluate_task_generation_completion(
                 isinstance(item, Mapping)
                 and item.get("valid") is True
                 and isinstance(item.get("evidence"), Mapping)
-                and item["evidence"].get("repository_tree")
-                == repository_tree
+                and item["evidence"].get("repository_tree") == repository_tree
                 and item["evidence"].get("repository_id") == repository_id
                 for item in validations
             )
@@ -565,10 +506,8 @@ def evaluate_task_generation_completion(
                 and str(item.get("provenance_id") or "").strip()
                 and item.get("assurance_satisfied") is True
                 and item.get("contradicted") is not True
-                and normalized(item.get("proof_verdict"))
-                in {"proved", "verified", "valid"}
-                and normalized(item.get("freshness"))
-                in {"current", "fresh"}
+                and normalized(item.get("proof_verdict")) in {"proved", "verified", "valid"}
+                and normalized(item.get("freshness")) in {"current", "fresh"}
                 and not item.get("reason_codes")
                 for item in proof_requirements
             )
@@ -576,13 +515,11 @@ def evaluate_task_generation_completion(
 
     child_values = [payload(item) for item in child_goals]
     child_ids = [
-        str(item.get("goal_id", item.get("id", "")) or "").strip()
-        for item in child_values
+        str(item.get("goal_id", item.get("id", "")) or "").strip() for item in child_values
     ]
     child_population_complete = bool(
         len(child_ids) == len(set(child_ids))
-        and tuple(sorted(child_ids))
-        == tuple(sorted(TASK_GENERATION_CHILD_GOAL_IDS))
+        and tuple(sorted(child_ids)) == tuple(sorted(TASK_GENERATION_CHILD_GOAL_IDS))
         and all(child_is_current(item) for item in child_values)
     )
     if not child_population_complete:
@@ -593,9 +530,7 @@ def evaluate_task_generation_completion(
                 "verified": False,
                 "completion_gate": {
                     "passed": False,
-                    "reason_code": (
-                        "required_child_population_or_binding_incomplete"
-                    ),
+                    "reason_code": ("required_child_population_or_binding_incomplete"),
                 },
             }
         )
@@ -638,9 +573,7 @@ def _has_live_task_generation_producer_authority(
     expected_types: dict[str, type[Any]] = {
         "127990245919649912156052660092678945998": TaskSplitRefillEvidence,
         "061582446926920746660485801841658333166": CriticalPathWidthEvidence,
-        "187052702852200236079602798955260586139": (
-            PacketCompletionBindingEvidence
-        ),
+        "187052702852200236079602798955260586139": (PacketCompletionBindingEvidence),
     }
     expected_type = expected_types.get(requirement)
     if expected_type is None or type(evidence) is not expected_type:
@@ -650,10 +583,7 @@ def _has_live_task_generation_producer_authority(
         return (
             callable(verifier)
             and verifier() is True
-            and requirement
-            in _receipt_strings(
-                getattr(evidence, "proved_requirement_ids", ())
-            )
+            and requirement in _receipt_strings(getattr(evidence, "proved_requirement_ids", ()))
         )
     except (AttributeError, TypeError, ValueError):
         return False
@@ -685,7 +615,9 @@ DEFAULT_TASK_PREFIX = "AUTO-"
 DEFAULT_TASK_HEADER_PREFIX = f"## {DEFAULT_TASK_PREFIX}"
 OBJECTIVE_SCAN_ANALYZER_VERSION = "objective-gap-analyzer/v1"
 COMPLETION_GAP_MANUAL_REVIEW_SOURCE = "completion_gate_gap_manual_review"
-DEFAULT_AST_DATASET_MAX_CHARS = int(os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000"))
+DEFAULT_AST_DATASET_MAX_CHARS = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000")
+)
 AST_DATASET_RECORD_SCHEMA_VERSION = 2
 LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND = (
     "(test ! -f swissknife/package.json || npm --prefix swissknife run test:e2e:meta-glasses) && "
@@ -728,6 +660,7 @@ SKIP_DIRS = {
     "test-results",
 }
 
+
 def normalize_task_id_prefix(value: Any = DEFAULT_TASK_PREFIX) -> str:
     """Return the canonical, heading-free prefix used in display task IDs.
 
@@ -766,9 +699,7 @@ task_id_prefix = normalize_task_id_prefix
 task_header_prefix = task_markdown_heading_prefix
 
 OPAQUE_EVIDENCE_REQUIREMENT_PATTERN = re.compile(r"^[0-9]{20,}$")
-EVIDENCE_SOURCE_POLICY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/evidence-source-policy@1"
-)
+EVIDENCE_SOURCE_POLICY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/evidence-source-policy@1"
 
 
 class EvidenceRequirementKind(str, Enum):
@@ -861,12 +792,8 @@ def _evidence_enum(value: Any, enum_type: type[Enum], field_name: str) -> Any:
 def _receipt_strings(value: Any) -> tuple[str, ...]:
     if isinstance(value, str):
         return (value.strip(),) if value.strip() else ()
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
-        return tuple(
-            dict.fromkeys(str(item).strip() for item in value if str(item).strip())
-        )
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return tuple(dict.fromkeys(str(item).strip() for item in value if str(item).strip()))
     return ()
 
 
@@ -898,17 +825,14 @@ class EvidenceSourcePolicy:
         declared: EvidenceRequirementKind | str | None = None,
     ) -> EvidenceRequirementKind:
         if declared is not None:
-            return _evidence_enum(
-                declared, EvidenceRequirementKind, "requirement kind"
-            )
+            return _evidence_enum(declared, EvidenceRequirementKind, "requirement kind")
         normalized = str(requirement or "").strip()
         if OPAQUE_EVIDENCE_REQUIREMENT_PATTERN.fullmatch(normalized):
             return EvidenceRequirementKind.OPAQUE_RECEIPT
         if repo_relative_path_safe(normalized):
             suffix = Path(normalized).suffix.lower()
             if suffix in SCAN_SUFFIXES or (
-                "/" in normalized
-                and not any(character.isspace() for character in normalized)
+                "/" in normalized and not any(character.isspace() for character in normalized)
             ):
                 return EvidenceRequirementKind.PATH
         words = set(re.findall(r"[a-z0-9_]+", normalized.casefold()))
@@ -974,9 +898,7 @@ class EvidenceSourcePolicy:
             }
         ):
             return EvidenceSourceTier.PROPOSAL
-        if name.endswith(
-            (".receipt.json", ".receipt.jsonl", ".receipt.cbor", ".receipt")
-        ):
+        if name.endswith((".receipt.json", ".receipt.jsonl", ".receipt.cbor", ".receipt")):
             return EvidenceSourceTier.RECEIPT
         if (
             "test" in parts
@@ -999,13 +921,17 @@ class EvidenceSourcePolicy:
 
     @staticmethod
     def _receipt_tier(receipt: Mapping[str, Any]) -> EvidenceSourceTier:
-        raw = str(
-            receipt.get("source_tier")
-            or receipt.get("receipt_kind")
-            or receipt.get("producer_kind")
-            or receipt.get("kind")
-            or ""
-        ).strip().lower()
+        raw = (
+            str(
+                receipt.get("source_tier")
+                or receipt.get("receipt_kind")
+                or receipt.get("producer_kind")
+                or receipt.get("kind")
+                or ""
+            )
+            .strip()
+            .lower()
+        )
         aliases = {
             "task": EvidenceSourceTier.VALIDATION,
             "scan": EvidenceSourceTier.VALIDATION,
@@ -1027,9 +953,7 @@ class EvidenceSourcePolicy:
             return aliases[raw]
         if raw:
             return EvidenceSourceTier.UNKNOWN
-        schema = str(
-            receipt.get("schema") or receipt.get("schema_version") or ""
-        ).casefold()
+        schema = str(receipt.get("schema") or receipt.get("schema_version") or "").casefold()
         schema_tiers = (
             (("benchmark", "bench"), EvidenceSourceTier.BENCHMARK),
             (("runtime", "telemetry"), EvidenceSourceTier.RUNTIME),
@@ -1104,9 +1028,7 @@ class EvidenceSourcePolicy:
             },
             EvidenceRequirementKind.TEST: {EvidenceSourceTier.VALIDATION},
             EvidenceRequirementKind.PROOF: {EvidenceSourceTier.PROOF},
-            EvidenceRequirementKind.BENCHMARK: {
-                EvidenceSourceTier.BENCHMARK
-            },
+            EvidenceRequirementKind.BENCHMARK: {EvidenceSourceTier.BENCHMARK},
             EvidenceRequirementKind.RUNTIME: {EvidenceSourceTier.RUNTIME},
         }
         expected = allowed.get(requirement_kind)
@@ -1128,12 +1050,17 @@ class EvidenceSourcePolicy:
     @staticmethod
     def _receipt_terminal_reasons(receipt: Mapping[str, Any]) -> tuple[str, ...]:
         reasons: list[str] = []
-        status = str(
-            receipt.get("status")
-            or receipt.get("outcome")
-            or receipt.get("terminal_reason")
-            or ""
-        ).strip().lower().replace("-", "_")
+        status = (
+            str(
+                receipt.get("status")
+                or receipt.get("outcome")
+                or receipt.get("terminal_reason")
+                or ""
+            )
+            .strip()
+            .lower()
+            .replace("-", "_")
+        )
         bad = {
             "failed",
             "failure",
@@ -1207,18 +1134,11 @@ class EvidenceSourcePolicy:
         receipt: Mapping[str, Any] | None = None
         producer_authority_reason = ""
         if typed_receipt is not None:
-            registered_producer = TASK_GENERATION_EVIDENCE_PRODUCER_BINDINGS.get(
-                normalized
-            )
-            if (
-                registered_producer
-                and not _has_live_task_generation_producer_authority(
-                    normalized, typed_receipt
-                )
+            registered_producer = TASK_GENERATION_EVIDENCE_PRODUCER_BINDINGS.get(normalized)
+            if registered_producer and not _has_live_task_generation_producer_authority(
+                normalized, typed_receipt
             ):
-                producer_authority_reason = (
-                    "receipt_producer_authority_missing"
-                )
+                producer_authority_reason = "receipt_producer_authority_missing"
             if isinstance(typed_receipt, Mapping):
                 receipt = typed_receipt
             else:
@@ -1228,7 +1148,12 @@ class EvidenceSourcePolicy:
                     receipt = projected
             if receipt is None:
                 return EvidenceSourceDecision(
-                    normalized, kind, tier, match, source_path, reference,
+                    normalized,
+                    kind,
+                    tier,
+                    match,
+                    source_path,
+                    reference,
                     reason_codes=("typed_receipt_required",),
                 )
             tier = self._receipt_tier(receipt)
@@ -1252,14 +1177,15 @@ class EvidenceSourcePolicy:
         if match in {EvidenceMatchKind.SEMANTIC, EvidenceMatchKind.RETRIEVAL}:
             reasons.append("semantic_match_nomination_only")
         if kind is EvidenceRequirementKind.PATH:
-            normalized_source_path = str(source_path or "").strip().replace(
-                "\\", "/"
-            )
+            normalized_source_path = str(source_path or "").strip().replace("\\", "/")
             if match is not EvidenceMatchKind.PATH:
                 reasons.append("path_reference_nomination_only")
             elif normalized_source_path != normalized.replace("\\", "/"):
                 reasons.append("path_identity_mismatch")
-        if kind is EvidenceRequirementKind.OPAQUE_RECEIPT and match is not EvidenceMatchKind.TYPED_RECEIPT:
+        if (
+            kind is EvidenceRequirementKind.OPAQUE_RECEIPT
+            and match is not EvidenceMatchKind.TYPED_RECEIPT
+        ):
             reasons.append("opaque_requirement_requires_typed_receipt")
         if receipt is not None:
             if match is not EvidenceMatchKind.TYPED_RECEIPT:
@@ -1313,19 +1239,20 @@ class EvidenceSourcePolicy:
                 kind is not EvidenceRequirementKind.PATH
                 or (
                     match is EvidenceMatchKind.PATH
-                    and normalized_source_path
-                    == normalized.replace("\\", "/")
+                    and normalized_source_path == normalized.replace("\\", "/")
                 )
             )
             and tier is not EvidenceSourceTier.PROPOSAL
             and (
-                match in {
+                match
+                in {
                     EvidenceMatchKind.PATH,
                     EvidenceMatchKind.EXACT_TEXT,
                     EvidenceMatchKind.EXACT_AST,
                 }
                 or (
-                    match in {
+                    match
+                    in {
                         EvidenceMatchKind.SEMANTIC,
                         EvidenceMatchKind.RETRIEVAL,
                     }
@@ -1338,11 +1265,7 @@ class EvidenceSourcePolicy:
             )
         ):
             satisfies = True
-            reasons = [
-                reason
-                for reason in reasons
-                if reason != "semantic_match_nomination_only"
-            ]
+            reasons = [reason for reason in reasons if reason != "semantic_match_nomination_only"]
         elif not reasons:
             reasons.append("source_not_authoritative_for_requirement")
         return EvidenceSourceDecision(
@@ -1412,10 +1335,7 @@ def completion_evidence_source_decision(
             raise TypeError("completion evidence must be a mapping or expose to_dict()")
         payload = dict(projected)
     criterion = str(
-        requirement
-        or payload.get("acceptance_criterion")
-        or payload.get("criterion")
-        or ""
+        requirement or payload.get("acceptance_criterion") or payload.get("criterion") or ""
     ).strip()
     payload.setdefault("requirement_id", criterion)
     payload.setdefault("receipt_id", payload.get("provenance_cid"))
@@ -1425,22 +1345,17 @@ def completion_evidence_source_decision(
         passed = payload.get("validation_passed")
         if passed is None:
             passed = validation.get("passed")
-        payload["status"] = "passed" if passed is True else (
-            str(validation.get("status") or "failed")
+        payload["status"] = (
+            "passed" if passed is True else (str(validation.get("status") or "failed"))
         )
     metadata = payload.get("metadata")
     metadata = metadata if isinstance(metadata, Mapping) else {}
     payload.setdefault(
         "source_tier",
-        metadata.get("source_tier")
-        or metadata.get("source_kind")
-        or payload.get("producer_kind"),
+        metadata.get("source_tier") or metadata.get("source_kind") or payload.get("producer_kind"),
     )
     source_path = str(
-        metadata.get("source_path")
-        or metadata.get("path")
-        or payload.get("source_path")
-        or ""
+        metadata.get("source_path") or metadata.get("path") or payload.get("source_path") or ""
     )
     return (policy or EvidenceSourcePolicy()).evaluate(
         criterion,
@@ -1451,6 +1366,7 @@ def completion_evidence_source_decision(
         policy_id=policy_id,
         reference=str(payload.get("provenance_cid") or ""),
     )
+
 
 # These are data/control-plane boundaries, not ordinary caller preferences.
 # They apply even when an objective-daemon invocation forgets to repeat its
@@ -1571,10 +1487,9 @@ def _has_typed_external_completion_history(fields: Mapping[str, Any]) -> bool:
             return False
     if isinstance(raw_records, Mapping):
         raw_records = (raw_records,)
-    if not isinstance(raw_records, Sequence) or isinstance(
-        raw_records, (str, bytes, bytearray)
-    ):
+    if not isinstance(raw_records, Sequence) or isinstance(raw_records, (str, bytes, bytearray)):
         return False
+
     def is_external_record(record: Any) -> bool:
         metadata = (
             record.get("metadata")
@@ -1597,8 +1512,7 @@ def _requires_external_completion(
 
     normalized_goal_id = str(goal_id or "").strip().upper()
     authority = _normalized_completion_authority(
-        fields.get("completion_authority")
-        or fields.get("completion_authority_kind")
+        fields.get("completion_authority") or fields.get("completion_authority_kind")
     )
     explicit = fields.get("external_completion_required")
     if isinstance(explicit, str):
@@ -1846,9 +1760,7 @@ class ObjectiveGoal:
         """Return the immutable proposal identity which owns this goal."""
 
         return str(
-            self.fields.get("canonical_proposal_id")
-            or self.fields.get("canonical_id")
-            or ""
+            self.fields.get("canonical_proposal_id") or self.fields.get("canonical_id") or ""
         ).strip()
 
     @property
@@ -1901,7 +1813,9 @@ class ObjectiveFinding:
     bundle_strategy: str = "semantic_ast"
     embedding_query: str = ""
     ast_query: str = ""
-    conflict_policy: str = "prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts"
+    conflict_policy: str = (
+        "prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts"
+    )
     refinement_depth: str = "0"
     candidate_kind: str = "aggregate"
     surplus_group: str = ""
@@ -1957,16 +1871,12 @@ class ObjectiveFinding:
         payload["acceptance_criteria"] = list(
             self.acceptance_subset or self.evidence_subset or self.missing_evidence
         )
-        payload["context_keys"] = list(
-            self.context_paths or self.predicted_files or self.outputs
-        )
+        payload["context_keys"] = list(self.context_paths or self.predicted_files or self.outputs)
         payload["validation_commands"] = [self.validation] if self.validation else []
         payload["predicted_paths"] = list(self.predicted_files or self.outputs)
         payload["evidence_outputs"] = evidence_outputs
         payload["semantic_identity"] = (
-            self.semantic_identity
-            or self.dedupe_key
-            or f"objective-finding:{self.fingerprint}"
+            self.semantic_identity or self.dedupe_key or f"objective-finding:{self.fingerprint}"
         )
         payload["canonical_semantic_identity"] = payload["semantic_identity"]
         identity = canonical_task_identity(
@@ -1984,10 +1894,8 @@ class ObjectiveFinding:
         payload["completion_task_bindings"] = sorted(
             {str(identity) for identity in self.completion_task_bindings if str(identity)}
         )
-        payload["evidence_producer_bindings"] = (
-            task_generation_evidence_producer_bindings(
-                self.evidence_subset or self.missing_evidence
-            )
+        payload["evidence_producer_bindings"] = task_generation_evidence_producer_bindings(
+            self.evidence_subset or self.missing_evidence
         )
         return payload
 
@@ -2380,9 +2288,7 @@ def _objective_work_strings(value: Any) -> tuple[str, ...]:
     else:
         values = (value,)
     normalized = {
-        " ".join(str(item or "").split())
-        for item in values
-        if " ".join(str(item or "").split())
+        " ".join(str(item or "").split()) for item in values if " ".join(str(item or "").split())
     }
     return tuple(sorted(normalized, key=lambda item: (item.casefold(), item)))
 
@@ -2401,7 +2307,9 @@ def _objective_work_normalized_text(value: Any) -> str:
 def semantic_objective_work_key(value: Any) -> str:
     """Return a stable semantic key which ignores display IDs and ordering."""
 
-    payload = value.to_dict() if isinstance(value, ObjectiveWorkProposal) else _task_record_mapping(value)
+    payload = (
+        value.to_dict() if isinstance(value, ObjectiveWorkProposal) else _task_record_mapping(value)
+    )
     family_key = str(payload.get("family_key") or "").strip()
     if family_key:
         if not family_key.startswith("objective-family/v1/"):
@@ -2455,9 +2363,7 @@ def semantic_objective_work_key(value: Any) -> str:
             "acceptance",
             "acceptance_criteria",
         ),
-        "preconditions": _objective_work_value(
-            payload, "preconditions", "required_preconditions"
-        ),
+        "preconditions": _objective_work_value(payload, "preconditions", "required_preconditions"),
         "effects": _objective_work_value(payload, "effects", "expected_effects"),
         "evidence_subset": _objective_work_value(
             payload, "evidence_subset", "evidence_requirements"
@@ -2526,7 +2432,9 @@ def semantic_objective_work_key(value: Any) -> str:
 def canonical_objective_work_identity(value: Any) -> str:
     """Return the canonical content identity used across refinement cycles."""
 
-    payload = value.to_dict() if isinstance(value, ObjectiveWorkProposal) else _task_record_mapping(value)
+    payload = (
+        value.to_dict() if isinstance(value, ObjectiveWorkProposal) else _task_record_mapping(value)
+    )
     semantic_key = str(payload.get("semantic_key") or semantic_objective_work_key(payload))
     material: dict[str, Any] = {
         "schema": "ipfs_accelerate_py/agent-supervisor/objective-work@1",
@@ -2541,9 +2449,7 @@ def canonical_objective_work_identity(value: Any) -> str:
             )
         ),
         "confidence": float(_objective_work_value(payload, "confidence") or 0.0),
-        "estimated_cost": float(
-            _objective_work_value(payload, "estimated_cost", "cost") or 0.0
-        ),
+        "estimated_cost": float(_objective_work_value(payload, "estimated_cost", "cost") or 0.0),
         "novelty": float(_objective_work_value(payload, "novelty") or 0.0),
         "depth": int(_objective_work_value(payload, "depth", "graph_depth") or 0),
         "estimated_tokens": int(
@@ -2630,9 +2536,12 @@ def canonical_objective_work_identity(value: Any) -> str:
                 )
             ),
         }
-    return "objective-work:" + sha256(
-        json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+    return (
+        "objective-work:"
+        + sha256(
+            json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+    )
 
 
 @dataclass(frozen=True)
@@ -2674,7 +2583,11 @@ class ObjectiveWorkProposal:
 
     def __post_init__(self) -> None:
         try:
-            kind = self.kind if isinstance(self.kind, ObjectiveWorkKind) else ObjectiveWorkKind(str(self.kind).lower())
+            kind = (
+                self.kind
+                if isinstance(self.kind, ObjectiveWorkKind)
+                else ObjectiveWorkKind(str(self.kind).lower())
+            )
         except ValueError as exc:
             raise ValueError("kind must be goal, subgoal, or task") from exc
         title = " ".join(str(self.title or "").split())
@@ -2774,22 +2687,14 @@ class ObjectiveWorkProposal:
                 self,
                 "effects",
                 self.expected_evidence_delta
-                or (
-                    self.parent_objective_terms
-                    if self.kind is ObjectiveWorkKind.TASK
-                    else ()
-                ),
+                or (self.parent_objective_terms if self.kind is ObjectiveWorkKind.TASK else ()),
             )
         if not self.evidence_subset:
             object.__setattr__(
                 self,
                 "evidence_subset",
                 self.expected_evidence_delta
-                or (
-                    self.parent_objective_terms
-                    if self.kind is ObjectiveWorkKind.TASK
-                    else ()
-                ),
+                or (self.parent_objective_terms if self.kind is ObjectiveWorkKind.TASK else ()),
             )
         expected_semantic_key = semantic_objective_work_key(self)
         supplied_semantic_key = str(self.semantic_key or "").strip()
@@ -2840,15 +2745,13 @@ class ObjectiveWorkProposal:
             estimated_tokens=_objective_work_value(payload, "estimated_tokens", "token_cost") or 0,
             retry_count=_objective_work_value(payload, "retry_count", "retries") or 0,
             source=_objective_work_value(payload, "source", "proposal_source") or "deterministic",
-            source_id=_objective_work_value(payload, "source_id", "criterion_id", "finding_id", "receipt_id"),
+            source_id=_objective_work_value(
+                payload, "source_id", "criterion_id", "finding_id", "receipt_id"
+            ),
             rationale=_objective_work_value(payload, "rationale", "explanation", "reason"),
             family_key=str(payload.get("family_key") or ""),
             instance_key=str(payload.get("instance_key") or ""),
-            semantic_key=str(
-                payload.get("semantic_key")
-                or payload.get("semantic_identity")
-                or ""
-            ),
+            semantic_key=str(payload.get("semantic_key") or payload.get("semantic_identity") or ""),
             canonical_id=str(payload.get("canonical_id") or payload.get("work_id") or ""),
             acceptance_subset=_objective_work_strings(
                 _objective_work_value(
@@ -2877,16 +2780,11 @@ class ObjectiveWorkProposal:
             context_paths=_objective_work_strings(
                 _objective_work_value(payload, "context_paths", "context", "context_files")
             ),
-            resource_class=str(
-                _objective_work_value(payload, "resource_class") or "cpu-medium"
-            ),
+            resource_class=str(_objective_work_value(payload, "resource_class") or "cpu-medium"),
             token_class=str(
-                _objective_work_value(payload, "token_class", "token_budget_class")
-                or "medium"
+                _objective_work_value(payload, "token_class", "token_budget_class") or "medium"
             ),
-            merge_fate=str(
-                _objective_work_value(payload, "merge_fate", "merge_family") or ""
-            ),
+            merge_fate=str(_objective_work_value(payload, "merge_fate", "merge_family") or ""),
             rejection_reasons=_objective_work_strings(
                 _objective_work_value(payload, "rejection_reasons")
             ),
@@ -2954,9 +2852,14 @@ class ObjectiveGenerationResult:
     @property
     def exhausted(self) -> bool:
         return bool(self.rejected) and any(
-            item.reason in {
-                "depth_limit", "breadth_limit", "cycle_limit", "open_work_limit",
-                "retry_limit", "token_budget",
+            item.reason
+            in {
+                "depth_limit",
+                "breadth_limit",
+                "cycle_limit",
+                "open_work_limit",
+                "retry_limit",
+                "token_budget",
             }
             for item in self.rejected
         )
@@ -3144,7 +3047,10 @@ def _objective_work_tokens(value: ObjectiveWorkProposal) -> set[str]:
 
 
 def _objective_work_similarity(left: ObjectiveWorkProposal, right: ObjectiveWorkProposal) -> float:
-    if left.kind is not right.kind or left.parent_goal_id.casefold() != right.parent_goal_id.casefold():
+    if (
+        left.kind is not right.kind
+        or left.parent_goal_id.casefold() != right.parent_goal_id.casefold()
+    ):
         return 0.0
     left_tokens, right_tokens = _objective_work_tokens(left), _objective_work_tokens(right)
     if not left_tokens or not right_tokens:
@@ -3188,7 +3094,9 @@ def materialize_bounded_objective_work(
         key=lambda item: (
             item.parent_goal_id.casefold(),
             item.depth,
-            {ObjectiveWorkKind.GOAL: 0, ObjectiveWorkKind.SUBGOAL: 1, ObjectiveWorkKind.TASK: 2}[item.kind],
+            {ObjectiveWorkKind.GOAL: 0, ObjectiveWorkKind.SUBGOAL: 1, ObjectiveWorkKind.TASK: 2}[
+                item.kind
+            ],
             item.semantic_key,
             item.source_id,
         )
@@ -3202,7 +3110,9 @@ def materialize_bounded_objective_work(
     consumed_tokens = 0
 
     def reject(item: ObjectiveWorkProposal, reason: str, detail: str) -> None:
-        rejected.append(ObjectiveGenerationRejection(reason, item.canonical_id, item.source_id, detail))
+        rejected.append(
+            ObjectiveGenerationRejection(reason, item.canonical_id, item.source_id, detail)
+        )
 
     for item in normalized:
         if item.canonical_id in exact_ids:
@@ -3233,7 +3143,11 @@ def materialize_bounded_objective_work(
             continue
         parent_key = item.parent_goal_id or "__root__"
         if breadth.get(parent_key, 0) >= policy.max_breadth_per_parent:
-            reject(item, "breadth_limit", f"parent allows {policy.max_breadth_per_parent} open children")
+            reject(
+                item,
+                "breadth_limit",
+                f"parent allows {policy.max_breadth_per_parent} open children",
+            )
             continue
         if consumed_tokens + item.estimated_tokens > policy.token_budget:
             reject(item, "token_budget", f"cycle token budget is {policy.token_budget}")
@@ -3344,11 +3258,7 @@ def _proof_repair_mapping(value: Any) -> dict[str, Any]:
         if isinstance(payload, Mapping):
             return dict(payload)
     if hasattr(value, "__dict__"):
-        return {
-            str(key): item
-            for key, item in vars(value).items()
-            if not str(key).startswith("_")
-        }
+        return {str(key): item for key, item in vars(value).items() if not str(key).startswith("_")}
     raise TypeError("proof obligations and outcomes must be mappings or provide to_dict()")
 
 
@@ -3490,9 +3400,7 @@ class ProofObligationInput:
                     break
             if declared_state != ProofObligationState.PENDING.value:
                 break
-        obligation_id = first(
-            "obligation_id", "proof_obligation_id", "content_id", "id"
-        )
+        obligation_id = first("obligation_id", "proof_obligation_id", "content_id", "id")
         return cls(
             obligation_id=str(obligation_id or ""),
             state=declared_state,
@@ -3531,9 +3439,7 @@ class ProofObligationInput:
                 "summary",
                 "diagnostic",
             ),
-            source_id=first(
-                "source_id", "receipt_id", "attempt_id", "selection_id"
-            ),
+            source_id=first("source_id", "receipt_id", "attempt_id", "selection_id"),
             metadata=metadata,
         )
 
@@ -3582,9 +3488,7 @@ class ProofRepairPolicy:
 
     def __post_init__(self) -> None:
         if self.max_work_items is not None:
-            if isinstance(self.max_work_items, bool) or not isinstance(
-                self.max_work_items, int
-            ):
+            if isinstance(self.max_work_items, bool) or not isinstance(self.max_work_items, int):
                 raise ValueError("max_work_items must be a non-negative integer")
             object.__setattr__(self, "max_total_work", self.max_work_items)
         if self.max_per_obligation is not None:
@@ -3592,9 +3496,7 @@ class ProofRepairPolicy:
                 self.max_per_obligation, int
             ):
                 raise ValueError("max_per_obligation must be a non-negative integer")
-            object.__setattr__(
-                self, "max_work_per_obligation", self.max_per_obligation
-            )
+            object.__setattr__(self, "max_work_per_obligation", self.max_per_obligation)
         for name in (
             "max_obligations",
             "max_total_work",
@@ -3622,7 +3524,9 @@ def _proof_repair_normalized_text(value: Any) -> str:
 def semantic_proof_repair_key(value: Any) -> str:
     """Return wording-insensitive identity for one proof repair action."""
 
-    payload = value.to_dict() if isinstance(value, ProofRepairWork) else _proof_repair_mapping(value)
+    payload = (
+        value.to_dict() if isinstance(value, ProofRepairWork) else _proof_repair_mapping(value)
+    )
 
     def values(name: str, *aliases: str) -> list[str]:
         raw: Any = ()
@@ -3632,14 +3536,18 @@ def semantic_proof_repair_key(value: Any) -> str:
                 break
         return sorted(_proof_repair_normalized_text(item) for item in _proof_repair_strings(raw))
 
-    kind = str(
-        getattr(
-            payload.get("repair_kind", payload.get("work_kind", payload.get("kind", ""))),
-            "value",
-            payload.get("repair_kind", payload.get("work_kind", payload.get("kind", ""))),
+    kind = (
+        str(
+            getattr(
+                payload.get("repair_kind", payload.get("work_kind", payload.get("kind", ""))),
+                "value",
+                payload.get("repair_kind", payload.get("work_kind", payload.get("kind", ""))),
+            )
+            or ""
         )
-        or ""
-    ).strip().lower()
+        .strip()
+        .lower()
+    )
     material: dict[str, Any] = {
         "repair_kind": kind,
         "template_id": _proof_repair_normalized_text(payload.get("template_id", "")),
@@ -3650,16 +3558,10 @@ def semantic_proof_repair_key(value: Any) -> str:
                 payload.get("statement", payload.get("code_shape", "")),
             )
         ),
-        "required_assurance": _proof_repair_normalized_text(
-            payload.get("required_assurance", "")
-        ),
+        "required_assurance": _proof_repair_normalized_text(payload.get("required_assurance", "")),
         "premise_ids": values("premise_ids", "missing_premise_ids"),
-        "validation": values(
-            "validation_commands", "fallback_checks", "validation"
-        ),
-        "evidence_delta": values(
-            "expected_evidence_delta", "evidence_delta", "missing_evidence"
-        ),
+        "validation": values("validation_commands", "fallback_checks", "validation"),
+        "evidence_delta": values("expected_evidence_delta", "evidence_delta", "missing_evidence"),
     }
     if not any(
         material[key]
@@ -3750,9 +3652,12 @@ class ProofRepairWork:
             "obligation_ids": obligation_ids,
             "source_state": self.source_state.value,
         }
-        expected_id = "proof-repair:" + sha256(
-            json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
+        expected_id = (
+            "proof-repair:"
+            + sha256(
+                json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+        )
         if self.canonical_id and str(self.canonical_id) != expected_id:
             raise ValueError("canonical_id does not match proof repair content")
         object.__setattr__(self, "canonical_id", expected_id)
@@ -3962,8 +3867,7 @@ def _proof_repair_outcomes(
 ) -> dict[str, dict[str, Any]]:
     if isinstance(outcomes, Mapping):
         if any(
-            key in outcomes
-            for key in ("obligation_id", "proof_obligation_id", "status", "verdict")
+            key in outcomes for key in ("obligation_id", "proof_obligation_id", "status", "verdict")
         ):
             raw: Iterable[Any] = (outcomes,)
         else:
@@ -3986,9 +3890,7 @@ def _proof_repair_outcomes(
     for value in islice(raw, max(0, maximum)):
         payload = _proof_repair_mapping(value)
         obligation_id = str(
-            payload.get("obligation_id")
-            or payload.get("proof_obligation_id")
-            or ""
+            payload.get("obligation_id") or payload.get("proof_obligation_id") or ""
         ).strip()
         if not obligation_id:
             continue
@@ -4037,7 +3939,8 @@ def _proof_repair_kinds(item: ProofObligationInput) -> tuple[ProofRepairWorkKind
     if item.missing_premise_ids or (
         item.premise_ids
         and (
-            item.state in {
+            item.state
+            in {
                 ProofObligationState.FAILED,
                 ProofObligationState.CONTRADICTED,
             }
@@ -4095,9 +3998,7 @@ def _proof_repair_candidate(
         f"Obligation {item.obligation_id} ended in {item.state.value} state."
     )
     missing_premises = item.missing_premise_ids or (
-        item.premise_ids
-        if kind is ProofRepairWorkKind.PREMISE
-        else ()
+        item.premise_ids if kind is ProofRepairWorkKind.PREMISE else ()
     )
     if kind is ProofRepairWorkKind.TEMPLATE:
         title = f"Add reviewed proof template for {short_scope}"
@@ -4108,9 +4009,7 @@ def _proof_repair_candidate(
         validations: tuple[str, ...] = ()
     elif kind is ProofRepairWorkKind.TEST:
         title = f"Add fallback regression test for {short_scope}"
-        delta = (
-            "current fallback validation receipt bound to the obligation scope",
-        )
+        delta = ("current fallback validation receipt bound to the obligation scope",)
         validations = tuple(
             check
             for check in item.fallback_checks
@@ -4118,15 +4017,11 @@ def _proof_repair_candidate(
         )[: policy.max_validation_commands_per_work]
     elif kind is ProofRepairWorkKind.PREMISE:
         title = f"Establish proof premises for {short_scope}"
-        delta = (
-            "trusted current evidence for each missing proof premise",
-        )
+        delta = ("trusted current evidence for each missing proof premise",)
         validations = ()
     else:
         title = f"Manually review proof obligation for {short_scope}"
-        delta = (
-            "recorded manual-review decision with rationale and provenance",
-        )
+        delta = ("recorded manual-review decision with rationale and provenance",)
         validations = ()
     return ProofRepairWork(
         repair_kind=kind,
@@ -4153,9 +4048,7 @@ def _merge_proof_repair_work(
 ) -> ProofRepairWork:
     return ProofRepairWork(
         repair_kind=left.repair_kind,
-        obligation_ids=_proof_repair_strings(
-            (*left.obligation_ids, *right.obligation_ids)
-        ),
+        obligation_ids=_proof_repair_strings((*left.obligation_ids, *right.obligation_ids)),
         title=min((left.title, right.title), key=lambda value: (value.casefold(), value)),
         rationale=min(
             (left.rationale, right.rationale),
@@ -4178,8 +4071,7 @@ def _merge_proof_repair_work(
         required_assurance=left.required_assurance or right.required_assurance,
         source_state=(
             ProofObligationState.CONTRADICTED
-            if ProofObligationState.CONTRADICTED
-            in {left.source_state, right.source_state}
+            if ProofObligationState.CONTRADICTED in {left.source_state, right.source_state}
             else left.source_state
         ),
         source_ids=_proof_repair_strings((*left.source_ids, *right.source_ids)),
@@ -4229,9 +4121,7 @@ def generate_proof_repair_work(
         outcomes,
         maximum=max(1, selected_policy.max_obligations * 2),
     )
-    obligation_rows = list(
-        islice(obligations, selected_policy.max_obligations + 1)
-    )
+    obligation_rows = list(islice(obligations, selected_policy.max_obligations + 1))
     input_truncated = len(obligation_rows) > selected_policy.max_obligations
     obligation_rows = obligation_rows[: selected_policy.max_obligations]
     normalized: list[ProofObligationInput] = []
@@ -4240,9 +4130,7 @@ def generate_proof_repair_work(
             base = raw
             outcome = outcome_index.get(base.obligation_id)
             normalized.append(
-                ProofObligationInput.from_dict(base.to_dict(), outcome=outcome)
-                if outcome
-                else base
+                ProofObligationInput.from_dict(base.to_dict(), outcome=outcome) if outcome else base
             )
         else:
             payload = _proof_repair_mapping(raw)
@@ -4271,9 +4159,7 @@ def generate_proof_repair_work(
             try:
                 prior = ProofRepairWork.from_dict(payload)
             except (TypeError, ValueError):
-                supplied_key = str(
-                    payload.get("semantic_key") or payload.get("dedupe_key") or ""
-                )
+                supplied_key = str(payload.get("semantic_key") or payload.get("dedupe_key") or "")
                 if supplied_key.startswith("proof-repair/v1/"):
                     existing_keys.add(supplied_key)
                 continue
@@ -4301,12 +4187,8 @@ def generate_proof_repair_work(
             ProofRepairRejection(
                 reason=reason,
                 obligation_id=item.obligation_id,
-                repair_kind=(
-                    candidate.repair_kind.value if candidate is not None else ""
-                ),
-                semantic_key=(
-                    candidate.semantic_key if candidate is not None else ""
-                ),
+                repair_kind=(candidate.repair_kind.value if candidate is not None else ""),
+                semantic_key=(candidate.semantic_key if candidate is not None else ""),
                 detail=detail,
             )
         )
@@ -4367,9 +4249,7 @@ def generate_proof_repair_work(
                     None,
                 )
             if merge_index is not None:
-                merged = _merge_proof_repair_work(
-                    accepted[merge_index], candidate, selected_policy
-                )
+                merged = _merge_proof_repair_work(accepted[merge_index], candidate, selected_policy)
                 old_key = accepted[merge_index].semantic_key
                 accepted[merge_index] = merged
                 accepted_by_key.pop(old_key, None)
@@ -4543,12 +4423,9 @@ class TaskPlanningGraph:
         dependency = self.dependency_graph.to_dict()
         conflict = self.conflict_graph.to_dict()
         canonical_lanes = [
-            list(lane)
-            for lane in getattr(self.conflict_graph, "canonical_lanes", ())
+            list(lane) for lane in getattr(self.conflict_graph, "canonical_lanes", ())
         ]
-        independent_width = int(
-            getattr(self.conflict_graph, "independent_width", 0)
-        )
+        independent_width = int(getattr(self.conflict_graph, "independent_width", 0))
         return {
             "task_dependency_graph": dependency,
             "dependency_dag": dependency,
@@ -4627,7 +4504,11 @@ def parse_goal_heap(text: str) -> list[ObjectiveGoal]:
 
     def flush() -> None:
         if current_id and current_fields:
-            goals.append(ObjectiveGoal(goal_id=current_id, title=current_title.strip(), fields=dict(current_fields)))
+            goals.append(
+                ObjectiveGoal(
+                    goal_id=current_id, title=current_title.strip(), fields=dict(current_fields)
+                )
+            )
 
     for line in text.splitlines():
         header = header_pattern.match(line)
@@ -4705,8 +4586,7 @@ def source_protected_scan_reason(repo_root: Path, path: Path) -> str:
         ):
             return "protected_component_suffix"
         if any(
-            tuple(lowered[index : index + 2])
-            in SOURCE_PROTECTED_SCAN_COMPONENT_PAIRS
+            tuple(lowered[index : index + 2]) in SOURCE_PROTECTED_SCAN_COMPONENT_PAIRS
             for index in range(max(0, len(lowered) - 1))
         ):
             return "protected_component_pair"
@@ -4778,10 +4658,7 @@ def scan_exclude_path_metadata(
     """Return validated scanner exclusions as stable repository paths."""
 
     root = Path(repo_root).resolve()
-    return [
-        path.relative_to(root).as_posix()
-        for path in resolve_scan_exclude_paths(root, paths)
-    ]
+    return [path.relative_to(root).as_posix() for path in resolve_scan_exclude_paths(root, paths)]
 
 
 def _path_is_scan_excluded(path: Path, excluded_roots: Iterable[Path]) -> bool:
@@ -4880,7 +4757,9 @@ def symbol_terms(path: Path, text: str) -> set[str]:
     return {item.lower() for item in expanded if item.strip()}
 
 
-def ast_dataset_payload(path: Path, text: str, *, max_chars: int = DEFAULT_AST_DATASET_MAX_CHARS) -> dict[str, Any]:
+def ast_dataset_payload(
+    path: Path, text: str, *, max_chars: int = DEFAULT_AST_DATASET_MAX_CHARS
+) -> dict[str, Any]:
     """Return a serializable AST/symbol payload suitable for dataset storage."""
 
     suffix = path.suffix.lower()
@@ -4952,15 +4831,13 @@ def collect_ast_dataset_records(
         if not repo_relative_path_safe(root_relative):
             continue
         candidate = repo_root / root_relative
-        if (
-            source_protected_scan_reason(repo_root, candidate)
-            or _path_is_scan_excluded(candidate, resolved_scan_excludes)
+        if source_protected_scan_reason(repo_root, candidate) or _path_is_scan_excluded(
+            candidate, resolved_scan_excludes
         ):
             continue
         resolved_candidate = candidate.resolve()
         if any(
-            resolved_candidate == root or root in resolved_candidate.parents
-            for root in excluded
+            resolved_candidate == root or root in resolved_candidate.parents for root in excluded
         ):
             continue
         prior_rows.append(dict(row))
@@ -5026,7 +4903,9 @@ def collect_ast_dataset_records(
     }
     deleted_paths = sorted(prior_paths - current_paths)
     prior_blob_by_path = {
-        str(row.get("root_relative_path") or ""): str(row.get("blob_hash") or row.get("source_sha1") or "")
+        str(row.get("root_relative_path") or ""): str(
+            row.get("blob_hash") or row.get("source_sha1") or ""
+        )
         for row in prior_rows
     }
     deleted_blob_counts: dict[str, int] = {}
@@ -5040,8 +4919,7 @@ def collect_ast_dataset_records(
         if blob:
             added_blob_counts[blob] = added_blob_counts.get(blob, 0) + 1
     renamed_count = sum(
-        min(count, added_blob_counts.get(blob, 0))
-        for blob, count in deleted_blob_counts.items()
+        min(count, added_blob_counts.get(blob, 0)) for blob, count in deleted_blob_counts.items()
     )
     if scan_stats is not None:
         scan_stats.clear()
@@ -5247,10 +5125,7 @@ def tracked_regular_file_path(
     """
 
     normalized = str(relative or "").strip().replace("\\", "/")
-    if (
-        not repo_relative_path_safe(normalized)
-        or normalized != Path(normalized).as_posix()
-    ):
+    if not repo_relative_path_safe(normalized) or normalized != Path(normalized).as_posix():
         return None
     root = Path(repo_root).resolve()
     candidate = root / normalized
@@ -5305,8 +5180,7 @@ def tracked_regular_file_path(
         len(fields) != 3
         or fields[0] not in {b"100644", b"100755"}
         or fields[2] != b"0"
-        or raw_path.decode("utf-8", errors="surrogateescape")
-        != candidate_relative.as_posix()
+        or raw_path.decode("utf-8", errors="surrogateescape") != candidate_relative.as_posix()
     ):
         return None
     return candidate
@@ -5402,9 +5276,7 @@ class ObjectiveEvidenceIndex:
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": EVIDENCE_SOURCE_POLICY_SCHEMA,
-            "qualifying": {
-                key: list(self.qualifying[key]) for key in sorted(self.qualifying)
-            },
+            "qualifying": {key: list(self.qualifying[key]) for key in sorted(self.qualifying)},
             "nominations": {
                 key: [item.to_dict() for item in self.nominations[key]]
                 for key in sorted(self.nominations)
@@ -5444,9 +5316,7 @@ def evidence_index(
     effective_repository_tree = str(repository_tree or "").strip()
     if typed_receipts and not effective_repository_tree:
         effective_repository_tree = scan_identity(repo_root).tree_id
-    nominations: dict[str, list[EvidenceSourceDecision]] = {
-        term: [] for term in normalized_terms
-    }
+    nominations: dict[str, list[EvidenceSourceDecision]] = {term: [] for term in normalized_terms}
     priority = {
         EvidenceMatchKind.TYPED_RECEIPT: 0,
         EvidenceMatchKind.PATH: 1,
@@ -5456,9 +5326,7 @@ def evidence_index(
         EvidenceMatchKind.SEMANTIC: 5,
     }
     nomination_count = 0
-    candidate_cap = max(
-        8, selected_policy.max_nominations_per_requirement * 4
-    )
+    candidate_cap = max(8, selected_policy.max_nominations_per_requirement * 4)
     if not normalized_terms:
         if not return_metadata:
             return evidence
@@ -5503,11 +5371,7 @@ def evidence_index(
                 )
             )
             del nominations[term][candidate_cap:]
-        if (
-            decision.satisfies
-            and len(evidence[term]) < 3
-            and reference not in evidence[term]
-        ):
+        if decision.satisfies and len(evidence[term]) < 3 and reference not in evidence[term]:
             evidence[term].append(reference)
 
     for receipt in typed_receipts:
@@ -5557,9 +5421,7 @@ def evidence_index(
     lowered_terms = {term: term.lower() for term in normalized_terms}
     cached_records = list(records) if records is not None else None
 
-    def iter_candidates() -> Iterable[
-        tuple[str, str, set[str], set[str], list[float]]
-    ]:
+    def iter_candidates() -> Iterable[tuple[str, str, set[str], set[str], list[float]]]:
         """Yield one evidence candidate at a time in stable path order.
 
         The direct tracked-source path can cover large composite repositories.
@@ -5579,31 +5441,22 @@ def evidence_index(
                 if not root_relative:
                     continue
                 candidate = repo_root / root_relative
-                if (
-                    source_protected_scan_reason(repo_root, candidate)
-                    or _path_is_scan_excluded(
-                        candidate,
-                        resolved_scan_excludes,
-                    )
+                if source_protected_scan_reason(repo_root, candidate) or _path_is_scan_excluded(
+                    candidate,
+                    resolved_scan_excludes,
                 ):
                     continue
                 text = str(row.get("evidence_text") or "")
                 symbols = set(_record_symbols(row))
                 try:
-                    raw_tokens = json.loads(
-                        str(row.get("document_tokens_json") or "[]")
-                    )
+                    raw_tokens = json.loads(str(row.get("document_tokens_json") or "[]"))
                 except (TypeError, ValueError):
                     raw_tokens = []
                 document_tokens = (
-                    {str(item) for item in raw_tokens}
-                    if isinstance(raw_tokens, list)
-                    else set()
+                    {str(item) for item in raw_tokens} if isinstance(raw_tokens, list) else set()
                 )
                 try:
-                    raw_embedding = json.loads(
-                        str(row.get("document_embedding_json") or "[]")
-                    )
+                    raw_embedding = json.loads(str(row.get("document_embedding_json") or "[]"))
                     document_embedding = (
                         [float(item) for item in raw_embedding]
                         if isinstance(raw_embedding, list)
@@ -5614,10 +5467,7 @@ def evidence_index(
                 # Legacy/incomplete rows are never silently treated as negative
                 # evidence. Rebuild their cheap derived fields from cached text.
                 if not document_embedding or not document_tokens:
-                    document_text = (
-                        f"{root_relative}\n{' '.join(sorted(symbols))}\n"
-                        f"{text[:12000]}"
-                    )
+                    document_text = f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
                     document_embedding = text_embedding(document_text)
                     document_tokens = set(objective_tokens(document_text))
                 yield (
@@ -5640,9 +5490,7 @@ def evidence_index(
             except OSError:
                 continue
             symbols = symbol_terms(path, text)
-            document_text = (
-                f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
-            )
+            document_text = f"{root_relative}\n{' '.join(sorted(symbols))}\n{text[:12000]}"
             yield (
                 root_relative,
                 text,
@@ -5732,9 +5580,7 @@ def evidence_index(
         selected[term] = tuple(accepted)
         returned += len(accepted)
     return ObjectiveEvidenceIndex(
-        qualifying={
-            term: tuple(evidence[term]) for term in normalized_terms
-        },
+        qualifying={term: tuple(evidence[term]) for term in normalized_terms},
         nominations=selected,
         total_nominations=total,
         returned_nominations=returned,
@@ -5816,9 +5662,7 @@ def goal_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, Any]:
             "completion_evidence": goal.completion_evidence_metadata,
         }
         for term in required_evidence:
-            evidence_id = "evidence:" + sha1(
-                f"{goal_id}\0{term}".encode("utf-8")
-            ).hexdigest()[:16]
+            evidence_id = "evidence:" + sha1(f"{goal_id}\0{term}".encode("utf-8")).hexdigest()[:16]
             evidence_nodes.append(
                 {
                     "id": evidence_id,
@@ -5838,9 +5682,10 @@ def goal_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, Any]:
             provenance_cid = str(
                 record.get("provenance_cid") or record.get("receipt_cid") or ""
             ).strip()
-            proof_id = "completion-evidence:" + sha1(
-                f"{goal_id}\0{criterion}\0{provenance_cid}".encode("utf-8")
-            ).hexdigest()[:16]
+            proof_id = (
+                "completion-evidence:"
+                + sha1(f"{goal_id}\0{criterion}\0{provenance_cid}".encode("utf-8")).hexdigest()[:16]
+            )
             evidence_nodes.append(
                 {
                     "id": proof_id,
@@ -5848,9 +5693,7 @@ def goal_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, Any]:
                     "acceptance_criterion": criterion,
                     "kind": "completion_evidence",
                     "producing_task_or_scan": str(
-                        record.get("producing_task_or_scan")
-                        or record.get("producer_id")
-                        or ""
+                        record.get("producing_task_or_scan") or record.get("producer_id") or ""
                     ),
                     "validation_receipt": record.get("validation_receipt"),
                     "repository_tree": str(
@@ -5860,9 +5703,7 @@ def goal_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, Any]:
                     "provenance_cid": provenance_cid,
                 }
             )
-            evidence_edges.append(
-                {"from": goal_id, "to": proof_id, "kind": "supported_by"}
-            )
+            evidence_edges.append({"from": goal_id, "to": proof_id, "kind": "supported_by"})
 
     lifecycle = {
         "state_counts": dict(sorted(state_counts.items())),
@@ -5919,17 +5760,22 @@ def objective_goal_content_id(goal: ObjectiveGoal | Mapping[str, Any]) -> str:
         "title": " ".join(str(title or "").split()),
         "fields": {
             normalize_field_key(str(key)): " ".join(str(value or "").split())
-            for key, value in sorted(fields.items(), key=lambda pair: normalize_field_key(str(pair[0])))
+            for key, value in sorted(
+                fields.items(), key=lambda pair: normalize_field_key(str(pair[0]))
+            )
         },
     }
-    return "objective-goal:sha256:" + sha256(
-        json.dumps(
-            material,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-        ).encode("utf-8")
-    ).hexdigest()
+    return (
+        "objective-goal:sha256:"
+        + sha256(
+            json.dumps(
+                material,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+    )
 
 
 def _strict_goal_hierarchy_errors(goals: Sequence[ObjectiveGoal]) -> list[str]:
@@ -5937,9 +5783,7 @@ def _strict_goal_hierarchy_errors(goals: Sequence[ObjectiveGoal]) -> list[str]:
 
     errors: list[str] = []
     ids = [goal.goal_id for goal in goals]
-    duplicate_ids = sorted(
-        goal_id for goal_id in set(ids) if ids.count(goal_id) > 1
-    )
+    duplicate_ids = sorted(goal_id for goal_id in set(ids) if ids.count(goal_id) > 1)
     if duplicate_ids:
         errors.append("duplicate goal ids: " + ", ".join(duplicate_ids))
     nodes = {goal.goal_id: goal for goal in goals}
@@ -6048,9 +5892,7 @@ def _materialized_goal_fields(
             separators=(",", ":"),
             ensure_ascii=False,
         ),
-        "Evidence subset": ", ".join(
-            proposal.evidence_subset or proposal.expected_evidence_delta
-        ),
+        "Evidence subset": ", ".join(proposal.evidence_subset or proposal.expected_evidence_delta),
         "Evidence subset JSON": json.dumps(
             list(proposal.evidence_subset or proposal.expected_evidence_delta),
             separators=(",", ":"),
@@ -6245,11 +6087,7 @@ def preview_objective_goal_materialization(
     prerequisites: dict[str, set[str]] = {}
     dependents: dict[str, set[str]] = {key: set() for key in representatives}
     for canonical_id, item in representatives.items():
-        refs = {
-            ref
-            for ref in (item.parent_goal_id, *item.dependencies)
-            if ref in candidate_ids
-        }
+        refs = {ref for ref in (item.parent_goal_id, *item.dependencies) if ref in candidate_ids}
         prerequisites[canonical_id] = refs
         for ref in refs:
             dependents.setdefault(ref, set()).add(canonical_id)
@@ -6277,11 +6115,7 @@ def preview_objective_goal_materialization(
             key=lambda canonical_id: proposal_sort_key(representatives[canonical_id]),
         )
     )
-    normalized = [
-        item
-        for canonical_id in ordered_ids
-        for item in groups[canonical_id]
-    ]
+    normalized = [item for canonical_id in ordered_ids for item in groups[canonical_id]]
     limits_policy = selected_policy.limits
     current_depths = {str(key): int(value) for key, value in graph["depths"].items()}
     child_counts = {
@@ -6499,9 +6333,7 @@ def preview_objective_goal_materialization(
                 ),
             )
             changed_fields = [
-                name
-                for name, actual, expected in round_trip_values
-                if actual != expected
+                name for name, actual, expected in round_trip_values if actual != expected
             ]
             if changed_fields:
                 reject(
@@ -6808,9 +6640,7 @@ def _externally_fenced_task_cids(graph: TaskDependencyGraph) -> set[str]:
     """Return task CIDs that local status or merge receipts cannot complete."""
 
     fenced = {
-        cid
-        for cid, node in graph.nodes.items()
-        if _task_external_authority_blockers(node.metadata)
+        cid for cid, node in graph.nodes.items() if _task_external_authority_blockers(node.metadata)
     }
     fenced.update(
         item.task_cid
@@ -6871,13 +6701,17 @@ def _successful_merge_receipt_cids(
             or key
             or ""
         ).strip()
-        status = str(
-            receipt.get("merge_status")
-            or receipt.get("status")
-            or receipt.get("outcome")
-            or receipt.get("result")
-            or ""
-        ).strip().lower()
+        status = (
+            str(
+                receipt.get("merge_status")
+                or receipt.get("status")
+                or receipt.get("outcome")
+                or receipt.get("result")
+                or ""
+            )
+            .strip()
+            .lower()
+        )
         successful = receipt.get("succeeded") is True or receipt.get("success") is True
         if successful or status in SUCCESSFUL_MERGE_RECEIPT_STATUSES:
             cid = aliases.get(reference, reference)
@@ -6974,9 +6808,7 @@ def critical_path_schedule(
         for cid in unresolved_nodes
     }
     cycle_nodes = {
-        cid
-        for group in _cycle_components(unresolved_nodes, unresolved_adjacency)
-        for cid in group
+        cid for group in _cycle_components(unresolved_nodes, unresolved_adjacency) for cid in group
     }
     invalid.update(cycle_nodes)
 
@@ -7037,10 +6869,7 @@ def critical_path_schedule(
         claimable = (
             cid not in invalid
             and cid not in succeeded
-            and (
-                node.status not in SUCCESSFUL_MERGE_RECEIPT_STATUSES
-                or cid in externally_fenced
-            )
+            and (node.status not in SUCCESSFUL_MERGE_RECEIPT_STATUSES or cid in externally_fenced)
             and _task_record_is_schedulable({**node.metadata, "status": node.status})
             and not blockers
         )
@@ -7108,7 +6937,9 @@ def materialize_task_dependency_dag(
     repair: list[DependencyRepairEvidence] = []
     invalid_task_cids: set[str] = set()
 
-    def add_repair(kind: str, cid: str, reference: str, message: str, provenance: Mapping[str, Any]) -> None:
+    def add_repair(
+        kind: str, cid: str, reference: str, message: str, provenance: Mapping[str, Any]
+    ) -> None:
         if cid:
             invalid_task_cids.add(cid)
         if len(repair) >= limit:
@@ -7189,9 +7020,7 @@ def materialize_task_dependency_dag(
                 # boundary by appearing after a local record with the same
                 # caller-supplied CID.  Preserve the union before the
                 # successful-status compatibility shortcut below.
-                aliases_metadata["external_authority_blockers"] = (
-                    duplicate_external_blockers
-                )
+                aliases_metadata["external_authority_blockers"] = duplicate_external_blockers
             nodes[cid] = replace(existing, metadata=aliases_metadata)
             if duplicate_external_blockers:
                 add_repair(
@@ -7205,16 +7034,12 @@ def materialize_task_dependency_dag(
                     ),
                     {
                         "goal_id": str(task.get("goal_id") or existing.goal_id),
-                        "external_authority_blockers": (
-                            duplicate_external_blockers
-                        ),
+                        "external_authority_blockers": (duplicate_external_blockers),
                         "duplicate_record_index": index,
                         "local_receipts_accepted": False,
                     },
                 )
-            existing_projection = _duplicate_task_semantic_projection(
-                existing_record
-            )
+            existing_projection = _duplicate_task_semantic_projection(existing_record)
             duplicate_projection = _duplicate_task_semantic_projection(task)
             if existing_projection != duplicate_projection:
                 add_repair(
@@ -7334,7 +7159,9 @@ def materialize_task_dependency_dag(
     edges: list[DependencyEdge] = []
     edge_keys: set[tuple[str, str, str, str, str]] = set()
 
-    def add_edge(source: str, target: str, kind: str, *, field_name: str, value: str, resolution: str) -> None:
+    def add_edge(
+        source: str, target: str, kind: str, *, field_name: str, value: str, resolution: str
+    ) -> None:
         provenance = {
             "field": field_name,
             "value": value,
@@ -7356,14 +7183,32 @@ def materialize_task_dependency_dag(
             # materializes a task for that goal. Explicit dependency fields
             # below remain strict and still produce repair evidence.
             for source in sources:
-                add_edge(source, target, "goal", field_name="parent_goal_ids", value=parent_goal, resolution="goal_id")
+                add_edge(
+                    source,
+                    target,
+                    "goal",
+                    field_name="parent_goal_ids",
+                    value=parent_goal,
+                    resolution="goal_id",
+                )
 
-        direct_fields = ("dependency_task_cids", "depends_on", "dependency_task_ids", "prerequisite_task_cids")
-        dependency_kinds = task.get("dependency_kinds") if isinstance(task.get("dependency_kinds"), Mapping) else {}
+        direct_fields = (
+            "dependency_task_cids",
+            "depends_on",
+            "dependency_task_ids",
+            "prerequisite_task_cids",
+        )
+        dependency_kinds = (
+            task.get("dependency_kinds")
+            if isinstance(task.get("dependency_kinds"), Mapping)
+            else {}
+        )
         for field_name in direct_fields:
             for reference in _dependency_values(task, field_name):
                 source = aliases.get(reference)
-                configured_kind = str(dependency_kinds.get(reference) or "goal").strip().lower().replace("-", "_")
+                configured_kind = (
+                    str(dependency_kinds.get(reference) or "goal").strip().lower().replace("-", "_")
+                )
                 kind = configured_kind if configured_kind in DEPENDENCY_EDGE_KINDS else "goal"
                 if source is None:
                     goal_sources = goals.get(reference, [])
@@ -7399,13 +7244,22 @@ def materialize_task_dependency_dag(
                         {"edge_kind": kind, "field": field_name},
                     )
                     continue
-                add_edge(source, target, kind, field_name=field_name, value=reference, resolution="task_alias")
+                add_edge(
+                    source,
+                    target,
+                    kind,
+                    field_name=field_name,
+                    value=reference,
+                    resolution="task_alias",
+                )
 
         for kind, fields_for_kind in requirement_fields.items():
             for field_name in fields_for_kind:
                 for requirement in _dependency_values(task, field_name):
                     direct_source = aliases.get(requirement)
-                    matched_sources = set(providers[kind].get(requirement.replace("\\", "/"), set()))
+                    matched_sources = set(
+                        providers[kind].get(requirement.replace("\\", "/"), set())
+                    )
                     if direct_source:
                         matched_sources.add(direct_source)
                     for source in sorted(matched_sources):
@@ -7416,11 +7270,15 @@ def materialize_task_dependency_dag(
                                 kind,
                                 field_name=field_name,
                                 value=requirement,
-                                resolution="task_alias" if source == direct_source else "producer_consumer_match",
+                                resolution="task_alias"
+                                if source == direct_source
+                                else "producer_consumer_match",
                             )
                     # Explicit dependency/prerequisite fields promise an
                     # in-graph producer. Plain imports/inputs may be external.
-                    if not matched_sources and ("dependencies" in field_name or "prerequisites" in field_name):
+                    if not matched_sources and (
+                        "dependencies" in field_name or "prerequisites" in field_name
+                    ):
                         add_repair(
                             "missing_dependency",
                             target,
@@ -7429,7 +7287,14 @@ def materialize_task_dependency_dag(
                             {"edge_kind": kind, "field": field_name},
                         )
 
-    edges.sort(key=lambda edge: (edge.source_task_cid, edge.target_task_cid, edge.kind, json.dumps(edge.provenance, sort_keys=True)))
+    edges.sort(
+        key=lambda edge: (
+            edge.source_task_cid,
+            edge.target_task_cid,
+            edge.kind,
+            json.dumps(edge.provenance, sort_keys=True),
+        )
+    )
     adjacency: dict[str, set[str]] = {cid: set() for cid in nodes}
     for edge in edges:
         adjacency[edge.source_task_cid].add(edge.target_task_cid)
@@ -7440,7 +7305,12 @@ def materialize_task_dependency_dag(
         for cid in unresolved_nodes
     }
     for component in _cycle_components(unresolved_nodes, unresolved_adjacency):
-        cycle = " -> ".join([*(nodes[cid].task_id or cid for cid in component), nodes[component[0]].task_id or component[0]])
+        cycle = " -> ".join(
+            [
+                *(nodes[cid].task_id or cid for cid in component),
+                nodes[component[0]].task_id or component[0],
+            ]
+        )
         for cid in component:
             add_repair(
                 "dependency_cycle",
@@ -7522,9 +7392,23 @@ def objective_goal_work_surface(goal: ObjectiveGoal) -> int:
     evidence_count = len(goal.required_evidence)
     output_count = len(split_terms(str(goal.fields.get("outputs") or "")))
     ast_count = len(split_terms(str(goal.fields.get("ast_query") or "")))
-    interface_count = len(split_terms(str(goal.fields.get("interfaces") or goal.fields.get("interface_contracts") or "")))
-    submodule_count = len(split_terms(str(goal.fields.get("submodules") or goal.fields.get("interoperability_pair") or "")))
-    return evidence_count * 4 + output_count * 2 + ast_count + interface_count * 3 + submodule_count * 3
+    interface_count = len(
+        split_terms(
+            str(goal.fields.get("interfaces") or goal.fields.get("interface_contracts") or "")
+        )
+    )
+    submodule_count = len(
+        split_terms(
+            str(goal.fields.get("submodules") or goal.fields.get("interoperability_pair") or "")
+        )
+    )
+    return (
+        evidence_count * 4
+        + output_count * 2
+        + ast_count
+        + interface_count * 3
+        + submodule_count * 3
+    )
 
 
 def objective_goal_requires_launch_playwright_validation(goal: ObjectiveGoal) -> bool:
@@ -7716,15 +7600,11 @@ def objective_evidence_lineage_ids(
         for raw_parent in detail.get("parents", ()):
             parent = str(raw_parent)
             parent_detail = details.get(parent)
-            parent_detail = (
-                parent_detail if isinstance(parent_detail, Mapping) else {}
-            )
+            parent_detail = parent_detail if isinstance(parent_detail, Mapping) else {}
             parent_requirements = {
                 normalized
                 for term in parent_detail.get("required_evidence", ())
-                for normalized in [
-                    normalize_objective_evidence_requirement(term)
-                ]
+                for normalized in [normalize_objective_evidence_requirement(term)]
                 if normalized
             }
             if required.issubset(parent_requirements):
@@ -7756,11 +7636,7 @@ def objective_evidence_obligation_key(
 ) -> str:
     """Return a goal-refinement-stable identity for missing evidence work."""
 
-    normalized_kind = (
-        "validation_gate"
-        if candidate_kind == "validation_gate"
-        else "evidence_gap"
-    )
+    normalized_kind = "validation_gate" if candidate_kind == "validation_gate" else "evidence_gap"
     material = {
         "schema": "ipfs_accelerate_py/agent-supervisor/evidence-obligation@1",
         "kind": normalized_kind,
@@ -7811,9 +7687,7 @@ def objective_evidence_owner_by_requirement(
         if not goal_id or goal_id in seen:
             return frozenset()
         direct = {
-            str(item)
-            for item in children.get(goal_id, ())
-            if str(item) and str(item) != goal_id
+            str(item) for item in children.get(goal_id, ()) if str(item) and str(item) != goal_id
         }
         result = frozenset(
             {
@@ -7841,7 +7715,9 @@ def objective_evidence_owner_by_requirement(
     return owners
 
 
-def objective_merge_key(goal: ObjectiveGoal, missing_terms: Sequence[str], *, candidate_kind: str = "aggregate") -> str:
+def objective_merge_key(
+    goal: ObjectiveGoal, missing_terms: Sequence[str], *, candidate_kind: str = "aggregate"
+) -> str:
     payload = {
         "goal_id": goal.goal_id,
         "candidate_kind": candidate_kind,
@@ -7856,8 +7732,12 @@ def objective_surplus_group(goal: ObjectiveGoal) -> str:
     return f"objective/{goal.goal_id}"
 
 
-def objective_todo_vector_key(goal: ObjectiveGoal, missing_terms: Sequence[str], *, candidate_kind: str) -> str:
-    payload = "\0".join([goal.goal_id, candidate_kind, *sorted(str(term) for term in missing_terms)])
+def objective_todo_vector_key(
+    goal: ObjectiveGoal, missing_terms: Sequence[str], *, candidate_kind: str
+) -> str:
+    payload = "\0".join(
+        [goal.goal_id, candidate_kind, *sorted(str(term) for term in missing_terms)]
+    )
     return sha1(payload.encode("utf-8")).hexdigest()[:16]
 
 
@@ -7924,10 +7804,20 @@ def assign_goal_subgoal_packets(findings: Sequence[ObjectiveFinding]) -> list[Ob
         packet_key = objective_goal_packet_key(group_findings)
         goal_ids = sorted({finding.goal_id for finding in group_findings if finding.goal_id})
         task_count = len(group_findings)
-        packet_work_items = sum(finding.work_item_count or len(finding.missing_evidence) for finding in group_findings)
+        packet_work_items = sum(
+            finding.work_item_count or len(finding.missing_evidence) for finding in group_findings
+        )
         multi_goal_packet = len(goal_ids) > 1
         for index, finding in enumerate(
-            sorted(group_findings, key=lambda item: (item.priority, item.goal_id, item.candidate_kind, item.fingerprint))
+            sorted(
+                group_findings,
+                key=lambda item: (
+                    item.priority,
+                    item.goal_id,
+                    item.candidate_kind,
+                    item.fingerprint,
+                ),
+            )
         ):
             role = "packet_anchor" if index == 0 else "packet_member"
             merge_family = packet_key if multi_goal_packet else finding.merge_family
@@ -7966,11 +7856,7 @@ def objective_finding_evidence_output_paths(
     not need a second declaration.
     """
 
-    missing = {
-        str(value).strip()
-        for value in finding.missing_evidence
-        if str(value).strip()
-    }
+    missing = {str(value).strip() for value in finding.missing_evidence if str(value).strip()}
     evidence_subset = finding.evidence_subset or finding.missing_evidence
     declared_outputs = {
         normalized
@@ -8013,9 +7899,7 @@ def _completion_goal_bindings(value: Any) -> dict[str, list[str]]:
     if not isinstance(value, Mapping):
         return {}
     result: dict[str, list[str]] = {}
-    for raw_goal_id, raw_requirements in sorted(
-        value.items(), key=lambda item: str(item[0])
-    ):
+    for raw_goal_id, raw_requirements in sorted(value.items(), key=lambda item: str(item[0])):
         goal_id = str(raw_goal_id).strip()
         if not goal_id:
             continue
@@ -8090,9 +7974,7 @@ def add_goal_packet_aggregate_findings(
         return planned[:max_findings]
 
     seen = {str(item) for item in seen_fingerprints if str(item).strip()}
-    retained = {
-        str(item) for item in retain_fingerprints if str(item).strip()
-    }
+    retained = {str(item) for item in retain_fingerprints if str(item).strip()}
     seen.update(finding.fingerprint for finding in planned)
     groups: dict[str, list[ObjectiveFinding]] = {}
     for finding in planned:
@@ -8121,17 +8003,25 @@ def add_goal_packet_aggregate_findings(
         goal_ids = _unique_strings(finding.goal_id for finding in sorted_group)
         if len(goal_ids) < 2:
             continue
-        missing_terms = _unique_strings(term for finding in sorted_group for term in finding.missing_evidence)
+        missing_terms = _unique_strings(
+            term for finding in sorted_group for term in finding.missing_evidence
+        )
         if len(missing_terms) < 2:
             continue
-        fingerprint = objective_goal_packet_aggregate_fingerprint(packet_key, sorted_group, missing_terms)
+        fingerprint = objective_goal_packet_aggregate_fingerprint(
+            packet_key, sorted_group, missing_terms
+        )
         if fingerprint in seen and fingerprint not in retained:
             continue
 
         anchor = sorted_group[0]
-        parent_goal_ids = _unique_strings(parent for finding in sorted_group for parent in finding.parent_goal_ids)
+        parent_goal_ids = _unique_strings(
+            parent for finding in sorted_group for parent in finding.parent_goal_ids
+        )
         outputs = _unique_strings(output for finding in sorted_group for output in finding.outputs)
-        evidence_methods = _unique_strings(method for finding in sorted_group for method in finding.evidence_methods)
+        evidence_methods = _unique_strings(
+            method for finding in sorted_group for method in finding.evidence_methods
+        )
         goal_lines = [
             f"{finding.goal_id}: {finding.goal or finding.title}"
             for finding in sorted_group
@@ -8140,7 +8030,9 @@ def add_goal_packet_aggregate_findings(
         merge_key = objective_goal_packet_aggregate_key(packet_key, missing_terms)
         title = f"Goal packet aggregate for {', '.join(goal_ids)}"
         summary = f"{summary_prefix} packet: {', '.join(goal_ids)}"
-        ast_terms = _unique_strings(term for finding in sorted_group for term in split_terms(finding.ast_query))
+        ast_terms = _unique_strings(
+            term for finding in sorted_group for term in split_terms(finding.ast_query)
+        )
         if not ast_terms:
             ast_terms = missing_terms
         aggregate = ObjectiveFinding(
@@ -8155,7 +8047,9 @@ def add_goal_packet_aggregate_findings(
             evidence_methods=evidence_methods,
             objective_path=anchor.objective_path,
             outputs=outputs,
-            validation=_first_non_empty((finding.validation for finding in sorted_group), anchor.validation),
+            validation=_first_non_empty(
+                (finding.validation for finding in sorted_group), anchor.validation
+            ),
             goal="Close packet goals:\n" + "\n".join(f"- {line}" for line in goal_lines),
             refinement=_first_non_empty((finding.refinement for finding in sorted_group)),
             gap_task=(
@@ -8164,9 +8058,7 @@ def add_goal_packet_aggregate_findings(
             ),
             parent_goal_ids=parent_goal_ids,
             graph_depth=min(finding.graph_depth for finding in sorted_group),
-            objective_heap_index=min(
-                finding.objective_heap_index for finding in sorted_group
-            ),
+            objective_heap_index=min(finding.objective_heap_index for finding in sorted_group),
             bundle_key=anchor.bundle_key,
             parallel_lane=anchor.parallel_lane,
             bundle_explicit=anchor.bundle_explicit,
@@ -8182,7 +8074,9 @@ def add_goal_packet_aggregate_findings(
             ),
             ast_query=", ".join(ast_terms),
             conflict_policy=anchor.conflict_policy,
-            refinement_depth=str(min(_parse_int(finding.refinement_depth, 0) for finding in sorted_group)),
+            refinement_depth=str(
+                min(_parse_int(finding.refinement_depth, 0) for finding in sorted_group)
+            ),
             candidate_kind="goal_packet_aggregate",
             surplus_group=packet_key,
             merge_key=merge_key,
@@ -8190,7 +8084,9 @@ def add_goal_packet_aggregate_findings(
             merge_role="packet_aggregate",
             work_item_count=len(missing_terms),
             work_scope="goal_subgoal_packet_aggregate; vector_ast_bundle",
-            todo_vector_key=sha1(f"{packet_key}\0goal_packet_aggregate\0{merge_key}".encode("utf-8")).hexdigest()[:16],
+            todo_vector_key=sha1(
+                f"{packet_key}\0goal_packet_aggregate\0{merge_key}".encode("utf-8")
+            ).hexdigest()[:16],
             goal_packet_key=packet_key,
             goal_packet_role="packet_aggregate",
             goal_packet_goal_ids=goal_ids,
@@ -8203,9 +8099,7 @@ def add_goal_packet_aggregate_findings(
                     term
                     for finding in sorted_group
                     if finding.goal_id == goal_id
-                    for term in (
-                        finding.evidence_subset or finding.missing_evidence
-                    )
+                    for term in (finding.evidence_subset or finding.missing_evidence)
                 )
                 for goal_id in goal_ids
             },
@@ -8218,14 +8112,22 @@ def add_goal_packet_aggregate_findings(
                 for finding in sorted_group
             ),
             predicted_files=_unique_strings(
-                path for finding in sorted_group for path in (finding.predicted_files or finding.outputs)
+                path
+                for finding in sorted_group
+                for path in (finding.predicted_files or finding.outputs)
             ),
             changed_paths=_unique_strings(
                 path for finding in sorted_group for path in finding.changed_paths
             ),
-            ast_symbols=_unique_strings(symbol for finding in sorted_group for symbol in finding.ast_symbols),
-            interfaces=_unique_strings(interface for finding in sorted_group for interface in finding.interfaces),
-            submodules=_unique_strings(submodule for finding in sorted_group for submodule in finding.submodules),
+            ast_symbols=_unique_strings(
+                symbol for finding in sorted_group for symbol in finding.ast_symbols
+            ),
+            interfaces=_unique_strings(
+                interface for finding in sorted_group for interface in finding.interfaces
+            ),
+            submodules=_unique_strings(
+                submodule for finding in sorted_group for submodule in finding.submodules
+            ),
             generated_artifacts=_unique_strings(
                 artifact for finding in sorted_group for artifact in finding.generated_artifacts
             ),
@@ -8233,23 +8135,17 @@ def add_goal_packet_aggregate_findings(
                 task for finding in sorted_group for task in finding.allow_concurrent_with
             ),
             acceptance_subset=_unique_strings(
-                criterion
-                for finding in sorted_group
-                for criterion in finding.acceptance_subset
+                criterion for finding in sorted_group for criterion in finding.acceptance_subset
             ),
             preconditions=_unique_strings(
-                condition
-                for finding in sorted_group
-                for condition in finding.preconditions
+                condition for finding in sorted_group for condition in finding.preconditions
             ),
             effects=_unique_strings(
                 effect for finding in sorted_group for effect in finding.effects
             ),
             evidence_subset=missing_terms,
             dependencies=_unique_strings(
-                dependency
-                for finding in sorted_group
-                for dependency in finding.dependencies
+                dependency for finding in sorted_group for dependency in finding.dependencies
             ),
             conflicts=_unique_strings(
                 conflict for finding in sorted_group for conflict in finding.conflicts
@@ -8393,7 +8289,9 @@ def surplus_missing_term_groups(
     seen_term_sets = {frozenset(terms)}
 
     def append_group(candidate_terms: Sequence[str]) -> None:
-        normalized = [term for term in dict.fromkeys(str(item).strip() for item in candidate_terms) if term]
+        normalized = [
+            term for term in dict.fromkeys(str(item).strip() for item in candidate_terms) if term
+        ]
         if len(normalized) < minimum_terms:
             return
         key = frozenset(normalized)
@@ -8523,21 +8421,13 @@ def _recorded_external_completion_is_valid(goal: ObjectiveGoal) -> bool:
 
     if goal.lifecycle_state_value != "verified_complete":
         return False
-    authority_cid = str(
-        goal.fields.get("external_completion_authority_cid") or ""
-    ).strip()
+    authority_cid = str(goal.fields.get("external_completion_authority_cid") or "").strip()
     if not authority_cid:
         return False
     try:
-        receipt_cids = json.loads(
-            str(goal.fields.get("external_completion_receipt_cids") or "[]")
-        )
-        validation = json.loads(
-            str(goal.fields.get("external_completion_validation") or "[]")
-        )
-        evidence_records = json.loads(
-            str(goal.fields.get("completion_evidence_records") or "[]")
-        )
+        receipt_cids = json.loads(str(goal.fields.get("external_completion_receipt_cids") or "[]"))
+        validation = json.loads(str(goal.fields.get("external_completion_validation") or "[]"))
+        evidence_records = json.loads(str(goal.fields.get("completion_evidence_records") or "[]"))
     except (TypeError, ValueError):
         return False
     if (
@@ -8574,11 +8464,7 @@ def external_authority_goal_fence(
     """Return declared external goals and descendants still gated."""
 
     goals_by_id = {goal.goal_id: goal for goal in goals}
-    external = {
-        goal.goal_id
-        for goal in goals
-        if goal.requires_external_completion
-    }
+    external = {goal.goal_id for goal in goals if goal.requires_external_completion}
     blocked = set(external)
     propagating = {
         goal_id
@@ -8629,23 +8515,16 @@ def scan_objective_gaps(
     if max_findings <= 0 or not objective_path.exists():
         return []
     all_goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
-    forced_goal_ids = {
-        str(item).strip() for item in force_goal_ids if str(item).strip()
-    }
+    forced_goal_ids = {str(item).strip() for item in force_goal_ids if str(item).strip()}
     retained_fingerprints: set[str] = set()
     for item in retain_fingerprints:
         fingerprint = str(item).strip()
         if not fingerprint:
             continue
         retained_fingerprints.add(fingerprint)
-        if (
-            len(retained_fingerprints)
-            >= OBJECTIVE_EVIDENCE_REPROJECTION_SWEEP_LIMIT
-        ):
+        if len(retained_fingerprints) >= OBJECTIVE_EVIDENCE_REPROJECTION_SWEEP_LIMIT:
             break
-    scoped_goal_ids = {
-        str(item).strip() for item in scope_goal_ids if str(item).strip()
-    }
+    scoped_goal_ids = {str(item).strip() for item in scope_goal_ids if str(item).strip()}
     resolved_scan_excludes = resolve_scan_exclude_paths(
         repo_root,
         scan_exclude_paths,
@@ -8664,21 +8543,16 @@ def scan_objective_gaps(
             }
         )
     all_goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
-    external_goal_ids, external_blocked_goal_ids = (
-        external_authority_goal_fence(
-            all_goals,
-            trust_recorded_completion=trust_recorded_external_completion,
-        )
+    external_goal_ids, external_blocked_goal_ids = external_authority_goal_fence(
+        all_goals,
+        trust_recorded_completion=trust_recorded_external_completion,
     )
     goals = [
         goal
         for goal in all_goals
         if (
             goal.is_schedulable
-            or (
-                goal.goal_id in forced_goal_ids
-                and goal.lifecycle_state_value == "blocked"
-            )
+            or (goal.goal_id in forced_goal_ids and goal.lifecycle_state_value == "blocked")
         )
         and goal.goal_id not in external_blocked_goal_ids
         and (not scoped_goal_ids or goal.goal_id in scoped_goal_ids)
@@ -8687,9 +8561,7 @@ def scan_objective_gaps(
         scan_stats.update(
             {
                 "external_authority_goal_ids": sorted(external_goal_ids),
-                "external_authority_blocked_goal_ids": sorted(
-                    external_blocked_goal_ids
-                ),
+                "external_authority_blocked_goal_ids": sorted(external_blocked_goal_ids),
                 "scope_goal_ids": sorted(scoped_goal_ids),
             }
         )
@@ -8700,9 +8572,7 @@ def scan_objective_gaps(
     for goal in goals:
         required_terms.extend(goal.required_evidence)
     persisted_receipts = [
-        record
-        for goal in all_goals
-        for record in goal.completion_evidence_records
+        record for goal in all_goals for record in goal.completion_evidence_records
     ]
     receipt_values: list[Mapping[str, Any] | Any] = []
     receipt_keys: set[str] = set()
@@ -8744,9 +8614,7 @@ def scan_objective_gaps(
                     "scan_exclude_path_count": len(scan_exclude_metadata),
                     "source_protected_scan_policy": source_protected_scan_policy(),
                     "external_authority_goal_ids": sorted(external_goal_ids),
-                    "external_authority_blocked_goal_ids": sorted(
-                        external_blocked_goal_ids
-                    ),
+                    "external_authority_blocked_goal_ids": sorted(external_blocked_goal_ids),
                     "scope_goal_ids": sorted(scoped_goal_ids),
                 }
             )
@@ -8762,6 +8630,7 @@ def scan_objective_gaps(
             from ..core.conflict_graph import build_python_ast_blob_record
 
             if analysis_pipeline is None:
+
                 def objective_scan_analyzer(context: Any) -> Any:
                     return make_analysis_stage_receipt(
                         context.request,
@@ -8797,9 +8666,7 @@ def scan_objective_gaps(
                                 build_python_ast_blob_record(
                                     source,
                                     blob_identity=str(
-                                        row.get("blob_hash")
-                                        or row.get("source_sha1")
-                                        or ""
+                                        row.get("blob_hash") or row.get("source_sha1") or ""
                                     ),
                                 ),
                             )
@@ -8810,19 +8677,13 @@ def scan_objective_gaps(
                         {
                             "repository_id": identity.repository_id,
                             "objective_revision": objective_heap_content_id(
-                                objective_path.read_text(
-                                    encoding="utf-8", errors="replace"
-                                )
+                                objective_path.read_text(encoding="utf-8", errors="replace")
                             ),
                             "records": [
                                 {
-                                    "path": str(
-                                        row.get("root_relative_path") or ""
-                                    ),
+                                    "path": str(row.get("root_relative_path") or ""),
                                     "blob": str(
-                                        row.get("blob_hash")
-                                        or row.get("source_sha1")
-                                        or ""
+                                        row.get("blob_hash") or row.get("source_sha1") or ""
                                     ),
                                 }
                                 for row in cached_records or ()
@@ -8831,9 +8692,7 @@ def scan_objective_gaps(
                         namespace="objective-analysis-tree",
                     ),
                     objective_revision=objective_heap_content_id(
-                        objective_path.read_text(
-                            encoding="utf-8", errors="replace"
-                        )
+                        objective_path.read_text(encoding="utf-8", errors="replace")
                     ),
                     query={
                         "text": " ".join(required_terms),
@@ -8849,32 +8708,22 @@ def scan_objective_gaps(
                     ast_records=tuple(ast_records),
                     retrieval_inputs={"records": tuple(retrieval_records)},
                 )
-            pipeline_value = analysis_pipeline.analyze(
-                analysis_pipeline_request
-            )
+            pipeline_value = analysis_pipeline.analyze(analysis_pipeline_request)
             pipeline_projection = pipeline_value.to_dict()
             pipeline_diagnostics = {
                 "result_id": pipeline_projection.get("result_id", ""),
                 "cache_status": pipeline_projection.get("cache_status", ""),
-                "cache_lookup_status": pipeline_projection.get(
-                    "cache_lookup_status", ""
-                ),
-                "cache_reason_codes": list(
-                    pipeline_projection.get("cache_reason_codes") or ()
-                ),
+                "cache_lookup_status": pipeline_projection.get("cache_lookup_status", ""),
+                "cache_reason_codes": list(pipeline_projection.get("cache_reason_codes") or ()),
                 "ast_index_id": pipeline_projection.get("ast_index_id", ""),
-                "retrieval_response_id": pipeline_projection.get(
-                    "retrieval_response_id", ""
-                ),
+                "retrieval_response_id": pipeline_projection.get("retrieval_response_id", ""),
                 "ranked_evidence_references": list(
                     pipeline_projection.get("ranked_evidence_references") or ()
                 ),
                 "retrieval_backend_health": dict(
                     pipeline_projection.get("retrieval_backend_health") or {}
                 ),
-                "retrieval_truncation": dict(
-                    pipeline_projection.get("retrieval_truncation") or {}
-                ),
+                "retrieval_truncation": dict(pipeline_projection.get("retrieval_truncation") or {}),
                 "nomination_only": True,
                 "safe_for_completion_reasoning": False,
             }
@@ -8917,18 +8766,13 @@ def scan_objective_gaps(
     forced_review_goals = [
         goal
         for goal in goals
-        if goal.goal_id in forced_goal_ids
-        and goal.lifecycle_state_value == "blocked"
+        if goal.goal_id in forced_goal_ids and goal.lifecycle_state_value == "blocked"
     ]
     forced_review_goal_ids = {goal.goal_id for goal in forced_review_goals}
     scheduled_goals = sorted(
         [
             *forced_review_goals,
-            *[
-                goal
-                for goal in heap_scheduled_goals
-                if goal.goal_id not in forced_review_goal_ids
-            ],
+            *[goal for goal in heap_scheduled_goals if goal.goal_id not in forced_review_goal_ids],
         ],
         key=lambda goal: _objective_heap_sort_key(goal, graph),
     )
@@ -8942,9 +8786,7 @@ def scan_objective_gaps(
             continue
         terms = goal.required_evidence
         forced_goal = goal.goal_id in forced_goal_ids
-        forced_review_only = (
-            forced_goal and goal.lifecycle_state_value == "blocked"
-        )
+        forced_review_only = forced_goal and goal.lifecycle_state_value == "blocked"
         all_missing_terms = [term for term in terms if not evidence.get(term)]
         missing_terms = (
             all_missing_terms
@@ -8980,7 +8822,9 @@ def scan_objective_gaps(
                     continue
             else:
                 validation_gap = True
-        launch_validation_gap = validation_gap and objective_goal_requires_launch_playwright_validation(goal)
+        launch_validation_gap = (
+            validation_gap and objective_goal_requires_launch_playwright_validation(goal)
+        )
         fields = goal.fields
         present = {term: evidence.get(term, []) for term in terms if evidence.get(term)}
         explicit_bundle = bool(str(fields.get("bundle") or "").strip())
@@ -8993,11 +8837,7 @@ def scan_objective_gaps(
                 candidate_kind = "validation_gate"
             fingerprint = objective_fingerprint(goal, candidate_missing_terms)
             retained_finding = fingerprint in retained_fingerprints
-            if (
-                fingerprint in seen
-                and not forced_goal
-                and not retained_finding
-            ):
+            if fingerprint in seen and not forced_goal and not retained_finding:
                 continue
             if (
                 retained_fingerprints
@@ -9041,9 +8881,7 @@ def scan_objective_gaps(
                     else str(fields.get("gap_task") or "")
                 ),
                 parent_goal_ids=[
-                    parent
-                    for parent in goal.parent_goal_ids
-                    if parent not in external_goal_ids
+                    parent for parent in goal.parent_goal_ids if parent not in external_goal_ids
                 ],
                 graph_depth=int(graph["depths"].get(goal.goal_id, 0)),
                 objective_heap_index=objective_heap_index,
@@ -9051,16 +8889,22 @@ def scan_objective_gaps(
                 parallel_lane=str(fields.get("parallel_lane") or bundle_key),
                 bundle_explicit=explicit_bundle,
                 bundle_strategy="explicit" if explicit_bundle else "semantic_ast",
-                embedding_query=str(fields.get("embedding_query") or fields.get("goal") or goal.title),
+                embedding_query=str(
+                    fields.get("embedding_query") or fields.get("goal") or goal.title
+                ),
                 ast_query=str(fields.get("ast_query") or ", ".join(terms)),
                 conflict_policy=str(
                     fields.get("conflict_policy")
                     or "prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts"
                 ),
-                refinement_depth=str(fields.get("refinement_depth") or graph["depths"].get(goal.goal_id, 0)),
+                refinement_depth=str(
+                    fields.get("refinement_depth") or graph["depths"].get(goal.goal_id, 0)
+                ),
                 candidate_kind=candidate_kind,
                 surplus_group=objective_surplus_group(goal),
-                merge_key=objective_merge_key(goal, candidate_missing_terms, candidate_kind=candidate_kind),
+                merge_key=objective_merge_key(
+                    goal, candidate_missing_terms, candidate_kind=candidate_kind
+                ),
                 merge_family=objective_surplus_group(goal),
                 merge_role=candidate_kind,
                 work_item_count=len(candidate_missing_terms),
@@ -9140,10 +8984,7 @@ def scan_objective_gaps(
                 ),
                 effects=(
                     _goal_conflict_terms(goal, "effects", "expected_effects")
-                    or [
-                        f"satisfy evidence requirement: {term}"
-                        for term in candidate_missing_terms
-                    ]
+                    or [f"satisfy evidence requirement: {term}" for term in candidate_missing_terms]
                 ),
                 evidence_subset=list(candidate_missing_terms),
                 dependencies=goal.dependencies,
@@ -9163,19 +9004,14 @@ def scan_objective_gaps(
                         ),
                     ]
                 ),
-                resource_class=str(
-                    fields.get("resource_class") or "cpu-medium"
-                ).strip(),
+                resource_class=str(fields.get("resource_class") or "cpu-medium").strip(),
                 token_class=str(
-                    fields.get("token_class")
-                    or fields.get("token_budget_class")
-                    or "medium"
+                    fields.get("token_class") or fields.get("token_budget_class") or "medium"
                 ).strip(),
                 estimated_tokens=max(
                     0,
                     _parse_int(
-                        fields.get("estimated_tokens")
-                        or fields.get("token_cost"),
+                        fields.get("estimated_tokens") or fields.get("token_cost"),
                         0,
                     ),
                 ),
@@ -9193,9 +9029,7 @@ def scan_objective_gaps(
                 status="blocked" if forced_review_only else "todo",
                 is_schedulable=not forced_review_only,
                 review_only=forced_review_only,
-                completion_authority=str(
-                    fields.get("completion_authority") or ""
-                ),
+                completion_authority=str(fields.get("completion_authority") or ""),
                 external_authority_blockers=[],
             )
             findings.append(finding)
@@ -9203,15 +9037,9 @@ def scan_objective_gaps(
                 ordinary_finding_count += 1
             if not forced_goal:
                 seen.add(fingerprint)
-            if (
-                not retained_fingerprints
-                and ordinary_finding_count >= candidate_limit
-            ):
+            if not retained_fingerprints and ordinary_finding_count >= candidate_limit:
                 break
-        if (
-            not retained_fingerprints
-            and ordinary_finding_count >= candidate_limit
-        ):
+        if not retained_fingerprints and ordinary_finding_count >= candidate_limit:
             break
     packeted_findings = assign_goal_subgoal_packets(plan_semantic_ast_bundles(findings))
     expanded_limit = candidate_limit + len(retained_fingerprints)
@@ -9227,9 +9055,7 @@ def scan_objective_gaps(
         max_findings=len(expanded_findings),
     )
     prioritized.sort(
-        key=lambda finding: (
-            finding.goal_id not in forced_goal_ids or finding.review_only,
-        )
+        key=lambda finding: (finding.goal_id not in forced_goal_ids or finding.review_only,)
     )
     unique_findings: list[ObjectiveFinding] = []
     seen_obligations: set[str] = set()
@@ -9240,14 +9066,10 @@ def scan_objective_gaps(
         seen_obligations.add(key)
         unique_findings.append(finding)
     retained_findings = [
-        finding
-        for finding in unique_findings
-        if finding.fingerprint in retained_fingerprints
+        finding for finding in unique_findings if finding.fingerprint in retained_fingerprints
     ]
     ordinary_findings = [
-        finding
-        for finding in unique_findings
-        if finding.fingerprint not in retained_fingerprints
+        finding for finding in unique_findings if finding.fingerprint not in retained_fingerprints
     ]
     return [*retained_findings, *ordinary_findings[:max_findings]]
 
@@ -9256,9 +9078,7 @@ def task_ids_from_todo(todo_text: str, *, task_prefix: str = DEFAULT_TASK_PREFIX
     """Parse canonical task IDs for ``task_prefix`` from Markdown headings."""
 
     prefix = normalize_task_id_prefix(task_prefix)
-    header = re.compile(
-        rf"^##\s+(?P<task_id>{re.escape(prefix)}\d+)(?=\s|$)"
-    )
+    header = re.compile(rf"^##\s+(?P<task_id>{re.escape(prefix)}\d+)(?=\s|$)")
     return [
         match.group("task_id")
         for line in todo_text.splitlines()
@@ -9281,9 +9101,7 @@ def _objective_goal_task_ids_from_todo(
     """
 
     prefix = normalize_task_id_prefix(task_prefix)
-    header = re.compile(
-        rf"^##\s+(?P<task_id>{re.escape(prefix)}\d+)(?=\s|$)"
-    )
+    header = re.compile(rf"^##\s+(?P<task_id>{re.escape(prefix)}\d+)(?=\s|$)")
     task_ids_by_goal: dict[str, list[str]] = {}
     current_task_id = ""
     for line in todo_text.splitlines():
@@ -9368,20 +9186,16 @@ def _legacy_task_obligations(
     if not missing_requirements:
         return []
     candidate_goal_ids = [
-        goal_id
-        for goal_id in split_terms(fields.get("goal id", ""))
-        if goal_id in goals_by_id
+        goal_id for goal_id in split_terms(fields.get("goal id", "")) if goal_id in goals_by_id
     ]
-    bindings = _completion_goal_bindings(
-        fields.get("completion goal bindings", "")
-    )
+    bindings = _completion_goal_bindings(fields.get("completion goal bindings", ""))
     if bindings:
-        candidate_goal_ids.extend(
-            goal_id for goal_id in bindings if goal_id in goals_by_id
-        )
-    if not bindings and not fields.get("goal packet", "").strip() and not fields.get(
-        "goal packet goals", ""
-    ).strip():
+        candidate_goal_ids.extend(goal_id for goal_id in bindings if goal_id in goals_by_id)
+    if (
+        not bindings
+        and not fields.get("goal packet", "").strip()
+        and not fields.get("goal packet goals", "").strip()
+    ):
         # Preserve the pre-packet refinement migration: a removed child task
         # may name only the still-live graph parent which owns its evidence.
         candidate_goal_ids.extend(
@@ -9403,12 +9217,10 @@ def _legacy_task_obligations(
         matching_terms = [
             term
             for term in goal.required_evidence
-            if normalize_objective_evidence_requirement(term)
-            in missing_requirements
+            if normalize_objective_evidence_requirement(term) in missing_requirements
             and (
                 not bound_requirements
-                or normalize_objective_evidence_requirement(term)
-                in bound_requirements
+                or normalize_objective_evidence_requirement(term) in bound_requirements
             )
         ]
         if matching_terms:
@@ -9482,8 +9294,7 @@ def objective_evidence_obligation_coverage_from_todo(
                 graph,
             )
             coverage.setdefault((kind, lineage_ids), set()).update(
-                normalize_objective_evidence_requirement(term)
-                for term in matching_terms
+                normalize_objective_evidence_requirement(term) for term in matching_terms
             )
     return coverage
 
@@ -9531,8 +9342,7 @@ def write_discovery(
 ) -> Path:
     date = datetime.now(timezone.utc).date().isoformat()
     path = discovery_path or (
-        discovery_dir
-        / f"{date}-{task_id.lower()}-objective-gap-{finding.fingerprint[:12]}.md"
+        discovery_dir / f"{date}-{task_id.lower()}-objective-gap-{finding.fingerprint[:12]}.md"
     )
     discovery_dir.mkdir(parents=True, exist_ok=True)
     normalized_evidence_outputs = _unique_strings(
@@ -9646,16 +9456,10 @@ def _objective_finding_task_contract(
 
     def paths(values: Sequence[Any]) -> list[str]:
         return sorted(
-            {
-                normalize_identity_path(value)
-                for value in values
-                if normalize_identity_path(value)
-            }
+            {normalize_identity_path(value) for value in values if normalize_identity_path(value)}
         )
 
-    status, is_schedulable, review_only = objective_finding_execution_state(
-        finding
-    )
+    status, is_schedulable, review_only = objective_finding_execution_state(finding)
     if evidence_outputs is None:
         evidence_outputs = objective_finding_evidence_output_paths(
             finding,
@@ -9725,8 +9529,7 @@ def objective_finding_task_identity(
         {
             "task_id": task_id,
             "dedupe_key": (
-                "objective-finding-contract/"
-                f"v{contract_version}/{contract_fingerprint}"
+                f"objective-finding-contract/v{contract_version}/{contract_fingerprint}"
             ),
         },
         board_namespace="objective-graph",
@@ -9796,10 +9599,7 @@ def _objective_task_blocks(
                 start=start,
                 end=end,
                 text=text,
-                metadata={
-                    name: tuple(field_values)
-                    for name, field_values in values.items()
-                },
+                metadata={name: tuple(field_values) for name, field_values in values.items()},
             )
         )
     return blocks
@@ -9807,10 +9607,7 @@ def _objective_task_blocks(
 
 def _normalized_requirement_set(value: str | Sequence[str]) -> frozenset[str] | None:
     raw_values = split_terms(value) if isinstance(value, str) else list(value)
-    normalized = [
-        normalize_objective_evidence_requirement(item)
-        for item in raw_values
-    ]
+    normalized = [normalize_objective_evidence_requirement(item) for item in raw_values]
     if any(not item for item in normalized) or len(set(normalized)) != len(normalized):
         return None
     return frozenset(normalized)
@@ -9833,10 +9630,7 @@ def _replace_task_projection_metadata(
     """Replace only typed authority and identity lines in one exact block."""
 
     text = block.text
-    evidence_line = (
-        f"- {EVIDENCE_OUTPUTS_METADATA_KEY.capitalize()}: "
-        f"{', '.join(evidence_outputs)}"
-    )
+    evidence_line = f"- {EVIDENCE_OUTPUTS_METADATA_KEY.capitalize()}: {', '.join(evidence_outputs)}"
     if EVIDENCE_OUTPUTS_METADATA_KEY in block.metadata:
         text = re.sub(
             rf"^-[ \t]+{re.escape(EVIDENCE_OUTPUTS_METADATA_KEY)}:.*$",
@@ -9906,13 +9700,7 @@ def _prepare_objective_evidence_reprojection(
         return None
     block = candidates[0]
 
-    status = (
-        str(block.one("status") or "")
-        .strip()
-        .casefold()
-        .replace("-", "_")
-        .replace(" ", "_")
-    )
+    status = str(block.one("status") or "").strip().casefold().replace("-", "_").replace(" ", "_")
     if require_idle and status not in _EVIDENCE_REPROJECTION_IDLE_STATUSES:
         return None
     if (
@@ -9922,20 +9710,14 @@ def _prepare_objective_evidence_reprojection(
         or block.one("bundle") != finding.bundle_key
     ):
         return None
-    board_missing = _normalized_requirement_set(
-        str(block.one("missing evidence") or "")
-    )
+    board_missing = _normalized_requirement_set(str(block.one("missing evidence") or ""))
     finding_missing = _normalized_requirement_set(finding.missing_evidence)
-    board_subset = _normalized_requirement_set(
-        str(block.one("evidence subset") or "")
-    )
+    board_subset = _normalized_requirement_set(str(block.one("evidence subset") or ""))
     finding_subset = _normalized_requirement_set(
         finding.evidence_subset or finding.missing_evidence
     )
     board_outputs = _normalized_exact_values(str(block.one("outputs") or ""))
-    finding_outputs = _normalized_exact_values(
-        finding.outputs or finding.predicted_files
-    )
+    finding_outputs = _normalized_exact_values(finding.outputs or finding.predicted_files)
     if (
         board_missing is None
         or finding_missing is None
@@ -9955,9 +9737,7 @@ def _prepare_objective_evidence_reprojection(
     current: tuple[str, ...] = ()
     if raw_evidence_fields:
         raw_values = split_evidence_output_values(raw_evidence_fields[0])
-        normalized_values = tuple(
-            normalize_evidence_output_path(value) for value in raw_values
-        )
+        normalized_values = tuple(normalize_evidence_output_path(value) for value in raw_values)
         if (
             not raw_values
             or any(not value for value in normalized_values)
@@ -10081,11 +9861,7 @@ def _objective_evidence_reprojection_sweep_scope(
     selected_cards = 0
     for block in _objective_task_blocks(markdown, task_prefix=task_prefix):
         status = (
-            str(block.one("status") or "")
-            .strip()
-            .casefold()
-            .replace("-", "_")
-            .replace(" ", "_")
+            str(block.one("status") or "").strip().casefold().replace("-", "_").replace(" ", "_")
         )
         if status not in _EVIDENCE_REPROJECTION_IDLE_STATUSES:
             continue
@@ -10135,10 +9911,7 @@ def _objective_evidence_reprojection_sweep_scope(
         committed = False
         if evidence_fields:
             raw_outputs = split_evidence_output_values(evidence_fields[0])
-            evidence_outputs = tuple(
-                normalize_evidence_output_path(value)
-                for value in raw_outputs
-            )
+            evidence_outputs = tuple(normalize_evidence_output_path(value) for value in raw_outputs)
             canonical_outputs = bool(
                 raw_outputs
                 and all(evidence_outputs)
@@ -10153,12 +9926,8 @@ def _objective_evidence_reprojection_sweep_scope(
             )
             if canonical_outputs:
                 identity = TaskIdentity(
-                    canonical_task_key=str(
-                        block.one("canonical task key") or ""
-                    ),
-                    canonical_task_cid=str(
-                        block.one("canonical task cid") or ""
-                    ),
+                    canonical_task_key=str(block.one("canonical task key") or ""),
+                    canonical_task_cid=str(block.one("canonical task cid") or ""),
                     semantic_fingerprint="",
                 )
                 committed = _objective_reprojection_committed(
@@ -10202,9 +9971,7 @@ def objective_finding_conflict_record(
         finding,
         evidence_outputs=evidence_outputs,
     )
-    status, is_schedulable, review_only = objective_finding_execution_state(
-        finding
-    )
+    status, is_schedulable, review_only = objective_finding_execution_state(finding)
     predicted_files = _unique_strings(
         [
             *(finding.predicted_files or finding.outputs),
@@ -10215,15 +9982,10 @@ def objective_finding_conflict_record(
     evidence_subset = _unique_strings(finding.evidence_subset or finding.missing_evidence)
     acceptance_subset = _unique_strings(finding.acceptance_subset or evidence_subset)
     preconditions = _unique_strings(
-        finding.preconditions
-        or [f"objective goal {finding.goal_id} is schedulable"]
+        finding.preconditions or [f"objective goal {finding.goal_id} is schedulable"]
     )
     effects = _unique_strings(
-        finding.effects
-        or [
-            f"satisfy evidence requirement: {term}"
-            for term in evidence_subset
-        ]
+        finding.effects or [f"satisfy evidence requirement: {term}" for term in evidence_subset]
     )
     return {
         "task_id": task_id,
@@ -10241,9 +10003,7 @@ def objective_finding_conflict_record(
             or f"objective-finding:{finding.fingerprint}"
         ),
         "completion_goal_bindings": _finding_completion_goal_bindings(finding),
-        "completion_task_bindings": _unique_strings(
-            finding.completion_task_bindings
-        ),
+        "completion_task_bindings": _unique_strings(finding.completion_task_bindings),
         "acceptance_subset": acceptance_subset,
         "preconditions": preconditions,
         "effects": effects,
@@ -10256,14 +10016,8 @@ def objective_finding_conflict_record(
         "resource_class": str(finding.resource_class or "cpu-medium"),
         "token_class": str(finding.token_class or "medium"),
         "estimated_tokens": max(0, _parse_int(finding.estimated_tokens, 0)),
-        "resources": _unique_strings(
-            finding.resources or [finding.resource_class or "cpu-medium"]
-        ),
-        "merge_fate": str(
-            finding.merge_fate
-            or finding.merge_family
-            or finding.merge_key
-        ),
+        "resources": _unique_strings(finding.resources or [finding.resource_class or "cpu-medium"]),
+        "merge_fate": str(finding.merge_fate or finding.merge_family or finding.merge_key),
         "rejection_reasons": _unique_strings(finding.rejection_reasons),
         "predicted_files": predicted_files,
         "files": predicted_files,
@@ -10279,9 +10033,7 @@ def objective_finding_conflict_record(
         "is_schedulable": is_schedulable,
         "review_only": review_only,
         "completion_authority": finding.completion_authority,
-        "external_authority_blockers": _unique_strings(
-            finding.external_authority_blockers
-        ),
+        "external_authority_blockers": _unique_strings(finding.external_authority_blockers),
     }
 
 
@@ -10300,16 +10052,9 @@ def objective_finding_requires_manual_review(finding: ObjectiveFinding) -> bool:
         str(finding.merge_role or "").strip(),
     }
     has_precise_edit_target = bool(
-        [
-            value
-            for value in (*finding.predicted_files, *finding.outputs)
-            if str(value).strip()
-        ]
+        [value for value in (*finding.predicted_files, *finding.outputs) if str(value).strip()]
     )
-    return (
-        COMPLETION_GAP_MANUAL_REVIEW_SOURCE in sources
-        and not has_precise_edit_target
-    )
+    return COMPLETION_GAP_MANUAL_REVIEW_SOURCE in sources and not has_precise_edit_target
 
 
 def objective_finding_execution_state(
@@ -10336,9 +10081,7 @@ def apply_objective_finding_execution_policy(
 ) -> ObjectiveFinding:
     """Project completion-gap review policy into origin/main's typed fields."""
 
-    status, is_schedulable, review_only = objective_finding_execution_state(
-        finding
-    )
+    status, is_schedulable, review_only = objective_finding_execution_state(finding)
     if (
         finding.status == status
         and finding.is_schedulable is is_schedulable
@@ -10407,9 +10150,7 @@ def project_protected_objective_outputs(
         outputs=outputs,
         predicted_files=predicted_files,
         changed_paths=changed_paths,
-        context_paths=_unique_strings(
-            [*finding.context_paths, *protected_context]
-        ),
+        context_paths=_unique_strings([*finding.context_paths, *protected_context]),
     )
 
 
@@ -10430,9 +10171,7 @@ def render_task_block(
         protected_output_paths,
     )
     manual_review_required = objective_finding_requires_manual_review(finding)
-    task_status, task_is_schedulable, task_review_only = (
-        objective_finding_execution_state(finding)
-    )
+    task_status, task_is_schedulable, task_review_only = objective_finding_execution_state(finding)
     blocked_reason = (
         "\n- Blocked reason: manual review required because no precise edit targets were authorized"
         if manual_review_required
@@ -10444,9 +10183,7 @@ def render_task_block(
     # impossible work indefinitely.  Keep only the finding's authorized edit
     # surface in Outputs; expose discovery material separately as evidence.
     outputs = [
-        str(item)
-        for item in (finding.outputs or finding.predicted_files)
-        if str(item).strip()
+        str(item) for item in (finding.outputs or finding.predicted_files) if str(item).strip()
     ]
     unique_outputs = list(dict.fromkeys(outputs))
     if evidence_outputs is None:
@@ -10456,13 +10193,14 @@ def render_task_block(
         )
     unique_evidence_outputs = _unique_strings(evidence_outputs)
     evidence_outputs_line = (
-        f"\n- {EVIDENCE_OUTPUTS_METADATA_KEY.capitalize()}: "
-        + ", ".join(unique_evidence_outputs)
+        f"\n- {EVIDENCE_OUTPUTS_METADATA_KEY.capitalize()}: " + ", ".join(unique_evidence_outputs)
         if unique_evidence_outputs
         else ""
     )
     missing = ", ".join(finding.missing_evidence)
-    refinement = finding.refinement or "Refine the objective heap if the gap needs smaller child goals."
+    refinement = (
+        finding.refinement or "Refine the objective heap if the gap needs smaller child goals."
+    )
     parents = ", ".join(finding.parent_goal_ids) or "none"
     packet_goals = ", ".join(finding.goal_packet_goal_ids)
     packet_acceptance = (
@@ -10477,22 +10215,13 @@ def render_task_block(
         evidence_outputs=unique_evidence_outputs,
     )
     dependency_ids = _unique_strings([*depends_on, *finding.dependencies])
-    evidence_subset = _unique_strings(
-        finding.evidence_subset or finding.missing_evidence
-    )
-    acceptance_subset = _unique_strings(
-        finding.acceptance_subset or evidence_subset
-    )
+    evidence_subset = _unique_strings(finding.evidence_subset or finding.missing_evidence)
+    acceptance_subset = _unique_strings(finding.acceptance_subset or evidence_subset)
     preconditions = _unique_strings(
-        finding.preconditions
-        or [f"objective goal {finding.goal_id} is schedulable"]
+        finding.preconditions or [f"objective goal {finding.goal_id} is schedulable"]
     )
     effects = _unique_strings(
-        finding.effects
-        or [
-            f"satisfy evidence requirement: {term}"
-            for term in evidence_subset
-        ]
+        finding.effects or [f"satisfy evidence requirement: {term}" for term in evidence_subset]
     )
     semantic_identity = (
         finding.semantic_identity
@@ -10505,10 +10234,11 @@ def render_task_block(
         sort_keys=True,
         separators=(",", ":"),
     )
-    completion_task_bindings = _unique_strings(
-        finding.completion_task_bindings
+    completion_task_bindings = _unique_strings(finding.completion_task_bindings)
+    bundle_shard = (
+        bundle_shard
+        or f"data/agent_supervisor/objective_bundles/{safe_bundle_key(finding.bundle_key)}.todo.md"
     )
-    bundle_shard = bundle_shard or f"data/agent_supervisor/objective_bundles/{safe_bundle_key(finding.bundle_key)}.todo.md"
     acceptance = (
         (
             f"Objective scan filed this review gap for {finding.goal_id}. "
@@ -10632,13 +10362,7 @@ def write_bundle_shards(
                 flags=re.MULTILINE,
             )
             if len(matches) == 1:
-                status = (
-                    matches[0]
-                    .strip()
-                    .casefold()
-                    .replace("-", "_")
-                    .replace(" ", "_")
-                )
+                status = matches[0].strip().casefold().replace("-", "_").replace(" ", "_")
                 if status in _EVIDENCE_REPROJECTION_IDLE_STATUSES:
                     return status
         return objective_finding_execution_state(record.finding)[0]
@@ -10652,9 +10376,7 @@ def write_bundle_shards(
                     evidence_outputs=record_evidence_outputs(record),
                 ),
                 "task_id": record.task_id,
-                "depends_on": _unique_strings(
-                    [*record.depends_on, *record.finding.dependencies]
-                ),
+                "depends_on": _unique_strings([*record.depends_on, *record.finding.dependencies]),
                 "canonical_task_cid": objective_finding_task_identity(
                     record.task_id,
                     record.finding,
@@ -10672,7 +10394,8 @@ def write_bundle_shards(
                         *record_evidence_outputs(record),
                     ]
                 ),
-                "work_item_count": record.finding.work_item_count or len(record.finding.missing_evidence),
+                "work_item_count": record.finding.work_item_count
+                or len(record.finding.missing_evidence),
                 "status": record_status(record),
                 "is_schedulable": objective_finding_execution_state(record.finding)[1],
                 "review_only": objective_finding_execution_state(record.finding)[2],
@@ -10714,14 +10437,11 @@ def write_bundle_shards(
                     ]
                     if len(matching) != 1:
                         raise ValueError(
-                            "objective bundle task projection is ambiguous: "
-                            f"{record.task_id}"
+                            f"objective bundle task projection is ambiguous: {record.task_id}"
                         )
                     block = matching[0]
                     candidate = (
-                        shard_text[: block.start]
-                        + record.task_block
-                        + shard_text[block.end :]
+                        shard_text[: block.start] + record.task_block + shard_text[block.end :]
                     )
                     changed = changed or candidate != shard_text
                     shard_text = candidate
@@ -10750,7 +10470,9 @@ def write_bundle_shards(
         task_map: dict[str, dict[str, Any]] = {}
         existing = bundles.get(key, {})
         if isinstance(existing, Mapping):
-            for item in existing.get("tasks", []) if isinstance(existing.get("tasks"), list) else []:
+            for item in (
+                existing.get("tasks", []) if isinstance(existing.get("tasks"), list) else []
+            ):
                 if isinstance(item, Mapping) and str(item.get("task_id") or ""):
                     task_map[str(item["task_id"])] = dict(item)
         for record in bundle_records:
@@ -10769,9 +10491,7 @@ def write_bundle_shards(
                     evidence_outputs=evidence_outputs,
                 ),
                 "task_id": record.task_id,
-                "board_namespace": normalize_board_namespace(
-                    record.board_namespace
-                ),
+                "board_namespace": normalize_board_namespace(record.board_namespace),
                 "canonical_task_key": identity.canonical_task_key,
                 "canonical_task_cid": identity.canonical_task_cid,
                 "goal_id": record.finding.goal_id,
@@ -10787,7 +10507,8 @@ def write_bundle_shards(
                 "merge_key": record.finding.merge_key,
                 "merge_family": record.finding.merge_family or record.finding.surplus_group,
                 "merge_role": record.finding.merge_role or record.finding.candidate_kind,
-                "work_item_count": record.finding.work_item_count or len(record.finding.missing_evidence),
+                "work_item_count": record.finding.work_item_count
+                or len(record.finding.missing_evidence),
                 "work_scope": record.finding.work_scope or "goal_subgoal_multi_evidence_batch",
                 "goal_packet_key": record.finding.goal_packet_key,
                 "goal_packet_role": record.finding.goal_packet_role,
@@ -10796,21 +10517,23 @@ def write_bundle_shards(
                 "goal_packet_work_item_count": record.finding.goal_packet_work_item_count,
                 "candidate_kind": record.finding.candidate_kind,
                 "todo_vector_key": record.finding.todo_vector_key,
-                "depends_on": _unique_strings(
-                    [*record.depends_on, *record.finding.dependencies]
-                ),
+                "depends_on": _unique_strings([*record.depends_on, *record.finding.dependencies]),
                 "dependency_task_ids": _unique_strings(
                     [*record.depends_on, *record.finding.dependencies]
                 ),
-                "dependency_task_cids": sorted(generated_incoming.get(identity.canonical_task_cid, set())),
-                "critical_path_length": schedule_record.critical_path_length if schedule_record else 1,
+                "dependency_task_cids": sorted(
+                    generated_incoming.get(identity.canonical_task_cid, set())
+                ),
+                "critical_path_length": schedule_record.critical_path_length
+                if schedule_record
+                else 1,
                 "slack": schedule_record.slack if schedule_record else 0,
-                "downstream_unlock_value": schedule_record.downstream_unlock_value if schedule_record else 0,
+                "downstream_unlock_value": schedule_record.downstream_unlock_value
+                if schedule_record
+                else 0,
                 "objective_priority": schedule_record.objective_priority if schedule_record else 0,
             }
-            manual_review_required = objective_finding_requires_manual_review(
-                record.finding
-            )
+            manual_review_required = objective_finding_requires_manual_review(record.finding)
             existing_status = str(existing_task.get("status") or "").strip()
             if manual_review_required:
                 task_payload["status"] = "blocked"
@@ -10826,14 +10549,9 @@ def write_bundle_shards(
             "parallel_lane": bundle_records[0].finding.parallel_lane,
             "bundle_strategy": bundle_records[0].finding.bundle_strategy,
             "conflict_policy": bundle_records[0].finding.conflict_policy,
-            "is_schedulable": any(
-                _task_record_scheduling_allowed(item) for item in indexed_tasks
-            ),
+            "is_schedulable": any(_task_record_scheduling_allowed(item) for item in indexed_tasks),
             "review_only": bool(indexed_tasks)
-            and all(
-                _task_record_flag(item, "review_only", False)
-                for item in indexed_tasks
-            ),
+            and all(_task_record_flag(item, "review_only", False) for item in indexed_tasks),
             "tasks": indexed_tasks,
         }
 
@@ -10887,7 +10605,9 @@ def write_bundle_shards(
 
     write_bundle_index_artifact(index_path, index_payload)
     generated_paths.append(index_path)
-    return BundleWriteResult(generated_paths=generated_paths, index_path=index_path, bundle_paths=bundle_paths)
+    return BundleWriteResult(
+        generated_paths=generated_paths, index_path=index_path, bundle_paths=bundle_paths
+    )
 
 
 def generate_objective_todos(
@@ -10942,11 +10662,9 @@ def generate_objective_todos(
         if objective_path.exists()
         else []
     )
-    _external_goal_ids, external_blocked_goal_ids = (
-        external_authority_goal_fence(
-            objective_goals,
-            trust_recorded_completion=trust_recorded_external_completion,
-        )
+    _external_goal_ids, external_blocked_goal_ids = external_authority_goal_fence(
+        objective_goals,
+        trust_recorded_completion=trust_recorded_external_completion,
     )
     reprojection_findings: list[ObjectiveFinding] = []
     if precomputed_findings is None:
@@ -10957,13 +10675,11 @@ def generate_objective_todos(
             )
         except OSError:
             todo_snapshot = ""
-        reprojection_fingerprints, _sweep_card_count = (
-            _objective_evidence_reprojection_sweep_scope(
-                todo_snapshot,
-                task_prefix=task_prefix,
-                repo_root=repo_root,
-                discovery_dir=discovery_dir,
-            )
+        reprojection_fingerprints, _sweep_card_count = _objective_evidence_reprojection_sweep_scope(
+            todo_snapshot,
+            task_prefix=task_prefix,
+            repo_root=repo_root,
+            discovery_dir=discovery_dir,
         )
         scanned_findings = scan_objective_gaps(
             repo_root,
@@ -10975,16 +10691,16 @@ def generate_objective_todos(
             summary_prefix=summary_prefix,
             surplus_findings_per_goal=surplus_findings_per_goal,
             surplus_min_terms_per_todo=surplus_min_terms_per_todo,
-            dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
+            dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets")
+            if persist_ast_dataset
+            else None,
             dataset_id=f"{task_prefix.rstrip('-').lower()}-objective-ast",
             typed_evidence_receipts=typed_evidence_receipts,
             evidence_source_policy=evidence_source_policy,
             evidence_repository_tree=evidence_repository_tree,
             evidence_policy_id=evidence_policy_id,
             scan_exclude_paths=scan_exclude_paths,
-            trust_recorded_external_completion=(
-                trust_recorded_external_completion
-            ),
+            trust_recorded_external_completion=(trust_recorded_external_completion),
         )
         reprojection_fingerprint_set = set(reprojection_fingerprints)
         findings = [
@@ -11006,23 +10722,15 @@ def generate_objective_todos(
                 finding.goal_id,
                 {
                     "completion_authority": finding.completion_authority,
-                    "external_completion_required": bool(
-                        finding.external_authority_blockers
-                    ),
+                    "external_completion_required": bool(finding.external_authority_blockers),
                 },
             )
             and not finding.external_authority_blockers
             and not external_blocked_goal_ids.intersection(
                 {
                     str(finding.goal_id).strip(),
-                    *(
-                        str(item).strip()
-                        for item in finding.parent_goal_ids
-                    ),
-                    *(
-                        str(item).strip()
-                        for item in finding.goal_packet_goal_ids
-                    ),
+                    *(str(item).strip() for item in finding.parent_goal_ids),
+                    *(str(item).strip() for item in finding.goal_packet_goal_ids),
                 }
             )
             and not any(
@@ -11068,32 +10776,24 @@ def generate_objective_todos(
         todo_text = taskboard.read() or "# Objective Todo\n"
         board_namespace = taskboard_namespace_from_todo(todo_text, todo_path)
         existing_canonical_task_cids = canonical_task_cids_from_todo(todo_text)
-        objective_goals = parse_goal_heap(
-            objective_path.read_text(encoding="utf-8")
-        )
+        objective_goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
         objective_goal_graph = goal_graph(objective_goals)
         existing_obligation_keys = objective_evidence_obligation_keys_from_todo(
             todo_text,
             goals=objective_goals,
             graph=objective_goal_graph,
         )
-        existing_obligation_coverage = (
-            objective_evidence_obligation_coverage_from_todo(
-                todo_text,
-                goals=objective_goals,
-                graph=objective_goal_graph,
-            )
+        existing_obligation_coverage = objective_evidence_obligation_coverage_from_todo(
+            todo_text,
+            goals=objective_goals,
+            graph=objective_goal_graph,
         )
-        objective_goals_by_id = {
-            goal.goal_id: goal for goal in objective_goals
-        }
+        objective_goals_by_id = {goal.goal_id: goal for goal in objective_goals}
         task_ids_by_goal = _objective_goal_task_ids_from_todo(
             todo_text,
             task_prefix=task_prefix,
         )
-        materialized_task_ids = set(
-            task_ids_from_todo(todo_text, task_prefix=task_prefix)
-        )
+        materialized_task_ids = set(task_ids_from_todo(todo_text, task_prefix=task_prefix))
 
         # Objective cards written before typed evidence-output authority were
         # introduced are already covered by the obligation dedupe below.  A
@@ -11124,14 +10824,12 @@ def generate_objective_todos(
                 evidence_outputs=evidence_outputs,
             )
             if projection is None:
-                ineligible_projection = (
-                    _prepare_objective_evidence_reprojection(
-                        todo_text,
-                        task_prefix=task_prefix,
-                        finding=finding,
-                        evidence_outputs=evidence_outputs,
-                        require_idle=False,
-                    )
+                ineligible_projection = _prepare_objective_evidence_reprojection(
+                    todo_text,
+                    task_prefix=task_prefix,
+                    finding=finding,
+                    evidence_outputs=evidence_outputs,
+                    require_idle=False,
                 )
                 if ineligible_projection is not None:
                     original_blocks = [
@@ -11142,19 +10840,10 @@ def generate_objective_todos(
                         )
                         if block.task_id == ineligible_projection.task_id
                     ]
-                    original_block = (
-                        original_blocks[0]
-                        if len(original_blocks) == 1
-                        else None
-                    )
+                    original_block = original_blocks[0] if len(original_blocks) == 1 else None
                     discovery_path = (
                         _resolve_generated_artifact_path(
-                            str(
-                                original_block.one(
-                                    "discovery evidence"
-                                )
-                                or ""
-                            ),
+                            str(original_block.one("discovery evidence") or ""),
                             repo_root=repo_root,
                             artifact_root=discovery_dir,
                             require_file=True,
@@ -11168,9 +10857,7 @@ def generate_objective_todos(
                         or not _objective_reprojection_committed(
                             discovery_path,
                             identity=ineligible_projection.identity,
-                            evidence_outputs=(
-                                ineligible_projection.evidence_outputs
-                            ),
+                            evidence_outputs=(ineligible_projection.evidence_outputs),
                         )
                     )
                 continue
@@ -11201,19 +10888,12 @@ def generate_objective_todos(
                 artifact_root=bundle_dir,
                 require_file=False,
             )
-            if (
-                discovery_path is None
-                or shard_path is None
-                or shard_path != expected_shard_path
-            ):
+            if discovery_path is None or shard_path is None or shard_path != expected_shard_path:
                 continue
-            if (
-                not projection.changed
-                and _objective_reprojection_committed(
-                    discovery_path,
-                    identity=projection.identity,
-                    evidence_outputs=projection.evidence_outputs,
-                )
+            if not projection.changed and _objective_reprojection_committed(
+                discovery_path,
+                identity=projection.identity,
+                evidence_outputs=projection.evidence_outputs,
             ):
                 continue
 
@@ -11224,10 +10904,7 @@ def generate_objective_todos(
                     + todo_text[projection.end :]
                 )
             projected_dependencies = tuple(
-                _normalized_exact_values(
-                    str(original_block.one("depends on") or "")
-                )
-                or ()
+                _normalized_exact_values(str(original_block.one("depends on") or "")) or ()
             )
             reprojected_records.append(
                 ObjectiveTaskRecord(
@@ -11251,23 +10928,17 @@ def generate_objective_todos(
             finding: ObjectiveFinding,
         ) -> dict[tuple[str, tuple[str, ...]], set[str]]:
             kind = (
-                "validation_gate"
-                if finding.candidate_kind == "validation_gate"
-                else "evidence_gap"
+                "validation_gate" if finding.candidate_kind == "validation_gate" else "evidence_gap"
             )
             requirements = {
                 normalized
                 for term in finding.missing_evidence
-                for normalized in [
-                    normalize_objective_evidence_requirement(term)
-                ]
+                for normalized in [normalize_objective_evidence_requirement(term)]
                 if normalized
             }
             segments: dict[tuple[str, tuple[str, ...]], set[str]] = {}
             completion_bindings = _finding_completion_goal_bindings(finding)
-            candidate_goal_ids = dict.fromkeys(
-                [finding.goal_id, *completion_bindings]
-            )
+            candidate_goal_ids = dict.fromkeys([finding.goal_id, *completion_bindings])
             for goal_id in candidate_goal_ids:
                 goal = objective_goals_by_id.get(goal_id)
                 if goal is None:
@@ -11275,9 +10946,7 @@ def generate_objective_todos(
                 goal_requirements = {
                     normalized
                     for term in goal.required_evidence
-                    for normalized in [
-                        normalize_objective_evidence_requirement(term)
-                    ]
+                    for normalized in [normalize_objective_evidence_requirement(term)]
                     if normalized
                 }
                 bound_requirements = {
@@ -11295,9 +10964,7 @@ def generate_objective_todos(
                     sorted(matching),
                     objective_goal_graph,
                 )
-                segments.setdefault((kind, lineage_ids), set()).update(
-                    matching
-                )
+                segments.setdefault((kind, lineage_ids), set()).update(matching)
             if not segments and requirements:
                 goal = objective_goals_by_id.get(finding.goal_id)
                 lineage_ids = (
@@ -11333,17 +11000,12 @@ def generate_objective_todos(
             )
             obligation_segments = finding_obligation_segments(finding)
             segments_covered = bool(obligation_segments) and all(
-                requirements.issubset(
-                    existing_obligation_coverage.get(segment_key, set())
-                )
+                requirements.issubset(existing_obligation_coverage.get(segment_key, set()))
                 for segment_key, requirements in obligation_segments.items()
             )
             if (
                 identity.canonical_task_cid in existing_canonical_task_cids
-                or (
-                    finding.dedupe_key
-                    and finding.dedupe_key in existing_obligation_keys
-                )
+                or (finding.dedupe_key and finding.dedupe_key in existing_obligation_keys)
                 or segments_covered
             ):
                 continue
@@ -11359,9 +11021,7 @@ def generate_objective_todos(
                 finding.candidate_kind == "goal_packet_aggregate"
                 and finding.goal_packet_role == "packet_aggregate"
             ):
-                completion_bindings = _finding_completion_goal_bindings(
-                    finding
-                )
+                completion_bindings = _finding_completion_goal_bindings(finding)
                 packet_goal_ids = {
                     str(goal_id).strip()
                     for goal_id in finding.goal_packet_goal_ids
@@ -11374,9 +11034,7 @@ def generate_objective_todos(
                     and any(str(requirement).strip() for requirement in requirements)
                 }
             projected_dependencies: list[str] = []
-            for dependency in _unique_strings(
-                [*depends_on, *finding.dependencies]
-            ):
+            for dependency in _unique_strings([*depends_on, *finding.dependencies]):
                 # A packet aggregate is the execution unit which satisfies
                 # every explicitly bound packet goal.  Retaining one of those
                 # goals as its own prerequisite creates an impossible
@@ -11388,9 +11046,7 @@ def generate_objective_todos(
                 if dependency in materialized_task_ids:
                     projected_dependencies.append(dependency)
                 else:
-                    projected_dependencies.extend(
-                        task_ids_by_goal.get(dependency) or [dependency]
-                    )
+                    projected_dependencies.extend(task_ids_by_goal.get(dependency) or [dependency])
             projected_dependencies = _unique_strings(projected_dependencies)
             projected_finding = replace(
                 finding,
@@ -11443,9 +11099,7 @@ def generate_objective_todos(
         )
         bundle_index_path = bundle_result.index_path
     index_path = todo_vector_index_path or bundle_dir / "todo_vector_index.json"
-    projection_artifacts_exist = (
-        index_path.exists() or bundle_index_path.exists()
-    )
+    projection_artifacts_exist = index_path.exists() or bundle_index_path.exists()
     vector_projection_stale = not index_path.exists()
     if (
         write_todo_vector_index
@@ -11458,29 +11112,23 @@ def generate_objective_todos(
                 parse_todo_vector_records,
             )
 
-            existing_vector_payload = json.loads(
-                index_path.read_text(encoding="utf-8")
-            )
+            existing_vector_payload = json.loads(index_path.read_text(encoding="utf-8"))
             projected_vector_records = [
                 record.to_dict()
                 for record in parse_todo_vector_records(
                     repo_root=repo_root,
                     todo_path=todo_path,
-                    task_header_prefix=task_markdown_heading_prefix(
-                        task_prefix
-                    ),
+                    task_header_prefix=task_markdown_heading_prefix(task_prefix),
                 )
             ]
             vector_projection_stale = (
                 not isinstance(existing_vector_payload, Mapping)
-                or existing_vector_payload.get("records")
-                != projected_vector_records
+                or existing_vector_payload.get("records") != projected_vector_records
             )
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             vector_projection_stale = True
     if write_todo_vector_index and (
-        artifact_records
-        or (projection_artifacts_exist and vector_projection_stale)
+        artifact_records or (projection_artifacts_exist and vector_projection_stale)
     ):
         from ..task_sources.todo_vector_index import (
             write_todo_vector_index as write_index,
@@ -11493,7 +11141,9 @@ def generate_objective_todos(
             task_header_prefix=task_markdown_heading_prefix(task_prefix),
             objective_path=objective_path,
             bundle_index_path=bundle_index_path,
-            dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
+            dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets")
+            if persist_ast_dataset
+            else None,
             dataset_id=f"{task_prefix.rstrip('-').lower()}-todo-vector-index",
             persist_dataset=persist_ast_dataset,
         )
@@ -11601,16 +11251,10 @@ def generate_objective_todos_result(
                     surplus_min_terms_per_todo=int(
                         kwargs.get("surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO)
                     ),
-                    typed_evidence_receipts=tuple(
-                        kwargs.get("typed_evidence_receipts") or ()
-                    ),
+                    typed_evidence_receipts=tuple(kwargs.get("typed_evidence_receipts") or ()),
                     evidence_source_policy=kwargs.get("evidence_source_policy"),
-                    evidence_repository_tree=str(
-                        kwargs.get("evidence_repository_tree") or ""
-                    ),
-                    evidence_policy_id=str(
-                        kwargs.get("evidence_policy_id") or ""
-                    ),
+                    evidence_repository_tree=str(kwargs.get("evidence_repository_tree") or ""),
+                    evidence_policy_id=str(kwargs.get("evidence_policy_id") or ""),
                     scan_exclude_paths=kwargs.get("scan_exclude_paths") or (),
                     trust_recorded_external_completion=bool(
                         kwargs.get(
@@ -11670,10 +11314,7 @@ def profile_g_safe_planning_value(value: Any) -> Any:
             return str(value)
         return format(value, ".12g")
     if isinstance(value, Mapping):
-        return {
-            str(key): profile_g_safe_planning_value(item)
-            for key, item in value.items()
-        }
+        return {str(key): profile_g_safe_planning_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [profile_g_safe_planning_value(item) for item in value]
     return value
@@ -11754,9 +11395,7 @@ def build_bundle_task_payloads(
     bundles = payload.get("bundles") if isinstance(payload, Mapping) else {}
     if not isinstance(bundles, Mapping):
         return []
-    profile_created_at_ms = _task_created_at_ms(
-        {"created_at": payload.get("generated_at")}
-    )
+    profile_created_at_ms = _task_created_at_ms({"created_at": payload.get("generated_at")})
     if profile_created_at_ms <= 0:
         try:
             profile_created_at_ms = bundle_index_path.stat().st_mtime_ns // 1_000_000
@@ -11766,34 +11405,23 @@ def build_bundle_task_payloads(
     for key, info in sorted(bundles.items()):
         if not isinstance(info, Mapping):
             continue
-        raw_tasks = [
-            dict(item)
-            for item in info.get("tasks", [])
-            if isinstance(item, Mapping)
-        ]
+        raw_tasks = [dict(item) for item in info.get("tasks", []) if isinstance(item, Mapping)]
         task_payload = {
             "bundle_key": str(key),
             "todo_path": info.get("shard_path", ""),
             "parallel_lane": info.get("parallel_lane", key),
             "conflict_policy": info.get("conflict_policy", ""),
-            "execution_authority": str(
-                info.get("execution_authority") or "agent-supervisor/v1"
-            ),
+            "execution_authority": str(info.get("execution_authority") or "agent-supervisor/v1"),
             "is_schedulable": (
                 _task_record_flag(info, "is_schedulable", True)
                 if "is_schedulable" in info
-                else any(
-                    _task_record_scheduling_allowed(item) for item in raw_tasks
-                )
+                else any(_task_record_scheduling_allowed(item) for item in raw_tasks)
             ),
             "review_only": (
                 _task_record_flag(info, "review_only", False)
                 if "review_only" in info
                 else bool(raw_tasks)
-                and all(
-                    _task_record_flag(item, "review_only", False)
-                    for item in raw_tasks
-                )
+                and all(_task_record_flag(item, "review_only", False) for item in raw_tasks)
             ),
             "tasks": raw_tasks,
             "source_todo": payload.get("source_todo", ""),
@@ -11811,10 +11439,7 @@ def build_bundle_task_payloads(
     terminal_receipts: list[dict[str, Any]] = [
         {
             "canonical_task_cid": str(
-                task.get("canonical_task_cid")
-                or task.get("task_cid")
-                or task.get("task_id")
-                or ""
+                task.get("canonical_task_cid") or task.get("task_cid") or task.get("task_id") or ""
             ),
             "status": "succeeded",
         }
@@ -11827,11 +11452,7 @@ def build_bundle_task_payloads(
     else:
         dynamic_receipt_items = (("", receipt) for receipt in merge_receipts)
     for key, raw_receipt in dynamic_receipt_items:
-        receipt = (
-            dict(raw_receipt)
-            if isinstance(raw_receipt, Mapping)
-            else {"status": raw_receipt}
-        )
+        receipt = dict(raw_receipt) if isinstance(raw_receipt, Mapping) else {"status": raw_receipt}
         if not any(
             str(receipt.get(field) or "").strip()
             for field in ("canonical_task_cid", "task_cid", "task_id")
@@ -11843,13 +11464,7 @@ def build_bundle_task_payloads(
         merge_receipts=terminal_receipts,
     )
     receipt_aliases = {cid: cid for cid in graph.nodes}
-    receipt_aliases.update(
-        {
-            node.task_id: cid
-            for cid, node in graph.nodes.items()
-            if node.task_id
-        }
-    )
+    receipt_aliases.update({node.task_id: cid for cid, node in graph.nodes.items() if node.task_id})
     successful_receipt_cids = _successful_merge_receipt_cids(
         terminal_receipts,
         receipt_aliases,
@@ -11870,14 +11485,15 @@ def build_bundle_task_payloads(
         cid: (
             set()
             if (
-                (
-                    cid in successful_receipt_cids
-                    or node.status in SUCCESSFUL_MERGE_RECEIPT_STATUSES
-                )
+                (cid in successful_receipt_cids or node.status in SUCCESSFUL_MERGE_RECEIPT_STATUSES)
                 and cid not in externally_fenced_task_cids
                 and cid not in invalid_task_cids
             )
-            else set(schedule_by_cid.get(cid).blocking_task_cids if cid in schedule_by_cid else incoming.get(cid, set()))
+            else set(
+                schedule_by_cid.get(cid).blocking_task_cids
+                if cid in schedule_by_cid
+                else incoming.get(cid, set())
+            )
         )
         for cid, node in graph.nodes.items()
     }
@@ -11892,7 +11508,9 @@ def build_bundle_task_payloads(
             item = dict(raw_task)
             cid = str(item.get("canonical_task_cid") or item.get("task_cid") or "")
             if not cid:
-                cid = member_cids_by_bundle_and_id.get((bundle_key, str(item.get("task_id") or "")), "")
+                cid = member_cids_by_bundle_and_id.get(
+                    (bundle_key, str(item.get("task_id") or "")), ""
+                )
             if not cid:
                 cid = canonical_task_identity(
                     {
@@ -11946,21 +11564,18 @@ def build_bundle_task_payloads(
             cid
             for cid in member_cids
             if cid in graph.nodes
-            and graph.nodes[cid].status
-            in {"active", "implementing", "in_progress", "running"}
+            and graph.nodes[cid].status in {"active", "implementing", "in_progress", "running"}
         }
         blocked_member_cids = {
             cid
             for cid in member_cids
-            if cid in graph.nodes
-            and graph.nodes[cid].status in {"blocked", "on_hold"}
+            if cid in graph.nodes and graph.nodes[cid].status in {"blocked", "on_hold"}
         }
         unfinished_member_cids = member_cids - completed_member_cids
         scheduling_allowed_member_cids = {
             cid
             for cid in member_cids
-            if cid in graph.nodes
-            and _task_record_scheduling_allowed(graph.nodes[cid].metadata)
+            if cid in graph.nodes and _task_record_scheduling_allowed(graph.nodes[cid].metadata)
         }
         schedulable_member_cids = {
             cid
@@ -11988,15 +11603,10 @@ def build_bundle_task_payloads(
         execution_member_cids = (
             set()
             if active_member_cids
-            else (
-                ready_member_cids
-                or (unfinished_member_cids & schedulable_member_cids)
-            )
+            else (ready_member_cids or (unfinished_member_cids & schedulable_member_cids))
         )
         deferred_member_cids = unfinished_member_cids - ready_member_cids
-        schedule_order = {
-            item.task_cid: index for index, item in enumerate(graph.schedule)
-        }
+        schedule_order = {item.task_cid: index for index, item in enumerate(graph.schedule)}
 
         def ordered(cids: set[str]) -> list[str]:
             return sorted(cids, key=lambda cid: (schedule_order.get(cid, len(schedule_order)), cid))
@@ -12026,9 +11636,7 @@ def build_bundle_task_payloads(
             }
         )
         member_schedule = [
-            schedule_by_cid[cid]
-            for cid in ordered(execution_member_cids)
-            if cid in schedule_by_cid
+            schedule_by_cid[cid] for cid in ordered(execution_member_cids) if cid in schedule_by_cid
         ]
         repair_evidence: list[dict[str, Any]] = []
         bundle_resolved_cycle_cids: set[str] = set()
@@ -12036,9 +11644,7 @@ def build_bundle_task_payloads(
             if item.task_cid not in execution_member_cids:
                 continue
             component = {
-                str(cid)
-                for cid in item.provenance.get("component_task_cids", [])
-                if str(cid)
+                str(cid) for cid in item.provenance.get("component_task_cids", []) if str(cid)
             }
             if item.kind == "dependency_cycle" and component and component <= member_cids:
                 # A lane owns every member of this strongly connected
@@ -12090,8 +11696,7 @@ def build_bundle_task_payloads(
             "edges": [
                 edge.to_dict()
                 for edge in graph.edges
-                if edge.source_task_cid in member_cids
-                or edge.target_task_cid in member_cids
+                if edge.source_task_cid in member_cids or edge.target_task_cid in member_cids
             ],
         }
         claimable = (
@@ -12137,13 +11742,17 @@ def build_bundle_task_payloads(
                 "blocked_member_task_ids": task_ids(blocked_member_cids),
                 "execution_slice_task_cids": execution_slice_task_cids,
                 "execution_slice_task_ids": execution_slice_task_ids,
-                "critical_path_length": max((item.critical_path_length for item in member_schedule), default=1),
+                "critical_path_length": max(
+                    (item.critical_path_length for item in member_schedule), default=1
+                ),
                 "slack": min((item.slack for item in member_schedule), default=0),
                 "downstream_unlock_value": max(
                     (item.downstream_unlock_value for item in member_schedule), default=0
                 ),
                 "age_seconds": max((item.age_seconds for item in member_schedule), default=0),
-                "objective_priority": max((item.objective_priority for item in member_schedule), default=0),
+                "objective_priority": max(
+                    (item.objective_priority for item in member_schedule), default=0
+                ),
                 "schedule_score": max((item.score for item in member_schedule), default=0),
                 "dependency_repair_evidence": repair_evidence,
                 "task_dependency_graph": projected_dependency_graph,
@@ -12176,10 +11785,7 @@ def build_bundle_task_payloads(
     )
     for rank, task_payload in enumerate(task_payloads):
         task_payload["schedule_rank"] = rank
-        if (
-            task_payload.get("is_schedulable") is True
-            and task_payload.get("review_only") is False
-        ):
+        if task_payload.get("is_schedulable") is True and task_payload.get("review_only") is False:
             task_payload["profile_g"] = adapt_goal_bundle(
                 profile_g_safe_planning_value(task_payload),
                 created_at_ms=profile_created_at_ms,
@@ -12207,10 +11813,7 @@ def submit_bundle_tasks(
         queue = TaskQueue(path=queue_path)
     task_ids: list[str] = []
     for payload in build_bundle_task_payloads(bundle_index_path):
-        if (
-            payload.get("is_schedulable") is not True
-            or payload.get("review_only") is not False
-        ):
+        if payload.get("is_schedulable") is not True or payload.get("review_only") is not False:
             continue
         task_ids.append(
             queue.submit(
@@ -12226,6 +11829,4 @@ def submit_bundle_tasks(
 # path during the domain-layout cutover.  Publish the canonical module object
 # under that name as soon as this module has initialized so both import paths
 # share caches, globals, and instrumentation hooks.
-_sys.modules[
-    "ipfs_accelerate_py.agent_supervisor.objective_graph"
-] = _sys.modules[__name__]
+_sys.modules["ipfs_accelerate_py.agent_supervisor.objective_graph"] = _sys.modules[__name__]

@@ -200,24 +200,14 @@ class TraceStep:
         if not isinstance(self.vector_id, str) or not self.vector_id.strip():
             raise VfsDifferentialHarnessError("trace vector_id must be non-empty")
         if not isinstance(self.operation, VfsOperation):
-            raise VfsDifferentialHarnessError(
-                "trace operation must be a VfsOperation"
-            )
+            raise VfsDifferentialHarnessError("trace operation must be a VfsOperation")
         if not isinstance(self.description, str) or not self.description.strip():
-            raise VfsDifferentialHarnessError(
-                "trace description must be non-empty"
-            )
-        if not isinstance(self.request, Mapping) or not isinstance(
-            self.expected, Mapping
-        ):
-            raise VfsDifferentialHarnessError(
-                "trace request and expected values must be mappings"
-            )
+            raise VfsDifferentialHarnessError("trace description must be non-empty")
+        if not isinstance(self.request, Mapping) or not isinstance(self.expected, Mapping):
+            raise VfsDifferentialHarnessError("trace request and expected values must be mappings")
         object.__setattr__(self, "request", _copy_record(self.request))
         object.__setattr__(self, "expected", _copy_record(self.expected))
-        object.__setattr__(
-            self, "invariant_ids", tuple(sorted(set(self.invariant_ids)))
-        )
+        object.__setattr__(self, "invariant_ids", tuple(sorted(set(self.invariant_ids))))
         object.__setattr__(
             self, "source_contract_ids", tuple(sorted(set(self.source_contract_ids)))
         )
@@ -267,9 +257,7 @@ class CanonicalOperationTrace:
                 f"unsupported differential trace schema: {self.schema!r}"
             )
         if not isinstance(self.contract_pack_cid, str) or not self.contract_pack_cid:
-            raise VfsDifferentialHarnessError(
-                "trace contract_pack_cid must be non-empty"
-            )
+            raise VfsDifferentialHarnessError("trace contract_pack_cid must be non-empty")
 
     def to_record(self) -> dict[str, Any]:
         return {
@@ -300,9 +288,7 @@ def build_canonical_operation_trace(
         available = {vector.vector_id: vector for vector in selected_pack.vectors}
         unknown = sorted(set(requested) - set(available))
         if unknown:
-            raise VfsDifferentialHarnessError(
-                f"unknown contract vector_ids: {', '.join(unknown)}"
-            )
+            raise VfsDifferentialHarnessError(f"unknown contract vector_ids: {', '.join(unknown)}")
         vectors = tuple(available[vector_id] for vector_id in requested)
     else:
         vectors = selected_pack.vectors
@@ -332,13 +318,9 @@ class FixtureEntry:
                 f"fixture path must be relative and contained: {self.path!r}"
             )
         if self.path != unicodedata.normalize("NFC", self.path):
-            raise VfsDifferentialHarnessError(
-                f"fixture paths must be NFC canonical: {self.path!r}"
-            )
+            raise VfsDifferentialHarnessError(f"fixture paths must be NFC canonical: {self.path!r}")
         if self.kind not in {"file", "directory"}:
-            raise VfsDifferentialHarnessError(
-                f"unsupported fixture entry kind: {self.kind!r}"
-            )
+            raise VfsDifferentialHarnessError(f"unsupported fixture entry kind: {self.kind!r}")
         if self.kind == "file":
             if self.content_hex is None:
                 raise VfsDifferentialHarnessError("fixture files require content_hex")
@@ -353,9 +335,7 @@ class FixtureEntry:
                     f"fixture content hex must be canonical lowercase: {self.path!r}"
                 )
         elif self.content_hex is not None:
-            raise VfsDifferentialHarnessError(
-                "fixture directories cannot declare content"
-            )
+            raise VfsDifferentialHarnessError("fixture directories cannot declare content")
         if (
             not isinstance(self.mode, int)
             or isinstance(self.mode, bool)
@@ -386,11 +366,7 @@ class FixtureSpec:
         paths = [entry.path for entry in self.entries]
         if len(paths) != len(set(paths)):
             raise VfsDifferentialHarnessError("fixture paths must be unique")
-        file_paths = {
-            PurePosixPath(entry.path)
-            for entry in self.entries
-            if entry.kind == "file"
-        }
+        file_paths = {PurePosixPath(entry.path) for entry in self.entries if entry.kind == "file"}
         for entry in self.entries:
             parent = PurePosixPath(entry.path).parent
             while str(parent) != ".":
@@ -404,8 +380,7 @@ class FixtureSpec:
         return {
             "fixture_id": self.fixture_id,
             "entries": [
-                entry.to_record()
-                for entry in sorted(self.entries, key=lambda item: item.path)
+                entry.to_record() for entry in sorted(self.entries, key=lambda item: item.path)
             ],
         }
 
@@ -526,9 +501,7 @@ class SurfaceRunContext:
         return target
 
 
-SurfaceExecutor: TypeAlias = Callable[
-    [TraceStep, SurfaceRunContext], Any | Awaitable[Any]
-]
+SurfaceExecutor: TypeAlias = Callable[[TraceStep, SurfaceRunContext], Any | Awaitable[Any]]
 
 
 @runtime_checkable
@@ -541,9 +514,7 @@ class SurfaceAdapter(Protocol):
     package_names: tuple[str, ...]
     unavailable_reason: str | None
 
-    def execute(
-        self, step: TraceStep, context: SurfaceRunContext
-    ) -> Any | Awaitable[Any]: ...
+    def execute(self, step: TraceStep, context: SurfaceRunContext) -> Any | Awaitable[Any]: ...
 
 
 @dataclass(frozen=True)
@@ -563,47 +534,28 @@ class CallableSurfaceAdapter:
         if not isinstance(self.surface_id, str) or not self.surface_id.strip():
             raise VfsDifferentialHarnessError("surface_id must be non-empty")
         if not isinstance(self.family, SurfaceFamily):
-            raise VfsDifferentialHarnessError(
-                "surface family must be a SurfaceFamily"
-            )
+            raise VfsDifferentialHarnessError("surface family must be a SurfaceFamily")
         if not isinstance(self.availability, SurfaceAvailability):
-            raise VfsDifferentialHarnessError(
-                "surface availability must be a SurfaceAvailability"
-            )
-        if (
-            not isinstance(self.implementation, str)
-            or not self.implementation.strip()
-        ):
-            raise VfsDifferentialHarnessError(
-                "surface implementation must be non-empty"
-            )
+            raise VfsDifferentialHarnessError("surface availability must be a SurfaceAvailability")
+        if not isinstance(self.implementation, str) or not self.implementation.strip():
+            raise VfsDifferentialHarnessError("surface implementation must be non-empty")
         if not isinstance(self.public_surface, str) or not self.public_surface.strip():
-            raise VfsDifferentialHarnessError(
-                "surface public_surface must be non-empty"
-            )
+            raise VfsDifferentialHarnessError("surface public_surface must be non-empty")
         if self.availability is SurfaceAvailability.UNAVAILABLE:
             if self.executor is not None:
-                raise VfsDifferentialHarnessError(
-                    "unavailable surfaces cannot have an executor"
-                )
+                raise VfsDifferentialHarnessError("unavailable surfaces cannot have an executor")
             if not self.unavailable_reason:
                 raise VfsDifferentialHarnessError(
                     "unavailable surfaces require an unavailable_reason"
                 )
         elif self.executor is None:
-            raise VfsDifferentialHarnessError(
-                "real and mock surfaces require an executor"
-            )
+            raise VfsDifferentialHarnessError("real and mock surfaces require an executor")
         object.__setattr__(
             self,
             "package_names",
             tuple(
                 sorted(
-                    {
-                        name
-                        for name in self.package_names
-                        if isinstance(name, str) and name.strip()
-                    }
+                    {name for name in self.package_names if isinstance(name, str) and name.strip()}
                 )
             ),
         )
@@ -630,9 +582,7 @@ class CallableSurfaceAdapter:
             unavailable_reason=reason,
         )
 
-    def execute(
-        self, step: TraceStep, context: SurfaceRunContext
-    ) -> Any | Awaitable[Any]:
+    def execute(self, step: TraceStep, context: SurfaceRunContext) -> Any | Awaitable[Any]:
         if self.executor is None:  # pragma: no cover - validated and skipped
             raise RuntimeError("unavailable surface cannot execute")
         return self.executor(step, context)
@@ -817,11 +767,7 @@ def _reported_error_identity(value: Mapping[str, Any]) -> ErrorIdentity | None:
             candidate = nested
             break
     error: Any = candidate.get("error")
-    if (
-        error is None
-        and candidate.get("ok") is not False
-        and candidate.get("success") is not False
-    ):
+    if error is None and candidate.get("ok") is not False and candidate.get("success") is not False:
         return None
     if isinstance(error, Mapping):
         code = str(error.get("code", VfsErrorCode.IO_FAILURE.value))
@@ -865,21 +811,31 @@ def _unwrap_transport(value: Any, rules: set[NormalizationRule]) -> Any:
         return value
     keys = set(value)
     successful = value.get("ok") is True or value.get("success") is True
-    if successful and "result" in value and keys <= {
-        "ok",
-        "success",
-        "status",
-        "result",
-        "request_id",
-    }:
+    if (
+        successful
+        and "result" in value
+        and keys
+        <= {
+            "ok",
+            "success",
+            "status",
+            "result",
+            "request_id",
+        }
+    ):
         return value["result"]
-    if successful and "data" in value and keys <= {
-        "ok",
-        "success",
-        "status",
-        "data",
-        "request_id",
-    }:
+    if (
+        successful
+        and "data" in value
+        and keys
+        <= {
+            "ok",
+            "success",
+            "status",
+            "data",
+            "request_id",
+        }
+    ):
         return value["data"]
     if (
         isinstance(value.get("status"), int)
@@ -912,9 +868,7 @@ def _normalize_value(value: Any, rules: set[NormalizationRule]) -> JsonValue:
         ):
             errors = str(value.get("errors", "strict"))
             return {"bytes_hex": value["text"].encode("utf-8", errors).hex()}
-        result = {
-            str(key): _normalize_value(item, rules) for key, item in value.items()
-        }
+        result = {str(key): _normalize_value(item, rules) for key, item in value.items()}
         if NormalizationRule.ERROR_ENVELOPE in rules and "error" in result:
             error = result["error"]
             if isinstance(error, str):
@@ -996,16 +950,12 @@ def _expects_no_effects(expected: JsonValue) -> bool:
     return False
 
 
-def _add_derived_effects(
-    expected: JsonValue, actual: JsonValue, *, unchanged: bool
-) -> JsonValue:
+def _add_derived_effects(expected: JsonValue, actual: JsonValue, *, unchanged: bool) -> JsonValue:
     if not _expects_no_effects(expected) or not isinstance(actual, Mapping):
         return actual
     copied: dict[str, JsonValue] = dict(actual)
     value = "none" if unchanged else "changed"
-    expected_error = (
-        expected.get("error") if isinstance(expected, Mapping) else None
-    )
+    expected_error = expected.get("error") if isinstance(expected, Mapping) else None
     if isinstance(expected_error, Mapping):
         actual_error = copied.get("error")
         if isinstance(actual_error, Mapping):
@@ -1074,9 +1024,7 @@ def _deny_network() -> Iterable[None]:
     """Deny common in-process socket paths while a surface case executes."""
 
     def denied(*_args: Any, **_kwargs: Any) -> Any:
-        raise HermeticNetworkError(
-            "network access is disabled in differential VFS fixtures"
-        )
+        raise HermeticNetworkError("network access is disabled in differential VFS fixtures")
 
     with _NETWORK_GUARD_LOCK:
         with (
@@ -1185,9 +1133,7 @@ class SurfaceRun:
             "unavailable_reason": self.unavailable_reason,
             "runtime": self.runtime.to_record(),
             "implementation_identity": self.implementation_identity.to_record(),
-            "observations": [
-                observation.to_record() for observation in self.observations
-            ],
+            "observations": [observation.to_record() for observation in self.observations],
             "cid": self.content_id,
         }
 
@@ -1291,9 +1237,7 @@ class DifferentialWitness:
             "surface_runs": [run.to_record() for run in self.surface_runs],
             "findings": [finding.to_record() for finding in self.findings],
             "authoritative_surface_ids": list(self.authoritative_surface_ids),
-            "non_authoritative_surface_ids": list(
-                self.non_authoritative_surface_ids
-            ),
+            "non_authoritative_surface_ids": list(self.non_authoritative_surface_ids),
             "unavailable_surface_ids": list(self.unavailable_surface_ids),
             "authoritative_agreement": self.authoritative_agreement,
             "all_cleanup_succeeded": self.all_cleanup_succeeded,
@@ -1357,9 +1301,8 @@ def _observation_for_step(
         raw_record = _json_value(raw_value)
         if isinstance(raw_value, Mapping):
             explicit_success_with_error = (
-                (raw_value.get("ok") is True or raw_value.get("success") is True)
-                and raw_value.get("error") is not None
-            )
+                raw_value.get("ok") is True or raw_value.get("success") is True
+            ) and raw_value.get("error") is not None
             error_identity = _reported_error_identity(raw_value)
             if error_identity is not None:
                 status = ObservationStatus.ERROR
@@ -1460,9 +1403,7 @@ def _surface_run(
         observations = ()
     else:
         observations = tuple(
-            _observation_for_step(
-                adapter, step, fixture, temp_parent=temp_parent
-            )
+            _observation_for_step(adapter, step, fixture, temp_parent=temp_parent)
             for step in trace.steps
         )
     record = {
@@ -1507,9 +1448,7 @@ def _build_findings(
             record = {
                 "vector_id": step.vector_id,
                 "operation": step.operation.value,
-                "kinds": [
-                    kind.value for kind in _drift_kinds(step, observation)
-                ],
+                "kinds": [kind.value for kind in _drift_kinds(step, observation)],
                 "surface_ids": [run.surface_id],
                 "authoritative": run.authoritative,
                 "mismatch_paths": list(observation.mismatch_paths),
@@ -1542,10 +1481,7 @@ def _build_findings(
             for step in trace.steps:
                 left_observation = left_by_id[step.vector_id]
                 right_observation = right_by_id[step.vector_id]
-                if (
-                    left_observation.canonical_projection
-                    == right_observation.canonical_projection
-                ):
+                if left_observation.canonical_projection == right_observation.canonical_projection:
                     continue
                 # Contract findings already identify a single bad surface.
                 # A pairwise record is valuable only when both projections
@@ -1636,14 +1572,10 @@ def run_vfs_differential_harness(
     parent = None if temp_parent is None else Path(temp_parent).resolve()
     if parent is not None:
         if not parent.is_dir():
-            raise VfsDifferentialHarnessError(
-                f"temp_parent is not an existing directory: {parent}"
-            )
+            raise VfsDifferentialHarnessError(f"temp_parent is not an existing directory: {parent}")
 
     runs = tuple(
-        _surface_run(
-            adapter, selected_trace, selected_fixture, temp_parent=parent
-        )
+        _surface_run(adapter, selected_trace, selected_fixture, temp_parent=parent)
         for adapter in adapters
     )
     findings = _build_findings(selected_trace, runs)
@@ -1654,18 +1586,12 @@ def run_vfs_differential_harness(
         run.surface_id for run in runs if run.availability is SurfaceAvailability.MOCK
     )
     unavailable_ids = tuple(
-        run.surface_id
-        for run in runs
-        if run.availability is SurfaceAvailability.UNAVAILABLE
+        run.surface_id for run in runs if run.availability is SurfaceAvailability.UNAVAILABLE
     )
     all_cleanup = all(
-        observation.cleanup.succeeded
-        for run in runs
-        for observation in run.observations
+        observation.cleanup.succeeded for run in runs for observation in run.observations
     )
-    agreement = all(
-        not finding.authoritative for finding in findings
-    ) and all_cleanup
+    agreement = all(not finding.authoritative for finding in findings) and all_cleanup
     record = {
         "schema": VFS_DIFFERENTIAL_WITNESS_SCHEMA,
         "goal_id": VFS_DIFFERENTIAL_GOAL_ID,

@@ -107,21 +107,16 @@ autoscaler = GitHubRunnerAutoscaler(
     owner="myorg",
     poll_interval=120,
     max_runners=8,
-    enable_p2p=True  # Default
+    enable_p2p=True,  # Default
 )
 autoscaler.start()
 ```
 
 ### Discovery Service
 ```python
-from ipfs_accelerate_py.p2p_workflow_discovery import (
-    P2PWorkflowDiscoveryService
-)
+from ipfs_accelerate_py.p2p_workflow_discovery import P2PWorkflowDiscoveryService
 
-service = P2PWorkflowDiscoveryService(
-    owner="myorg",
-    poll_interval=300
-)
+service = P2PWorkflowDiscoveryService(owner="myorg", poll_interval=300)
 
 # Run once
 stats = service.run_discovery_cycle()

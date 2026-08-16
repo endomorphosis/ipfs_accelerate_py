@@ -18,9 +18,7 @@ def _git(repo: Path, *args: str) -> str:
         check=False,
     )
     assert result.returncode == 0, (
-        f"git {' '.join(args)} failed in {repo}:\n"
-        f"stdout: {result.stdout}\n"
-        f"stderr: {result.stderr}"
+        f"git {' '.join(args)} failed in {repo}:\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
     return result.stdout.strip()
 
@@ -102,9 +100,7 @@ def test_declared_output_tracking_invariant_rejects_ignored_untracked_root_file(
 
     assert result["passed"] is False
     assert result["missing_outputs"] == []
-    assert result["untracked_outputs"] == [
-        {"task_id": "OUT-002", "path": "ignored.txt"}
-    ]
+    assert result["untracked_outputs"] == [{"task_id": "OUT-002", "path": "ignored.txt"}]
     assert result["checks"][0]["exists"] is True
     assert result["checks"][0]["tracked"] is False
     assert result["checks"][0]["reason"] == "declared_output_untracked"
@@ -124,9 +120,7 @@ def test_declared_output_tracking_invariant_rejects_repository_dot(
     )
 
     assert result["passed"] is False
-    assert result["unsafe_outputs"] == [
-        {"task_id": "OUT-DOT", "path": "."}
-    ]
+    assert result["unsafe_outputs"] == [{"task_id": "OUT-DOT", "path": "."}]
     assert result["checks"][0]["reason"] == "declared_output_path_unsafe"
 
 
@@ -152,9 +146,7 @@ def test_declared_output_tracking_invariant_binds_exact_tree_not_dirty_index(
     assert result["passed"] is False
     assert result["mode"] == "repository_tree"
     assert result["repository_ref"] == target_commit
-    assert result["missing_outputs"] == [
-        {"task_id": "OUT-003", "path": dirty_output.name}
-    ]
+    assert result["missing_outputs"] == [{"task_id": "OUT-003", "path": dirty_output.name}]
     assert result["untracked_outputs"] == []
     assert result["checks"][0]["exists"] is False
     assert result["checks"][0]["tracked"] is False
@@ -315,9 +307,7 @@ def test_merge_callback_skips_completion_when_ignored_output_is_not_in_tree(
     monkeypatch.setattr(
         daemon,
         "_decision_runtime_completion",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("completion must not run")
-        ),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("completion must not run")),
     )
 
     result = daemon._merge_train_callback(request)
@@ -326,9 +316,9 @@ def test_merge_callback_skips_completion_when_ignored_output_is_not_in_tree(
     assert result["reason"] == "post_merge_declared_outputs_missing"
     assert result["completion_skipped"] is True
     assert result["integration_occurred"] is True
-    assert result["post_merge_declared_output_invariant"][
-        "missing_outputs"
-    ] == [{"task_id": "OUT-007", "path": "deliverable.json"}]
+    assert result["post_merge_declared_output_invariant"]["missing_outputs"] == [
+        {"task_id": "OUT-007", "path": "deliverable.json"}
+    ]
     assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
     assert _git(repo, "cat-file", "-e", "main:deliverable.json") == ""
     assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
@@ -404,10 +394,7 @@ def test_reconciliation_rejects_stale_task_revision_before_merge(
 
     assert merge_attempts == []
     assert result[0]["reason"] == "reconciliation_task_revision_unavailable"
-    assert (
-        result[0]["completion_binding_error"]["reason"]
-        == "completion_task_revision_changed"
-    )
+    assert result[0]["completion_binding_error"]["reason"] == "completion_task_revision_changed"
 
 
 def test_immutable_integration_commit_resolves_moving_ref_once(
@@ -440,9 +427,7 @@ def test_immutable_integration_commit_resolves_moving_ref_once(
         repository_ref=proof["integration_commit"],
     )
     assert exact_tree["passed"] is False
-    assert exact_tree["missing_outputs"] == [
-        {"task_id": "OUT-010", "path": "later.txt"}
-    ]
+    assert exact_tree["missing_outputs"] == [{"task_id": "OUT-010", "path": "later.txt"}]
 
 
 def test_reconciliation_stays_unresolved_when_completion_revision_changes(

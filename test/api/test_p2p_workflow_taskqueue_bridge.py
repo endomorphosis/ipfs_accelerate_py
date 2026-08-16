@@ -75,5 +75,7 @@ def test_merge_snapshot_ignores_self_peer_id():
     scheduler = P2PWorkflowScheduler(peer_id="peer-self")
     svc = _make_service_without_init(scheduler)
 
-    merged = svc._merge_snapshot_payload_into_scheduler({"peer_id": "peer-self", "pending_tasks": []})
+    merged = svc._merge_snapshot_payload_into_scheduler(
+        {"peer_id": "peer-self", "pending_tasks": []}
+    )
     assert merged == 0

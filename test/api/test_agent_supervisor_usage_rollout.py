@@ -280,8 +280,7 @@ def test_cost_latency_quality_limits_gate_enforce() -> None:
     )
     assert decision.effective_mode is SupervisorUsageRolloutMode.SHADOW
     assert any(
-        code in decision.reason_codes
-        for code in ("cost_limit", "latency_limit", "quality_limit")
+        code in decision.reason_codes for code in ("cost_limit", "latency_limit", "quality_limit")
     )
 
 

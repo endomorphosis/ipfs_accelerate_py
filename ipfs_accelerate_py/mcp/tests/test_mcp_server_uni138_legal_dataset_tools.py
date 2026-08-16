@@ -42,7 +42,9 @@ class TestMCPServerUNI138LegalDatasetTools(unittest.TestCase):
 
         expand_schema = by_name["expand_legal_query"]["input_schema"]
         expand_props = expand_schema["properties"]
-        self.assertEqual(expand_props["strategy"]["enum"], ["conservative", "balanced", "aggressive"])
+        self.assertEqual(
+            expand_props["strategy"]["enum"], ["conservative", "balanced", "aggressive"]
+        )
         self.assertEqual(expand_props["max_expansions"]["maximum"], 50)
 
         relationship_schema = by_name["get_legal_relationships"]["input_schema"]
@@ -138,7 +140,9 @@ class TestMCPServerUNI138LegalDatasetTools(unittest.TestCase):
             self.assertEqual(invalid.get("status"), "error")
             self.assertIn("relationship_type", str(invalid.get("error", "")))
 
-            result = await get_legal_relationships(term="regulation", relationship_type="hierarchical")
+            result = await get_legal_relationships(
+                term="regulation", relationship_type="hierarchical"
+            )
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertEqual(result.get("term"), "regulation")
             self.assertEqual(result.get("relationship_type"), "hierarchical")
@@ -150,6 +154,7 @@ class TestMCPServerUNI138LegalDatasetTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.legal_dataset_tools.native_legal_dataset_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
@@ -174,6 +179,7 @@ class TestMCPServerUNI138LegalDatasetTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.legal_dataset_tools.native_legal_dataset_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
@@ -196,6 +202,7 @@ class TestMCPServerUNI138LegalDatasetTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.legal_dataset_tools.native_legal_dataset_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
@@ -216,6 +223,7 @@ class TestMCPServerUNI138LegalDatasetTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.legal_dataset_tools.native_legal_dataset_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"error": "backend unavailable"}
 
@@ -228,7 +236,9 @@ class TestMCPServerUNI138LegalDatasetTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_legal_dataset_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_legal_dataset_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 

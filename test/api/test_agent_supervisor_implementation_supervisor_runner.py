@@ -118,14 +118,8 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
     assert parsed.objective_goal_migration_preview is True
     assert parsed.objective_goal_migration_batch_size == 7
     assert parsed.objective_goal_completion_gate_path == tmp_path / "completion-gate.json"
-    assert (
-        parsed.objective_goal_completion_evidence_path
-        == tmp_path / "completion-evidence.json"
-    )
-    assert (
-        parsed.objective_goal_completion_artifact_refresh_command
-        == "python refresh.py"
-    )
+    assert parsed.objective_goal_completion_evidence_path == tmp_path / "completion-evidence.json"
+    assert parsed.objective_goal_completion_artifact_refresh_command == "python refresh.py"
     assert parsed.objective_goal_completion_artifact_refresh_timeout_seconds == 45
     assert parsed.codebase_scan_cooldown_seconds == 120
     assert parsed.allow_unscoped_codebase_refill is True
@@ -153,7 +147,9 @@ def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_p
         objective_bundle_dir_key="bundle_dir",
         objective_dataset_dir_key="dataset_dir",
         objective_discovery_dir_key="discovery_dir",
-        objective_discovery_output_path_factory=lambda resolved: f"out/{Path(resolved['discovery_dir']).name}",
+        objective_discovery_output_path_factory=lambda resolved: (
+            f"out/{Path(resolved['discovery_dir']).name}"
+        ),
         objective_todo_vector_index_path_key="todo_vector_index_path",
         objective_goal_completion_gate_path_key="completion_gate_path",
         objective_goal_completion_evidence_path_key="completion_evidence_path",
@@ -165,7 +161,9 @@ def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_p
     )
     codebase_factory = build_codebase_refill_defaults_factory(
         codebase_scan_discovery_dir_key="discovery_dir",
-        codebase_scan_discovery_output_path_factory=lambda resolved: f"scan/{Path(resolved['discovery_dir']).name}",
+        codebase_scan_discovery_output_path_factory=lambda resolved: (
+            f"scan/{Path(resolved['discovery_dir']).name}"
+        ),
         codebase_scan_skip_prefixes=("data/state/",),
         allow_unscoped_codebase_refill=True,
     )
@@ -180,10 +178,7 @@ def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_p
     assert objective.objective_discovery_output_path == "out/discovery"
     assert objective.objective_todo_vector_index_path == paths["todo_vector_index_path"]
     assert objective.objective_goal_completion_gate_path == paths["completion_gate_path"]
-    assert (
-        objective.objective_goal_completion_evidence_path
-        == paths["completion_evidence_path"]
-    )
+    assert objective.objective_goal_completion_evidence_path == paths["completion_evidence_path"]
     assert objective.objective_goal_completion_artifact_refresh_command == "python refresh.py"
     assert objective.objective_goal_completion_artifact_refresh_timeout_seconds == 60
     assert objective.objective_interoperability_focus == ("hallucinate_app",)
@@ -263,10 +258,7 @@ def test_task_specific_max_timeout_extends_only_the_parent_watchdog(
     command = supervisor._build_daemon_command()
     assert command[command.index("--implementation-timeout") + 1] == "1800.0"
     assert "--implementation-max-timeout" not in command
-    assert (
-        supervisor.build_supervisor_loop_config().watchdog_stale_after_seconds
-        == 7320
-    )
+    assert supervisor.build_supervisor_loop_config().watchdog_stale_after_seconds == 7320
 
 
 def test_run_portal_implementation_supervisor_runs_before_and_after_once_hooks(caplog):
@@ -352,7 +344,9 @@ def test_persist_supervisor_scan_receipt_keeps_strategy_projection_compact(tmp_p
                 "raw_candidate_count": 4,
                 "deduplicated_candidate_count": 1,
             },
-            "per_file_details": [{"path": f"src/{index}.py", "detail": marker} for index in range(50)],
+            "per_file_details": [
+                {"path": f"src/{index}.py", "detail": marker} for index in range(50)
+            ],
         },
     )
 
@@ -391,7 +385,9 @@ def test_persist_supervisor_scan_receipt_keeps_strategy_projection_compact(tmp_p
     }
     assert marker not in strategy_path.read_text(encoding="utf-8")
     assert marker not in events_path.read_text(encoding="utf-8")
-    assert marker in Path(state_dir / generated_projection["artifact_path"]).read_text(encoding="utf-8")
+    assert marker in Path(state_dir / generated_projection["artifact_path"]).read_text(
+        encoding="utf-8"
+    )
 
 
 def test_goal_completion_projection_updates_strategy_and_live_status(tmp_path: Path):
@@ -509,9 +505,7 @@ def test_supervisor_legacy_goal_migration_previews_and_resumes(tmp_path: Path):
     assert second["migrated_goal_ids"] == ["G2"]
     assert replay["migrated_goal_ids"] == []
     assert replay["changed"] is False
-    assert objective_path.read_text(encoding="utf-8").count(
-        "- Status: provisionally_complete"
-    ) == 2
+    assert objective_path.read_text(encoding="utf-8").count("- Status: provisionally_complete") == 2
 
 
 def test_typed_runner_refill_hook_persists_one_canonical_receipt(tmp_path: Path):
@@ -545,8 +539,7 @@ def test_typed_runner_refill_hook_persists_one_canonical_receipt(tmp_path: Path)
 
     assert result == {"ok": True}
     events = [
-        json.loads(line)
-        for line in context.events_path.read_text(encoding="utf-8").splitlines()
+        json.loads(line) for line in context.events_path.read_text(encoding="utf-8").splitlines()
     ]
     assert len(events) == 1
     assert events[0]["type"] == "refill_scan_receipt"
@@ -991,7 +984,9 @@ def test_build_configured_supervisor_runtime_exports_binds_public_facade(tmp_pat
         def is_running(self, state_dir: Path, state_prefix: str) -> bool:
             return state_dir.name == "state" and state_prefix == "agent"
 
-        def ensure_running(self, argv: list[str], *, state_dir: Path, state_prefix: str) -> dict[str, object]:
+        def ensure_running(
+            self, argv: list[str], *, state_dir: Path, state_prefix: str
+        ) -> dict[str, object]:
             return {"argv": tuple(argv), "state_dir": state_dir, "state_prefix": state_prefix}
 
     runtime = ConfiguredSupervisorRuntime(

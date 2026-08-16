@@ -123,7 +123,8 @@ def _looks_like_base64_audio(value: str) -> bool:
         return False
     return (
         decoded.startswith(_AUDIO_MAGIC_PREFIXES)
-        or len(decoded) >= 8 and decoded[4:8] == b"ftyp"
+        or len(decoded) >= 8
+        and decoded[4:8] == b"ftyp"
         or len(decoded) >= 2
         and decoded[0] == 0xFF
         and decoded[1] & 0xF0 == 0xF0
@@ -133,9 +134,7 @@ def _looks_like_base64_audio(value: str) -> bool:
 def _freeze_provider_receipt(value: Mapping[str, Any]) -> MappingProxyType:
     receipt: dict[str, Any] = {}
     allowed = (
-        _PROVIDER_RECEIPT_STRING_KEYS
-        | _PROVIDER_RECEIPT_INTEGER_KEYS
-        | _PROVIDER_RECEIPT_HASH_KEYS
+        _PROVIDER_RECEIPT_STRING_KEYS | _PROVIDER_RECEIPT_INTEGER_KEYS | _PROVIDER_RECEIPT_HASH_KEYS
     )
     for key, item in value.items():
         if _is_secret_key(key):
@@ -150,15 +149,10 @@ def _freeze_provider_receipt(value: Mapping[str, Any]) -> MappingProxyType:
                     f"provider_receipt.{key} must be a non-negative integer"
                 )
             receipt[key] = item
-        elif (
-            not isinstance(item, str)
-            or not _PROVIDER_RECEIPT_IDENTIFIER_RE.fullmatch(
-                _freeze_json(item, path=f"provider_receipt.{key}")
-            )
+        elif not isinstance(item, str) or not _PROVIDER_RECEIPT_IDENTIFIER_RE.fullmatch(
+            _freeze_json(item, path=f"provider_receipt.{key}")
         ):
-            raise VoiceJobContractError(
-                f"provider_receipt.{key} must be a canonical identifier"
-            )
+            raise VoiceJobContractError(f"provider_receipt.{key} must be a canonical identifier")
         else:
             receipt[key] = item
     return MappingProxyType(receipt)
@@ -232,10 +226,10 @@ def _freeze_json(value: Any, *, path: str = "value") -> Any:
                 raise VoiceJobContractError(f"{path} must not contain credentials")
             if any(part in lowered for part in _INLINE_AUDIO_KEYS):
                 raise VoiceJobContractError(f"{path} must not contain inline audio or local paths")
-            if (
-                any(part in lowered for part in ("private_text", "response_text", "spoken_text", "transcript"))
-                and not lowered.endswith(("_hash", "_sha256"))
-            ):
+            if any(
+                part in lowered
+                for part in ("private_text", "response_text", "spoken_text", "transcript")
+            ) and not lowered.endswith(("_hash", "_sha256")):
                 raise VoiceJobContractError(f"{path} must not contain private transcript text")
             result[key] = _freeze_json(item, path=f"{path}.{key}")
         return MappingProxyType(result)
@@ -271,7 +265,9 @@ def _content_task_id(identity: Mapping[str, Any]) -> str:
 
 def _validate_schema(payload: Mapping[str, Any], expected: str) -> None:
     if payload.get("schema_version") != expected:
-        raise VoiceJobContractError(f"unsupported schema_version: {payload.get('schema_version')!r}")
+        raise VoiceJobContractError(
+            f"unsupported schema_version: {payload.get('schema_version')!r}"
+        )
 
 
 def _validate_canonical_request_payload(payload: Mapping[str, Any], job: Any) -> None:
@@ -297,7 +293,11 @@ class ArtifactDescriptor:
 
     def __post_init__(self) -> None:
         _require_sha256("sha256", self.sha256)
-        if isinstance(self.size_bytes, bool) or not isinstance(self.size_bytes, int) or self.size_bytes < 0:
+        if (
+            isinstance(self.size_bytes, bool)
+            or not isinstance(self.size_bytes, int)
+            or self.size_bytes < 0
+        ):
             raise VoiceJobContractError("size_bytes must be a non-negative integer")
         if (
             not isinstance(self.media_type, str)
@@ -319,7 +319,11 @@ class ArtifactDescriptor:
 
     @staticmethod
     def _validate_uri(uri: str) -> None:
-        if not isinstance(uri, str) or uri.strip() != uri or any(character.isspace() for character in uri):
+        if (
+            not isinstance(uri, str)
+            or uri.strip() != uri
+            or any(character.isspace() for character in uri)
+        ):
             raise VoiceJobContractError("uri must be an external artifact URI")
         try:
             parsed = urlsplit(uri)
@@ -330,7 +334,11 @@ class ArtifactDescriptor:
             raise VoiceJobContractError("uri must identify an external artifact")
         if parsed.username is not None or parsed.password is not None:
             raise VoiceJobContractError("uri must not contain credentials")
-        if "\\" in unquote(parsed.path) or ".." in unquote(parsed.path).split("/") or parsed.fragment:
+        if (
+            "\\" in unquote(parsed.path)
+            or ".." in unquote(parsed.path).split("/")
+            or parsed.fragment
+        ):
             raise VoiceJobContractError("uri must not contain a local or ambiguous path")
         for key, _value in parse_qsl(parsed.query, keep_blank_values=True):
             if _is_secret_key(key):
@@ -495,14 +503,26 @@ class VoiceTTSJob(_VoiceJob):
             _require_text(name, getattr(self, name))
         if not isinstance(self.spoken_text, str) or not self.spoken_text.strip():
             raise VoiceJobContractError("spoken_text must not be empty")
-        normalized = unicodedata.normalize("NFC", self.spoken_text.replace("\r\n", "\n").replace("\r", "\n"))
+        normalized = unicodedata.normalize(
+            "NFC", self.spoken_text.replace("\r\n", "\n").replace("\r", "\n")
+        )
         object.__setattr__(self, "spoken_text", normalized)
-        if isinstance(self.sample_rate_hz, bool) or not isinstance(self.sample_rate_hz, int) or self.sample_rate_hz <= 0:
+        if (
+            isinstance(self.sample_rate_hz, bool)
+            or not isinstance(self.sample_rate_hz, int)
+            or self.sample_rate_hz <= 0
+        ):
             raise VoiceJobContractError("sample_rate_hz must be a positive integer")
-        if isinstance(self.channels, bool) or not isinstance(self.channels, int) or self.channels <= 0:
+        if (
+            isinstance(self.channels, bool)
+            or not isinstance(self.channels, int)
+            or self.channels <= 0
+        ):
             raise VoiceJobContractError("channels must be a positive integer")
         object.__setattr__(
-            self, "generation_settings", _freeze_json(self.generation_settings, path="generation_settings")
+            self,
+            "generation_settings",
+            _freeze_json(self.generation_settings, path="generation_settings"),
         )
         if self.reference_audio and not self.reference_audio.media_type.startswith("audio/"):
             raise VoiceJobContractError("reference_audio media_type must be audio/*")
@@ -556,7 +576,9 @@ class VoiceTTSJob(_VoiceJob):
             sample_rate_hz=payload.get("sample_rate_hz", 24_000),  # type: ignore[arg-type]
             channels=payload.get("channels", 1),  # type: ignore[arg-type]
             generation_settings=_mapping(payload.get("generation_settings"), "generation_settings"),
-            reference_audio=ArtifactDescriptor.from_dict(reference) if isinstance(reference, Mapping) else None,
+            reference_audio=ArtifactDescriptor.from_dict(reference)
+            if isinstance(reference, Mapping)
+            else None,
             task_id=str(payload.get("task_id") or ""),
         )
         _validate_canonical_request_payload(payload, job)
@@ -565,7 +587,9 @@ class VoiceTTSJob(_VoiceJob):
     from_payload = from_dict
 
 
-def _source_identity(source_audio: ArtifactDescriptor | None, source_task_id: str) -> dict[str, Any]:
+def _source_identity(
+    source_audio: ArtifactDescriptor | None, source_task_id: str
+) -> dict[str, Any]:
     return {
         "source_audio": source_audio.to_dict() if source_audio else None,
         "source_task_id": source_task_id,
@@ -618,7 +642,9 @@ class VoiceASRJob(_VoiceJob):
                 raise VoiceJobContractError("runtime_stt results are non-retained by default")
         _validate_source(self.source_audio, self.source_task_id, self.lineage)
         object.__setattr__(
-            self, "decoding_settings", _freeze_json(self.decoding_settings, path="decoding_settings")
+            self,
+            "decoding_settings",
+            _freeze_json(self.decoding_settings, path="decoding_settings"),
         )
         _validate_schema({"schema_version": self.schema_version}, VOICE_JOB_SCHEMA_VERSION)
         self._finalize_identity()
@@ -655,7 +681,9 @@ class VoiceASRJob(_VoiceJob):
             model_name=str(payload.get("model_name") or ""),
             provider_version=str(payload.get("provider_version") or ""),
             lineage=VoiceJobLineage.from_dict(_lineage_payload(payload)),
-            source_audio=ArtifactDescriptor.from_dict(source) if isinstance(source, Mapping) else None,
+            source_audio=ArtifactDescriptor.from_dict(source)
+            if isinstance(source, Mapping)
+            else None,
             source_task_id=str(payload.get("source_task_id") or ""),
             purpose=str(payload.get("purpose") or "dataset_asr_validation"),
             locale=str(payload.get("locale") or ""),
@@ -688,7 +716,9 @@ class VoiceAudioValidationJob(_VoiceJob):
             _require_text(name, getattr(self, name))
         _validate_source(self.source_audio, self.source_task_id, self.lineage)
         object.__setattr__(
-            self, "validation_policy", _freeze_json(self.validation_policy, path="validation_policy")
+            self,
+            "validation_policy",
+            _freeze_json(self.validation_policy, path="validation_policy"),
         )
         _validate_schema({"schema_version": self.schema_version}, VOICE_JOB_SCHEMA_VERSION)
         self._finalize_identity()
@@ -720,7 +750,9 @@ class VoiceAudioValidationJob(_VoiceJob):
         job = cls(
             model_name=str(payload.get("model_name") or ""),
             lineage=VoiceJobLineage.from_dict(_lineage_payload(payload)),
-            source_audio=ArtifactDescriptor.from_dict(source) if isinstance(source, Mapping) else None,
+            source_audio=ArtifactDescriptor.from_dict(source)
+            if isinstance(source, Mapping)
+            else None,
             source_task_id=str(payload.get("source_task_id") or ""),
             validation_policy=_mapping(payload.get("validation_policy"), "validation_policy"),
             provider=str(payload.get("provider") or "local"),

@@ -63,7 +63,9 @@ def _now() -> float:
     return time.time()
 
 
-async def _get_task_retry(*, remote: RemoteQueue, task_id: str, deadline: float) -> Optional[Dict[str, Any]]:
+async def _get_task_retry(
+    *, remote: RemoteQueue, task_id: str, deadline: float
+) -> Optional[Dict[str, Any]]:
     backoff = 0.2
     while _now() < deadline:
         try:
@@ -84,7 +86,9 @@ async def _wait_completed_chatty(
     last_status = None
 
     while _now() < deadline:
-        task = await _get_task_retry(remote=remote, task_id=task_id, deadline=min(deadline, _now() + 5.0))
+        task = await _get_task_retry(
+            remote=remote, task_id=task_id, deadline=min(deadline, _now() + 5.0)
+        )
         if isinstance(task, dict):
             status = str(task.get("status") or "").strip().lower()
             if status and status != last_status:
@@ -178,7 +182,9 @@ async def _submit_llm_task(
     if continue_session:
         payload["continue_session"] = True
 
-    tid = await submit_task(remote=peer.remote(), task_type="llm.generate", model_name=str(model_name), payload=payload)
+    tid = await submit_task(
+        remote=peer.remote(), task_type="llm.generate", model_name=str(model_name), payload=payload
+    )
     return str(tid)
 
 
@@ -186,7 +192,10 @@ def _result_executor(task: Dict[str, Any]) -> Tuple[str, str]:
     res = task.get("result")
     if not isinstance(res, dict):
         return ("", "")
-    return (str(res.get("executor_peer_id") or "").strip(), str(res.get("executor_worker_id") or "").strip())
+    return (
+        str(res.get("executor_peer_id") or "").strip(),
+        str(res.get("executor_worker_id") or "").strip(),
+    )
 
 
 def _result_text(task: Dict[str, Any]) -> str:
@@ -245,16 +254,22 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
     # Probe
     for peer in (peer_a, peer_b):
         try:
-            caps = await get_capabilities(remote=peer.remote(), timeout_s=8.0, detail=bool(args.probe_detail))
+            caps = await get_capabilities(
+                remote=peer.remote(), timeout_s=8.0, detail=bool(args.probe_detail)
+            )
             _print_block(
                 f"Peer {peer.name} capabilities",
                 {
                     "peer": peer.__dict__,
-                    "capabilities": caps if bool(args.probe_detail) else _summarize_capabilities(caps),
+                    "capabilities": caps
+                    if bool(args.probe_detail)
+                    else _summarize_capabilities(caps),
                 },
             )
         except Exception as exc:
-            _print_block(f"Peer {peer.name} probe FAILED", {"peer": peer.__dict__, "error": str(exc)})
+            _print_block(
+                f"Peer {peer.name} probe FAILED", {"peer": peer.__dict__, "error": str(exc)}
+            )
             if peer.name == "B" and bool(args.failover_only):
                 _print_block(
                     "Peer B probe skipped for failover-only",
@@ -284,8 +299,13 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
         new_tid = ""
         old_task = None
         while _now() < deadline:
-            old_task = await _get_task_retry(remote=peer_a.remote(), task_id=tid_old, deadline=min(deadline, _now() + 5.0))
-            if isinstance(old_task, dict) and str(old_task.get("status") or "").lower() == "cancelled":
+            old_task = await _get_task_retry(
+                remote=peer_a.remote(), task_id=tid_old, deadline=min(deadline, _now() + 5.0)
+            )
+            if (
+                isinstance(old_task, dict)
+                and str(old_task.get("status") or "").lower() == "cancelled"
+            ):
                 res = old_task.get("result")
                 if isinstance(res, dict):
                     prog = res.get("progress")
@@ -321,7 +341,9 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
             )
             return 30
 
-        new_task = await _wait_completed_chatty(remote=peer_a.remote(), task_id=new_tid, timeout_s=float(args.timeout_s))
+        new_task = await _wait_completed_chatty(
+            remote=peer_a.remote(), task_id=new_tid, timeout_s=float(args.timeout_s)
+        )
         if not isinstance(new_task, dict):
             _print_block(
                 "FAIL: Failover new task TIMEOUT",
@@ -348,7 +370,11 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
         if ex_peer and ex_peer != peer_a.peer_id:
             _print_block(
                 "FAIL: Failover new task executed on wrong peer",
-                {"expected_peer_id": peer_a.peer_id, "got_peer_id": ex_peer, "new_task_id": new_tid},
+                {
+                    "expected_peer_id": peer_a.peer_id,
+                    "got_peer_id": ex_peer,
+                    "new_task_id": new_tid,
+                },
             )
             return 33
 
@@ -367,7 +393,9 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
         chat_session_id=chat_id_a,
     )
 
-    t1a = await _wait_completed_chatty(remote=peer_a.remote(), task_id=tid1a, timeout_s=float(args.timeout_s))
+    t1a = await _wait_completed_chatty(
+        remote=peer_a.remote(), task_id=tid1a, timeout_s=float(args.timeout_s)
+    )
     if not isinstance(t1a, dict):
         _print_block("Round 1A TIMEOUT", {"task_id": tid1a, "peer": peer_a.__dict__})
         return 3
@@ -407,7 +435,9 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
         chat_session_id=chat_id_b,
     )
 
-    t1b = await _wait_completed_chatty(remote=peer_b.remote(), task_id=tid1b, timeout_s=float(args.timeout_s))
+    t1b = await _wait_completed_chatty(
+        remote=peer_b.remote(), task_id=tid1b, timeout_s=float(args.timeout_s)
+    )
     if not isinstance(t1b, dict):
         _print_block("Round 1B TIMEOUT", {"task_id": tid1b, "peer": peer_b.__dict__})
         return 3
@@ -465,9 +495,14 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
         continue_session=True,
     )
 
-    t2 = await _wait_completed_chatty(remote=peer_a.remote(), task_id=tid2, timeout_s=float(args.timeout_s))
+    t2 = await _wait_completed_chatty(
+        remote=peer_a.remote(), task_id=tid2, timeout_s=float(args.timeout_s)
+    )
     if not isinstance(t2, dict):
-        _print_block("Round 2 TIMEOUT", {"task_id": tid2, "peer": peer_a.__dict__, "sticky_worker_id": ex_worker1a})
+        _print_block(
+            "Round 2 TIMEOUT",
+            {"task_id": tid2, "peer": peer_a.__dict__, "sticky_worker_id": ex_worker1a},
+        )
         return 5
 
     ex_peer2, ex_worker2 = _result_executor(t2)
@@ -503,7 +538,7 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
 
     tids: list[Tuple[str, str]] = []
     for i in range(jobs):
-        prompt = f"(smoketest) throughput job {i+1}/{jobs}: say OK and echo JOB{i+1}."
+        prompt = f"(smoketest) throughput job {i + 1}/{jobs}: say OK and echo JOB{i + 1}."
         submit_peer = peer_a if (i % 2 == 0) else peer_b
         tid = await _submit_llm_task(
             peer=submit_peer,
@@ -517,7 +552,9 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
     executors: Dict[str, int] = {}
     for submit_name, tid in tids:
         submit_peer = peer_a if submit_name == "A" else peer_b
-        t = await _wait_completed_chatty(remote=submit_peer.remote(), task_id=tid, timeout_s=float(args.timeout_s))
+        t = await _wait_completed_chatty(
+            remote=submit_peer.remote(), task_id=tid, timeout_s=float(args.timeout_s)
+        )
         if not isinstance(t, dict):
             _print_block("Job TIMEOUT", {"task_id": tid, "submit_peer": submit_peer.__dict__})
             continue
@@ -537,7 +574,10 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
             },
         )
 
-    _print_block("Throughput summary", {"jobs": jobs, "executors": executors, "distinct_executors": len(executors)})
+    _print_block(
+        "Throughput summary",
+        {"jobs": jobs, "executors": executors, "distinct_executors": len(executors)},
+    )
 
     # If we expected >1 executor but saw only one, fail with actionable hints.
     if jobs >= 2 and len(executors) < 2:

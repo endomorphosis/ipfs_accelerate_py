@@ -81,15 +81,12 @@ REQUIREMENT_EVIDENCE_SCHEMA: Final = (
 ADAPTIVE_PLAN_CANDIDATE_SNAPSHOT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/adaptive-plan-candidate-snapshot@1"
 )
-ADAPTIVE_PLANNING_RUN_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/adaptive-planning-run@1"
-)
+ADAPTIVE_PLANNING_RUN_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/adaptive-planning-run@1"
 HARD_CONSTRAINED_PLAN_SELECTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/hard-constrained-plan-selection@1"
 )
 EVIDENCE_AWARE_PLANNING_COMPLETION_EVIDENCE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "evidence-aware-planning-completion-evidence@1"
+    "ipfs_accelerate_py/agent-supervisor/evidence-aware-planning-completion-evidence@1"
 )
 EVIDENCE_AWARE_PLANNING_OBJECTIVE_ID: Final = "ASI-G030"
 EVIDENCE_AWARE_PLANNING_OBJECTIVE_REVISION: Final = "ASI-G030@asi-080"
@@ -105,9 +102,7 @@ EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS: Final[tuple[str, ...]] = (
 )
 
 # ASI-G097: a cheaper authority-violating plan is rejected.
-AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID: Final = (
-    "173075880069453142914839090434430341799"
-)
+AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID: Final = "173075880069453142914839090434430341799"
 
 # Closed mandatory population used by the ASI-G097 objective-completion
 # bridge. Callers may supply proof records, but may not narrow the objective
@@ -119,10 +114,7 @@ AUTHORITY_NON_COMPENSATION_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
         "novelty, and bounded resource/token cost"
     ),
     "authority is a non-compensable gate",
-    (
-        "an authority-safe branch defeats every cheaper authority-violating "
-        "branch"
-    ),
+    ("an authority-safe branch defeats every cheaper authority-violating branch"),
     (
         "hard-gate receipts cannot be replayed after any candidate, formal-plan, "
         "or repair-transition change"
@@ -192,9 +184,7 @@ def _strings(
 ) -> tuple[str, ...]:
     if isinstance(value, (str, bytes, bytearray)):
         raise AdaptivePlannerValidationError(f"{field_name} must be an array")
-    result = tuple(
-        sorted({_text(item, field_name) for item in value})
-    )
+    result = tuple(sorted({_text(item, field_name) for item in value}))
     if not result and not allow_empty:
         raise AdaptivePlannerValidationError(f"{field_name} must not be empty")
     return result
@@ -213,9 +203,7 @@ def _ordered_strings(
     for item in value:
         normalized = _text(item, field_name)
         if normalized in seen:
-            raise AdaptivePlannerValidationError(
-                f"{field_name} must not contain duplicates"
-            )
+            raise AdaptivePlannerValidationError(f"{field_name} must not contain duplicates")
         seen.add(normalized)
         result.append(normalized)
     if not result and not allow_empty:
@@ -264,9 +252,7 @@ def adaptive_plan_candidate_snapshot_id(
                 "repair_transition must be a formal RepairTransition"
             )
         if not resolved_formal_plan_id:
-            raise AdaptivePlannerValidationError(
-                "a repair transition requires formal_plan_id"
-            )
+            raise AdaptivePlannerValidationError("a repair transition requires formal_plan_id")
         if repair_transition.repaired_plan_id != resolved_formal_plan_id:
             raise AdaptivePlannerValidationError(
                 "repair transition does not produce formal_plan_id"
@@ -280,9 +266,7 @@ def adaptive_plan_candidate_snapshot_id(
             "policy_digest": resolved_policy,
             "formal_plan_id": resolved_formal_plan_id,
             "repair_transition": (
-                repair_transition.to_dict()
-                if repair_transition is not None
-                else None
+                repair_transition.to_dict() if repair_transition is not None else None
             ),
         }
     )
@@ -349,9 +333,7 @@ class FrozenPlanningGoal:
             policy=_decode_policy(payload.get("policy") or {}),
         )
         if payload.get("policy_digest") != result.policy_digest:
-            raise AdaptivePlannerValidationError(
-                "frozen policy digest is inconsistent"
-            )
+            raise AdaptivePlannerValidationError("frozen policy digest is inconsistent")
         return result
 
 
@@ -454,9 +436,7 @@ class HardConstraintReceipt:
                 "unknown hard-constraint receipt fields: " + ", ".join(unknown)
             )
         if payload.get("schema") != HARD_CONSTRAINT_RECEIPT_SCHEMA:
-            raise AdaptivePlannerValidationError(
-                "unsupported hard-constraint receipt schema"
-            )
+            raise AdaptivePlannerValidationError("unsupported hard-constraint receipt schema")
         result = cls(
             constraint=payload.get("constraint", ""),
             candidate_id=payload.get("candidate_id", ""),
@@ -506,12 +486,9 @@ class AdaptivePlanCandidate:
             for item in self.hard_constraint_receipts
         )
         by_constraint = {item.constraint: item for item in receipts}
-        if len(receipts) != len(by_constraint) or set(by_constraint) != set(
-            HardPlanConstraint
-        ):
+        if len(receipts) != len(by_constraint) or set(by_constraint) != set(HardPlanConstraint):
             raise AdaptivePlannerValidationError(
-                "each candidate requires exactly one authority, scope, safety, "
-                "and proof receipt"
+                "each candidate requires exactly one authority, scope, safety, and proof receipt"
             )
         for receipt in receipts:
             expected = (
@@ -538,9 +515,7 @@ class AdaptivePlanCandidate:
                     "repair_transition must be a formal RepairTransition"
                 )
             if not formal_plan_id:
-                raise AdaptivePlannerValidationError(
-                    "a repair transition requires formal_plan_id"
-                )
+                raise AdaptivePlannerValidationError("a repair transition requires formal_plan_id")
             if self.repair_transition.repaired_plan_id != formal_plan_id:
                 raise AdaptivePlannerValidationError(
                     "repair transition does not produce formal_plan_id"
@@ -553,10 +528,7 @@ class AdaptivePlanCandidate:
             formal_plan_id=formal_plan_id,
             repair_transition=self.repair_transition,
         )
-        if any(
-            receipt.candidate_snapshot_id != snapshot_id
-            for receipt in receipts
-        ):
+        if any(receipt.candidate_snapshot_id != snapshot_id for receipt in receipts):
             raise AdaptivePlannerValidationError(
                 "hard-constraint receipt is not bound to the candidate content"
             )
@@ -584,11 +556,7 @@ class AdaptivePlanCandidate:
         )
 
     def receipt_for(self, constraint: HardPlanConstraint) -> HardConstraintReceipt:
-        return next(
-            item
-            for item in self.hard_constraint_receipts
-            if item.constraint is constraint
-        )
+        return next(item for item in self.hard_constraint_receipts if item.constraint is constraint)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -598,14 +566,10 @@ class AdaptivePlanCandidate:
             "goal_content_id": self.goal_content_id,
             "repository_tree_id": self.repository_tree_id,
             "policy_digest": self.policy_digest,
-            "hard_constraint_receipts": [
-                item.to_dict() for item in self.hard_constraint_receipts
-            ],
+            "hard_constraint_receipts": [item.to_dict() for item in self.hard_constraint_receipts],
             "formal_plan_id": self.formal_plan_id,
             "repair_transition": (
-                self.repair_transition.to_dict()
-                if self.repair_transition is not None
-                else None
+                self.repair_transition.to_dict() if self.repair_transition is not None else None
             ),
         }
 
@@ -646,9 +610,7 @@ class AdaptivePlanCandidate:
         )
         claimed = str(payload.get("candidate_id") or "")
         if claimed and claimed != result.candidate_id:
-            raise AdaptivePlannerValidationError(
-                "adaptive candidate identity does not match plan"
-            )
+            raise AdaptivePlannerValidationError("adaptive candidate identity does not match plan")
         claimed_snapshot = str(payload.get("candidate_snapshot_id") or "")
         if claimed_snapshot and claimed_snapshot != result.snapshot_id:
             raise AdaptivePlannerValidationError(
@@ -669,12 +631,8 @@ def _decode_profile_candidate(payload: Mapping[str, Any]) -> EvidenceAwarePlanCa
         branch.pop("expected_objective_delta_millionths") / 1_000_000
     )
     values["novelty"] = values.pop("novelty_millionths") / 1_000_000
-    values["estimated_resource_cost"] = (
-        values.pop("estimated_resource_cost_millionths") / 1_000_000
-    )
-    values["estimated_runtime_seconds"] = (
-        values.pop("estimated_runtime_milliseconds", 0) / 1_000
-    )
+    values["estimated_resource_cost"] = values.pop("estimated_resource_cost_millionths") / 1_000_000
+    values["estimated_runtime_seconds"] = values.pop("estimated_runtime_milliseconds", 0) / 1_000
     return EvidenceAwarePlanCandidate.from_dict({"branch": branch, **values})
 
 
@@ -704,8 +662,7 @@ def _decode_policy(payload: Mapping[str, Any]) -> EvidenceAwarePlanPolicy:
         values.pop("max_estimated_resource_cost_millionths") / 1_000_000
     )
     values["max_estimated_runtime_seconds"] = (
-        values.pop("max_estimated_runtime_milliseconds", 1_000_000_000)
-        / 1_000
+        values.pop("max_estimated_runtime_milliseconds", 1_000_000_000) / 1_000
     )
     return EvidenceAwarePlanPolicy.from_dict(values)
 
@@ -740,21 +697,16 @@ class AuthorityNonCompensationEvidence:
         object.__setattr__(
             self,
             "rejected_candidate_ids",
-            _ordered_strings(
-                self.rejected_candidate_ids, "rejected_candidate_ids"
-            ),
+            _ordered_strings(self.rejected_candidate_ids, "rejected_candidate_ids"),
         )
         object.__setattr__(
             self,
             "authority_receipt_ids",
-            _ordered_strings(
-                self.authority_receipt_ids, "authority_receipt_ids"
-            ),
+            _ordered_strings(self.authority_receipt_ids, "authority_receipt_ids"),
         )
         _integer(self.selected_cost_millionths, "selected_cost_millionths")
         costs = tuple(
-            _integer(item, "rejected_cost_millionths")
-            for item in self.rejected_cost_millionths
+            _integer(item, "rejected_cost_millionths") for item in self.rejected_cost_millionths
         )
         if len(costs) != len(self.rejected_candidate_ids):
             raise AdaptivePlannerValidationError(
@@ -793,9 +745,7 @@ class AuthorityNonCompensationEvidence:
         return payload
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "AuthorityNonCompensationEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AuthorityNonCompensationEvidence":
         allowed = {
             "schema",
             "evidence_id",
@@ -816,9 +766,7 @@ class AuthorityNonCompensationEvidence:
                 "unknown requirement evidence fields: " + ", ".join(unknown)
             )
         if payload.get("schema") != REQUIREMENT_EVIDENCE_SCHEMA:
-            raise AdaptivePlannerValidationError(
-                "unsupported requirement evidence schema"
-            )
+            raise AdaptivePlannerValidationError("unsupported requirement evidence schema")
         result = cls(
             requirement_id=payload.get("requirement_id", ""),
             producer_kind=payload.get("producer_kind", ""),
@@ -846,23 +794,15 @@ class AdaptivePlanSelectionReceipt:
     frozen_goal: FrozenPlanningGoal
     evaluation: EvidenceAwarePlanEvaluation
     hard_constraint_receipts: tuple[HardConstraintReceipt, ...]
-    authority_non_compensation_evidence: (
-        AuthorityNonCompensationEvidence | None
-    ) = None
+    authority_non_compensation_evidence: AuthorityNonCompensationEvidence | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.frozen_goal, FrozenPlanningGoal):
-            raise AdaptivePlannerValidationError(
-                "frozen_goal must be FrozenPlanningGoal"
-            )
+            raise AdaptivePlannerValidationError("frozen_goal must be FrozenPlanningGoal")
         if not isinstance(self.evaluation, EvidenceAwarePlanEvaluation):
-            raise AdaptivePlannerValidationError(
-                "evaluation must be EvidenceAwarePlanEvaluation"
-            )
+            raise AdaptivePlannerValidationError("evaluation must be EvidenceAwarePlanEvaluation")
         if self.evaluation.policy != self.frozen_goal.policy:
-            raise AdaptivePlannerValidationError(
-                "evaluation policy does not match frozen goal"
-            )
+            raise AdaptivePlannerValidationError("evaluation policy does not match frozen goal")
         try:
             validate_evidence_aware_plan_evaluation(self.evaluation)
         except PlanBranchValidationError as exc:
@@ -877,9 +817,7 @@ class AdaptivePlanSelectionReceipt:
             raise AdaptivePlannerValidationError(
                 "selection requires four hard receipts per candidate"
             )
-        receipt_matrix = {
-            (item.candidate_id, item.constraint): item for item in receipts
-        }
+        receipt_matrix = {(item.candidate_id, item.constraint): item for item in receipts}
         expected_matrix = {
             (candidate_id, constraint)
             for candidate_id in evaluated_ids
@@ -887,14 +825,11 @@ class AdaptivePlanSelectionReceipt:
         }
         if len(receipt_matrix) != len(receipts) or set(receipt_matrix) != expected_matrix:
             raise AdaptivePlannerValidationError(
-                "selection requires exactly one receipt for every "
-                "candidate/constraint pair"
+                "selection requires exactly one receipt for every candidate/constraint pair"
             )
         for candidate_id in evaluated_ids:
             snapshot_ids = {
-                receipt_matrix[
-                    (candidate_id, constraint)
-                ].candidate_snapshot_id
+                receipt_matrix[(candidate_id, constraint)].candidate_snapshot_id
                 for constraint in HardPlanConstraint
             }
             if len(snapshot_ids) != 1:
@@ -904,29 +839,20 @@ class AdaptivePlanSelectionReceipt:
         for receipt in receipts:
             if (
                 receipt.goal_content_id != self.frozen_goal.goal_content_id
-                or receipt.repository_tree_id
-                != self.frozen_goal.repository_tree_id
+                or receipt.repository_tree_id != self.frozen_goal.repository_tree_id
                 or receipt.policy_digest != self.frozen_goal.policy_digest
             ):
                 raise AdaptivePlannerValidationError(
                     "hard receipt does not match the frozen goal bindings"
                 )
-        evaluated_by_id = {
-            item.candidate_id: item for item in self.evaluation.ranked
-        }
+        evaluated_by_id = {item.candidate_id: item for item in self.evaluation.ranked}
         expected_failure_dimension = {
             HardPlanConstraint.AUTHORITY: (
                 PlanEvaluationDimension.CONFLICT_SCOPE_AND_AUTHORITY.value
             ),
-            HardPlanConstraint.SCOPE: (
-                PlanEvaluationDimension.CONFLICT_SCOPE_AND_AUTHORITY.value
-            ),
-            HardPlanConstraint.SAFETY: (
-                PlanEvaluationDimension.CONFLICT_SCOPE_AND_AUTHORITY.value
-            ),
-            HardPlanConstraint.PROOF: (
-                PlanEvaluationDimension.VALIDATION_AND_PROOF.value
-            ),
+            HardPlanConstraint.SCOPE: (PlanEvaluationDimension.CONFLICT_SCOPE_AND_AUTHORITY.value),
+            HardPlanConstraint.SAFETY: (PlanEvaluationDimension.CONFLICT_SCOPE_AND_AUTHORITY.value),
+            HardPlanConstraint.PROOF: (PlanEvaluationDimension.VALIDATION_AND_PROOF.value),
         }
         for receipt in receipts:
             if (
@@ -985,21 +911,16 @@ class AdaptivePlanSelectionReceipt:
             )
         if evidence is not None:
             if not isinstance(evidence, AuthorityNonCompensationEvidence):
-                raise AdaptivePlannerValidationError(
-                    "invalid authority non-compensation evidence"
-                )
+                raise AdaptivePlannerValidationError("invalid authority non-compensation evidence")
             if (
                 evidence.goal_content_id != self.frozen_goal.goal_content_id
-                or evidence.repository_tree_id
-                != self.frozen_goal.repository_tree_id
+                or evidence.repository_tree_id != self.frozen_goal.repository_tree_id
                 or evidence.policy_digest != self.frozen_goal.policy_digest
             ):
                 raise AdaptivePlannerValidationError(
                     "requirement evidence does not match frozen bindings"
                 )
-            if selected is None or (
-                evidence.selected_candidate_id != selected.candidate_id
-            ):
+            if selected is None or (evidence.selected_candidate_id != selected.candidate_id):
                 raise AdaptivePlannerValidationError(
                     "requirement evidence does not name the selected candidate"
                 )
@@ -1026,9 +947,7 @@ class AdaptivePlanSelectionReceipt:
                 raise AdaptivePlannerValidationError(
                     "authority non-compensation evidence is incomplete or inconsistent"
                 )
-            rejected = {
-                item.candidate_id: item for item in self.evaluation.rejected
-            }
+            rejected = {item.candidate_id: item for item in self.evaluation.rejected}
             for candidate_id, claimed_cost, claimed_receipt_id in zip(
                 evidence.rejected_candidate_ids,
                 evidence.rejected_cost_millionths,
@@ -1039,9 +958,7 @@ class AdaptivePlanSelectionReceipt:
                     raise AdaptivePlannerValidationError(
                         "requirement evidence names a candidate that was not rejected"
                     )
-                authority_receipt = receipt_matrix[
-                    (candidate_id, HardPlanConstraint.AUTHORITY)
-                ]
+                authority_receipt = receipt_matrix[(candidate_id, HardPlanConstraint.AUTHORITY)]
                 if authority_receipt.passed:
                     raise AdaptivePlannerValidationError(
                         "requirement evidence requires a failed authority receipt"
@@ -1057,11 +974,7 @@ class AdaptivePlanSelectionReceipt:
 
     @property
     def selected(self) -> EvidenceAwarePlanCandidate | None:
-        return (
-            self.evaluation.selected.candidate
-            if self.evaluation.selected is not None
-            else None
-        )
+        return self.evaluation.selected.candidate if self.evaluation.selected is not None else None
 
     @property
     def selected_candidate_id(self) -> str | None:
@@ -1141,11 +1054,7 @@ class AdaptivePlanSelectionReceipt:
         # criterion population, verified status, current tree, and freshness.
         coverage_value = payload(coverage)
         coverage_rows_value = coverage_value.get("criteria")
-        coverage_rows = (
-            coverage_rows_value
-            if isinstance(coverage_rows_value, list)
-            else []
-        )
+        coverage_rows = coverage_rows_value if isinstance(coverage_rows_value, list) else []
         coverage_bindings_complete = bool(coverage_rows) and all(
             isinstance(row, Mapping)
             and bool(str(row.get("implementation") or "").strip())
@@ -1154,11 +1063,7 @@ class AdaptivePlanSelectionReceipt:
         )
         if not coverage_bindings_complete:
             reasons_value = coverage_value.get("reason_codes")
-            reasons = (
-                list(reasons_value)
-                if isinstance(reasons_value, (list, tuple))
-                else []
-            )
+            reasons = list(reasons_value) if isinstance(reasons_value, (list, tuple)) else []
             coverage_value = {
                 **coverage_value,
                 "verified": False,
@@ -1174,17 +1079,12 @@ class AdaptivePlanSelectionReceipt:
         # exhaustive.
         quorum_value = payload(exhaustion_quorum)
         quorum_members_value = quorum_value.get("members")
-        quorum_members = (
-            quorum_members_value
-            if isinstance(quorum_members_value, list)
-            else []
-        )
+        quorum_members = quorum_members_value if isinstance(quorum_members_value, list) else []
         quorum_members_healthy = bool(quorum_members) and all(
             isinstance(member, Mapping)
             and member.get("healthy") is True
             and member.get("safe_for_completion_reasoning") is True
-            and str(member.get("scan_mode") or "").strip().lower()
-            == "exhaustive"
+            and str(member.get("scan_mode") or "").strip().lower() == "exhaustive"
             for member in quorum_members
         )
         required_members = quorum_value.get("required_members")
@@ -1222,19 +1122,12 @@ class AdaptivePlanSelectionReceipt:
             )
 
         binding_value = quorum_value.get("binding")
-        binding = (
-            dict(binding_value)
-            if isinstance(binding_value, Mapping)
-            else {}
-        )
-        binding_is_current = (
-            binding.get("tree_id") == self.frozen_goal.repository_tree_id
-            and all(
-                isinstance(member, Mapping)
-                and isinstance(member.get("binding"), Mapping)
-                and dict(member["binding"]) == binding
-                for member in quorum_members
-            )
+        binding = dict(binding_value) if isinstance(binding_value, Mapping) else {}
+        binding_is_current = binding.get("tree_id") == self.frozen_goal.repository_tree_id and all(
+            isinstance(member, Mapping)
+            and isinstance(member.get("binding"), Mapping)
+            and dict(member["binding"]) == binding
+            for member in quorum_members
         )
         if not (
             quorum_members_healthy
@@ -1252,9 +1145,7 @@ class AdaptivePlanSelectionReceipt:
 
         values: dict[str, Any] = {
             "current_state": current_state,
-            "acceptance_criteria": (
-                AUTHORITY_NON_COMPENSATION_ACCEPTANCE_CRITERIA
-            ),
+            "acceptance_criteria": (AUTHORITY_NON_COMPENSATION_ACCEPTANCE_CRITERIA),
             "evidence": evidence,
             "tasks_complete": tasks_complete,
             "repository_tree": self.frozen_goal.repository_tree_id,
@@ -1285,9 +1176,7 @@ class AdaptivePlanSelectionReceipt:
             "evaluator_version": EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION,
             "frozen_goal": self.frozen_goal.to_dict(),
             "evaluation": self.evaluation.to_profile_g_dict(),
-            "hard_constraint_receipts": [
-                item.to_dict() for item in self.hard_constraint_receipts
-            ],
+            "hard_constraint_receipts": [item.to_dict() for item in self.hard_constraint_receipts],
             "proved_requirement_ids": list(self.proved_requirement_ids),
             "authority_non_compensation_evidence": (
                 self.authority_non_compensation_evidence.to_dict()
@@ -1300,9 +1189,7 @@ class AdaptivePlanSelectionReceipt:
         return payload
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "AdaptivePlanSelectionReceipt":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptivePlanSelectionReceipt":
         allowed = {
             "schema",
             "receipt_id",
@@ -1320,20 +1207,11 @@ class AdaptivePlanSelectionReceipt:
                 "unknown adaptive-plan receipt fields: " + ", ".join(unknown)
             )
         if payload.get("schema") != ADAPTIVE_PLAN_SELECTION_SCHEMA:
-            raise AdaptivePlannerValidationError(
-                "unsupported adaptive-plan selection schema"
-            )
+            raise AdaptivePlannerValidationError("unsupported adaptive-plan selection schema")
         if payload.get("planner_version") != ADAPTIVE_PLANNER_VERSION:
-            raise AdaptivePlannerValidationError(
-                "unsupported adaptive planner version"
-            )
-        if (
-            payload.get("evaluator_version")
-            != EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION
-        ):
-            raise AdaptivePlannerValidationError(
-                "unsupported adaptive receipt evaluator version"
-            )
+            raise AdaptivePlannerValidationError("unsupported adaptive planner version")
+        if payload.get("evaluator_version") != EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION:
+            raise AdaptivePlannerValidationError("unsupported adaptive receipt evaluator version")
         frozen_goal = FrozenPlanningGoal.from_dict(payload["frozen_goal"])
         policy = frozen_goal.policy
         evaluation_payload = payload["evaluation"]
@@ -1345,12 +1223,10 @@ class AdaptivePlanSelectionReceipt:
                     else None
                 ),
                 admissible=tuple(
-                    _decode_evaluated(item)
-                    for item in evaluation_payload.get("admissible") or ()
+                    _decode_evaluated(item) for item in evaluation_payload.get("admissible") or ()
                 ),
                 rejected=tuple(
-                    _decode_evaluated(item)
-                    for item in evaluation_payload.get("rejected") or ()
+                    _decode_evaluated(item) for item in evaluation_payload.get("rejected") or ()
                 ),
                 policy=policy,
                 evaluator_version=evaluation_payload.get(
@@ -1376,12 +1252,8 @@ class AdaptivePlanSelectionReceipt:
                 else None
             ),
         )
-        if tuple(payload.get("proved_requirement_ids") or ()) != (
-            result.proved_requirement_ids
-        ):
-            raise AdaptivePlannerValidationError(
-                "proved requirement projection is inconsistent"
-            )
+        if tuple(payload.get("proved_requirement_ids") or ()) != (result.proved_requirement_ids):
+            raise AdaptivePlannerValidationError("proved requirement projection is inconsistent")
         claimed = str(payload.get("receipt_id") or "")
         if claimed and claimed != result.receipt_id:
             raise AdaptivePlannerValidationError(
@@ -1473,10 +1345,14 @@ def deterministic_hard_gate_receipts(
     receipts: list[HardConstraintReceipt] = []
     for constraint in HardPlanConstraint:
         passed, producer, observations = decisions[constraint]
-        reasons = () if passed else tuple(
-            re.sub(r"[^a-z0-9_:-]+", "_", item.casefold()).strip("_")
-            or f"{constraint.value}_failed"
-            for item in observations
+        reasons = (
+            ()
+            if passed
+            else tuple(
+                re.sub(r"[^a-z0-9_:-]+", "_", item.casefold()).strip("_")
+                or f"{constraint.value}_failed"
+                for item in observations
+            )
         )
         evidence_id = content_identity(
             {
@@ -1534,12 +1410,8 @@ def _normalize_gate_receipts(
             passed = observation.get("passed")
             reason_codes = tuple(observation.get("reason_codes") or ())
             evidence_ids = tuple(observation.get("evidence_ids") or ())
-            producer_kind = observation.get(
-                "producer_kind", default[constraint].producer_kind
-            )
-            producer_id = observation.get(
-                "producer_id", default[constraint].producer_id
-            )
+            producer_kind = observation.get("producer_kind", default[constraint].producer_kind)
+            producer_id = observation.get("producer_id", default[constraint].producer_id)
         else:
             passed = observation
             reason_codes = () if passed is True else (f"{constraint.value}_failed",)
@@ -1572,13 +1444,9 @@ class AdaptivePlanningRunReceipt:
 
     def __post_init__(self) -> None:
         if not isinstance(self.routing, AdaptiveCandidateRoutingResult):
-            raise AdaptivePlannerValidationError(
-                "routing must be AdaptiveCandidateRoutingResult"
-            )
+            raise AdaptivePlannerValidationError("routing must be AdaptiveCandidateRoutingResult")
         if not isinstance(self.selection, AdaptivePlanSelectionReceipt):
-            raise AdaptivePlannerValidationError(
-                "selection must be AdaptivePlanSelectionReceipt"
-            )
+            raise AdaptivePlannerValidationError("selection must be AdaptivePlanSelectionReceipt")
         request = self.routing.request
         goal = self.selection.frozen_goal
         if (
@@ -1656,13 +1524,10 @@ class AdaptivePlanningRunReceipt:
             ),
             "non_selection_reasons": {
                 candidate_id: list(reasons)
-                for candidate_id, reasons in sorted(
-                    self.non_selection_reasons.items()
-                )
+                for candidate_id, reasons in sorted(self.non_selection_reasons.items())
             },
             "paired_quality_cost_metrics": [
-                item.quality_cost_metrics.to_dict()
-                for item in self.selection.evaluation.ranked
+                item.quality_cost_metrics.to_dict() for item in self.selection.evaluation.ranked
             ],
         }
         if include_identity:
@@ -1688,18 +1553,14 @@ class AdaptivePlanningRunReceipt:
                 "unknown adaptive-planning run fields: " + ", ".join(unknown)
             )
         if payload.get("schema") != ADAPTIVE_PLANNING_RUN_SCHEMA:
-            raise AdaptivePlannerValidationError(
-                "unsupported adaptive-planning run schema"
-            )
+            raise AdaptivePlannerValidationError("unsupported adaptive-planning run schema")
         try:
             result = cls(
                 routing=AdaptiveCandidateRoutingResult.from_dict(payload["routing"]),
                 selection=AdaptivePlanSelectionReceipt.from_dict(payload["selection"]),
             )
         except (KeyError, TypeError, ValueError) as exc:
-            raise AdaptivePlannerValidationError(
-                f"invalid adaptive-planning run: {exc}"
-            ) from exc
+            raise AdaptivePlannerValidationError(f"invalid adaptive-planning run: {exc}") from exc
         expected = result.to_dict(include_identity=False)
         for field in (
             "selected_candidate_id",
@@ -1730,9 +1591,7 @@ class EvidenceAwarePlanningCompletionEvidence:
     unchanged_backoff_receipt: AdaptiveRefinementReceipt
     objective_id: str = EVIDENCE_AWARE_PLANNING_OBJECTIVE_ID
     objective_revision: str = EVIDENCE_AWARE_PLANNING_OBJECTIVE_REVISION
-    producing_task_ids: tuple[str, ...] = (
-        EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS
-    )
+    producing_task_ids: tuple[str, ...] = EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS
 
     def __post_init__(self) -> None:
         if not isinstance(self.planning_run, AdaptivePlanningRunReceipt):
@@ -1753,9 +1612,7 @@ class EvidenceAwarePlanningCompletionEvidence:
                 "planning completion evidence objective is not ASI-G030"
             )
         if self.objective_revision != EVIDENCE_AWARE_PLANNING_OBJECTIVE_REVISION:
-            raise AdaptivePlannerValidationError(
-                "unsupported ASI-G030 objective revision"
-            )
+            raise AdaptivePlannerValidationError("unsupported ASI-G030 objective revision")
         task_ids = tuple(sorted(_strings(self.producing_task_ids, "producing_task_ids")))
         if task_ids != tuple(sorted(EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS)):
             raise AdaptivePlannerValidationError(
@@ -1775,16 +1632,18 @@ class EvidenceAwarePlanningCompletionEvidence:
                 "planning run lacks the bound hard-safety requirement witness"
             )
         changed = self.changed_refinement_receipt
-        if changed.proved_requirement_ids != (
-            NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
-        ) or changed.new_counterexample_evidence is None:
+        if (
+            changed.proved_requirement_ids != (NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,)
+            or changed.new_counterexample_evidence is None
+        ):
             raise AdaptivePlannerValidationError(
                 "changed refinement receipt lacks its counterexample witness"
             )
         backed_off = self.unchanged_backoff_receipt
-        if backed_off.proved_requirement_ids != (
-            UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,
-        ) or backed_off.unchanged_failure_backoff_evidence is None:
+        if (
+            backed_off.proved_requirement_ids != (UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID,)
+            or backed_off.unchanged_failure_backoff_evidence is None
+        ):
             raise AdaptivePlannerValidationError(
                 "backoff receipt lacks its unchanged-failure witness"
             )
@@ -1845,15 +1704,9 @@ class EvidenceAwarePlanningCompletionEvidence:
                 "requirement_ids": list(self.requirement_ids),
                 "producing_task_ids": list(self.producing_task_ids),
                 "planning_run_id": self.planning_run.run_id,
-                "changed_refinement_receipt_id": (
-                    self.changed_refinement_receipt.receipt_id
-                ),
-                "backoff_source_receipt_id": (
-                    self.backoff_source_receipt.receipt_id
-                ),
-                "unchanged_backoff_receipt_id": (
-                    self.unchanged_backoff_receipt.receipt_id
-                ),
+                "changed_refinement_receipt_id": (self.changed_refinement_receipt.receipt_id),
+                "backoff_source_receipt_id": (self.backoff_source_receipt.receipt_id),
+                "unchanged_backoff_receipt_id": (self.unchanged_backoff_receipt.receipt_id),
             }
         )
 
@@ -1866,13 +1719,9 @@ class EvidenceAwarePlanningCompletionEvidence:
             "requirement_ids": list(self.requirement_ids),
             "producing_task_ids": list(self.producing_task_ids),
             "planning_run": self.planning_run.to_dict(),
-            "changed_refinement_receipt": (
-                self.changed_refinement_receipt.to_dict()
-            ),
+            "changed_refinement_receipt": (self.changed_refinement_receipt.to_dict()),
             "backoff_source_receipt": self.backoff_source_receipt.to_dict(),
-            "unchanged_backoff_receipt": (
-                self.unchanged_backoff_receipt.to_dict()
-            ),
+            "unchanged_backoff_receipt": (self.unchanged_backoff_receipt.to_dict()),
             "completion_authority": False,
             "safe_for_completion_reasoning": False,
         }
@@ -1881,9 +1730,7 @@ class EvidenceAwarePlanningCompletionEvidence:
         return payload
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "EvidenceAwarePlanningCompletionEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "EvidenceAwarePlanningCompletionEvidence":
         allowed = {
             "schema",
             "objective_id",
@@ -1902,15 +1749,10 @@ class EvidenceAwarePlanningCompletionEvidence:
         unknown = sorted(str(key) for key in payload if key not in allowed)
         if unknown:
             raise AdaptivePlannerValidationError(
-                "unknown planning completion evidence fields: "
-                + ", ".join(unknown)
+                "unknown planning completion evidence fields: " + ", ".join(unknown)
             )
-        if payload.get("schema") != (
-            EVIDENCE_AWARE_PLANNING_COMPLETION_EVIDENCE_SCHEMA
-        ):
-            raise AdaptivePlannerValidationError(
-                "unsupported planning completion evidence schema"
-            )
+        if payload.get("schema") != (EVIDENCE_AWARE_PLANNING_COMPLETION_EVIDENCE_SCHEMA):
+            raise AdaptivePlannerValidationError("unsupported planning completion evidence schema")
         if (
             payload.get("completion_authority") is not False
             or payload.get("safe_for_completion_reasoning") is not False
@@ -1920,9 +1762,7 @@ class EvidenceAwarePlanningCompletionEvidence:
             )
         try:
             result = cls(
-                planning_run=AdaptivePlanningRunReceipt.from_dict(
-                    payload["planning_run"]
-                ),
+                planning_run=AdaptivePlanningRunReceipt.from_dict(payload["planning_run"]),
                 changed_refinement_receipt=AdaptiveRefinementReceipt.from_dict(
                     payload["changed_refinement_receipt"]
                 ),
@@ -1934,9 +1774,7 @@ class EvidenceAwarePlanningCompletionEvidence:
                 ),
                 objective_id=payload.get("objective_id", ""),
                 objective_revision=payload.get("objective_revision", ""),
-                producing_task_ids=tuple(
-                    payload.get("producing_task_ids") or ()
-                ),
+                producing_task_ids=tuple(payload.get("producing_task_ids") or ()),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise AdaptivePlannerValidationError(
@@ -1965,9 +1803,7 @@ class EvidenceAwarePlanningCompletionEvidence:
         coverage: Any = None,
         analyzer_health: Any = None,
         exhaustion_quorum: Any = None,
-        required_exhaustive_receipts: int = (
-            EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS
-        ),
+        required_exhaustive_receipts: int = (EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS),
         child_goals: Sequence[Any] = (),
         now: Any = None,
         freshness_seconds: float | None = None,
@@ -1983,8 +1819,7 @@ class EvidenceAwarePlanningCompletionEvidence:
         if (
             isinstance(required_exhaustive_receipts, bool)
             or not isinstance(required_exhaustive_receipts, int)
-            or required_exhaustive_receipts
-            != EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS
+            or required_exhaustive_receipts != EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS
         ):
             raise ValueError(
                 "required_exhaustive_receipts must equal the configured "
@@ -2004,8 +1839,7 @@ class EvidenceAwarePlanningCompletionEvidence:
 
         task_values = [payload(item) for item in producing_tasks]
         task_ids = [
-            str(item.get("task_id") or item.get("id") or "").strip()
-            for item in task_values
+            str(item.get("task_id") or item.get("id") or "").strip() for item in task_values
         ]
         successful = {
             "completed",
@@ -2018,13 +1852,9 @@ class EvidenceAwarePlanningCompletionEvidence:
         }
         producing_tasks_complete = (
             len(task_ids) == len(set(task_ids))
-            and tuple(sorted(task_ids))
-            == tuple(sorted(EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS))
+            and tuple(sorted(task_ids)) == tuple(sorted(EVIDENCE_AWARE_PLANNING_PRODUCING_TASK_IDS))
             and all(
-                str(item.get("status") or item.get("state") or "")
-                .strip()
-                .lower()
-                in successful
+                str(item.get("status") or item.get("state") or "").strip().lower() in successful
                 for item in task_values
             )
         )
@@ -2035,10 +1865,7 @@ class EvidenceAwarePlanningCompletionEvidence:
             source = item.get("evidence", item)
             source = source if isinstance(source, Mapping) else item
             criterion = " ".join(
-                str(source.get("acceptance_criterion") or "")
-                .strip()
-                .lower()
-                .split()
+                str(source.get("acceptance_criterion") or "").strip().lower().split()
             )
             receipt_id = str(
                 source.get(
@@ -2048,28 +1875,21 @@ class EvidenceAwarePlanningCompletionEvidence:
                 or ""
             ).strip()
             if criterion and receipt_id:
-                receipts_by_criterion.setdefault(criterion, set()).add(
-                    receipt_id
-                )
+                receipts_by_criterion.setdefault(criterion, set()).add(receipt_id)
 
         coverage_projection = getattr(coverage, "completion_gate_evidence", None)
         if callable(coverage_projection):
             try:
-                projected = coverage_projection(
-                    EVIDENCE_AWARE_PLANNING_OBJECTIVE_ID
-                )
+                projected = coverage_projection(EVIDENCE_AWARE_PLANNING_OBJECTIVE_ID)
             except (TypeError, ValueError):
                 projected = {}
-            coverage_value = (
-                dict(projected) if isinstance(projected, Mapping) else {}
-            )
+            coverage_value = dict(projected) if isinstance(projected, Mapping) else {}
         else:
             coverage_value = payload(coverage)
         rows_value = coverage_value.get("criteria")
         rows = rows_value if isinstance(rows_value, list) else []
         expected_criteria = {
-            " ".join(item.lower().split())
-            for item in EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA
+            " ".join(item.lower().split()) for item in EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA
         }
         row_keys = [
             " ".join(
@@ -2115,11 +1935,7 @@ class EvidenceAwarePlanningCompletionEvidence:
                 raw = (raw,)
             if not isinstance(raw, Sequence):
                 return set()
-            return {
-                str(item or "").strip()
-                for item in raw
-                if str(item or "").strip()
-            }
+            return {str(item or "").strip() for item in raw if str(item or "").strip()}
 
         coverage_bound = (
             len(row_keys) == len(expected_criteria)
@@ -2175,14 +1991,9 @@ class EvidenceAwarePlanningCompletionEvidence:
         }
         health_value = payload(analyzer_health)
         health_binding = health_value.get("binding")
-        health_binding = (
-            dict(health_binding)
-            if isinstance(health_binding, Mapping)
-            else {}
-        )
+        health_binding = dict(health_binding) if isinstance(health_binding, Mapping) else {}
         binding_complete = all(
-            health_binding.get(name) == value
-            for name, value in expected_binding_fields.items()
+            health_binding.get(name) == value for name, value in expected_binding_fields.items()
         ) and all(
             str(health_binding.get(name) or "").strip()
             for name in (
@@ -2192,8 +2003,7 @@ class EvidenceAwarePlanningCompletionEvidence:
             )
         )
         health_valid = (
-            str(health_value.get("status") or "").strip().lower()
-            == "healthy"
+            str(health_value.get("status") or "").strip().lower() == "healthy"
             and health_value.get("healthy") is True
             and health_value.get("safe_for_completion_reasoning") is True
             and binding_complete
@@ -2210,18 +2020,12 @@ class EvidenceAwarePlanningCompletionEvidence:
             # the generic completion gate's health vocabulary.
             health_value = {**health_value, "exhaustive": True}
 
-        evaluated_quorum = isinstance(
-            exhaustion_quorum, ExhaustionQuorumResult
-        )
+        evaluated_quorum = isinstance(exhaustion_quorum, ExhaustionQuorumResult)
         quorum_value = payload(exhaustion_quorum)
         members_value = quorum_value.get("members")
         members = members_value if isinstance(members_value, list) else []
         quorum_binding = quorum_value.get("binding")
-        quorum_binding = (
-            dict(quorum_binding)
-            if isinstance(quorum_binding, Mapping)
-            else {}
-        )
+        quorum_binding = dict(quorum_binding) if isinstance(quorum_binding, Mapping) else {}
         identifiers = tuple(
             [
                 str(member.get("member_id") or "").strip()
@@ -2241,11 +2045,7 @@ class EvidenceAwarePlanningCompletionEvidence:
         )
 
         def independent(values: Sequence[str]) -> bool:
-            return (
-                len(values) == len(members)
-                and all(values)
-                and len(values) == len(set(values))
-            )
+            return len(values) == len(members) and all(values) and len(values) == len(set(values))
 
         member_semantics = bool(members) and (
             evaluated_quorum
@@ -2253,8 +2053,7 @@ class EvidenceAwarePlanningCompletionEvidence:
                 isinstance(member, Mapping)
                 and member.get("healthy") is True
                 and member.get("safe_for_completion_reasoning") is True
-                and str(member.get("scan_mode") or "").lower()
-                == "exhaustive"
+                and str(member.get("scan_mode") or "").lower() == "exhaustive"
                 for member in members
             )
         )
@@ -2262,8 +2061,7 @@ class EvidenceAwarePlanningCompletionEvidence:
             quorum_value.get("required_members")
             == EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS
             and quorum_value.get("member_count") == len(members)
-            and len(members)
-            >= EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS
+            and len(members) >= EVIDENCE_AWARE_PLANNING_REQUIRED_EXHAUSTIVE_RECEIPTS
             and quorum_value.get("satisfied") is True
             and member_semantics
             and independent(identifiers)
@@ -2286,14 +2084,10 @@ class EvidenceAwarePlanningCompletionEvidence:
         else:
             translated_members = []
             for member in members:
-                channel = str(
-                    member.get("evidence_channel") or ""
-                ).strip().lower()
+                channel = str(member.get("evidence_channel") or "").strip().lower()
                 scan_mode = str(member.get("scan_mode") or "").strip().lower()
                 is_audit = (
-                    "audit" in channel
-                    or scan_mode == "audit"
-                    or scan_mode.endswith("_audit")
+                    "audit" in channel or scan_mode == "audit" or scan_mode.endswith("_audit")
                 )
                 translated_members.append(
                     {
@@ -2319,22 +2113,15 @@ class EvidenceAwarePlanningCompletionEvidence:
 
         child_values = [payload(item) for item in child_goals]
         child_ids = [
-            str(item.get("goal_id") or item.get("id") or "").strip()
-            for item in child_values
+            str(item.get("goal_id") or item.get("id") or "").strip() for item in child_values
         ]
-        child_population_complete = (
-            len(child_ids) == len(set(child_ids))
-            and tuple(sorted(child_ids))
-            == tuple(sorted(EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS))
-        )
+        child_population_complete = len(child_ids) == len(set(child_ids)) and tuple(
+            sorted(child_ids)
+        ) == tuple(sorted(EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS))
         child_bindings_complete = child_population_complete and all(
             isinstance(item.get("completion_gate"), Mapping)
-            and isinstance(
-                item["completion_gate"].get("evaluated_evidence"), Mapping
-            )
-            and item["completion_gate"]["evaluated_evidence"].get(
-                "repository_tree"
-            )
+            and isinstance(item["completion_gate"].get("evaluated_evidence"), Mapping)
+            and item["completion_gate"]["evaluated_evidence"].get("repository_tree")
             == self.repository_tree_id
             and bool(item.get("proof_requirements"))
             for item in child_values
@@ -2347,22 +2134,16 @@ class EvidenceAwarePlanningCompletionEvidence:
                     "verified": False,
                     "completion_gate": {
                         "passed": False,
-                        "reason_code": (
-                            "required_descendant_population_or_binding_incomplete"
-                        ),
+                        "reason_code": ("required_descendant_population_or_binding_incomplete"),
                     },
                 }
             )
 
         values: dict[str, Any] = {
             "current_state": current_state,
-            "acceptance_criteria": (
-                EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA
-            ),
+            "acceptance_criteria": (EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA),
             "evidence": evidence,
-            "tasks_complete": bool(
-                tasks_complete and producing_tasks_complete
-            ),
+            "tasks_complete": bool(tasks_complete and producing_tasks_complete),
             "repository_tree": self.repository_tree_id,
             "now": now,
             "analysis_inconclusive": analysis_inconclusive,
@@ -2465,9 +2246,7 @@ class HardConstrainedPlanSelectionReceipt:
 
     def __post_init__(self) -> None:
         if not isinstance(self.frozen_goal, FrozenPlanningGoal):
-            raise AdaptivePlannerValidationError(
-                "frozen_goal must be FrozenPlanningGoal"
-            )
+            raise AdaptivePlannerValidationError("frozen_goal must be FrozenPlanningGoal")
         bindings = tuple(
             (
                 _text(item[0], "candidate_id"),
@@ -2476,9 +2255,7 @@ class HardConstrainedPlanSelectionReceipt:
             for item in self.candidate_bindings
         )
         if len({item[0] for item in bindings}) != len(bindings):
-            raise AdaptivePlannerValidationError(
-                "hard-constrained candidate ids must be unique"
-            )
+            raise AdaptivePlannerValidationError("hard-constrained candidate ids must be unique")
         if len({item[1] for item in bindings}) != len(bindings):
             raise AdaptivePlannerValidationError(
                 "hard-constrained candidate plan ids must be unique"
@@ -2490,17 +2267,13 @@ class HardConstrainedPlanSelectionReceipt:
         receipts = tuple(self.admission_receipts)
         if any(not isinstance(item, receipt_type) for item in receipts):
             raise AdaptivePlannerValidationError(
-                "admission_receipts must contain typed PlanAdmissionReceipt "
-                "instances"
+                "admission_receipts must contain typed PlanAdmissionReceipt instances"
             )
-        by_plan_id = {
-            _admission_candidate_plan_id(item): item for item in receipts
-        }
+        by_plan_id = {_admission_candidate_plan_id(item): item for item in receipts}
         expected_plan_ids = {item[1] for item in bindings}
         if len(by_plan_id) != len(receipts) or set(by_plan_id) != expected_plan_ids:
             raise AdaptivePlannerValidationError(
-                "plan admission receipts must exactly cover the candidate "
-                "plan ids"
+                "plan admission receipts must exactly cover the candidate plan ids"
             )
         for receipt in receipts:
             if (
@@ -2520,9 +2293,7 @@ class HardConstrainedPlanSelectionReceipt:
         object.__setattr__(
             self,
             "admission_receipts",
-            tuple(
-                sorted(receipts, key=_admission_candidate_plan_id)
-            ),
+            tuple(sorted(receipts, key=_admission_candidate_plan_id)),
         )
 
         roots = tuple(
@@ -2542,9 +2313,7 @@ class HardConstrainedPlanSelectionReceipt:
                     "plan admission receipt semantic roots are stale"
                 )
 
-        adaptive_by_plan = {
-            plan_id: candidate_id for candidate_id, plan_id in bindings
-        }
+        adaptive_by_plan = {plan_id: candidate_id for candidate_id, plan_id in bindings}
         admitted_ids = {
             adaptive_by_plan[_admission_candidate_plan_id(item)]
             for item in receipts
@@ -2564,20 +2333,16 @@ class HardConstrainedPlanSelectionReceipt:
                 raise AdaptivePlannerValidationError(
                     "adaptive selection does not match the frozen goal"
                 )
-            evaluated_ids = {
-                item.candidate_id for item in self.selection.evaluation.ranked
-            }
+            evaluated_ids = {item.candidate_id for item in self.selection.evaluation.ranked}
             if evaluated_ids != admitted_ids:
                 raise AdaptivePlannerValidationError(
-                    "adaptive selection must evaluate exactly the admitted "
-                    "candidate population"
+                    "adaptive selection must evaluate exactly the admitted candidate population"
                 )
 
     @property
     def admitted_candidate_ids(self) -> tuple[str, ...]:
         adaptive_by_plan = {
-            plan_id: candidate_id
-            for candidate_id, plan_id in self.candidate_bindings
+            plan_id: candidate_id for candidate_id, plan_id in self.candidate_bindings
         }
         return tuple(
             sorted(
@@ -2590,17 +2355,11 @@ class HardConstrainedPlanSelectionReceipt:
     @property
     def rejected_candidate_ids(self) -> tuple[str, ...]:
         admitted = set(self.admitted_candidate_ids)
-        return tuple(
-            item[0] for item in self.candidate_bindings if item[0] not in admitted
-        )
+        return tuple(item[0] for item in self.candidate_bindings if item[0] not in admitted)
 
     @property
     def selected_candidate_id(self) -> str | None:
-        return (
-            self.selection.selected_candidate_id
-            if self.selection is not None
-            else None
-        )
+        return self.selection.selected_candidate_id if self.selection is not None else None
 
     @property
     def selected_plan_id(self) -> str | None:
@@ -2622,8 +2381,7 @@ class HardConstrainedPlanSelectionReceipt:
     @property
     def admission_receipt_ids(self) -> Mapping[str, str]:
         adaptive_by_plan = {
-            plan_id: candidate_id
-            for candidate_id, plan_id in self.candidate_bindings
+            plan_id: candidate_id for candidate_id, plan_id in self.candidate_bindings
         }
         return MappingProxyType(
             {
@@ -2637,8 +2395,7 @@ class HardConstrainedPlanSelectionReceipt:
 
     def _rejected_receipts_by_candidate(self) -> dict[str, Any]:
         adaptive_by_plan = {
-            plan_id: candidate_id
-            for candidate_id, plan_id in self.candidate_bindings
+            plan_id: candidate_id for candidate_id, plan_id in self.candidate_bindings
         }
         return {
             adaptive_by_plan[_admission_candidate_plan_id(item)]: item
@@ -2657,9 +2414,7 @@ class HardConstrainedPlanSelectionReceipt:
                         getattr(receipt, "reason_codes", ()),
                     )
                 )
-                for candidate_id, receipt in sorted(
-                    self._rejected_receipts_by_candidate().items()
-                )
+                for candidate_id, receipt in sorted(self._rejected_receipts_by_candidate().items())
             }
         )
 
@@ -2668,9 +2423,7 @@ class HardConstrainedPlanSelectionReceipt:
         return MappingProxyType(
             {
                 candidate_id: tuple(getattr(receipt, "counterexamples", ()))
-                for candidate_id, receipt in sorted(
-                    self._rejected_receipts_by_candidate().items()
-                )
+                for candidate_id, receipt in sorted(self._rejected_receipts_by_candidate().items())
             }
         )
 
@@ -2685,9 +2438,7 @@ class HardConstrainedPlanSelectionReceipt:
                         getattr(receipt, "replan_action_ids", ()),
                     )
                 )
-                for candidate_id, receipt in sorted(
-                    self._rejected_receipts_by_candidate().items()
-                )
+                for candidate_id, receipt in sorted(self._rejected_receipts_by_candidate().items())
             }
         )
 
@@ -2708,9 +2459,7 @@ class HardConstrainedPlanSelectionReceipt:
                 for candidate_id, plan_id in self.candidate_bindings
             ],
             "semantic_roots": dict(self.semantic_roots),
-            "admission_receipts": [
-                _receipt_projection(item) for item in self.admission_receipts
-            ],
+            "admission_receipts": [_receipt_projection(item) for item in self.admission_receipts],
             "admitted_candidate_ids": list(self.admitted_candidate_ids),
             "rejected_candidate_ids": list(self.rejected_candidate_ids),
             "rejection_reasons": {
@@ -2718,29 +2467,20 @@ class HardConstrainedPlanSelectionReceipt:
             },
             "counterexamples": {
                 key: [
-                    (
-                        item.to_dict()
-                        if callable(getattr(item, "to_dict", None))
-                        else item
-                    )
+                    (item.to_dict() if callable(getattr(item, "to_dict", None)) else item)
                     for item in value
                 ]
                 for key, value in self.counterexamples.items()
             },
             "local_replan_action_ids": {
-                key: list(value)
-                for key, value in self.local_replan_action_ids.items()
+                key: list(value) for key, value in self.local_replan_action_ids.items()
             },
             "admission_receipt_ids": dict(self.admission_receipt_ids),
             "selected_candidate_id": self.selected_candidate_id,
             "selected_plan_id": self.selected_plan_id,
             "used_no_model_fallback": self.used_no_model_fallback,
             "selection_source": self.selection_source,
-            "selection": (
-                self.selection.to_dict()
-                if self.selection is not None
-                else None
-            ),
+            "selection": (self.selection.to_dict() if self.selection is not None else None),
         }
         if include_identity:
             payload["receipt_id"] = self.receipt_id
@@ -2751,9 +2491,7 @@ class AdaptivePlanner:
     """Select an admissible branch for one frozen goal and emit its evidence."""
 
     def __init__(self, *, max_candidates: int = 32) -> None:
-        self.max_candidates = _integer(
-            max_candidates, "max_candidates", minimum=1
-        )
+        self.max_candidates = _integer(max_candidates, "max_candidates", minimum=1)
 
     def select_hard_constrained(
         self,
@@ -2774,27 +2512,19 @@ class AdaptivePlanner:
         """
 
         if not isinstance(frozen_goal, FrozenPlanningGoal):
-            raise AdaptivePlannerValidationError(
-                "frozen_goal must be FrozenPlanningGoal"
-            )
+            raise AdaptivePlannerValidationError("frozen_goal must be FrozenPlanningGoal")
         normalized = tuple(candidates)
         if not normalized:
-            raise AdaptivePlannerValidationError(
-                "at least one adaptive plan candidate is required"
-            )
+            raise AdaptivePlannerValidationError("at least one adaptive plan candidate is required")
         if len(normalized) > self.max_candidates:
-            raise AdaptivePlannerValidationError(
-                "adaptive plan candidate budget exceeded"
-            )
+            raise AdaptivePlannerValidationError("adaptive plan candidate budget exceeded")
         if any(not isinstance(item, AdaptivePlanCandidate) for item in normalized):
             raise AdaptivePlannerValidationError(
                 "candidates must be AdaptivePlanCandidate instances"
             )
         candidate_ids = [item.candidate_id for item in normalized]
         if len(set(candidate_ids)) != len(candidate_ids):
-            raise AdaptivePlannerValidationError(
-                "adaptive candidate ids must be unique"
-            )
+            raise AdaptivePlannerValidationError("adaptive candidate ids must be unique")
 
         bindings = tuple(
             (
@@ -2809,12 +2539,9 @@ class AdaptivePlanner:
                 "adaptive candidate formal plan ids must be unique"
             )
         if not isinstance(admission_receipts, Mapping):
-            raise AdaptivePlannerValidationError(
-                "admission_receipts must be a mapping"
-            )
+            raise AdaptivePlannerValidationError("admission_receipts must be a mapping")
         normalized_receipts = {
-            _text(key, "admission_receipts key"): value
-            for key, value in admission_receipts.items()
+            _text(key, "admission_receipts key"): value for key, value in admission_receipts.items()
         }
         expected_plan_ids = set(plan_ids)
         if set(normalized_receipts) != expected_plan_ids:
@@ -2827,27 +2554,22 @@ class AdaptivePlanner:
                 details.append("extra=" + ",".join(extra))
             raise AdaptivePlannerValidationError(
                 "plan admission receipt mapping must exactly cover candidate "
-                "plan ids"
-                + (": " + "; ".join(details) if details else "")
+                "plan ids" + (": " + "; ".join(details) if details else "")
             )
 
         receipt_type = _plan_admission_receipt_type()
         for plan_id, receipt in normalized_receipts.items():
             if not isinstance(receipt, receipt_type):
                 raise AdaptivePlannerValidationError(
-                    "admission_receipts must contain typed "
-                    "PlanAdmissionReceipt instances"
+                    "admission_receipts must contain typed PlanAdmissionReceipt instances"
                 )
             if _admission_candidate_plan_id(receipt) != plan_id:
                 raise AdaptivePlannerValidationError(
-                    "plan admission receipt mapping key does not match its "
-                    "candidate plan id"
+                    "plan admission receipt mapping key does not match its candidate plan id"
                 )
 
         if semantic_roots is not None and not isinstance(semantic_roots, Mapping):
-            raise AdaptivePlannerValidationError(
-                "semantic_roots must be a mapping"
-            )
+            raise AdaptivePlannerValidationError("semantic_roots must be a mapping")
         expected_roots = (
             tuple(
                 sorted(
@@ -2862,8 +2584,7 @@ class AdaptivePlanner:
             else ()
         )
         receipt_roots = tuple(
-            _admission_root_bindings(item)
-            for item in normalized_receipts.values()
+            _admission_root_bindings(item) for item in normalized_receipts.values()
         )
         observed_roots = {item for item in receipt_roots if item}
         if observed_roots and any(not item for item in receipt_roots):
@@ -2873,8 +2594,7 @@ class AdaptivePlanner:
         if expected_roots:
             if observed_roots != {expected_roots}:
                 raise AdaptivePlannerValidationError(
-                    "plan admission receipts do not bind the expected semantic "
-                    "roots"
+                    "plan admission receipts do not bind the expected semantic roots"
                 )
         elif len(observed_roots) > 1:
             raise AdaptivePlannerValidationError(
@@ -2884,8 +2604,7 @@ class AdaptivePlanner:
             expected_roots = next(iter(observed_roots))
 
         adaptive_by_plan_id = {
-            plan_id: candidate
-            for candidate, (_, plan_id) in zip(normalized, bindings)
+            plan_id: candidate for candidate, (_, plan_id) in zip(normalized, bindings)
         }
         admitted = tuple(
             sorted(
@@ -2912,26 +2631,18 @@ class AdaptivePlanner:
         candidates: Iterable[AdaptivePlanCandidate],
     ) -> AdaptivePlanSelectionReceipt:
         if not isinstance(frozen_goal, FrozenPlanningGoal):
-            raise AdaptivePlannerValidationError(
-                "frozen_goal must be FrozenPlanningGoal"
-            )
+            raise AdaptivePlannerValidationError("frozen_goal must be FrozenPlanningGoal")
         normalized = tuple(candidates)
         if not normalized:
-            raise AdaptivePlannerValidationError(
-                "at least one adaptive plan candidate is required"
-            )
+            raise AdaptivePlannerValidationError("at least one adaptive plan candidate is required")
         if len(normalized) > self.max_candidates:
-            raise AdaptivePlannerValidationError(
-                "adaptive plan candidate budget exceeded"
-            )
+            raise AdaptivePlannerValidationError("adaptive plan candidate budget exceeded")
         if any(not isinstance(item, AdaptivePlanCandidate) for item in normalized):
             raise AdaptivePlannerValidationError(
                 "candidates must be AdaptivePlanCandidate instances"
             )
         ids = [item.candidate_id for item in normalized]
-        duplicates = sorted(
-            item for item in set(ids) if ids.count(item) > 1
-        )
+        duplicates = sorted(item for item in set(ids) if ids.count(item) > 1)
         if duplicates:
             raise AdaptivePlannerValidationError(
                 "adaptive candidate ids must be unique: " + ", ".join(duplicates)
@@ -2990,20 +2701,14 @@ class AdaptivePlanner:
         if evaluation.selected is not None:
             selected = evaluation.selected.candidate
             selected_cost = _cost_millionths(selected)
-            witnesses: list[
-                tuple[str, int, str]
-            ] = []
+            witnesses: list[tuple[str, int, str]] = []
             rejected_ids = {item.candidate_id for item in evaluation.rejected}
             for candidate_id in sorted(rejected_ids):
                 source = by_id[candidate_id]
-                authority_receipt = source.receipt_for(
-                    HardPlanConstraint.AUTHORITY
-                )
+                authority_receipt = source.receipt_for(HardPlanConstraint.AUTHORITY)
                 cost = _cost_millionths(source.plan)
                 if not authority_receipt.passed and cost < selected_cost:
-                    witnesses.append(
-                        (candidate_id, cost, authority_receipt.receipt_id)
-                    )
+                    witnesses.append((candidate_id, cost, authority_receipt.receipt_id))
             if witnesses:
                 requirement_evidence = AuthorityNonCompensationEvidence(
                     goal_content_id=frozen_goal.goal_content_id,
@@ -3038,24 +2743,23 @@ class AdaptivePlanner:
         providers: Mapping[
             AdaptiveCandidateProviderKind | str,
             Callable[[FrozenCandidateGenerationRequest], Any] | None,
-        ] | None = None,
+        ]
+        | None = None,
         bounds: CandidateGenerationBounds | None = None,
         baseline_factory: Callable[
             [object, Mapping[str, Any]],
             EvidenceAwarePlanCandidate | Mapping[str, Any],
-        ] | None = None,
+        ]
+        | None = None,
         hard_gate_evaluator: HardGateEvaluator = deterministic_hard_gate_receipts,
     ) -> AdaptivePlanningRunReceipt:
         """Generate, independently gate, evaluate, and select one bounded plan."""
 
         if not isinstance(frozen_goal, FrozenPlanningGoal):
-            raise AdaptivePlannerValidationError(
-                "frozen_goal must be FrozenPlanningGoal"
-            )
+            raise AdaptivePlannerValidationError("frozen_goal must be FrozenPlanningGoal")
         routing_kwargs: dict[str, Any] = {
             "providers": providers,
-            "bounds": bounds
-            or CandidateGenerationBounds(max_total_candidates=self.max_candidates),
+            "bounds": bounds or CandidateGenerationBounds(max_total_candidates=self.max_candidates),
         }
         if baseline_factory is not None:
             routing_kwargs["baseline_factory"] = baseline_factory
@@ -3066,9 +2770,7 @@ class AdaptivePlanner:
         )
         gated: list[AdaptivePlanCandidate] = []
         for plan in routing.candidates:
-            raw_receipts = hard_gate_evaluator(
-                plan, frozen_goal, routing.request
-            )
+            raw_receipts = hard_gate_evaluator(plan, frozen_goal, routing.request)
             receipts = _normalize_gate_receipts(
                 raw_receipts,
                 plan=plan,
@@ -3096,9 +2798,7 @@ class AdaptivePlanReceiptStore:
 
     def persist(self, receipt: AdaptivePlanSelectionReceipt) -> Path:
         if not isinstance(receipt, AdaptivePlanSelectionReceipt):
-            raise AdaptivePlannerValidationError(
-                "receipt must be AdaptivePlanSelectionReceipt"
-            )
+            raise AdaptivePlannerValidationError("receipt must be AdaptivePlanSelectionReceipt")
         self.directory.mkdir(parents=True, exist_ok=True)
         destination = self.directory / f"{receipt.receipt_id}.json"
         encoded = (canonical_json(receipt.to_dict()) + "\n").encode("utf-8")
@@ -3118,9 +2818,7 @@ class AdaptivePlanReceiptStore:
             raise AdaptivePlannerValidationError("unsafe adaptive receipt identity")
         path = self.directory / f"{identity}.json"
         if path.is_symlink():
-            raise AdaptivePlannerValidationError(
-                "adaptive receipt cannot be a symlink"
-            )
+            raise AdaptivePlannerValidationError("adaptive receipt cannot be a symlink")
         try:
             import json
 
@@ -3131,9 +2829,7 @@ class AdaptivePlanReceiptStore:
             ) from exc
         receipt = AdaptivePlanSelectionReceipt.from_dict(payload)
         if receipt.receipt_id != identity:
-            raise AdaptivePlannerValidationError(
-                "adaptive receipt filename does not match content"
-            )
+            raise AdaptivePlannerValidationError("adaptive receipt filename does not match content")
         return receipt
 
 
@@ -3145,9 +2841,7 @@ class AdaptivePlanningRunStore:
 
     def persist(self, receipt: AdaptivePlanningRunReceipt) -> Path:
         if not isinstance(receipt, AdaptivePlanningRunReceipt):
-            raise AdaptivePlannerValidationError(
-                "receipt must be AdaptivePlanningRunReceipt"
-            )
+            raise AdaptivePlannerValidationError("receipt must be AdaptivePlanningRunReceipt")
         self.directory.mkdir(parents=True, exist_ok=True)
         destination = self.directory / f"{receipt.run_id}.json"
         import json
@@ -3175,14 +2869,10 @@ class AdaptivePlanningRunStore:
     def load(self, run_id: str) -> AdaptivePlanningRunReceipt:
         identity = _text(run_id, "run_id")
         if "/" in identity or "\\" in identity or identity in {".", ".."}:
-            raise AdaptivePlannerValidationError(
-                "unsafe adaptive-planning run identity"
-            )
+            raise AdaptivePlannerValidationError("unsafe adaptive-planning run identity")
         path = self.directory / f"{identity}.json"
         if path.is_symlink():
-            raise AdaptivePlannerValidationError(
-                "adaptive-planning run cannot be a symlink"
-            )
+            raise AdaptivePlannerValidationError("adaptive-planning run cannot be a symlink")
         try:
             import json
 
@@ -3203,13 +2893,9 @@ class AdaptivePlanningRunStore:
 # Typed-goal bounded AND/OR planning (ASI-104)
 # ---------------------------------------------------------------------------
 
-AND_OR_SEARCH_REQUIREMENT_ID: Final[str] = (
-    "194688567293502311990437777137664011508"
-)
+AND_OR_SEARCH_REQUIREMENT_ID: Final[str] = "194688567293502311990437777137664011508"
 AND_OR_PLANNER_VERSION: Final[int] = 1
-AND_OR_GRAPH_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/and-or-plan-graph@1"
-)
+AND_OR_GRAPH_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/and-or-plan-graph@1"
 AND_OR_SEARCH_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/and-or-plan-search@1"
 )
@@ -3243,26 +2929,19 @@ class AndOrSearchBounds:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name, minimum=1)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name, minimum=1))
         if self.max_depth < 3:
             raise AdaptivePlannerValidationError(
                 "max_depth must permit AND, OR, and producer levels"
             )
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "AndOrSearchBounds":
         if set(payload) != set(cls.__dataclass_fields__):
-            raise AdaptivePlannerValidationError(
-                "AND/OR search bounds must use the closed schema"
-            )
+            raise AdaptivePlannerValidationError("AND/OR search bounds must use the closed schema")
         return cls(**dict(payload))
 
 
@@ -3287,9 +2966,7 @@ def _plain_json(value: Any) -> Any:
 
 def _freeze_json(value: Any) -> Any:
     if isinstance(value, dict):
-        return MappingProxyType(
-            {key: _freeze_json(item) for key, item in value.items()}
-        )
+        return MappingProxyType({key: _freeze_json(item) for key, item in value.items()})
     if isinstance(value, list):
         return tuple(_freeze_json(item) for item in value)
     return value
@@ -3329,9 +3006,7 @@ class FrozenAndOrPlanningContext:
         )
         plain = _plain_json(self.context)
         if not isinstance(plain, dict):
-            raise AdaptivePlannerValidationError(
-                "AND/OR planning context must be an object"
-            )
+            raise AdaptivePlannerValidationError("AND/OR planning context must be an object")
         expected = content_identity(
             {
                 "goal_content_id": self.goal.content_id,
@@ -3368,9 +3043,7 @@ class FrozenAndOrPlanningContext:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "FrozenAndOrPlanningContext":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "FrozenAndOrPlanningContext":
         expected = {
             "goal",
             "goal_content_id",
@@ -3381,9 +3054,7 @@ class FrozenAndOrPlanningContext:
             "context_id",
         }
         if set(payload) != expected:
-            raise AdaptivePlannerValidationError(
-                "frozen AND/OR context must use the closed schema"
-            )
+            raise AdaptivePlannerValidationError("frozen AND/OR context must use the closed schema")
         result = cls(
             goal=TypedGoal.from_dict(payload.get("goal") or {}),
             repository_tree_id=payload.get("repository_tree_id", ""),
@@ -3395,9 +3066,7 @@ class FrozenAndOrPlanningContext:
             payload.get("goal_content_id") != result.goal_content_id
             or payload.get("root_content_id") != result.root_content_id
         ):
-            raise AdaptivePlannerValidationError(
-                "frozen AND/OR goal identity is inconsistent"
-            )
+            raise AdaptivePlannerValidationError("frozen AND/OR goal identity is inconsistent")
         return result
 
 
@@ -3437,12 +3106,8 @@ class AndOrPlanAlternative:
             "repository_tree_id",
             "context_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
-        object.__setattr__(
-            self, "producer_kind", AndOrProducerKind(self.producer_kind)
-        )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        object.__setattr__(self, "producer_kind", AndOrProducerKind(self.producer_kind))
         for name in (
             "evidence_ids",
             "reduced_uncertainty_ids",
@@ -3477,17 +3142,13 @@ class AndOrPlanAlternative:
             "estimated_time_milliseconds",
             "historical_failure_millionths",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name))
         for name in (
             "conflict_risk_millionths",
             "historical_failure_millionths",
         ):
             if getattr(self, name) > 1_000_000:
-                raise AdaptivePlannerValidationError(
-                    f"{name} must be at most 1000000"
-                )
+                raise AdaptivePlannerValidationError(f"{name} must be at most 1000000")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -3504,9 +3165,7 @@ class AndOrPlanAlternative:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "AndOrPlanAlternative":
         if set(payload) != set(cls.__dataclass_fields__):
-            raise AdaptivePlannerValidationError(
-                "AND/OR alternative must use the closed schema"
-            )
+            raise AdaptivePlannerValidationError("AND/OR alternative must use the closed schema")
         return cls(**dict(payload))
 
 
@@ -3532,11 +3191,7 @@ class AndOrPlanNode:
         for name in ("obligation_id", "alternative_id"):
             value = str(getattr(self, name) or "").strip()
             object.__setattr__(self, name, value)
-        producer = (
-            AndOrProducerKind(self.producer_kind)
-            if self.producer_kind is not None
-            else None
-        )
+        producer = AndOrProducerKind(self.producer_kind) if self.producer_kind is not None else None
         object.__setattr__(self, "producer_kind", producer)
         if self.kind is AndOrNodeKind.PRODUCER:
             if self.child_ids or not self.obligation_id or not self.alternative_id:
@@ -3544,24 +3199,14 @@ class AndOrPlanNode:
                     "producer nodes require obligation/alternative and no children"
                 )
             if producer is None:
-                raise AdaptivePlannerValidationError(
-                    "producer node requires producer_kind"
-                )
+                raise AdaptivePlannerValidationError("producer node requires producer_kind")
         else:
             if not self.child_ids:
-                raise AdaptivePlannerValidationError(
-                    "AND/OR nodes require at least one child"
-                )
+                raise AdaptivePlannerValidationError("AND/OR nodes require at least one child")
             if self.alternative_id or producer is not None:
-                raise AdaptivePlannerValidationError(
-                    "AND/OR nodes cannot carry producer metadata"
-                )
-            if (
-                self.kind is AndOrNodeKind.AND
-                and self.obligation_id
-            ) or (
-                self.kind is AndOrNodeKind.OR
-                and not self.obligation_id
+                raise AdaptivePlannerValidationError("AND/OR nodes cannot carry producer metadata")
+            if (self.kind is AndOrNodeKind.AND and self.obligation_id) or (
+                self.kind is AndOrNodeKind.OR and not self.obligation_id
             ):
                 raise AdaptivePlannerValidationError(
                     "only OR and producer nodes require an obligation"
@@ -3574,17 +3219,13 @@ class AndOrPlanNode:
             "child_ids": list(self.child_ids),
             "obligation_id": self.obligation_id,
             "alternative_id": self.alternative_id,
-            "producer_kind": (
-                self.producer_kind.value if self.producer_kind else None
-            ),
+            "producer_kind": (self.producer_kind.value if self.producer_kind else None),
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "AndOrPlanNode":
         if set(payload) != set(cls.__dataclass_fields__):
-            raise AdaptivePlannerValidationError(
-                "AND/OR node must use the closed schema"
-            )
+            raise AdaptivePlannerValidationError("AND/OR node must use the closed schema")
         return cls(**dict(payload))
 
 
@@ -3600,31 +3241,23 @@ class AndOrPlanGraph:
 
     def __post_init__(self) -> None:
         for name in ("frozen_context_id", "goal_content_id", "root_node_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
         nodes = tuple(self.nodes)
         alternatives = tuple(self.alternatives)
         node_ids = [item.node_id for item in nodes]
         alternative_ids = [item.alternative_id for item in alternatives]
         if len(node_ids) != len(set(node_ids)) or self.root_node_id not in node_ids:
-            raise AdaptivePlannerValidationError(
-                "AND/OR graph node identities are invalid"
-            )
+            raise AdaptivePlannerValidationError("AND/OR graph node identities are invalid")
         if len(alternative_ids) != len(set(alternative_ids)):
             raise AdaptivePlannerValidationError(
                 "AND/OR graph alternative identities must be unique"
             )
         known = set(node_ids)
         if any(set(node.child_ids).difference(known) for node in nodes):
-            raise AdaptivePlannerValidationError(
-                "AND/OR graph contains a dangling child"
-            )
+            raise AdaptivePlannerValidationError("AND/OR graph contains a dangling child")
         by_node_id = {item.node_id: item for item in nodes}
         if by_node_id[self.root_node_id].kind is not AndOrNodeKind.AND:
-            raise AdaptivePlannerValidationError(
-                "AND/OR graph root must be an AND node"
-            )
+            raise AdaptivePlannerValidationError("AND/OR graph root must be an AND node")
         if any(
             by_node_id[item].kind is not AndOrNodeKind.OR
             for item in by_node_id[self.root_node_id].child_ids
@@ -3633,13 +3266,10 @@ class AndOrPlanGraph:
                 "AND root may contain only required OR obligations"
             )
         root_obligations = tuple(
-            by_node_id[item].obligation_id
-            for item in by_node_id[self.root_node_id].child_ids
+            by_node_id[item].obligation_id for item in by_node_id[self.root_node_id].child_ids
         )
         if len(root_obligations) != len(set(root_obligations)):
-            raise AdaptivePlannerValidationError(
-                "AND root obligations must be unique"
-            )
+            raise AdaptivePlannerValidationError("AND root obligations must be unique")
         for node in nodes:
             if node.kind is not AndOrNodeKind.OR:
                 continue
@@ -3653,9 +3283,7 @@ class AndOrPlanGraph:
                     "OR producer alternatives must target their parent obligation"
                 )
             if not any(
-                item.producer_kind
-                is AndOrProducerKind.DETERMINISTIC_BASELINE
-                for item in children
+                item.producer_kind is AndOrProducerKind.DETERMINISTIC_BASELINE for item in children
             ):
                 raise AdaptivePlannerValidationError(
                     "every OR node requires a deterministic baseline"
@@ -3669,38 +3297,28 @@ class AndOrPlanGraph:
                 "AND/OR alternatives are detached from the graph bindings"
             )
         producer_alternative_ids = {
-            item.alternative_id
-            for item in nodes
-            if item.kind is AndOrNodeKind.PRODUCER
+            item.alternative_id for item in nodes if item.kind is AndOrNodeKind.PRODUCER
         }
         if producer_alternative_ids != set(alternative_ids):
             raise AdaptivePlannerValidationError(
                 "producer nodes must exactly cover graph alternatives"
             )
-        alternatives_by_id = {
-            item.alternative_id: item for item in alternatives
-        }
+        alternatives_by_id = {item.alternative_id: item for item in alternatives}
         if any(
             (
-                alternatives_by_id[item.alternative_id].obligation_id
-                != item.obligation_id
-                or alternatives_by_id[item.alternative_id].producer_kind
-                is not item.producer_kind
+                alternatives_by_id[item.alternative_id].obligation_id != item.obligation_id
+                or alternatives_by_id[item.alternative_id].producer_kind is not item.producer_kind
             )
             for item in nodes
             if item.kind is AndOrNodeKind.PRODUCER
         ):
-            raise AdaptivePlannerValidationError(
-                "producer nodes must match their alternatives"
-            )
+            raise AdaptivePlannerValidationError("producer nodes must match their alternatives")
         visiting: set[str] = set()
         visited: set[str] = set()
 
         def depth(node_id: str) -> int:
             if node_id in visiting:
-                raise AdaptivePlannerValidationError(
-                    "AND/OR graph contains a cycle"
-                )
+                raise AdaptivePlannerValidationError("AND/OR graph contains a cycle")
             if node_id in visited:
                 return 0
             visiting.add(node_id)
@@ -3717,13 +3335,9 @@ class AndOrPlanGraph:
             )
         object.__setattr__(self, "nodes", nodes)
         object.__setattr__(self, "alternatives", alternatives)
-        object.__setattr__(
-            self, "max_depth", _integer(self.max_depth, "max_depth", minimum=1)
-        )
+        object.__setattr__(self, "max_depth", _integer(self.max_depth, "max_depth", minimum=1))
         if actual_depth > self.max_depth:
-            raise AdaptivePlannerValidationError(
-                "AND/OR graph exceeds its declared depth"
-            )
+            raise AdaptivePlannerValidationError("AND/OR graph exceeds its declared depth")
         if not isinstance(self.truncated, bool):
             raise AdaptivePlannerValidationError("truncated must be boolean")
 
@@ -3762,35 +3376,25 @@ class AndOrPlanGraph:
             "truncated",
         }
         if set(payload) != expected:
-            raise AdaptivePlannerValidationError(
-                "AND/OR graph must use the closed schema"
-            )
+            raise AdaptivePlannerValidationError("AND/OR graph must use the closed schema")
         if (
             payload.get("schema") != AND_OR_GRAPH_SCHEMA
             or payload.get("planner_version") != AND_OR_PLANNER_VERSION
         ):
-            raise AdaptivePlannerValidationError(
-                "unsupported AND/OR graph version"
-            )
+            raise AdaptivePlannerValidationError("unsupported AND/OR graph version")
         result = cls(
             frozen_context_id=payload.get("frozen_context_id", ""),
             goal_content_id=payload.get("goal_content_id", ""),
             root_node_id=payload.get("root_node_id", ""),
-            nodes=tuple(
-                AndOrPlanNode.from_dict(item)
-                for item in payload.get("nodes") or ()
-            ),
+            nodes=tuple(AndOrPlanNode.from_dict(item) for item in payload.get("nodes") or ()),
             alternatives=tuple(
-                AndOrPlanAlternative.from_dict(item)
-                for item in payload.get("alternatives") or ()
+                AndOrPlanAlternative.from_dict(item) for item in payload.get("alternatives") or ()
             ),
             max_depth=payload.get("max_depth", 0),
             truncated=payload.get("truncated"),
         )
         if payload.get("graph_id") != result.graph_id:
-            raise AdaptivePlannerValidationError(
-                "AND/OR graph identity does not match content"
-            )
+            raise AdaptivePlannerValidationError("AND/OR graph identity does not match content")
         return result
 
 
@@ -3816,9 +3420,7 @@ def _call_bounded_and_or_provider(
             for item in provider(frozen):
                 produced.append(item)
                 if len(produced) > max_items:
-                    raise AdaptivePlannerValidationError(
-                        "provider alternative budget exceeded"
-                    )
+                    raise AdaptivePlannerValidationError("provider alternative budget exceeded")
             output.put_nowait((True, tuple(produced)))
         except BaseException as exc:  # provider isolation boundary
             output.put_nowait((False, exc))
@@ -3856,9 +3458,7 @@ def _baseline_alternative(
         authorized_scopes=goal.scope.include,
         dependencies=goal.scope.dependency_goal_ids,
         satisfied_dependencies=goal.scope.dependency_goal_ids,
-        estimated_time_milliseconds=min(
-            1_000, goal.resources.max_wall_seconds * 1_000
-        ),
+        estimated_time_milliseconds=min(1_000, goal.resources.max_wall_seconds * 1_000),
     )
 
 
@@ -3871,23 +3471,17 @@ def compile_typed_goal_to_and_or_graph(
     """Compile joint criteria to an AND root and producer choices to OR nodes."""
 
     if not isinstance(frozen, FrozenAndOrPlanningContext):
-        raise AdaptivePlannerValidationError(
-            "frozen must be FrozenAndOrPlanningContext"
-        )
+        raise AdaptivePlannerValidationError("frozen must be FrozenAndOrPlanningContext")
     resolved_bounds = bounds or AndOrSearchBounds()
     goal = frozen.goal
     criteria = tuple(goal.acceptance_criteria)
     supplied = tuple(alternatives)
     for item in supplied:
         if not isinstance(item, AndOrPlanAlternative):
-            raise AdaptivePlannerValidationError(
-                "alternatives must be AndOrPlanAlternative values"
-            )
+            raise AdaptivePlannerValidationError("alternatives must be AndOrPlanAlternative values")
     criterion_ids = {item.criterion_id for item in criteria}
     if any(item.obligation_id not in criterion_ids for item in supplied):
-        raise AdaptivePlannerValidationError(
-            "alternative targets an unknown goal obligation"
-        )
+        raise AdaptivePlannerValidationError("alternative targets an unknown goal obligation")
 
     all_alternatives: list[AndOrPlanAlternative] = []
     nodes: list[AndOrPlanNode] = []
@@ -3895,9 +3489,7 @@ def compile_typed_goal_to_and_or_graph(
     truncated = False
     mandatory_nodes = 1 + 2 * len(criteria)
     if mandatory_nodes > resolved_bounds.max_nodes:
-        raise AdaptivePlannerValidationError(
-            "node budget cannot represent mandatory baselines"
-        )
+        raise AdaptivePlannerValidationError("node budget cannot represent mandatory baselines")
     optional_node_budget = resolved_bounds.max_nodes - mandatory_nodes
     by_obligation: dict[str, list[AndOrPlanAlternative]] = {
         item.criterion_id: [] for item in criteria
@@ -3924,9 +3516,7 @@ def compile_typed_goal_to_and_or_graph(
                 ):
                     truncated = True
                     continue
-                raise AdaptivePlannerValidationError(
-                    "duplicate AND/OR alternative identity"
-                )
+                raise AdaptivePlannerValidationError("duplicate AND/OR alternative identity")
             unique[item.alternative_id] = item
         ordered = sorted(
             unique.values(),
@@ -3942,8 +3532,7 @@ def compile_typed_goal_to_and_or_graph(
         leaf_ids: list[str] = []
         for alternative in ordered:
             if (
-                alternative.producer_kind
-                is not AndOrProducerKind.DETERMINISTIC_BASELINE
+                alternative.producer_kind is not AndOrProducerKind.DETERMINISTIC_BASELINE
                 and optional_node_budget <= 0
             ):
                 truncated = True
@@ -4016,16 +3605,13 @@ def _alternative_failures(
     authorized = {item.casefold() for item in alternative.authorized_scopes}
     if not changed <= allowed or not changed <= authorized:
         fail(PlanSearchHardConstraint.SCOPE, "scope_not_authorized")
-    if not set(alternative.dependencies) <= set(
-        alternative.satisfied_dependencies
-    ):
+    if not set(alternative.dependencies) <= set(alternative.satisfied_dependencies):
         fail(PlanSearchHardConstraint.DEPENDENCY, "dependency_not_satisfied")
     resources = goal.resources
     if (
         not alternative.resource_available
         or alternative.estimated_tokens > min(resources.max_tokens, bounds.max_tokens)
-        or alternative.estimated_time_milliseconds
-        > resources.max_wall_seconds * 1_000
+        or alternative.estimated_time_milliseconds > resources.max_wall_seconds * 1_000
         or alternative.estimated_cost_microunits > resources.max_cost_microunits
     ):
         fail(PlanSearchHardConstraint.RESOURCE, "resource_envelope_exceeded")
@@ -4042,9 +3628,7 @@ def _alternative_failures(
         fail(PlanSearchHardConstraint.PROOF, "proof_infeasible")
     return tuple(
         PlanSearchHardFailure(constraint, tuple(codes))
-        for constraint, codes in sorted(
-            failures.items(), key=lambda item: item[0].value
-        )
+        for constraint, codes in sorted(failures.items(), key=lambda item: item[0].value)
     )
 
 
@@ -4053,15 +3637,11 @@ def _combine_alternatives(
     frozen: FrozenAndOrPlanningContext,
     bounds: AndOrSearchBounds,
 ) -> AndOrPlanBranch:
-    required = tuple(
-        item.criterion_id for item in frozen.goal.acceptance_criteria
-    )
+    required = tuple(item.criterion_id for item in frozen.goal.acceptance_criteria)
     hard: dict[PlanSearchHardConstraint, set[str]] = {}
     for item in alternatives:
         for failure in _alternative_failures(item, frozen, bounds):
-            hard.setdefault(failure.constraint, set()).update(
-                failure.reason_codes
-            )
+            hard.setdefault(failure.constraint, set()).update(failure.reason_codes)
     tokens = sum(item.estimated_tokens for item in alternatives)
     elapsed = sum(item.estimated_time_milliseconds for item in alternatives)
     cost = sum(item.estimated_cost_microunits for item in alternatives)
@@ -4090,9 +3670,7 @@ def _combine_alternatives(
         alternative_ids=alternative_ids,
         producer_kinds=tuple(item.producer_kind.value for item in alternatives),
         required_obligation_ids=required,
-        covered_obligation_ids=tuple(
-            item.obligation_id for item in alternatives
-        ),
+        covered_obligation_ids=tuple(item.obligation_id for item in alternatives),
         required_uncertainty_ids=tuple(
             item.uncertainty_id
             for item in frozen.goal.uncertainties
@@ -4107,9 +3685,7 @@ def _combine_alternatives(
             for item in alternatives
             for uncertainty_id in item.reduced_uncertainty_ids
         ),
-        critical_path_length=max(
-            (item.critical_path_length for item in alternatives), default=0
-        ),
+        critical_path_length=max((item.critical_path_length for item in alternatives), default=0),
         conflict_risk_millionths=max(
             (item.conflict_risk_millionths for item in alternatives), default=0
         ),
@@ -4117,17 +3693,12 @@ def _combine_alternatives(
         estimated_tokens=tokens,
         estimated_time_milliseconds=elapsed,
         historical_failure_millionths=max(
-            (
-                item.historical_failure_millionths
-                for item in alternatives
-            ),
+            (item.historical_failure_millionths for item in alternatives),
             default=0,
         ),
         hard_failures=tuple(
             PlanSearchHardFailure(constraint, tuple(sorted(codes)))
-            for constraint, codes in sorted(
-                hard.items(), key=lambda item: item[0].value
-            )
+            for constraint, codes in sorted(hard.items(), key=lambda item: item[0].value)
         ),
     )
 
@@ -4147,58 +3718,41 @@ class AndOrSearchReceipt:
 
     def __post_init__(self) -> None:
         if self.graph.frozen_context_id != self.frozen_context.context_id:
-            raise AdaptivePlannerValidationError(
-                "graph is detached from frozen context"
-            )
+            raise AdaptivePlannerValidationError("graph is detached from frozen context")
         if self.graph.goal_content_id != self.frozen_context.goal_content_id:
-            raise AdaptivePlannerValidationError(
-                "graph is detached from frozen goal"
-            )
+            raise AdaptivePlannerValidationError("graph is detached from frozen goal")
         if any(
-            item.repository_tree_id
-            != self.frozen_context.repository_tree_id
+            item.repository_tree_id != self.frozen_context.repository_tree_id
             for item in self.graph.alternatives
         ):
             raise AdaptivePlannerValidationError(
                 "graph alternative is detached from repository tree"
             )
         if self.evaluation.evaluator_version != AND_OR_PLAN_EVALUATOR_VERSION:
-            raise AdaptivePlannerValidationError(
-                "unsupported AND/OR evaluation"
-            )
+            raise AdaptivePlannerValidationError("unsupported AND/OR evaluation")
         if any(
-            branch.branch.goal_content_id
-            != self.frozen_context.goal_content_id
-            or branch.branch.repository_tree_id
-            != self.frozen_context.repository_tree_id
+            branch.branch.goal_content_id != self.frozen_context.goal_content_id
+            or branch.branch.repository_tree_id != self.frozen_context.repository_tree_id
             or branch.branch.context_id != self.frozen_context.context_id
             for branch in (
                 *self.evaluation.ranked,
                 *self.evaluation.pruned,
             )
         ):
-            raise AdaptivePlannerValidationError(
-                "evaluated branch is detached from frozen context"
-            )
+            raise AdaptivePlannerValidationError("evaluated branch is detached from frozen context")
         for name in (
             "visited_nodes",
             "generated_branches",
             "consumed_tokens",
             "elapsed_milliseconds",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name))
         if self.visited_nodes > self.bounds.max_nodes:
             raise AdaptivePlannerValidationError("node budget was exceeded")
         if self.generated_branches > self.bounds.max_branches:
             raise AdaptivePlannerValidationError("branch budget was exceeded")
-        if self.generated_branches != len(
-            (*self.evaluation.ranked, *self.evaluation.pruned)
-        ):
-            raise AdaptivePlannerValidationError(
-                "generated branch count is inconsistent"
-            )
+        if self.generated_branches != len((*self.evaluation.ranked, *self.evaluation.pruned)):
+            raise AdaptivePlannerValidationError("generated branch count is inconsistent")
         if self.consumed_tokens > self.bounds.max_tokens:
             raise AdaptivePlannerValidationError("token budget was exceeded")
         object.__setattr__(
@@ -4218,11 +3772,7 @@ class AndOrSearchReceipt:
 
     @property
     def selected(self) -> AndOrPlanBranch | None:
-        return (
-            self.evaluation.selected.branch
-            if self.evaluation.selected is not None
-            else None
-        )
+        return self.evaluation.selected.branch if self.evaluation.selected is not None else None
 
     @property
     def requirement_ids(self) -> tuple[str, ...]:
@@ -4271,26 +3821,19 @@ class AndOrSearchReceipt:
             "provider_failures",
         }
         if set(payload) != expected:
-            raise AdaptivePlannerValidationError(
-                "AND/OR search receipt must use the closed schema"
-            )
+            raise AdaptivePlannerValidationError("AND/OR search receipt must use the closed schema")
         if (
             payload.get("schema") != AND_OR_SEARCH_RECEIPT_SCHEMA
             or payload.get("planner_version") != AND_OR_PLANNER_VERSION
-            or tuple(payload.get("requirement_ids") or ())
-            != (AND_OR_SEARCH_REQUIREMENT_ID,)
+            or tuple(payload.get("requirement_ids") or ()) != (AND_OR_SEARCH_REQUIREMENT_ID,)
         ):
-            raise AdaptivePlannerValidationError(
-                "unsupported AND/OR search receipt version"
-            )
+            raise AdaptivePlannerValidationError("unsupported AND/OR search receipt version")
         result = cls(
             frozen_context=FrozenAndOrPlanningContext.from_dict(
                 payload.get("frozen_context") or {}
             ),
             graph=AndOrPlanGraph.from_dict(payload.get("graph") or {}),
-            evaluation=AndOrPlanEvaluation.from_dict(
-                payload.get("evaluation") or {}
-            ),
+            evaluation=AndOrPlanEvaluation.from_dict(payload.get("evaluation") or {}),
             bounds=AndOrSearchBounds.from_dict(payload.get("bounds") or {}),
             visited_nodes=payload.get("visited_nodes", 0),
             generated_branches=payload.get("generated_branches", 0),
@@ -4331,17 +3874,12 @@ def search_typed_goal_plans(
     provider_failures: list[str] = []
     supplied = list(alternatives)
     if any(not isinstance(item, AndOrPlanAlternative) for item in supplied):
-        raise AdaptivePlannerValidationError(
-            "alternatives must be AndOrPlanAlternative values"
-        )
+        raise AdaptivePlannerValidationError("alternatives must be AndOrPlanAlternative values")
     consumed_tokens = sum(item.estimated_tokens for item in supplied)
     if consumed_tokens > resolved_bounds.max_tokens:
-        raise AdaptivePlannerValidationError(
-            "caller alternatives exceed the search token budget"
-        )
+        raise AdaptivePlannerValidationError("caller alternatives exceed the search token budget")
     normalized_providers = {
-        AndOrProducerKind(key): value
-        for key, value in (providers or {}).items()
+        AndOrProducerKind(key): value for key, value in (providers or {}).items()
     }
     for kind in (
         AndOrProducerKind.LLM,
@@ -4357,10 +3895,7 @@ def search_typed_goal_plans(
         try:
             remaining_seconds = max(
                 0.0,
-                (
-                    resolved_bounds.max_time_milliseconds
-                    - (monotonic_clock() - started) * 1_000
-                )
+                (resolved_bounds.max_time_milliseconds - (monotonic_clock() - started) * 1_000)
                 / 1_000,
             )
             succeeded, result = _call_bounded_and_or_provider(
@@ -4382,9 +3917,7 @@ def search_typed_goal_plans(
                 raise AdaptivePlannerValidationError(
                     "provider returned a branch with a different producer kind"
                 )
-            next_tokens = consumed_tokens + sum(
-                item.estimated_tokens for item in normalized
-            )
+            next_tokens = consumed_tokens + sum(item.estimated_tokens for item in normalized)
             if next_tokens > resolved_bounds.max_tokens:
                 provider_failures.append(f"{kind.value}:token_budget_exhausted")
                 continue
@@ -4398,15 +3931,11 @@ def search_typed_goal_plans(
             )
             provider_failures.append(f"{kind.value}:{reason}")
 
-    graph = compile_typed_goal_to_and_or_graph(
-        frozen, supplied, bounds=resolved_bounds
-    )
+    graph = compile_typed_goal_to_and_or_graph(frozen, supplied, bounds=resolved_bounds)
     by_obligation: dict[str, list[AndOrPlanAlternative]] = {}
     for item in graph.alternatives:
         by_obligation.setdefault(item.obligation_id, []).append(item)
-    obligation_ids = tuple(
-        item.criterion_id for item in goal.acceptance_criteria
-    )
+    obligation_ids = tuple(item.criterion_id for item in goal.acceptance_criteria)
     generated: list[AndOrPlanBranch] = []
     termination_reason = "search_complete"
 
@@ -4419,9 +3948,7 @@ def search_typed_goal_plans(
             termination_reason = "time_budget_exhausted"
             return
         if index >= len(obligation_ids):
-            generated.append(
-                _combine_alternatives(selected, frozen, resolved_bounds)
-            )
+            generated.append(_combine_alternatives(selected, frozen, resolved_bounds))
             return
         for item in by_obligation.get(obligation_ids[index], ()):
             # A failed leaf is retained as an unscored complete branch; walking
@@ -4432,8 +3959,7 @@ def search_typed_goal_plans(
                     next(
                         choice
                         for choice in by_obligation[obligation_id]
-                        if choice.producer_kind
-                        is AndOrProducerKind.DETERMINISTIC_BASELINE
+                        if choice.producer_kind is AndOrProducerKind.DETERMINISTIC_BASELINE
                     )
                     for obligation_id in obligation_ids[index + 1 :]
                 )
@@ -4461,14 +3987,11 @@ def search_typed_goal_plans(
             next(
                 item
                 for item in by_obligation[obligation_id]
-                if item.producer_kind
-                is AndOrProducerKind.DETERMINISTIC_BASELINE
+                if item.producer_kind is AndOrProducerKind.DETERMINISTIC_BASELINE
             )
             for obligation_id in obligation_ids
         )
-        generated.append(
-            _combine_alternatives(baseline, frozen, resolved_bounds)
-        )
+        generated.append(_combine_alternatives(baseline, frozen, resolved_bounds))
         termination_reason = "time_budget_exhausted_baseline_fallback"
     # Multiple failed prefixes can converge on the same canonical branch.
     unique = {item.branch_id: item for item in generated}
@@ -4507,13 +4030,9 @@ class AndOrPlannerBenchmark:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name))
         if self.valid_first_plans > self.total_plans:
-            raise AdaptivePlannerValidationError(
-                "valid_first_plans cannot exceed total_plans"
-            )
+            raise AdaptivePlannerValidationError("valid_first_plans cannot exceed total_plans")
         if self.invalid_branches_promoted > self.total_invalid_branches:
             raise AdaptivePlannerValidationError(
                 "invalid promotion count cannot exceed invalid branch count"
@@ -4521,32 +4040,21 @@ class AndOrPlannerBenchmark:
 
     @property
     def valid_first_rate_millionths(self) -> int:
-        return (
-            self.valid_first_plans * 1_000_000 // self.total_plans
-            if self.total_plans
-            else 0
-        )
+        return self.valid_first_plans * 1_000_000 // self.total_plans if self.total_plans else 0
 
     @property
     def invalid_promotion_rate_millionths(self) -> int:
         return (
-            self.invalid_branches_promoted
-            * 1_000_000
-            // self.total_invalid_branches
+            self.invalid_branches_promoted * 1_000_000 // self.total_invalid_branches
             if self.total_invalid_branches
             else 0
         )
 
     def to_dict(self) -> dict[str, int]:
         return {
-            **{
-                name: getattr(self, name)
-                for name in self.__dataclass_fields__
-            },
+            **{name: getattr(self, name) for name in self.__dataclass_fields__},
             "valid_first_rate_millionths": self.valid_first_rate_millionths,
-            "invalid_promotion_rate_millionths": (
-                self.invalid_promotion_rate_millionths
-            ),
+            "invalid_promotion_rate_millionths": (self.invalid_promotion_rate_millionths),
         }
 
 
@@ -4564,12 +4072,8 @@ class AndOrPlannerPromotionGate:
             "requirement_id": AND_OR_SEARCH_REQUIREMENT_ID,
             "baseline": self.baseline.to_dict(),
             "candidate": self.candidate.to_dict(),
-            "valid_first_improvement_millionths": (
-                self.valid_first_improvement_millionths
-            ),
-            "invalid_branch_reduction_millionths": (
-                self.invalid_branch_reduction_millionths
-            ),
+            "valid_first_improvement_millionths": (self.valid_first_improvement_millionths),
+            "invalid_branch_reduction_millionths": (self.invalid_branch_reduction_millionths),
             "passed": self.passed,
             "reason_codes": list(self.reason_codes),
         }
@@ -4581,10 +4085,7 @@ def evaluate_and_or_planner_promotion(
 ) -> AndOrPlannerPromotionGate:
     """Enforce the v2 +15pp valid-first or 25% invalid-branch gate."""
 
-    valid_delta = (
-        candidate.valid_first_rate_millionths
-        - baseline.valid_first_rate_millionths
-    )
+    valid_delta = candidate.valid_first_rate_millionths - baseline.valid_first_rate_millionths
     baseline_invalid = baseline.invalid_promotion_rate_millionths
     invalid_reduction = (
         (baseline_invalid - candidate.invalid_promotion_rate_millionths)
@@ -4619,9 +4120,7 @@ def select_adaptive_plan(
 ) -> AdaptivePlanSelectionReceipt:
     """Functional convenience wrapper around :class:`AdaptivePlanner`."""
 
-    return AdaptivePlanner(max_candidates=max_candidates).select(
-        frozen_goal, candidates
-    )
+    return AdaptivePlanner(max_candidates=max_candidates).select(frozen_goal, candidates)
 
 
 def select_hard_constrained_plan(
@@ -4634,9 +4133,7 @@ def select_hard_constrained_plan(
 ) -> HardConstrainedPlanSelectionReceipt:
     """Functional admission-first wrapper around :class:`AdaptivePlanner`."""
 
-    return AdaptivePlanner(
-        max_candidates=max_candidates
-    ).select_hard_constrained(
+    return AdaptivePlanner(max_candidates=max_candidates).select_hard_constrained(
         frozen_goal,
         candidates,
         admission_receipts,
@@ -4651,7 +4148,8 @@ def plan_adaptively(
     providers: Mapping[
         AdaptiveCandidateProviderKind | str,
         Callable[[FrozenCandidateGenerationRequest], Any] | None,
-    ] | None = None,
+    ]
+    | None = None,
     bounds: CandidateGenerationBounds | None = None,
     max_candidates: int = 32,
     hard_gate_evaluator: HardGateEvaluator = deterministic_hard_gate_receipts,

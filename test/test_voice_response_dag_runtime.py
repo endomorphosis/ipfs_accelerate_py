@@ -37,10 +37,7 @@ def _result(
 
 
 def test_runtime_is_disabled_without_an_explicit_queue_root() -> None:
-    assert (
-        load_local_voice_response_dag_runtime_from_environment(environ={})
-        is None
-    )
+    assert load_local_voice_response_dag_runtime_from_environment(environ={}) is None
 
 
 @pytest.mark.parametrize(
@@ -60,9 +57,7 @@ def test_runtime_rejects_non_absolute_local_roots(
     environ = {RESPONSE_DAG_QUEUE_ROOT_ENV: str(tmp_path / "queue")}
     environ[name] = value
     with pytest.raises(LocalResponseDAGQueueError):
-        load_local_voice_response_dag_runtime_from_environment(
-            environ=environ
-        )
+        load_local_voice_response_dag_runtime_from_environment(environ=environ)
 
 
 def test_runtime_rejects_invalid_wer_configuration(tmp_path) -> None:
@@ -97,20 +92,14 @@ def test_independent_validation_persists_content_addressed_private_audio(
     assert artifacts is not None
     assert artifacts.remote_writes is False
     assert artifacts.validation_receipt.passed is True
-    assert artifacts.validation_receipt.rendered_text_sha256 == sha256(
-        RESPONSE.encode("utf-8")
-    ).hexdigest()
-    assert artifacts.validation_receipt.output_audio_sha256 == sha256(
-        AUDIO
-    ).hexdigest()
-    assert artifacts.audio_descriptor["content_sha256"] == sha256(
-        AUDIO
-    ).hexdigest()
-    assert artifacts.audio_descriptor["media_type"] == "audio/wav"
-    audio_path = (
-        runtime.postprocessor.audio_root
-        / f"{sha256(AUDIO).hexdigest()}.wav"
+    assert (
+        artifacts.validation_receipt.rendered_text_sha256
+        == sha256(RESPONSE.encode("utf-8")).hexdigest()
     )
+    assert artifacts.validation_receipt.output_audio_sha256 == sha256(AUDIO).hexdigest()
+    assert artifacts.audio_descriptor["content_sha256"] == sha256(AUDIO).hexdigest()
+    assert artifacts.audio_descriptor["media_type"] == "audio/wav"
+    audio_path = runtime.postprocessor.audio_root / f"{sha256(AUDIO).hexdigest()}.wav"
     assert audio_path.read_bytes() == AUDIO
     assert stat.S_IMODE(audio_path.stat().st_mode) == 0o600
     assert calls == [
@@ -174,7 +163,5 @@ def test_unsafe_audio_format_is_rejected_before_persistence(tmp_path) -> None:
         LocalResponseDAGQueueError,
         match="simple codec name",
     ):
-        postprocessor.validate_and_store_local(
-            _result(audio_format="../../queue")
-        )
+        postprocessor.validate_and_store_local(_result(audio_format="../../queue"))
     assert list(postprocessor.audio_root.iterdir()) == []

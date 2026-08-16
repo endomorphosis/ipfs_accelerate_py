@@ -31,35 +31,19 @@ from typing import Any, Final
 
 ADVERSARIAL_E2E_GATE_SCHEMA: Final = "vfs/adversarial-e2e-gate@1"
 SHADOW_ROLLOUT_REPORT_SCHEMA: Final = "vfs/shadow-rollout-report@1"
-VFS_SYMBOLIC_ROLLOUT_DECISION_SCHEMA: Final = (
-    "vfs/symbolic-rollout-decision@1"
-)
-VFS_SYMBOLIC_CONTROL_REQUEST_SCHEMA: Final = (
-    "vfs/symbolic-control-request@1"
-)
-VFS_SYMBOLIC_CONTROL_RESULT_SCHEMA: Final = (
-    "vfs/symbolic-control-result@1"
-)
-VFS_SYMBOLIC_BOUNDED_STATUS_SCHEMA: Final = (
-    "vfs/symbolic-bounded-status@1"
-)
-VFS_SYMBOLIC_BOUNDED_FINDINGS_SCHEMA: Final = (
-    "vfs/symbolic-bounded-findings@1"
-)
-VFS_SYMBOLIC_BOUNDED_RECEIPTS_SCHEMA: Final = (
-    "vfs/symbolic-bounded-receipts@1"
-)
-VFS_SYMBOLIC_PUBLIC_API_SCHEMA: Final = (
-    "vfs/symbolic-public-api@1"
-)
+VFS_SYMBOLIC_ROLLOUT_DECISION_SCHEMA: Final = "vfs/symbolic-rollout-decision@1"
+VFS_SYMBOLIC_CONTROL_REQUEST_SCHEMA: Final = "vfs/symbolic-control-request@1"
+VFS_SYMBOLIC_CONTROL_RESULT_SCHEMA: Final = "vfs/symbolic-control-result@1"
+VFS_SYMBOLIC_BOUNDED_STATUS_SCHEMA: Final = "vfs/symbolic-bounded-status@1"
+VFS_SYMBOLIC_BOUNDED_FINDINGS_SCHEMA: Final = "vfs/symbolic-bounded-findings@1"
+VFS_SYMBOLIC_BOUNDED_RECEIPTS_SCHEMA: Final = "vfs/symbolic-bounded-receipts@1"
+VFS_SYMBOLIC_PUBLIC_API_SCHEMA: Final = "vfs/symbolic-public-api@1"
 
 VFS_SYMBOLIC_ROLLOUT_VERSION: Final = 1
 VFS_SYMBOLIC_ROLLOUT_REQUIREMENT_ID: Final = (
     "vfs-036:adversarial-e2e-control-parity-recovery-rollback"
 )
-VFS_SYMBOLIC_BEHAVIOR_ID: Final = (
-    "behavior:vfs-symbolic-assurance-rollout@1"
-)
+VFS_SYMBOLIC_BEHAVIOR_ID: Final = "behavior:vfs-symbolic-assurance-rollout@1"
 VFS_SYMBOLIC_OBJECTIVE_ID: Final = "VFS-G130"
 VFS_SYMBOLIC_OBJECTIVE_REVISION: Final = "VFS-G130@vfs-036"
 
@@ -148,9 +132,7 @@ class AdversarialGateId(str, Enum):
     AUTOMATIC_MUTATION_DISABLED = "automatic_mutation_disabled"
 
 
-REQUIRED_ADVERSARIAL_GATES: Final[tuple[AdversarialGateId, ...]] = tuple(
-    AdversarialGateId
-)
+REQUIRED_ADVERSARIAL_GATES: Final[tuple[AdversarialGateId, ...]] = tuple(AdversarialGateId)
 
 
 def _plain(value: Any) -> Any:
@@ -175,9 +157,7 @@ def _canonical_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise VfsSymbolicRolloutError(
-            "rollout data must be canonical JSON"
-        ) from exc
+        raise VfsSymbolicRolloutError("rollout data must be canonical JSON") from exc
 
 
 def _identity(value: Any) -> str:
@@ -193,9 +173,7 @@ def _load_json(value: str | bytes | bytearray, name: str) -> Any:
         result: dict[str, Any] = {}
         for key, item in pairs:
             if key in result:
-                raise VfsSymbolicRolloutError(
-                    f"{name} contains duplicate JSON key {key!r}"
-                )
+                raise VfsSymbolicRolloutError(f"{name} contains duplicate JSON key {key!r}")
             result[key] = item
         return result
 
@@ -213,9 +191,7 @@ def _text(value: Any, name: str, *, maximum: int = 512) -> str:
     if isinstance(value, Enum):
         value = value.value
     if not isinstance(value, str) or not value or value != value.strip():
-        raise VfsSymbolicRolloutError(
-            f"{name} must be non-empty canonical text"
-        )
+        raise VfsSymbolicRolloutError(f"{name} must be non-empty canonical text")
     if "\x00" in value or len(value.encode("utf-8")) > maximum:
         raise VfsSymbolicRolloutError(f"{name} is unsafe or too large")
     return value
@@ -250,9 +226,7 @@ def _timestamp(value: datetime | str, name: str) -> str:
     if selected.tzinfo is None:
         raise VfsSymbolicRolloutError(f"{name} must include a timezone")
     return (
-        selected.astimezone(timezone.utc)
-        .isoformat(timespec="microseconds")
-        .replace("+00:00", "Z")
+        selected.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
     )
 
 
@@ -287,9 +261,7 @@ def _status(value: Any) -> GateStatus:
         raise VfsSymbolicRolloutError(f"unknown gate status: {value!r}") from exc
 
 
-def _unique_sorted_texts(
-    values: Sequence[Any], name: str, *, maximum: int
-) -> tuple[str, ...]:
+def _unique_sorted_texts(values: Sequence[Any], name: str, *, maximum: int) -> tuple[str, ...]:
     items = tuple(_text(item, name) for item in values)
     # Preserve deterministic order while dropping accidental duplicates
     # (e.g. identical first/second CID on a clean reproducible freeze).
@@ -297,6 +269,7 @@ def _unique_sorted_texts(
     if len(deduped) > maximum:
         raise VfsSymbolicRolloutError(f"{name} exceeds bound {maximum}")
     return tuple(sorted(deduped))
+
 
 # ---------------------------------------------------------------------------
 # Frozen multi-repository fixture
@@ -312,12 +285,8 @@ DEFAULT_FIXTURE_REPOSITORIES: Final[Mapping[str, Mapping[str, str]]] = {
         ".git/config": "[core]\n",
     },
     "repository:ipfs-accelerate-py@fixture": {
-        "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py": (
-            "# fixture surface\n"
-        ),
-        "ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py": (
-            "# cache surface\n"
-        ),
+        "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py": ("# fixture surface\n"),
+        "ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py": ("# cache surface\n"),
         "tests/test_rollout.py": "def test_ok(): assert True\n",
         "__pycache__/skip.pyc": "bytecode",
         ".pytest_cache/v/cache": "stale",
@@ -360,15 +329,11 @@ class FrozenRepositoryDescriptor:
     path_digests: Mapping[str, str]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "repository_id", _text(self.repository_id, "repository_id")
-        )
+        object.__setattr__(self, "repository_id", _text(self.repository_id, "repository_id"))
         object.__setattr__(self, "alias", _text(self.alias, "alias"))
         object.__setattr__(self, "commit", _text(self.commit, "commit"))
         object.__setattr__(self, "tree_id", _text(self.tree_id, "tree_id"))
-        object.__setattr__(
-            self, "content_cid", _text(self.content_cid, "content_cid")
-        )
+        object.__setattr__(self, "content_cid", _text(self.content_cid, "content_cid"))
         included = _unique_sorted_texts(
             self.included_paths, "included_paths", maximum=MAX_PATHS_PER_REPO
         )
@@ -376,9 +341,7 @@ class FrozenRepositoryDescriptor:
             self.excluded_paths, "excluded_paths", maximum=MAX_EXCLUSIONS
         )
         if set(included) & set(excluded):
-            raise VfsSymbolicRolloutError(
-                "included and excluded paths must be disjoint"
-            )
+            raise VfsSymbolicRolloutError("included and excluded paths must be disjoint")
         digests = {
             _text(path, "path_digests"): _text(digest, "path_digest")
             for path, digest in dict(self.path_digests).items()
@@ -411,9 +374,7 @@ class FrozenRepositoryDescriptor:
                     "path_digests": self.path_digests,
                 }
             ):
-                raise VfsSymbolicRolloutError(
-                    "content_cid does not match repository path digests"
-                )
+                raise VfsSymbolicRolloutError("content_cid does not match repository path digests")
 
     @property
     def observed_paths(self) -> int:
@@ -438,9 +399,7 @@ class FrozenRepositoryDescriptor:
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "FrozenRepositoryDescriptor":
+    def from_dict(cls, value: Mapping[str, Any]) -> "FrozenRepositoryDescriptor":
         required = {
             "repository_id",
             "alias",
@@ -452,9 +411,7 @@ class FrozenRepositoryDescriptor:
             "path_digests",
         }
         if not required.issubset(value):
-            raise VfsSymbolicRolloutError(
-                "frozen repository descriptor is missing fields"
-            )
+            raise VfsSymbolicRolloutError("frozen repository descriptor is missing fields")
         return cls(
             repository_id=value["repository_id"],
             alias=value["alias"],
@@ -480,17 +437,13 @@ class FrozenMultiRepoFixture:
     inventory_policy_revision: str = "inventory-policy-revision:1"
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "fixture_id", _text(self.fixture_id, "fixture_id")
-        )
+        object.__setattr__(self, "fixture_id", _text(self.fixture_id, "fixture_id"))
         object.__setattr__(
             self,
             "fixture_revision",
             _text(self.fixture_revision, "fixture_revision"),
         )
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "forest_id")
-        )
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id"))
         repos = tuple(self.repositories)
         if not repos:
             raise VfsSymbolicRolloutError("fixture requires repositories")
@@ -499,9 +452,7 @@ class FrozenMultiRepoFixture:
         ids = [item.repository_id for item in repos]
         aliases = [item.alias for item in repos]
         if len(ids) != len(set(ids)) or len(aliases) != len(set(aliases)):
-            raise VfsSymbolicRolloutError(
-                "repository ids and aliases must be unique"
-            )
+            raise VfsSymbolicRolloutError("repository ids and aliases must be unique")
         if not all(isinstance(item, FrozenRepositoryDescriptor) for item in repos):
             raise VfsSymbolicRolloutError("repositories have the wrong type")
         prefixes = _unique_sorted_texts(
@@ -519,9 +470,7 @@ class FrozenMultiRepoFixture:
         object.__setattr__(
             self,
             "inventory_policy_revision",
-            _text(
-                self.inventory_policy_revision, "inventory_policy_revision"
-            ),
+            _text(self.inventory_policy_revision, "inventory_policy_revision"),
         )
         expected_forest = _identity(
             {
@@ -571,17 +520,14 @@ class FrozenMultiRepoFixture:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "FrozenMultiRepoFixture":
         repos = tuple(
-            FrozenRepositoryDescriptor.from_dict(item)
-            for item in value.get("repositories", ())
+            FrozenRepositoryDescriptor.from_dict(item) for item in value.get("repositories", ())
         )
         return cls(
             fixture_id=value["fixture_id"],
             fixture_revision=value["fixture_revision"],
             forest_id=value["forest_id"],
             repositories=repos,
-            exclusion_prefixes=tuple(
-                value.get("exclusion_prefixes", DEFAULT_EXCLUSION_PREFIXES)
-            ),
+            exclusion_prefixes=tuple(value.get("exclusion_prefixes", DEFAULT_EXCLUSION_PREFIXES)),
             inventory_policy_id=value.get(
                 "inventory_policy_id", "inventory-policy:vfs-adversarial@1"
             ),
@@ -601,10 +547,9 @@ def _normalize_repo_path(path: str) -> str:
 def _is_excluded(path: str, prefixes: Sequence[str]) -> bool:
     normalized = _normalize_repo_path(path)
     return any(
-        normalized == prefix.rstrip("/")
-        or normalized.startswith(prefix)
-        for prefix in prefixes
+        normalized == prefix.rstrip("/") or normalized.startswith(prefix) for prefix in prefixes
     )
+
 
 def freeze_multi_repository_fixture(
     repositories: Mapping[str, Mapping[str, str | bytes]] | None = None,
@@ -617,27 +562,19 @@ def freeze_multi_repository_fixture(
 ) -> FrozenMultiRepoFixture:
     """Freeze repository path bodies into reproducible content identities."""
 
-    source = (
-        DEFAULT_FIXTURE_REPOSITORIES
-        if repositories is None
-        else repositories
-    )
+    source = DEFAULT_FIXTURE_REPOSITORIES if repositories is None else repositories
     if not source:
         raise VfsSymbolicRolloutError("repositories must not be empty")
     prefixes = tuple(exclusion_prefixes)
     descriptors: list[FrozenRepositoryDescriptor] = []
     for index, (repository_id, files) in enumerate(sorted(source.items())):
         if not files:
-            raise VfsSymbolicRolloutError(
-                f"{repository_id} must contain at least one path"
-            )
+            raise VfsSymbolicRolloutError(f"{repository_id} must contain at least one path")
         path_digests: dict[str, str] = {}
         included: list[str] = []
         excluded: list[str] = []
         for path, body in sorted(files.items()):
-            rel = _normalize_repo_path(
-                _text(path, "path", maximum=1024)
-            )
+            rel = _normalize_repo_path(_text(path, "path", maximum=1024))
             if not rel:
                 raise VfsSymbolicRolloutError("path must not be empty")
             if isinstance(body, str):
@@ -645,9 +582,7 @@ def freeze_multi_repository_fixture(
             elif isinstance(body, (bytes, bytearray)):
                 raw = bytes(body)
             else:
-                raise VfsSymbolicRolloutError(
-                    f"path body for {rel!r} must be str or bytes"
-                )
+                raise VfsSymbolicRolloutError(f"path body for {rel!r} must be str or bytes")
             digest = _content_cid(raw)
             path_digests[rel] = digest
             if _is_excluded(rel, prefixes):
@@ -739,12 +674,8 @@ class AdversarialGateObservation:
         )
         object.__setattr__(self, "evidence_ids", evidence)
         if self.detail:
-            object.__setattr__(
-                self, "detail", _text(self.detail, "detail", maximum=1024)
-            )
-        object.__setattr__(
-            self, "authoritative", _boolean(self.authoritative, "authoritative")
-        )
+            object.__setattr__(self, "detail", _text(self.detail, "detail", maximum=1024))
+        object.__setattr__(self, "authoritative", _boolean(self.authoritative, "authoritative"))
         if self.authoritative and self.gate_id in {
             AdversarialGateId.SIMULATED_ZK,
             AdversarialGateId.FORGED_ZK,
@@ -780,9 +711,7 @@ class AdversarialGateObservation:
         return payload
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "AdversarialGateObservation":
+    def from_dict(cls, value: Mapping[str, Any]) -> "AdversarialGateObservation":
         result = cls(
             gate_id=value["gate_id"],
             status=value["status"],
@@ -810,12 +739,8 @@ class AdversarialE2EGateReport:
     def __post_init__(self) -> None:
         if not isinstance(self.fixture, FrozenMultiRepoFixture):
             raise VfsSymbolicRolloutError("fixture has the wrong type")
-        object.__setattr__(
-            self, "observed_at", _timestamp(self.observed_at, "observed_at")
-        )
-        object.__setattr__(
-            self, "toolchain_id", _text(self.toolchain_id, "toolchain_id")
-        )
+        object.__setattr__(self, "observed_at", _timestamp(self.observed_at, "observed_at"))
+        object.__setattr__(self, "toolchain_id", _text(self.toolchain_id, "toolchain_id"))
         object.__setattr__(
             self,
             "toolchain_revision",
@@ -823,21 +748,13 @@ class AdversarialE2EGateReport:
         )
         observations = tuple(self.observations)
         if len(observations) != len(REQUIRED_ADVERSARIAL_GATES):
-            raise VfsSymbolicRolloutError(
-                "adversarial e2e report must cover every required gate"
-            )
+            raise VfsSymbolicRolloutError("adversarial e2e report must cover every required gate")
         by_id = {item.gate_id: item for item in observations}
         if len(by_id) != len(observations):
             raise VfsSymbolicRolloutError("gate observations must be unique")
-        missing = [
-            item.value
-            for item in REQUIRED_ADVERSARIAL_GATES
-            if item not in by_id
-        ]
+        missing = [item.value for item in REQUIRED_ADVERSARIAL_GATES if item not in by_id]
         if missing:
-            raise VfsSymbolicRolloutError(
-                f"missing adversarial gates: {', '.join(missing)}"
-            )
+            raise VfsSymbolicRolloutError(f"missing adversarial gates: {', '.join(missing)}")
         ordered = tuple(by_id[item] for item in REQUIRED_ADVERSARIAL_GATES)
         object.__setattr__(self, "observations", ordered)
 
@@ -852,18 +769,14 @@ class AdversarialE2EGateReport:
     @property
     def failure_codes(self) -> tuple[str, ...]:
         return tuple(
-            f"gate-failed:{item.gate_id.value}"
-            for item in self.observations
-            if not item.passed
+            f"gate-failed:{item.gate_id.value}" for item in self.observations if not item.passed
         )
 
     @property
     def automatic_mutation_enabled(self) -> bool:
         return False
 
-    def observation(
-        self, gate_id: AdversarialGateId | str
-    ) -> AdversarialGateObservation:
+    def observation(self, gate_id: AdversarialGateId | str) -> AdversarialGateObservation:
         selected = _gate_id(gate_id)
         for item in self.observations:
             if item.gate_id is selected:
@@ -879,9 +792,7 @@ class AdversarialE2EGateReport:
             "objective_revision": VFS_SYMBOLIC_OBJECTIVE_REVISION,
             "fixture": self.fixture.to_dict(),
             "fixture_cid": self.fixture.fixture_cid,
-            "observations": [
-                item.to_dict() for item in self.observations
-            ],
+            "observations": [item.to_dict() for item in self.observations],
             "observed_at": self.observed_at,
             "toolchain_id": self.toolchain_id,
             "toolchain_revision": self.toolchain_revision,
@@ -903,35 +814,24 @@ class AdversarialE2EGateReport:
         if value.get("schema") != ADVERSARIAL_E2E_GATE_SCHEMA:
             raise VfsSymbolicRolloutError("unsupported adversarial e2e schema")
         if value.get("automatic_mutation_enabled") is True:
-            raise VfsSymbolicRolloutError(
-                "adversarial e2e report cannot enable automatic mutation"
-            )
+            raise VfsSymbolicRolloutError("adversarial e2e report cannot enable automatic mutation")
         report = cls(
             fixture=FrozenMultiRepoFixture.from_dict(value["fixture"]),
             observations=tuple(
-                AdversarialGateObservation.from_dict(item)
-                for item in value["observations"]
+                AdversarialGateObservation.from_dict(item) for item in value["observations"]
             ),
             observed_at=value["observed_at"],
-            toolchain_id=value.get(
-                "toolchain_id", "toolchain:vfs-symbolic-assurance@1"
-            ),
-            toolchain_revision=value.get(
-                "toolchain_revision", "toolchain-revision:1"
-            ),
+            toolchain_id=value.get("toolchain_id", "toolchain:vfs-symbolic-assurance@1"),
+            toolchain_revision=value.get("toolchain_revision", "toolchain-revision:1"),
         )
         if value.get("report_id", report.report_id) != report.report_id:
             raise VfsSymbolicRolloutError("adversarial e2e report ID mismatch")
-        if value.get("fixture_cid", report.fixture.fixture_cid) != (
-            report.fixture.fixture_cid
-        ):
+        if value.get("fixture_cid", report.fixture.fixture_cid) != (report.fixture.fixture_cid):
             raise VfsSymbolicRolloutError("fixture_cid mismatch")
         return report
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "AdversarialE2EGateReport":
+    def from_json(cls, value: str | bytes | bytearray) -> "AdversarialE2EGateReport":
         return cls.from_dict(_load_json(value, "adversarial e2e gate report"))
 
 
@@ -1007,13 +907,9 @@ def evaluate_adversarial_gates(
         raise VfsSymbolicRolloutError("fixture has the wrong type")
     inj = injection or AdversarialInjection()
     if inj.force_automatic_mutation:
-        raise VfsSymbolicRolloutError(
-            "automatic mutation cannot be forced on the adversarial gate"
-        )
+        raise VfsSymbolicRolloutError("automatic mutation cannot be forced on the adversarial gate")
     if inj.force_authoritative_zk:
-        raise VfsSymbolicRolloutError(
-            "simulated/forged/tampered ZK cannot gain authority"
-        )
+        raise VfsSymbolicRolloutError("simulated/forged/tampered ZK cannot gain authority")
 
     # Independent freeze of the default population must reproduce CIDs.  Custom
     # fixtures either supply a second freeze or compare against themselves.
@@ -1036,9 +932,7 @@ def evaluate_adversarial_gates(
         fixture.fixture_cid == replay.fixture_cid
         and all(
             left.content_cid == right.content_cid
-            for left, right in zip(
-                fixture.repositories, replay.repositories, strict=True
-            )
+            for left, right in zip(fixture.repositories, replay.repositories, strict=True)
         )
         if len(fixture.repositories) == len(replay.repositories)
         else False
@@ -1052,11 +946,7 @@ def evaluate_adversarial_gates(
             AdversarialGateId.REPRODUCIBLE_CIDS,
             passed=cid_match,
             expected="identical-fixture-and-repository-cids",
-            observed=(
-                "identical-fixture-and-repository-cids"
-                if cid_match
-                else "cid-mismatch"
-            ),
+            observed=("identical-fixture-and-repository-cids" if cid_match else "cid-mismatch"),
             evidence=(
                 f"first:{fixture.fixture_cid}",
                 f"second:{replay.fixture_cid}",
@@ -1065,9 +955,7 @@ def evaluate_adversarial_gates(
     )
     # complete inventory
     exhaustive = all(repo.exhaustive for repo in fixture.repositories)
-    omitted = any(
-        not repo.included_paths for repo in fixture.repositories
-    )
+    omitted = any(not repo.included_paths for repo in fixture.repositories)
     inventory_ok = exhaustive and not omitted and fixture.total_included_paths > 0
     if inj.fails(AdversarialGateId.COMPLETE_INVENTORY):
         inventory_ok = False
@@ -1076,11 +964,7 @@ def evaluate_adversarial_gates(
             AdversarialGateId.COMPLETE_INVENTORY,
             passed=inventory_ok,
             expected="exhaustive-included-paths",
-            observed=(
-                "exhaustive-included-paths"
-                if inventory_ok
-                else "incomplete-inventory"
-            ),
+            observed=("exhaustive-included-paths" if inventory_ok else "incomplete-inventory"),
             evidence=tuple(repo.content_cid for repo in fixture.repositories),
         )
     )
@@ -1120,11 +1004,7 @@ def evaluate_adversarial_gates(
             AdversarialGateId.INCREMENTAL_REUSE,
             passed=reuse_ok,
             expected="full-digest-reuse-on-warm-scan",
-            observed=(
-                "full-digest-reuse-on-warm-scan"
-                if reuse_ok
-                else "reuse-miss"
-            ),
+            observed=("full-digest-reuse-on-warm-scan" if reuse_ok else "reuse-miss"),
             evidence=(f"reuse-ratio:{reuse_ratio}",),
         )
     )
@@ -1174,29 +1054,19 @@ def evaluate_adversarial_gates(
             AdversarialGateId.CONTRACT_PRECISION,
             passed=contract_ok,
             expected="seeded-mismatch-precision",
-            observed=(
-                "seeded-mismatch-precision"
-                if contract_ok
-                else "false-proved-compatible"
-            ),
+            observed=("seeded-mismatch-precision" if contract_ok else "false-proved-compatible"),
             evidence=("contract:seeded-mismatch",),
         )
     )
 
     # wrong / unknown proof
-    wrong_proof_ok = not inj.accept_wrong_proof and not inj.fails(
-        AdversarialGateId.WRONG_PROOF
-    )
+    wrong_proof_ok = not inj.accept_wrong_proof and not inj.fails(AdversarialGateId.WRONG_PROOF)
     observations.append(
         _obs(
             AdversarialGateId.WRONG_PROOF,
             passed=wrong_proof_ok,
             expected="wrong-proof-rejected",
-            observed=(
-                "wrong-proof-rejected"
-                if wrong_proof_ok
-                else "wrong-proof-accepted"
-            ),
+            observed=("wrong-proof-rejected" if wrong_proof_ok else "wrong-proof-accepted"),
             evidence=("proof:wrong",),
             reject=wrong_proof_ok,
         )
@@ -1210,9 +1080,7 @@ def evaluate_adversarial_gates(
             passed=unknown_proof_ok,
             expected="unknown-proof-non-authoritative",
             observed=(
-                "unknown-proof-non-authoritative"
-                if unknown_proof_ok
-                else "unknown-proof-promoted"
+                "unknown-proof-non-authoritative" if unknown_proof_ok else "unknown-proof-promoted"
             ),
             evidence=("proof:unknown",),
         )
@@ -1250,9 +1118,7 @@ def evaluate_adversarial_gates(
         )
 
     # MCP mock / bypass
-    mcp_mock_ok = not inj.accept_mcp_mock and not inj.fails(
-        AdversarialGateId.MCP_MOCK
-    )
+    mcp_mock_ok = not inj.accept_mcp_mock and not inj.fails(AdversarialGateId.MCP_MOCK)
     observations.append(
         _obs(
             AdversarialGateId.MCP_MOCK,
@@ -1266,37 +1132,25 @@ def evaluate_adversarial_gates(
             evidence=("mcp:mock-probe",),
         )
     )
-    mcp_bypass_ok = not inj.accept_mcp_bypass and not inj.fails(
-        AdversarialGateId.MCP_BYPASS
-    )
+    mcp_bypass_ok = not inj.accept_mcp_bypass and not inj.fails(AdversarialGateId.MCP_BYPASS)
     observations.append(
         _obs(
             AdversarialGateId.MCP_BYPASS,
             passed=mcp_bypass_ok,
             expected="mcp-local-bypass-reported",
-            observed=(
-                "mcp-local-bypass-reported"
-                if mcp_bypass_ok
-                else "mcp-local-bypass-silent"
-            ),
+            observed=("mcp-local-bypass-reported" if mcp_bypass_ok else "mcp-local-bypass-silent"),
             evidence=("mcp:bypass-probe",),
         )
     )
 
     # VFS seeded drift
-    drift_ok = not inj.miss_seeded_drift and not inj.fails(
-        AdversarialGateId.VFS_SEEDED_DRIFT
-    )
+    drift_ok = not inj.miss_seeded_drift and not inj.fails(AdversarialGateId.VFS_SEEDED_DRIFT)
     observations.append(
         _obs(
             AdversarialGateId.VFS_SEEDED_DRIFT,
             passed=drift_ok,
             expected="seeded-vfs-drift-detected",
-            observed=(
-                "seeded-vfs-drift-detected"
-                if drift_ok
-                else "seeded-vfs-drift-missed"
-            ),
+            observed=("seeded-vfs-drift-detected" if drift_ok else "seeded-vfs-drift-missed"),
             evidence=("vfs:seeded-drift",),
         )
     )
@@ -1320,9 +1174,7 @@ def evaluate_adversarial_gates(
     )
 
     # task determinism
-    task_ok = not inj.nondeterministic_tasks and not inj.fails(
-        AdversarialGateId.TASK_DETERMINISM
-    )
+    task_ok = not inj.nondeterministic_tasks and not inj.fails(AdversarialGateId.TASK_DETERMINISM)
     task_a = _identity(
         {
             "fixture_cid": fixture.fixture_cid,
@@ -1367,72 +1219,54 @@ def evaluate_adversarial_gates(
     )
 
     # restart / replay
-    restart_ok = not inj.restart_diverges and not inj.fails(
-        AdversarialGateId.RESTART_REPLAY
-    )
+    restart_ok = not inj.restart_diverges and not inj.fails(AdversarialGateId.RESTART_REPLAY)
     observations.append(
         _obs(
             AdversarialGateId.RESTART_REPLAY,
             passed=restart_ok,
             expected="restart-replay-byte-identical",
-            observed=(
-                "restart-replay-byte-identical"
-                if restart_ok
-                else "restart-replay-diverged"
-            ),
+            observed=("restart-replay-byte-identical" if restart_ok else "restart-replay-diverged"),
             evidence=("runtime:restart-replay",),
         )
     )
 
     # lease / fence loss
-    lease_ok = not inj.ignore_lease_fence and not inj.fails(
-        AdversarialGateId.LEASE_FENCE_LOSS
-    )
+    lease_ok = not inj.ignore_lease_fence and not inj.fails(AdversarialGateId.LEASE_FENCE_LOSS)
     observations.append(
         _obs(
             AdversarialGateId.LEASE_FENCE_LOSS,
             passed=lease_ok,
             expected="lease-fence-loss-blocks-mutation",
             observed=(
-                "lease-fence-loss-blocks-mutation"
-                if lease_ok
-                else "lease-fence-loss-ignored"
+                "lease-fence-loss-blocks-mutation" if lease_ok else "lease-fence-loss-ignored"
             ),
             evidence=("lease:fence-loss",),
         )
     )
 
     # merge conflict
-    merge_ok = not inj.silent_merge_conflict and not inj.fails(
-        AdversarialGateId.MERGE_CONFLICT
-    )
+    merge_ok = not inj.silent_merge_conflict and not inj.fails(AdversarialGateId.MERGE_CONFLICT)
     observations.append(
         _obs(
             AdversarialGateId.MERGE_CONFLICT,
             passed=merge_ok,
             expected="merge-conflict-serialized-and-reported",
             observed=(
-                "merge-conflict-serialized-and-reported"
-                if merge_ok
-                else "merge-conflict-silent"
+                "merge-conflict-serialized-and-reported" if merge_ok else "merge-conflict-silent"
             ),
             evidence=("merge:conflict-probe",),
         )
     )
 
     # bounded refill / exhaustion
-    refill_ok = not inj.unbounded_refill and not inj.fails(
-        AdversarialGateId.BOUNDED_REFILL
-    )
+    refill_ok = not inj.unbounded_refill and not inj.fails(AdversarialGateId.BOUNDED_REFILL)
     observations.append(
         _obs(
             AdversarialGateId.BOUNDED_REFILL,
             passed=refill_ok,
             expected="refill-within-admission-ceilings",
             observed=(
-                "refill-within-admission-ceilings"
-                if refill_ok
-                else "refill-exceeded-ceilings"
+                "refill-within-admission-ceilings" if refill_ok else "refill-exceeded-ceilings"
             ),
             evidence=("refill:bounded",),
         )
@@ -1446,18 +1280,14 @@ def evaluate_adversarial_gates(
             passed=exhaust_ok,
             expected="healthy-exhaustion-no-busywork",
             observed=(
-                "healthy-exhaustion-no-busywork"
-                if exhaust_ok
-                else "exhaustion-created-busywork"
+                "healthy-exhaustion-no-busywork" if exhaust_ok else "exhaustion-created-busywork"
             ),
             evidence=("refill:exhaustion",),
         )
     )
 
     # rollback
-    rollback_ok = not inj.skip_rollback and not inj.fails(
-        AdversarialGateId.ROLLBACK
-    )
+    rollback_ok = not inj.skip_rollback and not inj.fails(AdversarialGateId.ROLLBACK)
     observations.append(
         _obs(
             AdversarialGateId.ROLLBACK,
@@ -1491,18 +1321,14 @@ def evaluate_adversarial_gates(
     )
 
     # automatic mutation disabled
-    auto_disabled = not inj.fails(
-        AdversarialGateId.AUTOMATIC_MUTATION_DISABLED
-    )
+    auto_disabled = not inj.fails(AdversarialGateId.AUTOMATIC_MUTATION_DISABLED)
     observations.append(
         _obs(
             AdversarialGateId.AUTOMATIC_MUTATION_DISABLED,
             passed=auto_disabled,
             expected="automatic-mutation-disabled",
             observed=(
-                "automatic-mutation-disabled"
-                if auto_disabled
-                else "automatic-mutation-enabled"
+                "automatic-mutation-disabled" if auto_disabled else "automatic-mutation-enabled"
             ),
             evidence=("policy:automatic-mutation",),
         )
@@ -1539,9 +1365,7 @@ def verify_adversarial_e2e_report(
         )
     except VfsSymbolicRolloutError:
         return False
-    return _canonical_bytes(report.to_dict()) == _canonical_bytes(
-        independent.to_dict()
-    )
+    return _canonical_bytes(report.to_dict()) == _canonical_bytes(independent.to_dict())
 
 
 # ---------------------------------------------------------------------------
@@ -1566,9 +1390,7 @@ class VfsRolloutBinding:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=512)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=512))
 
     @property
     def binding_id(self) -> str:
@@ -1600,24 +1422,17 @@ class VfsRolloutPolicy:
     automatic_mutation_enabled: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, "policy_id")
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
         object.__setattr__(
             self,
             "policy_revision",
             _text(self.policy_revision, "policy_revision"),
         )
         behaviors = tuple(
-            sorted(
-                _text(item, "approved_behavior_ids")
-                for item in self.approved_behavior_ids
-            )
+            sorted(_text(item, "approved_behavior_ids") for item in self.approved_behavior_ids)
         )
         if not behaviors or len(behaviors) != len(set(behaviors)):
-            raise VfsSymbolicRolloutError(
-                "approved behavior IDs must be unique and non-empty"
-            )
+            raise VfsSymbolicRolloutError("approved behavior IDs must be unique and non-empty")
         modes = tuple(_mode(item) for item in self.approved_modes)
         if len(modes) != len(set(modes)):
             raise VfsSymbolicRolloutError("approved modes must be unique")
@@ -1631,9 +1446,7 @@ class VfsRolloutPolicy:
         object.__setattr__(
             self,
             "automatic_mutation_enabled",
-            _boolean(
-                self.automatic_mutation_enabled, "automatic_mutation_enabled"
-            ),
+            _boolean(self.automatic_mutation_enabled, "automatic_mutation_enabled"),
         )
         if self.automatic_mutation_enabled:
             raise VfsSymbolicRolloutError(
@@ -1644,13 +1457,8 @@ class VfsRolloutPolicy:
     def policy_binding_id(self) -> str:
         return _identity(self.to_dict())
 
-    def approves(
-        self, behavior_id: str, mode: VfsRolloutMode | str
-    ) -> bool:
-        return (
-            behavior_id in self.approved_behavior_ids
-            and _mode(mode) in self.approved_modes
-        )
+    def approves(self, behavior_id: str, mode: VfsRolloutMode | str) -> bool:
+        return behavior_id in self.approved_behavior_ids and _mode(mode) in self.approved_modes
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1669,12 +1477,8 @@ class VfsRolloutPolicy:
             policy_revision=value["policy_revision"],
             approved_behavior_ids=tuple(value["approved_behavior_ids"]),
             approved_modes=tuple(value.get("approved_modes", ())),
-            rollback_on_regression=bool(
-                value.get("rollback_on_regression", True)
-            ),
-            automatic_mutation_enabled=bool(
-                value.get("automatic_mutation_enabled", False)
-            ),
+            rollback_on_regression=bool(value.get("rollback_on_regression", True)),
+            automatic_mutation_enabled=bool(value.get("automatic_mutation_enabled", False)),
         )
 
 
@@ -1699,9 +1503,7 @@ class ShadowRolloutReport:
         if self.prior_gate_report is not None and not isinstance(
             self.prior_gate_report, AdversarialE2EGateReport
         ):
-            raise VfsSymbolicRolloutError(
-                "prior_gate_report has the wrong type"
-            )
+            raise VfsSymbolicRolloutError("prior_gate_report has the wrong type")
 
     @property
     def report_id(self) -> str:
@@ -1730,9 +1532,7 @@ class ShadowRolloutReport:
         if self.desired_mode in {
             VfsRolloutMode.ASSIST,
             VfsRolloutMode.AUTOMATIC,
-        } and not self.policy.approves(
-            binding.behavior_id, self.desired_mode
-        ):
+        } and not self.policy.approves(binding.behavior_id, self.desired_mode):
             reasons.append("mode-not-policy-approved")
         if self.desired_mode is VfsRolloutMode.AUTOMATIC:
             reasons.append("automatic-mutation-disabled")
@@ -1746,19 +1546,19 @@ class ShadowRolloutReport:
                     reasons.append("assurance-regression")
                 if self.prior_gate_report.passed and not report.passed:
                     reasons.append("assurance-regression")
-                if _datetime(report.observed_at) < _datetime(
-                    self.prior_gate_report.observed_at
-                ):
+                if _datetime(report.observed_at) < _datetime(self.prior_gate_report.observed_at):
                     reasons.append("current-observation-not-later")
         return tuple(sorted(set(reasons))[:MAX_REASON_CODES])
 
     @property
     def qualification_passed(self) -> bool:
-        return not any(
-            code.startswith("gate-failed:")
-            or code.startswith("stale-binding:")
-            for code in self.reason_codes
-        ) and self.gate_report.passed
+        return (
+            not any(
+                code.startswith("gate-failed:") or code.startswith("stale-binding:")
+                for code in self.reason_codes
+            )
+            and self.gate_report.passed
+        )
 
     @property
     def effective_mode(self) -> VfsRolloutMode:
@@ -1793,8 +1593,7 @@ class ShadowRolloutReport:
     @property
     def passed(self) -> bool:
         return self.gate_report.passed and not any(
-            code.startswith("assurance-regression")
-            or code.startswith("stale-binding:")
+            code.startswith("assurance-regression") or code.startswith("stale-binding:")
             for code in self.reason_codes
         )
 
@@ -1821,9 +1620,7 @@ class ShadowRolloutReport:
             "automatic_ready": False,
             "automatic_mutation_enabled": False,
             "prior_gate_report_id": (
-                self.prior_gate_report.report_id
-                if self.prior_gate_report is not None
-                else ""
+                self.prior_gate_report.report_id if self.prior_gate_report is not None else ""
             ),
             "authoritative": False,
             "completion_authoritative": False,
@@ -1841,9 +1638,7 @@ class ShadowRolloutReport:
         if value.get("schema") != SHADOW_ROLLOUT_REPORT_SCHEMA:
             raise VfsSymbolicRolloutError("unsupported shadow rollout schema")
         if value.get("automatic_mutation_enabled") is True:
-            raise VfsSymbolicRolloutError(
-                "shadow rollout report cannot enable automatic mutation"
-            )
+            raise VfsSymbolicRolloutError("shadow rollout report cannot enable automatic mutation")
         raise VfsSymbolicRolloutError(
             "shadow rollout report must be rebuilt from gate evidence; "
             "use evaluate_vfs_symbolic_rollout"
@@ -1882,9 +1677,7 @@ class VfsRolloutDecision:
             self.desired_mode,
             VfsRolloutMode.SHADOW,
         }:
-            raise VfsSymbolicRolloutError(
-                "failed promotion must return to shadow"
-            )
+            raise VfsSymbolicRolloutError("failed promotion must return to shadow")
         if self.effective_mode is VfsRolloutMode.AUTOMATIC:
             raise VfsSymbolicRolloutError(
                 "automatic mode cannot become effective while mutation is disabled"
@@ -1917,18 +1710,11 @@ class VfsRolloutDecision:
                 "all gates required for that mode passed."
             )
         if self.rollback_applied:
-            return (
-                f"{self.binding.behavior_id} returned to shadow: "
-                + ", ".join(self.reason_codes)
-            )
+            return f"{self.binding.behavior_id} returned to shadow: " + ", ".join(self.reason_codes)
         return (
             f"{self.binding.behavior_id} effective={self.effective_mode.value}; "
             f"desired={self.desired_mode.value}; "
-            + (
-                ", ".join(self.reason_codes)
-                if self.reason_codes
-                else "no blocking reasons"
-            )
+            + (", ".join(self.reason_codes) if self.reason_codes else "no blocking reasons")
         )
 
     def to_dict(self, *, include_decision_id: bool = True) -> dict[str, Any]:
@@ -1991,9 +1777,7 @@ def evaluate_vfs_symbolic_rollout(
         qualification_passed=shadow.qualification_passed,
         rollback_applied=shadow.rollback_applied,
         shadow_report_id=shadow.report_id,
-        prior_gate_report_id=(
-            prior_gate_report.report_id if prior_gate_report is not None else ""
-        ),
+        prior_gate_report_id=(prior_gate_report.report_id if prior_gate_report is not None else ""),
     )
 
 
@@ -2015,9 +1799,7 @@ def verify_vfs_symbolic_rollout(
         )
     except VfsSymbolicRolloutError:
         return False
-    return _canonical_bytes(decision.to_dict()) == _canonical_bytes(
-        replayed.to_dict()
-    )
+    return _canonical_bytes(decision.to_dict()) == _canonical_bytes(replayed.to_dict())
 
 
 def build_default_vfs_binding(
@@ -2029,9 +1811,7 @@ def build_default_vfs_binding(
     return VfsRolloutBinding(
         repository_id=selected,
         tree_id=next(
-            item.tree_id
-            for item in fixture.repositories
-            if item.repository_id == selected
+            item.tree_id for item in fixture.repositories if item.repository_id == selected
         ),
         forest_id=fixture.forest_id,
         behavior_id=VFS_SYMBOLIC_BEHAVIOR_ID,
@@ -2089,9 +1869,7 @@ def project_bounded_status(decision: VfsRolloutDecision) -> dict[str, Any]:
         "rollback_applied": decision.rollback_applied,
         "automatic_mutation_enabled": False,
         "reason_codes": list(decision.reason_codes),
-        "passed_gate_count": sum(
-            1 for item in decision.gate_report.observations if item.passed
-        ),
+        "passed_gate_count": sum(1 for item in decision.gate_report.observations if item.passed),
         "failed_gate_count": sum(
             1 for item in decision.gate_report.observations if not item.passed
         ),
@@ -2270,9 +2048,7 @@ class VfsControlRequest:
         return result
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "VfsControlRequest":
+    def from_json(cls, value: str | bytes | bytearray) -> "VfsControlRequest":
         return cls.from_dict(_load_json(value, "vfs symbolic control request"))
 
 
@@ -2362,9 +2138,7 @@ class VfsSymbolicPublicAPI:
         with self._lock:
             return self._decision
 
-    def _decode(
-        self, request: VfsControlRequest | Mapping[str, Any] | str
-    ) -> VfsControlRequest:
+    def _decode(self, request: VfsControlRequest | Mapping[str, Any] | str) -> VfsControlRequest:
         if isinstance(request, VfsControlRequest):
             return request
         if isinstance(request, str):
@@ -2382,9 +2156,7 @@ class VfsSymbolicPublicAPI:
             project_bounded_receipts(decision),
         )
 
-    def execute(
-        self, request: VfsControlRequest | Mapping[str, Any] | str
-    ) -> VfsControlResult:
+    def execute(self, request: VfsControlRequest | Mapping[str, Any] | str) -> VfsControlResult:
         selected = self._decode(request)
         with self._lock:
             previous = self._decision
@@ -2483,9 +2255,7 @@ def build_frozen_adversarial_population(
     """Convenience builder for the default frozen multi-repo population."""
 
     fixture = freeze_multi_repository_fixture()
-    report = evaluate_adversarial_gates(
-        fixture, injection=injection, observed_at=observed_at
-    )
+    report = evaluate_adversarial_gates(fixture, injection=injection, observed_at=observed_at)
     binding = build_default_vfs_binding(fixture)
     policy = build_default_vfs_policy(approve_assist=True, approve_automatic=False)
     return fixture, report, binding, policy

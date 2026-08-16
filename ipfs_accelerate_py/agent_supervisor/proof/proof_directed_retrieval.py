@@ -45,15 +45,9 @@ from ..analysis.semantic_dependency_graph import (
 PROOF_DIRECTED_RETRIEVAL_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proof-directed-retrieval-receipt@1"
 )
-RETRIEVAL_SEED_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/retrieval-seed@1"
-)
-RETRIEVAL_CANDIDATE_AUDIT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/retrieval-candidate-audit@1"
-)
-RETRIEVAL_CLOSURE_REQUIREMENT_ID = (
-    "agent-supervisor.requirement.retrieval-authoritative-closure@1"
-)
+RETRIEVAL_SEED_SCHEMA = "ipfs_accelerate_py/agent-supervisor/retrieval-seed@1"
+RETRIEVAL_CANDIDATE_AUDIT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/retrieval-candidate-audit@1"
+RETRIEVAL_CLOSURE_REQUIREMENT_ID = "agent-supervisor.requirement.retrieval-authoritative-closure@1"
 
 APPROXIMATE_SOURCES = ("ast", "bm25", "graphrag", "vector")
 _MAX_TEXT_BYTES = 8_192
@@ -97,25 +91,16 @@ def _plain(value: Any, *, depth: int = 0) -> Any:
         return value
     if isinstance(value, float):
         if not math.isfinite(value):
-            raise ProofDirectedRetrievalError(
-                "retrieval receipt cannot contain non-finite values"
-            )
+            raise ProofDirectedRetrievalError("retrieval receipt cannot contain non-finite values")
         return format(value, ".17g")
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
-            raise ProofDirectedRetrievalError(
-                "retrieval receipt mapping keys must be strings"
-            )
-        return {
-            key: _plain(value[key], depth=depth + 1)
-            for key in sorted(value)
-        }
+            raise ProofDirectedRetrievalError("retrieval receipt mapping keys must be strings")
+        return {key: _plain(value[key], depth=depth + 1) for key in sorted(value)}
     if isinstance(value, (set, frozenset)):
         normalized = [_plain(item, depth=depth + 1) for item in value]
         return sorted(normalized, key=_canonical_json)
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [_plain(item, depth=depth + 1) for item in value]
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
@@ -144,9 +129,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
     if not isinstance(value, str):
         raise ProofDirectedRetrievalError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise ProofDirectedRetrievalError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise ProofDirectedRetrievalError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise ProofDirectedRetrievalError(f"{name} is required")
     if len(value.encode("utf-8")) > _MAX_TEXT_BYTES:
@@ -181,9 +164,7 @@ def _deep_string_values(value: Any, *, depth: int = 0) -> frozenset[str]:
         for item in value.values():
             result.update(_deep_string_values(item, depth=depth + 1))
         return frozenset(result)
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         result = set()
         for item in value:
             result.update(_deep_string_values(item, depth=depth + 1))
@@ -206,21 +187,15 @@ def embedding_fingerprint(
         try:
             number = float(item)
         except (TypeError, ValueError) as exc:
-            raise ProofDirectedRetrievalError(
-                "embedding values must be finite numbers"
-            ) from exc
+            raise ProofDirectedRetrievalError("embedding values must be finite numbers") from exc
         if not math.isfinite(number):
-            raise ProofDirectedRetrievalError(
-                "embedding values must be finite numbers"
-            )
+            raise ProofDirectedRetrievalError("embedding values must be finite numbers")
         values.append(format(number, ".17g"))
     return _identity(
         "embedding",
         {
             "model_id": _text(model_id, "embedding model_id"),
-            "configuration_id": _text(
-                configuration_id, "embedding configuration_id"
-            ),
+            "configuration_id": _text(configuration_id, "embedding configuration_id"),
             "dimensions": len(values),
             "values": values,
         },
@@ -247,9 +222,7 @@ class ProofRetrievalBudget:
         ):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-                raise ProofDirectedRetrievalBudgetError(
-                    f"{name} must be a positive integer"
-                )
+                raise ProofDirectedRetrievalBudgetError(f"{name} must be a positive integer")
 
     @classmethod
     def from_decision(cls, request: DecisionRequest) -> "ProofRetrievalBudget":
@@ -284,13 +257,9 @@ class RetrievalSeed:
     mandatory: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "selector_kind", _text(self.selector_kind, "seed selector_kind")
-        )
+        object.__setattr__(self, "selector_kind", _text(self.selector_kind, "seed selector_kind"))
         object.__setattr__(self, "value", _text(self.value, "seed value"))
-        object.__setattr__(
-            self, "matched_node_ids", _strings(self.matched_node_ids)
-        )
+        object.__setattr__(self, "matched_node_ids", _strings(self.matched_node_ids))
         if not isinstance(self.mandatory, bool):
             raise ProofDirectedRetrievalError("seed mandatory must be a boolean")
 
@@ -374,9 +343,7 @@ class CandidateAudit:
                 name,
                 _text(getattr(self, name), f"candidate audit {name}", required=required),
             )
-        object.__setattr__(
-            self, "disposition", CandidateDisposition(self.disposition)
-        )
+        object.__setattr__(self, "disposition", CandidateDisposition(self.disposition))
         if self.score_millionths is not None and (
             isinstance(self.score_millionths, bool)
             or not isinstance(self.score_millionths, int)
@@ -386,13 +353,9 @@ class CandidateAudit:
         if isinstance(self.rank, bool) or not isinstance(self.rank, int) or self.rank < 0:
             raise ProofDirectedRetrievalError("candidate audit rank is invalid")
         if self.disposition is CandidateDisposition.ACCEPTED and self.reason:
-            raise ProofDirectedRetrievalError(
-                "accepted candidates cannot carry a rejection reason"
-            )
+            raise ProofDirectedRetrievalError("accepted candidates cannot carry a rejection reason")
         if self.disposition is not CandidateDisposition.ACCEPTED and not self.reason:
-            raise ProofDirectedRetrievalError(
-                "rejected or truncated candidates require a reason"
-            )
+            raise ProofDirectedRetrievalError("rejected or truncated candidates require a reason")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -435,13 +398,9 @@ class CandidateAudit:
             None,
             RETRIEVAL_CANDIDATE_AUDIT_SCHEMA,
         ):
-            raise ProofDirectedRetrievalError(
-                "unsupported retrieval candidate audit schema"
-            )
+            raise ProofDirectedRetrievalError("unsupported retrieval candidate audit schema")
         if payload.get("proof_authority") not in (None, False):
-            raise ProofDirectedRetrievalError(
-                "candidate audit cannot claim proof authority"
-            )
+            raise ProofDirectedRetrievalError("candidate audit cannot claim proof authority")
         return cls(
             candidate_id=payload.get("candidate_id", ""),
             node_id=payload.get("node_id", ""),
@@ -499,9 +458,7 @@ class ProofDirectedRetrievalReceipt:
         object.__setattr__(self, "query", MappingProxyType(_plain(self.query)))
         object.__setattr__(self, "roots", MappingProxyType(_plain(self.roots)))
         normalized_seeds = tuple(
-            item
-            if isinstance(item, RetrievalSeed)
-            else RetrievalSeed.from_dict(item)
+            item if isinstance(item, RetrievalSeed) else RetrievalSeed.from_dict(item)
             for item in self.seeds
         )
         object.__setattr__(
@@ -519,9 +476,7 @@ class ProofDirectedRetrievalReceipt:
             ),
         )
         normalized_candidates = tuple(
-            item
-            if isinstance(item, CandidateAudit)
-            else CandidateAudit.from_dict(item)
+            item if isinstance(item, CandidateAudit) else CandidateAudit.from_dict(item)
             for item in self.candidates
         )
         object.__setattr__(
@@ -553,9 +508,7 @@ class ProofDirectedRetrievalReceipt:
             for key, value in sorted(self.paths.items())
         }
         object.__setattr__(self, "paths", MappingProxyType(canonical_paths))
-        object.__setattr__(
-            self, "truncation", MappingProxyType(_plain(self.truncation))
-        )
+        object.__setattr__(self, "truncation", MappingProxyType(_plain(self.truncation)))
         states = {
             _text(str(key), "backend name"): RetrievalBackendState(value).value
             for key, value in sorted(self.backend_states.items())
@@ -575,9 +528,7 @@ class ProofDirectedRetrievalReceipt:
                 "included nodes must contain every mandatory closure node"
             )
         if closure_nodes.intersection(omitted):
-            raise ProofDirectedRetrievalError(
-                "a mandatory dependency cannot be listed as omitted"
-            )
+            raise ProofDirectedRetrievalError("a mandatory dependency cannot be listed as omitted")
         if optional.intersection(closure_nodes) or not optional.issubset(included):
             raise ProofDirectedRetrievalError(
                 "optional nodes must be included and outside mandatory closure"
@@ -590,20 +541,10 @@ class ProofDirectedRetrievalReceipt:
             raise ProofDirectedRetrievalError(
                 "receipt paths must cover exactly the mandatory closure"
             )
-        path_roots = {
-            path[0]
-            for path in canonical_paths.values()
-            if path
-        }
+        path_roots = {path[0] for path in canonical_paths.values() if path}
         for node_id, path in canonical_paths.items():
-            if (
-                not path
-                or path[-1] != node_id
-                or len(path) != len(set(path))
-            ):
-                raise ProofDirectedRetrievalError(
-                    f"invalid mandatory closure path for {node_id}"
-                )
+            if not path or path[-1] != node_id or len(path) != len(set(path)):
+                raise ProofDirectedRetrievalError(f"invalid mandatory closure path for {node_id}")
         if len(path_roots) != 1:
             raise ProofDirectedRetrievalError(
                 "mandatory closure paths must share one decision root"
@@ -613,22 +554,16 @@ class ProofDirectedRetrievalReceipt:
             or not isinstance(self.fixed_point_iterations, int)
             or self.fixed_point_iterations < 1
         ):
-            raise ProofDirectedRetrievalError(
-                "fixed_point_iterations must be a positive integer"
-            )
+            raise ProofDirectedRetrievalError("fixed_point_iterations must be a positive integer")
         expected_iterations = max(
             (len(path) for path in canonical_paths.values()),
             default=1,
         )
         if self.fixed_point_iterations != expected_iterations:
-            raise ProofDirectedRetrievalError(
-                "fixed_point_iterations does not match closure paths"
-            )
+            raise ProofDirectedRetrievalError("fixed_point_iterations does not match closure paths")
         graph_root = str(self.roots.get("semantic_graph_root_id") or "")
         if not graph_root:
-            raise ProofDirectedRetrievalError(
-                "receipt roots omit semantic_graph_root_id"
-            )
+            raise ProofDirectedRetrievalError("receipt roots omit semantic_graph_root_id")
         reconstructed = MandatoryClosure(
             root_id=graph_root,
             decision_id=next(iter(path_roots)),
@@ -677,9 +612,7 @@ class ProofDirectedRetrievalReceipt:
                 "closure_id": self.closure_id,
                 "node_ids": list(self.closure_node_ids),
                 "edge_ids": list(self.closure_edge_ids),
-                "paths": {
-                    key: list(value) for key, value in self.paths.items()
-                },
+                "paths": {key: list(value) for key, value in self.paths.items()},
                 "fixed_point_iterations": self.fixed_point_iterations,
                 "fixed_point": self.closure_fixed_point,
                 "complete": self.closure_complete,
@@ -712,9 +645,7 @@ class ProofDirectedRetrievalReceipt:
         )
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ProofDirectedRetrievalReceipt":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProofDirectedRetrievalReceipt":
         allowed = {
             "schema",
             "requirement_id",
@@ -745,28 +676,18 @@ class ProofDirectedRetrievalReceipt:
                 + ", ".join(sorted(str(item) for item in unknown))
             )
         if payload.get("schema") != PROOF_DIRECTED_RETRIEVAL_SCHEMA:
-            raise ProofDirectedRetrievalError(
-                "unsupported proof-directed retrieval receipt schema"
-            )
+            raise ProofDirectedRetrievalError("unsupported proof-directed retrieval receipt schema")
         if payload.get("proof_authority") not in (None, False):
-            raise ProofDirectedRetrievalError(
-                "retrieval receipt cannot claim proof authority"
-            )
+            raise ProofDirectedRetrievalError("retrieval receipt cannot claim proof authority")
         if payload.get("completion_authority") not in (None, False):
-            raise ProofDirectedRetrievalError(
-                "retrieval receipt cannot claim completion authority"
-            )
+            raise ProofDirectedRetrievalError("retrieval receipt cannot claim completion authority")
         if payload.get("authority") not in (None, "context_only"):
-            raise ProofDirectedRetrievalError(
-                "retrieval receipt authority must be context_only"
-            )
+            raise ProofDirectedRetrievalError("retrieval receipt authority must be context_only")
         if payload.get("requirement_id") not in (
             None,
             RETRIEVAL_CLOSURE_REQUIREMENT_ID,
         ):
-            raise ProofDirectedRetrievalError(
-                "retrieval receipt requirement identity mismatch"
-            )
+            raise ProofDirectedRetrievalError("retrieval receipt requirement identity mismatch")
         closure = payload.get("closure")
         if not isinstance(closure, Mapping):
             raise ProofDirectedRetrievalError("receipt closure must be an object")
@@ -774,25 +695,16 @@ class ProofDirectedRetrievalReceipt:
             decision_request_id=payload.get("decision_request_id", ""),
             query=payload.get("query") or {},
             roots=payload.get("roots") or {},
-            snapshot=RetrievalSnapshotBinding.from_dict(
-                payload.get("snapshot") or {}
-            ),
+            snapshot=RetrievalSnapshotBinding.from_dict(payload.get("snapshot") or {}),
             budgets=ProofRetrievalBudget(**dict(payload.get("budgets") or {})),
-            seeds=tuple(
-                RetrievalSeed.from_dict(item)
-                for item in payload.get("seeds") or ()
-            ),
+            seeds=tuple(RetrievalSeed.from_dict(item) for item in payload.get("seeds") or ()),
             candidates=tuple(
-                CandidateAudit.from_dict(item)
-                for item in payload.get("candidates") or ()
+                CandidateAudit.from_dict(item) for item in payload.get("candidates") or ()
             ),
             closure_id=closure.get("closure_id", ""),
             closure_node_ids=tuple(closure.get("node_ids") or ()),
             closure_edge_ids=tuple(closure.get("edge_ids") or ()),
-            paths={
-                str(key): tuple(value)
-                for key, value in (closure.get("paths") or {}).items()
-            },
+            paths={str(key): tuple(value) for key, value in (closure.get("paths") or {}).items()},
             included_node_ids=tuple(payload.get("included_node_ids") or ()),
             optional_node_ids=tuple(payload.get("optional_node_ids") or ()),
             omitted_node_ids=tuple(payload.get("omitted_node_ids") or ()),
@@ -802,8 +714,7 @@ class ProofDirectedRetrievalReceipt:
             backend_states=payload.get("backend_states") or {},
             fixed_point_iterations=closure.get("fixed_point_iterations", 0),
             closure_fixed_point=closure.get("fixed_point", False),
-            closure_complete=closure.get("complete", False)
-            and not closure.get("truncated", False),
+            closure_complete=closure.get("complete", False) and not closure.get("truncated", False),
         )
         claimed = payload.get("receipt_id")
         if claimed not in (None, result.receipt_id):
@@ -815,9 +726,7 @@ class ProofDirectedRetrievalReceipt:
         try:
             value = json.loads(payload)
         except (TypeError, json.JSONDecodeError) as exc:
-            raise ProofDirectedRetrievalError(
-                "proof-directed retrieval JSON is malformed"
-            ) from exc
+            raise ProofDirectedRetrievalError("proof-directed retrieval JSON is malformed") from exc
         if not isinstance(value, Mapping):
             raise ProofDirectedRetrievalError(
                 "proof-directed retrieval JSON must contain an object"
@@ -853,22 +762,16 @@ def _request_selectors(request: DecisionRequest) -> tuple[tuple[str, str], ...]:
     for root in request.semantic_roots:
         values.add((f"root:{root.kind.value}", root.artifact.artifact_id))
         values.add((f"root_cid:{root.kind.value}", root.artifact.cid_v1))
-        values.add(
-            (f"root_digest:{root.kind.value}", root.artifact.supervisor_digest)
-        )
+        values.add((f"root_digest:{root.kind.value}", root.artifact.supervisor_digest))
     for fact in request.applicability_facts:
         values.add(("applicability_fact", fact.fact_id))
         values.add(("applicability_predicate", fact.predicate))
         values.add(("applicability_source", fact.source.artifact_id))
     for capability in request.capabilities:
         values.add(("capability", capability.capability_id))
-    values.update(
-        ("capability", item) for item in request.authority.capability_ids
-    )
+    values.update(("capability", item) for item in request.authority.capability_ids)
     if request.authority.authorization is not None:
-        values.add(
-            ("authorization", request.authority.authorization.artifact_id)
-        )
+        values.add(("authorization", request.authority.authorization.artifact_id))
     return tuple(sorted(values))
 
 
@@ -899,9 +802,7 @@ def derive_exact_retrieval_seeds(
     if not isinstance(request, DecisionRequest):
         raise ProofDirectedRetrievalError("request must be a DecisionRequest")
     if not isinstance(graph, SemanticDependencyGraph):
-        raise ProofDirectedRetrievalError(
-            "graph must be a SemanticDependencyGraph"
-        )
+        raise ProofDirectedRetrievalError("graph must be a SemanticDependencyGraph")
     return tuple(
         RetrievalSeed(
             selector_kind=kind,
@@ -956,13 +857,10 @@ def _decision_node(
             exact.append(node)
     if len(exact) != 1:
         raise StaleRetrievalRootError(
-            "semantic graph must contain exactly one decision node bound to "
-            "the DecisionRequest"
+            "semantic graph must contain exactly one decision node bound to the DecisionRequest"
         )
     if not exact[0].authoritative:
-        raise StaleRetrievalRootError(
-            "DecisionRequest graph node is not authority-bearing"
-        )
+        raise StaleRetrievalRootError("DecisionRequest graph node is not authority-bearing")
     return exact[0]
 
 
@@ -1002,9 +900,7 @@ def _query_payload(
             },
         ),
         "text": text,
-        "exact_selectors": [
-            {"kind": kind, "value": value} for kind, value in selectors
-        ],
+        "exact_selectors": [{"kind": kind, "value": value} for kind, value in selectors],
         "embedding_fingerprint": fingerprint,
     }
     return MappingProxyType(payload)
@@ -1073,12 +969,8 @@ def _provider_rows(value: Any) -> tuple[Mapping[str, Any], tuple[Any, ...]]:
         )
     else:
         rows = value
-    if isinstance(rows, (str, bytes, bytearray, Mapping)) or not isinstance(
-        rows, Sequence
-    ):
-        raise ProofDirectedRetrievalError(
-            "retrieval provider rows must be a sequence"
-        )
+    if isinstance(rows, (str, bytes, bytearray, Mapping)) or not isinstance(rows, Sequence):
+        raise ProofDirectedRetrievalError("retrieval provider rows must be a sequence")
     return metadata, tuple(rows)
 
 
@@ -1087,9 +979,7 @@ def _score_millionths(value: Any, *, already_millionths: bool = False) -> int:
         raise RetrievalBindingError("candidate score must be finite")
     if already_millionths:
         if not isinstance(value, int):
-            raise RetrievalBindingError(
-                "candidate score_millionths must be an integer"
-            )
+            raise RetrievalBindingError("candidate score_millionths must be an integer")
         if 0 <= value <= 1_000_000:
             return value
         raise RetrievalBindingError("candidate score is out of range")
@@ -1125,9 +1015,7 @@ def _normalize_candidate(
     if isinstance(raw, BoundRetrievalCandidate):
         if raw.source != source:
             raise RetrievalBindingError("candidate source differs from its provider")
-        return validate_bound_retrieval_candidate(
-            raw, snapshot, node_ids=node_ids
-        )
+        return validate_bound_retrieval_candidate(raw, snapshot, node_ids=node_ids)
     row = _mapping(raw)
     claimed_source = str(row.get("source") or source)
     if claimed_source != source:
@@ -1150,32 +1038,20 @@ def _normalize_candidate(
         }
     binding = RetrievalSnapshotBinding.from_dict(binding_value)
     if "score_millionths" in row:
-        score = _score_millionths(
-            row.get("score_millionths"), already_millionths=True
-        )
+        score = _score_millionths(row.get("score_millionths"), already_millionths=True)
     else:
         score = _score_millionths(row.get("score", row.get("similarity")))
     combined = {**metadata, **row}
     candidate = BoundRetrievalCandidate(
-        node_id=str(
-            row.get("node_id")
-            or row.get("candidate_node_id")
-            or row.get("id")
-            or ""
-        ),
+        node_id=str(row.get("node_id") or row.get("candidate_node_id") or row.get("id") or ""),
         source=source,
         score_millionths=score,
         binding=binding,
-        index_root_id=str(
-            combined.get("index_root_id")
-            or (binding.index_roots.get(source, ""))
-        ),
+        index_root_id=str(combined.get("index_root_id") or (binding.index_roots.get(source, ""))),
         rank=rank,
         candidate_id=str(row.get("candidate_id") or ""),
     )
-    return validate_bound_retrieval_candidate(
-        candidate, snapshot, node_ids=node_ids
-    )
+    return validate_bound_retrieval_candidate(candidate, snapshot, node_ids=node_ids)
 
 
 def _fixed_point_iterations(closure: MandatoryClosure) -> int:
@@ -1203,9 +1079,7 @@ def retrieve_proof_directed(
     if not isinstance(request, DecisionRequest):
         raise ProofDirectedRetrievalError("request must be a DecisionRequest")
     if not isinstance(graph, SemanticDependencyGraph):
-        raise ProofDirectedRetrievalError(
-            "graph must be a SemanticDependencyGraph"
-        )
+        raise ProofDirectedRetrievalError("graph must be a SemanticDependencyGraph")
     limits = budget or ProofRetrievalBudget.from_decision(request)
     if (
         limits.max_graph_depth > request.budget.max_graph_hops
@@ -1249,23 +1123,17 @@ def retrieve_proof_directed(
                 "model_id": request.model_id,
                 "configuration_id": config_id,
                 "dimensions": len(query_embedding),
-                "value_types": [
-                    type(item).__name__ for item in query_embedding
-                ],
+                "value_types": [type(item).__name__ for item in query_embedding],
                 "reason": embedding_error,
             },
         )
     if query_embedding_fingerprint:
-        claimed_fingerprint = _text(
-            query_embedding_fingerprint, "query_embedding_fingerprint"
-        )
+        claimed_fingerprint = _text(query_embedding_fingerprint, "query_embedding_fingerprint")
         if not embedding_error and claimed_fingerprint != derived_fingerprint:
             raise ProofDirectedRetrievalError(
                 "supplied embedding fingerprint does not match the vector"
             )
-        fingerprint = (
-            derived_fingerprint if embedding_error else claimed_fingerprint
-        )
+        fingerprint = derived_fingerprint if embedding_error else claimed_fingerprint
     else:
         fingerprint = derived_fingerprint
     snapshot = RetrievalSnapshotBinding(
@@ -1311,8 +1179,7 @@ def retrieve_proof_directed(
             )
         if source not in APPROXIMATE_SOURCES:
             raise ProofDirectedRetrievalError(
-                "direct candidates require an explicit bm25, vector, ast, "
-                "or graphrag source"
+                "direct candidates require an explicit bm25, vector, ast, or graphrag source"
             )
         direct_by_source.setdefault(source, []).append(raw)
     for source, rows in direct_by_source.items():
@@ -1322,8 +1189,7 @@ def retrieve_proof_directed(
             )
         providers[source] = tuple(rows)
     backend_states: dict[str, str] = {
-        name: RetrievalBackendState.UNAVAILABLE.value
-        for name in APPROXIMATE_SOURCES
+        name: RetrievalBackendState.UNAVAILABLE.value for name in APPROXIMATE_SOURCES
     }
     audits: list[CandidateAudit] = []
     accepted: list[BoundRetrievalCandidate] = []
@@ -1336,9 +1202,7 @@ def retrieve_proof_directed(
     for source in sorted(providers):
         provider = providers[source]
         if source not in APPROXIMATE_SOURCES:
-            raise ProofDirectedRetrievalError(
-                f"unsupported retrieval candidate source: {source}"
-            )
+            raise ProofDirectedRetrievalError(f"unsupported retrieval candidate source: {source}")
         effective_source = source
         if source == "vector" and embedding_error:
             provider_failures[source] = "PoisonedQueryEmbedding"
@@ -1435,8 +1299,7 @@ def retrieve_proof_directed(
         if len(scores) > 1
     ]
     disagreement.extend(
-        f"provider_failure:{source}:{error}"
-        for source, error in sorted(provider_failures.items())
+        f"provider_failure:{source}:{error}" for source, error in sorted(provider_failures.items())
     )
     if embedding_error:
         disagreement.append(embedding_error)
@@ -1464,9 +1327,7 @@ def retrieve_proof_directed(
     truncated_candidates = provider_dropped + sum(
         item.disposition is CandidateDisposition.TRUNCATED for item in audits
     )
-    rejected_candidates = sum(
-        item.disposition is CandidateDisposition.REJECTED for item in audits
-    )
+    rejected_candidates = sum(item.disposition is CandidateDisposition.REJECTED for item in audits)
     truncation = {
         "candidate_returned_count": provider_returned,
         "candidate_considered_count": considered,
@@ -1505,10 +1366,7 @@ def retrieve_proof_directed(
     # Optional audit rows are the only part that may be reduced to make room.
     # Mandatory roots, seeds, paths, included closure nodes, and fixed-point
     # evidence are never trimmed.
-    while (
-        len(receipt.to_json().encode("utf-8")) > limits.max_receipt_bytes
-        and receipt.candidates
-    ):
+    while len(receipt.to_json().encode("utf-8")) > limits.max_receipt_bytes and receipt.candidates:
         removed = receipt.candidates[-1]
         new_omitted = set(receipt.omitted_node_ids)
         remaining_candidates = receipt.candidates[:-1]

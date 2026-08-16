@@ -48,30 +48,18 @@ COORDINATION_LOCK_TIMEOUT_SECONDS = 30.0
 COORDINATION_DUCKDB_MEMORY_LIMIT = "256MB"
 MAX_PERSISTED_HEARTBEATS_PER_LEASE = 8
 SMALL_STORE_FULL_ARTIFACT_LIMIT = 10_000
-DISTRIBUTED_INPUT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor/immutable-lane-input@1"
-)
-WORKER_CAPABILITY_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor/worker-capability-receipt@1"
-)
+DISTRIBUTED_INPUT_SCHEMA = "ipfs_accelerate_py.agent_supervisor/immutable-lane-input@1"
+WORKER_CAPABILITY_RECEIPT_SCHEMA = "ipfs_accelerate_py.agent_supervisor/worker-capability-receipt@1"
 WORKER_ENVIRONMENT_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor/worker-environment-receipt@1"
 )
-DISTRIBUTED_LANE_DISPATCH_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor/distributed-lane-dispatch@1"
-)
-REMOTE_LANE_RESULT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor/remote-lane-result@1"
-)
-DISTRIBUTED_PUBLICATION_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor/distributed-publication@1"
-)
+DISTRIBUTED_LANE_DISPATCH_SCHEMA = "ipfs_accelerate_py.agent_supervisor/distributed-lane-dispatch@1"
+REMOTE_LANE_RESULT_SCHEMA = "ipfs_accelerate_py.agent_supervisor/remote-lane-result@1"
+DISTRIBUTED_PUBLICATION_SCHEMA = "ipfs_accelerate_py.agent_supervisor/distributed-publication@1"
 DISTRIBUTED_QUARANTINE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor/distributed-result-quarantine@1"
 )
-SINGLE_FLIGHT_STORE_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.distributed-single-flight@1"
-)
+SINGLE_FLIGHT_STORE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.distributed-single-flight@1"
 SINGLE_FLIGHT_OUTCOME_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/distributed-single-flight-outcome@1"
 )
@@ -96,8 +84,7 @@ def profile_g_task_attempt_limit(value: Any, *, default: int = 3) -> int:
         raise ValueError("max_attempts must be an integer")
     if raw < 0 or raw > PROFILE_G_MAX_TASK_ATTEMPTS:
         raise ValueError(
-            "max_attempts must be between 0 and "
-            f"{PROFILE_G_MAX_TASK_ATTEMPTS} for Profile-G tasks"
+            f"max_attempts must be between 0 and {PROFILE_G_MAX_TASK_ATTEMPTS} for Profile-G tasks"
         )
     return raw
 
@@ -176,7 +163,9 @@ def canonical_profile_g_bytes(value: Any) -> bytes:
         raise ValueError(f"unsupported Profile G value: {type(item).__name__}")
 
     check(value)
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def profile_g_cid(value: Any) -> str:
@@ -392,9 +381,7 @@ class WorkerEnvironmentReceipt:
     def __post_init__(self) -> None:
         worker_id = _required_text(self.worker_id, "worker_id")
         environment_id = _required_text(self.environment_id, "environment_id")
-        capability_receipt_id = _required_text(
-            self.capability_receipt_id, "capability_receipt_id"
-        )
+        capability_receipt_id = _required_text(self.capability_receipt_id, "capability_receipt_id")
         issued = _timestamp(self.issued_at_ms, "issued_at_ms")
         expires = _timestamp(self.expires_at_ms, "expires_at_ms")
         if expires <= issued:
@@ -506,10 +493,7 @@ def _bundle_execution_tasks(bundle: Mapping[str, Any]) -> list[Mapping[str, Any]
         if isinstance(tasks, (list, tuple))
         else []
     )
-    if (
-        "execution_slice_task_cids" not in bundle
-        and "execution_slice_task_ids" not in bundle
-    ):
+    if "execution_slice_task_cids" not in bundle and "execution_slice_task_ids" not in bundle:
         return members
 
     def values(raw: Any) -> set[str]:
@@ -534,7 +518,9 @@ def _bundle_execution_tasks(bundle: Mapping[str, Any]) -> list[Mapping[str, Any]
     ]
 
 
-def _dependency_task_cids(bundle: Mapping[str, Any]) -> tuple[list[str], dict[str, list[dict[str, Any]]]]:
+def _dependency_task_cids(
+    bundle: Mapping[str, Any],
+) -> tuple[list[str], dict[str, list[dict[str, Any]]]]:
     """Return normalized prerequisite CIDs and their bounded source provenance.
 
     Objective-graph payloads have existed in a few compatible shapes.  Accepting
@@ -589,7 +575,10 @@ def _dependency_task_cids(bundle: Mapping[str, Any]) -> tuple[list[str], dict[st
     if not has_bundle_dependency_projection and isinstance(embedded, Mapping):
         embedded_task = embedded.get("task")
         if isinstance(embedded_task, Mapping):
-            add(embedded_task.get("dependency_task_cids"), "bundle.profile_g.task.dependency_task_cids")
+            add(
+                embedded_task.get("dependency_task_cids"),
+                "bundle.profile_g.task.dependency_task_cids",
+            )
     edges = bundle.get("dependency_edges")
     if not has_bundle_dependency_projection and isinstance(edges, (list, tuple)):
         for index, edge in enumerate(edges):
@@ -637,11 +626,17 @@ def _dependency_repair_evidence(bundle: Mapping[str, Any]) -> tuple[list[dict[st
     embedded = bundle.get("profile_g")
     if not isinstance(value, (list, tuple)) and isinstance(embedded, Mapping):
         value = embedded.get("dependency_repair_evidence")
-    records = [dict(item) for item in value or [] if isinstance(item, Mapping)] if isinstance(value, (list, tuple)) else []
+    records = (
+        [dict(item) for item in value or [] if isinstance(item, Mapping)]
+        if isinstance(value, (list, tuple))
+        else []
+    )
     return records[:MAX_PERSISTED_DEPENDENCY_REPAIRS], len(records)
 
 
-def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = None) -> dict[str, Any]:
+def adapt_goal_bundle(
+    bundle: Mapping[str, Any], *, created_at_ms: int | None = None
+) -> dict[str, Any]:
     """Adapt one objective bundle payload into a canonical Goal/Subgoal/TaskSpec chain."""
 
     now = int(time.time() * 1000) if created_at_ms is None else int(created_at_ms)
@@ -708,7 +703,9 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "plan_branch_cid": plan_cid,
         "selector_did": owner_did,
         "proof_cid": str(bundle.get("proof_cid") or _link({"proof": bundle_key})),
-        "policy_decision_cid": str(bundle.get("policy_decision_cid") or _link({"decision": "allow"})),
+        "policy_decision_cid": str(
+            bundle.get("policy_decision_cid") or _link({"decision": "allow"})
+        ),
         "reason_cid": _link({"reason": "bundle emitted by accepted objective graph"}),
     }
     selection_cid = profile_g_cid(selection)
@@ -814,9 +811,7 @@ def _validated_embedded_profile_g(
                 artifact,
             )
         except ProfileGError as exc:
-            raise ValueError(
-                f"embedded Profile-G {name} artifact is invalid: {exc}"
-            ) from exc
+            raise ValueError(f"embedded Profile-G {name} artifact is invalid: {exc}") from exc
         declared_cid = str(adapted.get(cid_field) or "")
         if name == "task":
             task_cid = str(adapted.get("task_cid") or "")
@@ -830,10 +825,7 @@ def _validated_embedded_profile_g(
         validated_cids[name] = actual_cid
 
     for cid, artifact in artifacts.items():
-        if (
-            not isinstance(artifact, Mapping)
-            or str(cid) != profile_g_cid(dict(artifact))
-        ):
+        if not isinstance(artifact, Mapping) or str(cid) != profile_g_cid(dict(artifact)):
             raise ValueError("embedded Profile-G artifact map contains an invalid CID binding")
 
     task = adapted["task"]
@@ -841,9 +833,7 @@ def _validated_embedded_profile_g(
         raise ValueError("embedded Profile-G TaskSpec max_attempts is required")
     task_limit = profile_g_task_attempt_limit(task["max_attempts"])
     if task_limit != outer_limit:
-        raise ValueError(
-            "bundle max_attempts does not match embedded Profile-G TaskSpec"
-        )
+        raise ValueError("bundle max_attempts does not match embedded Profile-G TaskSpec")
 
     expected_links = (
         (adapted["subgoal"], "goal_cid", validated_cids["goal"]),
@@ -879,17 +869,13 @@ def _validated_embedded_profile_g(
     )
     if (
         str(adapted["goal"].get("objective_cid") or "") != expected_objective_cid
-        or str(adapted["subgoal"].get("objective_cid") or "")
-        != expected_objective_cid
+        or str(adapted["subgoal"].get("objective_cid") or "") != expected_objective_cid
     ):
         raise ValueError("embedded Profile-G objective does not match bundle")
     if str(task.get("idempotency_key") or "") != canonical_identity.semantic_fingerprint[:32]:
         raise ValueError("embedded Profile-G TaskSpec idempotency key does not match bundle")
     candidate_inputs = adapted["plan_branch"].get("candidate_input_cids")
-    if (
-        not isinstance(candidate_inputs, list)
-        or candidate_inputs != [task.get("input_cid")]
-    ):
+    if not isinstance(candidate_inputs, list) or candidate_inputs != [task.get("input_cid")]:
         raise ValueError("embedded Profile-G input binding is inconsistent")
     return adapted
 
@@ -1203,14 +1189,10 @@ class LeaseCoordinator:
                 try:
                     import duckdb
                 except ImportError as exc:
-                    raise RuntimeError(
-                        "DuckDB is required for lease coordination"
-                    ) from exc
+                    raise RuntimeError("DuckDB is required for lease coordination") from exc
                 duckdb_connection = duckdb.connect(str(self.path))
                 duckdb_connection.execute("SET threads=1")
-                duckdb_connection.execute(
-                    f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
-                )
+                duckdb_connection.execute(f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'")
                 self._connection = _DuckConnection.wrap(
                     duckdb_connection,
                     transaction_on_context=True,
@@ -1367,17 +1349,14 @@ class LeaseCoordinator:
 
         with self._lock:
             if int(getattr(self._operation_state, "depth", 0)):
-                raise RuntimeError(
-                    "coordination compaction cannot run inside a database operation"
-                )
+                raise RuntimeError("coordination compaction cannot run inside a database operation")
             with _exclusive_file_lock(
                 self._lock_path,
                 timeout_seconds=COORDINATION_LOCK_TIMEOUT_SECONDS,
             ):
                 source_bytes = self.path.stat().st_size
                 temporary = self.path.with_name(
-                    f".{self.path.name}.compact-{os.getpid()}-"
-                    f"{threading.get_ident()}.tmp"
+                    f".{self.path.name}.compact-{os.getpid()}-{threading.get_ident()}.tmp"
                 )
                 temporary.unlink(missing_ok=True)
                 Path(f"{temporary}.wal").unlink(missing_ok=True)
@@ -1385,28 +1364,18 @@ class LeaseCoordinator:
                     try:
                         import duckdb
                     except ImportError as exc:
-                        raise RuntimeError(
-                            "DuckDB is required for lease coordination"
-                        ) from exc
+                        raise RuntimeError("DuckDB is required for lease coordination") from exc
                     connection = duckdb.connect(":memory:")
                     try:
                         connection.execute("SET threads=1")
+                        connection.execute(f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'")
                         connection.execute(
-                            f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
+                            f"ATTACH {_duckdb_path_literal(self.path)} AS source_store (READ_ONLY)"
                         )
                         connection.execute(
-                            "ATTACH "
-                            f"{_duckdb_path_literal(self.path)} "
-                            "AS source_store (READ_ONLY)"
+                            f"ATTACH {_duckdb_path_literal(temporary)} AS target_store"
                         )
-                        connection.execute(
-                            "ATTACH "
-                            f"{_duckdb_path_literal(temporary)} "
-                            "AS target_store"
-                        )
-                        connection.execute(
-                            "COPY FROM DATABASE source_store TO target_store"
-                        )
+                        connection.execute("COPY FROM DATABASE source_store TO target_store")
                         connection.execute("DETACH target_store")
                         connection.execute("DETACH source_store")
                     finally:
@@ -1414,12 +1383,9 @@ class LeaseCoordinator:
                     compacted = duckdb.connect(str(temporary))
                     try:
                         compacted.execute("SET threads=1")
+                        compacted.execute(f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'")
                         compacted.execute(
-                            f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
-                        )
-                        compacted.execute(
-                            "INSERT OR REPLACE INTO coordination_metadata "
-                            "VALUES(?,?)",
+                            "INSERT OR REPLACE INTO coordination_metadata VALUES(?,?)",
                             (
                                 "last_compaction",
                                 json.dumps(
@@ -1452,17 +1418,26 @@ class LeaseCoordinator:
     def __exit__(self, *_args: object) -> None:
         self.close()
 
-    def _put_artifact(self, connection: _DuckConnection, kind: str, payload: Mapping[str, Any]) -> str:
+    def _put_artifact(
+        self, connection: _DuckConnection, kind: str, payload: Mapping[str, Any]
+    ) -> str:
         body = dict(payload)
         cid = profile_g_cid(body)
         connection.execute(
             "INSERT OR IGNORE INTO artifacts VALUES(?,?,?,?)",
-            (cid, kind, canonical_profile_g_bytes(body).decode("utf-8"), int(body.get("created_at_ms") or self._clock_ms())),
+            (
+                cid,
+                kind,
+                canonical_profile_g_bytes(body).decode("utf-8"),
+                int(body.get("created_at_ms") or self._clock_ms()),
+            ),
         )
         return cid
 
     @_coordinator_operation
-    def register_bundle(self, bundle: Mapping[str, Any], *, created_at_ms: int | None = None) -> dict[str, Any]:
+    def register_bundle(
+        self, bundle: Mapping[str, Any], *, created_at_ms: int | None = None
+    ) -> dict[str, Any]:
         embedded = bundle.get("profile_g")
         adapted = (
             _validated_embedded_profile_g(bundle, embedded)
@@ -1470,7 +1445,9 @@ class LeaseCoordinator:
             else adapt_goal_bundle(bundle, created_at_ms=created_at_ms)
         )
         canonical_identity = canonical_bundle_identity(bundle)
-        canonical_task_cid = str(adapted.get("canonical_task_cid") or canonical_identity.canonical_task_cid)
+        canonical_task_cid = str(
+            adapted.get("canonical_task_cid") or canonical_identity.canonical_task_cid
+        )
         task_spec_cid = str(adapted.get("task_spec_cid") or adapted.get("task_cid") or "")
         adapted["canonical_task_key"] = str(
             adapted.get("canonical_task_key") or canonical_identity.canonical_task_key
@@ -1509,9 +1486,7 @@ class LeaseCoordinator:
         all_member_aliases = {
             str(item.get("canonical_task_cid") or item.get("task_cid") or "").strip()
             for item in (
-                bundle.get("tasks", [])
-                if isinstance(bundle.get("tasks"), (list, tuple))
-                else []
+                bundle.get("tasks", []) if isinstance(bundle.get("tasks"), (list, tuple)) else []
             )
             if isinstance(item, Mapping)
             and str(item.get("canonical_task_cid") or item.get("task_cid") or "").strip()
@@ -1559,12 +1534,15 @@ class LeaseCoordinator:
             for cid, artifact in adapted["artifacts"].items():
                 self._connection.execute(
                     "INSERT OR IGNORE INTO artifacts VALUES(?,?,?,?)",
-                    (cid, str(artifact["schema"]), canonical_profile_g_bytes(artifact).decode("utf-8"), artifact["created_at_ms"]),
+                    (
+                        cid,
+                        str(artifact["schema"]),
+                        canonical_profile_g_bytes(artifact).decode("utf-8"),
+                        artifact["created_at_ms"],
+                    ),
                 )
             previous_bundle = (
-                json.loads(str(previous_task["bundle_json"]))
-                if previous_task is not None
-                else {}
+                json.loads(str(previous_task["bundle_json"])) if previous_task is not None else {}
             )
             reopened = isinstance(previous_bundle, Mapping) and _reopens_blocked_bundle(
                 previous_bundle,
@@ -1609,17 +1587,23 @@ class LeaseCoordinator:
             # members that it executed. Earlier slice aliases must remain
             # mapped to their completed receipt authorities.
             sync_aliases()
-            self._connection.execute("DELETE FROM task_dependencies WHERE task_cid=?", (canonical_task_cid,))
+            self._connection.execute(
+                "DELETE FROM task_dependencies WHERE task_cid=?", (canonical_task_cid,)
+            )
             for dependency_task_cid in dependency_task_cids:
                 self._connection.execute(
                     "INSERT INTO task_dependencies VALUES(?,?,?)",
                     (
                         canonical_task_cid,
                         dependency_task_cid,
-                        json.dumps(dependency_provenance.get(dependency_task_cid, []), sort_keys=True),
+                        json.dumps(
+                            dependency_provenance.get(dependency_task_cid, []), sort_keys=True
+                        ),
                     ),
                 )
-            self._connection.execute("DELETE FROM task_dependency_repairs WHERE task_cid=?", (canonical_task_cid,))
+            self._connection.execute(
+                "DELETE FROM task_dependency_repairs WHERE task_cid=?", (canonical_task_cid,)
+            )
             for index, repair in enumerate(dependency_repairs):
                 self._connection.execute(
                     "INSERT INTO task_dependency_repairs VALUES(?,?,?)",
@@ -1647,10 +1631,7 @@ class LeaseCoordinator:
         """
 
         with self._lock, self._connection:
-            return [
-                self.register_bundle(bundle, created_at_ms=created_at_ms)
-                for bundle in bundles
-            ]
+            return [self.register_bundle(bundle, created_at_ms=created_at_ms) for bundle in bundles]
 
     @_coordinator_operation
     def requeue_exhausted_blocked(self, task_cid: str, *, reason: str) -> bool:
@@ -1683,16 +1664,16 @@ class LeaseCoordinator:
                 exhausted = self._attempt_budget_exhausted(
                     row,
                     int(row["attempt"] or 0),
-                    release_reason=(
-                        str(row["release_reason"])
-                        if row["release_reason"]
-                        else None
-                    ),
+                    release_reason=(str(row["release_reason"]) if row["release_reason"] else None),
                 )
                 blocked_receipt = str(row["release_reason"] or "").startswith("receipt:") and str(
                     row["release_reason"] or ""
                 ).endswith(":blocked")
-                if row["state"] not in {"released", "expired"} or not exhausted or not blocked_receipt:
+                if (
+                    row["state"] not in {"released", "expired"}
+                    or not exhausted
+                    or not blocked_receipt
+                ):
                     connection.commit()
                     return False
                 connection.execute(
@@ -1746,7 +1727,9 @@ class LeaseCoordinator:
         ).fetchone()
         if row is not None:
             return str(row[0])
-        row = connection.execute("SELECT task_cid FROM tasks WHERE task_cid=?", (task_cid,)).fetchone()
+        row = connection.execute(
+            "SELECT task_cid FROM tasks WHERE task_cid=?", (task_cid,)
+        ).fetchone()
         return str(row[0]) if row is not None else None
 
     def _dependency_cycles(
@@ -1815,8 +1798,7 @@ class LeaseCoordinator:
         ).fetchall()
         dependencies = [str(row["dependency_task_cid"]) for row in rows]
         provenance = {
-            str(row["dependency_task_cid"]): json.loads(row["provenance_json"])
-            for row in rows
+            str(row["dependency_task_cid"]): json.loads(row["provenance_json"]) for row in rows
         }
         satisfied: list[str] = []
         blocked: list[str] = []
@@ -1865,7 +1847,9 @@ class LeaseCoordinator:
                     "kind": "prerequisite_receipt_not_succeeded",
                     "dependency_task_cid": dependency_cid,
                     "resolved_task_cid": receipt_task_cid,
-                    "latest_receipt_cid": str(receipt["receipt_cid"]) if receipt is not None else None,
+                    "latest_receipt_cid": str(receipt["receipt_cid"])
+                    if receipt is not None
+                    else None,
                     "latest_status": latest_status,
                     "lease_state": lease_state,
                     "provenance": provenance.get(dependency_cid, []),
@@ -1909,7 +1893,8 @@ class LeaseCoordinator:
             (resolved_task_cid,),
         ).fetchone()
         persisted_repairs_truncated = bool(
-            repair_state is not None and int(repair_state["source_count"]) > int(repair_state["stored_count"])
+            repair_state is not None
+            and int(repair_state["source_count"]) > int(repair_state["stored_count"])
         )
         return {
             "schema": "ipfs_accelerate_py/dependency-claimability@1",
@@ -1922,8 +1907,12 @@ class LeaseCoordinator:
             "dependency_cycles": cycles,
             "structural_dependency_repairs": planner_repairs[:max_evidence],
             "repair_evidence": evidence,
-            "evidence_truncated": evidence_truncated or cycle_search_truncated or persisted_repairs_truncated,
-            "planner_repair_evidence_count": int(repair_state["source_count"]) if repair_state is not None else 0,
+            "evidence_truncated": evidence_truncated
+            or cycle_search_truncated
+            or persisted_repairs_truncated,
+            "planner_repair_evidence_count": int(repair_state["source_count"])
+            if repair_state is not None
+            else 0,
         }
 
     @_coordinator_operation
@@ -1959,11 +1948,7 @@ class LeaseCoordinator:
     @staticmethod
     def _max_attempts(task: _DuckRow | Mapping[str, Any]) -> int:
         bundle = json.loads(task["bundle_json"])
-        raw_limit = (
-            bundle["max_attempts"]
-            if bundle.get("max_attempts") not in (None, "")
-            else 3
-        )
+        raw_limit = bundle["max_attempts"] if bundle.get("max_attempts") not in (None, "") else 3
         return profile_g_task_attempt_limit(raw_limit)
 
     @classmethod
@@ -1985,14 +1970,10 @@ class LeaseCoordinator:
         max_attempts = cls._max_attempts(task)
         if max_attempts > 0:
             return int(attempt) >= max_attempts
-        terminal_block = (
-            str(release_reason or "").startswith("receipt:")
-            and str(release_reason or "").endswith(":blocked")
-        )
-        return (
-            terminal_block
-            and int(attempt) >= UNLIMITED_TASK_TERMINAL_BLOCK_ATTEMPT_CAP
-        )
+        terminal_block = str(release_reason or "").startswith("receipt:") and str(
+            release_reason or ""
+        ).endswith(":blocked")
+        return terminal_block and int(attempt) >= UNLIMITED_TASK_TERMINAL_BLOCK_ATTEMPT_CAP
 
     @staticmethod
     def _execution_scope(task: _DuckRow) -> str:
@@ -2068,7 +2049,9 @@ class LeaseCoordinator:
             lease_state=lease_state,
             claim_cid=str(lease["claim_cid"]) if lease is not None else None,
             resolution_cid=str(lease["resolution_cid"]) if lease is not None else None,
-            claimant_did=str(lease["claimant_did"]) if lease is not None and state == "accepted" else None,
+            claimant_did=str(lease["claimant_did"])
+            if lease is not None and state == "accepted"
+            else None,
             logical_epoch=int(lease["logical_epoch"] or 0) if lease is not None else 0,
             fencing_token=int(lease["fencing_token"] or 0) if lease is not None else 0,
             lease_expires_at_ms=(
@@ -2077,7 +2060,9 @@ class LeaseCoordinator:
             attempt=attempt,
             max_attempts=max_attempts,
             release_reason=(
-                str(lease["release_reason"]) if lease is not None and lease["release_reason"] else None
+                str(lease["release_reason"])
+                if lease is not None and lease["release_reason"]
+                else None
             ),
             retry_not_before_ms=retry_not_before,
             registered_at_ms=int(task["registered_at_ms"] or 0),
@@ -2111,21 +2096,13 @@ class LeaseCoordinator:
             {
                 "claimable": bool(readiness["claimable"]),
                 "dependency_task_cids": list(readiness["dependency_task_cids"]),
-                "satisfied_dependency_task_cids": list(
-                    readiness["satisfied_dependency_task_cids"]
-                ),
-                "blocked_dependency_task_cids": list(
-                    readiness["blocked_dependency_task_cids"]
-                ),
+                "satisfied_dependency_task_cids": list(readiness["satisfied_dependency_task_cids"]),
+                "blocked_dependency_task_cids": list(readiness["blocked_dependency_task_cids"]),
                 "blocking_task_cids": list(readiness["blocked_dependency_task_cids"]),
-                "missing_dependency_task_cids": list(
-                    readiness["missing_dependency_task_cids"]
-                ),
+                "missing_dependency_task_cids": list(readiness["missing_dependency_task_cids"]),
                 "dependency_cycles": list(readiness["dependency_cycles"]),
                 "dependency_repair_evidence": list(readiness["repair_evidence"]),
-                "claimability_evidence_truncated": bool(
-                    readiness["evidence_truncated"]
-                ),
+                "claimability_evidence_truncated": bool(readiness["evidence_truncated"]),
             }
         )
         if result["state"] == "ready" and not result["claimable"]:
@@ -2317,9 +2294,7 @@ class LeaseCoordinator:
             raise ValueError(f"lease duration must be in [{MIN_LEASE_MS}, {MAX_LEASE_MS}]")
         excluded = {str(item) for item in exclude_task_cids}
         eligible = (
-            None
-            if eligible_task_cids is None
-            else {str(item) for item in eligible_task_cids}
+            None if eligible_task_cids is None else {str(item) for item in eligible_task_cids}
         )
         now = self._clock_ms() if now_ms is None else int(now_ms)
         with self._lock:
@@ -2351,9 +2326,7 @@ class LeaseCoordinator:
                     # Discovery order is only a scheduling hint. Re-evaluate
                     # dependency receipts in this transaction so a dynamic
                     # worker can never claim a stale or blocked plan entry.
-                    readiness = self._claimability(
-                        connection, candidate_cid, max_evidence=32
-                    )
+                    readiness = self._claimability(connection, candidate_cid, max_evidence=32)
                     if not readiness["claimable"]:
                         continue
                     # A finite attempt budget prevents a permanently failing
@@ -2362,22 +2335,15 @@ class LeaseCoordinator:
                         "SELECT attempt, release_reason FROM leases WHERE task_cid=?",
                         (task["task_cid"],),
                     ).fetchone()
-                    if (
-                        lease is not None
-                        and self._attempt_budget_exhausted(
-                            task,
-                            int(lease["attempt"]),
-                            release_reason=(
-                                str(lease["release_reason"])
-                                if lease["release_reason"]
-                                else None
-                            ),
-                        )
+                    if lease is not None and self._attempt_budget_exhausted(
+                        task,
+                        int(lease["attempt"]),
+                        release_reason=(
+                            str(lease["release_reason"]) if lease["release_reason"] else None
+                        ),
                     ):
                         continue
-                    if self._active_execution_scope_conflict(
-                        connection, task, now=now
-                    ) is not None:
+                    if self._active_execution_scope_conflict(connection, task, now=now) is not None:
                         continue
                     grant = self._claim_in_transaction(
                         connection, task, claimant_did, duration=duration, now=now
@@ -2459,31 +2425,20 @@ class LeaseCoordinator:
             if active["claimant_did"] == claimant_did:
                 return self._grant(active, task)
             raise LeaseConflictError(f"task is leased by {active['claimant_did']}")
-        scope_conflict = self._active_execution_scope_conflict(
-            connection, task, now=now
-        )
+        scope_conflict = self._active_execution_scope_conflict(connection, task, now=now)
         if scope_conflict is not None:
             execution_scope = self._execution_scope(task)
             raise ExecutionScopeConflictError(
                 f"bundle execution scope {execution_scope!r} is leased by task "
                 f"{scope_conflict['task_cid']} ({scope_conflict['claimant_did']})"
             )
-        prior = connection.execute(
-            "SELECT * FROM leases WHERE task_cid=?", (task_cid,)
-        ).fetchone()
+        prior = connection.execute("SELECT * FROM leases WHERE task_cid=?", (task_cid,)).fetchone()
         if prior is not None and prior["state"] == "completed":
             raise LeaseConflictError("task already has a successful terminal receipt")
-        if (
-            prior is not None
-            and self._attempt_budget_exhausted(
-                task,
-                int(prior["attempt"] or 0),
-                release_reason=(
-                    str(prior["release_reason"])
-                    if prior["release_reason"]
-                    else None
-                ),
-            )
+        if prior is not None and self._attempt_budget_exhausted(
+            task,
+            int(prior["attempt"] or 0),
+            release_reason=(str(prior["release_reason"]) if prior["release_reason"] else None),
         ):
             raise LeaseConflictError("task attempt budget is exhausted")
         retry_not_before = int(prior["retry_not_before_ms"] or 0) if prior is not None else 0
@@ -2562,27 +2517,60 @@ class LeaseCoordinator:
             attempt,
         )
 
-    def _claim_payload(self, task: _DuckRow, claimant: str, epoch: int, attempt: int, duration: int, now: int) -> dict[str, Any]:
+    def _claim_payload(
+        self, task: _DuckRow, claimant: str, epoch: int, attempt: int, duration: int, now: int
+    ) -> dict[str, Any]:
         bundle = json.loads(task["bundle_json"])
-        correlation = str(bundle.get("correlation_id") or bundle.get("bundle_key") or task["task_id"])[:128]
+        correlation = str(
+            bundle.get("correlation_id") or bundle.get("bundle_key") or task["task_id"]
+        )[:128]
         return {
-            "schema": "mcp++/profile-g/task-claim@1", "created_at_ms": now, "parents": [],
-            "correlation_id": correlation, "task_cid": task["task_cid"],
+            "schema": "mcp++/profile-g/task-claim@1",
+            "created_at_ms": now,
+            "parents": [],
+            "correlation_id": correlation,
+            "task_cid": task["task_cid"],
             "proposal_cid": _link({"proposal": task["task_cid"], "epoch": epoch}),
-            "claimant_did": claimant, "record_cid": _link({"peer": claimant}), "logical_epoch": epoch,
-            "requested_lease_ms": duration, "risk_bucket": 0, "capability_fit_millionths": 1_000_000,
-            "expected_finish_ms": now + duration, "proof_cid": str(bundle.get("proof_cid") or _link({"proof": claimant})),
-            "policy_decision_cid": str(bundle.get("policy_decision_cid") or _link({"decision": "allow"})), "attempt": attempt,
+            "claimant_did": claimant,
+            "record_cid": _link({"peer": claimant}),
+            "logical_epoch": epoch,
+            "requested_lease_ms": duration,
+            "risk_bucket": 0,
+            "capability_fit_millionths": 1_000_000,
+            "expected_finish_ms": now + duration,
+            "proof_cid": str(bundle.get("proof_cid") or _link({"proof": claimant})),
+            "policy_decision_cid": str(
+                bundle.get("policy_decision_cid") or _link({"decision": "allow"})
+            ),
+            "attempt": attempt,
         }
 
     def _grant(self, lease: _DuckRow, task: _DuckRow | None = None) -> LeaseGrant:
-        task = task or self._connection.execute("SELECT * FROM tasks WHERE task_cid=?", (lease["task_cid"],)).fetchone()
+        task = (
+            task
+            or self._connection.execute(
+                "SELECT * FROM tasks WHERE task_cid=?", (lease["task_cid"],)
+            ).fetchone()
+        )
         assert task is not None
-        return LeaseGrant(lease["task_cid"], task["goal_cid"], task["subgoal_cid"], lease["claim_cid"], lease["resolution_cid"], lease["claimant_did"], lease["logical_epoch"], lease["fencing_token"], lease["expires_at_ms"], lease["attempt"])
+        return LeaseGrant(
+            lease["task_cid"],
+            task["goal_cid"],
+            task["subgoal_cid"],
+            lease["claim_cid"],
+            lease["resolution_cid"],
+            lease["claimant_did"],
+            lease["logical_epoch"],
+            lease["fencing_token"],
+            lease["expires_at_ms"],
+            lease["attempt"],
+        )
 
     def _current(self, connection: _DuckConnection, grant: LeaseGrant, now: int) -> _DuckRow:
         self._expire(connection, grant.task_cid, now)
-        row = connection.execute("SELECT * FROM leases WHERE task_cid=?", (grant.task_cid,)).fetchone()
+        row = connection.execute(
+            "SELECT * FROM leases WHERE task_cid=?", (grant.task_cid,)
+        ).fetchone()
         if row is None or row["state"] != "accepted" or row["expires_at_ms"] <= now:
             raise LeaseExpiredError("lease has expired or was released")
         if row["claim_cid"] != grant.claim_cid or row["claimant_did"] != grant.claimant_did:
@@ -2691,9 +2679,7 @@ class LeaseCoordinator:
             payload_json = str(values[-1])
             if existing is not None:
                 if str(existing["payload_json"]) != payload_json:
-                    raise ValueError(
-                        f"content identity collision in {table}: {identity}"
-                    )
+                    raise ValueError(f"content identity collision in {table}: {identity}")
                 continue
             connection.execute(insert, values)
 
@@ -2881,9 +2867,7 @@ class LeaseCoordinator:
                     required_capabilities=required_capabilities,
                     now=now,
                 )
-                self._store_distributed_records(
-                    connection, artifact, capability, environment
-                )
+                self._store_distributed_records(connection, artifact, capability, environment)
                 body = {
                     "schema": DISTRIBUTED_LANE_DISPATCH_SCHEMA,
                     "created_at_ms": now,
@@ -2899,9 +2883,7 @@ class LeaseCoordinator:
                     "lease_expires_at_ms": grant.lease_expires_at_ms,
                     "required_capabilities": list(required),
                 }
-                dispatch_cid = self._put_artifact(
-                    connection, "DistributedLaneDispatch", body
-                )
+                dispatch_cid = self._put_artifact(connection, "DistributedLaneDispatch", body)
                 dispatch = DistributedLaneDispatch(
                     grant=grant,
                     input_artifact_cid=artifact.artifact_id,
@@ -2940,7 +2922,9 @@ class LeaseCoordinator:
                 raise
 
     @_coordinator_operation
-    def renew(self, grant: LeaseGrant, *, requested_lease_ms: int = 60_000, now_ms: int | None = None) -> LeaseGrant:
+    def renew(
+        self, grant: LeaseGrant, *, requested_lease_ms: int = 60_000, now_ms: int | None = None
+    ) -> LeaseGrant:
         duration = int(requested_lease_ms)
         if not MIN_LEASE_MS <= duration <= MAX_LEASE_MS:
             raise ValueError(f"lease duration must be in [{MIN_LEASE_MS}, {MAX_LEASE_MS}]")
@@ -2951,35 +2935,76 @@ class LeaseCoordinator:
             try:
                 row = self._current(conn, grant, now)
                 expires = now + duration
-                claim = json.loads(conn.execute("SELECT payload_json FROM artifacts WHERE cid=?", (grant.claim_cid,)).fetchone()[0])
+                claim = json.loads(
+                    conn.execute(
+                        "SELECT payload_json FROM artifacts WHERE cid=?", (grant.claim_cid,)
+                    ).fetchone()[0]
+                )
                 event = {
-                    "schema": "mcp++/profile-g/claim-resolution@1", "created_at_ms": now,
-                    "parents": [row["resolution_cid"]], "correlation_id": claim["correlation_id"],
-                    "task_cid": grant.task_cid, "logical_epoch": grant.logical_epoch,
-                    "considered_claim_cids": [grant.claim_cid], "accepted_claim_cid": grant.claim_cid,
-                    "outcome": "accepted", "fencing_token": grant.fencing_token,
-                    "lease_expires_at_ms": expires, "attestation_cids": [],
+                    "schema": "mcp++/profile-g/claim-resolution@1",
+                    "created_at_ms": now,
+                    "parents": [row["resolution_cid"]],
+                    "correlation_id": claim["correlation_id"],
+                    "task_cid": grant.task_cid,
+                    "logical_epoch": grant.logical_epoch,
+                    "considered_claim_cids": [grant.claim_cid],
+                    "accepted_claim_cid": grant.claim_cid,
+                    "outcome": "accepted",
+                    "fencing_token": grant.fencing_token,
+                    "lease_expires_at_ms": expires,
+                    "attestation_cids": [],
                     "quorum_policy_cid": _link({"policy": "local-atomic-claim-v1"}),
-                    "policy_decision_cid": claim["policy_decision_cid"], "coordination_receipt_cid": None,
-                    "retry_not_before_ms": 0, "resolver_did": "did:web:ipfs-accelerate.local",
+                    "policy_decision_cid": claim["policy_decision_cid"],
+                    "coordination_receipt_cid": None,
+                    "retry_not_before_ms": 0,
+                    "resolver_did": "did:web:ipfs-accelerate.local",
                 }
                 renewal_cid = self._put_artifact(conn, "ClaimResolution", event)
-                conn.execute("UPDATE leases SET expires_at_ms=?, resolution_cid=? WHERE task_cid=?", (expires, renewal_cid, grant.task_cid))
+                conn.execute(
+                    "UPDATE leases SET expires_at_ms=?, resolution_cid=? WHERE task_cid=?",
+                    (expires, renewal_cid, grant.task_cid),
+                )
                 conn.commit()
-                return LeaseGrant(grant.task_cid, grant.goal_cid, grant.subgoal_cid, grant.claim_cid, renewal_cid, grant.claimant_did, grant.logical_epoch, grant.fencing_token, expires, grant.attempt)
+                return LeaseGrant(
+                    grant.task_cid,
+                    grant.goal_cid,
+                    grant.subgoal_cid,
+                    grant.claim_cid,
+                    renewal_cid,
+                    grant.claimant_did,
+                    grant.logical_epoch,
+                    grant.fencing_token,
+                    expires,
+                    grant.attempt,
+                )
             except Exception:
                 conn.rollback()
                 raise
 
     def _resolution_payload(self, row: _DuckRow, *, outcome: str, now: int) -> dict[str, Any]:
-        claim = json.loads(self._connection.execute("SELECT payload_json FROM artifacts WHERE cid=?", (row["claim_cid"],)).fetchone()[0])
+        claim = json.loads(
+            self._connection.execute(
+                "SELECT payload_json FROM artifacts WHERE cid=?", (row["claim_cid"],)
+            ).fetchone()[0]
+        )
         return {
-            "schema": "mcp++/profile-g/claim-resolution@1", "created_at_ms": now, "parents": [row["resolution_cid"]],
-            "correlation_id": claim["correlation_id"], "task_cid": row["task_cid"], "logical_epoch": row["logical_epoch"],
-            "considered_claim_cids": [row["claim_cid"]], "accepted_claim_cid": None, "outcome": outcome,
-            "fencing_token": row["fencing_token"], "lease_expires_at_ms": None, "attestation_cids": [],
-            "quorum_policy_cid": _link({"policy": "local-atomic-claim-v1"}), "policy_decision_cid": claim["policy_decision_cid"],
-            "coordination_receipt_cid": None, "retry_not_before_ms": 0, "resolver_did": "did:web:ipfs-accelerate.local",
+            "schema": "mcp++/profile-g/claim-resolution@1",
+            "created_at_ms": now,
+            "parents": [row["resolution_cid"]],
+            "correlation_id": claim["correlation_id"],
+            "task_cid": row["task_cid"],
+            "logical_epoch": row["logical_epoch"],
+            "considered_claim_cids": [row["claim_cid"]],
+            "accepted_claim_cid": None,
+            "outcome": outcome,
+            "fencing_token": row["fencing_token"],
+            "lease_expires_at_ms": None,
+            "attestation_cids": [],
+            "quorum_policy_cid": _link({"policy": "local-atomic-claim-v1"}),
+            "policy_decision_cid": claim["policy_decision_cid"],
+            "coordination_receipt_cid": None,
+            "retry_not_before_ms": 0,
+            "resolver_did": "did:web:ipfs-accelerate.local",
         }
 
     @_coordinator_operation
@@ -3004,7 +3029,11 @@ class LeaseCoordinator:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 row = self._current(conn, grant, now)
-                cid = self._put_artifact(conn, "ClaimResolution", self._resolution_payload(row, outcome="released", now=now))
+                cid = self._put_artifact(
+                    conn,
+                    "ClaimResolution",
+                    self._resolution_payload(row, outcome="released", now=now),
+                )
                 conn.execute(
                     """UPDATE leases SET state='released', resolution_cid=?, release_reason=?
                        WHERE task_cid=? AND claim_cid=? AND fencing_token=?""",
@@ -3080,7 +3109,9 @@ class LeaseCoordinator:
             "memory_percent": optional_integer("memory_percent", memory_percent),
             "disk_percent": optional_integer("disk_percent", disk_percent),
             "memory_used_bytes": optional_integer("memory_used_bytes", memory_used_bytes),
-            "memory_available_bytes": optional_integer("memory_available_bytes", memory_available_bytes),
+            "memory_available_bytes": optional_integer(
+                "memory_available_bytes", memory_available_bytes
+            ),
             "memory_total_bytes": optional_integer("memory_total_bytes", memory_total_bytes),
             "disk_used_bytes": optional_integer("disk_used_bytes", disk_used_bytes),
             "disk_available_bytes": optional_integer("disk_available_bytes", disk_available_bytes),
@@ -3102,13 +3133,24 @@ class LeaseCoordinator:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 self._current(conn, grant, now)
-                payload = {"schema": "ipfs_accelerate_py/daemon-heartbeat@1", "created_at_ms": now,
-                           "task_cid": grant.task_cid, "goal_cid": grant.goal_cid, "subgoal_cid": grant.subgoal_cid,
-                           "claim_cid": grant.claim_cid, "claimant_did": grant.claimant_did,
-                           "fencing_token": grant.fencing_token, "capacity_millionths": capacity,
-                           "expires_at_ms": min(grant.lease_expires_at_ms, now + ttl)}
-                payload.update({key: value for key, value in measurements.items() if value is not None})
-                payload.update({key: value for key, value in text_fields.items() if value is not None})
+                payload = {
+                    "schema": "ipfs_accelerate_py/daemon-heartbeat@1",
+                    "created_at_ms": now,
+                    "task_cid": grant.task_cid,
+                    "goal_cid": grant.goal_cid,
+                    "subgoal_cid": grant.subgoal_cid,
+                    "claim_cid": grant.claim_cid,
+                    "claimant_did": grant.claimant_did,
+                    "fencing_token": grant.fencing_token,
+                    "capacity_millionths": capacity,
+                    "expires_at_ms": min(grant.lease_expires_at_ms, now + ttl),
+                }
+                payload.update(
+                    {key: value for key, value in measurements.items() if value is not None}
+                )
+                payload.update(
+                    {key: value for key, value in text_fields.items() if value is not None}
+                )
                 if provider_capacity is not None:
                     payload["provider_capacity"] = dict(provider_capacity)
                 if detail is not None:
@@ -3117,8 +3159,19 @@ class LeaseCoordinator:
                 # table. This rejects nested floats and unsupported containers.
                 canonical_profile_g_bytes(payload)
                 cid = self._put_artifact(conn, "DaemonHeartbeat", payload)
-                conn.execute("INSERT OR REPLACE INTO heartbeats VALUES(?,?,?,?,?,?,?,?)",
-                             (cid, grant.task_cid, grant.claimant_did, grant.fencing_token, now, payload["expires_at_ms"], capacity, json.dumps(payload, sort_keys=True)))
+                conn.execute(
+                    "INSERT OR REPLACE INTO heartbeats VALUES(?,?,?,?,?,?,?,?)",
+                    (
+                        cid,
+                        grant.task_cid,
+                        grant.claimant_did,
+                        grant.fencing_token,
+                        now,
+                        payload["expires_at_ms"],
+                        capacity,
+                        json.dumps(payload, sort_keys=True),
+                    ),
+                )
                 self._prune_heartbeat_history(conn, grant)
                 conn.commit()
                 return {**payload, "heartbeat_cid": cid}
@@ -3216,9 +3269,7 @@ class LeaseCoordinator:
 
         if status == "succeeded" and output is None:
             raise ValueError("successful receipt requires output")
-        normalized_output = (
-            _canonical_mapping(output, "output") if output is not None else None
-        )
+        normalized_output = _canonical_mapping(output, "output") if output is not None else None
         output_cid = _link(normalized_output) if normalized_output is not None else None
         claim_row = connection.execute(
             "SELECT payload_json FROM artifacts WHERE cid=?", (grant.claim_cid,)
@@ -3247,14 +3298,10 @@ class LeaseCoordinator:
             "failure_class": failure_class,
             "attempt": grant.attempt,
             "started_at_ms": int(
-                started_at_ms
-                if started_at_ms is not None
-                else row["started_at_ms"]
+                started_at_ms if started_at_ms is not None else row["started_at_ms"]
             ),
             "finished_at_ms": now,
-            "resource_use_cid": _link(
-                {"heartbeats": self._heartbeat_count(connection, grant)}
-            ),
+            "resource_use_cid": _link({"heartbeats": self._heartbeat_count(connection, grant)}),
             "provider": "ipfs_accelerate_py",
             "provider_version": PROVIDER_VERSION,
             "next_state": "complete" if status == "succeeded" else "ready",
@@ -3274,9 +3321,7 @@ class LeaseCoordinator:
         )
         terminal = "completed" if status == "succeeded" else "released"
         release_reason = (
-            None
-            if status == "succeeded"
-            else f"receipt:{status}:{failure_class}"[:256]
+            None if status == "succeeded" else f"receipt:{status}:{failure_class}"[:256]
         )
         connection.execute(
             "UPDATE leases SET state=?, release_reason=? WHERE task_cid=?",
@@ -3291,8 +3336,14 @@ class LeaseCoordinator:
 
     @_coordinator_operation
     def receipt(
-        self, grant: LeaseGrant, *, status: str, output: Mapping[str, Any] | None = None,
-        failure_class: str = "none", started_at_ms: int | None = None, now_ms: int | None = None,
+        self,
+        grant: LeaseGrant,
+        *,
+        status: str,
+        output: Mapping[str, Any] | None = None,
+        failure_class: str = "none",
+        started_at_ms: int | None = None,
+        now_ms: int | None = None,
     ) -> dict[str, Any]:
         """Publish a terminal receipt for a fenced execution.
 
@@ -3399,9 +3450,7 @@ class LeaseCoordinator:
                     raise ValueError("unknown or foreign distributed dispatch")
                 if stored["cancellation_cid"]:
                     connection.commit()
-                    return replace(
-                        dispatch, cancellation_cid=str(stored["cancellation_cid"])
-                    )
+                    return replace(dispatch, cancellation_cid=str(stored["cancellation_cid"]))
                 row = self._current(connection, dispatch.grant, now)
                 payload = {
                     "schema": "ipfs_accelerate_py.agent_supervisor/distributed-cancellation@1",
@@ -3500,9 +3549,7 @@ class LeaseCoordinator:
             "raw_result_digest": raw_digest,
             "raw_result": safe_result,
         }
-        quarantine_cid = self._put_artifact(
-            connection, "DistributedResultQuarantine", payload
-        )
+        quarantine_cid = self._put_artifact(connection, "DistributedResultQuarantine", payload)
         disposition = {
             "accepted": False,
             "quarantined": True,
@@ -3512,9 +3559,7 @@ class LeaseCoordinator:
             "publication_id": identity,
             "quarantine_cid": quarantine_cid,
             "distributed_publication": {
-                key: value
-                for key, value in payload.items()
-                if key not in {"raw_result"}
+                key: value for key, value in payload.items() if key not in {"raw_result"}
             },
         }
         encoded = canonical_profile_g_bytes(disposition).decode("utf-8")
@@ -3617,15 +3662,11 @@ class LeaseCoordinator:
                         reason = reason or f"foreign_{name}"
                         break
                 if current_capability_receipt is not None:
-                    current_capability = self._capability_receipt(
-                        current_capability_receipt
-                    )
+                    current_capability = self._capability_receipt(current_capability_receipt)
                     if current_capability.receipt_id != dispatch.capability_receipt_cid:
                         reason = reason or "capability_drift"
                 if current_environment_receipt is not None:
-                    current_environment = self._environment_receipt(
-                        current_environment_receipt
-                    )
+                    current_environment = self._environment_receipt(current_environment_receipt)
                     if current_environment.receipt_id != dispatch.environment_receipt_cid:
                         reason = reason or "environment_drift"
 
@@ -3758,12 +3799,8 @@ class LeaseCoordinator:
             publication_id = _required_text(
                 result_or_publication.get("publication_id")
                 or (
-                    result_or_publication.get("distributed_publication", {}).get(
-                        "publication_id"
-                    )
-                    if isinstance(
-                        result_or_publication.get("distributed_publication"), Mapping
-                    )
+                    result_or_publication.get("distributed_publication", {}).get("publication_id")
+                    if isinstance(result_or_publication.get("distributed_publication"), Mapping)
                     else ""
                 ),
                 "publication_id",
@@ -3804,12 +3841,8 @@ class LeaseCoordinator:
                     or publication.get("logical_epoch") != dispatch.logical_epoch
                     or publication.get("fencing_token") != dispatch.fencing_token
                 ):
-                    raise StaleFencingTokenError(
-                        "publication is not bound to the active dispatch"
-                    )
-                merge_accepted = (
-                    merge.get("merged") is True or merge.get("accepted") is True
-                )
+                    raise StaleFencingTokenError("publication is not bound to the active dispatch")
+                merge_accepted = merge.get("merged") is True or merge.get("accepted") is True
                 expected_commit = str(publication.get("candidate_commit") or "")
                 observed_candidate = str(
                     merge.get("candidate_commit")
@@ -3830,15 +3863,12 @@ class LeaseCoordinator:
                         else None
                     )
                 )
-                evidence_passed = (
-                    merge.get("post_merge_evidence_passed") is True
-                    or (
-                        isinstance(evidence, Mapping)
-                        and (
-                            evidence.get("passed") is True
-                            or evidence.get("merge_authoritative") is True
-                            or evidence.get("allowed") is True
-                        )
+                evidence_passed = merge.get("post_merge_evidence_passed") is True or (
+                    isinstance(evidence, Mapping)
+                    and (
+                        evidence.get("passed") is True
+                        or evidence.get("merge_authoritative") is True
+                        or evidence.get("allowed") is True
                     )
                 )
                 if not merge_accepted:
@@ -3848,11 +3878,7 @@ class LeaseCoordinator:
                 if not evidence_passed:
                     raise ValueError("post-merge evidence gate did not pass")
                 evidence_candidate = (
-                    str(
-                        evidence.get("candidate_commit")
-                        or evidence.get("candidate_tree_id")
-                        or ""
-                    )
+                    str(evidence.get("candidate_commit") or evidence.get("candidate_tree_id") or "")
                     if isinstance(evidence, Mapping)
                     else ""
                 )
@@ -3868,9 +3894,7 @@ class LeaseCoordinator:
                         merge_candidate_tree,
                     }
                     if evidence_candidate not in bound_values:
-                        raise ValueError(
-                            "post-merge evidence is bound to a foreign candidate"
-                        )
+                        raise ValueError("post-merge evidence is bound to a foreign candidate")
                 receipt_output = dict(publication.get("output") or {})
                 receipt_output.update(
                     {
@@ -3973,33 +3997,52 @@ class LeaseCoordinator:
             stale_cids,
         )
         connection.executemany(
-            "DELETE FROM artifacts "
-            "WHERE cid=? AND kind='DaemonHeartbeat'",
+            "DELETE FROM artifacts WHERE cid=? AND kind='DaemonHeartbeat'",
             stale_cids,
         )
 
     @staticmethod
     def _heartbeat_count(connection: _DuckConnection, grant: LeaseGrant) -> int:
-        return int(connection.execute("SELECT COUNT(*) FROM heartbeats WHERE task_cid=? AND fencing_token=?", (grant.task_cid, grant.fencing_token)).fetchone()[0])
+        return int(
+            connection.execute(
+                "SELECT COUNT(*) FROM heartbeats WHERE task_cid=? AND fencing_token=?",
+                (grant.task_cid, grant.fencing_token),
+            ).fetchone()[0]
+        )
 
     @_coordinator_operation
     def active_lease(self, task_cid: str, *, now_ms: int | None = None) -> LeaseGrant | None:
         now = self._clock_ms() if now_ms is None else int(now_ms)
         with self._lock, self._connection:
             self._expire(self._connection, task_cid, now)
-            row = self._connection.execute("SELECT * FROM leases WHERE task_cid=? AND state='accepted' AND expires_at_ms>?", (task_cid, now)).fetchone()
+            row = self._connection.execute(
+                "SELECT * FROM leases WHERE task_cid=? AND state='accepted' AND expires_at_ms>?",
+                (task_cid, now),
+            ).fetchone()
             return self._grant(row) if row is not None else None
 
     @_coordinator_operation
     def list_receipts(self, task_cid: str) -> list[dict[str, Any]]:
-        rows = self._connection.execute("SELECT * FROM receipts WHERE task_cid=? ORDER BY rowid", (task_cid,)).fetchall()
-        return [{"receipt_cid": row["receipt_cid"], "goal_cid": row["goal_cid"], "subgoal_cid": row["subgoal_cid"], "receipt": json.loads(row["payload_json"])} for row in rows]
+        rows = self._connection.execute(
+            "SELECT * FROM receipts WHERE task_cid=? ORDER BY rowid", (task_cid,)
+        ).fetchall()
+        return [
+            {
+                "receipt_cid": row["receipt_cid"],
+                "goal_cid": row["goal_cid"],
+                "subgoal_cid": row["subgoal_cid"],
+                "receipt": json.loads(row["payload_json"]),
+            }
+            for row in rows
+        ]
 
     @_coordinator_operation
     def get_artifact(self, cid: str) -> dict[str, Any] | None:
         """Return a stored coordination artifact by CID."""
 
-        row = self._connection.execute("SELECT payload_json FROM artifacts WHERE cid=?", (cid,)).fetchone()
+        row = self._connection.execute(
+            "SELECT payload_json FROM artifacts WHERE cid=?", (cid,)
+        ).fetchone()
         return json.loads(row[0]) if row is not None else None
 
 
@@ -4112,9 +4155,7 @@ def migrate_sqlite_coordination_store(
         raise ValueError("heartbeat_history_per_lease must be in [0, 10000]")
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(
-        f".{target.name}.migration-{threading.get_ident()}.tmp"
-    )
+    temporary = target.with_name(f".{target.name}.migration-{threading.get_ident()}.tmp")
     temporary.unlink(missing_ok=True)
     temporary_lock = temporary.with_name(f".{temporary.name}.lock")
     counts: dict[str, int] = {}
@@ -4149,8 +4190,7 @@ def migrate_sqlite_coordination_store(
             rows.extend(
                 tuple(row)
                 for row in source_connection.execute(
-                    f"SELECT {selected} FROM {table} "
-                    f"WHERE task_cid IN ({placeholders})",
+                    f"SELECT {selected} FROM {table} WHERE task_cid IN ({placeholders})",
                     batch,
                 ).fetchall()
             )
@@ -4189,12 +4229,8 @@ def migrate_sqlite_coordination_store(
         return json.dumps(
             {
                 "schema": "ipfs_accelerate_py.agent_supervisor.legacy-bundle-tombstone@1",
-                "bundle_key": bundle.get("bundle_key")
-                if isinstance(bundle, Mapping)
-                else "",
-                "source_todo": bundle.get("source_todo")
-                if isinstance(bundle, Mapping)
-                else "",
+                "bundle_key": bundle.get("bundle_key") if isinstance(bundle, Mapping) else "",
+                "source_todo": bundle.get("source_todo") if isinstance(bundle, Mapping) else "",
                 "tasks": tasks,
                 "source_bytes": len(raw),
             },
@@ -4205,17 +4241,13 @@ def migrate_sqlite_coordination_store(
         source_connection.execute("BEGIN")
         task_columns = dict(_LEGACY_COORDINATION_COLUMNS)["tasks"]
         retained_task_cids = {
-            str(task_cid)
-            for task_cid in (current_task_cids or ())
-            if str(task_cid)
+            str(task_cid) for task_cid in (current_task_cids or ()) if str(task_cid)
         }
         if table_exists("tasks"):
             if preserve_all_history:
                 retained_task_cids.update(
                     str(row[0])
-                    for row in source_connection.execute(
-                        "SELECT task_cid FROM tasks"
-                    ).fetchall()
+                    for row in source_connection.execute("SELECT task_cid FROM tasks").fetchall()
                 )
             elif not retained_task_cids:
                 latest = source_connection.execute(
@@ -4270,8 +4302,7 @@ def migrate_sqlite_coordination_store(
                     resolved.update(
                         str(row[0])
                         for row in source_connection.execute(
-                            "SELECT task_cid FROM tasks "
-                            f"WHERE task_cid IN ({placeholders})",
+                            f"SELECT task_cid FROM tasks WHERE task_cid IN ({placeholders})",
                             batch,
                         ).fetchall()
                     )
@@ -4279,13 +4310,9 @@ def migrate_sqlite_coordination_store(
             retained_task_cids.update(resolved)
 
         table_rows: dict[str, list[tuple[Any, ...]]] = {}
-        raw_task_rows = rows_for_task_cids(
-            "tasks", task_columns, retained_task_cids
-        )
+        raw_task_rows = rows_for_task_cids("tasks", task_columns, retained_task_cids)
         seed_task_cids = {
-            str(task_cid)
-            for task_cid in (current_task_cids or retained_task_cids)
-            if str(task_cid)
+            str(task_cid) for task_cid in (current_task_cids or retained_task_cids) if str(task_cid)
         }
         task_rows: list[tuple[Any, ...]] = []
         artifact_cids: set[str] = set()
@@ -4302,8 +4329,7 @@ def migrate_sqlite_coordination_store(
                 bundle = {}
             profile = (
                 bundle.get("profile_g")
-                if isinstance(bundle, Mapping)
-                and isinstance(bundle.get("profile_g"), Mapping)
+                if isinstance(bundle, Mapping) and isinstance(bundle.get("profile_g"), Mapping)
                 else {}
             )
             for key in (
@@ -4329,9 +4355,7 @@ def migrate_sqlite_coordination_store(
         table_rows["tasks"] = task_rows
 
         alias_columns = dict(_LEGACY_COORDINATION_COLUMNS)["task_aliases"]
-        aliases = rows_for_task_cids(
-            "task_aliases", alias_columns, retained_task_cids
-        )
+        aliases = rows_for_task_cids("task_aliases", alias_columns, retained_task_cids)
         if not preserve_all_history:
             aliases = [
                 row
@@ -4350,9 +4374,7 @@ def migrate_sqlite_coordination_store(
             "receipts",
         ):
             columns = dict(_LEGACY_COORDINATION_COLUMNS)[table]
-            table_rows[table] = rows_for_task_cids(
-                table, columns, retained_task_cids
-            )
+            table_rows[table] = rows_for_task_cids(table, columns, retained_task_cids)
         for row in table_rows["leases"]:
             artifact_cids.update((str(row[1]), str(row[2])))
         for row in table_rows["receipts"]:
@@ -4390,9 +4412,7 @@ def migrate_sqlite_coordination_store(
         artifact_row_count = 0
         if table_exists("artifacts"):
             artifact_row_count = int(
-                source_connection.execute(
-                    "SELECT count(*) FROM artifacts"
-                ).fetchone()[0]
+                source_connection.execute("SELECT count(*) FROM artifacts").fetchone()[0]
             )
         retain_all_artifacts = preserve_all_history or (
             artifact_row_count <= SMALL_STORE_FULL_ARTIFACT_LIMIT
@@ -4447,12 +4467,8 @@ def migrate_sqlite_coordination_store(
                                     "source_path": str(source.resolve()),
                                     "source_bytes": source.stat().st_size,
                                     "migrated_at_ms": int(time.time() * 1000),
-                                    "preserve_all_history": bool(
-                                        preserve_all_history
-                                    ),
-                                    "retained_task_count": len(
-                                        retained_task_cids
-                                    ),
+                                    "preserve_all_history": bool(preserve_all_history),
+                                    "retained_task_count": len(retained_task_cids),
                                     "heartbeat_history_per_lease": heartbeat_limit,
                                     "retained_all_artifacts": retain_all_artifacts,
                                     "row_counts": counts,
@@ -4551,9 +4567,7 @@ def _single_flight_json_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "single-flight outcomes must contain canonical JSON values"
-        ) from exc
+        raise ValueError("single-flight outcomes must contain canonical JSON values") from exc
 
 
 def _single_flight_cancelled(cancel_event: Any) -> bool:
@@ -4698,11 +4712,7 @@ class DistributedSingleFlightCoordinator:
             ("outcome_ttl_seconds", outcome_ttl_seconds),
             ("poll_interval_seconds", poll_interval_seconds),
         ):
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, (int, float))
-                or value <= 0
-            ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
                 raise ValueError(f"{name} must be positive")
         if (
             isinstance(max_outcome_bytes, bool)
@@ -4808,10 +4818,7 @@ class DistributedSingleFlightCoordinator:
 
     @staticmethod
     def _owner_id(owner_id: str | None) -> str:
-        owner = (
-            owner_id
-            or f"pid:{os.getpid()}:thread:{threading.get_ident()}"
-        ).strip()
+        owner = (owner_id or f"pid:{os.getpid()}:thread:{threading.get_ident()}").strip()
         if not owner or len(owner.encode("utf-8")) > 1_024:
             raise ValueError("owner_id must be nonempty and bounded")
         return owner
@@ -4852,11 +4859,7 @@ class DistributedSingleFlightCoordinator:
         key_id, namespace = _single_flight_identity(key)
         owner = self._owner_id(owner_id)
         duration = self.lease_seconds if lease_seconds is None else lease_seconds
-        if (
-            isinstance(duration, bool)
-            or not isinstance(duration, (int, float))
-            or duration <= 0
-        ):
+        if isinstance(duration, bool) or not isinstance(duration, (int, float)) or duration <= 0:
             raise ValueError("lease_seconds must be positive")
         now = self._clock_ms()
         connection = self._connect()
@@ -4917,9 +4920,8 @@ class DistributedSingleFlightCoordinator:
             if lease is not None:
                 prior_fence = max(prior_fence, int(lease["fencing_token"]))
             token = prior_fence + 1
-            bound_namespace = (
-                namespace
-                or (str(fence_row["namespace"]) if fence_row is not None else "")
+            bound_namespace = namespace or (
+                str(fence_row["namespace"]) if fence_row is not None else ""
             )
             lease_id = secrets.token_hex(32)
             expires = now + self._lease_ms(float(duration))
@@ -4986,15 +4988,9 @@ class DistributedSingleFlightCoordinator:
         lease_seconds: float | None = None,
     ) -> SingleFlightLeaseGrant:
         if not grant.acquired or not grant.lease_id:
-            raise StaleSingleFlightLeaseError(
-                "only the current single-flight owner may heartbeat"
-            )
+            raise StaleSingleFlightLeaseError("only the current single-flight owner may heartbeat")
         duration = self.lease_seconds if lease_seconds is None else lease_seconds
-        if (
-            isinstance(duration, bool)
-            or not isinstance(duration, (int, float))
-            or duration <= 0
-        ):
+        if isinstance(duration, bool) or not isinstance(duration, (int, float)) or duration <= 0:
             raise ValueError("lease_seconds must be positive")
         now = self._clock_ms()
         expires = now + self._lease_ms(float(duration))
@@ -5020,9 +5016,7 @@ class DistributedSingleFlightCoordinator:
                 ),
             )
             if cursor.rowcount != 1:
-                raise StaleSingleFlightLeaseError(
-                    "single-flight lease is expired or fenced"
-                )
+                raise StaleSingleFlightLeaseError("single-flight lease is expired or fenced")
             connection.commit()
         except BaseException:
             connection.rollback()
@@ -5074,21 +5068,11 @@ class DistributedSingleFlightCoordinator:
         outcome_ttl_seconds: float | None = None,
     ) -> SingleFlightOutcome:
         if not grant.acquired or not grant.lease_id:
-            raise StaleSingleFlightLeaseError(
-                "only the current single-flight owner may publish"
-            )
+            raise StaleSingleFlightLeaseError("only the current single-flight owner may publish")
         if status not in {"ok", "error"}:
             raise ValueError("single-flight status must be ok or error")
-        ttl = (
-            self.outcome_ttl_seconds
-            if outcome_ttl_seconds is None
-            else outcome_ttl_seconds
-        )
-        if (
-            isinstance(ttl, bool)
-            or not isinstance(ttl, (int, float))
-            or ttl <= 0
-        ):
+        ttl = self.outcome_ttl_seconds if outcome_ttl_seconds is None else outcome_ttl_seconds
+        if isinstance(ttl, bool) or not isinstance(ttl, (int, float)) or ttl <= 0:
             raise ValueError("outcome_ttl_seconds must be positive")
         now = self._clock_ms()
         expires = now + self._lease_ms(float(ttl))
@@ -5105,9 +5089,7 @@ class DistributedSingleFlightCoordinator:
         }
         encoded = _single_flight_json_bytes(envelope)
         if len(encoded) > self.max_outcome_bytes:
-            raise DistributedSingleFlightError(
-                "single-flight outcome exceeds max_outcome_bytes"
-            )
+            raise DistributedSingleFlightError("single-flight outcome exceeds max_outcome_bytes")
         digest = "sha256:" + hashlib.sha256(encoded).hexdigest()
         attestation_id = self._attestation_id(
             key_id=grant.key_id,
@@ -5176,9 +5158,7 @@ class DistributedSingleFlightCoordinator:
             fencing_token=grant.fencing_token,
         )
         if outcome is None:  # pragma: no cover - transaction guarantees this
-            raise DistributedSingleFlightError(
-                "published single-flight outcome was not readable"
-            )
+            raise DistributedSingleFlightError("published single-flight outcome was not readable")
         return outcome
 
     publish_outcome = publish
@@ -5204,15 +5184,10 @@ class DistributedSingleFlightCoordinator:
             connection.close()
         if row is None:
             return None
-        if (
-            fencing_token is not None
-            and int(row["fencing_token"]) != fencing_token
-        ):
+        if fencing_token is not None and int(row["fencing_token"]) != fencing_token:
             return None
         if requested_namespace and str(row["namespace"]) != requested_namespace:
-            raise DistributedSingleFlightError(
-                "single-flight outcome namespace binding mismatch"
-            )
+            raise DistributedSingleFlightError("single-flight outcome namespace binding mismatch")
         try:
             raw_outcome = str(row["outcome_json"])
             if len(raw_outcome.encode("utf-8")) > self.max_outcome_bytes:
@@ -5243,9 +5218,7 @@ class DistributedSingleFlightCoordinator:
             ):
                 raise ValueError("outcome binding, digest, or attestation mismatch")
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise DistributedSingleFlightExecutionError(
-                "single_flight_outcome_rejected"
-            ) from exc
+            raise DistributedSingleFlightExecutionError("single_flight_outcome_rejected") from exc
         attestation = SingleFlightAttestation(
             key_id=str(row["key_id"]),
             namespace=str(row["namespace"]),
@@ -5373,14 +5346,10 @@ class DistributedSingleFlightCoordinator:
             member_deadline = min(member_deadline, float(deadline_monotonic))
         while True:
             if _single_flight_cancelled(cancel_event):
-                raise DistributedSingleFlightCancelled(
-                    "single_flight_member_cancelled"
-                )
+                raise DistributedSingleFlightCancelled("single_flight_member_cancelled")
             remaining = member_deadline - time.monotonic()
             if remaining <= 0:
-                raise DistributedSingleFlightTimeout(
-                    "single_flight_member_deadline"
-                )
+                raise DistributedSingleFlightTimeout("single_flight_member_deadline")
             outcome = self.read_outcome(
                 {
                     "key_id": grant.key_id,
@@ -5422,13 +5391,9 @@ class DistributedSingleFlightCoordinator:
         duration = self.lease_seconds if lease_seconds is None else float(lease_seconds)
         while True:
             if _single_flight_cancelled(cancel_event):
-                raise DistributedSingleFlightCancelled(
-                    "single_flight_member_cancelled"
-                )
+                raise DistributedSingleFlightCancelled("single_flight_member_cancelled")
             if time.monotonic() >= member_deadline:
-                raise DistributedSingleFlightTimeout(
-                    "single_flight_member_deadline"
-                )
+                raise DistributedSingleFlightTimeout("single_flight_member_deadline")
             grant = self.acquire(
                 key,
                 owner_id=owner_id,
@@ -5463,14 +5428,10 @@ class DistributedSingleFlightCoordinator:
             # live follower can take over.  It does not publish cancellation.
             if _single_flight_cancelled(cancel_event):
                 self.release(grant)
-                raise DistributedSingleFlightCancelled(
-                    "single_flight_member_cancelled"
-                )
+                raise DistributedSingleFlightCancelled("single_flight_member_cancelled")
             if time.monotonic() >= member_deadline:
                 self.release(grant)
-                raise DistributedSingleFlightTimeout(
-                    "single_flight_member_deadline"
-                )
+                raise DistributedSingleFlightTimeout("single_flight_member_deadline")
 
             heartbeat_stop = threading.Event()
             heartbeat_failures: list[BaseException] = []
@@ -5511,13 +5472,9 @@ class DistributedSingleFlightCoordinator:
                 # under the still-live fence, then honor only this member's
                 # terminal state.
                 if member_cancelled:
-                    raise DistributedSingleFlightCancelled(
-                        "single_flight_member_cancelled"
-                    )
+                    raise DistributedSingleFlightCancelled("single_flight_member_cancelled")
                 if member_expired:
-                    raise DistributedSingleFlightTimeout(
-                        "single_flight_member_deadline"
-                    )
+                    raise DistributedSingleFlightTimeout("single_flight_member_deadline")
                 return DistributedSingleFlightResult(outcome, owner=True)
             except (
                 DistributedSingleFlightCancelled,
@@ -5620,9 +5577,7 @@ class LeaseQueueBridge:
 
     def _terminally_reject_registration(self, task: Any, error: Exception) -> None:
         detail = str(error)[:1_000]
-        reason = (
-            f"profile-g registration rejected: {type(error).__name__}: {detail}"
-        )
+        reason = f"profile-g registration rejected: {type(error).__name__}: {detail}"
         accepted = self.queue.complete(
             task_id=task.task_id,
             worker_id=self.worker_id,
@@ -5661,12 +5616,12 @@ class LeaseQueueBridge:
             error=f"profile-g lease not accepted: {type(error).__name__}: {error}",
         )
         if not accepted:
-            raise LeaseError(
-                f"queue refused retry backoff for {task.task_id}"
-            ) from error
+            raise LeaseError(f"queue refused retry backoff for {task.task_id}") from error
         return True
 
-    def claim_next(self, *, supported_task_types: list[str] | None = None) -> LeasedQueuedTask | None:
+    def claim_next(
+        self, *, supported_task_types: list[str] | None = None
+    ) -> LeasedQueuedTask | None:
         for _ in range(self.max_rejections_per_claim):
             task = self.queue.claim_next(
                 worker_id=self.worker_id,
@@ -5714,7 +5669,9 @@ class LeaseQueueBridge:
 
     def release(self, leased: LeasedQueuedTask, *, reason: str = "released") -> bool:
         self.coordinator.release(leased.grant, reason=reason)
-        return bool(self.queue.release(task_id=leased.task.task_id, worker_id=self.worker_id, reason=reason))
+        return bool(
+            self.queue.release(task_id=leased.task.task_id, worker_id=self.worker_id, reason=reason)
+        )
 
     def complete(
         self,
@@ -5757,10 +5714,16 @@ __all__ = [
     "DistributedSingleFlightExecutionError",
     "DistributedSingleFlightResult",
     "DistributedSingleFlightTimeout",
-    "LeaseConflictError", "LeaseCoordinator", "LeaseError", "LeaseExpiredError", "LeaseGrant",
-    "LeaseQueueBridge", "LeasedQueuedTask",
+    "LeaseConflictError",
+    "LeaseCoordinator",
+    "LeaseError",
+    "LeaseExpiredError",
+    "LeaseGrant",
+    "LeaseQueueBridge",
+    "LeasedQueuedTask",
     "ImmutableLaneInputArtifact",
-    "MAX_LEASE_MS", "MIN_LEASE_MS",
+    "MAX_LEASE_MS",
+    "MIN_LEASE_MS",
     "REMOTE_LANE_RESULT_SCHEMA",
     "RemoteLaneResult",
     "SINGLE_FLIGHT_ATTESTATION_SCHEMA",
@@ -5777,10 +5740,12 @@ __all__ = [
     "SingleFlightTimeout",
     "StaleFencingTokenError",
     "StaleSingleFlightLeaseError",
-    "TaskLeaseState", "adapt_goal_bundle",
+    "TaskLeaseState",
+    "adapt_goal_bundle",
     "WORKER_CAPABILITY_RECEIPT_SCHEMA",
     "WORKER_ENVIRONMENT_RECEIPT_SCHEMA",
     "WorkerCapabilityReceipt",
     "WorkerEnvironmentReceipt",
-    "canonical_profile_g_bytes", "profile_g_cid",
+    "canonical_profile_g_bytes",
+    "profile_g_cid",
 ]

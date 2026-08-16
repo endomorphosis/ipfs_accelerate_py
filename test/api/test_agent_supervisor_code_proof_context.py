@@ -164,9 +164,7 @@ def test_solver_traces_excluded_by_default() -> None:
     assert "solver_trace" not in kinds
     assert capsule.metadata.get("solver_traces_excluded_by_default") is True
 
-    with_trace = compile_code_proof_context_capsule(
-        _request(include_solver_traces=True)
-    )
+    with_trace = compile_code_proof_context_capsule(_request(include_solver_traces=True))
     kinds2 = {ref.kind for ref in with_trace.capsule.evidence}
     assert "solver_trace" in kinds2
 

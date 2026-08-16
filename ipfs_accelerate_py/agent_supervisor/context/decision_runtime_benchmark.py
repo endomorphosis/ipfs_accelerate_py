@@ -28,9 +28,7 @@ DECISION_RUNTIME_BENCHMARK_SCHEMA: Final = (
 PROOF_DEPENDENCY_SCALING_REPORT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/proof-dependency-scaling-report@1"
 )
-PROOF_DEPENDENCY_SCALING_REQUIREMENT_ID: Final = (
-    "asi-139:proof-dependency-context-scaling"
-)
+PROOF_DEPENDENCY_SCALING_REQUIREMENT_ID: Final = "asi-139:proof-dependency-context-scaling"
 MINIMUM_IRRELEVANT_SCALE_FACTOR: Final = 10
 MAX_RECEIPTS: Final = 100_000
 MAX_COUNTER: Final = 10**15
@@ -81,12 +79,8 @@ class AdversarialFixture(str, Enum):
     MANDATORY_OMISSION = "mandatory-omission"
 
 
-REQUIRED_IRRELEVANT_CORPORA: Final[tuple[IrrelevantCorpus, ...]] = tuple(
-    IrrelevantCorpus
-)
-REQUIRED_ADVERSARIAL_FIXTURES: Final[tuple[AdversarialFixture, ...]] = tuple(
-    AdversarialFixture
-)
+REQUIRED_IRRELEVANT_CORPORA: Final[tuple[IrrelevantCorpus, ...]] = tuple(IrrelevantCorpus)
+REQUIRED_ADVERSARIAL_FIXTURES: Final[tuple[AdversarialFixture, ...]] = tuple(AdversarialFixture)
 
 
 def _plain(value: Any) -> Any:
@@ -113,9 +107,7 @@ def _canonical_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise DecisionRuntimeBenchmarkError(
-            "benchmark evidence must be canonical JSON"
-        ) from exc
+        raise DecisionRuntimeBenchmarkError("benchmark evidence must be canonical JSON") from exc
 
 
 def _identity(value: Any) -> str:
@@ -127,9 +119,7 @@ def _load_json(value: str | bytes | bytearray, name: str) -> Any:
         result: dict[str, Any] = {}
         for key, item in pairs:
             if key in result:
-                raise DecisionRuntimeBenchmarkError(
-                    f"{name} contains duplicate JSON key {key!r}"
-                )
+                raise DecisionRuntimeBenchmarkError(f"{name} contains duplicate JSON key {key!r}")
             result[key] = item
         return result
 
@@ -145,9 +135,7 @@ def _load_json(value: str | bytes | bytearray, name: str) -> Any:
 
 def _text(value: Any, name: str, *, maximum: int = 512) -> str:
     if not isinstance(value, str) or not value or value != value.strip():
-        raise DecisionRuntimeBenchmarkError(
-            f"{name} must be non-empty canonical text"
-        )
+        raise DecisionRuntimeBenchmarkError(f"{name} must be non-empty canonical text")
     if "\x00" in value or len(value.encode("utf-8")) > maximum:
         raise DecisionRuntimeBenchmarkError(f"{name} is unsafe or too large")
     return value
@@ -163,9 +151,7 @@ def _code(value: Any, name: str) -> str:
 def _content_id(value: Any, name: str) -> str:
     result = _text(value, name, maximum=71)
     if not _CONTENT_ID.fullmatch(result):
-        raise DecisionRuntimeBenchmarkError(
-            f"{name} must be a lowercase sha256 content ID"
-        )
+        raise DecisionRuntimeBenchmarkError(f"{name} must be a lowercase sha256 content ID")
     return result
 
 
@@ -221,9 +207,7 @@ class FrozenDecisionIdentity:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=512)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=512))
 
     @property
     def identity_id(self) -> str:
@@ -251,23 +235,15 @@ class CorpusScale:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name, minimum=1)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name, minimum=1))
 
     @property
     def intervention(self) -> IrrelevantCorpus | None:
-        changed = [
-            kind
-            for kind, value in self.by_kind.items()
-            if value != 1
-        ]
+        changed = [kind for kind, value in self.by_kind.items() if value != 1]
         if not changed:
             return None
         if len(changed) != 1:
-            raise DecisionRuntimeBenchmarkError(
-                "irrelevant corpora must be scaled independently"
-            )
+            raise DecisionRuntimeBenchmarkError("irrelevant corpora must be scaled independently")
         return changed[0]
 
     @property
@@ -342,9 +318,7 @@ class DecisionRuntimeMetrics:
         ):
             object.__setattr__(self, name, _integer(getattr(self, name), name))
         if not isinstance(self.first_valid_plan, bool):
-            raise DecisionRuntimeBenchmarkError(
-                "first_valid_plan must be boolean"
-            )
+            raise DecisionRuntimeBenchmarkError("first_valid_plan must be boolean")
         object.__setattr__(
             self,
             "declared_effect_ids",
@@ -355,9 +329,7 @@ class DecisionRuntimeMetrics:
             "observed_effect_ids",
             _ids(self.observed_effect_ids, "observed_effect_ids"),
         )
-        object.__setattr__(
-            self, "terminal_result", _code(self.terminal_result, "terminal_result")
-        )
+        object.__setattr__(self, "terminal_result", _code(self.terminal_result, "terminal_result"))
         if self.cache_hits > self.cache_lookups:
             raise DecisionRuntimeBenchmarkError("cache hits exceed lookups")
         if self.invalidation_true_positive > min(
@@ -377,10 +349,7 @@ class DecisionRuntimeMetrics:
 
     @property
     def invalidation_exact(self) -> bool:
-        return (
-            self.invalidation_false_positive == 0
-            and self.invalidation_false_negative == 0
-        )
+        return self.invalidation_false_positive == 0 and self.invalidation_false_negative == 0
 
     @property
     def cache_reuse_millionths(self) -> int:
@@ -389,10 +358,7 @@ class DecisionRuntimeMetrics:
         return self.cache_hits * 1_000_000 // self.cache_lookups
 
     def to_dict(self) -> dict[str, Any]:
-        payload = {
-            name: _plain(getattr(self, name))
-            for name in self.__dataclass_fields__
-        }
+        payload = {name: _plain(getattr(self, name)) for name in self.__dataclass_fields__}
         payload.update(
             invalidation_false_positive=self.invalidation_false_positive,
             invalidation_false_negative=self.invalidation_false_negative,
@@ -437,32 +403,24 @@ class DecisionRuntimeProducerReceipt:
     def __post_init__(self) -> None:
         if not isinstance(self.identity, FrozenDecisionIdentity):
             raise DecisionRuntimeBenchmarkError("identity is not frozen")
-        object.__setattr__(
-            self, "path", _enum(self.path, DecisionRuntimePath, "path")
-        )
+        object.__setattr__(self, "path", _enum(self.path, DecisionRuntimePath, "path"))
         if not isinstance(self.scale, CorpusScale):
             raise DecisionRuntimeBenchmarkError("scale must be CorpusScale")
         if not isinstance(self.metrics, DecisionRuntimeMetrics):
-            raise DecisionRuntimeBenchmarkError(
-                "metrics must be DecisionRuntimeMetrics"
-            )
+            raise DecisionRuntimeBenchmarkError("metrics must be DecisionRuntimeMetrics")
         object.__setattr__(
             self,
             "mandatory_closure_id",
             _content_id(self.mandatory_closure_id, "mandatory_closure_id"),
         )
-        object.__setattr__(
-            self, "context_id", _content_id(self.context_id, "context_id")
-        )
+        object.__setattr__(self, "context_id", _content_id(self.context_id, "context_id"))
         object.__setattr__(
             self,
             "source_receipt_ids",
             _ids(self.source_receipt_ids, "source_receipt_ids"),
         )
         if not self.source_receipt_ids:
-            raise DecisionRuntimeBenchmarkError(
-                "producer observation requires source receipts"
-            )
+            raise DecisionRuntimeBenchmarkError("producer observation requires source receipts")
         if self.adversarial_fixture is not None:
             object.__setattr__(
                 self,
@@ -473,30 +431,20 @@ class DecisionRuntimeProducerReceipt:
                     "adversarial_fixture",
                 ),
             )
-        object.__setattr__(
-            self, "escape_count", _integer(self.escape_count, "escape_count")
-        )
-        if not isinstance(self.degraded_local, bool) or not isinstance(
-            self.lazy_discovery, bool
-        ):
-            raise DecisionRuntimeBenchmarkError(
-                "degraded_local and lazy_discovery must be boolean"
-            )
+        object.__setattr__(self, "escape_count", _integer(self.escape_count, "escape_count"))
+        if not isinstance(self.degraded_local, bool) or not isinstance(self.lazy_discovery, bool):
+            raise DecisionRuntimeBenchmarkError("degraded_local and lazy_discovery must be boolean")
         if self.degraded_local:
             object.__setattr__(
                 self,
                 "deterministic_replay_id",
-                _content_id(
-                    self.deterministic_replay_id, "deterministic_replay_id"
-                ),
+                _content_id(self.deterministic_replay_id, "deterministic_replay_id"),
             )
         elif self.deterministic_replay_id:
             object.__setattr__(
                 self,
                 "deterministic_replay_id",
-                _content_id(
-                    self.deterministic_replay_id, "deterministic_replay_id"
-                ),
+                _content_id(self.deterministic_replay_id, "deterministic_replay_id"),
             )
         # Validate the independent intervention immediately.
         intervention = self.scale.intervention
@@ -523,9 +471,7 @@ class DecisionRuntimeProducerReceipt:
             "context_id": self.context_id,
             "source_receipt_ids": list(self.source_receipt_ids),
             "adversarial_fixture": (
-                self.adversarial_fixture.value
-                if self.adversarial_fixture is not None
-                else None
+                self.adversarial_fixture.value if self.adversarial_fixture is not None else None
             ),
             "escape_count": self.escape_count,
             "degraded_local": self.degraded_local,
@@ -537,9 +483,7 @@ class DecisionRuntimeProducerReceipt:
         return payload
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "DecisionRuntimeProducerReceipt":
+    def from_dict(cls, value: Mapping[str, Any]) -> "DecisionRuntimeProducerReceipt":
         allowed = {
             "schema",
             "version",
@@ -563,9 +507,7 @@ class DecisionRuntimeProducerReceipt:
             value.get("schema") != DECISION_RUNTIME_PRODUCER_RECEIPT_SCHEMA
             or value.get("version") != DECISION_RUNTIME_BENCHMARK_VERSION
         ):
-            raise DecisionRuntimeBenchmarkError(
-                "unsupported producer receipt schema"
-            )
+            raise DecisionRuntimeBenchmarkError("unsupported producer receipt schema")
         result = cls(
             identity=FrozenDecisionIdentity.from_dict(value["identity"]),
             path=value["path"],
@@ -588,9 +530,7 @@ class DecisionRuntimeProducerReceipt:
         return _canonical_bytes(self.to_dict()).decode("utf-8")
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "DecisionRuntimeProducerReceipt":
+    def from_json(cls, value: str | bytes | bytearray) -> "DecisionRuntimeProducerReceipt":
         return cls.from_dict(_load_json(value, "producer receipt"))
 
 
@@ -607,19 +547,12 @@ class DecisionRuntimeBenchmark:
             raise DecisionRuntimeBenchmarkError(
                 "benchmark receipt population is empty or unbounded"
             )
-        if any(
-            not isinstance(item, DecisionRuntimeProducerReceipt)
-            for item in receipts
-        ):
-            raise DecisionRuntimeBenchmarkError(
-                "benchmark contains non-producer receipts"
-            )
+        if any(not isinstance(item, DecisionRuntimeProducerReceipt) for item in receipts):
+            raise DecisionRuntimeBenchmarkError("benchmark contains non-producer receipts")
         receipt_ids = [item.receipt_id for item in receipts]
         if len(receipt_ids) != len(set(receipt_ids)):
             raise DecisionRuntimeBenchmarkError("duplicate producer receipt")
-        object.__setattr__(
-            self, "receipts", tuple(sorted(receipts, key=lambda r: r.receipt_id))
-        )
+        object.__setattr__(self, "receipts", tuple(sorted(receipts, key=lambda r: r.receipt_id)))
         if self.requirement_id != PROOF_DEPENDENCY_SCALING_REQUIREMENT_ID:
             raise DecisionRuntimeBenchmarkError("wrong benchmark requirement")
 
@@ -656,8 +589,7 @@ class DecisionRuntimeBenchmark:
             raise DecisionRuntimeBenchmarkError("unsupported benchmark schema")
         result = cls(
             receipts=tuple(
-                DecisionRuntimeProducerReceipt.from_dict(item)
-                for item in value["receipts"]
+                DecisionRuntimeProducerReceipt.from_dict(item) for item in value["receipts"]
             ),
             requirement_id=value["requirement_id"],
         )
@@ -669,9 +601,7 @@ class DecisionRuntimeBenchmark:
         return _canonical_bytes(self.to_dict()).decode("utf-8")
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "DecisionRuntimeBenchmark":
+    def from_json(cls, value: str | bytes | bytearray) -> "DecisionRuntimeBenchmark":
         return cls.from_dict(_load_json(value, "decision runtime benchmark"))
 
 
@@ -682,9 +612,7 @@ def _correlation(xs: Sequence[int], ys: Sequence[int]) -> int:
         return 0
     x_mean = sum(xs) / len(xs)
     y_mean = sum(ys) / len(ys)
-    numerator = sum(
-        (x - x_mean) * (y - y_mean) for x, y in zip(xs, ys)
-    )
+    numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys))
     x_norm = math.sqrt(sum((x - x_mean) ** 2 for x in xs))
     y_norm = math.sqrt(sum((y - y_mean) ** 2 for y in ys))
     if not x_norm or not y_norm:
@@ -730,9 +658,7 @@ class ProofDependencyScalingReport:
 
     def __post_init__(self) -> None:
         _content_id(self.benchmark_id, "benchmark_id")
-        object.__setattr__(
-            self, "failure_codes", tuple(sorted(set(self.failure_codes)))
-        )
+        object.__setattr__(self, "failure_codes", tuple(sorted(set(self.failure_codes))))
 
     @property
     def report_id(self) -> str:
@@ -750,10 +676,7 @@ class ProofDependencyScalingReport:
         payload = {
             "schema": PROOF_DEPENDENCY_SCALING_REPORT_SCHEMA,
             "version": DECISION_RUNTIME_BENCHMARK_VERSION,
-            **{
-                name: _plain(getattr(self, name))
-                for name in self.__dataclass_fields__
-            },
+            **{name: _plain(getattr(self, name)) for name in self.__dataclass_fields__},
             "authoritative": False,
             "completion_authoritative": False,
         }
@@ -799,13 +722,9 @@ def recompute_proof_dependency_scaling(
     """Replay the complete paired/adversarial population from source receipts."""
 
     if not isinstance(benchmark, DecisionRuntimeBenchmark):
-        raise DecisionRuntimeBenchmarkError(
-            "benchmark must be DecisionRuntimeBenchmark"
-        )
+        raise DecisionRuntimeBenchmarkError("benchmark must be DecisionRuntimeBenchmark")
     normal = [r for r in benchmark.receipts if r.adversarial_fixture is None]
-    adversarial = [
-        r for r in benchmark.receipts if r.adversarial_fixture is not None
-    ]
+    adversarial = [r for r in benchmark.receipts if r.adversarial_fixture is not None]
     failures: list[str] = []
     groups: dict[str, list[DecisionRuntimeProducerReceipt]] = {}
     for receipt in normal:
@@ -816,74 +735,56 @@ def recompute_proof_dependency_scaling(
     terminal_parity = True
     for identity_id, population in groups.items():
         by_key = {(r.path, r.scale.scale_id): r for r in population}
-        baselines = {
-            r.path: r
-            for r in population
-            if r.scale.intervention is None
-        }
+        baselines = {r.path: r for r in population if r.scale.intervention is None}
         if set(baselines) != set(DecisionRuntimePath):
             failures.append(f"missing-paired-baseline:{identity_id}")
             continue
         current = baselines[DecisionRuntimePath.CURRENT]
         proof = baselines[DecisionRuntimePath.PROOF_DIRECTED]
         if (
-            current.metrics.declared_effect_ids
-            != proof.metrics.declared_effect_ids
-            or current.metrics.observed_effect_ids
-            != proof.metrics.observed_effect_ids
+            current.metrics.declared_effect_ids != proof.metrics.declared_effect_ids
+            or current.metrics.observed_effect_ids != proof.metrics.observed_effect_ids
         ):
             effect_parity = False
         if current.metrics.terminal_result != proof.metrics.terminal_result:
             terminal_parity = False
         for corpus in REQUIRED_IRRELEVANT_CORPORA:
             candidates = [
-                r for r in population
+                r
+                for r in population
                 if r.scale.intervention is corpus
                 and r.scale.by_kind[corpus] >= MINIMUM_IRRELEVANT_SCALE_FACTOR
             ]
             if {r.path for r in candidates} != set(DecisionRuntimePath):
-                failures.append(
-                    f"missing-independent-scale:{identity_id}:{corpus.value}"
-                )
+                failures.append(f"missing-independent-scale:{identity_id}:{corpus.value}")
                 continue
             valid = True
             for grown in candidates:
                 base = baselines[grown.path]
                 if (
                     grown.metrics.total_corpus_nodes
-                    < base.metrics.total_corpus_nodes
-                    * MINIMUM_IRRELEVANT_SCALE_FACTOR
+                    < base.metrics.total_corpus_nodes * MINIMUM_IRRELEVANT_SCALE_FACTOR
                     or grown.metrics.total_corpus_bytes
-                    < base.metrics.total_corpus_bytes
-                    * MINIMUM_IRRELEVANT_SCALE_FACTOR
-                    or grown.mandatory_closure_id
-                    != base.mandatory_closure_id
-                    or grown.metrics.mandatory_closure_nodes
-                    != base.metrics.mandatory_closure_nodes
-                    or grown.metrics.mandatory_closure_bytes
-                    != base.metrics.mandatory_closure_bytes
-                    or grown.metrics.declared_effect_ids
-                    != base.metrics.declared_effect_ids
-                    or grown.metrics.observed_effect_ids
-                    != base.metrics.observed_effect_ids
-                    or grown.metrics.terminal_result
-                    != base.metrics.terminal_result
+                    < base.metrics.total_corpus_bytes * MINIMUM_IRRELEVANT_SCALE_FACTOR
+                    or grown.mandatory_closure_id != base.mandatory_closure_id
+                    or grown.metrics.mandatory_closure_nodes != base.metrics.mandatory_closure_nodes
+                    or grown.metrics.mandatory_closure_bytes != base.metrics.mandatory_closure_bytes
+                    or grown.metrics.declared_effect_ids != base.metrics.declared_effect_ids
+                    or grown.metrics.observed_effect_ids != base.metrics.observed_effect_ids
+                    or grown.metrics.terminal_result != base.metrics.terminal_result
                 ):
                     valid = False
                 # The proof-directed provider context must not follow irrelevant
                 # corpus growth.  Current-path growth is measured, not trusted.
                 if (
                     grown.path is DecisionRuntimePath.PROOF_DIRECTED
-                    and grown.metrics.provider_input_tokens
-                    != base.metrics.provider_input_tokens
+                    and grown.metrics.provider_input_tokens != base.metrics.provider_input_tokens
                 ):
                     valid = False
             if valid:
                 dimensions_passed.add(corpus.value)
             else:
-                failures.append(
-                    f"context-follows-irrelevant-corpus:{identity_id}:{corpus.value}"
-                )
+                failures.append(f"context-follows-irrelevant-corpus:{identity_id}:{corpus.value}")
         if len(by_key) != len(population):
             failures.append(f"duplicate-scale-observation:{identity_id}")
 
@@ -916,20 +817,14 @@ def recompute_proof_dependency_scaling(
     if not lazy_passed:
         failures.append("eager-optional-discovery")
 
-    proof_receipts = [
-        r for r in normal if r.path is DecisionRuntimePath.PROOF_DIRECTED
-    ]
+    proof_receipts = [r for r in normal if r.path is DecisionRuntimePath.PROOF_DIRECTED]
     metrics = [r.metrics for r in benchmark.receipts]
     invalidation_fp = sum(m.invalidation_false_positive for m in metrics)
     invalidation_fn = sum(m.invalidation_false_negative for m in metrics)
     invalidation_passed = invalidation_fp == 0 and invalidation_fn == 0
     if not invalidation_passed:
         failures.append("imprecise-invalidation")
-    warm_receipts = [
-        r
-        for r in proof_receipts
-        if r.scale.intervention is None
-    ]
+    warm_receipts = [r for r in proof_receipts if r.scale.intervention is None]
     cache_passed = bool(warm_receipts) and all(
         r.metrics.cache_lookups > 0
         and r.metrics.cache_hits == r.metrics.cache_lookups
@@ -953,8 +848,7 @@ def recompute_proof_dependency_scaling(
         [r.metrics.provider_input_tokens for r in proof_receipts],
     )
     context_passed = (
-        set(dimensions_passed)
-        == {item.value for item in REQUIRED_IRRELEVANT_CORPORA}
+        set(dimensions_passed) == {item.value for item in REQUIRED_IRRELEVANT_CORPORA}
         and closure_tokens >= 900_000
         and corpus_tokens <= 500_000
         and closure_tokens > corpus_tokens
@@ -1008,8 +902,7 @@ def recompute_proof_dependency_scaling(
 
 
 def build_proof_dependency_scaling_report(
-    receipts: Sequence[DecisionRuntimeProducerReceipt]
-    | DecisionRuntimeBenchmark,
+    receipts: Sequence[DecisionRuntimeProducerReceipt] | DecisionRuntimeBenchmark,
 ) -> ProofDependencyScalingReport:
     benchmark = (
         receipts
@@ -1026,9 +919,7 @@ def verify_proof_dependency_scaling_report(
     if not isinstance(report, ProofDependencyScalingReport):
         return False
     replayed = recompute_proof_dependency_scaling(benchmark)
-    return _canonical_bytes(report.to_dict()) == _canonical_bytes(
-        replayed.to_dict()
-    )
+    return _canonical_bytes(report.to_dict()) == _canonical_bytes(replayed.to_dict())
 
 
 def producer_receipt_from_records(
@@ -1064,32 +955,22 @@ def producer_receipt_from_records(
                 return getattr(obj, name)
         if default is not None:
             return default
-        raise DecisionRuntimeBenchmarkError(
-            "producer receipt missing " + "/".join(names)
-        )
+        raise DecisionRuntimeBenchmarkError("producer receipt missing " + "/".join(names))
 
     declared = get(effect_receipt, "declared_effect_ids", "expected_effect_ids")
     observed = get(effect_receipt, "observed_effect_ids")
     invalidated = set(get(invalidation_receipt, "invalidated_ids", default=()))
-    expected = set(
-        get(invalidation_receipt, "expected_invalidated_ids", default=())
-    )
+    expected = set(get(invalidation_receipt, "expected_invalidated_ids", default=()))
     metrics = DecisionRuntimeMetrics(
         provider_input_tokens=get(
             context_receipt, "provider_input_tokens", "complete_input_tokens"
         ),
-        provider_output_tokens=get(
-            runtime_receipt, "provider_output_tokens", default=0
-        ),
-        provider_reused_input_tokens=get(
-            cache_receipt, "reused_input_tokens", default=0
-        ),
+        provider_output_tokens=get(runtime_receipt, "provider_output_tokens", default=0),
+        provider_reused_input_tokens=get(cache_receipt, "reused_input_tokens", default=0),
         mandatory_closure_nodes=get(
             context_receipt, "mandatory_closure_nodes", "mandatory_node_count"
         ),
-        mandatory_closure_bytes=get(
-            context_receipt, "mandatory_closure_bytes", "mandatory_bytes"
-        ),
+        mandatory_closure_bytes=get(context_receipt, "mandatory_closure_bytes", "mandatory_bytes"),
         total_corpus_nodes=total_corpus_nodes,
         total_corpus_bytes=total_corpus_bytes,
         cache_lookups=get(cache_receipt, "lookup_count", default=1),
@@ -1098,29 +979,21 @@ def producer_receipt_from_records(
         invalidation_expected=len(expected),
         invalidation_actual=len(invalidated),
         invalidation_true_positive=len(expected.intersection(invalidated)),
-        first_valid_plan=bool(
-            get(plan_receipt, "first_valid_plan", "admitted", default=False)
-        ),
+        first_valid_plan=bool(get(plan_receipt, "first_valid_plan", "admitted", default=False)),
         retries=get(context_receipt, "retry_count", default=0),
         proof_cost=get(proof_receipt, "cost", "latency_ms", default=0),
-        validation_cost=get(
-            validation_receipt, "cost", "latency_ms", default=0
-        ),
+        validation_cost=get(validation_receipt, "cost", "latency_ms", default=0),
         declared_effect_ids=tuple(declared),
         observed_effect_ids=tuple(observed),
         terminal_result=get(runtime_receipt, "terminal_result", "outcome"),
-        index_metadata_bytes=get(
-            context_receipt, "index_metadata_bytes", default=0
-        ),
+        index_metadata_bytes=get(context_receipt, "index_metadata_bytes", default=0),
     )
     return DecisionRuntimeProducerReceipt(
         identity=identity,
         path=path,
         scale=scale,
         metrics=metrics,
-        mandatory_closure_id=get(
-            context_receipt, "mandatory_closure_id", "closure_id"
-        ),
+        mandatory_closure_id=get(context_receipt, "mandatory_closure_id", "closure_id"),
         context_id=get(context_receipt, "context_id"),
         source_receipt_ids=tuple(source_receipt_ids),
         **options,
@@ -1296,21 +1169,13 @@ def build_frozen_decision_runtime_benchmark(
                 scale=CorpusScale(),
                 metrics=adversarial_metrics,
                 mandatory_closure_id=closure_id,
-                context_id=_identity(
-                    {"label": label, "adversarial": fixture.value}
-                ),
-                source_receipt_ids=(
-                    _identity(
-                        {"producer": label, "adversarial": fixture.value}
-                    ),
-                ),
+                context_id=_identity({"label": label, "adversarial": fixture.value}),
+                source_receipt_ids=(_identity({"producer": label, "adversarial": fixture.value}),),
                 adversarial_fixture=fixture,
                 escape_count=0,
                 degraded_local=degraded,
                 deterministic_replay_id=(
-                    _identity(
-                        {"local-replay": fixture.value, "result": "fail-closed"}
-                    )
+                    _identity({"local-replay": fixture.value, "result": "fail-closed"})
                     if degraded
                     else ""
                 ),

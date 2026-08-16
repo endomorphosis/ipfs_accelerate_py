@@ -18,6 +18,7 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.copilot")
 
+
 def _is_pytest() -> bool:
     return os.environ.get("PYTEST_CURRENT_TEST") is not None
 
@@ -36,6 +37,7 @@ except ImportError:
 # Import Copilot operations
 try:
     from ...shared import SharedCore, CopilotOperations
+
     shared_core = SharedCore()
     copilot_ops = CopilotOperations(shared_core)
     HAVE_COPILOT = True
@@ -55,6 +57,7 @@ except ImportError as e:
 def register_copilot_tools(mcp: FastMCP) -> None:
     """Register Copilot CLI tools with the MCP server."""
     import warnings
+
     warnings.warn(
         "ipfs_accelerate_py.mcp.tools.copilot_tools.register_copilot_tools is deprecated. "
         "Use ipfs_accelerate_py.mcp_server.tools.copilot_tools instead.",
@@ -62,23 +65,20 @@ def register_copilot_tools(mcp: FastMCP) -> None:
         stacklevel=2,
     )
     logger.info("Registering Copilot CLI tools")
-    
+
     if not HAVE_COPILOT:
         logger.warning("Copilot operations not available, skipping registration")
         return
-    
+
     @mcp.tool()
-    def copilot_suggest_command(
-        prompt: str,
-        shell: Optional[str] = None
-    ) -> Dict[str, Any]:
+    def copilot_suggest_command(prompt: str, shell: Optional[str] = None) -> Dict[str, Any]:
         """
         Get command suggestions from GitHub Copilot
-        
+
         Args:
             prompt: Natural language description of desired command
             shell: Shell type (bash, zsh, powershell, etc.)
-            
+
         Returns:
             Suggested command and metadata
         """
@@ -92,17 +92,17 @@ def register_copilot_tools(mcp: FastMCP) -> None:
                 "error": str(e),
                 "prompt": prompt,
                 "tool": "copilot_suggest_command",
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
-    
+
     @mcp.tool()
     def copilot_explain_command(command: str) -> Dict[str, Any]:
         """
         Get an explanation for a command from GitHub Copilot
-        
+
         Args:
             command: Command to explain
-            
+
         Returns:
             Command explanation and metadata
         """
@@ -116,17 +116,17 @@ def register_copilot_tools(mcp: FastMCP) -> None:
                 "error": str(e),
                 "command": command,
                 "tool": "copilot_explain_command",
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
-    
+
     @mcp.tool()
     def copilot_suggest_git_command(prompt: str) -> Dict[str, Any]:
         """
         Get Git command suggestions from GitHub Copilot
-        
+
         Args:
             prompt: Natural language description of desired Git operation
-            
+
         Returns:
             Suggested Git command and metadata
         """
@@ -140,7 +140,7 @@ def register_copilot_tools(mcp: FastMCP) -> None:
                 "error": str(e),
                 "prompt": prompt,
                 "tool": "copilot_suggest_git_command",
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
 
     def _set_execution_context(tool_name: str, execution_context: str) -> None:
@@ -158,5 +158,5 @@ def register_copilot_tools(mcp: FastMCP) -> None:
         "copilot_suggest_git_command",
     ]:
         _set_execution_context(_tool_name, "server")
-    
+
     logger.info("Copilot CLI tools registered successfully")

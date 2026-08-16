@@ -114,12 +114,15 @@ class WebSocketInferenceHandler:
 
         try:
             # Send welcome message
-            await self.connection_manager.send_personal_message({
-                "type": "connection",
-                "status": "connected",
-                "client_id": client_id,
-                "timestamp": time.time()
-            }, client_id)
+            await self.connection_manager.send_personal_message(
+                {
+                    "type": "connection",
+                    "status": "connected",
+                    "client_id": client_id,
+                    "timestamp": time.time(),
+                },
+                client_id,
+            )
 
             # Message handling loop
             while True:
@@ -131,18 +134,19 @@ class WebSocketInferenceHandler:
                     break
                 except json.JSONDecodeError as e:
                     logger.error(f"Invalid JSON from {client_id}: {e}")
-                    await self.connection_manager.send_personal_message({
-                        "type": "error",
-                        "message": "Invalid JSON format",
-                        "timestamp": time.time()
-                    }, client_id)
+                    await self.connection_manager.send_personal_message(
+                        {
+                            "type": "error",
+                            "message": "Invalid JSON format",
+                            "timestamp": time.time(),
+                        },
+                        client_id,
+                    )
                 except Exception as e:
                     logger.error(f"Error handling message from {client_id}: {e}")
-                    await self.connection_manager.send_personal_message({
-                        "type": "error",
-                        "message": str(e),
-                        "timestamp": time.time()
-                    }, client_id)
+                    await self.connection_manager.send_personal_message(
+                        {"type": "error", "message": str(e), "timestamp": time.time()}, client_id
+                    )
 
         finally:
             # Cancel any active inference tasks for this client
@@ -163,11 +167,9 @@ class WebSocketInferenceHandler:
             for topic in topics:
                 self.connection_manager.subscribe(client_id, topic)
 
-            await self.connection_manager.send_personal_message({
-                "type": "subscribed",
-                "topics": topics,
-                "timestamp": time.time()
-            }, client_id)
+            await self.connection_manager.send_personal_message(
+                {"type": "subscribed", "topics": topics, "timestamp": time.time()}, client_id
+            )
 
         elif msg_type == "unsubscribe":
             # Unsubscribe from topics
@@ -175,11 +177,9 @@ class WebSocketInferenceHandler:
             for topic in topics:
                 self.connection_manager.unsubscribe(client_id, topic)
 
-            await self.connection_manager.send_personal_message({
-                "type": "unsubscribed",
-                "topics": topics,
-                "timestamp": time.time()
-            }, client_id)
+            await self.connection_manager.send_personal_message(
+                {"type": "unsubscribed", "topics": topics, "timestamp": time.time()}, client_id
+            )
 
         elif msg_type == "inference":
             # Handle inference request
@@ -191,18 +191,20 @@ class WebSocketInferenceHandler:
 
         elif msg_type == "ping":
             # Respond to ping
-            await self.connection_manager.send_personal_message({
-                "type": "pong",
-                "timestamp": time.time()
-            }, client_id)
+            await self.connection_manager.send_personal_message(
+                {"type": "pong", "timestamp": time.time()}, client_id
+            )
 
         else:
             logger.warning(f"Unknown message type from {client_id}: {msg_type}")
-            await self.connection_manager.send_personal_message({
-                "type": "error",
-                "message": f"Unknown message type: {msg_type}",
-                "timestamp": time.time()
-            }, client_id)
+            await self.connection_manager.send_personal_message(
+                {
+                    "type": "error",
+                    "message": f"Unknown message type: {msg_type}",
+                    "timestamp": time.time(),
+                },
+                client_id,
+            )
 
     async def handle_inference_request(self, client_id: str, data: Dict[str, Any]):
         """Handle an inference request via WebSocket"""
@@ -217,22 +219,28 @@ class WebSocketInferenceHandler:
             stream = data.get("stream", False)
 
             if not model or not inputs:
-                await self.connection_manager.send_personal_message({
-                    "type": "error",
-                    "request_id": request_id,
-                    "message": "Missing required fields: model and inputs",
-                    "timestamp": time.time()
-                }, client_id)
+                await self.connection_manager.send_personal_message(
+                    {
+                        "type": "error",
+                        "request_id": request_id,
+                        "message": "Missing required fields: model and inputs",
+                        "timestamp": time.time(),
+                    },
+                    client_id,
+                )
                 return
 
             # Send acknowledgment
-            await self.connection_manager.send_personal_message({
-                "type": "inference_started",
-                "request_id": request_id,
-                "model": model,
-                "task": task,
-                "timestamp": time.time()
-            }, client_id)
+            await self.connection_manager.send_personal_message(
+                {
+                    "type": "inference_started",
+                    "request_id": request_id,
+                    "model": model,
+                    "task": task,
+                    "timestamp": time.time(),
+                },
+                client_id,
+            )
 
             # Create inference task
             task_id = f"{client_id}_{request_id}"
@@ -250,12 +258,15 @@ class WebSocketInferenceHandler:
 
         except Exception as e:
             logger.error(f"Error handling inference request: {e}")
-            await self.connection_manager.send_personal_message({
-                "type": "inference_error",
-                "request_id": request_id,
-                "error": str(e),
-                "timestamp": time.time()
-            }, client_id)
+            await self.connection_manager.send_personal_message(
+                {
+                    "type": "inference_error",
+                    "request_id": request_id,
+                    "error": str(e),
+                    "timestamp": time.time(),
+                },
+                client_id,
+            )
 
     async def run_inference(
         self,
@@ -265,7 +276,7 @@ class WebSocketInferenceHandler:
         task: str,
         inputs: Any,
         parameters: Dict[str, Any],
-        stream: bool
+        stream: bool,
     ):
         """
         Run the actual inference
@@ -282,59 +293,66 @@ class WebSocketInferenceHandler:
                 # Simulate streaming response
                 tokens = ["This ", "is ", "a ", "mock ", "streaming ", "response."]
                 for i, token in enumerate(tokens):
-                    await self.connection_manager.send_personal_message({
-                        "type": "inference_chunk",
-                        "request_id": request_id,
-                        "chunk": token,
-                        "index": i,
-                        "timestamp": time.time()
-                    }, client_id)
+                    await self.connection_manager.send_personal_message(
+                        {
+                            "type": "inference_chunk",
+                            "request_id": request_id,
+                            "chunk": token,
+                            "index": i,
+                            "timestamp": time.time(),
+                        },
+                        client_id,
+                    )
                     await asyncio.sleep(0.1)  # Simulate processing time
 
                 # Send completion
-                await self.connection_manager.send_personal_message({
-                    "type": "inference_complete",
-                    "request_id": request_id,
-                    "timestamp": time.time()
-                }, client_id)
+                await self.connection_manager.send_personal_message(
+                    {
+                        "type": "inference_complete",
+                        "request_id": request_id,
+                        "timestamp": time.time(),
+                    },
+                    client_id,
+                )
             else:
                 # Non-streaming response
                 await asyncio.sleep(0.5)  # Simulate processing time
 
-                await self.connection_manager.send_personal_message({
-                    "type": "inference_result",
-                    "request_id": request_id,
-                    "result": "This is a mock response.",
-                    "model": model,
-                    "task": task,
-                    "timestamp": time.time()
-                }, client_id)
+                await self.connection_manager.send_personal_message(
+                    {
+                        "type": "inference_result",
+                        "request_id": request_id,
+                        "result": "This is a mock response.",
+                        "model": model,
+                        "task": task,
+                        "timestamp": time.time(),
+                    },
+                    client_id,
+                )
 
         except asyncio.CancelledError:
             logger.info(f"Inference cancelled for request {request_id}")
-            await self.connection_manager.send_personal_message({
-                "type": "inference_cancelled",
-                "request_id": request_id,
-                "timestamp": time.time()
-            }, client_id)
+            await self.connection_manager.send_personal_message(
+                {"type": "inference_cancelled", "request_id": request_id, "timestamp": time.time()},
+                client_id,
+            )
             raise
 
         except Exception as e:
             logger.error(f"Inference error for request {request_id}: {e}")
-            await self.connection_manager.send_personal_message({
-                "type": "inference_error",
-                "request_id": request_id,
-                "error": str(e),
-                "timestamp": time.time()
-            }, client_id)
+            await self.connection_manager.send_personal_message(
+                {
+                    "type": "inference_error",
+                    "request_id": request_id,
+                    "error": str(e),
+                    "timestamp": time.time(),
+                },
+                client_id,
+            )
 
     async def send_status(self, client_id: str, detail_level: str = "summary"):
         """Send status information to client"""
-        status = {
-            "type": "status",
-            "timestamp": time.time(),
-            "detail_level": detail_level
-        }
+        status = {"type": "status", "timestamp": time.time(), "detail_level": detail_level}
 
         if self.backend_manager:
             # Add backend manager status

@@ -73,9 +73,7 @@ def _runtime_fixture(
     )
     runtime = DecisionRuntime(
         config,
-        resolver=lambda selected, _payload: replace(
-            runtime_input, boundary=selected
-        ),
+        resolver=lambda selected, _payload: replace(runtime_input, boundary=selected),
         clock_ms=lambda: NOW,
     )
     return runtime, request
@@ -86,9 +84,7 @@ def test_config_round_trip_binds_roots_facts_prompt_policy_and_edit_scope() -> N
     config = runtime.config
 
     assert DecisionRuntimeConfig.from_json(config.to_json()) == config
-    assert config.config_id == DecisionRuntimeConfig.from_dict(
-        config.to_dict()
-    ).config_id
+    assert config.config_id == DecisionRuntimeConfig.from_dict(config.to_dict()).config_id
     assert len(config.semantic_roots) == 8
     assert config.applicability_facts
     assert config.allowed_edit_paths == ("src/0.py",)
@@ -166,9 +162,7 @@ def test_current_permit_is_checked_at_effect_and_effects_match_exactly() -> None
     assert execution.permit_use is not None
     assert execution.effect_observation is not None
     assert execution.effect_observation.matched
-    assert DecisionRuntimeReceipt.from_dict(
-        decision.receipt.to_dict()
-    ) == decision.receipt
+    assert DecisionRuntimeReceipt.from_dict(decision.receipt.to_dict()) == decision.receipt
 
     with pytest.raises(DecisionRuntimeDenied):
         runtime.authorize_mutation(
@@ -267,9 +261,9 @@ def test_completion_requires_a_fresh_decision_and_merged_tree_evidence() -> None
 
 
 def test_runtime_module_has_no_optional_provider_imports() -> None:
-    source = Path(
-        "ipfs_accelerate_py/agent_supervisor/context/decision_runtime.py"
-    ).read_text(encoding="utf-8")
+    source = Path("ipfs_accelerate_py/agent_supervisor/context/decision_runtime.py").read_text(
+        encoding="utf-8"
+    )
     imported = {
         alias.name
         for node in ast.walk(ast.parse(source))
@@ -347,22 +341,10 @@ def test_daemon_accepts_bounded_local_sources_when_raw_patch_is_small(
     )
 
     assert result.accepted
-    assert (
-        result.policy.max_patch_bytes
-        > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
-    )
-    assert (
-        result.policy.max_output_bytes
-        > DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES
-    )
-    assert (
-        result.policy.max_patch_bytes
-        <= MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
-    )
-    assert (
-        result.policy.max_output_bytes
-        <= MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES
-    )
+    assert result.policy.max_patch_bytes > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+    assert result.policy.max_output_bytes > DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES
+    assert result.policy.max_patch_bytes <= MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+    assert result.policy.max_output_bytes <= MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES
 
 
 def test_daemon_does_not_expand_limits_for_an_oversized_raw_patch() -> None:
@@ -372,9 +354,7 @@ def test_daemon_does_not_expand_limits_for_an_oversized_raw_patch() -> None:
         to_dict=lambda: {},
     )
 
-    assert PortalImplementationDaemon._proposal_local_envelope_limits(
-        proposal
-    ) == {
+    assert PortalImplementationDaemon._proposal_local_envelope_limits(proposal) == {
         "max_patch_bytes": DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES,
         "max_output_bytes": DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES,
     }
@@ -440,18 +420,9 @@ def test_daemon_accepts_exact_declared_large_artifact_envelope(
     )
 
     assert result.accepted
-    assert (
-        result.policy.max_file_bytes
-        > DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
-    )
-    assert (
-        result.policy.max_patch_bytes
-        > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
-    )
-    assert (
-        result.policy.max_output_bytes
-        > DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES
-    )
+    assert result.policy.max_file_bytes > DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
+    assert result.policy.max_patch_bytes > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+    assert result.policy.max_output_bytes > DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES
     assert result.policy.max_file_bytes <= 3_000_000
     assert result.policy.max_patch_bytes <= 4_000_000
     assert result.policy.max_output_bytes <= 8_000_000
@@ -459,17 +430,13 @@ def test_daemon_accepts_exact_declared_large_artifact_envelope(
     assert result.policy.task_owned_paths == (relative_report,)
     assert result.policy.allow_large_files is False
     assert result.policy.allow_generated is False
-    assert result.policy.policy_version.endswith(
-        "+declared-artifact-envelope-v1"
-    )
+    assert result.policy.policy_version.endswith("+declared-artifact-envelope-v1")
     task_context_id = canonical_task_identity(task).canonical_task_cid
     assert result.proposal.context_id == canonical_content_cid(
         {
             "schema": PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA,
             "task_context_id": task_context_id,
-            "artifact_envelope": json.loads(
-                task.metadata[PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY]
-            ),
+            "artifact_envelope": json.loads(task.metadata[PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY]),
         }
     )
     assert result.proposal.context_id != task_context_id
@@ -535,16 +502,12 @@ def test_daemon_accepts_explicit_binary_fixture_under_directory_output(
     assert result.policy.allow_binary is True
     assert result.policy.allowed_paths == (relative_fixture,)
     assert result.policy.task_owned_paths == ("tests/fixtures",)
-    assert result.policy.policy_version.endswith(
-        "+declared-binary-artifact-envelope-v2"
-    )
+    assert result.policy.policy_version.endswith("+declared-binary-artifact-envelope-v2")
 
 
 def test_declared_large_artifact_envelope_rejects_scope_or_global_cap_drift() -> None:
     artifact_path = "docs/benchmark-report.json"
-    source = "x" * (
-        DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES + 1
-    )
+    source = "x" * (DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES + 1)
     entry = SimpleNamespace(
         before_source=None,
         after_source=source,
@@ -603,13 +566,8 @@ def test_declared_large_artifact_envelope_rejects_scope_or_global_cap_drift() ->
                     "schema": PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA,
                     "paths": [artifact_path],
                     "max_file_bytes": 3_000_000,
-                    "max_patch_bytes": (
-                        MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
-                        + 1
-                    ),
-                    "max_output_bytes": (
-                        MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES
-                    ),
+                    "max_patch_bytes": (MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES + 1),
+                    "max_output_bytes": (MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES),
                 }
             )
         },

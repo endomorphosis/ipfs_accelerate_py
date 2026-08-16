@@ -262,8 +262,9 @@ python ai_inference_cli.py specialized code --prompt "Create a function to sort 
 # Generated python code by auto-selected
 # Based on prompt: Create a function to sort a list...
 
+
 def example_function():
-    return 'Hello, World!'
+    return "Hello, World!"
 ```
 
 ### Example 3: System Information

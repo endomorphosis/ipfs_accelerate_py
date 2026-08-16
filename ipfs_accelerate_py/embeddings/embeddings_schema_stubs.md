@@ -120,10 +120,10 @@ def __post_init__(self):
 @classmethod
 def class_name(cls) -> str:
     """
-    Get the class name, used as a unique ID in serialization.
+        Get the class name, used as a unique ID in serialization.
 
-This provides a key that makes serialization robust against actual class
-name changes.
+    This provides a key that makes serialization robust against actual class
+    name changes.
     """
 ```
 * **Async:** False

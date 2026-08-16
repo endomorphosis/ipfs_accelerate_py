@@ -113,7 +113,9 @@ def _items(value: Any, *, split_sentences: bool = False) -> list[str]:
     return [text] if text else []
 
 
-def _field_items(sources: Sequence[Mapping[str, Any]], names: Sequence[str], *, sentences: bool = False) -> list[str]:
+def _field_items(
+    sources: Sequence[Mapping[str, Any]], names: Sequence[str], *, sentences: bool = False
+) -> list[str]:
     found: set[str] = set()
     for source in sources:
         for name in names:
@@ -143,11 +145,7 @@ def _normalized(value: Any) -> str:
 
 
 def _tokens(value: Any) -> set[str]:
-    return {
-        token
-        for token in re.findall(r"[a-z0-9]+", _normalized(value))
-        if len(token) > 1
-    }
+    return {token for token in re.findall(r"[a-z0-9]+", _normalized(value)) if len(token) > 1}
 
 
 def _similarity(left: Any, right: Any) -> float:
@@ -181,9 +179,34 @@ def _bool(value: Any) -> bool | None:
     if isinstance(value, (int, float)) and value in {0, 1}:
         return bool(value)
     text = _normalized(value)
-    if text in {"true", "yes", "passed", "pass", "success", "succeeded", "complete", "completed", "ok", "fresh", "valid"}:
+    if text in {
+        "true",
+        "yes",
+        "passed",
+        "pass",
+        "success",
+        "succeeded",
+        "complete",
+        "completed",
+        "ok",
+        "fresh",
+        "valid",
+    }:
         return True
-    if text in {"false", "no", "failed", "fail", "error", "cancelled", "canceled", "timed_out", "timeout", "stale", "invalid", "expired"}:
+    if text in {
+        "false",
+        "no",
+        "failed",
+        "fail",
+        "error",
+        "cancelled",
+        "canceled",
+        "timed_out",
+        "timeout",
+        "stale",
+        "invalid",
+        "expired",
+    }:
         return False
     return None
 
@@ -235,8 +258,15 @@ def _actionable_finding(payload: Mapping[str, Any]) -> bool:
         return False
     status = _normalized(payload.get("status", payload.get("disposition", ""))).replace(" ", "_")
     return status not in {
-        "closed", "dismissed", "duplicate", "duplicate_only", "fixed", "informational",
-        "not_actionable", "resolved", "suppressed",
+        "closed",
+        "dismissed",
+        "duplicate",
+        "duplicate_only",
+        "fixed",
+        "informational",
+        "not_actionable",
+        "resolved",
+        "suppressed",
     }
 
 
@@ -294,7 +324,12 @@ def detect_goal_coverage_contradictions(
     for item in criteria.values():
         criteria_by_goal.setdefault(str(item.get("goal_id", "")), []).append(item)
     for rows in criteria_by_goal.values():
-        rows.sort(key=lambda item: (str(item.get("criterion", "")).casefold(), str(item.get("criterion_id", ""))))
+        rows.sort(
+            key=lambda item: (
+                str(item.get("criterion", "")).casefold(),
+                str(item.get("criterion_id", "")),
+            )
+        )
     baseline_criteria = {
         (str(item.get("goal_id", "")), _normalized(item.get("criterion", ""))): dict(item)
         for item in baseline.get("criteria", ())
@@ -311,7 +346,11 @@ def detect_goal_coverage_contradictions(
     # valid contradictions because attach_findings_to_goals records the score
     # and explanation needed to audit that deterministic decision.
     assignments = sorted(
-        (dict(item) for item in current.get("finding_assignments", ()) if isinstance(item, Mapping)),
+        (
+            dict(item)
+            for item in current.get("finding_assignments", ())
+            if isinstance(item, Mapping)
+        ),
         key=lambda item: (str(item.get("goal_id", "")), str(item.get("finding_id", ""))),
     )
     for assignment in assignments:
@@ -326,18 +365,23 @@ def detect_goal_coverage_contradictions(
             finding.get("impacted_criteria", assignment.get("impacted_criteria", ())),
             split_sentences=True,
         )
-        named_criterion = str(finding.get("acceptance_criterion", finding.get("criterion", ""))).strip()
+        named_criterion = str(
+            finding.get("acceptance_criterion", finding.get("criterion", ""))
+        ).strip()
         impacted = explicit_impacted or [
             str(item.get("criterion", ""))
             for item in criteria_by_goal.get(goal_id, ())
-            if not named_criterion or _normalized(item.get("criterion", "")) == _normalized(named_criterion)
+            if not named_criterion
+            or _normalized(item.get("criterion", "")) == _normalized(named_criterion)
         ]
         baseline_for_goal = [
             item for (owner, _criterion), item in baseline_criteria.items() if owner == goal_id
         ]
         proposed = finding.get(
             "scheduled_work",
-            finding.get("newly_scheduled_work", finding.get("proposed_tasks", finding.get("gap_task", ()))),
+            finding.get(
+                "newly_scheduled_work", finding.get("proposed_tasks", finding.get("gap_task", ()))
+            ),
         )
         finding_work = _scheduled_for_goal(proposed, goal_id)
         work = _scheduled_for_goal(scheduled_work, goal_id) or finding_work
@@ -368,23 +412,32 @@ def detect_goal_coverage_contradictions(
         for receipt_id in criterion.get("validation_receipt_ids", ()):
             receipt_criteria.setdefault(str(receipt_id), []).append(criterion)
     receipts = sorted(
-        (dict(item) for item in current.get("receipts", current.get("validation_receipts", ())) if isinstance(item, Mapping)),
+        (
+            dict(item)
+            for item in current.get("receipts", current.get("validation_receipts", ()))
+            if isinstance(item, Mapping)
+        ),
         key=lambda item: str(item.get("receipt_id", "")),
     )
     for receipt in receipts:
         receipt_id = str(receipt.get("receipt_id", "")).strip()
         raw = dict(receipt.get("raw") or {})
         sources = [receipt, raw]
-        invalidated = _status_value(receipt.get("status", "")) == CoverageStatus.STALE.value or any(
-            _bool(source.get(key)) is True
-            for source in sources
-            for key in ("invalidated", "revoked", "audit_invalidated")
-        ) or any(
-            _bool(source.get(key)) is False
-            for source in sources
-            for key in ("valid", "audit_valid", "receipt_valid")
-            if key in source
-        ) or _normalized(receipt.get("outcome")) in {"invalid", "invalidated", "revoked"}
+        invalidated = (
+            _status_value(receipt.get("status", "")) == CoverageStatus.STALE.value
+            or any(
+                _bool(source.get(key)) is True
+                for source in sources
+                for key in ("invalidated", "revoked", "audit_invalidated")
+            )
+            or any(
+                _bool(source.get(key)) is False
+                for source in sources
+                for key in ("valid", "audit_valid", "receipt_valid")
+                if key in source
+            )
+            or _normalized(receipt.get("outcome")) in {"invalid", "invalidated", "revoked"}
+        )
         failed = (
             _status_value(receipt.get("status", "")) == CoverageStatus.CONTRADICTED.value
             or _bool(receipt.get("passed")) is False
@@ -392,7 +445,9 @@ def detect_goal_coverage_contradictions(
         )
         if not invalidated and not failed:
             continue
-        for criterion in sorted(receipt_criteria.get(receipt_id, ()), key=lambda item: str(item.get("criterion_id", ""))):
+        for criterion in sorted(
+            receipt_criteria.get(receipt_id, ()), key=lambda item: str(item.get("criterion_id", ""))
+        ):
             goal_id = str(criterion.get("goal_id", "")).strip()
             provenance = str(receipt.get("provenance_cid", "")).strip()
             add(
@@ -415,15 +470,22 @@ def detect_goal_coverage_contradictions(
 
     # Surface comparisons use (goal, normalized criterion), since criterion
     # IDs are stable today but persisted v0 artifacts did not guarantee that.
-    for criterion in sorted(criteria.values(), key=lambda item: (str(item.get("goal_id", "")), str(item.get("criterion_id", "")))):
+    for criterion in sorted(
+        criteria.values(),
+        key=lambda item: (str(item.get("goal_id", "")), str(item.get("criterion_id", ""))),
+    ):
         goal_id = str(criterion.get("goal_id", "")).strip()
         old = baseline_criteria.get((goal_id, _normalized(criterion.get("criterion", ""))))
         if not old:
             continue
         changes: dict[str, dict[str, list[str]]] = {}
         for field_name in _SURFACE_FIELDS:
-            before = sorted({_normalized(item) for item in old.get(field_name, ()) if _normalized(item)})
-            after = sorted({_normalized(item) for item in criterion.get(field_name, ()) if _normalized(item)})
+            before = sorted(
+                {_normalized(item) for item in old.get(field_name, ()) if _normalized(item)}
+            )
+            after = sorted(
+                {_normalized(item) for item in criterion.get(field_name, ()) if _normalized(item)}
+            )
             if before != after:
                 changes[field_name] = {"before": before, "after": after}
         if not changes:
@@ -480,8 +542,16 @@ class CoverageEdge:
     edge_id: str = ""
 
     def __post_init__(self) -> None:
-        surface = self.surface if isinstance(self.surface, CoverageSurface) else CoverageSurface(str(self.surface))
-        status = self.status if isinstance(self.status, CoverageStatus) else CoverageStatus(str(self.status))
+        surface = (
+            self.surface
+            if isinstance(self.surface, CoverageSurface)
+            else CoverageSurface(str(self.surface))
+        )
+        status = (
+            self.status
+            if isinstance(self.status, CoverageStatus)
+            else CoverageStatus(str(self.status))
+        )
         object.__setattr__(self, "surface", surface)
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "confidence", round(max(0.0, min(1.0, float(self.confidence))), 6))
@@ -607,10 +677,15 @@ class GoalCoverageMap:
         object.__setattr__(
             self,
             "criteria",
-            sorted(self.criteria, key=lambda item: (item.goal_id, _normalized(item.criterion), item.criterion_id)),
+            sorted(
+                self.criteria,
+                key=lambda item: (item.goal_id, _normalized(item.criterion), item.criterion_id),
+            ),
         )
         object.__setattr__(self, "edges", sorted(self.edges, key=lambda item: item.edge_id))
-        object.__setattr__(self, "receipts", sorted(self.receipts, key=lambda item: item.receipt_id))
+        object.__setattr__(
+            self, "receipts", sorted(self.receipts, key=lambda item: item.receipt_id)
+        )
         object.__setattr__(
             self,
             "finding_assignments",
@@ -788,9 +863,7 @@ class GoalCoverageMap:
         criterion_ids = {item.criterion_id for item in selected}
         selected_edges = [item for item in self.edges if item.criterion_id in criterion_ids]
         receipt_ids = {
-            receipt_id
-            for item in selected
-            for receipt_id in item.validation_receipt_ids
+            receipt_id for item in selected for receipt_id in item.validation_receipt_ids
         }
         selected_receipts = [item for item in self.receipts if item.receipt_id in receipt_ids]
         selected_findings = [
@@ -848,8 +921,7 @@ class GoalCoverageMap:
         tree_mismatch_receipt_ids = [
             item.receipt_id
             for item in selected_receipts
-            if self.repository_tree
-            and item.repository_tree != self.repository_tree
+            if self.repository_tree and item.repository_tree != self.repository_tree
         ]
         freshness = {
             "evaluated_at": self.evaluated_at,
@@ -914,7 +986,11 @@ def _goal_search_text(goal: Any) -> str:
     values = [
         str(_first(sources, ("goal_id", "id")) or ""),
         str(_first(sources, ("title", "goal", "summary", "description")) or ""),
-        *_field_items(sources, ("acceptance", "acceptance_criteria", "evidence", "required_evidence"), sentences=True),
+        *_field_items(
+            sources,
+            ("acceptance", "acceptance_criteria", "evidence", "required_evidence"),
+            sentences=True,
+        ),
         *_field_items(sources, ("outputs", "predicted_files", "ast_symbols", "interfaces")),
     ]
     return " ".join(values)
@@ -923,21 +999,33 @@ def _goal_search_text(goal: Any) -> str:
 def _task_record(task: Any) -> dict[str, Any]:
     sources = _nested_sources(task)
     task_id = str(_first(sources, ("task_id", "id", "canonical_task_id", "task_cid")) or "").strip()
-    criteria = _field_items(sources, ("acceptance_criteria", "acceptance_criterion", "acceptance"), sentences=True)
+    criteria = _field_items(
+        sources, ("acceptance_criteria", "acceptance_criterion", "acceptance"), sentences=True
+    )
     return {
         "raw": _payload(task),
         "task_id": task_id or _stable_id("task", _payload(task)),
         "goal_id": str(_first(sources, ("goal_id", "objective_id")) or "").strip(),
         "criteria": criteria,
-        "predicted_files": _field_items(sources, ("predicted_files", "files", "outputs", "requested_outputs")),
-        "changed_files": _field_items(sources, ("changed_files", "changed_paths", "actual_changed_paths", "branch_diff_paths")),
+        "predicted_files": _field_items(
+            sources, ("predicted_files", "files", "outputs", "requested_outputs")
+        ),
+        "changed_files": _field_items(
+            sources, ("changed_files", "changed_paths", "actual_changed_paths", "branch_diff_paths")
+        ),
         "ast_symbols": _field_items(sources, ("ast_symbols", "predicted_symbols", "symbols")),
-        "interfaces": _field_items(sources, ("interfaces", "interface_contracts", "public_interfaces")),
-        "validation_commands": _field_items(sources, ("validation_commands", "validation", "commands"), sentences=True),
+        "interfaces": _field_items(
+            sources, ("interfaces", "interface_contracts", "public_interfaces")
+        ),
+        "validation_commands": _field_items(
+            sources, ("validation_commands", "validation", "commands"), sentences=True
+        ),
     }
 
 
-def _task_matches_criterion(task: Mapping[str, Any], criterion: str, criterion_count: int) -> tuple[bool, float, str]:
+def _task_matches_criterion(
+    task: Mapping[str, Any], criterion: str, criterion_count: int
+) -> tuple[bool, float, str]:
     declared = list(task.get("criteria") or [])
     if not declared:
         return True, 0.75, "task explicitly names the goal and has no narrower acceptance criterion"
@@ -946,7 +1034,11 @@ def _task_matches_criterion(task: Mapping[str, Any], criterion: str, criterion_c
         return True, 1.0, "task explicitly declares this acceptance criterion"
     score = max((_similarity(item, criterion) for item in declared), default=0.0)
     if score >= 0.20:
-        return True, round(score, 6), f"task acceptance text overlaps criterion (Jaccard={score:.6f})"
+        return (
+            True,
+            round(score, 6),
+            f"task acceptance text overlaps criterion (Jaccard={score:.6f})",
+        )
     if criterion_count == 1:
         return True, max(0.5, score), "single-criterion goal makes the goal-scoped task relevant"
     return False, score, f"task acceptance overlap {score:.6f} is below 0.200000"
@@ -962,7 +1054,9 @@ def _receipt_dicts(receipts: Sequence[Any], tasks: Sequence[Any]) -> list[dict[s
             rows.append({"receipt_id": str(value).strip()})
     for task in tasks:
         sources = _nested_sources(task)
-        contextual_task_id = str(_first(sources, ("task_id", "id", "producing_task_or_scan", "producer_id")) or "").strip()
+        contextual_task_id = str(
+            _first(sources, ("task_id", "id", "producing_task_or_scan", "producer_id")) or ""
+        ).strip()
         for source in sources:
             for name in ("validation_receipts", "receipts", "validation_receipt"):
                 value = source.get(name)
@@ -996,12 +1090,18 @@ def normalize_validation_receipt(
 
     raw = _payload(receipt)
     sources = _nested_sources(raw)
-    task_id = str(_first(sources, ("task_id", "producing_task_or_scan", "producer_id", "producer")) or "").strip()
+    task_id = str(
+        _first(sources, ("task_id", "producing_task_or_scan", "producer_id", "producer")) or ""
+    ).strip()
     criterion = str(_first(sources, ("acceptance_criterion", "criterion")) or "").strip()
     command = str(_first(sources, ("command", "validation_command", "validation")) or "").strip()
-    provenance = str(_first(sources, ("provenance_cid", "receipt_cid", "cid", "evidence_cid")) or "").strip()
+    provenance = str(
+        _first(sources, ("provenance_cid", "receipt_cid", "cid", "evidence_cid")) or ""
+    ).strip()
     tree = str(_first(sources, ("repository_tree", "tree_id", "tree_identity")) or "").strip()
-    observed = _utc(_first(sources, ("observed_at", "finished_at", "generated_at", "created_at", "timestamp")))
+    observed = _utc(
+        _first(sources, ("observed_at", "finished_at", "generated_at", "created_at", "timestamp"))
+    )
     explicit_result: Any = None
     for source in sources:
         for name in ("validation_passed", "passed", "success"):
@@ -1010,15 +1110,25 @@ def normalize_validation_receipt(
                 break
         if explicit_result is not None:
             break
-    raw_outcome = str(_first(sources, ("terminal_reason", "outcome", "result", "status")) or "").strip()
+    raw_outcome = str(
+        _first(sources, ("terminal_reason", "outcome", "result", "status")) or ""
+    ).strip()
     outcome = re.sub(r"[\s-]+", "_", raw_outcome.casefold())
-    passed = _bool(explicit_result) if explicit_result is not None else (
-        True if outcome in {"pass", "passed", "success", "succeeded", "ok"} else
-        False if outcome in {"fail", "failed", "failure", "error"} else
-        None
+    passed = (
+        _bool(explicit_result)
+        if explicit_result is not None
+        else (
+            True
+            if outcome in {"pass", "passed", "success", "succeeded", "ok"}
+            else False
+            if outcome in {"fail", "failed", "failure", "error"}
+            else None
+        )
     )
     contradictory = _bool(_first(sources, ("contradictory", "contradicted"))) is True
-    contradiction_text = str(_first(sources, ("contradiction", "failure_reason", "error")) or "").strip()
+    contradiction_text = str(
+        _first(sources, ("contradiction", "failure_reason", "error")) or ""
+    ).strip()
     freshness = _freshness_bool(_first(sources, ("freshness", "fresh", "is_fresh")))
     fresh_until = _utc(_first(sources, ("fresh_until", "expires_at")))
 
@@ -1041,7 +1151,9 @@ def normalize_validation_receipt(
     failed_outcomes = {"fail", "failed", "failure", "error"}
     if contradictory or contradiction_text or passed is False or outcome in failed_outcomes:
         status = CoverageStatus.CONTRADICTED
-        explanation = contradiction_text or "validation receipt explicitly contradicts the claimed coverage"
+        explanation = (
+            contradiction_text or "validation receipt explicitly contradicts the claimed coverage"
+        )
         reason_code = "validation_failed"
     elif outcome in non_proof_outcomes:
         status = CoverageStatus.WEAKLY_INFERRED
@@ -1050,13 +1162,19 @@ def normalize_validation_receipt(
         reason_code = f"validation_{canonical_outcome}"
     elif repository_tree and tree and tree != repository_tree:
         status = CoverageStatus.CONTRADICTED
-        explanation = f"receipt repository tree {tree!r} does not match current tree {repository_tree!r}"
+        explanation = (
+            f"receipt repository tree {tree!r} does not match current tree {repository_tree!r}"
+        )
         reason_code = "repository_tree_mismatch"
     elif freshness is False or (fresh_until is not None and fresh_until < evaluated_at):
         status = CoverageStatus.STALE
         explanation = "validation receipt is explicitly stale or expired"
         reason_code = "validation_evidence_stale"
-    elif observed is not None and max_age_seconds >= 0 and observed + timedelta(seconds=max_age_seconds) < evaluated_at:
+    elif (
+        observed is not None
+        and max_age_seconds >= 0
+        and observed + timedelta(seconds=max_age_seconds) < evaluated_at
+    ):
         status = CoverageStatus.STALE
         explanation = f"validation receipt is older than {max_age_seconds} seconds"
         reason_code = "validation_evidence_stale"
@@ -1065,10 +1183,18 @@ def normalize_validation_receipt(
         or (fresh_until is not None and fresh_until >= evaluated_at)
         or (
             observed is not None
-            and (max_age_seconds < 0 or observed + timedelta(seconds=max_age_seconds) >= evaluated_at)
+            and (
+                max_age_seconds < 0 or observed + timedelta(seconds=max_age_seconds) >= evaluated_at
+            )
         )
     )
-    if status is None and passed is True and provenance and (not repository_tree or tree == repository_tree) and current_enough:
+    if (
+        status is None
+        and passed is True
+        and provenance
+        and (not repository_tree or tree == repository_tree)
+        and current_enough
+    ):
         status = CoverageStatus.VERIFIED
         explanation = "successful, current validation receipt has provenance"
         reason_code = "validation_verified"
@@ -1083,7 +1209,9 @@ def normalize_validation_receipt(
             missing.append("a repository tree identity")
         if not current_enough:
             missing.append("freshness evidence")
-        explanation = "validation receipt lacks " + ", ".join(missing or ["complete verification metadata"])
+        explanation = "validation receipt lacks " + ", ".join(
+            missing or ["complete verification metadata"]
+        )
         reason_code = "validation_evidence_incomplete"
 
     identity = raw or {
@@ -1093,7 +1221,8 @@ def normalize_validation_receipt(
         "provenance_cid": provenance,
     }
     return ValidationReceiptCoverage(
-        receipt_id=str(_first(sources, ("receipt_id",)) or "").strip() or _stable_id("receipt", identity),
+        receipt_id=str(_first(sources, ("receipt_id",)) or "").strip()
+        or _stable_id("receipt", identity),
         task_id=task_id,
         criterion=criterion,
         command=command,
@@ -1103,7 +1232,8 @@ def normalize_validation_receipt(
         observed_at=observed.isoformat() if observed else "",
         provenance_cid=provenance,
         explanation=explanation,
-        outcome=outcome or ("passed" if passed is True else "failed" if passed is False else "unknown"),
+        outcome=outcome
+        or ("passed" if passed is True else "failed" if passed is False else "unknown"),
         reason_code=reason_code,
         fresh=current_enough and status is not CoverageStatus.STALE,
         raw=raw,
@@ -1124,12 +1254,17 @@ def attach_findings_to_goals(
     for finding in findings:
         sources = _nested_sources(finding)
         raw = _payload(finding)
-        finding_id = str(_first(sources, ("finding_id", "fingerprint", "id")) or "").strip() or _stable_id("finding", raw)
+        finding_id = str(
+            _first(sources, ("finding_id", "fingerprint", "id")) or ""
+        ).strip() or _stable_id("finding", raw)
         source_goal_id = str(_first(sources, ("goal_id", "objective_id")) or "").strip()
         search_text = " ".join(
             [
                 str(_first(sources, ("title", "summary", "description", "goal", "gap_task")) or ""),
-                *_field_items(sources, ("missing_evidence", "outputs", "predicted_files", "ast_symbols", "interfaces")),
+                *_field_items(
+                    sources,
+                    ("missing_evidence", "outputs", "predicted_files", "ast_symbols", "interfaces"),
+                ),
             ]
         )
         if source_goal_id in goal_text:
@@ -1161,7 +1296,9 @@ def attach_findings_to_goals(
     return sorted(assignments, key=lambda item: (item.goal_id, item.finding_id))
 
 
-def _receipt_relevant(receipt: ValidationReceiptCoverage, criterion: str, task_ids: set[str]) -> bool:
+def _receipt_relevant(
+    receipt: ValidationReceiptCoverage, criterion: str, task_ids: set[str]
+) -> bool:
     if receipt.task_id and receipt.task_id in task_ids:
         return True
     if receipt.criterion and _normalized(receipt.criterion) == _normalized(criterion):
@@ -1175,16 +1312,32 @@ def _criterion_status(
     receipts: Sequence[ValidationReceiptCoverage],
 ) -> tuple[CoverageStatus, str]:
     if any(receipt.status is CoverageStatus.CONTRADICTED for receipt in receipts):
-        return CoverageStatus.CONTRADICTED, "one or more validation receipts contradict the claimed criterion coverage"
+        return (
+            CoverageStatus.CONTRADICTED,
+            "one or more validation receipts contradict the claimed criterion coverage",
+        )
     if any(receipt.status is CoverageStatus.STALE for receipt in receipts):
         return CoverageStatus.STALE, "one or more evaluated validation receipts are stale"
     if "tasks" in missing:
         return CoverageStatus.UNCOVERED, "no task covers this acceptance criterion"
     if any(receipt.status is CoverageStatus.WEAKLY_INFERRED for receipt in receipts):
-        return CoverageStatus.WEAKLY_INFERRED, "one or more evaluated validation receipts are partial or unsupported"
-    if not missing and receipts and all(receipt.status is CoverageStatus.VERIFIED for receipt in receipts):
-        return CoverageStatus.VERIFIED, "every required implementation surface has current provenance-backed validation proof"
-    return CoverageStatus.WEAKLY_INFERRED, "coverage is partial or lacks current provenance-backed validation proof"
+        return (
+            CoverageStatus.WEAKLY_INFERRED,
+            "one or more evaluated validation receipts are partial or unsupported",
+        )
+    if (
+        not missing
+        and receipts
+        and all(receipt.status is CoverageStatus.VERIFIED for receipt in receipts)
+    ):
+        return (
+            CoverageStatus.VERIFIED,
+            "every required implementation surface has current provenance-backed validation proof",
+        )
+    return (
+        CoverageStatus.WEAKLY_INFERRED,
+        "coverage is partial or lacks current provenance-backed validation proof",
+    )
 
 
 def build_goal_coverage_map(
@@ -1227,25 +1380,41 @@ def build_goal_coverage_map(
         if not goal_id:
             continue
         for criterion in criteria:
-            criterion_id = _stable_id("criterion", {"goal_id": goal_id, "criterion": _normalized(criterion)})
+            criterion_id = _stable_id(
+                "criterion", {"goal_id": goal_id, "criterion": _normalized(criterion)}
+            )
             scoped: list[tuple[dict[str, Any], float, str]] = []
             for task in task_rows:
                 if criterion == MISSING_ACCEPTANCE_CRITERION:
                     continue
                 if task["goal_id"] != goal_id:
                     continue
-                matched, confidence, reason = _task_matches_criterion(task, criterion, len(criteria))
+                matched, confidence, reason = _task_matches_criterion(
+                    task, criterion, len(criteria)
+                )
                 if matched:
                     scoped.append((task, confidence, reason))
             scoped.sort(key=lambda item: item[0]["task_id"])
             task_ids = sorted({task["task_id"] for task, _score, _reason in scoped})
-            predicted = sorted({item for task, _score, _reason in scoped for item in task["predicted_files"]})
-            changed = sorted({item for task, _score, _reason in scoped for item in task["changed_files"]})
-            symbols = sorted({item for task, _score, _reason in scoped for item in task["ast_symbols"]})
-            interfaces = sorted({item for task, _score, _reason in scoped for item in task["interfaces"]})
-            commands = sorted({item for task, _score, _reason in scoped for item in task["validation_commands"]})
+            predicted = sorted(
+                {item for task, _score, _reason in scoped for item in task["predicted_files"]}
+            )
+            changed = sorted(
+                {item for task, _score, _reason in scoped for item in task["changed_files"]}
+            )
+            symbols = sorted(
+                {item for task, _score, _reason in scoped for item in task["ast_symbols"]}
+            )
+            interfaces = sorted(
+                {item for task, _score, _reason in scoped for item in task["interfaces"]}
+            )
+            commands = sorted(
+                {item for task, _score, _reason in scoped for item in task["validation_commands"]}
+            )
             relevant_receipts = [
-                receipt for receipt in normalized_receipts if _receipt_relevant(receipt, criterion, set(task_ids))
+                receipt
+                for receipt in normalized_receipts
+                if _receipt_relevant(receipt, criterion, set(task_ids))
             ]
             unverified_commands = [
                 command
@@ -1256,7 +1425,9 @@ def build_goal_coverage_map(
                     for receipt in relevant_receipts
                 )
             ]
-            provenance = sorted({receipt.provenance_cid for receipt in relevant_receipts if receipt.provenance_cid})
+            provenance = sorted(
+                {receipt.provenance_cid for receipt in relevant_receipts if receipt.provenance_cid}
+            )
             dimension_values: dict[CoverageSurface, list[str]] = {
                 CoverageSurface.TASK: task_ids,
                 CoverageSurface.PREDICTED_FILE: predicted,
@@ -1264,7 +1435,9 @@ def build_goal_coverage_map(
                 CoverageSurface.AST_SYMBOL: symbols,
                 CoverageSurface.INTERFACE: interfaces,
                 CoverageSurface.VALIDATION_COMMAND: commands,
-                CoverageSurface.VALIDATION_RECEIPT: [receipt.receipt_id for receipt in relevant_receipts],
+                CoverageSurface.VALIDATION_RECEIPT: [
+                    receipt.receipt_id for receipt in relevant_receipts
+                ],
             }
             missing: list[str] = []
             if not task_ids:
@@ -1291,7 +1464,9 @@ def build_goal_coverage_map(
                 value=criterion,
                 relation="criterion_coverage",
                 status=status,
-                confidence=1.0 if status in {CoverageStatus.UNCOVERED, CoverageStatus.VERIFIED} else 0.75,
+                confidence=1.0
+                if status in {CoverageStatus.UNCOVERED, CoverageStatus.VERIFIED}
+                else 0.75,
                 explanation=explanation,
                 evidence={
                     "missing_surfaces": missing,
@@ -1308,11 +1483,16 @@ def build_goal_coverage_map(
                     surface=CoverageSurface.TASK,
                     value=task["task_id"],
                     relation="implemented_by",
-                    status=CoverageStatus.VERIFIED if confidence == 1.0 else CoverageStatus.WEAKLY_INFERRED,
+                    status=CoverageStatus.VERIFIED
+                    if confidence == 1.0
+                    else CoverageStatus.WEAKLY_INFERRED,
                     confidence=confidence,
                     explanation=reason,
                     task_id=task["task_id"],
-                    evidence={"declared_goal_id": task["goal_id"], "declared_criteria": task["criteria"]},
+                    evidence={
+                        "declared_goal_id": task["goal_id"],
+                        "declared_criteria": task["criteria"],
+                    },
                 )
                 edges.append(edge)
                 criterion_edge_ids.append(edge.edge_id)
@@ -1321,20 +1501,38 @@ def build_goal_coverage_map(
                     continue
                 for value in values:
                     owner = next(
-                        (task["task_id"] for task, _score, _reason in scoped if value in task.get({
-                            CoverageSurface.PREDICTED_FILE: "predicted_files",
-                            CoverageSurface.CHANGED_FILE: "changed_files",
-                            CoverageSurface.AST_SYMBOL: "ast_symbols",
-                            CoverageSurface.INTERFACE: "interfaces",
-                            CoverageSurface.VALIDATION_COMMAND: "validation_commands",
-                        }.get(surface, ""), [])),
+                        (
+                            task["task_id"]
+                            for task, _score, _reason in scoped
+                            if value
+                            in task.get(
+                                {
+                                    CoverageSurface.PREDICTED_FILE: "predicted_files",
+                                    CoverageSurface.CHANGED_FILE: "changed_files",
+                                    CoverageSurface.AST_SYMBOL: "ast_symbols",
+                                    CoverageSurface.INTERFACE: "interfaces",
+                                    CoverageSurface.VALIDATION_COMMAND: "validation_commands",
+                                }.get(surface, ""),
+                                [],
+                            )
+                        ),
                         "",
                     )
-                    receipt = next((item for item in relevant_receipts if item.receipt_id == value), None)
-                    edge_status = receipt.status if receipt else (CoverageStatus.VERIFIED if owner else CoverageStatus.WEAKLY_INFERRED)
+                    receipt = next(
+                        (item for item in relevant_receipts if item.receipt_id == value), None
+                    )
+                    edge_status = (
+                        receipt.status
+                        if receipt
+                        else (CoverageStatus.VERIFIED if owner else CoverageStatus.WEAKLY_INFERRED)
+                    )
                     provenance_cid = receipt.provenance_cid if receipt else ""
                     relation = "proved_by" if receipt else "maps_to"
-                    edge_explanation = receipt.explanation if receipt else f"{surface.value} is explicitly declared by task {owner}"
+                    edge_explanation = (
+                        receipt.explanation
+                        if receipt
+                        else f"{surface.value} is explicitly declared by task {owner}"
+                    )
                     edge = CoverageEdge(
                         goal_id=goal_id,
                         criterion_id=criterion_id,
@@ -1351,7 +1549,9 @@ def build_goal_coverage_map(
                     edges.append(edge)
                     criterion_edge_ids.append(edge.edge_id)
             for missing_name in missing:
-                missing_surface = next(group[1][0] for group in REQUIRED_SURFACE_GROUPS if group[0] == missing_name)
+                missing_surface = next(
+                    group[1][0] for group in REQUIRED_SURFACE_GROUPS if group[0] == missing_name
+                )
                 edge = CoverageEdge(
                     goal_id=goal_id,
                     criterion_id=criterion_id,
@@ -1377,7 +1577,9 @@ def build_goal_coverage_map(
                     ast_symbols=symbols,
                     interfaces=interfaces,
                     validation_commands=commands,
-                    validation_receipt_ids=sorted(receipt.receipt_id for receipt in relevant_receipts),
+                    validation_receipt_ids=sorted(
+                        receipt.receipt_id for receipt in relevant_receipts
+                    ),
                     unverified_validation_commands=unverified_commands,
                     provenance_cids=provenance,
                     missing_surfaces=missing,
@@ -1390,7 +1592,9 @@ def build_goal_coverage_map(
     for assignment in assignments:
         if assignment.goal_id == UNMAPPED_GOAL_ID:
             continue
-        criterion_ids = [item.criterion_id for item in criterion_rows if item.goal_id == assignment.goal_id]
+        criterion_ids = [
+            item.criterion_id for item in criterion_rows if item.goal_id == assignment.goal_id
+        ]
         for criterion_id in criterion_ids:
             edges.append(
                 CoverageEdge(
@@ -1399,7 +1603,9 @@ def build_goal_coverage_map(
                     surface=CoverageSurface.FINDING,
                     value=assignment.finding_id,
                     relation="finding_for_goal",
-                    status=CoverageStatus.WEAKLY_INFERRED if assignment.inferred else CoverageStatus.VERIFIED,
+                    status=CoverageStatus.WEAKLY_INFERRED
+                    if assignment.inferred
+                    else CoverageStatus.VERIFIED,
                     confidence=assignment.confidence,
                     explanation=assignment.explanation,
                     evidence=assignment.finding,
@@ -1511,7 +1717,9 @@ def goal_coverage_work_seeds(
         criterion_text = " ".join(str(criterion.get("criterion") or "").split())
         if not goal_id or not criterion_text:
             continue
-        matching_edges = [row for row in edge_rows if str(row.get("criterion_id") or "") == criterion_id]
+        matching_edges = [
+            row for row in edge_rows if str(row.get("criterion_id") or "") == criterion_id
+        ]
         unsupported_edge_surfaces = sorted(
             {
                 str(row.get("surface") or row.get("surface_kind") or "").strip()
@@ -1531,7 +1739,9 @@ def goal_coverage_work_seeds(
             "required_evidence",
             "evidence",
         )
-        parent_terms = tuple(sorted({criterion_text, *goal_terms}, key=lambda item: (item.casefold(), item)))
+        parent_terms = tuple(
+            sorted({criterion_text, *goal_terms}, key=lambda item: (item.casefold(), item))
+        )
         depth = _work_depth(goal) + 1
         predicted_files = {
             str(row.get("value") or "").strip()
@@ -1548,7 +1758,9 @@ def goal_coverage_work_seeds(
             in {CoverageSurface.AST_SYMBOL.value, CoverageSurface.INTERFACE.value}
             and str(row.get("value") or "").strip()
         }
-        predicted_symbols.update(_goal_work_fields(goal, "predicted_symbols", "ast_symbols", "symbols"))
+        predicted_symbols.update(
+            _goal_work_fields(goal, "predicted_symbols", "ast_symbols", "symbols")
+        )
         validation = {
             str(row.get("value") or "").strip()
             for row in matching_edges
@@ -1596,9 +1808,7 @@ def goal_coverage_work_seeds(
                     title=f"Add {surface_text} proof for {criterion_text}",
                     parent_goal_id=subgoal.canonical_id,
                     parent_objective_terms=parent_terms,
-                    expected_evidence_delta=(
-                        f"{criterion_text}: add {surface_text} evidence",
-                    ),
+                    expected_evidence_delta=(f"{criterion_text}: add {surface_text} evidence",),
                     dependencies=(subgoal.canonical_id,),
                     predicted_files=tuple(predicted_files),
                     predicted_symbols=tuple(predicted_symbols),
@@ -1617,14 +1827,22 @@ def goal_coverage_work_seeds(
     assignments = [
         dict(item) for item in raw.get("finding_assignments", ()) if isinstance(item, Mapping)
     ]
-    assignments.sort(key=lambda item: (str(item.get("goal_id") or ""), str(item.get("finding_id") or "")))
+    assignments.sort(
+        key=lambda item: (str(item.get("goal_id") or ""), str(item.get("finding_id") or ""))
+    )
     for assignment in assignments:
         if str(assignment.get("goal_id") or "") != UNMAPPED_GOAL_ID:
             continue
-        finding = assignment.get("finding") if isinstance(assignment.get("finding"), Mapping) else {}
+        finding = (
+            assignment.get("finding") if isinstance(assignment.get("finding"), Mapping) else {}
+        )
         finding_id = str(assignment.get("finding_id") or _stable_id("finding", finding))
         title = " ".join(
-            str(finding.get("title") or finding.get("summary") or f"Resolve unmapped finding {finding_id}").split()
+            str(
+                finding.get("title")
+                or finding.get("summary")
+                or f"Resolve unmapped finding {finding_id}"
+            ).split()
         )
         terms = _field_items(
             _nested_sources(finding),
@@ -1637,21 +1855,35 @@ def goal_coverage_work_seeds(
                 parent_goal_id=UNMAPPED_GOAL_ID,
                 parent_objective_terms=tuple(terms),
                 expected_evidence_delta=tuple(
-                    _field_items(_nested_sources(finding), ("expected_evidence_delta", "missing_evidence"))
+                    _field_items(
+                        _nested_sources(finding), ("expected_evidence_delta", "missing_evidence")
+                    )
                     or terms
                 ),
-                dependencies=tuple(_field_items(_nested_sources(finding), ("dependencies", "depends_on"))),
-                predicted_files=tuple(_field_items(_nested_sources(finding), ("predicted_files", "outputs", "files"))),
-                predicted_symbols=tuple(_field_items(_nested_sources(finding), ("predicted_symbols", "ast_symbols", "symbols"))),
+                dependencies=tuple(
+                    _field_items(_nested_sources(finding), ("dependencies", "depends_on"))
+                ),
+                predicted_files=tuple(
+                    _field_items(_nested_sources(finding), ("predicted_files", "outputs", "files"))
+                ),
+                predicted_symbols=tuple(
+                    _field_items(
+                        _nested_sources(finding), ("predicted_symbols", "ast_symbols", "symbols")
+                    )
+                ),
                 validation_commands=tuple(
                     _field_items(_nested_sources(finding), ("validation_commands", "validation"))
                     or [str(item) for item in default_validation if str(item).strip()]
                 ),
                 confidence=max(0.0, min(1.0, float(assignment.get("confidence", 0.5) or 0.5))),
-                estimated_cost=max(0.0, float(finding.get("estimated_cost", finding.get("cost", 1.0)) or 1.0)),
+                estimated_cost=max(
+                    0.0, float(finding.get("estimated_cost", finding.get("cost", 1.0)) or 1.0)
+                ),
                 novelty=max(0.0, min(1.0, float(finding.get("novelty", 1.0) or 1.0))),
                 depth=1,
-                estimated_tokens=max(0, int(finding.get("estimated_tokens", finding.get("token_cost", 128)) or 128)),
+                estimated_tokens=max(
+                    0, int(finding.get("estimated_tokens", finding.get("token_cost", 128)) or 128)
+                ),
                 retry_count=max(0, int(finding.get("retry_count", 0) or 0)),
                 source="unmapped_finding_rule",
                 source_id=finding_id,
@@ -1695,13 +1927,17 @@ def goal_coverage_work_seeds(
             or _stable_id("contradiction", contradiction)
         )
         goal = goal_metadata.get(goal_id, {})
-        validation = _goal_work_fields(goal, "validation", "validation_commands") or tuple(default_validation)
+        validation = _goal_work_fields(goal, "validation", "validation_commands") or tuple(
+            default_validation
+        )
         proposals.append(
             ObjectiveWorkProposal(
                 kind=ObjectiveWorkKind.TASK,
                 title=f"Repair contradicted evidence for {goal_id}",
                 parent_goal_id=goal_id,
-                parent_objective_terms=tuple(impacted or _goal_work_fields(goal, "acceptance", "evidence")),
+                parent_objective_terms=tuple(
+                    impacted or _goal_work_fields(goal, "acceptance", "evidence")
+                ),
                 expected_evidence_delta=tuple(
                     [f"replace invalidated evidence {item}" for item in invalidated]
                     or [f"revalidate contradicted criterion {item}" for item in impacted]
@@ -1710,10 +1946,13 @@ def goal_coverage_work_seeds(
                 dependencies=tuple(
                     str(item.get("task_id") or item.get("canonical_id") or "").strip()
                     for item in contradiction.get("scheduled_work", ())
-                    if isinstance(item, Mapping) and str(item.get("task_id") or item.get("canonical_id") or "").strip()
+                    if isinstance(item, Mapping)
+                    and str(item.get("task_id") or item.get("canonical_id") or "").strip()
                 ),
                 predicted_files=_goal_work_fields(goal, "predicted_files", "outputs", "files"),
-                predicted_symbols=_goal_work_fields(goal, "predicted_symbols", "ast_symbols", "symbols"),
+                predicted_symbols=_goal_work_fields(
+                    goal, "predicted_symbols", "ast_symbols", "symbols"
+                ),
                 validation_commands=tuple(validation),
                 confidence=1.0,
                 estimated_cost=max(1.0, float(len(invalidated) or len(impacted) or 1)),
@@ -1722,7 +1961,9 @@ def goal_coverage_work_seeds(
                 estimated_tokens=max(128, 96 * max(1, len(invalidated))),
                 source="contradiction_rule",
                 source_id=source_id,
-                rationale=str(contradiction.get("summary") or "Previously accepted evidence was contradicted."),
+                rationale=str(
+                    contradiction.get("summary") or "Previously accepted evidence was contradicted."
+                ),
             )
         )
 
@@ -1761,7 +2002,9 @@ def write_goal_coverage_map(path: Any, coverage: GoalCoverageMap | Mapping[str, 
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = coverage.to_dict() if isinstance(coverage, GoalCoverageMap) else dict(coverage)
-    fd, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
+    )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, sort_keys=True)

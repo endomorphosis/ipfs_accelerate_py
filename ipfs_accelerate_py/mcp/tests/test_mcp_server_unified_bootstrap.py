@@ -330,9 +330,15 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 tags=["native", "p2p-tools"],
             )
 
-        with patch("ipfs_accelerate_py.mcp_server.wave_a_loaders.register_native_p2p_tools_category", new=_register_category), patch(
-            "ipfs_accelerate_py.mcp_server.wave_a_loaders.register_native_p2p_tools",
-            new=lambda _manager: None,
+        with (
+            patch(
+                "ipfs_accelerate_py.mcp_server.wave_a_loaders.register_native_p2p_tools_category",
+                new=_register_category,
+            ),
+            patch(
+                "ipfs_accelerate_py.mcp_server.wave_a_loaders.register_native_p2p_tools",
+                new=lambda _manager: None,
+            ),
         ):
             load_p2p_tools(manager)
 
@@ -347,7 +353,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             def __init__(self):
                 self.tools = {}
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -367,8 +375,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertIsNotNone(getattr(server, "_unified_tool_manager", None))
         self.assertIsNotNone(getattr(server, "_unified_runtime_router", None))
         self.assertEqual(getattr(server, "_unified_meta_tools", []), get_unified_meta_tool_names())
-        self.assertEqual(getattr(server, "_unified_supported_profiles", []), get_unified_supported_profiles())
-        self.assertTrue(getattr(server, "_unified_profile_negotiation", {}).get("supports_profile_negotiation"))
+        self.assertEqual(
+            getattr(server, "_unified_supported_profiles", []), get_unified_supported_profiles()
+        )
+        self.assertTrue(
+            getattr(server, "_unified_profile_negotiation", {}).get("supports_profile_negotiation")
+        )
         self.assertEqual(getattr(server, "_unified_preloaded_categories", []), [])
         self.assertIsInstance(getattr(server, "_unified_services", None), dict)
         self.assertIsNotNone(getattr(server, "_unified_server_context", None))
@@ -381,7 +393,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertIn("peer_discovery_factory", server._unified_services)
         self.assertIn("result_cache_factory", server._unified_services)
         self.assertIs(server._unified_server_context.services, server._unified_services)
-        self.assertEqual(server._unified_server_context.supported_profiles, get_unified_supported_profiles())
+        self.assertEqual(
+            server._unified_server_context.supported_profiles, get_unified_supported_profiles()
+        )
         self.assertIn("tools_list_categories", server.tools)
         self.assertIn("tools_list_tools", server.tools)
         self.assertIn("tools_get_schema", server.tools)
@@ -397,7 +411,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             def __init__(self):
                 self.tools = {}
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -428,7 +444,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             expected_profiles,
         )
         self.assertEqual(
-            (server._unified_server_context_snapshot.get("profile_negotiation") or {}).get("profiles"),
+            (server._unified_server_context_snapshot.get("profile_negotiation") or {}).get(
+                "profiles"
+            ),
             expected_profiles,
         )
         self.assertEqual(
@@ -444,7 +462,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             def __init__(self):
                 self.tools = {}
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -478,8 +498,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertEqual(server._unified_profile_negotiation, expected_negotiation)
         self.assertEqual(server._unified_server_context.supported_profiles, expected_profiles)
         self.assertEqual(server._unified_server_context.profile_negotiation(), expected_negotiation)
-        self.assertEqual(server._unified_server_context_snapshot.get("supported_profiles"), expected_profiles)
-        self.assertEqual(server._unified_server_context_snapshot.get("profile_negotiation"), expected_negotiation)
+        self.assertEqual(
+            server._unified_server_context_snapshot.get("supported_profiles"), expected_profiles
+        )
+        self.assertEqual(
+            server._unified_server_context_snapshot.get("profile_negotiation"), expected_negotiation
+        )
 
     @patch("ipfs_accelerate_py.mcp_server.server._create_base_server")
     def test_unified_bootstrap_service_factories_smoke(self, mock_create):
@@ -489,7 +513,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             def __init__(self):
                 self.tools = {}
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -535,7 +561,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             def __init__(self):
                 self.tools = {}
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -572,7 +600,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             def __init__(self):
                 self.tools = {}
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -589,7 +619,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
         scorer = getattr(server, "_unified_risk_scorer", None)
         self.assertIsNotNone(scorer)
-        assessment = scorer.score_intent(tool="smoke.echo", actor="did:model:worker", params={"k": 1})
+        assessment = scorer.score_intent(
+            tool="smoke.echo", actor="did:model:worker", params={"k": 1}
+        )
         self.assertEqual(assessment.tool, "smoke.echo")
 
     @patch("ipfs_accelerate_py.mcp_server.server._create_base_server")
@@ -600,7 +632,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             def __init__(self):
                 self.tools = {}
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -653,7 +687,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             def __init__(self):
                 self.tools = {}
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -701,7 +737,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             def __init__(self):
                 self.tools = {}
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -723,7 +761,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             },
             clear=False,
         ):
-            with patch("ipfs_accelerate_py.mcp_server.server.SecretsVault.load_into_env", side_effect=RuntimeError("autoload_failed")):
+            with patch(
+                "ipfs_accelerate_py.mcp_server.server.SecretsVault.load_into_env",
+                side_effect=RuntimeError("autoload_failed"),
+            ):
                 server = create_server(name="autoload-failure")
 
         self.assertIs(server, dummy)
@@ -766,7 +807,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
-    def test_legacy_create_mcp_server_bridge_disable_flag_keeps_unified_default(self, mock_unified_create, mock_wrapper):
+    def test_legacy_create_mcp_server_bridge_disable_flag_keeps_unified_default(
+        self, mock_unified_create, mock_wrapper
+    ):
         """Legacy create_mcp_server should keep unified default even when bridge flag is disabled in D2."""
 
         class DummyServer:
@@ -791,7 +834,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -1291,7 +1336,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "generate_sparse_embedding",
                 {"text": "smoke sparse embedding input"},
             )
-            self.assertTrue("model" in sparse_embedding_result or "status" in sparse_embedding_result)
+            self.assertTrue(
+                "model" in sparse_embedding_result or "status" in sparse_embedding_result
+            )
 
             ipfs_cluster_result = await _dispatch_result(
                 "ipfs_cluster_tools",
@@ -1578,7 +1625,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_web_archive_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_web_archive_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """web_archive_tools dispatch should normalize contradictory failed delegate payloads."""
 
         from ipfs_accelerate_py.mcp_server.tools.web_archive_tools import native_web_archive_tools
@@ -1588,7 +1637,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -1603,25 +1654,28 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_web_archive_tools._API,
-                {
-                    "create_warc": _contradictory_failure,
-                    "archive_to_wayback": _contradictory_failure,
-                    "search_common_crawl": _contradictory_failure,
-                    "get_common_crawl_content": _contradictory_failure,
-                    "search_github_repositories": _contradictory_failure,
-                    "unified_search": _contradictory_failure,
-                    "unified_fetch": _contradictory_failure,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_web_archive_tools._API,
+                    {
+                        "create_warc": _contradictory_failure,
+                        "archive_to_wayback": _contradictory_failure,
+                        "search_common_crawl": _contradictory_failure,
+                        "get_common_crawl_content": _contradictory_failure,
+                        "search_github_repositories": _contradictory_failure,
+                        "unified_search": _contradictory_failure,
+                        "unified_fetch": _contradictory_failure,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="web-archive-contradictory-bootstrap")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -1714,7 +1768,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -1768,7 +1824,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -1809,7 +1867,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                     continue
 
                 methods = descriptor.get("methods", [])
-                self.assertTrue(any(m.get("name") == "ipfs/ipfs_files_validate_cid" for m in methods if isinstance(m, dict)))
+                self.assertTrue(
+                    any(
+                        m.get("name") == "ipfs/ipfs_files_validate_cid"
+                        for m in methods
+                        if isinstance(m, dict)
+                    )
+                )
 
                 compat = self._assert_dispatch_success_envelope(
                     await dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
@@ -1831,7 +1895,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -1872,7 +1938,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                     continue
 
                 methods = descriptor.get("methods", [])
-                self.assertTrue(any(m.get("name") == "workflow/get_workflow_templates" for m in methods if isinstance(m, dict)))
+                self.assertTrue(
+                    any(
+                        m.get("name") == "workflow/get_workflow_templates"
+                        for m in methods
+                        if isinstance(m, dict)
+                    )
+                )
 
                 compat = self._assert_dispatch_success_envelope(
                     await dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
@@ -1886,7 +1958,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_idl_tools_include_preloaded_p2p_category_descriptors_with_loader_patch(self, mock_wrapper):
+    def test_idl_tools_include_preloaded_p2p_category_descriptors_with_loader_patch(
+        self, mock_wrapper
+    ):
         """IDL tools should include p2p descriptor when p2p preload loader registers tools."""
 
         class DummyServer:
@@ -1894,7 +1968,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -1923,7 +1999,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 tags=["native", "wave-a", "p2p"],
             )
 
-        with patch("ipfs_accelerate_py.mcp_server.wave_a_loaders.load_p2p_tools", new=_patched_load_p2p_tools):
+        with patch(
+            "ipfs_accelerate_py.mcp_server.wave_a_loaders.load_p2p_tools",
+            new=_patched_load_p2p_tools,
+        ):
             with patch.dict(
                 os.environ,
                 {
@@ -1954,7 +2033,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                     continue
 
                 methods = descriptor.get("methods", [])
-                self.assertTrue(any(m.get("name") == "p2p/p2p_ping" for m in methods if isinstance(m, dict)))
+                self.assertTrue(
+                    any(m.get("name") == "p2p/p2p_ping" for m in methods if isinstance(m, dict))
+                )
 
                 compat = self._assert_dispatch_success_envelope(
                     await dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
@@ -1976,7 +2057,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2032,7 +2115,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2100,7 +2185,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2177,7 +2264,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2246,7 +2335,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_dispatch)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_native_ipfs_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_native_ipfs_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """Unified `tools_dispatch` should normalize contradictory failed native IPFS payloads."""
 
         class DummyServer:
@@ -2254,7 +2345,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2310,7 +2403,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2387,7 +2482,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2470,7 +2567,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2548,7 +2647,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2597,7 +2698,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2641,7 +2744,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_dispatch)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_native_workflow_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_native_workflow_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """Unified `workflow` dispatch should normalize contradictory failed manager payloads."""
 
         class DummyServer:
@@ -2649,7 +2754,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2702,7 +2809,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2791,7 +2900,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2870,7 +2981,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -2950,7 +3063,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3014,7 +3129,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3078,7 +3195,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3142,7 +3261,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3206,7 +3327,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3258,7 +3381,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3311,7 +3436,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3364,7 +3491,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3421,7 +3550,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3478,7 +3609,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3534,7 +3667,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3591,7 +3726,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3648,7 +3785,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3708,7 +3847,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3770,7 +3911,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3831,7 +3974,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3892,7 +4037,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -3953,7 +4100,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4009,7 +4158,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4034,7 +4185,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
             response = await dispatch(
                 "smoke",
@@ -4053,7 +4206,14 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(response["result"]["echo"], "ok")
 
             artifacts = response["artifacts"]
-            for key in ["input_cid", "intent_cid", "decision_cid", "output_cid", "receipt_cid", "event_cid"]:
+            for key in [
+                "input_cid",
+                "intent_cid",
+                "decision_cid",
+                "output_cid",
+                "receipt_cid",
+                "event_cid",
+            ]:
                 self.assertTrue(artifacts[key].startswith("cidv1-sha256-"))
 
             payloads = response["artifact_payloads"]
@@ -4080,7 +4240,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4106,7 +4268,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
             response = await dispatch(
                 "smoke",
@@ -4133,7 +4297,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4158,7 +4324,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -4187,7 +4355,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4212,7 +4382,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -4250,7 +4422,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4275,7 +4449,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             unsigned_chain = parse_delegation_chain(
@@ -4302,9 +4478,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                     {
                         "issuer": d.issuer,
                         "audience": d.audience,
-                        "capabilities": [{"resource": c.resource, "ability": c.ability} for c in d.capabilities],
+                        "capabilities": [
+                            {"resource": c.resource, "ability": c.ability} for c in d.capabilities
+                        ],
                         "proof_cid": compute_delegation_proof_cid(d),
-                        "signature": compute_delegation_signature(delegation=d, issuer_key_hint=issuer_keys.get(d.issuer, "")),
+                        "signature": compute_delegation_signature(
+                            delegation=d, issuer_key_hint=issuer_keys.get(d.issuer, "")
+                        ),
                     }
                 )
 
@@ -4334,7 +4514,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4359,7 +4541,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             delegation = parse_delegation_chain(
@@ -4373,7 +4557,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )[0]
             issuer_key = "pk-alice"
             proof_cid = compute_delegation_proof_cid(delegation)
-            signature = compute_delegation_signature(delegation=delegation, issuer_key_hint=issuer_key)
+            signature = compute_delegation_signature(
+                delegation=delegation, issuer_key_hint=issuer_key
+            )
 
             response = await dispatch(
                 "smoke",
@@ -4417,7 +4603,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4457,7 +4645,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             delegation = parse_delegation_chain(
@@ -4523,7 +4713,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4548,7 +4740,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             chain = [
@@ -4578,7 +4772,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertFalse(denied["ok"])
             self.assertEqual(denied["error"], "authorization_denied")
-            self.assertEqual((denied.get("authorization") or {}).get("reason"), "caveat_denied_at_hop_0")
+            self.assertEqual(
+                (denied.get("authorization") or {}).get("reason"), "caveat_denied_at_hop_0"
+            )
 
             allowed = await dispatch(
                 "smoke",
@@ -4604,7 +4800,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4629,7 +4827,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             payload = {
@@ -4642,7 +4842,11 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                     }
                 },
             }
-            payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii").rstrip("=")
+            payload_b64 = (
+                base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8"))
+                .decode("ascii")
+                .rstrip("=")
+            )
             token = "e30." + payload_b64 + ".sig"
 
             response = await dispatch(
@@ -4669,7 +4873,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4694,7 +4900,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             chain = [
@@ -4726,7 +4934,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertFalse(denied["ok"])
             self.assertEqual(denied["error"], "authorization_denied")
-            self.assertEqual((denied.get("authorization") or {}).get("reason"), "caveat_denied_at_hop_0")
+            self.assertEqual(
+                (denied.get("authorization") or {}).get("reason"), "caveat_denied_at_hop_0"
+            )
 
             allowed = await dispatch(
                 "smoke",
@@ -4752,7 +4962,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4777,7 +4989,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -4801,7 +5015,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(response["error"], "policy_denied")
             self.assertEqual(response["policy"]["decision"], "deny")
             policy_decision = response.get("policy_decision") or {}
-            self.assertTrue(str(policy_decision.get("decision_cid") or "").startswith("cidv1-sha256-"))
+            self.assertTrue(
+                str(policy_decision.get("decision_cid") or "").startswith("cidv1-sha256-")
+            )
             self.assertTrue(policy_decision.get("persisted"))
 
             stored = server._unified_artifact_store.get(policy_decision.get("decision_cid"))
@@ -4819,7 +5035,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4844,7 +5062,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -4870,14 +5090,18 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertFalse(response["ok"])
             self.assertEqual(response["error"], "authorization_denied")
             self.assertEqual((response.get("authorization") or {}).get("scheme"), "ucan")
-            self.assertEqual((response.get("authorization") or {}).get("reason"), "missing_delegation_chain")
+            self.assertEqual(
+                (response.get("authorization") or {}).get("reason"), "missing_delegation_chain"
+            )
             self.assertNotIn("policy", response)
             self.assertNotIn("policy_decision", response)
 
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_tools_dispatch_combined_ucan_policy_artifacts_and_risk_frontier_allow_path(self, mock_wrapper):
+    def test_tools_dispatch_combined_ucan_policy_artifacts_and_risk_frontier_allow_path(
+        self, mock_wrapper
+    ):
         """Combined UCAN/policy/artifact/risk execution should preserve aligned decision and event lineage."""
 
         class DummyServer:
@@ -4885,7 +5109,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -4929,7 +5155,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -5017,7 +5245,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             call = fake_scheduler.calls[0]
             self.assertEqual(call.get("workflow_name"), "risk_frontier_dispatch")
             self.assertEqual((call.get("metadata") or {}).get("event_cid"), event_cid)
-            self.assertEqual(((call.get("tasks") or [{}])[0].get("payload") or {}).get("event_cid"), event_cid)
+            self.assertEqual(
+                ((call.get("tasks") or [{}])[0].get("payload") or {}).get("event_cid"), event_cid
+            )
 
             stored_decision = server._unified_artifact_store.get(decision_cid) or {}
             self.assertEqual(stored_decision.get("decision"), "allow_with_obligations")
@@ -5037,7 +5267,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -5062,7 +5294,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -5093,7 +5327,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(response["policy"]["decision"], "allow_with_obligations")
             self.assertEqual(len(response["policy"]["obligations"]), 1)
             policy_decision = response.get("policy_decision") or {}
-            self.assertTrue(str(policy_decision.get("decision_cid") or "").startswith("cidv1-sha256-"))
+            self.assertTrue(
+                str(policy_decision.get("decision_cid") or "").startswith("cidv1-sha256-")
+            )
             self.assertTrue(policy_decision.get("persisted"))
 
             stored = server._unified_artifact_store.get(policy_decision.get("decision_cid"))
@@ -5113,7 +5349,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -5138,7 +5376,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             outstanding = await dispatch(
@@ -5206,7 +5446,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(fulfilled["policy"]["obligations"], [])
             self.assertIn("already fulfilled", fulfilled["policy"]["justification"])
 
-            outstanding_cid = str((outstanding.get("policy_decision") or {}).get("decision_cid") or "")
+            outstanding_cid = str(
+                (outstanding.get("policy_decision") or {}).get("decision_cid") or ""
+            )
             fulfilled_cid = str((fulfilled.get("policy_decision") or {}).get("decision_cid") or "")
             self.assertTrue(outstanding_cid.startswith("cidv1-sha256-"))
             self.assertTrue(fulfilled_cid.startswith("cidv1-sha256-"))
@@ -5219,7 +5461,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_tools_dispatch_policy_decision_cid_stable_across_emit_modes_and_policy_evolution(self, mock_wrapper):
+    def test_tools_dispatch_policy_decision_cid_stable_across_emit_modes_and_policy_evolution(
+        self, mock_wrapper
+    ):
         """Policy decision CID should remain stable across emit modes and change deterministically when policy identity evolves."""
 
         class DummyServer:
@@ -5227,7 +5471,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -5252,7 +5498,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             base_payload = {
@@ -5276,10 +5524,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 ],
             }
 
-            response_no_emit = await dispatch("smoke", "echo", dict(base_payload, **{"__emit_artifacts": False}))
-            response_emit = await dispatch("smoke", "echo", dict(base_payload, **{"__emit_artifacts": True}))
+            response_no_emit = await dispatch(
+                "smoke", "echo", dict(base_payload, **{"__emit_artifacts": False})
+            )
+            response_emit = await dispatch(
+                "smoke", "echo", dict(base_payload, **{"__emit_artifacts": True})
+            )
 
-            cid_no_emit = str((response_no_emit.get("policy_decision") or {}).get("decision_cid") or "")
+            cid_no_emit = str(
+                (response_no_emit.get("policy_decision") or {}).get("decision_cid") or ""
+            )
             cid_emit = str((response_emit.get("policy_decision") or {}).get("decision_cid") or "")
             self.assertTrue(cid_no_emit.startswith("cidv1-sha256-"))
             self.assertEqual(cid_no_emit, cid_emit)
@@ -5306,7 +5560,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "echo",
                 dict(base_payload, **{"__policy_cid": "cid-policy-v3", "__emit_artifacts": False}),
             )
-            cid_policy_cid = str((response_policy_cid.get("policy_decision") or {}).get("decision_cid") or "")
+            cid_policy_cid = str(
+                (response_policy_cid.get("policy_decision") or {}).get("decision_cid") or ""
+            )
             self.assertTrue(cid_policy_cid.startswith("cidv1-sha256-"))
             self.assertNotEqual(cid_no_emit, cid_policy_cid)
 
@@ -5317,7 +5573,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_tools_dispatch_policy_decision_uses_envelope_cid_when_prepersist_fails(self, mock_wrapper):
+    def test_tools_dispatch_policy_decision_uses_envelope_cid_when_prepersist_fails(
+        self, mock_wrapper
+    ):
         """Artifact emission should return envelope decision CID when policy pre-persist binding fails."""
 
         class DummyServer:
@@ -5325,7 +5583,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -5350,7 +5610,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
 
             original_put = server._unified_artifact_store.put
             put_calls = {"count": 0}
@@ -5403,7 +5665,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -5429,7 +5693,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -5461,7 +5727,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -5487,7 +5755,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -5519,7 +5789,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -5545,7 +5817,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             denied = await dispatch(
@@ -5606,7 +5880,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -5635,7 +5911,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
             runtime_metrics = server.tools["tools_runtime_metrics"]["function"]
 
@@ -5711,7 +5989,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -5736,7 +6016,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             first = await dispatch("smoke", "echo", {"value": "one", "__emit_artifacts": True})
@@ -5772,7 +6054,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -5797,7 +6081,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             root = await dispatch("smoke", "echo", {"value": "root", "__emit_artifacts": True})
@@ -5834,7 +6120,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -5859,7 +6147,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             root = await dispatch("smoke", "echo", {"value": "root", "__emit_artifacts": True})
@@ -5890,22 +6180,33 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             merge_event = merge["artifacts"]["event_cid"]
 
             expected_branch = min(branch_a_event, branch_z_event)
-            self.assertEqual(merge["event_dag"]["lineage"], [root_event, expected_branch, merge_event])
+            self.assertEqual(
+                merge["event_dag"]["lineage"], [root_event, expected_branch, merge_event]
+            )
 
             replay = server._unified_event_dag.replay_from_root(root_event)
-            self.assertEqual(replay, [root_event, expected_branch, max(branch_a_event, branch_z_event), merge_event])
+            self.assertEqual(
+                replay,
+                [root_event, expected_branch, max(branch_a_event, branch_z_event), merge_event],
+            )
             self.assertEqual(replay.count(merge_event), 1)
 
             snapshot = server._unified_event_dag.export_snapshot()
             rebuilt = type(server._unified_event_dag).from_snapshot(snapshot)
-            self.assertEqual(rebuilt.get_lineage(merge_event), [root_event, expected_branch, merge_event])
+            self.assertEqual(
+                rebuilt.get_lineage(merge_event), [root_event, expected_branch, merge_event]
+            )
             self.assertEqual(rebuilt.replay_from_root(root_event), replay)
-            self.assertEqual(rebuilt.rollback_path(merge_event), [merge_event, expected_branch, root_event])
+            self.assertEqual(
+                rebuilt.rollback_path(merge_event), [merge_event, expected_branch, root_event]
+            )
 
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_tools_dispatch_event_dag_large_graph_replay_and_rollback_are_deterministic(self, mock_wrapper):
+    def test_tools_dispatch_event_dag_large_graph_replay_and_rollback_are_deterministic(
+        self, mock_wrapper
+    ):
         """Larger dispatch-emitted event DAGs should replay and roll back deterministically."""
 
         class DummyServer:
@@ -5913,7 +6214,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -5938,7 +6241,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             root = await dispatch("smoke", "echo", {"value": "root", "__emit_artifacts": True})
@@ -6025,7 +6330,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -6050,7 +6357,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             root = await dispatch("smoke", "echo", {"value": "root", "__emit_artifacts": True})
@@ -6091,7 +6400,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             rebuilt = type(server._unified_event_dag).from_snapshot(compatible_snapshot)
             self.assertEqual(rebuilt.stats()["event_count"], 3)
-            self.assertEqual(rebuilt.get_lineage(leaf_event), [root_event, branch["artifacts"]["event_cid"], leaf_event])
+            self.assertEqual(
+                rebuilt.get_lineage(leaf_event),
+                [root_event, branch["artifacts"]["event_cid"], leaf_event],
+            )
             self.assertEqual(rebuilt.replay_from_root(root_event), expected_replay)
             self.assertEqual(rebuilt.rollback_path(leaf_event), expected_rollback)
 
@@ -6106,7 +6418,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -6131,7 +6445,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             denied = await dispatch(
@@ -6175,7 +6491,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -6230,7 +6548,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -6257,7 +6577,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             call = fake_scheduler.calls[0]
             self.assertEqual(call["workflow_name"], "risk_frontier_dispatch")
             self.assertEqual(call["tasks"][0]["task_type"], "mcp.frontier.execute")
-            self.assertEqual(call["tasks"][0]["payload"]["event_cid"], response["artifacts"]["event_cid"])
+            self.assertEqual(
+                call["tasks"][0]["payload"]["event_cid"], response["artifacts"]["event_cid"]
+            )
             self.assertEqual(factory_calls["workflow_scheduler_factory"], 1)
             self.assertEqual(factory_calls["task_queue_factory"], 0)
 
@@ -6272,7 +6594,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -6327,7 +6651,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -6361,7 +6687,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_tools_dispatch_risk_lineage_matches_emitted_event_and_execution_binding(self, mock_wrapper):
+    def test_tools_dispatch_risk_lineage_matches_emitted_event_and_execution_binding(
+        self, mock_wrapper
+    ):
         """Risk lineage should reference the same emitted event CID used by frontier execution."""
 
         class DummyServer:
@@ -6369,7 +6697,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -6412,7 +6742,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -6447,7 +6779,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_tools_dispatch_frontier_execution_under_load_prefers_fifo_before_retries(self, mock_wrapper):
+    def test_tools_dispatch_frontier_execution_under_load_prefers_fifo_before_retries(
+        self, mock_wrapper
+    ):
         """Frontier execution should pop older ready work first and leave retries behind fresh items."""
 
         class DummyServer:
@@ -6455,7 +6789,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -6516,7 +6852,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -6539,8 +6877,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertNotEqual(execution.get("event_cid"), frontier.get("event_cid"))
             self.assertEqual(execution.get("workflow_id"), "wf-risk-queue-1")
             self.assertEqual(len(fake_scheduler.calls), 1)
-            self.assertEqual(fake_scheduler.calls[0]["metadata"]["event_cid"], "cid-preloaded-fresh")
-            self.assertEqual(fake_scheduler.calls[0]["tasks"][0]["payload"]["event_cid"], "cid-preloaded-fresh")
+            self.assertEqual(
+                fake_scheduler.calls[0]["metadata"]["event_cid"], "cid-preloaded-fresh"
+            )
+            self.assertEqual(
+                fake_scheduler.calls[0]["tasks"][0]["payload"]["event_cid"], "cid-preloaded-fresh"
+            )
 
             self.assertEqual(frontier.get("stats", {}).get("frontier_size"), 2)
 
@@ -6563,7 +6905,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -6615,7 +6959,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -6642,7 +6988,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             call = fake_scheduler.calls[0]
             self.assertEqual(call["metadata"]["event_cid"], response["artifacts"]["event_cid"])
-            self.assertEqual(call["tasks"][0]["payload"]["event_cid"], response["artifacts"]["event_cid"])
+            self.assertEqual(
+                call["tasks"][0]["payload"]["event_cid"], response["artifacts"]["event_cid"]
+            )
             self.assertEqual(
                 call["tasks"][0]["payload"]["metadata"].get("consensus_signal"),
                 {"confidence": 1.0, "disputed": False},
@@ -6664,7 +7012,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -6719,7 +7069,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 dispatch_invocations["count"] += 1
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -6752,7 +7104,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -6811,7 +7165,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -6881,7 +7237,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -6927,7 +7285,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -6961,7 +7321,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -7003,7 +7365,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         def _peer_registry_factory(**kwargs):
             _ = kwargs
             factory_calls["peer_registry_factory"] += 1
-            raise AssertionError("peer_registry_factory should not be used when peer_discovery_factory is available")
+            raise AssertionError(
+                "peer_registry_factory should not be used when peer_discovery_factory is available"
+            )
 
         server._unified_services["peer_discovery_factory"] = _peer_discovery_factory
         server._unified_services["peer_registry_factory"] = _peer_registry_factory
@@ -7012,7 +7376,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -7040,7 +7406,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_tools_dispatch_peer_registry_fallback_when_peer_discovery_unavailable(self, mock_wrapper):
+    def test_tools_dispatch_peer_registry_fallback_when_peer_discovery_unavailable(
+        self, mock_wrapper
+    ):
         """tools_dispatch should fall back to peer_registry_factory when peer_discovery_factory returns no service."""
 
         class DummyServer:
@@ -7048,7 +7416,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -7098,7 +7468,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -7118,7 +7490,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("peer_registry", response)
             self.assertEqual(response["peer_registry"]["error"], "")
             self.assertEqual(response["peer_registry"]["peer_count"], 1)
-            self.assertEqual(response["peer_registry"]["peers"][0]["peer_id"], "peer-registry-fallback")
+            self.assertEqual(
+                response["peer_registry"]["peers"][0]["peer_id"], "peer-registry-fallback"
+            )
 
         anyio.run(_run_flow)
 
@@ -7131,7 +7505,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -7176,7 +7552,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -7210,7 +7588,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -7261,7 +7641,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -7297,7 +7679,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -7331,7 +7715,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             pin_schema = await get_schema("ipfs_tools", "pin_to_ipfs")
             self.assertEqual(pin_schema.get("name"), "pin_to_ipfs")
             self.assertEqual(pin_schema.get("category"), "ipfs_tools")
-            self.assertIn("content_source", (pin_schema.get("input_schema") or {}).get("properties", {}))
+            self.assertIn(
+                "content_source", (pin_schema.get("input_schema") or {}).get("properties", {})
+            )
 
             get_schema_payload = await get_schema("ipfs_tools", "get_from_ipfs")
             self.assertEqual(get_schema_payload.get("name"), "get_from_ipfs")
@@ -7343,7 +7729,6 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             pin_result = self._assert_dispatch_success_envelope(
                 await dispatch(
-
                     "ipfs_tools",
                     "pin_to_ipfs",
                     {
@@ -7352,7 +7737,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                     },
                 )
             )
-            self.assertTrue("status" in pin_result or "success" in pin_result or "message" in pin_result)
+            self.assertTrue(
+                "status" in pin_result or "success" in pin_result or "message" in pin_result
+            )
 
             invalid_timeout = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7406,14 +7793,18 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertIn("content", json_entrypoint_invalid)
-            parsed_invalid = json.loads(((json_entrypoint_invalid.get("content") or [{}])[0]).get("text", "{}"))
+            parsed_invalid = json.loads(
+                ((json_entrypoint_invalid.get("content") or [{}])[0]).get("text", "{}")
+            )
             self.assertEqual(parsed_invalid.get("status"), "error")
             self.assertEqual(parsed_invalid.get("error_type"), "validation")
 
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_ipfs_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_ipfs_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """Unified `tools_dispatch` should normalize contradictory failed ipfs_tools payloads."""
 
         import ipfs_accelerate_py.mcp_server.tools.ipfs_tools.native_ipfs_tools_category as native_ipfs_tools_category
@@ -7423,7 +7814,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -7494,7 +7887,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -7551,7 +7946,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertFalse(invalid_output.get("success"))
-            self.assertIn("output_path must be a non-empty string", str(invalid_output.get("error", "")))
+            self.assertIn(
+                "output_path must be a non-empty string", str(invalid_output.get("error", ""))
+            )
 
         anyio.run(_run_flow)
 
@@ -7564,7 +7961,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -7611,7 +8010,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_get.get("status"), "error")
-            self.assertIn("workflow_id must be a non-empty string", str(invalid_get.get("error", "")))
+            self.assertIn(
+                "workflow_id must be a non-empty string", str(invalid_get.get("error", ""))
+            )
 
             invalid_create = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7638,7 +8039,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -7699,12 +8102,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertFalse(invalid_submit.get("ok"))
-            self.assertIn("task_type must be a non-empty string", str(invalid_submit.get("error", "")))
+            self.assertIn(
+                "task_type must be a non-empty string", str(invalid_submit.get("error", ""))
+            )
 
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_native_p2p_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_native_p2p_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """Unified `tools_dispatch` should normalize contradictory failed native p2p payloads."""
 
         class DummyServer:
@@ -7712,7 +8119,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -7767,7 +8176,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -7841,7 +8252,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_rate_limiting_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_rate_limiting_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """rate_limiting_tools dispatch should normalize contradictory failed delegate payloads."""
 
         from ipfs_accelerate_py.mcp_server.tools.rate_limiting_tools import (
@@ -7853,7 +8266,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -7868,21 +8283,24 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_rate_limiting_tools_category._API,
-                {
-                    "configure_rate_limits": _contradictory_failure,
-                    "check_rate_limit": _contradictory_failure,
-                    "manage_rate_limits": _contradictory_failure,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_rate_limiting_tools_category._API,
+                    {
+                        "configure_rate_limits": _contradictory_failure,
+                        "check_rate_limit": _contradictory_failure,
+                        "manage_rate_limits": _contradictory_failure,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="rate-limiting-tools-contradictory-bootstrap")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -7928,7 +8346,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -8002,7 +8422,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_rate_limiting_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_rate_limiting_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """rate_limiting dispatch should normalize contradictory failed delegate payloads."""
 
         from ipfs_accelerate_py.mcp_server.tools.rate_limiting import native_rate_limiting_tools
@@ -8012,7 +8434,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -8025,25 +8449,30 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         contradictory = {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.object(
-                native_rate_limiting_tools._rate_limiter,
-                "check_rate_limit",
-                return_value=contradictory,
-            ), patch.object(
-                native_rate_limiting_tools._rate_limiter,
-                "get_stats",
-                return_value=contradictory,
-            ), patch.object(
-                native_rate_limiting_tools._rate_limiter,
-                "reset_limits",
-                return_value=contradictory,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.object(
+                    native_rate_limiting_tools._rate_limiter,
+                    "check_rate_limit",
+                    return_value=contradictory,
+                ),
+                patch.object(
+                    native_rate_limiting_tools._rate_limiter,
+                    "get_stats",
+                    return_value=contradictory,
+                ),
+                patch.object(
+                    native_rate_limiting_tools._rate_limiter,
+                    "reset_limits",
+                    return_value=contradictory,
+                ),
             ):
                 server = create_mcp_server(name="rate-limiting-contradictory-bootstrap")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -8089,7 +8518,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -8170,7 +8601,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_peer_id.get("status"), "error")
-            self.assertIn("peer_id must be a non-empty string", str(invalid_peer_id.get("error", "")))
+            self.assertIn(
+                "peer_id must be a non-empty string", str(invalid_peer_id.get("error", ""))
+            )
 
             workflow_tags = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -8185,7 +8618,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_p2p_workflow_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_p2p_workflow_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """p2p_workflow_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -8193,7 +8628,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -8218,7 +8655,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            from ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools import native_p2p_workflow_tools
+            from ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools import (
+                native_p2p_workflow_tools,
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
 
@@ -8253,7 +8692,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -8361,7 +8802,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_search_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_search_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """search_tools bootstrap dispatch should normalize contradictory failed payloads."""
 
         class DummyServer:
@@ -8369,7 +8812,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -8428,7 +8873,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -8477,7 +8924,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual((search_props.get("query_vector") or {}).get("minItems"), 1)
 
             list_indexes_schema = await get_schema("vector_tools", "list_vector_indexes")
-            list_indexes_props = (list_indexes_schema.get("input_schema") or {}).get("properties", {})
+            list_indexes_props = (list_indexes_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
             self.assertEqual((list_indexes_props.get("backend") or {}).get("default"), "all")
 
             manage_schema = await get_schema("vector_tools", "manage_vector_store")
@@ -8486,7 +8935,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual((manage_props.get("top_k") or {}).get("minimum"), 1)
 
             create_store_schema = await get_schema("vector_tools", "create_store")
-            create_store_props = (create_store_schema.get("input_schema") or {}).get("properties", {})
+            create_store_props = (create_store_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
             self.assertEqual((create_store_props.get("name") or {}).get("minLength"), 1)
 
             list_stores_schema = await get_schema("vector_tools", "list_stores")
@@ -8516,7 +8967,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_query_vector.get("status"), "error")
-            self.assertIn("query_vector must be a non-empty list of numbers", str(invalid_query_vector.get("error", "")))
+            self.assertIn(
+                "query_vector must be a non-empty list of numbers",
+                str(invalid_query_vector.get("error", "")),
+            )
 
             invalid_manage = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -8600,7 +9054,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(listed_stores.get("status"), "success")
-            self.assertTrue(any(store.get("store_name") == "legal" for store in listed_stores.get("stores", [])))
+            self.assertTrue(
+                any(store.get("store_name") == "legal" for store in listed_stores.get("stores", []))
+            )
 
             store_info = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -8644,7 +9100,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_vector_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_vector_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """vector_tools bootstrap dispatch should normalize contradictory failed payloads."""
 
         class DummyServer:
@@ -8652,7 +9110,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -8710,7 +9170,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -8793,37 +9255,68 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             stats_props = (stats_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((stats_props.get("report_format") or {}).get("default"), "summary")
 
-            collection_stats_schema = await get_schema("storage_tools", "get_storage_collection_stats")
+            collection_stats_schema = await get_schema(
+                "storage_tools", "get_storage_collection_stats"
+            )
             collection_stats_input = collection_stats_schema.get("input_schema") or {}
             collection_stats_props = collection_stats_input.get("properties", {})
             self.assertEqual(collection_stats_input.get("required"), ["collection_name"])
-            self.assertEqual((collection_stats_props.get("report_format") or {}).get("default"), "summary")
+            self.assertEqual(
+                (collection_stats_props.get("report_format") or {}).get("default"), "summary"
+            )
 
-            lifecycle_alias_schema = await get_schema("storage_tools", "get_storage_lifecycle_report")
-            lifecycle_alias_props = (lifecycle_alias_schema.get("input_schema") or {}).get("properties", {})
-            self.assertEqual((lifecycle_alias_props.get("report_format") or {}).get("default"), "detailed")
-            self.assertEqual((lifecycle_alias_props.get("include_breakdown") or {}).get("default"), False)
+            lifecycle_alias_schema = await get_schema(
+                "storage_tools", "get_storage_lifecycle_report"
+            )
+            lifecycle_alias_props = (lifecycle_alias_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
+            self.assertEqual(
+                (lifecycle_alias_props.get("report_format") or {}).get("default"), "detailed"
+            )
+            self.assertEqual(
+                (lifecycle_alias_props.get("include_breakdown") or {}).get("default"), False
+            )
 
             backend_alias_schema = await get_schema("storage_tools", "get_storage_backend_status")
-            backend_alias_props = (backend_alias_schema.get("input_schema") or {}).get("properties", {})
-            self.assertEqual((backend_alias_props.get("availability_filter") or {}).get("default"), "all")
-            self.assertEqual((backend_alias_props.get("include_capabilities") or {}).get("default"), False)
+            backend_alias_props = (backend_alias_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
             self.assertEqual(
-                ((backend_alias_props.get("unavailable_reasons") or {}).get("propertyNames") or {}).get("minLength"),
+                (backend_alias_props.get("availability_filter") or {}).get("default"), "all"
+            )
+            self.assertEqual(
+                (backend_alias_props.get("include_capabilities") or {}).get("default"), False
+            )
+            self.assertEqual(
+                (
+                    (backend_alias_props.get("unavailable_reasons") or {}).get("propertyNames")
+                    or {}
+                ).get("minLength"),
                 1,
             )
 
             collections_alias_schema = await get_schema("storage_tools", "list_storage_collections")
-            collections_alias_props = (collections_alias_schema.get("input_schema") or {}).get("properties", {})
-            self.assertEqual((collections_alias_props.get("include_metadata") or {}).get("default"), True)
-            self.assertEqual((collections_alias_props.get("include_timestamps") or {}).get("default"), True)
+            collections_alias_props = (collections_alias_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
+            self.assertEqual(
+                (collections_alias_props.get("include_metadata") or {}).get("default"), True
+            )
+            self.assertEqual(
+                (collections_alias_props.get("include_timestamps") or {}).get("default"), True
+            )
 
-            create_collection_schema = await get_schema("storage_tools", "create_storage_collection")
+            create_collection_schema = await get_schema(
+                "storage_tools", "create_storage_collection"
+            )
             create_collection_input = create_collection_schema.get("input_schema") or {}
             create_collection_props = create_collection_input.get("properties", {})
             self.assertEqual(create_collection_input.get("required"), ["collection_name"])
             self.assertEqual(
-                ((create_collection_props.get("metadata") or {}).get("propertyNames") or {}).get("minLength"),
+                ((create_collection_props.get("metadata") or {}).get("propertyNames") or {}).get(
+                    "minLength"
+                ),
                 1,
             )
 
@@ -8831,15 +9324,28 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             get_collection_input = get_collection_schema.get("input_schema") or {}
             get_collection_props = get_collection_input.get("properties", {})
             self.assertEqual(get_collection_input.get("required"), ["collection_name"])
-            self.assertEqual((get_collection_props.get("include_metadata") or {}).get("default"), True)
-            self.assertEqual((get_collection_props.get("include_timestamps") or {}).get("default"), True)
-            self.assertEqual((create_collection_input.get("properties", {}).get("description") or {}).get("minLength"), 1)
+            self.assertEqual(
+                (get_collection_props.get("include_metadata") or {}).get("default"), True
+            )
+            self.assertEqual(
+                (get_collection_props.get("include_timestamps") or {}).get("default"), True
+            )
+            self.assertEqual(
+                (create_collection_input.get("properties", {}).get("description") or {}).get(
+                    "minLength"
+                ),
+                1,
+            )
 
-            delete_collection_schema = await get_schema("storage_tools", "delete_storage_collection")
+            delete_collection_schema = await get_schema(
+                "storage_tools", "delete_storage_collection"
+            )
             delete_collection_input = delete_collection_schema.get("input_schema") or {}
             delete_collection_props = delete_collection_input.get("properties", {})
             self.assertEqual(delete_collection_input.get("required"), ["collection_name"])
-            self.assertEqual((delete_collection_props.get("delete_items") or {}).get("default"), False)
+            self.assertEqual(
+                (delete_collection_props.get("delete_items") or {}).get("default"), False
+            )
 
             delete_schema = await get_schema("storage_tools", "delete_data")
             delete_props = (delete_schema.get("input_schema") or {}).get("properties", {})
@@ -8858,12 +9364,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("detailed", report_enum)
             self.assertIn("summary", report_enum)
             self.assertIn("analytics", report_enum)
-            self.assertEqual((manage_props.get("include_capabilities") or {}).get("type"), "boolean")
+            self.assertEqual(
+                (manage_props.get("include_capabilities") or {}).get("type"), "boolean"
+            )
             self.assertIn("backend_types", manage_props)
             self.assertIn("unavailable_backends", manage_props)
             self.assertIn("unavailable_reasons", manage_props)
             self.assertEqual(
-                ((manage_props.get("unavailable_reasons") or {}).get("propertyNames") or {}).get("minLength"),
+                ((manage_props.get("unavailable_reasons") or {}).get("propertyNames") or {}).get(
+                    "minLength"
+                ),
                 1,
             )
             availability_filter_schema = manage_props.get("availability_filter") or {}
@@ -8878,9 +9388,8 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             first_rule = all_of[0]
             self.assertIn("collection_name", ((first_rule.get("then") or {}).get("required") or []))
             conditional_collection_schema = (
-                ((first_rule.get("then") or {}).get("properties") or {}).get("collection_name")
-                or {}
-            )
+                (first_rule.get("then") or {}).get("properties") or {}
+            ).get("collection_name") or {}
             self.assertEqual(conditional_collection_schema.get("type"), "string")
             self.assertEqual(conditional_collection_schema.get("minLength"), 1)
 
@@ -8895,7 +9404,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_tags.get("status"), "error")
-            self.assertIn("tags must be an array of non-empty strings", str(invalid_tags.get("error", "")))
+            self.assertIn(
+                "tags must be an array of non-empty strings", str(invalid_tags.get("error", ""))
+            )
 
             invalid_collection = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -8969,7 +9480,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_range.get("status"), "error")
-            self.assertIn("size_range must be non-negative and ordered", str(invalid_range.get("error", "")))
+            self.assertIn(
+                "size_range must be non-negative and ordered", str(invalid_range.get("error", ""))
+            )
 
             invalid_list_limit = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -8981,7 +9494,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_list_limit.get("status"), "error")
-            self.assertIn("limit must be a positive integer", str(invalid_list_limit.get("error", "")))
+            self.assertIn(
+                "limit must be a positive integer", str(invalid_list_limit.get("error", ""))
+            )
 
             invalid_delete = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -8993,7 +9508,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_delete.get("status"), "error")
-            self.assertIn("item_ids must be an array of non-empty strings", str(invalid_delete.get("error", "")))
+            self.assertIn(
+                "item_ids must be an array of non-empty strings",
+                str(invalid_delete.get("error", "")),
+            )
 
             invalid_date_range = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -9036,7 +9554,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_report_format.get("status"), "error")
-            self.assertIn("report_format must be one of", str(invalid_report_format.get("error", "")))
+            self.assertIn(
+                "report_format must be one of", str(invalid_report_format.get("error", ""))
+            )
 
             invalid_manage_description = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -9135,16 +9655,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 str(invalid_backend_alias_unknown_reason_backend.get("error", "")),
             )
 
-            invalid_backend_alias_unknown_unavailable_backends = self._assert_dispatch_success_envelope(
-                await dispatch(
-                    "storage_tools",
-                    "get_storage_backend_status",
-                    {
-                        "unavailable_backends": ["tape"],
-                    },
+            invalid_backend_alias_unknown_unavailable_backends = (
+                self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "storage_tools",
+                        "get_storage_backend_status",
+                        {
+                            "unavailable_backends": ["tape"],
+                        },
+                    )
                 )
             )
-            self.assertEqual(invalid_backend_alias_unknown_unavailable_backends.get("status"), "error")
+            self.assertEqual(
+                invalid_backend_alias_unknown_unavailable_backends.get("status"), "error"
+            )
             self.assertIn(
                 "unavailable_backends contains unknown storage backends",
                 str(invalid_backend_alias_unknown_unavailable_backends.get("error", "")),
@@ -9195,16 +9719,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 str(invalid_backend_alias_backend_types_type.get("error", "")),
             )
 
-            invalid_backend_alias_unavailable_backends_entry = self._assert_dispatch_success_envelope(
-                await dispatch(
-                    "storage_tools",
-                    "get_storage_backend_status",
-                    {
-                        "unavailable_backends": ["ipfs", " "],
-                    },
+            invalid_backend_alias_unavailable_backends_entry = (
+                self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "storage_tools",
+                        "get_storage_backend_status",
+                        {
+                            "unavailable_backends": ["ipfs", " "],
+                        },
+                    )
                 )
             )
-            self.assertEqual(invalid_backend_alias_unavailable_backends_entry.get("status"), "error")
+            self.assertEqual(
+                invalid_backend_alias_unavailable_backends_entry.get("status"), "error"
+            )
             self.assertIn(
                 "unavailable_backends must be an array of non-empty strings",
                 str(invalid_backend_alias_unavailable_backends_entry.get("error", "")),
@@ -9269,7 +9797,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(normalized_backend_alias_lists.get("status"), "success")
-            self.assertEqual(normalized_backend_alias_lists.get("availability_filter"), "unavailable")
+            self.assertEqual(
+                normalized_backend_alias_lists.get("availability_filter"), "unavailable"
+            )
             self.assertEqual(normalized_backend_alias_lists.get("backend_count"), 1)
             normalized_backends = normalized_backend_alias_lists.get("backends") or []
             self.assertEqual(len(normalized_backends), 1)
@@ -9289,12 +9819,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(normalized_backend_alias_reason.get("status"), "success")
-            self.assertEqual(normalized_backend_alias_reason.get("availability_filter"), "unavailable")
+            self.assertEqual(
+                normalized_backend_alias_reason.get("availability_filter"), "unavailable"
+            )
             self.assertEqual(normalized_backend_alias_reason.get("backend_count"), 1)
             normalized_reason_backends = normalized_backend_alias_reason.get("backends") or []
             self.assertEqual(len(normalized_reason_backends), 1)
             self.assertEqual((normalized_reason_backends[0] or {}).get("storage_type"), "ipfs")
-            self.assertEqual((normalized_reason_backends[0] or {}).get("unavailable_reason"), "dial timeout")
+            self.assertEqual(
+                (normalized_reason_backends[0] or {}).get("unavailable_reason"), "dial timeout"
+            )
 
             scoped_backend_alias_reasons = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -9316,7 +9850,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 (entry or {}).get("storage_type"): entry
                 for entry in (scoped_backend_alias_reasons.get("backends") or [])
             }
-            self.assertEqual((scoped_backends.get("ipfs") or {}).get("unavailable_reason"), "dial timeout")
+            self.assertEqual(
+                (scoped_backends.get("ipfs") or {}).get("unavailable_reason"), "dial timeout"
+            )
             self.assertIsNone((scoped_backends.get("memory") or {}).get("unavailable_reason"))
 
             normalized_empty_backend_alias_filter = self._assert_dispatch_success_envelope(
@@ -9331,7 +9867,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(normalized_empty_backend_alias_filter.get("status"), "success")
-            self.assertEqual(normalized_empty_backend_alias_filter.get("availability_filter"), "all")
+            self.assertEqual(
+                normalized_empty_backend_alias_filter.get("availability_filter"), "all"
+            )
             self.assertEqual(normalized_empty_backend_alias_filter.get("backend_count"), 2)
             empty_filter_backends = {
                 (entry or {}).get("storage_type"): entry
@@ -9373,7 +9911,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(default_backend_alias_breakdown.get("status"), "success")
             self.assertEqual(default_backend_alias_breakdown.get("backend_count"), 2)
-            self.assertNotIn("breakdown", default_backend_alias_breakdown.get("backend_report") or {})
+            self.assertNotIn(
+                "breakdown", default_backend_alias_breakdown.get("backend_report") or {}
+            )
             self.assertEqual(default_backend_alias_breakdown.get("breakdown"), {})
 
             default_backend_alias_generated_at = self._assert_dispatch_success_envelope(
@@ -9391,7 +9931,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIsInstance(default_backend_alias_generated_at.get("generated_at"), str)
             self.assertEqual(
                 default_backend_alias_generated_at.get("generated_at"),
-                (default_backend_alias_generated_at.get("backend_report") or {}).get("generated_at"),
+                (default_backend_alias_generated_at.get("backend_report") or {}).get(
+                    "generated_at"
+                ),
             )
 
             default_backend_alias_backend_count = self._assert_dispatch_success_envelope(
@@ -9408,7 +9950,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(default_backend_alias_backend_count.get("backend_count"), 2)
             self.assertEqual(
                 default_backend_alias_backend_count.get("backend_count"),
-                (default_backend_alias_backend_count.get("backend_report") or {}).get("backend_count"),
+                (default_backend_alias_backend_count.get("backend_report") or {}).get(
+                    "backend_count"
+                ),
             )
 
             backend_status = self._assert_dispatch_success_envelope(
@@ -9499,7 +10043,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(backend_alias_normalized_filter.get("status"), "success")
-            self.assertEqual(backend_alias_normalized_filter.get("availability_filter"), "unavailable")
+            self.assertEqual(
+                backend_alias_normalized_filter.get("availability_filter"), "unavailable"
+            )
             self.assertEqual(backend_alias_normalized_filter.get("backend_count"), 1)
 
             collection_stats_alias = self._assert_dispatch_success_envelope(
@@ -9619,7 +10165,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(missing_collection_get.get("status"), "error")
-            self.assertEqual(missing_collection_get.get("collection_name"), "bootstrap-missing-collection")
+            self.assertEqual(
+                missing_collection_get.get("collection_name"), "bootstrap-missing-collection"
+            )
             self.assertEqual(missing_collection_get.get("found"), False)
             self.assertIn("not found", str(missing_collection_get.get("error", "")).lower())
 
@@ -9660,7 +10208,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(delete_collection_alias.get("status"), "success")
-            self.assertEqual(delete_collection_alias.get("collection_name"), "bootstrap-delete-temp")
+            self.assertEqual(
+                delete_collection_alias.get("collection_name"), "bootstrap-delete-temp"
+            )
             self.assertTrue(delete_collection_alias.get("deleted"))
 
             stored = self._assert_dispatch_success_envelope(
@@ -9771,7 +10321,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -9786,17 +10338,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_storage_tools._API,
-                {"query_storage": _failed},
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_storage_tools._API,
+                    {"query_storage": _failed},
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="storage-tools-failed-payload")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -9822,7 +10377,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -9886,7 +10443,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_threshold.get("status"), "error")
-            self.assertIn("confidence_threshold must be between 0 and 1", str(invalid_threshold.get("error", "")))
+            self.assertIn(
+                "confidence_threshold must be between 0 and 1",
+                str(invalid_threshold.get("error", "")),
+            )
 
             claudes_result = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -9901,7 +10461,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_dataset_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_dataset_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """dataset_tools dispatch should normalize contradictory failed delegate payloads."""
         from ipfs_accelerate_py.mcp_server.tools.dataset_tools import native_dataset_tools
 
@@ -9910,7 +10472,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -9925,17 +10489,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_dataset_tools._API,
-                {"load_dataset": _failed},
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_dataset_tools._API,
+                    {"load_dataset": _failed},
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="dataset-tools-failed-payload")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -9961,7 +10528,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -10053,7 +10622,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_single_batch.get("status"), "error")
-            self.assertIn("batch_size must be a positive integer", str(invalid_single_batch.get("error", "")))
+            self.assertIn(
+                "batch_size must be a positive integer", str(invalid_single_batch.get("error", ""))
+            )
 
             invalid_file_format = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10080,7 +10651,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_semantic_top_k.get("status"), "error")
-            self.assertIn("top_k must be between 1 and 1000", str(invalid_semantic_top_k.get("error", "")))
+            self.assertIn(
+                "top_k must be between 1 and 1000", str(invalid_semantic_top_k.get("error", ""))
+            )
 
             invalid_hybrid_top_k = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10109,7 +10682,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_filter_method.get("status"), "error")
-            self.assertIn("search_method must be one of", str(invalid_filter_method.get("error", "")))
+            self.assertIn(
+                "search_method must be one of", str(invalid_filter_method.get("error", ""))
+            )
 
             invalid_multimodal_inputs = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10143,7 +10718,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_embedding_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_embedding_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """embedding_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -10151,7 +10728,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -10209,7 +10788,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -10331,7 +10912,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_tx.get("status"), "error")
-            self.assertIn("transaction_id must be a non-empty string", str(invalid_tx.get("error", "")))
+            self.assertIn(
+                "transaction_id must be a non-empty string", str(invalid_tx.get("error", ""))
+            )
 
             invalid_constraint = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10346,7 +10929,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_constraint.get("status"), "error")
-            self.assertIn("constraint_type must be one of", str(invalid_constraint.get("error", "")))
+            self.assertIn(
+                "constraint_type must be one of", str(invalid_constraint.get("error", ""))
+            )
 
             invalid_explain = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10420,7 +11005,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_graph_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_graph_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """graph_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -10428,7 +11015,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -10487,7 +11076,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -10556,7 +11147,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_parameters.get("status"), "error")
-            self.assertIn("parameters must be an object", str(invalid_parameters.get("message", "")))
+            self.assertIn(
+                "parameters must be an object", str(invalid_parameters.get("message", ""))
+            )
 
             invalid_rules = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10575,7 +11168,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_data_processing_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_data_processing_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """data_processing_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -10583,7 +11178,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -10608,7 +11205,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            from ipfs_accelerate_py.mcp_server.tools.data_processing_tools import native_data_processing_tools
+            from ipfs_accelerate_py.mcp_server.tools.data_processing_tools import (
+                native_data_processing_tools,
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
 
@@ -10641,7 +11240,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -10677,7 +11278,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("pdf_query_knowledge_graph", names)
 
             relationship_schema = await get_schema("pdf_tools", "pdf_analyze_relationships")
-            relationship_props = (relationship_schema.get("input_schema") or {}).get("properties", {})
+            relationship_props = (relationship_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
             self.assertEqual((relationship_props.get("document_id") or {}).get("minLength"), 1)
             self.assertEqual((relationship_props.get("min_confidence") or {}).get("maximum"), 1.0)
 
@@ -10715,7 +11318,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_relationships.get("status"), "error")
-            self.assertIn("relationship_types must be a list of non-empty strings", str(invalid_relationships.get("error", "")))
+            self.assertIn(
+                "relationship_types must be a list of non-empty strings",
+                str(invalid_relationships.get("error", "")),
+            )
 
             invalid_cross = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10728,7 +11334,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_cross.get("status"), "error")
-            self.assertIn("analysis_types must be a list of non-empty strings", str(invalid_cross.get("error", "")))
+            self.assertIn(
+                "analysis_types must be a list of non-empty strings",
+                str(invalid_cross.get("error", "")),
+            )
 
             invalid_query = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10752,7 +11361,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_batch.get("status"), "error")
-            self.assertIn("pdf_sources entries must be non-empty strings or objects", str(invalid_batch.get("error", "")))
+            self.assertIn(
+                "pdf_sources entries must be non-empty strings or objects",
+                str(invalid_batch.get("error", "")),
+            )
 
             invalid_optimize = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10766,7 +11378,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_optimize.get("status"), "error")
-            self.assertIn("overlap_size must be less than or equal to max_chunk_size", str(invalid_optimize.get("error", "")))
+            self.assertIn(
+                "overlap_size must be less than or equal to max_chunk_size",
+                str(invalid_optimize.get("error", "")),
+            )
 
             invalid_graph_query = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10785,7 +11400,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_pdf_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_pdf_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """pdf_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -10793,7 +11410,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -10843,7 +11462,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_logic_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_logic_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """logic_tools dispatch should normalize contradictory failed delegate payloads."""
 
         from ipfs_accelerate_py.mcp_server.tools.logic_tools import native_logic_tools
@@ -10853,7 +11474,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -10868,21 +11491,24 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_logic_tools._API,
-                {
-                    "tdfol_parse": _contradictory_failure,
-                    "tdfol_prove": _contradictory_failure,
-                    "cec_prove": _contradictory_failure,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_logic_tools._API,
+                    {
+                        "tdfol_parse": _contradictory_failure,
+                        "tdfol_prove": _contradictory_failure,
+                        "cec_prove": _contradictory_failure,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="logic-contradictory-bootstrap")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -10928,7 +11554,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -10996,7 +11624,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_parse.get("success"), False)
-            self.assertIn("'format' must be a non-empty string", str(invalid_parse.get("error", "")))
+            self.assertIn(
+                "'format' must be a non-empty string", str(invalid_parse.get("error", ""))
+            )
 
             invalid_timeout = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -11009,7 +11639,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_timeout.get("success"), False)
-            self.assertIn("'timeout_ms' must be an integer greater than or equal to 1", str(invalid_timeout.get("error", "")))
+            self.assertIn(
+                "'timeout_ms' must be an integer greater than or equal to 1",
+                str(invalid_timeout.get("error", "")),
+            )
 
             invalid_kb_export = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -11034,7 +11667,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_cec_timeout.get("success"), False)
-            self.assertIn("'timeout' must be an integer greater than or equal to 1", str(invalid_cec_timeout.get("error", "")))
+            self.assertIn(
+                "'timeout' must be an integer greater than or equal to 1",
+                str(invalid_cec_timeout.get("error", "")),
+            )
 
             invalid_cec_parse = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -11047,7 +11683,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_cec_parse.get("success"), False)
-            self.assertIn("'language' must be a non-empty string", str(invalid_cec_parse.get("error", "")))
+            self.assertIn(
+                "'language' must be a non-empty string", str(invalid_cec_parse.get("error", ""))
+            )
 
             added_axiom = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -11117,7 +11755,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -11167,7 +11807,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             state_schema = await get_schema("session_tools", "get_session_state")
             self.assertEqual(state_schema.get("name"), "get_session_state")
             self.assertEqual(state_schema.get("category"), "session_tools")
-            self.assertIn("session_id", (state_schema.get("input_schema") or {}).get("properties", {}))
+            self.assertIn(
+                "session_id", (state_schema.get("input_schema") or {}).get("properties", {})
+            )
 
             created = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -11195,9 +11837,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_tags.get("status"), "error")
             invalid_tags_text = (
-                str(invalid_tags.get("message", ""))
-                + " "
-                + str(invalid_tags.get("error", ""))
+                str(invalid_tags.get("message", "")) + " " + str(invalid_tags.get("error", ""))
             )
             self.assertIn("tags must be a list of non-empty strings", invalid_tags_text)
 
@@ -11246,7 +11886,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_session_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_session_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """session_tools bootstrap dispatch should normalize contradictory failed delegate payloads."""
 
         class DummyServer:
@@ -11254,7 +11896,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -11308,7 +11952,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -11353,7 +11999,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             user_info_schema = await get_schema("auth_tools", "get_user_info")
             user_info_props = (user_info_schema.get("input_schema") or {}).get("properties", {})
-            self.assertEqual((user_info_props.get("include_permissions") or {}).get("default"), True)
+            self.assertEqual(
+                (user_info_props.get("include_permissions") or {}).get("default"), True
+            )
 
             invalid_action = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -11412,7 +12060,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_auth_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_auth_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """auth_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -11420,7 +12070,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -11499,7 +12151,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -11540,7 +12194,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("spectral", (schema_props.get("algorithm") or {}).get("enum", []))
 
             reduction_schema = await get_schema("analysis_tools", "dimensionality_reduction")
-            method_props = ((reduction_schema.get("input_schema") or {}).get("properties", {}).get("method") or {})
+            method_props = (reduction_schema.get("input_schema") or {}).get("properties", {}).get(
+                "method"
+            ) or {}
             self.assertEqual(method_props.get("default"), "pca")
             self.assertIn("truncated_svd", method_props.get("enum", []))
 
@@ -11559,7 +12215,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_clusters.get("status"), "error")
-            self.assertIn("n_clusters must be a positive integer", str(invalid_clusters.get("message", "")))
+            self.assertIn(
+                "n_clusters must be a positive integer", str(invalid_clusters.get("message", ""))
+            )
 
             source_algorithm = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -11595,12 +12253,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_outliers.get("status"), "error")
-            self.assertIn("threshold must be a positive number", str(invalid_outliers.get("message", "")))
+            self.assertIn(
+                "threshold must be a positive number", str(invalid_outliers.get("message", ""))
+            )
 
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_analysis_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_analysis_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """analysis_tools dispatch should normalize contradictory failed delegate payloads."""
 
         from ipfs_accelerate_py.mcp_server.tools.analysis_tools import native_analysis_tools
@@ -11610,7 +12272,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -11625,23 +12289,26 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_analysis_tools._API,
-                {
-                    "analyze_data_distribution": _contradictory_failure,
-                    "cluster_analysis": _contradictory_failure,
-                    "quality_assessment": _contradictory_failure,
-                    "detect_outliers": _contradictory_failure,
-                    "dimensionality_reduction": _contradictory_failure,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_analysis_tools._API,
+                    {
+                        "analyze_data_distribution": _contradictory_failure,
+                        "cluster_analysis": _contradictory_failure,
+                        "quality_assessment": _contradictory_failure,
+                        "detect_outliers": _contradictory_failure,
+                        "dimensionality_reduction": _contradictory_failure,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="analysis-tools-contradictory-bootstrap")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -11687,7 +12354,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -11729,7 +12398,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             combined_schema = await get_schema("geospatial_tools", "analyze_geospatial_corpus")
             combined_props = (combined_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((combined_props.get("confidence_threshold") or {}).get("default"), 0.7)
-            self.assertIn("month", (combined_props.get("temporal_resolution") or {}).get("enum", []))
+            self.assertIn(
+                "month", (combined_props.get("temporal_resolution") or {}).get("enum", [])
+            )
 
             invalid_resolution = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -11773,7 +12444,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_geospatial_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_geospatial_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """geospatial_tools dispatch should normalize contradictory failed delegate payloads."""
 
         from ipfs_accelerate_py.mcp_server.tools.geospatial_tools import native_geospatial_tools
@@ -11783,7 +12456,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -11798,21 +12473,24 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_geospatial_tools._API,
-                {
-                    "extract_geographic_entities": _contradictory_failure,
-                    "map_spatiotemporal_events": _contradictory_failure,
-                    "query_geographic_context": _contradictory_failure,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_geospatial_tools._API,
+                    {
+                        "extract_geographic_entities": _contradictory_failure,
+                        "map_spatiotemporal_events": _contradictory_failure,
+                        "query_geographic_context": _contradictory_failure,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="geospatial-contradictory-bootstrap")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -11858,7 +12536,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -11898,7 +12578,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual((schema_props.get("time_range") or {}).get("default"), "24h")
             self.assertIn("30d", (schema_props.get("time_range") or {}).get("enum", []))
 
-            lifecycle_schema = await get_schema("index_management_tools", "orchestrate_index_lifecycle")
+            lifecycle_schema = await get_schema(
+                "index_management_tools", "orchestrate_index_lifecycle"
+            )
             lifecycle_props = (lifecycle_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((lifecycle_props.get("dataset") or {}).get("minLength"), 1)
             self.assertIn("optimize", (lifecycle_props.get("action") or {}).get("enum", []))
@@ -11967,7 +12649,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_index_management_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_index_management_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """index_management_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -11975,7 +12659,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -12000,7 +12686,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            from ipfs_accelerate_py.mcp_server.tools.index_management_tools import native_index_management_tools
+            from ipfs_accelerate_py.mcp_server.tools.index_management_tools import (
+                native_index_management_tools,
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
 
@@ -12034,7 +12722,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -12217,7 +12907,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_provenance_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_provenance_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """provenance_tools dispatch should normalize contradictory failed delegate payloads."""
         from ipfs_accelerate_py.mcp_server.tools.provenance_tools import native_provenance_tools
 
@@ -12226,7 +12918,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -12241,17 +12935,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_provenance_tools._API,
-                {"record_provenance": _failed},
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_provenance_tools._API,
+                    {"record_provenance": _failed},
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="provenance-tools-failed-payload")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -12280,7 +12977,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -12512,7 +13211,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -12572,7 +13273,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -12667,12 +13370,17 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(missing_batch_source.get("status"), "error")
-            self.assertIn("either directory or file_paths must be provided", str(missing_batch_source.get("message", "")))
+            self.assertIn(
+                "either directory or file_paths must be provided",
+                str(missing_batch_source.get("message", "")),
+            )
 
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_file_detection_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_file_detection_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """file_detection_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -12680,7 +13388,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -12705,7 +13415,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            from ipfs_accelerate_py.mcp_server.tools.file_detection_tools import native_file_detection_tools
+            from ipfs_accelerate_py.mcp_server.tools.file_detection_tools import (
+                native_file_detection_tools,
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
 
@@ -12739,7 +13451,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -12840,7 +13554,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -12899,7 +13615,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -12998,7 +13716,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -13057,7 +13777,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -13150,7 +13872,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_email_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_email_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """email_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -13158,7 +13882,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -13214,7 +13940,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -13273,7 +14001,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(missing_cancel_task_id.get("status"), "error")
-            self.assertIn("task_id is required for cancel action", str(missing_cancel_task_id.get("message", "")))
+            self.assertIn(
+                "task_id is required for cancel action",
+                str(missing_cancel_task_id.get("message", "")),
+            )
 
             status_schema = await get_schema("background_task_tools", "get_task_status")
             status_props = (status_schema.get("input_schema") or {}).get("properties", {})
@@ -13294,7 +14025,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_background_task_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_background_task_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """background_task_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -13302,7 +14035,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -13327,7 +14062,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            from ipfs_accelerate_py.mcp_server.tools.background_task_tools import native_background_task_tools
+            from ipfs_accelerate_py.mcp_server.tools.background_task_tools import (
+                native_background_task_tools,
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
 
@@ -13361,7 +14098,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -13424,7 +14163,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_dashboard_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_dashboard_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """dashboard_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -13432,7 +14173,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -13491,7 +14234,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -13550,7 +14295,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_max_concurrent.get("status"), "error")
-            self.assertIn("max_concurrent must be an integer >= 1", str(invalid_max_concurrent.get("message", "")))
+            self.assertIn(
+                "max_concurrent must be an integer >= 1",
+                str(invalid_max_concurrent.get("message", "")),
+            )
 
         anyio.run(_run_flow)
 
@@ -13563,7 +14311,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -13626,16 +14376,22 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_sparse_embedding_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_sparse_embedding_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """sparse_embedding_tools dispatch should normalize contradictory failed delegate payloads."""
-        from ipfs_accelerate_py.mcp_server.tools.sparse_embedding_tools import native_sparse_embedding_tools
+        from ipfs_accelerate_py.mcp_server.tools.sparse_embedding_tools import (
+            native_sparse_embedding_tools,
+        )
 
         class DummyServer:
             def __init__(self):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -13650,17 +14406,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_sparse_embedding_tools._API,
-                {"generate_sparse_embedding": _failed},
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_sparse_embedding_tools._API,
+                    {"generate_sparse_embedding": _failed},
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="sparse-embedding-tools-failed-payload")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -13686,7 +14445,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -13726,16 +14487,28 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("summary", (props.get("report_type") or {}).get("enum", []))
 
             enhanced_health_schema = await get_schema("monitoring_tools", "check_health")
-            enhanced_health_props = (enhanced_health_schema.get("input_schema") or {}).get("properties", {})
-            self.assertIn("comprehensive", (enhanced_health_props.get("check_depth") or {}).get("enum", []))
+            enhanced_health_props = (enhanced_health_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
+            self.assertIn(
+                "comprehensive", (enhanced_health_props.get("check_depth") or {}).get("enum", [])
+            )
 
             enhanced_collect_schema = await get_schema("monitoring_tools", "collect_metrics")
-            enhanced_collect_props = (enhanced_collect_schema.get("input_schema") or {}).get("properties", {})
-            self.assertIn("parquet", (enhanced_collect_props.get("export_format") or {}).get("enum", []))
+            enhanced_collect_props = (enhanced_collect_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
+            self.assertIn(
+                "parquet", (enhanced_collect_props.get("export_format") or {}).get("enum", [])
+            )
 
             enhanced_alert_schema = await get_schema("monitoring_tools", "manage_alerts")
-            enhanced_alert_props = (enhanced_alert_schema.get("input_schema") or {}).get("properties", {})
-            self.assertIn("configure_thresholds", (enhanced_alert_props.get("action") or {}).get("enum", []))
+            enhanced_alert_props = (enhanced_alert_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
+            self.assertIn(
+                "configure_thresholds", (enhanced_alert_props.get("action") or {}).get("enum", [])
+            )
 
             invalid_check_type = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -13837,7 +14610,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_monitoring_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_monitoring_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """monitoring_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         from ipfs_accelerate_py.mcp_server.tools.monitoring_tools import native_monitoring_tools
@@ -13847,7 +14622,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -13862,17 +14639,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_monitoring_tools._API,
-                {"get_performance_metrics": _contradictory_failure},
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_monitoring_tools._API,
+                    {"get_performance_metrics": _contradictory_failure},
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="monitoring-tools-contradictory-bootstrap")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -13890,7 +14670,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_web_scraping_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_web_scraping_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """web_scraping_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -13898,7 +14680,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -13923,7 +14707,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            from ipfs_accelerate_py.mcp_server.tools.web_scraping_tools import native_web_scraping_tools
+            from ipfs_accelerate_py.mcp_server.tools.web_scraping_tools import (
+                native_web_scraping_tools,
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
 
@@ -13954,7 +14740,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -14011,12 +14799,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(missing_cid.get("status"), "error")
-            self.assertIn("cid is required for download action", str(missing_cid.get("message", "")))
+            self.assertIn(
+                "cid is required for download action", str(missing_cid.get("message", ""))
+            )
 
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_ipfs_cluster_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_ipfs_cluster_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """ipfs_cluster_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -14024,7 +14816,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -14049,7 +14843,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            from ipfs_accelerate_py.mcp_server.tools.ipfs_cluster_tools import native_ipfs_cluster_tools
+            from ipfs_accelerate_py.mcp_server.tools.ipfs_cluster_tools import (
+                native_ipfs_cluster_tools,
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
 
@@ -14082,7 +14878,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -14174,9 +14972,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_batch.get("status"), "error")
             invalid_batch_text = (
-                str(invalid_batch.get("message", ""))
-                + " "
-                + str(invalid_batch.get("error", ""))
+                str(invalid_batch.get("message", "")) + " " + str(invalid_batch.get("error", ""))
             )
             self.assertIn("requests must be a non-empty array", invalid_batch_text)
 
@@ -14186,7 +14982,11 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                     "check_access_permissions_batch",
                     {
                         "requests": [
-                            {"resource_id": "resource-1", "user_id": "user-1", "permission_type": "read"}
+                            {
+                                "resource_id": "resource-1",
+                                "user_id": "user-1",
+                                "permission_type": "read",
+                            }
                         ],
                         "fail_fast": "yes",
                     },
@@ -14203,7 +15003,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_security_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_security_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """security_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -14211,7 +15013,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -14271,7 +15075,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -14312,13 +15118,23 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("list", (props.get("action") or {}).get("enum", []))
             self.assertEqual((props.get("index_name") or {}).get("type"), ["string", "null"])
 
-            enhanced_search_schema = await get_schema("vector_store_tools", "enhanced_vector_search")
-            enhanced_search_props = (enhanced_search_schema.get("input_schema") or {}).get("properties", {})
+            enhanced_search_schema = await get_schema(
+                "vector_store_tools", "enhanced_vector_search"
+            )
+            enhanced_search_props = (enhanced_search_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
             self.assertEqual((enhanced_search_props.get("query_vector") or {}).get("minItems"), 1)
 
-            enhanced_storage_schema = await get_schema("vector_store_tools", "enhanced_vector_storage")
-            enhanced_storage_props = (enhanced_storage_schema.get("input_schema") or {}).get("properties", {})
-            self.assertIn("get_metadata", (enhanced_storage_props.get("action") or {}).get("enum", []))
+            enhanced_storage_schema = await get_schema(
+                "vector_store_tools", "enhanced_vector_storage"
+            )
+            enhanced_storage_props = (enhanced_storage_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
+            self.assertIn(
+                "get_metadata", (enhanced_storage_props.get("action") or {}).get("enum", [])
+            )
 
             invalid_action = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -14369,7 +15185,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_enhanced_search.get("status"), "error")
-            self.assertIn("non-empty list of numbers", str(invalid_enhanced_search.get("message", "")))
+            self.assertIn(
+                "non-empty list of numbers", str(invalid_enhanced_search.get("message", ""))
+            )
 
             valid_enhanced_index = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -14407,7 +15225,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_enhanced_storage.get("status"), "error")
-            self.assertIn("list of non-empty strings", str(invalid_enhanced_storage.get("message", "")))
+            self.assertIn(
+                "list of non-empty strings", str(invalid_enhanced_storage.get("message", ""))
+            )
 
             valid_enhanced_storage = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -14424,7 +15244,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_vector_store_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_vector_store_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """vector_store_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -14432,7 +15254,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -14457,7 +15281,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            from ipfs_accelerate_py.mcp_server.tools.vector_store_tools import native_vector_store_tools
+            from ipfs_accelerate_py.mcp_server.tools.vector_store_tools import (
+                native_vector_store_tools,
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
 
@@ -14491,7 +15317,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -14548,12 +15376,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_timeout.get("status"), "error")
-            self.assertIn("timeout_seconds must be an integer >= 1", str(invalid_timeout.get("message", "")))
+            self.assertIn(
+                "timeout_seconds must be an integer >= 1", str(invalid_timeout.get("message", ""))
+            )
 
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_function_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_function_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """functions dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -14561,7 +15393,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -14621,7 +15455,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -14676,9 +15512,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_guild.get("status"), "error")
             invalid_guild_text = (
-                str(invalid_guild.get("message", ""))
-                + " "
-                + str(invalid_guild.get("error", ""))
+                str(invalid_guild.get("message", "")) + " " + str(invalid_guild.get("error", ""))
             )
             self.assertIn("guild_id is required", invalid_guild_text)
 
@@ -14693,9 +15527,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_token.get("status"), "error")
             invalid_token_text = (
-                str(invalid_token.get("message", ""))
-                + " "
-                + str(invalid_token.get("error", ""))
+                str(invalid_token.get("message", "")) + " " + str(invalid_token.get("error", ""))
             )
             self.assertIn("token must be a non-empty string", invalid_token_text)
 
@@ -14728,7 +15560,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_discord_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_discord_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """discord_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -14736,7 +15570,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -14792,7 +15628,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -14858,9 +15696,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_path.get("status"), "error")
             invalid_path_text = (
-                str(invalid_path.get("message", ""))
-                + " "
-                + str(invalid_path.get("error", ""))
+                str(invalid_path.get("message", "")) + " " + str(invalid_path.get("error", ""))
             )
             self.assertIn("input_path is required", invalid_path_text)
 
@@ -14893,9 +15729,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_batch.get("status"), "error")
             invalid_batch_text = (
-                str(invalid_batch.get("message", ""))
-                + " "
-                + str(invalid_batch.get("error", ""))
+                str(invalid_batch.get("message", "")) + " " + str(invalid_batch.get("error", ""))
             )
             self.assertIn("input_paths must be a non-empty list of strings", invalid_batch_text)
 
@@ -14938,7 +15772,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_file_converter_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_file_converter_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """file_converter_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -14946,7 +15782,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -14971,7 +15809,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            from ipfs_accelerate_py.mcp_server.tools.file_converter_tools import native_file_converter_tools
+            from ipfs_accelerate_py.mcp_server.tools.file_converter_tools import (
+                native_file_converter_tools,
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
 
@@ -15005,7 +15845,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -15146,7 +15988,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_development_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_development_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """development_tools dispatch should normalize contradictory failed delegate payloads."""
 
         from ipfs_accelerate_py.mcp_server.tools.development_tools import native_development_tools
@@ -15156,7 +16000,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -15171,23 +16017,26 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_development_tools._API,
-                {
-                    "codebase_search": _contradictory_failure,
-                    "documentation_generator": _contradictory_failure,
-                    "run_comprehensive_tests": _contradictory_failure,
-                    "vscode_cli_execute": _contradictory_failure,
-                    "vscode_cli_status": _contradictory_failure,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_development_tools._API,
+                    {
+                        "codebase_search": _contradictory_failure,
+                        "documentation_generator": _contradictory_failure,
+                        "run_comprehensive_tests": _contradictory_failure,
+                        "vscode_cli_execute": _contradictory_failure,
+                        "vscode_cli_status": _contradictory_failure,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="development-tools-contradictory-bootstrap")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -15258,7 +16107,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -15304,7 +16155,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual((mux_props.get("output_file") or {}).get("minLength"), 1)
 
             stream_output_schema = await get_schema("media_tools", "ffmpeg_stream_output")
-            stream_output_props = (stream_output_schema.get("input_schema") or {}).get("properties", {})
+            stream_output_props = (stream_output_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
             self.assertEqual((stream_output_props.get("stream_url") or {}).get("minLength"), 1)
 
             batch_schema = await get_schema("media_tools", "ffmpeg_batch_process")
@@ -15331,9 +16184,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_input.get("status"), "error")
             invalid_input_text = (
-                str(invalid_input.get("message", ""))
-                + " "
-                + str(invalid_input.get("error", ""))
+                str(invalid_input.get("message", "")) + " " + str(invalid_input.get("error", ""))
             )
             self.assertIn("input_file must be a non-empty string or object", invalid_input_text)
 
@@ -15347,7 +16198,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertEqual(invalid_mux.get("status"), "error")
-            invalid_mux_text = str(invalid_mux.get("message", "")) + " " + str(invalid_mux.get("error", ""))
+            invalid_mux_text = (
+                str(invalid_mux.get("message", "")) + " " + str(invalid_mux.get("error", ""))
+            )
             self.assertIn("At least one input stream must be provided", invalid_mux_text)
 
             invalid_batch_parallelism = self._assert_dispatch_success_envelope(
@@ -15401,9 +16254,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_url.get("status"), "error")
             invalid_url_text = (
-                str(invalid_url.get("message", ""))
-                + " "
-                + str(invalid_url.get("error", ""))
+                str(invalid_url.get("message", "")) + " " + str(invalid_url.get("error", ""))
             )
             self.assertIn("url must start with http:// or https://", invalid_url_text)
 
@@ -15449,7 +16300,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_media_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_media_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """media_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -15457,7 +16310,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -15515,7 +16370,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -15555,8 +16412,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual((props.get("tags") or {}).get("minItems"), 1)
             self.assertEqual((props.get("priority") or {}).get("minimum"), 0)
 
-            enhanced_management_schema = await get_schema("workflow_tools", "enhanced_workflow_management")
-            management_props = (enhanced_management_schema.get("input_schema") or {}).get("properties", {})
+            enhanced_management_schema = await get_schema(
+                "workflow_tools", "enhanced_workflow_management"
+            )
+            management_props = (enhanced_management_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
             self.assertIn("create", (management_props.get("action") or {}).get("enum", []))
 
             enhanced_batch_schema = await get_schema("workflow_tools", "enhanced_batch_processing")
@@ -15564,7 +16425,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual((batch_props.get("operation_type") or {}).get("minLength"), 1)
 
             enhanced_pipeline_schema = await get_schema("workflow_tools", "enhanced_data_pipeline")
-            pipeline_props = (enhanced_pipeline_schema.get("input_schema") or {}).get("properties", {})
+            pipeline_props = (enhanced_pipeline_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
             self.assertEqual((pipeline_props.get("pipeline_config") or {}).get("minProperties"), 1)
 
             invalid_workflow_id = self._assert_dispatch_success_envelope(
@@ -15617,7 +16480,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + " "
                 + str(invalid_enhanced_create.get("error", ""))
             )
-            self.assertIn("workflow_definition must be a non-empty object", invalid_enhanced_create_text)
+            self.assertIn(
+                "workflow_definition must be a non-empty object", invalid_enhanced_create_text
+            )
 
             valid_enhanced_list = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -15701,7 +16566,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_workflow_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_workflow_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """workflow_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -15709,7 +16576,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -15734,7 +16603,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            from ipfs_accelerate_py.mcp_server.tools.workflow_tools import native_workflow_tools_category
+            from ipfs_accelerate_py.mcp_server.tools.workflow_tools import (
+                native_workflow_tools_category,
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
 
@@ -15769,7 +16640,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -15830,9 +16703,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_key.get("status"), "error")
             invalid_key_text = (
-                str(invalid_key.get("message", ""))
-                + " "
-                + str(invalid_key.get("error", ""))
+                str(invalid_key.get("message", "")) + " " + str(invalid_key.get("error", ""))
             )
             self.assertIn("key must be a non-empty string", invalid_key_text)
 
@@ -15864,7 +16735,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -15909,7 +16782,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             fetch_stock_schema = await get_schema("finance_data_tools", "fetch_stock_data")
             fetch_stock_props = (fetch_stock_schema.get("input_schema") or {}).get("properties", {})
-            self.assertEqual((fetch_stock_props.get("interval") or {}).get("enum"), ["1d", "1h", "5m"])
+            self.assertEqual(
+                (fetch_stock_props.get("interval") or {}).get("enum"), ["1d", "1h", "5m"]
+            )
             self.assertEqual((fetch_stock_props.get("source") or {}).get("enum"), ["yahoo"])
 
             theorem_schema = await get_schema("finance_data_tools", "apply_financial_theorem")
@@ -16010,7 +16885,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + " "
                 + str(invalid_correlation.get("error", ""))
             )
-            self.assertIn("min_correlation must be a number between 0 and 1", invalid_correlation_text)
+            self.assertIn(
+                "min_correlation must be a number between 0 and 1", invalid_correlation_text
+            )
 
             stock_result = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -16039,7 +16916,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertIn(theorem_result.get("status"), ["success", "error"])
-            self.assertEqual((theorem_result.get("theorem") or {}).get("theorem_id"), "split-theorem")
+            self.assertEqual(
+                (theorem_result.get("theorem") or {}).get("theorem_id"), "split-theorem"
+            )
 
             embedding_result = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -16059,7 +16938,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_finance_data_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_finance_data_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """finance_data_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -16067,7 +16948,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -16092,7 +16975,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            from ipfs_accelerate_py.mcp_server.tools.finance_data_tools import native_finance_data_tools
+            from ipfs_accelerate_py.mcp_server.tools.finance_data_tools import (
+                native_finance_data_tools,
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
 
@@ -16126,7 +17011,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -16178,7 +17065,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual((expand_props.get("max_expansions") or {}).get("maximum"), 50)
 
             relationship_schema = await get_schema("legal_dataset_tools", "get_legal_relationships")
-            relationship_props = (relationship_schema.get("input_schema") or {}).get("properties", {})
+            relationship_props = (relationship_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
             self.assertIn(
                 "hierarchical",
                 (relationship_props.get("relationship_type") or {}).get("enum", []),
@@ -16213,9 +17102,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_chars.get("status"), "error")
             invalid_chars_text = (
-                str(invalid_chars.get("message", ""))
-                + " "
-                + str(invalid_chars.get("error", ""))
+                str(invalid_chars.get("message", "")) + " " + str(invalid_chars.get("error", ""))
             )
             self.assertIn("min_full_text_chars must be an integer >= 1", invalid_chars_text)
 
@@ -16283,7 +17170,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_legal_dataset_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_legal_dataset_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """legal_dataset_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -16291,7 +17180,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -16316,7 +17207,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            from ipfs_accelerate_py.mcp_server.tools.legal_dataset_tools import native_legal_dataset_tools
+            from ipfs_accelerate_py.mcp_server.tools.legal_dataset_tools import (
+                native_legal_dataset_tools,
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
 
@@ -16350,7 +17243,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -16428,7 +17323,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + " "
                 + str(invalid_confidence.get("error", ""))
             )
-            self.assertIn("confidence_threshold must be a number between 0 and 1", invalid_confidence_text)
+            self.assertIn(
+                "confidence_threshold must be a number between 0 and 1", invalid_confidence_text
+            )
 
             invalid_depth = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -16442,9 +17339,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_depth.get("status"), "error")
             invalid_depth_text = (
-                str(invalid_depth.get("message", ""))
-                + " "
-                + str(invalid_depth.get("error", ""))
+                str(invalid_depth.get("message", "")) + " " + str(invalid_depth.get("error", ""))
             )
             self.assertIn("max_depth must be an integer >= 1", invalid_depth_text)
 
@@ -16515,7 +17410,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_investigation_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_investigation_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """investigation_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -16523,7 +17420,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -16548,7 +17447,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failed"}
 
         async def _run_flow() -> None:
-            from ipfs_accelerate_py.mcp_server.tools.investigation_tools import native_investigation_tools
+            from ipfs_accelerate_py.mcp_server.tools.investigation_tools import (
+                native_investigation_tools,
+            )
 
             dispatch = server.tools["tools_dispatch"]["function"]
 
@@ -16581,7 +17482,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -16625,7 +17528,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((props.get("max_items") or {}).get("minimum"), 1)
 
-            actions_schema = await get_schema("software_engineering_tools", "analyze_github_actions")
+            actions_schema = await get_schema(
+                "software_engineering_tools", "analyze_github_actions"
+            )
             actions_props = (actions_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((actions_props.get("max_runs") or {}).get("minimum"), 1)
 
@@ -16633,11 +17538,15 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             systemd_props = (systemd_schema.get("input_schema") or {}).get("properties", {})
             self.assertIn("warning", (systemd_props.get("priority_filter") or {}).get("enum", []))
 
-            service_schema = await get_schema("software_engineering_tools", "analyze_service_health")
+            service_schema = await get_schema(
+                "software_engineering_tools", "analyze_service_health"
+            )
             service_required = (service_schema.get("input_schema") or {}).get("required", [])
             self.assertEqual(service_required, ["log_data", "service_name"])
 
-            monitor_schema = await get_schema("software_engineering_tools", "monitor_healing_effectiveness")
+            monitor_schema = await get_schema(
+                "software_engineering_tools", "monitor_healing_effectiveness"
+            )
             monitor_props = (monitor_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((monitor_props.get("healing_history") or {}).get("minItems"), 1)
 
@@ -16652,9 +17561,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_url.get("status"), "error")
             invalid_url_text = (
-                str(invalid_url.get("message", ""))
-                + " "
-                + str(invalid_url.get("error", ""))
+                str(invalid_url.get("message", "")) + " " + str(invalid_url.get("error", ""))
             )
             self.assertIn("repository_url must start with", invalid_url_text)
 
@@ -16763,7 +17670,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + " "
                 + str(invalid_error_logs.get("error", ""))
             )
-            self.assertIn("error_logs must be a list of at least 1 non-empty strings", invalid_error_logs_text)
+            self.assertIn(
+                "error_logs must be a list of at least 1 non-empty strings", invalid_error_logs_text
+            )
 
             invalid_fix_pattern = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -16797,7 +17706,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + " "
                 + str(invalid_healing_history.get("error", ""))
             )
-            self.assertIn("healing_history must be a list of at least 1 objects", invalid_healing_history_text)
+            self.assertIn(
+                "healing_history must be a list of at least 1 objects", invalid_healing_history_text
+            )
 
         anyio.run(_run_flow)
 
@@ -16816,7 +17727,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -16831,20 +17744,23 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_software_engineering_tools._API,
-                {
-                    "search_repositories": _contradictory_failure,
-                    "parse_workflow_logs": _contradictory_failure,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_software_engineering_tools._API,
+                    {
+                        "search_repositories": _contradictory_failure,
+                        "parse_workflow_logs": _contradictory_failure,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="software-engineering-contradictory-bootstrap")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -16880,7 +17796,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -16929,9 +17847,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_format.get("status"), "error")
             invalid_format_text = (
-                str(invalid_format.get("message", ""))
-                + " "
-                + str(invalid_format.get("error", ""))
+                str(invalid_format.get("message", "")) + " " + str(invalid_format.get("error", ""))
             )
             self.assertIn("format must be either", invalid_format_text)
 
@@ -16980,7 +17896,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_cache_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_cache_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """cache_tools dispatch should normalize contradictory failed delegate payloads."""
 
         class DummyServer:
@@ -16988,7 +17906,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -17029,16 +17949,19 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         mock_wrapper.return_value = DummyServer()
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch(
-                "ipfs_accelerate_py.mcp_server.tools.cache_tools.native_cache_tools._get_cache_manager",
-                return_value=_ContradictoryManager(),
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "ipfs_accelerate_py.mcp_server.tools.cache_tools.native_cache_tools._get_cache_manager",
+                    return_value=_ContradictoryManager(),
+                ),
             ):
                 server = create_mcp_server(name="cache-tools-contradictory-bootstrap")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -17101,7 +18024,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -17217,7 +18142,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_bespoke_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_bespoke_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """bespoke_tools dispatch should normalize contradictory failed delegate payloads."""
 
         from ipfs_accelerate_py.mcp_server.tools.bespoke_tools import native_bespoke_tools
@@ -17227,7 +18154,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -17242,17 +18171,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_bespoke_tools._API,
-                {"execute_workflow": _contradictory_failure},
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_bespoke_tools._API,
+                    {"execute_workflow": _contradictory_failure},
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="bespoke-contradictory-bootstrap")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -17278,7 +18210,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -17320,7 +18254,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             biomolecule_schema = await get_schema("cli", "discover_biomolecules_rag_cli")
             biomolecule_props = (biomolecule_schema.get("input_schema") or {}).get("properties", {})
-            self.assertEqual((biomolecule_props.get("type") or {}).get("enum"), ["binders", "inhibitors", "pathway"])
+            self.assertEqual(
+                (biomolecule_props.get("type") or {}).get("enum"),
+                ["binders", "inhibitors", "pathway"],
+            )
 
             invalid_command = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -17351,9 +18288,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_pubmed.get("status"), "error")
             invalid_pubmed_text = (
-                str(invalid_pubmed.get("message", ""))
-                + " "
-                + str(invalid_pubmed.get("error", ""))
+                str(invalid_pubmed.get("message", "")) + " " + str(invalid_pubmed.get("error", ""))
             )
             self.assertIn("research_type must be one of", invalid_pubmed_text)
 
@@ -17366,9 +18301,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_trials.get("status"), "error")
             invalid_trials_text = (
-                str(invalid_trials.get("message", ""))
-                + " "
-                + str(invalid_trials.get("error", ""))
+                str(invalid_trials.get("message", "")) + " " + str(invalid_trials.get("error", ""))
             )
             self.assertIn("query or condition is required", invalid_trials_text)
 
@@ -17406,7 +18339,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_cli_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_cli_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """cli dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -17414,7 +18349,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -17474,7 +18411,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -17521,9 +18460,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_query.get("status"), "error")
             invalid_query_text = (
-                str(invalid_query.get("message", ""))
-                + " "
-                + str(invalid_query.get("error", ""))
+                str(invalid_query.get("message", "")) + " " + str(invalid_query.get("error", ""))
             )
             self.assertIn("query must be a non-empty string", invalid_query_text)
 
@@ -17539,9 +18476,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_max.get("status"), "error")
             invalid_max_text = (
-                str(invalid_max.get("message", ""))
-                + " "
-                + str(invalid_max.get("error", ""))
+                str(invalid_max.get("message", "")) + " " + str(invalid_max.get("error", ""))
             )
             self.assertIn("max_results must be an integer >= 1", invalid_max_text)
 
@@ -17558,7 +18493,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -17619,7 +18556,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -17667,9 +18606,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_format.get("status"), "error")
             invalid_format_text = (
-                str(invalid_format.get("message", ""))
-                + " "
-                + str(invalid_format.get("error", ""))
+                str(invalid_format.get("message", "")) + " " + str(invalid_format.get("error", ""))
             )
             self.assertIn("format_type must be one of", invalid_format_text)
 
@@ -17685,9 +18622,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_flag.get("status"), "error")
             invalid_flag_text = (
-                str(invalid_flag.get("message", ""))
-                + " "
-                + str(invalid_flag.get("error", ""))
+                str(invalid_flag.get("message", "")) + " " + str(invalid_flag.get("error", ""))
             )
             self.assertIn("check_if_within_working_hours must be a boolean", invalid_flag_text)
 
@@ -17704,7 +18639,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -17764,7 +18701,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -17812,7 +18751,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_legacy_mcp_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_legacy_mcp_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """legacy_mcp_tools dispatch should normalize contradictory failed delegate payloads."""
         from ipfs_accelerate_py.mcp_server.tools.legacy_mcp_tools import native_legacy_mcp_tools
 
@@ -17821,7 +18762,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -17833,22 +18776,25 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         mock_wrapper.return_value = DummyServer()
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.object(
-                native_legacy_mcp_tools,
-                "_normalize_payload",
-                return_value={
-                    "status": "error",
-                    "success": False,
-                    "error": "delegate failure",
-                    "deprecated": True,
-                },
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.object(
+                    native_legacy_mcp_tools,
+                    "_normalize_payload",
+                    return_value={
+                        "status": "error",
+                        "success": False,
+                        "error": "delegate failure",
+                        "deprecated": True,
+                    },
+                ),
             ):
                 server = create_mcp_server(name="legacy-mcp-tools-failed-payload")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -17867,7 +18813,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_lizardperson_argparse_programs_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+    def test_lizardperson_argparse_programs_discovery_schema_and_dispatch_parity(
+        self, mock_wrapper
+    ):
         """lizardperson_argparse_programs should expose schema contracts and deterministic envelopes."""
 
         class DummyServer:
@@ -17875,7 +18823,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -17970,7 +18920,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -18032,7 +18984,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -18072,10 +19026,14 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertTrue(expected.issubset(set(names)))
 
             template_schema = await get_schema("workflow_tools", "create_template")
-            self.assertIn("template", (template_schema.get("input_schema") or {}).get("properties", {}))
+            self.assertIn(
+                "template", (template_schema.get("input_schema") or {}).get("properties", {})
+            )
 
             add_peer_schema = await get_schema("workflow_tools", "add_p2p_peer")
-            self.assertIn("peer_id", (add_peer_schema.get("input_schema") or {}).get("properties", {}))
+            self.assertIn(
+                "peer_id", (add_peer_schema.get("input_schema") or {}).get("properties", {})
+            )
 
             calls = [
                 ("get_next_p2p_workflow", {}),
@@ -18102,7 +19060,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_p2p_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+    def test_p2p_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
         """p2p_tools dispatch should normalize contradictory failed delegate payloads to error status."""
 
         class DummyServer:
@@ -18110,7 +19070,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -18169,7 +19131,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -18212,13 +19176,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertTrue(expected.issubset(names))
 
             remote_status_schema = await get_schema("p2p_tools", "p2p_remote_status")
-            self.assertIn("remote_multiaddr", (remote_status_schema.get("input_schema") or {}).get("properties", {}))
+            self.assertIn(
+                "remote_multiaddr",
+                (remote_status_schema.get("input_schema") or {}).get("properties", {}),
+            )
 
             remote_call_schema = await get_schema("p2p_tools", "p2p_remote_call_tool")
-            self.assertIn("tool_name", (remote_call_schema.get("input_schema") or {}).get("properties", {}))
+            self.assertIn(
+                "tool_name", (remote_call_schema.get("input_schema") or {}).get("properties", {})
+            )
 
             remote_cache_schema = await get_schema("p2p_tools", "p2p_remote_cache_get")
-            remote_cache_props = (remote_cache_schema.get("input_schema") or {}).get("properties", {})
+            remote_cache_props = (remote_cache_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
             self.assertEqual((remote_cache_props.get("key") or {}).get("minLength"), 1)
             self.assertEqual((remote_cache_props.get("timeout_s") or {}).get("exclusiveMinimum"), 0)
 
@@ -18255,7 +19226,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 result = self._assert_dispatch_success_envelope(
                     await dispatch("p2p_tools", tool_name, params)
                 )
-                self.assertTrue("ok" in result or "status" in result or "success" in result or "error" in result)
+                self.assertTrue(
+                    "ok" in result or "status" in result or "success" in result or "error" in result
+                )
 
         anyio.run(_run_flow)
 
@@ -18268,7 +19241,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -18338,19 +19313,35 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual((peer_props.get("limit") or {}).get("minimum"), 1)
 
             task_priority_schema = await get_schema("mcplusplus", "mcplusplus_taskqueue_priority")
-            task_priority_props = (task_priority_schema.get("input_schema") or {}).get("properties", {})
-            self.assertEqual((task_priority_props.get("new_priority") or {}).get("exclusiveMinimum"), 0)
+            task_priority_props = (task_priority_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
+            self.assertEqual(
+                (task_priority_props.get("new_priority") or {}).get("exclusiveMinimum"), 0
+            )
 
-            task_set_priority_schema = await get_schema("mcplusplus", "mcplusplus_taskqueue_set_priority")
-            task_set_priority_props = (task_set_priority_schema.get("input_schema") or {}).get("properties", {})
-            self.assertEqual((task_set_priority_props.get("new_priority") or {}).get("exclusiveMinimum"), 0)
+            task_set_priority_schema = await get_schema(
+                "mcplusplus", "mcplusplus_taskqueue_set_priority"
+            )
+            task_set_priority_props = (task_set_priority_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
+            self.assertEqual(
+                (task_set_priority_props.get("new_priority") or {}).get("exclusiveMinimum"), 0
+            )
 
             peer_discover_schema = await get_schema("mcplusplus", "mcplusplus_peer_discover")
-            peer_discover_props = (peer_discover_schema.get("input_schema") or {}).get("properties", {})
+            peer_discover_props = (peer_discover_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
             self.assertEqual((peer_discover_props.get("max_peers") or {}).get("minimum"), 1)
 
-            workflow_deps_schema = await get_schema("mcplusplus", "mcplusplus_workflow_dependencies")
-            workflow_deps_props = (workflow_deps_schema.get("input_schema") or {}).get("properties", {})
+            workflow_deps_schema = await get_schema(
+                "mcplusplus", "mcplusplus_workflow_dependencies"
+            )
+            workflow_deps_props = (workflow_deps_schema.get("input_schema") or {}).get(
+                "properties", {}
+            )
             self.assertEqual((workflow_deps_props.get("fmt") or {}).get("default"), "json")
 
             invalid_task = self._assert_dispatch_success_envelope(
@@ -18461,7 +19452,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 ("mcplusplus_workflow_result", {"workflow_id": "wf-1"}),
                 (
                     "mcplusplus_peer_list",
-                    {"limit": 5, "capability_filter": ["inference"], "sort_by": "last_seen", "offset": 0},
+                    {
+                        "limit": 5,
+                        "capability_filter": ["inference"],
+                        "sort_by": "last_seen",
+                        "offset": 0,
+                    },
                 ),
                 ("mcplusplus_peer_discover", {"max_peers": 2}),
                 (
@@ -18492,7 +19488,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,

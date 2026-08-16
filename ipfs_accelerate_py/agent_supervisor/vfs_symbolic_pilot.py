@@ -401,15 +401,11 @@ class PilotConfig:
         if self.kit_root is not None:
             object.__setattr__(self, "kit_root", Path(self.kit_root).resolve())
         if self.datasets_root is not None:
-            object.__setattr__(
-                self, "datasets_root", Path(self.datasets_root).resolve()
-            )
+            object.__setattr__(self, "datasets_root", Path(self.datasets_root).resolve())
         if self.artifact_dir is not None:
             object.__setattr__(self, "artifact_dir", Path(self.artifact_dir))
         if self.findings_board_path is not None:
-            object.__setattr__(
-                self, "findings_board_path", Path(self.findings_board_path)
-            )
+            object.__setattr__(self, "findings_board_path", Path(self.findings_board_path))
         if not isinstance(self.max_admitted_parse, int) or self.max_admitted_parse < 1:
             raise VfsSymbolicPilotError(
                 "invalid_bound",
@@ -442,9 +438,7 @@ class PilotConfig:
             "accelerator_root": str(self.accelerator_root),
             "swissknife_root": str(self.swissknife_root),
             "kit_root": str(self.kit_root) if self.kit_root else None,
-            "datasets_root": (
-                str(self.datasets_root) if self.datasets_root else None
-            ),
+            "datasets_root": (str(self.datasets_root) if self.datasets_root else None),
             "artifact_dir": str(self.resolved_artifact_dir()),
             "findings_board_path": str(self.resolved_findings_board_path()),
             "max_admitted_parse": self.max_admitted_parse,
@@ -468,7 +462,9 @@ class StageReceipt:
 
     def __post_init__(self) -> None:
         object.__setattr__(
-            self, "stage", PilotStage(self.stage) if not isinstance(self.stage, PilotStage) else self.stage
+            self,
+            "stage",
+            PilotStage(self.stage) if not isinstance(self.stage, PilotStage) else self.stage,
         )
         object.__setattr__(
             self,
@@ -477,7 +473,9 @@ class StageReceipt:
             if not isinstance(self.status, PilotConclusion)
             else self.status,
         )
-        object.__setattr__(self, "artifact_cid", _text(self.artifact_cid, "artifact_cid", maximum=128))
+        object.__setattr__(
+            self, "artifact_cid", _text(self.artifact_cid, "artifact_cid", maximum=128)
+        )
         object.__setattr__(
             self,
             "input_cids",
@@ -559,9 +557,7 @@ class PilotArtifactSet:
             "finding_ledger_cid",
             "taskboard_cid",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=128)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=128))
         if self.report_cid:
             object.__setattr__(
                 self, "report_cid", _text(self.report_cid, "report_cid", maximum=128)
@@ -723,9 +719,7 @@ class SwissKnifeVfsPilotReport:
             "policy_revision",
             _text(self.policy_revision, "policy_revision", maximum=256),
         )
-        object.__setattr__(
-            self, "evidence", _text(self.evidence, "evidence", maximum=128)
-        )
+        object.__setattr__(self, "evidence", _text(self.evidence, "evidence", maximum=128))
         if self.evidence != SWISS_KNIFE_VFS_PILOT_SCHEMA:
             raise VfsSymbolicPilotError("forged_pilot_evidence")
         if self.authorizes_repair:
@@ -819,12 +813,8 @@ class SwissKnifeVfsPilotReport:
             source_mutations=int(data.get("source_mutations") or 0),
             reason_codes=tuple(data.get("reason_codes") or ()),
             board_markdown_cid=str(data.get("board_markdown_cid") or ""),
-            board_namespace=str(
-                data.get("board_namespace") or PILOT_BOARD_NAMESPACE
-            ),
-            policy_revision=str(
-                data.get("policy_revision") or PILOT_POLICY_REVISION
-            ),
+            board_namespace=str(data.get("board_namespace") or PILOT_BOARD_NAMESPACE),
+            policy_revision=str(data.get("policy_revision") or PILOT_POLICY_REVISION),
             evidence=str(data.get("evidence") or SWISS_KNIFE_VFS_PILOT_SCHEMA),
             authorizes_repair=bool(data.get("authorizes_repair", False)),
             is_completion_evidence=bool(data.get("is_completion_evidence", False)),
@@ -887,9 +877,7 @@ def admitted_entries_for_pilot(
             continue
         if not entry.parser_eligible:
             continue
-        if not is_vfs_relevant_path(
-            entry.relative_path, repository_alias=entry.repository_alias
-        ):
+        if not is_vfs_relevant_path(entry.relative_path, repository_alias=entry.repository_alias):
             continue
         selected.append(entry)
     selected.sort(
@@ -1040,9 +1028,7 @@ def build_coverage_manifest(
             }
             for descriptor in sorted(forest.descriptors, key=lambda item: item.alias)
         ],
-        "admitted_by_alias": {
-            alias: files for alias, files in sorted(by_alias.items())
-        },
+        "admitted_by_alias": {alias: files for alias, files in sorted(by_alias.items())},
     }
     coverage = {
         "schema": PILOT_COVERAGE_SCHEMA,
@@ -1149,30 +1135,20 @@ def build_pilot_program_graph(
                 forest_id=forest.forest_id,
                 span=GraphSourceSpan(
                     line_start=int(
-                        getattr(span, "line_start", None)
-                        or getattr(span, "start_line", 0)
-                        or 0
+                        getattr(span, "line_start", None) or getattr(span, "start_line", 0) or 0
                     ),
                     column_start=int(
-                        getattr(span, "column_start", None)
-                        or getattr(span, "start_column", 0)
-                        or 0
+                        getattr(span, "column_start", None) or getattr(span, "start_column", 0) or 0
                     ),
                     line_end=int(
-                        getattr(span, "line_end", None)
-                        or getattr(span, "end_line", 0)
-                        or 0
+                        getattr(span, "line_end", None) or getattr(span, "end_line", 0) or 0
                     ),
                     column_end=int(
-                        getattr(span, "column_end", None)
-                        or getattr(span, "end_column", 0)
-                        or 0
+                        getattr(span, "column_end", None) or getattr(span, "end_column", 0) or 0
                     ),
                 ),
                 resolver_status=(
-                    ResolverStatus.AMBIGUOUS
-                    if fact.ambiguous
-                    else ResolverStatus.RESOLVED_STATIC
+                    ResolverStatus.AMBIGUOUS if fact.ambiguous else ResolverStatus.RESOLVED_STATIC
                 ),
             )
             nodes.append(
@@ -1208,8 +1184,7 @@ def build_pilot_program_graph(
         unexplained_gap_count=parse_metrics["unreadable"]
         + parse_metrics["malformed"]
         + parse_metrics["skipped_bound"],
-        truncated=bool(parse_metrics["skipped_bound"])
-        or "graph_node_bound_reached" in reasons,
+        truncated=bool(parse_metrics["skipped_bound"]) or "graph_node_bound_reached" in reasons,
         truncation_reason=";".join(sorted(set(reasons))),
     )
     return graph, {
@@ -1270,8 +1245,7 @@ def run_contract_stage(
                     root_cause_family="vfs-pilot-seeded-contract-break",
                     merge_fate=f"pilot:{entry.repository_alias}:{entry.relative_path}",
                     summary=(
-                        "Pilot fixture marks an explicit contract break for "
-                        f"{entry.relative_path}"
+                        f"Pilot fixture marks an explicit contract break for {entry.relative_path}"
                     ),
                     call_slice=CallSlice(
                         steps=(
@@ -1323,10 +1297,7 @@ def run_contract_stage(
                     ),
                     root_cause_family="vfs-pilot-inconclusive",
                     merge_fate=f"review:{entry.repository_alias}:{entry.relative_path}",
-                    summary=(
-                        "Pilot fixture is explicitly inconclusive for "
-                        f"{entry.relative_path}"
-                    ),
+                    summary=(f"Pilot fixture is explicitly inconclusive for {entry.relative_path}"),
                     call_slice=CallSlice(),
                     evidence=EvidenceReferences(artifact_cids=(entry.entry_cid,)),
                     assumptions=("hermetic pilot fixture",),
@@ -1342,9 +1313,7 @@ def run_contract_stage(
 
     # Ambiguous graph nodes without markers stay non-actionable coverage.
     ambiguous_nodes = [
-        node
-        for node in graph.nodes
-        if node.binding.resolver_status == ResolverStatus.AMBIGUOUS
+        node for node in graph.nodes if node.binding.resolver_status == ResolverStatus.AMBIGUOUS
     ]
     contract_payload = {
         "schema": "vfs/swissknife-vfs-pilot-contract@1",
@@ -1403,14 +1372,10 @@ def run_cache_stage(
             policy_revision=PILOT_POLICY_REVISION,
             analyzer_version=PILOT_PRODUCER,
             schema_version=str(PILOT_VERSION),
-            configuration_digest=_identity(
-                {"stage": kind.value, "pilot": PILOT_REQUIREMENT_ID}
-            ),
+            configuration_digest=_identity({"stage": kind.value, "pilot": PILOT_REQUIREMENT_ID}),
             query_digest=_identity(body),
             capability_revision="capability:vfs-symbolic-pilot@1",
-            assumption_digest=_identity(
-                {"assumptions": ["hermetic_pilot", "no_provider"]}
-            ),
+            assumption_digest=_identity({"assumptions": ["hermetic_pilot", "no_provider"]}),
             toolchain_version=PILOT_PRODUCER,
             component_kind=kind,
             authority=ProgramAnalysisAuthority.AUTHORITATIVE,
@@ -1457,15 +1422,9 @@ def run_zk_shadow_stage(
 
     public = build_program_zkp_public_inputs(
         forest_commitment=commitment_identity("forest", {"forest_id": forest.forest_id}),
-        inventory_commitment=commitment_identity(
-            "inventory", {"inventory_cid": inventory_cid}
-        ),
-        contract_commitment=commitment_identity(
-            "contract", {"contract_cid": contract_cid}
-        ),
-        call_slice_commitment=commitment_identity(
-            "call_slice", {"graph_cid": graph_cid}
-        ),
+        inventory_commitment=commitment_identity("inventory", {"inventory_cid": inventory_cid}),
+        contract_commitment=commitment_identity("contract", {"contract_cid": contract_cid}),
+        call_slice_commitment=commitment_identity("call_slice", {"graph_cid": graph_cid}),
         assumptions_commitment=commitment_identity(
             "assumptions",
             {"items": ["hermetic_pilot", "no_provider", "read_only_swissknife"]},
@@ -1525,12 +1484,8 @@ def run_zk_shadow_stage(
         "backend_mode": ProgramZkpBackendMode.SHADOW.value,
         "authoritative": False,
         "public_input_digest": public.public_input_digest,
-        "envelope_cid": getattr(
-            envelope, "content_id", _identity(envelope.to_dict())
-        ),
-        "receipt_cid": getattr(
-            receipt, "content_id", _identity(receipt.to_dict())
-        ),
+        "envelope_cid": getattr(envelope, "content_id", _identity(envelope.to_dict())),
+        "receipt_cid": getattr(receipt, "content_id", _identity(receipt.to_dict())),
         "semantic_proof": False,
     }
     proof_payload = {
@@ -1587,9 +1542,7 @@ def materialize_findings_and_board(
     snapshot = source.snapshot()
     board_json = project_board_json(snapshot)
     board_md = project_board_markdown(snapshot)
-    taskboard_cid = str(
-        getattr(snapshot, "board_cid", None) or _identity(board_json)
-    )
+    taskboard_cid = str(getattr(snapshot, "board_cid", None) or _identity(board_json))
     executable = len(snapshot.tasks)
     reviews = len(snapshot.reviews)
 
@@ -1636,9 +1589,7 @@ def materialize_findings_and_board(
                 call_slice=CallSliceRef(
                     slice_id=f"slice:{finding.finding_cid[:24]}",
                     steps=tuple(steps),
-                    root_symbol=(
-                        finding.symbols[0] if finding.symbols else steps[0].symbol
-                    ),
+                    root_symbol=(finding.symbols[0] if finding.symbols else steps[0].symbol),
                     complete=True,
                 ),
                 edit_scope=outputs,
@@ -1670,9 +1621,7 @@ def materialize_findings_and_board(
                     "finding_cid": finding.finding_cid,
                     "packet_id": getattr(packet, "packet_id", ""),
                     "content_id": getattr(packet, "content_id", ""),
-                    "status": (
-                        status.value if isinstance(status, Enum) else str(status)
-                    ),
+                    "status": (status.value if isinstance(status, Enum) else str(status)),
                 }
             )
         except Exception:
@@ -1681,13 +1630,9 @@ def materialize_findings_and_board(
             continue
 
     if hasattr(projection, "to_dict"):
-        projection_cid = getattr(
-            projection, "content_id", _identity(projection.to_dict())
-        )
+        projection_cid = getattr(projection, "content_id", _identity(projection.to_dict()))
     else:
-        projection_cid = _identity(
-            {"findings": [item.finding_cid for item in findings]}
-        )
+        projection_cid = _identity({"findings": [item.finding_cid for item in findings]})
 
     ledger_payload = {
         "schema": "vfs/swissknife-vfs-pilot-findings@1",
@@ -1750,19 +1695,21 @@ def execute_pilot(
 
     stages: list[StageReceipt] = []
     reason_codes: list[str] = []
-    artifact_dir = (
-        config.resolved_artifact_dir() if config.write_artifacts else None
-    )
+    artifact_dir = config.resolved_artifact_dir() if config.write_artifacts else None
     if artifact_dir is not None:
         artifact_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Freeze descriptors
     forest = freeze_repository_descriptors(config)
-    forest_payload = forest.to_portable_dict() if hasattr(forest, "to_portable_dict") else {
-        "forest_id": forest.forest_id,
-        "descriptors": [item.to_portable_dict() for item in forest.descriptors],
-        "policy_cid": forest.policy_cid,
-    }
+    forest_payload = (
+        forest.to_portable_dict()
+        if hasattr(forest, "to_portable_dict")
+        else {
+            "forest_id": forest.forest_id,
+            "descriptors": [item.to_portable_dict() for item in forest.descriptors],
+            "policy_cid": forest.policy_cid,
+        }
+    )
     forest_cid = forest.forest_id
     stages.append(
         StageReceipt(
@@ -1798,9 +1745,7 @@ def execute_pilot(
     stages.append(
         StageReceipt(
             stage=PilotStage.INVENTORY,
-            status=(
-                PilotConclusion.INCOMPLETE if incomplete else PilotConclusion.PASSED
-            ),
+            status=(PilotConclusion.INCOMPLETE if incomplete else PilotConclusion.PASSED),
             artifact_cid=inventory_cid,
             input_cids=(forest_cid,),
             reason_codes=tuple(sorted(set(inventory_reasons))),
@@ -1815,9 +1760,7 @@ def execute_pilot(
 
     # 3. Scan admission
     admitted = admitted_entries_for_pilot(index)
-    coverage_bundle = build_coverage_manifest(
-        forest=forest, index=index, admitted=admitted
-    )
+    coverage_bundle = build_coverage_manifest(forest=forest, index=index, admitted=admitted)
     stages.append(
         StageReceipt(
             stage=PilotStage.SCAN,
@@ -1846,9 +1789,7 @@ def execute_pilot(
         StageReceipt(
             stage=PilotStage.GRAPH,
             status=(
-                PilotConclusion.INCOMPLETE
-                if graph_meta["reason_codes"]
-                else PilotConclusion.PASSED
+                PilotConclusion.INCOMPLETE if graph_meta["reason_codes"] else PilotConclusion.PASSED
             ),
             artifact_cid=graph_cid,
             input_cids=(coverage_bundle["manifest_cid"],),
@@ -1863,9 +1804,7 @@ def execute_pilot(
         _atomic_write_json(artifact_dir / "graph.json", graph.to_dict())
 
     # 5. Contract
-    findings, contract_meta = run_contract_stage(
-        forest=forest, graph=graph, admitted=admitted
-    )
+    findings, contract_meta = run_contract_stage(forest=forest, graph=graph, admitted=admitted)
     stages.append(
         StageReceipt(
             stage=PilotStage.CONTRACT,
@@ -1965,13 +1904,9 @@ def execute_pilot(
         )
     )
     if artifact_dir is not None:
-        _atomic_write_json(
-            artifact_dir / "findings.json", board_meta["ledger_payload"]
-        )
+        _atomic_write_json(artifact_dir / "findings.json", board_meta["ledger_payload"])
         _atomic_write_json(artifact_dir / "taskboard.json", board_meta["board_json"])
-        _atomic_write_text(
-            artifact_dir / "taskboard.md", board_meta["board_markdown"]
-        )
+        _atomic_write_text(artifact_dir / "taskboard.md", board_meta["board_markdown"])
 
     # 10. Publish artifact set + report
     artifacts = PilotArtifactSet(
@@ -2005,12 +1940,8 @@ def execute_pilot(
         )
     )
 
-    tree_bindings = {
-        descriptor.alias: descriptor.tree for descriptor in forest.descriptors
-    }
-    commit_bindings = {
-        descriptor.alias: descriptor.commit for descriptor in forest.descriptors
-    }
+    tree_bindings = {descriptor.alias: descriptor.tree for descriptor in forest.descriptors}
+    commit_bindings = {descriptor.alias: descriptor.commit for descriptor in forest.descriptors}
 
     if incomplete:
         reason_codes.append("incomplete_inventory")
@@ -2027,9 +1958,7 @@ def execute_pilot(
             "finding_count": board_meta["finding_count"],
             "admitted_file_count": len(admitted),
             "swissknife_file_count": coverage_bundle["manifest"]["swissknife_file_count"],
-            "vfs_closure_file_count": coverage_bundle["manifest"][
-                "vfs_closure_file_count"
-            ],
+            "vfs_closure_file_count": coverage_bundle["manifest"]["vfs_closure_file_count"],
             "mode": mode.value,
             "conclusion": conclusion.value,
             "repair_packets": board_meta["repair_packets"],
@@ -2083,9 +2012,7 @@ def execute_pilot(
     )
 
     if artifact_dir is not None:
-        _atomic_write_json(
-            artifact_dir / "artifacts.json", published_artifacts.to_dict()
-        )
+        _atomic_write_json(artifact_dir / "artifacts.json", published_artifacts.to_dict())
         _atomic_write_json(artifact_dir / "report.json", report.to_dict())
         _atomic_write_text(artifact_dir / "findings_board.md", board_md)
 
@@ -2168,12 +2095,8 @@ def verify_pilot_report(
                 "changed_trees",
                 "live forest_id does not match frozen pilot report",
             )
-        live_trees = {
-            descriptor.alias: descriptor.tree for descriptor in live.descriptors
-        }
-        live_commits = {
-            descriptor.alias: descriptor.commit for descriptor in live.descriptors
-        }
+        live_trees = {descriptor.alias: descriptor.tree for descriptor in live.descriptors}
+        live_commits = {descriptor.alias: descriptor.commit for descriptor in live.descriptors}
         for alias, tree in report.tree_bindings.items():
             if live_trees.get(alias) != tree:
                 raise PilotVerificationError(
@@ -2435,9 +2358,7 @@ def build_hermetic_pilot_forest_policy(
 
     swiss_files = {
         "src/connector.ts": (
-            "export function listTools() {\n"
-            "  return ['vfs.stat', 'vfs.read'];\n"
-            "}\n"
+            "export function listTools() {\n  return ['vfs.stat', 'vfs.read'];\n}\n"
         ),
         "src/mcp.ts": (
             "export const server = 'ipfs-kit-vfs';\n"
@@ -2447,13 +2368,11 @@ def build_hermetic_pilot_forest_policy(
     }
     if seed_broken:
         swiss_files["src/broken.ts"] = (
-            "// VFS_PILOT_CONTRACT_BROKEN\n"
-            "export function drift() { return 'broken'; }\n"
+            "// VFS_PILOT_CONTRACT_BROKEN\nexport function drift() { return 'broken'; }\n"
         )
     if seed_inconclusive:
         swiss_files["src/maybe.ts"] = (
-            "// VFS_PILOT_INCONCLUSIVE\n"
-            "export function maybe() { return 'unknown'; }\n"
+            "// VFS_PILOT_INCONCLUSIVE\nexport function maybe() { return 'unknown'; }\n"
         )
 
     init_repo(swiss, swiss_files)
@@ -2461,8 +2380,7 @@ def build_hermetic_pilot_forest_policy(
         accel,
         {
             "ipfs_accelerate_py/agent_supervisor/vfs_surface.py": (
-                "def inventory_vfs_surfaces():\n"
-                "    return ['vfs.stat']\n"
+                "def inventory_vfs_surfaces():\n    return ['vfs.stat']\n"
             ),
             "README.md": "# accelerator pilot fixture\n",
         },
@@ -2530,16 +2448,8 @@ def default_config_from_environment(
     that ``--verify`` remains runnable in CI and agent sandboxes.
     """
 
-    accel = Path(
-        accelerator_root
-        or os.environ.get("IPFS_ACCELERATE_ROOT")
-        or Path.cwd()
-    ).resolve()
-    swiss = Path(
-        swissknife_root
-        or os.environ.get("SWISSKNIFE_ROOT")
-        or DEFAULT_SWISSKNIFE_ROOT
-    )
+    accel = Path(accelerator_root or os.environ.get("IPFS_ACCELERATE_ROOT") or Path.cwd()).resolve()
+    swiss = Path(swissknife_root or os.environ.get("SWISSKNIFE_ROOT") or DEFAULT_SWISSKNIFE_ROOT)
     if swiss.is_dir() and hermetic_root is None:
         try:
             policy = initial_vfs_assurance_forest_policy(
@@ -2557,10 +2467,7 @@ def default_config_from_environment(
         except Exception:
             pass
 
-    fixture_root = Path(
-        hermetic_root
-        or tempfile.mkdtemp(prefix="vfs-pilot-hermetic-")
-    )
+    fixture_root = Path(hermetic_root or tempfile.mkdtemp(prefix="vfs-pilot-hermetic-"))
     policy, swiss_path, accel_path = build_hermetic_pilot_forest_policy(fixture_root)
     return PilotConfig(
         accelerator_root=accel_path,

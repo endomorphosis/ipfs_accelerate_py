@@ -101,16 +101,11 @@ def test_builtin_descriptors_publish_directional_multimodal_metadata() -> None:
     assert multimodal_router.get_provider_descriptor("grok").name == "xai"
     assert multimodal_router.get_provider_descriptor("spark").name == "meta_ai"
     assert multimodal_router.get_provider_descriptor("hf").name == "huggingface"
-    assert (
-        multimodal_router.get_provider_descriptor("accelerate").name
-        == "backend_manager"
-    )
+    assert multimodal_router.get_provider_descriptor("accelerate").name == "backend_manager"
 
 
 def test_listing_filters_media_transport_counts_and_runtime_constraints() -> None:
-    all_names = {
-        provider.name for provider in multimodal_router.list_providers()
-    }
+    all_names = {provider.name for provider in multimodal_router.list_providers()}
 
     assert {
         provider.name
@@ -129,14 +124,15 @@ def test_listing_filters_media_transport_counts_and_runtime_constraints() -> Non
     assert multimodal_router.list_providers(streaming=True) == []
     assert multimodal_router.list_providers(batching=True) == []
     assert multimodal_router.list_providers(media_type="audio/wav") == []
-    assert [
-        provider.name
-        for provider in multimodal_router.list_providers(locality="local")
-    ] == ["huggingface"]
-    assert {
-        provider.name
-        for provider in multimodal_router.list_providers(authorized=False)
-    } == {"meta_ai", "openai", "openrouter", "xai"}
+    assert [provider.name for provider in multimodal_router.list_providers(locality="local")] == [
+        "huggingface"
+    ]
+    assert {provider.name for provider in multimodal_router.list_providers(authorized=False)} == {
+        "meta_ai",
+        "openai",
+        "openrouter",
+        "xai",
+    }
 
 
 def test_known_model_facts_and_unknown_overrides_are_not_invented() -> None:
@@ -228,9 +224,7 @@ def test_discovery_never_constructs_clients_fetches_media_or_loads_models(
         monkeypatch.setattr(multimodal_router, name, blocked)
 
     assert multimodal_router.get_provider_descriptor("fixture").name == "fixture"
-    assert "fixture" in {
-        provider.name for provider in multimodal_router.list_providers()
-    }
+    assert "fixture" in {provider.name for provider in multimodal_router.list_providers()}
     assert multimodal_router.list_models("fixture") == []
     assert isinstance(multimodal_router.get_catalog_snapshot(), CatalogSnapshot)
     assert events == []
@@ -435,11 +429,8 @@ def test_builtin_alias_precedence_is_deterministic_on_dynamic_collision() -> Non
     )
 
     assert multimodal_router.get_provider_descriptor("gpt4o").name == "openai"
-    assert (
-        multimodal_router.get_provider_descriptor(
-            "alias_collision_fixture"
-        ).aliases
-        == ("gpt4o",)
+    assert multimodal_router.get_provider_descriptor("alias_collision_fixture").aliases == (
+        "gpt4o",
     )
 
 
@@ -468,9 +459,7 @@ def test_dynamic_registration_and_snapshot_order_are_deterministic() -> None:
     multimodal_router.register_multimodal_provider("zeta_fixture", factory)
     multimodal_router.register_multimodal_provider("alpha_fixture", factory)
 
-    names = [
-        provider.name for provider in multimodal_router.list_providers()
-    ]
+    names = [provider.name for provider in multimodal_router.list_providers()]
     assert names == sorted(names)
     alpha = multimodal_router.get_provider_descriptor("alpha_fixture")
     assert alpha.state.known is True
@@ -502,13 +491,9 @@ def test_catalog_projection_contains_typed_model_bindings() -> None:
         model.model_id for model in multimodal_router.list_models()
     }
     assert len(snapshot.bindings) == len(snapshot.models)
+    assert all(binding.router == "multimodal_router" for binding in snapshot.bindings)
     assert all(
-        binding.router == "multimodal_router"
-        for binding in snapshot.bindings
-    )
-    assert all(
-        binding.operations
-        == (Operation.TEXT_GENERATE, Operation.VISION_GENERATE)
+        binding.operations == (Operation.TEXT_GENERATE, Operation.VISION_GENERATE)
         for binding in snapshot.bindings
     )
     assert {binding.model_id for binding in snapshot.bindings} == {

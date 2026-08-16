@@ -99,24 +99,24 @@ The workflow will:
 import anyio
 from check_browser_webnn_webgpu import check_browser_capabilities
 
+
 async def test_browser():
     # Check if Chrome supports WebGPU
     capabilities = await check_browser_capabilities(
-        browser="chrome",
-        platform="webgpu",
-        headless=True
+        browser="chrome", platform="webgpu", headless=True
     )
-    
+
     # Print results
     print(f"WebGPU supported: {capabilities.get('webgpu', {}).get('supported', False)}")
     print(f"Real hardware: {capabilities.get('webgpu', {}).get('real', False)}")
-    
+
     # Get device details
-    details = capabilities.get('webgpu', {}).get('details', {})
+    details = capabilities.get("webgpu", {}).get("details", {})
     if details:
         print(f"Vendor: {details.get('vendor')}")
         print(f"Device: {details.get('device')}")
         print(f"Architecture: {details.get('architecture')}")
+
 
 # Run the test
 anyio.run(test_browser)
@@ -130,6 +130,7 @@ For more advanced scenarios, you can use the `BrowserAutomation` class directly:
 import anyio
 from fixed_web_platform.browser_automation import BrowserAutomation
 
+
 async def run_browser_test():
     # Create automation instance
     automation = BrowserAutomation(
@@ -139,27 +140,28 @@ async def run_browser_test():
         compute_shaders=True,  # Enable compute shader optimization
         precompile_shaders=True,  # Enable shader precompilation
         parallel_loading=False,  # Disable parallel loading
-        model_type="audio"  # Testing for audio models
+        model_type="audio",  # Testing for audio models
     )
-    
+
     try:
         # Launch browser
         success = await automation.launch(allow_simulation=True)
         if not success:
             print("Failed to launch browser")
             return
-        
+
         # Check if using real hardware or simulation
-        is_simulation = getattr(automation, 'simulation_mode', True)
+        is_simulation = getattr(automation, "simulation_mode", True)
         print(f"Using simulation mode: {is_simulation}")
-        
+
         # Run a test
         result = await automation.run_test("whisper-tiny", "Test input")
         print(f"Test result: {result}")
-        
+
     finally:
         # Close browser
         await automation.close()
+
 
 # Run the test
 anyio.run(run_browser_test)

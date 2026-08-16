@@ -23,16 +23,13 @@ from .capabilities import (
     HAS_MPS,
     HAS_QNN,
     HAS_WEBNN,
-    HAS_WEBGPU
+    HAS_WEBGPU,
 )
 
 # Optional imports for specific hardware platforms
 try:
-    from .qnn_support import (
-        QNNCapabilityDetector,
-        QNNPowerMonitor,
-        QNNModelOptimizer
-    )
+    from .qnn_support import QNNCapabilityDetector, QNNPowerMonitor, QNNModelOptimizer
+
     HAS_QNN = True
 except ImportError:
     HAS_QNN = False

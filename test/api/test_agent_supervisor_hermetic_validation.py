@@ -198,9 +198,7 @@ def test_cancellation_is_fenced_by_exact_identity() -> None:
 
     assert token.cancel(cancellation_id="validation:other") is False
     assert token.cancelled is False
-    assert token.cancel(
-        cancellation_id="validation:one", reason="newer tree"
-    )
+    assert token.cancel(cancellation_id="validation:one", reason="newer tree")
     assert token.cancelled is True
     assert token.reason == "newer tree"
 
@@ -238,9 +236,7 @@ def test_technique_coverage_is_orthogonal_to_existing_check_kinds() -> None:
 
     incomplete = build_impact_selected_validation_dag(
         impact_index=_index(),
-        checks=tuple(
-            item for item in _checks() if item.check_id != "mutation"
-        ),
+        checks=tuple(item for item in _checks() if item.check_id != "mutation"),
         changed_symbols=(_changed_symbol(),),
         repository_policy=policy,
     )
@@ -341,9 +337,7 @@ def test_complete_dag_stabilizes_flakes_and_detects_transitive_seed(
         for node in report["impact_validation_receipt"]["dag"]["nodes"]
         if node["selected"]
     }
-    results = {
-        result["validation_id"]: result for result in report["results"]
-    }
+    results = {result["validation_id"]: result for result in report["results"]}
     assert results["syntax"]["outcome"] == "deterministic_failure"
     assert results["differential"]["outcome"] == "flaky"
     assert results["differential"]["intermittent_pass"] is True
@@ -358,9 +352,7 @@ def test_complete_dag_stabilizes_flakes_and_detects_transitive_seed(
         "zero_escaped": True,
     }
     assert report["seeded_defects"][0]["transitive"] is True
-    assert report["seeded_defects"][0]["transitive_impact_chains"][
-        "integration"
-    ] == [
+    assert report["seeded_defects"][0]["transitive_impact_chains"]["integration"] == [
         "pkg.provider.value",
         "pkg.consumer.read",
         "tests.consumer.test_read",
@@ -404,31 +396,20 @@ def test_exact_deterministic_diagnostic_is_reused_without_authority(
         "dependency_state": "fixture",
         "runner": runner,
     }
-    first = scheduler.run_hermetic_impact_selected(
-        _checks(integration_cacheable=True), **kwargs
-    )
-    second = scheduler.run_hermetic_impact_selected(
-        _checks(integration_cacheable=True), **kwargs
-    )
+    first = scheduler.run_hermetic_impact_selected(_checks(integration_cacheable=True), **kwargs)
+    second = scheduler.run_hermetic_impact_selected(_checks(integration_cacheable=True), **kwargs)
     first_result = next(
-        item
-        for item in first["results"]
-        if item["command"] == "pytest -q test/test_consumer.py"
+        item for item in first["results"] if item["command"] == "pytest -q test/test_consumer.py"
     )
     second_result = next(
-        item
-        for item in second["results"]
-        if item["command"] == "pytest -q test/test_consumer.py"
+        item for item in second["results"] if item["command"] == "pytest -q test/test_consumer.py"
     )
 
     assert integration_calls == 2
     assert first_result["attempt_count"] == 2
     assert second_result["diagnostic_cache_hit"] is True
     assert second_result["output"] == "exact stable diagnostic"
-    assert (
-        second_result["validation_result_digest"]
-        == first_result["validation_result_digest"]
-    )
+    assert second_result["validation_result_digest"] == first_result["validation_result_digest"]
     assert second_result["diagnostic_id"] == first_result["diagnostic_id"]
     assert second_result["authoritative"] is False
     assert second["completion_authoritative"] is False

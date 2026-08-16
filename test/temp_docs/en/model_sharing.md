@@ -58,9 +58,7 @@ Versioning is based on [Git](https://git-scm.com/) and [Git Large File Storage (
 For example, use the `revision` parameter in [`~PreTrainedModel.from_pretrained`] to load a specific model version from a commit hash.
 
 ```py
-model = AutoModel.from_pretrained(
-    "julien-c/EsperBERTo-small", revision="4c77982"
-)
+model = AutoModel.from_pretrained("julien-c/EsperBERTo-small", revision="4c77982")
 ```
 
 Model repositories also support [gating](https://hf.co/docs/hub/models-gated) to control who can access a model. Gating is common for allowing a select group of users to preview a research model before it's made public.
@@ -85,7 +83,9 @@ Set `from_tf=True` to convert a checkpoint from TensorFlow to PyTorch and then s
 ```py
 from transformers import DistilBertForSequenceClassification
 
-pt_model = DistilBertForSequenceClassification.from_pretrained("path/to/awesome-name-you-picked", from_tf=True)
+pt_model = DistilBertForSequenceClassification.from_pretrained(
+    "path/to/awesome-name-you-picked", from_tf=True
+)
 pt_model.save_pretrained("path/to/awesome-name-you-picked")
 ```
 
@@ -97,7 +97,9 @@ Set `from_pt=True` to convert a checkpoint from PyTorch to TensorFlow and then s
 ```py
 from transformers import TFDistilBertForSequenceClassification
 
-tf_model = TFDistilBertForSequenceClassification.from_pretrained("path/to/awesome-name-you-picked", from_pt=True)
+tf_model = TFDistilBertForSequenceClassification.from_pretrained(
+    "path/to/awesome-name-you-picked", from_pt=True
+)
 tf_model.save_pretrained("path/to/awesome-name-you-picked")
 ```
 
@@ -108,6 +110,7 @@ Set `from_pt=True` to convert a checkpoint from PyTorch to Flax and then save it
 
 ```py
 from transformers import FlaxDistilBertForSequenceClassification
+
 flax_model = FlaxDistilBertForSequenceClassification.from_pretrained(
     "path/to/awesome-name-you-picked", from_pt=True
 )
@@ -151,9 +154,16 @@ For TensorFlow models, add the [`PushToHubCallback`] to the [fit](https://keras.
 from transformers import PushToHubCallback
 
 push_to_hub_callback = PushToHubCallback(
-    output_dir="./your_model_save_path", tokenizer=tokenizer, hub_model_id="your-username/my-awesome-model"
+    output_dir="./your_model_save_path",
+    tokenizer=tokenizer,
+    hub_model_id="your-username/my-awesome-model",
 )
-model.fit(tf_train_dataset, validation_data=tf_validation_dataset, epochs=3, callbacks=push_to_hub_callback)
+model.fit(
+    tf_train_dataset,
+    validation_data=tf_validation_dataset,
+    epochs=3,
+    callbacks=push_to_hub_callback,
+)
 ```
 
 ### PushToHubMixin

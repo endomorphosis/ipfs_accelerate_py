@@ -163,7 +163,10 @@ def _quantity_units(quantity: Any, *, unknown_policy: UnknownStalePolicy) -> int
 
     if quantity is None:
         return None
-    kind = _enum_value(getattr(quantity, "kind", None) or (quantity.get("kind") if isinstance(quantity, Mapping) else None))
+    kind = _enum_value(
+        getattr(quantity, "kind", None)
+        or (quantity.get("kind") if isinstance(quantity, Mapping) else None)
+    )
     if kind in {"", "unknown"}:
         return None
     if kind == "unlimited":
@@ -218,7 +221,10 @@ def _resolve_unknown(
         return LEGACY_UNBOUNDED_SENTINEL, []
     if policy is UnknownStalePolicy.IGNORE_IN_OFF and mode is UsageAdmissionMode.OFF:
         return LEGACY_UNBOUNDED_SENTINEL, []
-    if mode in {UsageAdmissionMode.OBSERVE, UsageAdmissionMode.SHADOW} and policy is UnknownStalePolicy.IGNORE_IN_OFF:
+    if (
+        mode in {UsageAdmissionMode.OBSERVE, UsageAdmissionMode.SHADOW}
+        and policy is UnknownStalePolicy.IGNORE_IN_OFF
+    ):
         return LEGACY_UNBOUNDED_SENTINEL, reasons
     # fail_closed / conservative_zero: never unlimited
     if policy is UnknownStalePolicy.FAIL_CLOSED and mode is UsageAdmissionMode.ENFORCE:
@@ -318,7 +324,10 @@ def _parse_time_ms(value: Any, *, now_ms: int) -> int | None:
             cleaned = text.replace("Z", "+0000") if "%z" in fmt and text.endswith("Z") else text
             if fmt.endswith("Z"):
                 cleaned = text
-            parsed = time.strptime(cleaned if not fmt.endswith("%z") else text.replace("Z", "+0000"), fmt.replace("Z", ""))
+            parsed = time.strptime(
+                cleaned if not fmt.endswith("%z") else text.replace("Z", "+0000"),
+                fmt.replace("Z", ""),
+            )
             return int(time.mktime(parsed) * 1000)
         except (ValueError, OverflowError, OSError):
             continue
@@ -422,9 +431,7 @@ def project_provider_capacity_from_usage_snapshot(
             provider_id=identity,
             capacity=base_cap,
             mode=mode_e.value,
-            projection_id=_content_id(
-                {"provider_id": identity, "mode": mode_e.value, "off": True}
-            ),
+            projection_id=_content_id({"provider_id": identity, "mode": mode_e.value, "off": True}),
         )
 
     scope_id = str(_snapshot_field(snapshot, "scope_id", "") or "")
@@ -494,7 +501,9 @@ def project_provider_capacity_from_usage_snapshot(
                 concurrent_units = _intersect_capacity(concurrent_units, effective)
         entry_next = _entry_next_eligible(entry)
         entry_next_ms = _parse_time_ms(entry_next, now_ms=now)
-        if entry_next_ms is not None and (next_eligible_ms == 0 or entry_next_ms < next_eligible_ms):
+        if entry_next_ms is not None and (
+            next_eligible_ms == 0 or entry_next_ms < next_eligible_ms
+        ):
             next_eligible_ms = entry_next_ms
             next_eligible = entry_next
 
@@ -547,7 +556,9 @@ def project_provider_capacity_from_usage_snapshot(
     if concurrent < 0:
         projected_max = base_cap.max_concurrency
     else:
-        projected_max = min(base_cap.max_concurrency, concurrent) if base_cap.max_concurrency else concurrent
+        projected_max = (
+            min(base_cap.max_concurrency, concurrent) if base_cap.max_concurrency else concurrent
+        )
         projected_max = max(0, int(projected_max))
 
     # Under assist/enforce, never leave projected finite fields as "unknown upgraded to -1".
@@ -654,9 +665,7 @@ class HierarchicalBudgetView:
         dim = str(dimension or "").strip().lower()
         cur = str(currency or "").strip().lower()
         matched = [
-            item.remaining
-            for item in self.limits
-            if item.dimension == dim and item.currency == cur
+            item.remaining for item in self.limits if item.dimension == dim and item.currency == cur
         ]
         if not matched:
             return LEGACY_UNBOUNDED_SENTINEL
@@ -799,9 +808,7 @@ class WeightedFairQueue:
         with self._lock:
             scope = self.scopes.get(scope_id)
             reserved_others = sum(
-                s.reserved_slots
-                for sid, s in self.scopes.items()
-                if sid != scope_id
+                s.reserved_slots for sid, s in self.scopes.items() if sid != scope_id
             )
             used_self = int(active.get(scope_id, 0))
             used_others = sum(v for key, v in active.items() if key != scope_id)
@@ -830,7 +837,10 @@ class WeightedFairQueue:
             candidates: list[str] = []
             for scope_id in waiting_scope_ids:
                 sid = str(scope_id)
-                if self.available_for_scope(sid, total_slots=total_slots, active_by_scope=active) <= 0:
+                if (
+                    self.available_for_scope(sid, total_slots=total_slots, active_by_scope=active)
+                    <= 0
+                ):
                     continue
                 candidates.append(sid)
                 if sid not in self.scopes:
@@ -847,7 +857,10 @@ class WeightedFairQueue:
                         self.scopes[sid] = FairQueueScope(scope_id=sid)
                         self.deficits.setdefault(sid, 0)
                     self.deficits[sid] = self.deficits.get(sid, 0) + self.scopes[sid].weight
-            best = max(candidates, key=lambda sid: (self.deficits.get(sid, 0), -self.served.get(sid, 0), sid))
+            best = max(
+                candidates,
+                key=lambda sid: (self.deficits.get(sid, 0), -self.served.get(sid, 0), sid),
+            )
             self.deficits[best] = max(0, self.deficits.get(best, 0) - 1)
             self.served[best] = self.served.get(best, 0) + 1
             return best
@@ -1028,9 +1041,8 @@ def evaluate_usage_aware_admission(
     mode_e = _as_mode(mode)
     now = int(now_ms if now_ms is not None else time.time() * 1000)
     lane_id = resource_decision.lane_id if resource_decision is not None else ""
-    provider_id = (
-        (projection.provider_id if projection is not None else "")
-        or (resource_decision.provider_id if resource_decision is not None else "")
+    provider_id = (projection.provider_id if projection is not None else "") or (
+        resource_decision.provider_id if resource_decision is not None else ""
     )
     reasons: list[str] = []
     if resource_decision is not None:
@@ -1089,7 +1101,9 @@ def evaluate_usage_aware_admission(
         if cap.quota_remaining >= 0 and cap.quota_remaining < max(0, int(required_quota_units)):
             usage_ok = False
             reasons.append("provider_quota")
-        if cap.token_budget_remaining >= 0 and cap.token_budget_remaining < max(0, int(required_tokens)):
+        if cap.token_budget_remaining >= 0 and cap.token_budget_remaining < max(
+            0, int(required_tokens)
+        ):
             usage_ok = False
             reasons.append("provider_token_budget")
         if projection.stale and mode_e is UsageAdmissionMode.ENFORCE:
@@ -1131,9 +1145,7 @@ def evaluate_usage_aware_admission(
             next_eligible_at_ms=next_eligible,
             wait_ms=0,
             mode=mode_e.value,
-            decision_id=_content_id(
-                {"mode": mode_e.value, "lane_id": lane_id, "admitted": True}
-            ),
+            decision_id=_content_id({"mode": mode_e.value, "lane_id": lane_id, "admitted": True}),
         )
 
     # Prefer alternate route when configured.
@@ -1191,9 +1203,7 @@ def evaluate_usage_aware_admission(
             wait_ms=wait_ms,
             fallback_authorized=True,
             mode=mode_e.value,
-            decision_id=_content_id(
-                {"mode": mode_e.value, "lane_id": lane_id, "fallback": True}
-            ),
+            decision_id=_content_id({"mode": mode_e.value, "lane_id": lane_id, "fallback": True}),
         )
 
     return UsageAwareAdmissionDecision(
@@ -1419,12 +1429,8 @@ install_endpoint_usage_admission()
 
 # Ensure historical import path name also resolves to symbols when this file
 # is loaded under a non-alias module name.
-sys.modules.setdefault(
-    "ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler", _runtime
-)
+sys.modules.setdefault("ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler", _runtime)
 
 __all__ = sorted(
-    set(getattr(_runtime, "__all__", ()))
-    | set(_EXPORTS)
-    | {"install_endpoint_usage_admission"}
+    set(getattr(_runtime, "__all__", ())) | set(_EXPORTS) | {"install_endpoint_usage_admission"}
 )

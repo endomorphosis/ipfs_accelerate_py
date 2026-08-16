@@ -402,9 +402,7 @@ class VfsSurfaceInventory:
         return record
 
     def to_json(self, *, indent: int | None = 2) -> str:
-        return json.dumps(
-            self.to_record(), sort_keys=True, indent=indent, separators=None
-        )
+        return json.dumps(self.to_record(), sort_keys=True, indent=indent, separators=None)
 
 
 @dataclass
@@ -424,9 +422,9 @@ class _Analysis:
 
 
 def _canonical_json(value: Any) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def _content_id(value: Any) -> str:
@@ -600,22 +598,19 @@ def _is_candidate(path: str, text_sample: str) -> bool:
         | _CONTROLLER_PARTS
         | _SDK_MANIFEST_PARTS
     )
-    return (
-        _has_part(parts, role_parts)
-        or any(
-            token in name
-            for token in (
-                "backend",
-                "adapter",
-                "manager",
-                "journal",
-                "wal",
-                "fsspec",
-                "snapshot",
-                "version",
-                "export",
-                "__init__",
-            )
+    return _has_part(parts, role_parts) or any(
+        token in name
+        for token in (
+            "backend",
+            "adapter",
+            "manager",
+            "journal",
+            "wal",
+            "fsspec",
+            "snapshot",
+            "version",
+            "export",
+            "__init__",
         )
     )
 
@@ -633,9 +628,11 @@ def _surface_kinds(path: str, text: str) -> tuple[SurfaceKind, ...]:
         or "class vfsmanager" in combined
     ):
         kinds.add(SurfaceKind.VFS_MANAGER)
-    if "bucket" in combined and (
-        "vfs" in combined or "virtual filesystem" in combined
-    ) and ("manager" in combined or "bucket_vfs" in lowered):
+    if (
+        "bucket" in combined
+        and ("vfs" in combined or "virtual filesystem" in combined)
+        and ("manager" in combined or "bucket_vfs" in lowered)
+    ):
         kinds.add(SurfaceKind.BUCKET_MANAGER)
     if re.search(
         r"(?:^|[/_.-])(?:[a-z]+[_-])?wal(?:[/_.-]|$)|"
@@ -644,13 +641,11 @@ def _surface_kinds(path: str, text: str) -> tuple[SurfaceKind, ...]:
     ):
         kinds.add(SurfaceKind.JOURNAL_WAL)
     if (
-        ("vfs" in combined and ("version" in combined or "snapshot" in combined))
-        or "vfsversiontracker" in combined
-    ):
+        "vfs" in combined and ("version" in combined or "snapshot" in combined)
+    ) or "vfsversiontracker" in combined:
         kinds.add(SurfaceKind.VERSION_SNAPSHOT)
-    if (
-        ("backend" in lowered or "adapter" in lowered or "integration" in lowered)
-        and (_VFS_SIGNAL.search(combined) or _PATH_SIGNAL.search(lowered))
+    if ("backend" in lowered or "adapter" in lowered or "integration" in lowered) and (
+        _VFS_SIGNAL.search(combined) or _PATH_SIGNAL.search(lowered)
     ):
         kinds.add(SurfaceKind.BACKEND_ADAPTER)
     if _has_part(parts, _HANDLER_PARTS) or "handler" in Path(lowered).stem:
@@ -670,10 +665,7 @@ def _surface_kinds(path: str, text: str) -> tuple[SurfaceKind, ...]:
     if (
         _has_part(parts, _SDK_MANIFEST_PARTS)
         or re.search(r"(?:^|[/_.-])sdk(?:[/_.-]|$)", lowered)
-        or any(
-            token in lowered
-            for token in ("manifest", "package.json", "pyproject.toml")
-        )
+        or any(token in lowered for token in ("manifest", "package.json", "pyproject.toml"))
     ):
         kinds.add(SurfaceKind.SDK_MANIFEST)
     if "__init__" in lowered or _EXPORT_NAME.search(text):
@@ -734,18 +726,14 @@ def _analyze_python(analysis: _Analysis) -> None:
 
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            definitions.append(
-                Definition(node.name, "function", _signature(node), node.lineno)
-            )
+            definitions.append(Definition(node.name, "function", _signature(node), node.lineno))
             for decorator in node.decorator_list:
                 name = _call_name(decorator)
                 if _REGISTRATION_NAME.search(name):
                     registrations.add(f"decorator:{name}:{node.name}")
         elif isinstance(node, ast.ClassDef):
             bases = ",".join(filter(None, (_call_name(item) for item in node.bases)))
-            definitions.append(
-                Definition(node.name, "class", f"bases({bases})", node.lineno)
-            )
+            definitions.append(Definition(node.name, "class", f"bases({bases})", node.lineno))
             for decorator in node.decorator_list:
                 name = _call_name(decorator)
                 if _REGISTRATION_NAME.search(name):
@@ -767,15 +755,8 @@ def _analyze_python(analysis: _Analysis) -> None:
                             label = f":{node.args[0].value}"
                     registrations.add(f"call:{name}{label}")
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
-            targets = (
-                node.targets
-                if isinstance(node, ast.Assign)
-                else [node.target]
-            )
-            if any(
-                isinstance(target, ast.Name) and target.id == "__all__"
-                for target in targets
-            ):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets):
                 value = node.value
                 if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
                     for item in value.elts:
@@ -798,18 +779,12 @@ def _analyze_python(analysis: _Analysis) -> None:
             )
         )
     for item in analysis.imports:
-        analysis.evidence.append(
-            SurfaceEvidence(EvidenceKind.IMPORT, analysis.path, item)
-        )
+        analysis.evidence.append(SurfaceEvidence(EvidenceKind.IMPORT, analysis.path, item))
     for item in analysis.registrations:
-        analysis.evidence.append(
-            SurfaceEvidence(EvidenceKind.REGISTRATION, analysis.path, item)
-        )
+        analysis.evidence.append(SurfaceEvidence(EvidenceKind.REGISTRATION, analysis.path, item))
     for item in analysis.exports:
         analysis.evidence.append(
-            SurfaceEvidence(
-                EvidenceKind.EXPORT, analysis.path, item, target_symbol=item
-            )
+            SurfaceEvidence(EvidenceKind.EXPORT, analysis.path, item, target_symbol=item)
         )
 
 
@@ -840,18 +815,18 @@ def _looks_placeholder(analysis: _Analysis) -> bool:
     except (SyntaxError, ValueError):
         return False
     body = list(tree.body)
-    if body and isinstance(body[0], ast.Expr) and isinstance(
-        body[0].value, ast.Constant
-    ) and isinstance(body[0].value.value, str):
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
         body = body[1:]
     return bool(body) and all(
         isinstance(item, (ast.Pass, ast.Import, ast.ImportFrom))
         or (
             isinstance(item, ast.Expr)
-            and (
-                isinstance(item.value, ast.Constant)
-                and item.value.value is Ellipsis
-            )
+            and (isinstance(item.value, ast.Constant) and item.value.value is Ellipsis)
         )
         for item in body
     )
@@ -872,9 +847,7 @@ def _module_keys(path: str) -> set[str]:
     return {key for key in keys if key}
 
 
-_REFERENCE_TOKEN = re.compile(
-    r"[A-Za-z_][A-Za-z0-9_-]*(?:[./:][A-Za-z0-9_-]+)*"
-)
+_REFERENCE_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*(?:[./:][A-Za-z0-9_-]+)*")
 
 
 def _reference_tokens(text: str) -> set[str]:
@@ -959,9 +932,7 @@ def _discover_contradictions(
     analyses: Mapping[str, _Analysis],
     classifications: Mapping[str, set[SurfaceClassification]],
 ) -> tuple[SurfaceContradiction, ...]:
-    by_identity_and_symbol: dict[
-        tuple[str, str], list[tuple[str, Definition]]
-    ] = defaultdict(list)
+    by_identity_and_symbol: dict[tuple[str, str], list[tuple[str, Definition]]] = defaultdict(list)
     for path, analysis in analyses.items():
         excluded = {
             SurfaceClassification.ARCHIVE,
@@ -973,9 +944,9 @@ def _discover_contradictions(
             continue
         for definition in analysis.definitions:
             if definition.kind in {"class", "function"}:
-                by_identity_and_symbol[
-                    (_logical_identity(path), definition.name)
-                ].append((path, definition))
+                by_identity_and_symbol[(_logical_identity(path), definition.name)].append(
+                    (path, definition)
+                )
 
     contradictions: list[SurfaceContradiction] = []
     for (_, symbol), observations in sorted(by_identity_and_symbol.items()):
@@ -1238,18 +1209,12 @@ def inventory_vfs_surfaces(
         import_targets = _referenced_paths(searchable_imports, reference_index)
         call_targets = _referenced_paths(searchable_calls, reference_index)
         test_targets = (
-            _referenced_paths(searchable_text, reference_index)
-            if _is_test(source_path)
-            else set()
+            _referenced_paths(searchable_text, reference_index) if _is_test(source_path) else set()
         )
         documentation_targets = (
-            _referenced_paths(searchable_text, reference_index)
-            if _is_doc(source_path)
-            else set()
+            _referenced_paths(searchable_text, reference_index) if _is_doc(source_path) else set()
         )
-        target_paths = (
-            import_targets | call_targets | test_targets | documentation_targets
-        )
+        target_paths = import_targets | call_targets | test_targets | documentation_targets
         for target_path in target_paths - {source_path}:
             if target_path in import_targets:
                 imported_by[target_path].add(source_path)
@@ -1316,10 +1281,7 @@ def inventory_vfs_surfaces(
             duplicate_of[path] = ranked[0]
 
     shadows: dict[str, str] = {}
-    incoming = {
-        path: len(imported_by[path]) + len(called_by[path])
-        for path in analyses
-    }
+    incoming = {path: len(imported_by[path]) + len(called_by[path]) for path in analyses}
     for paths in identities.values():
         if len(paths) < 2:
             continue
@@ -1357,9 +1319,7 @@ def inventory_vfs_surfaces(
             classification_reasons[path].append("placeholder-only syntax or marker")
         if path in duplicate_of:
             values.add(SurfaceClassification.DUPLICATE)
-            classification_reasons[path].append(
-                f"byte-identical to {duplicate_of[path]}"
-            )
+            classification_reasons[path].append(f"byte-identical to {duplicate_of[path]}")
         if _COMPATIBILITY_MARKER.search(analysis.text[:32768]):
             values.add(SurfaceClassification.COMPATIBILITY)
             classification_reasons[path].append("explicit compatibility/wrapper prose")
@@ -1388,16 +1348,9 @@ def inventory_vfs_surfaces(
             canonical_evidence.append("referenced by static call")
         if documented_by[path]:
             canonical_evidence.append("referenced by documentation")
-        if (
-            not values & historical
-            and (
-                canonical_evidence
-                or (
-                    _PATH_SIGNAL.search(path)
-                    and not analysis.variant_suffix
-                    and not _is_doc(path)
-                )
-            )
+        if not values & historical and (
+            canonical_evidence
+            or (_PATH_SIGNAL.search(path) and not analysis.variant_suffix and not _is_doc(path))
         ):
             values.add(SurfaceClassification.CANONICAL)
             classification_reasons[path].extend(
@@ -1500,10 +1453,7 @@ def inventory_vfs_surfaces(
             InventoryDiagnostic(
                 "inventory_incomplete",
                 DiagnosticSeverity.ERROR,
-                (
-                    f"{len(completeness.unexplained_paths)} candidate surface(s) "
-                    "remain unexplained"
-                ),
+                (f"{len(completeness.unexplained_paths)} candidate surface(s) remain unexplained"),
                 explained=False,
             )
         )

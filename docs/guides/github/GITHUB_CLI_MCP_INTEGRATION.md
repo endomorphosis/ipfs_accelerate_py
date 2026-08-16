@@ -151,9 +151,9 @@ Cache is configured via `GitHubCLI` constructor:
 from ipfs_accelerate_py.github_cli import GitHubCLI
 
 gh = GitHubCLI(
-    enable_cache=True,      # Enable caching (default)
-    cache_ttl=300,          # 5 minutes (default)
-    auto_refresh_token=True # Auto-refresh tokens (default)
+    enable_cache=True,  # Enable caching (default)
+    cache_ttl=300,  # 5 minutes (default)
+    auto_refresh_token=True,  # Auto-refresh tokens (default)
 )
 ```
 

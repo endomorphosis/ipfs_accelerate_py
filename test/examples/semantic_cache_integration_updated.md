@@ -46,17 +46,19 @@ cached_client = SemanticCacheOpenAIClient(
     base_client=base_client,
     similarity_threshold=0.85,
     max_cache_size=1000,
-    ttl=3600  # Cache entries expire after 1 hour
+    ttl=3600,  # Cache entries expire after 1 hour
 )
+
 
 # Use the cached client just like the normal client
 async def example():
     response = await cached_client.create_chat_completion(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": "What is the capital of France?"}],
-        temperature=0.0  # Use 0 temperature for deterministic responses
+        temperature=0.0,  # Use 0 temperature for deterministic responses
     )
     print(response)
+
 
 anyio.run(example)
 ```
@@ -72,20 +74,19 @@ base_client = anthropic.Anthropic(api_key="your-api-key")
 
 # Create the cached client wrapper
 cached_client = SemanticCacheClaudeClient(
-    base_client=base_client,
-    similarity_threshold=0.85,
-    max_cache_size=1000,
-    ttl=3600
+    base_client=base_client, similarity_threshold=0.85, max_cache_size=1000, ttl=3600
 )
+
 
 # Use the cached client as normal
 async def example():
     response = await cached_client.chat(
         model="claude-3-opus-20240229",
         messages=[{"role": "user", "content": "What is the capital of France?"}],
-        temperature=0.0
+        temperature=0.0,
     )
     print(response)
+
 
 anyio.run(example)
 ```
@@ -98,23 +99,21 @@ from examples.semantic_cache import SemanticCacheGeminiClient
 
 # Configure the base client
 genai.configure(api_key="your-api-key")
-model = genai.GenerativeModel('gemini-pro')
+model = genai.GenerativeModel("gemini-pro")
 
 # Create the cached client wrapper
 cached_client = SemanticCacheGeminiClient(
-    base_client=model,
-    similarity_threshold=0.85,
-    max_cache_size=1000,
-    ttl=3600
+    base_client=model, similarity_threshold=0.85, max_cache_size=1000, ttl=3600
 )
+
 
 # Use the cached client as normal
 async def example():
     response = await cached_client.generate_content(
-        "What is the capital of France?",
-        temperature=0.0
+        "What is the capital of France?", temperature=0.0
     )
     print(response)
+
 
 anyio.run(example)
 ```
@@ -130,20 +129,19 @@ client = groq.AsyncClient(api_key="your-api-key")
 
 # Create the cached client wrapper
 cached_client = SemanticCacheGroqClient(
-    base_client=client,
-    similarity_threshold=0.85,
-    max_cache_size=1000,
-    ttl=3600
+    base_client=client, similarity_threshold=0.85, max_cache_size=1000, ttl=3600
 )
+
 
 # Use the cached client as normal
 async def example():
     response = await cached_client.create_chat_completion(
         model="llama3-70b-8192",
         messages=[{"role": "user", "content": "What is the capital of France?"}],
-        temperature=0.0
+        temperature=0.0,
     )
     print(response)
+
 
 anyio.run(example)
 ```
@@ -184,13 +182,11 @@ You can provide a custom embedding model for better semantic similarity detectio
 from sentence_transformers import SentenceTransformer
 
 # Load a sentence transformer model
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Create client with custom embeddings
 cached_client = SemanticCacheOpenAIClient(
-    base_client=client,
-    embedding_model=embedding_model,
-    similarity_threshold=0.85
+    base_client=client, embedding_model=embedding_model, similarity_threshold=0.85
 )
 ```
 
@@ -223,7 +219,7 @@ Control memory usage with these options:
 cached_client = SemanticCacheOpenAIClient(
     base_client=client,
     max_cache_size=500,  # Smaller cache
-    ttl=1800  # Shorter TTL (30 minutes)
+    ttl=1800,  # Shorter TTL (30 minutes)
 )
 ```
 
@@ -242,7 +238,7 @@ You can also bypass the cache for specific requests:
 # Set temperature > 0 to bypass cache
 response = await cached_client.create_chat_completion(
     messages=[{"role": "user", "content": "Generate a creative story"}],
-    temperature=0.7  # Cache bypassed
+    temperature=0.7,  # Cache bypassed
 )
 
 # Or disable cache globally
@@ -257,19 +253,19 @@ Get detailed performance metrics:
 stats = cached_client.get_cache_stats()
 
 # Cache efficiency
-hit_rate = stats['cache_hits'] / stats['total_requests'] if stats['total_requests'] > 0 else 0
+hit_rate = stats["cache_hits"] / stats["total_requests"] if stats["total_requests"] > 0 else 0
 print(f"Cache hit rate: {hit_rate:.1%}")
 print(f"Average similarity score: {stats['avg_similarity']:.4f}")
 
 # Cost savings (approximate)
-token_savings = stats['token_savings']
+token_savings = stats["token_savings"]
 cost_per_1k_tokens = 0.002  # $0.002 per 1K tokens (adjust for your model)
 cost_savings = token_savings * cost_per_1k_tokens / 1000
 print(f"Tokens saved: {token_savings}")
 print(f"Cost savings: ${cost_savings:.4f}")
 
 # Cache utilization
-utilization = stats['active_entries'] / stats['max_size'] * 100
+utilization = stats["active_entries"] / stats["max_size"] * 100
 print(f"Cache utilization: {utilization:.1f}% ({stats['active_entries']}/{stats['max_size']})")
 ```
 
@@ -293,36 +289,37 @@ class MyApiBackend:
         # API client initialization
         self.api_key = api_key or os.environ.get("API_KEY")
         self.base_url = kwargs.get("base_url", "https://api.example.com")
-        
+
         # Cache configuration from kwargs
-        self.use_semantic_cache = kwargs.get('use_semantic_cache', True)
-        self.similarity_threshold = kwargs.get('similarity_threshold', 0.85)
-        self.cache_size = kwargs.get('cache_size', 1000)
-        self.cache_ttl = kwargs.get('cache_ttl', 3600)
-        
+        self.use_semantic_cache = kwargs.get("use_semantic_cache", True)
+        self.similarity_threshold = kwargs.get("similarity_threshold", 0.85)
+        self.cache_size = kwargs.get("cache_size", 1000)
+        self.cache_ttl = kwargs.get("cache_ttl", 3600)
+
         # Initialize the client
         self.client = self._create_client()
-        
+
         # Initialize semantic cache if enabled
         if self.use_semantic_cache:
             self.cached_client = self._create_cached_client(self.client)
         else:
             self.cached_client = self.client
-    
+
     def _create_client(self):
         # Create the base API client
         return ApiClient(api_key=self.api_key)
-    
+
     def _create_cached_client(self, client):
         # Create the cached client wrapper
         from examples.my_api_semantic_cache import SemanticCacheMyApiClient
+
         return SemanticCacheMyApiClient(
             base_client=client,
             similarity_threshold=self.similarity_threshold,
             max_cache_size=self.cache_size,
-            ttl=self.cache_ttl
+            ttl=self.cache_ttl,
         )
-    
+
     async def generate_content(self, prompt, **kwargs):
         # Use the cached client for all requests
         return await self.cached_client.generate_content(prompt, **kwargs)

@@ -139,29 +139,25 @@ def _detect_metal_features(self):
         "unified_memory": True,
         "compute_shaders": True,
         "float16_support": True,
-        "simd_support": True
+        "simd_support": True,
     }
-    
+
     # Add version-specific features
     if self.safari_version >= 16.0:
-        features.update({
-            "webgpu_tier1": True,
-            "partial_4bit_support": True
-        })
-        
+        features.update({"webgpu_tier1": True, "partial_4bit_support": True})
+
     if self.safari_version >= 16.4:
-        features.update({
-            "enhanced_compute_support": True,
-            "improved_memory_management": True
-        })
-        
+        features.update({"enhanced_compute_support": True, "improved_memory_management": True})
+
     if self.safari_version >= 17.0:
-        features.update({
-            "webgpu_tier2": True,
-            "partial_kv_cache_optimization": True,
-            "improved_shader_compilation": True
-        })
-        
+        features.update(
+            {
+                "webgpu_tier2": True,
+                "partial_kv_cache_optimization": True,
+                "improved_shader_compilation": True,
+            }
+        )
+
     return features
 ```
 
@@ -176,7 +172,7 @@ self.fallback_manager = FallbackManager(
     model_type=self.model_type,
     config=self.config,
     error_handler=self.error_handler,
-    enable_layer_processing=self.config.get("enable_layer_processing", True)
+    enable_layer_processing=self.config.get("enable_layer_processing", True),
 )
 
 # Store in components for access
@@ -191,7 +187,7 @@ def _handle_webgpu_error(self, error_context):
     if hasattr(self, "fallback_manager") and self.fallback_manager:
         # Try to determine the operation that caused the error
         operation_name = error_context.get("operation", "unknown_operation")
-        
+
         # Check if we have a Safari-specific WebGPU error
         if hasattr(self, "browser_info") and self.browser_info.get("name", "").lower() == "safari":
             # Create optimal fallback strategy
@@ -199,9 +195,9 @@ def _handle_webgpu_error(self, error_context):
                 model_type=self.model_type,
                 browser_info=self.browser_info,
                 operation_type=operation_name,
-                config=self.config
+                config=self.config,
             )
-            
+
             # Apply strategy to configuration
             self.config.update(strategy)
             return True
@@ -216,16 +212,14 @@ from fixed_web_platform.unified_framework.fallback_manager import FallbackManage
 
 # Create fallback manager
 fallback_mgr = FallbackManager(
-    browser_info={"name": "safari", "version": "17.0"},
-    model_type="text"
+    browser_info={"name": "safari", "version": "17.0"}, model_type="text"
 )
 
 # Check if fallback is needed
 if fallback_mgr.needs_fallback("attention_compute"):
     # Use fallback implementation
     result = fallback_mgr.run_with_fallback(
-        attention_function, 
-        {"query": query, "key": key, "value": value}
+        attention_function, {"query": query, "key": key, "value": value}
     )
 ```
 
@@ -238,7 +232,7 @@ from fixed_web_platform.unified_framework.fallback_manager import create_optimal
 strategy = create_optimal_fallback_strategy(
     model_type="text",
     browser_info={"name": "safari", "version": "17.0"},
-    operation_type="attention"
+    operation_type="attention",
 )
 
 # Apply to your configuration

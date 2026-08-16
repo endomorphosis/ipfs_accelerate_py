@@ -23,7 +23,9 @@ from typing import Dict, Any, Optional, Union
 __version__ = "0.1.0"
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger("ipfs_accelerate_mcp")
 
 # Best-effort minimal deps (optional)
@@ -232,7 +234,9 @@ def _is_test_mode() -> bool:
     return bool(os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CI"))
 
 
-def start_server_thread(server: Union[IPFSAccelerateMCPServer, LegacyMCPServer]) -> threading.Thread:
+def start_server_thread(
+    server: Union[IPFSAccelerateMCPServer, LegacyMCPServer],
+) -> threading.Thread:
     """Start a server in a background thread.
 
     The unit tests only assert the thread is alive; this does start uvicorn when possible.
@@ -336,7 +340,9 @@ def create_and_start_server(
 ) -> Union[IPFSAccelerateMCPServer, LegacyMCPServer]:
     """Legacy helper used by unit tests for end-to-end lifecycle."""
 
-    server = create_server(host=host, port=port, name=name, description=description, verbose=verbose)
+    server = create_server(
+        host=host, port=port, name=name, description=description, verbose=verbose
+    )
     register_components(server)
 
     if thread:
@@ -424,7 +430,9 @@ if missing_dependencies:
     if strict:
         logger.warning(f"Missing dependencies: {', '.join(missing_dependencies)}")
         logger.warning("Some features may not be available.")
-        logger.warning("Install all dependencies with: pip install fastmcp uvicorn psutil numpy torch")
+        logger.warning(
+            "Install all dependencies with: pip install fastmcp uvicorn psutil numpy torch"
+        )
     else:
         logger.info(
             f"Optional dependencies not found: {', '.join(missing_dependencies)} (running with fallbacks)"

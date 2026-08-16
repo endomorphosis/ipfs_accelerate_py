@@ -18,7 +18,9 @@ class TestMCPServerDispatchFlagCoercion(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -43,7 +45,9 @@ class TestMCPServerDispatchFlagCoercion(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -68,7 +72,9 @@ class TestMCPServerDispatchFlagCoercion(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -93,7 +99,9 @@ class TestMCPServerDispatchFlagCoercion(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(

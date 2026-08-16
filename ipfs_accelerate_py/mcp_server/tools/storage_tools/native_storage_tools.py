@@ -152,7 +152,9 @@ def _load_storage_api() -> Dict[str, Any]:
                 results = []
                 not_found = []
                 for item_id in item_ids:
-                    retrieved = fallback_manager.retrieve_item(item_id, include_content=include_content)
+                    retrieved = fallback_manager.retrieve_item(
+                        item_id, include_content=include_content
+                    )
                     if retrieved is None:
                         not_found.append(item_id)
                     else:
@@ -272,14 +274,17 @@ def _load_storage_api() -> Dict[str, Any]:
                 if size_range is not None:
                     size_min, size_max = size_range
                     filtered_items = [
-                        item for item in filtered_items if size_min <= int(item.get("size_bytes", 0)) <= size_max
+                        item
+                        for item in filtered_items
+                        if size_min <= int(item.get("size_bytes", 0)) <= size_max
                     ]
                 if date_range is not None:
                     start_raw, end_raw = date_range
                     start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
                     end_dt = datetime.fromisoformat(end_raw.replace("Z", "+00:00"))
                     filtered_items = [
-                        item for item in filtered_items
+                        item
+                        for item in filtered_items
                         if start_dt <= datetime.fromisoformat(str(item.get("created_at"))) <= end_dt
                     ]
 
@@ -287,12 +292,16 @@ def _load_storage_api() -> Dict[str, Any]:
                 storage_distribution: Dict[str, int] = {}
                 for item in filtered_items:
                     item_storage_type = str(item.get("storage_type", ""))
-                    storage_distribution[item_storage_type] = storage_distribution.get(item_storage_type, 0) + 1
+                    storage_distribution[item_storage_type] = (
+                        storage_distribution.get(item_storage_type, 0) + 1
+                    )
 
                 return {
                     "query_results": filtered_items,
                     "total_found": len(filtered_items),
-                    "total_size_bytes": sum(int(item.get("size_bytes", 0)) for item in filtered_items),
+                    "total_size_bytes": sum(
+                        int(item.get("size_bytes", 0)) for item in filtered_items
+                    ),
                     "storage_distribution": storage_distribution,
                     "pagination": {
                         "limit": limit,
@@ -346,7 +355,9 @@ def _normalize_delegate_payload(
     if failed:
         normalized["status"] = "error"
     elif "status" not in normalized:
-        if error_when_false_field is not None and not bool(normalized.get(error_when_false_field, False)):
+        if error_when_false_field is not None and not bool(
+            normalized.get(error_when_false_field, False)
+        ):
             normalized["status"] = "error"
         else:
             normalized["status"] = default_status
@@ -399,7 +410,9 @@ async def store_data(
     if tags is not None and (
         not isinstance(tags, list) or not all(isinstance(tag, str) and tag.strip() for tag in tags)
     ):
-        return _error_result("tags must be an array of non-empty strings when provided", stored=False)
+        return _error_result(
+            "tags must be an array of non-empty strings when provided", stored=False
+        )
 
     try:
         payload = await _API["store_data"](
@@ -525,19 +538,29 @@ async def manage_collections(
             success=False,
         )
     if metadata is not None and not isinstance(metadata, dict):
-        return _error_result("metadata must be an object when provided", action=normalized_action, success=False)
-    if metadata is not None and not all(isinstance(key, str) and key.strip() for key in metadata.keys()):
+        return _error_result(
+            "metadata must be an object when provided", action=normalized_action, success=False
+        )
+    if metadata is not None and not all(
+        isinstance(key, str) and key.strip() for key in metadata.keys()
+    ):
         return _error_result(
             "metadata keys must be non-empty strings when provided",
             action=normalized_action,
             success=False,
         )
     if not isinstance(delete_items, bool):
-        return _error_result("delete_items must be a boolean", action=normalized_action, success=False)
+        return _error_result(
+            "delete_items must be a boolean", action=normalized_action, success=False
+        )
     if not isinstance(include_breakdown, bool):
-        return _error_result("include_breakdown must be a boolean", action=normalized_action, success=False)
+        return _error_result(
+            "include_breakdown must be a boolean", action=normalized_action, success=False
+        )
     if not isinstance(include_capabilities, bool):
-        return _error_result("include_capabilities must be a boolean", action=normalized_action, success=False)
+        return _error_result(
+            "include_capabilities must be a boolean", action=normalized_action, success=False
+        )
     if backend_types is not None and (
         not isinstance(backend_types, list)
         or not all(isinstance(item, str) and item.strip() for item in backend_types)
@@ -559,10 +582,7 @@ async def manage_collections(
     if unavailable_reasons is not None and (
         not isinstance(unavailable_reasons, dict)
         or not all(
-            isinstance(key, str)
-            and key.strip()
-            and isinstance(value, str)
-            and value.strip()
+            isinstance(key, str) and key.strip() and isinstance(value, str) and value.strip()
             for key, value in unavailable_reasons.items()
         )
     ):
@@ -574,10 +594,7 @@ async def manage_collections(
     normalized_availability_filter = str(availability_filter or "all").strip().lower() or "all"
     if normalized_availability_filter not in _VALID_BACKEND_AVAILABILITY_FILTERS:
         return _error_result(
-            (
-                "availability_filter must be one of: "
-                f"{sorted(_VALID_BACKEND_AVAILABILITY_FILTERS)}"
-            ),
+            (f"availability_filter must be one of: {sorted(_VALID_BACKEND_AVAILABILITY_FILTERS)}"),
             action=normalized_action,
             success=False,
         )
@@ -585,10 +602,7 @@ async def manage_collections(
     normalized_report_format = str(report_format or "detailed").strip().lower()
     if normalized_action == "stats" and normalized_report_format not in _VALID_REPORT_FORMATS:
         return _error_result(
-            (
-                "report_format must be one of: "
-                f"{sorted(_VALID_REPORT_FORMATS)}"
-            ),
+            (f"report_format must be one of: {sorted(_VALID_REPORT_FORMATS)}"),
             action=normalized_action,
             success=False,
         )
@@ -599,7 +613,9 @@ async def manage_collections(
             if backend_types is not None
             else sorted(_VALID_STORAGE_TYPES)
         )
-        invalid_requested = sorted({name for name in requested_backends if name not in _VALID_STORAGE_TYPES})
+        invalid_requested = sorted(
+            {name for name in requested_backends if name not in _VALID_STORAGE_TYPES}
+        )
         if invalid_requested:
             return _error_result(
                 "backend_types contains unknown storage backends",
@@ -613,7 +629,9 @@ async def manage_collections(
             if unavailable_backends is not None
             else set()
         )
-        invalid_unavailable = sorted({name for name in unavailable_set if name not in _VALID_STORAGE_TYPES})
+        invalid_unavailable = sorted(
+            {name for name in unavailable_set if name not in _VALID_STORAGE_TYPES}
+        )
         if invalid_unavailable:
             return _error_result(
                 "unavailable_backends contains unknown storage backends",
@@ -623,7 +641,10 @@ async def manage_collections(
             )
 
         normalized_unavailable_reasons = (
-            {str(key).strip().lower(): str(value).strip() for key, value in unavailable_reasons.items()}
+            {
+                str(key).strip().lower(): str(value).strip()
+                for key, value in unavailable_reasons.items()
+            }
             if unavailable_reasons is not None
             else {}
         )
@@ -760,7 +781,9 @@ async def manage_collections(
             delete_items=delete_items,
         )
     except Exception as exc:
-        return _error_result(f"manage_collections failed: {exc}", action=normalized_action, success=False)
+        return _error_result(
+            f"manage_collections failed: {exc}", action=normalized_action, success=False
+        )
 
     normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("action", normalized_action)
@@ -790,7 +813,9 @@ async def manage_collections(
             if isinstance(global_stats, dict) and global_stats:
                 totals = _extract_stats_totals(global_stats)
                 storage_distribution = _extract_storage_distribution(global_stats)
-                average_item_size_bytes = float(global_stats.get("average_item_size_bytes", 0.0) or 0.0)
+                average_item_size_bytes = float(
+                    global_stats.get("average_item_size_bytes", 0.0) or 0.0
+                )
                 compression_usage_ratios = global_stats.get("compression_usage_ratios")
 
                 report_payload["analytics"] = {
@@ -800,13 +825,17 @@ async def manage_collections(
                     "largest_collection": str(global_stats.get("largest_collection", "none")),
                     "storage_distribution": storage_distribution,
                     "compression_usage_ratios": (
-                        compression_usage_ratios if isinstance(compression_usage_ratios, dict) else {}
+                        compression_usage_ratios
+                        if isinstance(compression_usage_ratios, dict)
+                        else {}
                     ),
                 }
             elif isinstance(collection_stats, dict):
                 report_payload["analytics"] = {
                     "scope": "collection",
-                    "collection_name": str(collection_stats.get("name", normalized_collection_name or "")),
+                    "collection_name": str(
+                        collection_stats.get("name", normalized_collection_name or "")
+                    ),
                     "totals": {
                         "total_items": int(collection_stats.get("items_count", 0) or 0),
                         "total_size_bytes": int(collection_stats.get("total_size_bytes", 0) or 0),
@@ -995,7 +1024,9 @@ async def get_storage_stats(
     include_breakdown: bool = False,
 ) -> Dict[str, Any]:
     """Return normalized storage statistics via manage_collections(stats)."""
-    if collection_name is not None and (not isinstance(collection_name, str) or not collection_name.strip()):
+    if collection_name is not None and (
+        not isinstance(collection_name, str) or not collection_name.strip()
+    ):
         return _error_result("collection_name must be a non-empty string when provided")
 
     result = await manage_collections(
@@ -1028,7 +1059,8 @@ async def get_storage_stats(
             summary.get("total_items", analytics.get("totals", {}).get("total_items", 0)) or 0
         ),
         "total_bytes": int(
-            summary.get("total_size_bytes", analytics.get("totals", {}).get("total_size_bytes", 0)) or 0
+            summary.get("total_size_bytes", analytics.get("totals", {}).get("total_size_bytes", 0))
+            or 0
         ),
     }
 
@@ -1036,7 +1068,9 @@ async def get_storage_stats(
         "status": "success",
         "collection_name": collection_name,
         "report_format": storage_report.get("report_format", report_format),
-        "backends": breakdown.get("storage_distribution", analytics.get("storage_distribution", {})),
+        "backends": breakdown.get(
+            "storage_distribution", analytics.get("storage_distribution", {})
+        ),
         **totals,
         "details": details,
         "analytics": analytics,
@@ -1059,12 +1093,7 @@ async def get_storage_collection_stats(
 
     normalized_report_format = str(report_format or "summary").strip().lower()
     if normalized_report_format not in _VALID_REPORT_FORMATS:
-        return _error_result(
-            (
-                "report_format must be one of: "
-                f"{sorted(_VALID_REPORT_FORMATS)}"
-            )
-        )
+        return _error_result((f"report_format must be one of: {sorted(_VALID_REPORT_FORMATS)}"))
 
     result = await get_storage_stats(
         collection_name=normalized_collection_name,
@@ -1095,19 +1124,16 @@ async def get_storage_lifecycle_report(
     include_breakdown: bool = False,
 ) -> Dict[str, Any]:
     """Return normalized storage lifecycle telemetry via manage_collections(lifecycle_report)."""
-    if collection_name is not None and (not isinstance(collection_name, str) or not collection_name.strip()):
+    if collection_name is not None and (
+        not isinstance(collection_name, str) or not collection_name.strip()
+    ):
         return _error_result("collection_name must be a non-empty string when provided")
     if not isinstance(include_breakdown, bool):
         return _error_result("include_breakdown must be a boolean")
 
     normalized_report_format = str(report_format or "detailed").strip().lower()
     if normalized_report_format not in _VALID_REPORT_FORMATS:
-        return _error_result(
-            (
-                "report_format must be one of: "
-                f"{sorted(_VALID_REPORT_FORMATS)}"
-            )
-        )
+        return _error_result((f"report_format must be one of: {sorted(_VALID_REPORT_FORMATS)}"))
 
     result = await manage_collections(
         action="lifecycle_report",
@@ -1135,7 +1161,9 @@ async def get_storage_lifecycle_report(
         "collection_name": collection_name,
         "report_format": lifecycle_report.get("stats_report_format", normalized_report_format),
         "scope": lifecycle_report.get("scope", "global"),
-        "collections_total": int(lifecycle_report.get("collections_total", len(collection_names)) or 0),
+        "collections_total": int(
+            lifecycle_report.get("collections_total", len(collection_names)) or 0
+        ),
         "collection_names": collection_names,
         "totals": {
             "total_items": int(totals.get("total_items", 0) or 0),
@@ -1172,22 +1200,18 @@ async def get_storage_backend_status(
     if unavailable_reasons is not None and (
         not isinstance(unavailable_reasons, dict)
         or not all(
-            isinstance(key, str)
-            and key.strip()
-            and isinstance(value, str)
-            and value.strip()
+            isinstance(key, str) and key.strip() and isinstance(value, str) and value.strip()
             for key, value in unavailable_reasons.items()
         )
     ):
-        return _error_result("unavailable_reasons must be an object with non-empty string keys/values")
+        return _error_result(
+            "unavailable_reasons must be an object with non-empty string keys/values"
+        )
 
     normalized_availability_filter = str(availability_filter or "all").strip().lower() or "all"
     if normalized_availability_filter not in _VALID_BACKEND_AVAILABILITY_FILTERS:
         return _error_result(
-            (
-                "availability_filter must be one of: "
-                f"{sorted(_VALID_BACKEND_AVAILABILITY_FILTERS)}"
-            )
+            (f"availability_filter must be one of: {sorted(_VALID_BACKEND_AVAILABILITY_FILTERS)}")
         )
 
     result = await manage_collections(
@@ -1212,7 +1236,9 @@ async def get_storage_backend_status(
 
     return {
         "status": "success",
-        "availability_filter": backend_report.get("availability_filter", normalized_availability_filter),
+        "availability_filter": backend_report.get(
+            "availability_filter", normalized_availability_filter
+        ),
         "backend_count": int(backend_report.get("backend_count", len(backends)) or 0),
         "backends": backends,
         "breakdown": backend_report.get("breakdown", {}),
@@ -1272,7 +1298,9 @@ async def create_storage_collection(
         return _error_result("description must be a non-empty string when provided")
     if metadata is not None and not isinstance(metadata, dict):
         return _error_result("metadata must be an object when provided")
-    if metadata is not None and not all(isinstance(key, str) and key.strip() for key in metadata.keys()):
+    if metadata is not None and not all(
+        isinstance(key, str) and key.strip() for key in metadata.keys()
+    ):
         return _error_result("metadata keys must be non-empty strings when provided")
 
     result = await manage_collections(
@@ -1466,8 +1494,16 @@ def register_native_storage_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "data": {},
-                "storage_type": {"type": "string", "enum": sorted(_VALID_STORAGE_TYPES), "default": "memory"},
-                "compression": {"type": "string", "enum": sorted(_VALID_COMPRESSION_TYPES), "default": "none"},
+                "storage_type": {
+                    "type": "string",
+                    "enum": sorted(_VALID_STORAGE_TYPES),
+                    "default": "memory",
+                },
+                "compression": {
+                    "type": "string",
+                    "enum": sorted(_VALID_COMPRESSION_TYPES),
+                    "default": "none",
+                },
                 "collection": {"type": "string", "minLength": 1, "default": "default"},
                 "metadata": {
                     "type": ["object", "null"],
@@ -1526,11 +1562,19 @@ def register_native_storage_tools(manager: Any) -> None:
                 "include_capabilities": {"type": "boolean", "default": False},
                 "backend_types": {
                     "type": ["array", "null"],
-                    "items": {"type": "string", "enum": sorted(_VALID_STORAGE_TYPES), "minLength": 1},
+                    "items": {
+                        "type": "string",
+                        "enum": sorted(_VALID_STORAGE_TYPES),
+                        "minLength": 1,
+                    },
                 },
                 "unavailable_backends": {
                     "type": ["array", "null"],
-                    "items": {"type": "string", "enum": sorted(_VALID_STORAGE_TYPES), "minLength": 1},
+                    "items": {
+                        "type": "string",
+                        "enum": sorted(_VALID_STORAGE_TYPES),
+                        "minLength": 1,
+                    },
                 },
                 "unavailable_reasons": {
                     "type": ["object", "null"],
@@ -1578,7 +1622,10 @@ def register_native_storage_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "collection": {"type": ["string", "null"]},
-                "storage_type": {"type": ["string", "null"], "enum": sorted(_VALID_STORAGE_TYPES) + [None]},
+                "storage_type": {
+                    "type": ["string", "null"],
+                    "enum": sorted(_VALID_STORAGE_TYPES) + [None],
+                },
                 "tags": {
                     "type": ["array", "null"],
                     "items": {"type": "string", "minLength": 1},
@@ -1613,7 +1660,10 @@ def register_native_storage_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "collection": {"type": ["string", "null"]},
-                "storage_type": {"type": ["string", "null"], "enum": sorted(_VALID_STORAGE_TYPES) + [None]},
+                "storage_type": {
+                    "type": ["string", "null"],
+                    "enum": sorted(_VALID_STORAGE_TYPES) + [None],
+                },
                 "tags": {
                     "type": ["array", "null"],
                     "items": {"type": "string", "minLength": 1},
@@ -1704,11 +1754,19 @@ def register_native_storage_tools(manager: Any) -> None:
                 "include_capabilities": {"type": "boolean", "default": False},
                 "backend_types": {
                     "type": ["array", "null"],
-                    "items": {"type": "string", "enum": sorted(_VALID_STORAGE_TYPES), "minLength": 1},
+                    "items": {
+                        "type": "string",
+                        "enum": sorted(_VALID_STORAGE_TYPES),
+                        "minLength": 1,
+                    },
                 },
                 "unavailable_backends": {
                     "type": ["array", "null"],
-                    "items": {"type": "string", "enum": sorted(_VALID_STORAGE_TYPES), "minLength": 1},
+                    "items": {
+                        "type": "string",
+                        "enum": sorted(_VALID_STORAGE_TYPES),
+                        "minLength": 1,
+                    },
                 },
                 "unavailable_reasons": {
                     "type": ["object", "null"],
