@@ -125,7 +125,7 @@ W16  LGSWF-140 -> LGSWF-141
 ## LGSWF-002 Verify package DAG and freeze cross-authority interfaces
 
 - Stable task ID: LGSWF-002
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
