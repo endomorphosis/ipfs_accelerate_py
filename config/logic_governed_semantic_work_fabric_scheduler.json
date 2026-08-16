@@ -64,7 +64,9 @@
     "docs/architecture/logic_governed_semantic_work_fabric.todo.md",
     "config/logic_governed_semantic_work_fabric_baseline.json",
     "config/logic_governed_semantic_work_fabric_scheduler.json",
-    "scripts/validate_logic_governed_semantic_work_fabric_board.py"
+    "scripts/validate_logic_governed_semantic_work_fabric_board.py",
+    "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+    "test/api/test_lgswf_implementation_supervisor_entry.py"
   ],
   "runtime_paths": {
     "root": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1",

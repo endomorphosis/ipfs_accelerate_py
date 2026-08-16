@@ -151,6 +151,15 @@ The datasets `SemanticStateRoot` remains semantic-only. Operational records
 reference semantic CIDs; they never add claims, paths, workers, prompts,
 provider payloads, credentials, or mutable state to that root.
 
+Launch qualification found one checked-head compatibility gap: the configured
+board compiler emits an explicit legacy task-source tuple that the older
+implementation-supervisor entry parser does not recognize, even though the
+managed daemon at this revision defaults to that exact source kind. The sealed
+bootstrap adds a narrow entry-boundary validator that consumes only
+`legacy-markdown` / `legacy_markdown` / `fail_closed` plus the explicit-legacy
+flag; incomplete or broader tuples fail closed. It does not add a task source
+or change daemon semantics.
+
 ## 5. Target architecture
 
 ```text

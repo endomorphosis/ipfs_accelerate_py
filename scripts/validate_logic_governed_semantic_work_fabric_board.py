@@ -467,7 +467,16 @@ def validate() -> dict[str, Any]:
             errors.append(f"submodule {relative} identity mismatch: {head or error}")
 
     artifacts = {}
-    for path in (PLAN, OBJECTIVES, BOARD, CONFIG, BASELINE, Path(__file__).resolve()):
+    for path in (
+        PLAN,
+        OBJECTIVES,
+        BOARD,
+        CONFIG,
+        BASELINE,
+        Path(__file__).resolve(),
+        ROOT / "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+        ROOT / "test/api/test_lgswf_implementation_supervisor_entry.py",
+    ):
         try:
             artifacts[path.relative_to(ROOT).as_posix()] = _identity(path.read_bytes())
         except OSError:

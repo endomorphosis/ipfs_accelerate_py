@@ -45,7 +45,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Parent goal ID: LGSWF-G000
 - Subgoal ID: LGSWF-G010
 - Owning repository: ipfs_accelerate_py
-- Owned paths: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py
+- Owned paths: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py, scripts/ops/agent_supervisor/implementation_supervisor_entry.py, test/api/test_lgswf_implementation_supervisor_entry.py
 - Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
 - Base semantic-state root: unavailable; exact absence recorded by config/logic_governed_semantic_work_fabric_baseline.json
 - Base plan revision: LGSWF-PLAN-R1
@@ -68,12 +68,12 @@ W16  LGSWF-140 -> LGSWF-141
 - Rollback or compensation procedure: Revert only the control commit on the isolated branch; preserve baseline and validation receipts as rejected evidence.
 - Required evidence: source baseline, validator report, preflight report, dry-launch plan, control commit
 - Final result identity: sha256:81888ac65b5e2fd3b3e63a196574994660da031139499ee3da15a218a65255ce; baseline artifact, with complete bundle identities emitted by the validator
-- Outputs: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py
+- Outputs: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py, scripts/ops/agent_supervisor/implementation_supervisor_entry.py, test/api/test_lgswf_implementation_supervisor_entry.py
 - Validation: python3 scripts/validate_logic_governed_semantic_work_fabric_board.py --check-all
 - Acceptance: Control artifacts are committed on the isolated launch branch and preflight proves a clean exact source forest.
 - Board namespace: logic-governed-semantic-work-fabric-v1
 - Parallel lane: control
-- Predicted files: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py
+- Predicted files: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py, scripts/ops/agent_supervisor/implementation_supervisor_entry.py, test/api/test_lgswf_implementation_supervisor_entry.py
 - Conflict policy: Exclusive protected control-artifact seal; later workers cannot write these paths.
 - Raw-source requirements: selected Git trees and baseline observations
 
