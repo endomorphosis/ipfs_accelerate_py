@@ -1,0 +1,2148 @@
+# Logic-Governed Semantic Work Fabric task board
+
+Native legacy-Markdown projection for `ipfs_accelerate_py.agent_supervisor`.
+Task prefix: `LGSWF-`. Board namespace:
+`logic-governed-semantic-work-fabric-v1`. Plan revision: `LGSWF-PLAN-R1`.
+
+The board is intentionally bootstrap-bound. `LGSWF-001` through `LGSWF-004`
+may use declared raw-source fallback because no current datasets semantic root
+exists. `LGSWF-005` must apply an immutable plan revision that replaces every
+`REBIND_REQUIRED_BY_LGSWF-005` value with exact verified CIDs before any later
+task is admitted. The dispatcher must treat the sentinel as not dispatchable.
+
+## Parallel waves
+
+```text
+W0   LGSWF-000 (completed control seal)
+W1   LGSWF-001 | LGSWF-002 | LGSWF-003
+W2   LGSWF-004 -> LGSWF-005
+W3   LGSWF-010 | LGSWF-011 | LGSWF-012 -> LGSWF-013
+W4   LGSWF-020 | LGSWF-021 | LGSWF-022 -> LGSWF-023
+W5   LGSWF-030 | LGSWF-031 | LGSWF-032 -> LGSWF-033
+W6   LGSWF-040 | LGSWF-041 | LGSWF-042 -> LGSWF-043
+W7   LGSWF-050 | LGSWF-051 | LGSWF-052 -> LGSWF-053
+W8   LGSWF-060 | LGSWF-061 -> LGSWF-062
+W9   LGSWF-070 | LGSWF-071 -> LGSWF-072
+W10  LGSWF-080 | LGSWF-081 -> LGSWF-082
+W11  LGSWF-090 | LGSWF-091 -> LGSWF-092
+W12  LGSWF-100
+W13  LGSWF-110
+W14  LGSWF-120 -> LGSWF-121 | LGSWF-122
+W15  LGSWF-130 -> LGSWF-131
+W16  LGSWF-140 -> LGSWF-141
+```
+
+## LGSWF-000 Seal the R1 control plane
+
+- Stable task ID: LGSWF-000
+- Status: completed
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: control
+- Goal id: LGSWF-G000
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G010
+- Owning repository: ipfs_accelerate_py
+- Owned paths: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: unavailable; exact absence recorded by config/logic_governed_semantic_work_fabric_baseline.json
+- Base plan revision: LGSWF-PLAN-R1
+- Objective: Seal the reviewed source baseline, goal heap, dependency board, scheduler policy and validator before supervisor launch.
+- Depends on:
+- Read scope: selected clean repository tree and checked-out nested gitlinks
+- Write scope: owned paths only
+- External effect scope: local Git commit and local validation only
+- Relevant symbol IDs: none; control-artifact bootstrap
+- Capsule CIDs: none; raw-source bootstrap
+- Contract and obligation CIDs: LogicGovernedSemanticWorkFabricPlan@1; ConfiguredBoardPreflight@1
+- Resource demand: cpu_ms=600000; cpu_concurrency=1; ram_mib=1024; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=256; disk_bandwidth_mib_s=20; network=deny; network_bandwidth_kib_s=0; subprocesses=4; worktree_slots=1; model_input_tokens=0; model_output_tokens=0; provider_quota_units=0; provider_concurrency=0; prover_class=none; prover_concurrency=0; exclusive_keys=control-seal; merge_slots=0; persistence_kib_s=256
+- Model-route class: none; manually reviewed control bootstrap
+- Permitted effects: create and commit protected control artifacts; run read-only validators
+- Prohibited effects: implementation-source mutation; semantic-root publication; provider calls; protected-branch merge; credential access
+- Completion contract: All six control artifacts are tracked, internally consistent, content-addressed by the bootstrap validation receipt, and generic configured-board preflight passes from a clean isolated branch.
+- Validation requirements: python3 scripts/validate_logic_governed_semantic_work_fabric_board.py --check-all; configured-board preflight; dry launch render
+- Proof requirements: SHA-256 control inventory, exact Git/tree/submodule identity, acyclic task and goal DAG, no unsafe parallel owned-path overlap
+- Lease requirements: exclusive control-seal lease during authoring; no worker lease
+- Rollback or compensation procedure: Revert only the control commit on the isolated branch; preserve baseline and validation receipts as rejected evidence.
+- Required evidence: source baseline, validator report, preflight report, dry-launch plan, control commit
+- Final result identity: sha256:81888ac65b5e2fd3b3e63a196574994660da031139499ee3da15a218a65255ce; baseline artifact, with complete bundle identities emitted by the validator
+- Outputs: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py
+- Validation: python3 scripts/validate_logic_governed_semantic_work_fabric_board.py --check-all
+- Acceptance: Control artifacts are committed on the isolated launch branch and preflight proves a clean exact source forest.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: control
+- Predicted files: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py
+- Conflict policy: Exclusive protected control-artifact seal; later workers cannot write these paths.
+- Raw-source requirements: selected Git trees and baseline observations
+
+## LGSWF-001 Inventory current implementations and persist revision ledgers
+
+- Stable task ID: LGSWF-001
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: inventory-freeze
+- Goal id: LGSWF-G010
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G010
+- Owning repository: ipfs_accelerate_py
+- Owned paths: docs/architecture/logic_governed_semantic_work_fabric_inventory/current_state.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/accelerator_intervening_commits.tsv, docs/architecture/logic_governed_semantic_work_fabric_inventory/datasets_intervening_commits.tsv, docs/architecture/logic_governed_semantic_work_fabric_inventory/inventory.json
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: unavailable; raw-source fallback admitted for A only
+- Base plan revision: LGSWF-PLAN-R1
+- Objective: Inventory every required semantic and operational implementation, classify authority/facade/projection/legacy/duplicate/experimental/obsolete/unresolved, and persist complete ordered revision histories whose hashes match the baseline.
+- Depends on: LGSWF-000
+- Read scope: agent_supervisor, ipfs_datasets_py/ipfs_datasets_py/logic, Git objects for all baseline ranges, existing SCG inventory
+- Write scope: owned paths only
+- External effect scope: none; local Git object reads and local artifact writes
+- Relevant symbol IDs: raw-source discovery for all requested modules
+- Capsule CIDs: none; raw-source-required=true
+- Contract and obligation CIDs: CurrentStateInventory@1; RevisionLedger@1
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; model_input_tokens=24000; model_output_tokens=8000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=inventory-output; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; deterministic inventory validation is authority
+- Permitted effects: read declared trees and Git objects; write machine-readable inventory/ledgers; run import and static probes
+- Prohibited effects: source revision adoption; network fetch; source-code mutation; semantic reinterpretation; plan/board mutation; canonical-root publication
+- Completion contract: Every requested concern has a discovered path and classification; runtime-effective duplicate definitions are identified; full ordered logs reproduce sealed counts/hashes; absent APIs remain unavailable.
+- Validation requirements: JSON schema/checks; Git log count/hash replay; import origins under selected worktree; inventory has no unresolved unclassified row
+- Proof requirements: content hashes for ledgers/inventory and deterministic rerun equality
+- Lease requirements: isolated worktree read/write lease; fence epoch and idempotency key inventory-selected-tree-R1
+- Rollback or compensation procedure: Discard worktree on failure; retain mismatched ledger as quarantined evidence; no external compensation.
+- Required evidence: exact revisions/trees/status, complete ledgers, inventory classifications, import-origin receipt, command/version receipt
+- Final result identity: pending; supervisor sets inventory root CID after acceptance
+- Outputs: docs/architecture/logic_governed_semantic_work_fabric_inventory/current_state.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/inventory.json
+- Validation: python3 -m json.tool docs/architecture/logic_governed_semantic_work_fabric_inventory/inventory.json
+- Acceptance: Machine-readable inventory is complete and all intervening-change commitments verify.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: inventory
+- Predicted files: docs/architecture/logic_governed_semantic_work_fabric_inventory/current_state.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/accelerator_intervening_commits.tsv, docs/architecture/logic_governed_semantic_work_fabric_inventory/datasets_intervening_commits.tsv, docs/architecture/logic_governed_semantic_work_fabric_inventory/inventory.json
+- Conflict policy: Disjoint from A2 and A3 outputs; read-only overlap is allowed.
+- Raw-source requirements: all minimum-inspection paths listed by the parent objective
+
+## LGSWF-002 Verify package DAG and freeze cross-authority interfaces
+
+- Stable task ID: LGSWF-002
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: inventory-freeze
+- Goal id: LGSWF-G010
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G010
+- Owning repository: ipfs_accelerate_py
+- Owned paths: docs/architecture/logic_governed_semantic_work_fabric_inventory/package_dag.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/authority_map.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/interface_freeze.json, test/api/test_agent_supervisor_lgswf_package_dag.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: unavailable; raw-source fallback admitted for A only
+- Base plan revision: LGSWF-PLAN-R1
+- Objective: Compute the actual package import graph, identify cycles/upward imports and compatibility boundaries, and freeze exact datasets-to-accelerator, ContextPack, completion, invalidation, proof, objective/plan, resource/claim and result/completion interfaces.
+- Depends on: LGSWF-000
+- Read scope: all requested accelerator/datasets package roots, existing contract seals and public facades
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: raw-source discovery for public facades and runtime-effective definitions
+- Capsule CIDs: none; raw-source-required=true
+- Contract and obligation CIDs: PackageDependencyDAG@1; AuthorityMap@1; IntegrationInterfaceFreeze@1
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=2048; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=10; worktree_slots=1; model_input_tokens=28000; model_output_tokens=9000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=dag-freeze-output; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; static DAG/interface verifier is authority
+- Permitted effects: AST/import analysis; contract comparison; write freeze artifacts and focused test
+- Prohibited effects: moving packages before evidence; adding duplicate contract names; adopting compatibility facades as authority; plan/board mutation
+- Completion contract: Actual SCCs and upward imports are recorded; intended bottom-up direction has a remediation map; each integration boundary names one existing canonical interface or an evidence-backed gap/version addition.
+- Validation requirements: hermetic static import graph test; import-smoke tests; duplicate contract-name scan; JSON validation
+- Proof requirements: deterministic graph root, SCC witness paths, interface source hashes
+- Lease requirements: isolated worktree lease; fence epoch; idempotency key dag-interface-freeze-R1
+- Rollback or compensation procedure: Discard worktree; preserve failed cycle witnesses as gap evidence.
+- Required evidence: package graph, SCCs, dependency-direction violations, authority map, interface signatures/versions, facade classifications
+- Final result identity: pending; supervisor sets interface-freeze CID after acceptance
+- Outputs: docs/architecture/logic_governed_semantic_work_fabric_inventory/package_dag.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/authority_map.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/interface_freeze.json
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_lgswf_package_dag.py
+- Acceptance: Every integration boundary is frozen without a new duplicate semantic or operational authority.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: authority-dag
+- Predicted files: docs/architecture/logic_governed_semantic_work_fabric_inventory/package_dag.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/authority_map.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/interface_freeze.json, test/api/test_agent_supervisor_lgswf_package_dag.py
+- Conflict policy: Disjoint outputs; shared source reads are non-conflicting.
+- Raw-source requirements: full package import/source metadata for minimum-inspection roots
+
+## LGSWF-003 Qualify datasets semantic producer and contract/proof binding
+
+- Stable task ID: LGSWF-003
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: inventory-freeze
+- Goal id: LGSWF-G010
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G010
+- Owning repository: ipfs_datasets_py
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/contract_bindings.py, ipfs_datasets_py/tests/unit/logic/software_contracts/test_lgswf_semantic_producer.py
+- Base revision: ac82107e246b30e35a2bbdcf75e01370d22350c6
+- Base semantic-state root: unavailable; this producer-readiness task is authorized to use raw source
+- Base plan revision: LGSWF-PLAN-R1
+- Objective: Reproduce and minimally repair checked-head semantic scanning/namespace/duplicate-argument failures, then bind canonical callable/program contracts and proof-obligation references through datasets-owned metadata without adding operational fields or a new index.
+- Depends on: LGSWF-000
+- Read scope: datasets semantic index/state/contracts/verification/formalization/backends/families and their tests
+- Write scope: owned paths only in the datasets submodule
+- External effect scope: none; local scans/tests only
+- Relevant symbol IDs: discovered by the repaired datasets scan; raw-source bootstrap permitted
+- Capsule CIDs: none at input; output capsules must carry canonical references when available
+- Contract and obligation CIDs: SemanticStateProducer@1; CallableContract; ContractRegistry; ProgramContract; VerificationConditionSet
+- Resource demand: cpu_ms=14400000; cpu_concurrency=3; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=8192; disk_bandwidth_mib_s=150; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=local-logic; prover_concurrency=1; exclusive_keys=datasets-semantic-producer-write; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; datasets tests and semantic verifier are authority
+- Permitted effects: smallest coherent datasets-owned producer/bridge change; local scans, tests and proof-readiness checks
+- Prohibited effects: accelerator operational fields in SemanticStateRoot; semantic reinterpretation in accelerator; new index/compiler/prover; remote revision adoption; weakening tests
+- Completion contract: Selected source scopes scan deterministically; duplicate argument records and empty namespace fail safely or are correctly represented; canonical contract/proof CIDs flow through producer metadata/capsules; cold/incremental roots match; absent adversarial assurance stays unavailable.
+- Validation requirements: focused datasets producer tests; existing semantic index/state/capsule tests; cold versus incremental equality; full changed-scope scan
+- Proof requirements: semantic bundle verify; contract/proof reference provenance; no root excluded-field regression
+- Lease requirements: exclusive datasets submodule worktree mutation lease; fence epoch; CAS result; idempotency key datasets-producer-ac821-R1
+- Rollback or compensation procedure: Revert datasets submodule commit in isolated worktree; retain failing scan inputs and stack traces; no canonical root publication.
+- Required evidence: reproduced failures, patch diff, scanner/capsule tests, verified bundle, provenance map, limitation record
+- Final result identity: pending; supervisor sets datasets producer result CID after acceptance
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/contract_bindings.py, ipfs_datasets_py/tests/unit/logic/software_contracts/test_lgswf_semantic_producer.py
+- Validation: python3 -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/test_lgswf_semantic_producer.py
+- Acceptance: The canonical producer can build a verified root for the selected source without duplicating semantic or operational authority.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: datasets-producer
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/contract_bindings.py, ipfs_datasets_py/tests/unit/logic/software_contracts/test_lgswf_semantic_producer.py
+- Conflict policy: Exclusive datasets semantic-producer writer; no other W1 task writes the submodule.
+- Raw-source requirements: selected accelerator and datasets source scopes needed to reproduce producer behavior
+
+## LGSWF-004 Build, verify and persist the current semantic baseline
+
+- Stable task ID: LGSWF-004
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: inventory-freeze
+- Goal id: LGSWF-G010
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G010
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/baseline.py, test/api/semantic_state/test_lgswf_current_baseline.py, data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/semantic-baseline.json
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: unavailable; this task establishes it from LGSWF-003 producer authority
+- Base plan revision: LGSWF-PLAN-R1
+- Objective: Assert import provenance, scan the exact selected tree, build/verify/persist datasets blocks, publish an accelerator root manifest through durable CAS, and record repository/tree/symbol/capsule/environment/contract/obligation availability separately.
+- Depends on: LGSWF-001, LGSWF-002, LGSWF-003
+- Read scope: accepted selected tree, LGSWF inventory/interface freeze, datasets producer API, accelerator semantic durable state
+- Write scope: owned paths and local content-addressed semantic block store only
+- External effect scope: local disk persistence only; no network
+- Relevant symbol IDs: all symbols in the admitted selected scan scope
+- Capsule CIDs: generated by datasets producer and referenced by manifest
+- Contract and obligation CIDs: frozen by LGSWF-002 and produced by LGSWF-003; unavailable dimensions are explicit
+- Resource demand: cpu_ms=21600000; cpu_concurrency=4; ram_mib=12288; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=32768; disk_bandwidth_mib_s=200; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; model_input_tokens=16000; model_output_tokens=6000; provider_quota_units=1; provider_concurrency=1; prover_class=local-logic; prover_concurrency=1; exclusive_keys=semantic-baseline-singleflight; merge_slots=1; persistence_kib_s=8192
+- Model-route class: implementation/high; semantic verification/CAS are authority
+- Permitted effects: local scan/build/verify/persist; write exact baseline code/test/receipt
+- Prohibited effects: worker publication as canonical; copying semantic payload into operational root; mutable paths/prompts/credentials; stale source acceptance
+- Completion contract: Import files resolve under exact nested datasets checkout; repository state and semantic bundle verify; all referenced blocks are reachable; accepted root manifest is CAS-published once and binds exact repository/tree; unavailable dimensions remain typed.
+- Validation requirements: focused baseline test; datasets bundle verification; block reachability; CAS race/ABA tests; import-origin check
+- Proof requirements: repository/tree equality, deterministic cold/repeat root identity, content-address verification
+- Lease requirements: semantic-baseline single-flight lease; generation-bearing CAS; fence epoch; idempotency key selected-tree-semantic-baseline-R1
+- Rollback or compensation procedure: Never advance accepted manifest on failure; quarantine partial blocks (unreachable); discard code worktree; retain failure receipt.
+- Required evidence: import provenance, scan receipt, root CID, block inventory, verify receipt, manifest CID/generation, unavailable-gap list
+- Final result identity: pending; accepted semantic baseline manifest CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/baseline.py, data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/semantic-baseline.json
+- Validation: python3 -m pytest -q test/api/semantic_state/test_lgswf_current_baseline.py
+- Acceptance: A verified current datasets root and accelerator reference manifest exist for the exact selected tree.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: semantic-baseline
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/baseline.py, test/api/semantic_state/test_lgswf_current_baseline.py, data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/semantic-baseline.json
+- Conflict policy: Exclusive semantic baseline publisher; read-only consumers wait for accepted manifest.
+- Raw-source requirements: full admitted selected scan scope if no fresh capsule is available
+
+## LGSWF-005 Accept Plan Revision R2 and rebind future work
+
+- Stable task ID: LGSWF-005
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: inventory-freeze
+- Goal id: LGSWF-G010
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G010
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/task_sources/lgswf_bootstrap_revision.py, test/api/test_agent_supervisor_lgswf_bootstrap_revision.py, data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/plan-r2.json
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: output of accepted LGSWF-004 only
+- Base plan revision: LGSWF-PLAN-R1
+- Objective: Use the existing PlanRevisionStore to create and CAS-accept R2, replacing every future sentinel with exact tree, semantic, capsule, contract, obligation, policy and completion identities while preserving R1.
+- Depends on: LGSWF-004
+- Read scope: R1 board/objectives, accepted semantic baseline, inventory/interface freeze, PlanRevisionStore/contracts
+- Write scope: owned paths and existing PlanRevisionStore runtime data through its API only
+- External effect scope: local durable CAS/event append only
+- Relevant symbol IDs: exact sets derived per future task from accepted semantic view
+- Capsule CIDs: exact fresh datasets CIDs or typed raw-source fallback with reason
+- Contract and obligation CIDs: exact canonical datasets CIDs or typed unavailable blockers
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=80; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=20000; model_output_tokens=8000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=plan-store-writer; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; deterministic PlanRevisionStore admission is authority
+- Permitted effects: submit/apply one immutable PlanDelta; fence stale R1 future claims; persist R2 receipt
+- Prohibited effects: edit R1/history in place; weaken completion; rebind claimed/running records; fabricate unavailable CIDs; direct board mutation by worker
+- Completion contract: R2 is the sole accepted pointer; R1 remains verifiable; future tasks have exact current semantic bindings or explicit typed holds; no running history is rewritten; all R2 roots/populations validate.
+- Validation requirements: focused revision test; PlanRevisionStore crash/CAS tests; task population/dedup; sentinel absence in admitted R2
+- Proof requirements: old/new plan roots, delta operations, supersession/fence receipts, semantic-root equality
+- Lease requirements: exclusive plan-store writer lease, current coordination fence, CAS expected pointer, idempotency key lgswf-bootstrap-r2
+- Rollback or compensation procedure: If CAS fails, retain rejected proposal and do not retry with a new semantic key; prior accepted pointer remains; fence any partial projection.
+- Required evidence: R1/R2 CIDs, PlanDelta, accepted pointer CAS, rebound task bindings, stale-claim fence results, event cursor
+- Final result identity: pending; accepted PlanRevision R2 CID
+- Outputs: data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/plan-r2.json
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_lgswf_bootstrap_revision.py
+- Acceptance: No post-A task is dispatchable with a sentinel or stale semantic binding.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: plan-authority
+- Predicted files: ipfs_accelerate_py/agent_supervisor/task_sources/lgswf_bootstrap_revision.py, test/api/test_agent_supervisor_lgswf_bootstrap_revision.py, data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/plan-r2.json
+- Conflict policy: Sole fenced plan-store writer; all peers submit immutable proposals only.
+- Raw-source requirements: none unless an exact per-task raw-source fallback is explicitly admitted in R2
+
+## LGSWF-010 Define SupervisorWorldSnapshot contracts and identity
+
+- Stable task ID: LGSWF-010
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: world-overlay
+- Goal id: LGSWF-G020
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G020
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_contracts.py, test/api/semantic_state/test_world_snapshot_contracts.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Define one accelerator-owned content-addressed world snapshot schema with all required reference roots, statuses, epochs, cursor and strict exclusions.
+- Depends on: LGSWF-005
+- Read scope: frozen interfaces, semantic-state root manifest, plan/objective/resource/claim/merge/event contracts
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; SupervisorWorldSnapshot@1
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=2048; disk_bandwidth_mib_s=80; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=28000; model_output_tokens=10000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=world-contract-file; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; schema verifier is authority
+- Permitted effects: add closed immutable contract and focused tests
+- Prohibited effects: embed semantic contents, source, prompts, credentials, responses, local paths or provider payloads; duplicate root manifest; plan mutation
+- Completion contract: Canonical serialization is deterministic and rejects unknown/forbidden fields, malformed CIDs/statuses/epochs, floats, repository mismatch and operational data inside datasets roots.
+- Validation requirements: schema roundtrip, CID vectors, exclusion/adversarial tests, deterministic identity
+- Proof requirements: content-identity vectors and field ownership proof table
+- Lease requirements: isolated worktree lease; path-exclusive write fence; CAS acceptance
+- Rollback or compensation procedure: Discard isolated contract commit; prior interfaces remain authoritative.
+- Required evidence: schema descriptor, vectors, exclusion cases, ownership mapping, test receipt
+- Final result identity: pending; accepted contract CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_contracts.py, test/api/semantic_state/test_world_snapshot_contracts.py
+- Validation: python3 -m pytest -q test/api/semantic_state/test_world_snapshot_contracts.py
+- Acceptance: Snapshot is semantic-reference-only and content-address stable.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: world-contract
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_contracts.py, test/api/semantic_state/test_world_snapshot_contracts.py
+- Conflict policy: File-disjoint W3 contract lane; integration export deferred to LGSWF-013.
+- Raw-source requirements: only symbols explicitly rebound by R2
+
+## LGSWF-011 Construct and admit world snapshots from separate authorities
+
+- Stable task ID: LGSWF-011
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: world-overlay
+- Goal id: LGSWF-G020
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G020
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_builder.py, test/api/semantic_state/test_world_snapshot_builder.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Build snapshots by independently verifying datasets, plan, objectives, claims, resources, capabilities, merge and event authorities, then enforce freshness and cross-authority consistency.
+- Depends on: LGSWF-005
+- Read scope: frozen authority adapters and world snapshot interface description from plan
+- Write scope: owned paths only
+- External effect scope: none; injected read ports only
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; WorldSnapshotBuilder@1
+- Resource demand: cpu_ms=9000000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=2048; disk_bandwidth_mib_s=80; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=28000; model_output_tokens=10000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=world-builder-file; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; deterministic authority adapters are authority
+- Permitted effects: add pure/injected builder and admission tests
+- Prohibited effects: single-source omniscience; authority mutation; stale fallback; implicit filesystem/provider lookup
+- Completion contract: Every component records status/evidence; required agreement covers repository/tree/plan/task population/semantic generation/policy; any stale/unavailable/inconsistent/quarantined required input makes snapshot unschedulable with typed reasons.
+- Validation requirements: authority disagreement matrix, stale-plan/root tests, unavailable/quarantine tests, deterministic rerun
+- Proof requirements: authority-to-field provenance and fail-closed truth table
+- Lease requirements: isolated worktree/path write lease; no coordination-writer authority
+- Rollback or compensation procedure: Discard worktree; no authority was mutated.
+- Required evidence: builder receipt, component status matrix, disagreement cases, test results
+- Final result identity: pending; accepted builder result CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_builder.py, test/api/semantic_state/test_world_snapshot_builder.py
+- Validation: python3 -m pytest -q test/api/semantic_state/test_world_snapshot_builder.py
+- Acceptance: No required authority disagreement produces a schedulable snapshot.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: world-builder
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_builder.py, test/api/semantic_state/test_world_snapshot_builder.py
+- Conflict policy: File-disjoint W3 builder lane; contract imported through frozen interface, export deferred.
+- Raw-source requirements: only if R2 admits exact fallback for referenced symbols
+
+## LGSWF-012 Implement read-only SupervisorWorldView queries
+
+- Stable task ID: LGSWF-012
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: world-overlay
+- Goal id: LGSWF-G020
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G020
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/world_view.py, test/api/semantic_state/test_world_view.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Provide mutation-free queries for goal/subgoal/task state, semantic binding, dependencies, conflicts, resources, claims, capsules/contracts/obligations, completion evidence and refill eligibility.
+- Depends on: LGSWF-005
+- Read scope: frozen snapshot and authority view protocols
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; SupervisorWorldView@1
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=2048; disk_bandwidth_mib_s=80; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=24000; model_output_tokens=9000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=world-view-file; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; purity/property tests are authority
+- Permitted effects: add immutable read model and tests
+- Prohibited effects: mutate any authority, lazy network/filesystem/provider access, cache writes disguised as reads
+- Completion contract: All required queries return deterministic typed results from one verified snapshot and injected immutable views; mutation attempts fail; unknown references are explicit.
+- Validation requirements: query coverage, immutability/property tests, missing-reference tests, no-side-effect probes
+- Proof requirements: read-method effect audit and deterministic query vectors
+- Lease requirements: isolated worktree/path write lease only
+- Rollback or compensation procedure: Discard worktree; no external or authority effects.
+- Required evidence: query matrix, effect audit, test receipt
+- Final result identity: pending; accepted world-view CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/world_view.py, test/api/semantic_state/test_world_view.py
+- Validation: python3 -m pytest -q test/api/semantic_state/test_world_view.py
+- Acceptance: World view cannot mutate or silently refresh an authority.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: world-view
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/world_view.py, test/api/semantic_state/test_world_view.py
+- Conflict policy: File-disjoint W3 view lane; integration export deferred.
+- Raw-source requirements: none beyond R2-bound read references
+
+## LGSWF-013 Integrate and qualify the operational world overlay
+
+- Stable task ID: LGSWF-013
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: world-overlay
+- Goal id: LGSWF-G020
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G020
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py, test/api/semantic_state/test_world_overlay_acceptance.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Export one canonical world overlay surface, reconcile W3 changes, and qualify end-to-end construction/admission/query behavior without creating a duplicate facade.
+- Depends on: LGSWF-010, LGSWF-011, LGSWF-012
+- Read scope: W3 modules, semantic-state public facade and frozen interfaces
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; SupervisorWorldSnapshot@1; SupervisorWorldView@1
+- Resource demand: cpu_ms=10800000; cpu_concurrency=3; ram_mib=6144; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; model_input_tokens=24000; model_output_tokens=8000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=semantic-state-facade; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; acceptance suite is authority
+- Permitted effects: integrate exports, add acceptance tests, resolve only W3 interface conflicts
+- Prohibited effects: unrelated facade expansion, duplicate snapshot/view names, semantic authority mutation, plan weakening
+- Completion contract: Public imports are unique/lazy/side-effect-free; a current fixture schedules while each required stale/mismatch case fails closed; read queries cover the required list.
+- Validation requirements: W3 focused tests plus existing semantic-state import/acceptance tests
+- Proof requirements: interface descriptor hash, import side-effect proof, acceptance matrix
+- Lease requirements: facade-exclusive integration lease, merge queue slot, current fence
+- Rollback or compensation procedure: Revert integration commit; W3 component commits remain independently reviewable.
+- Required evidence: integration diff, test matrix, public-surface inventory, world overlay seal
+- Final result identity: pending; accepted W3 integration CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py, test/api/semantic_state/test_world_overlay_acceptance.py
+- Validation: python3 -m pytest -q test/api/semantic_state/test_world_snapshot_contracts.py test/api/semantic_state/test_world_snapshot_builder.py test/api/semantic_state/test_world_view.py test/api/semantic_state/test_world_overlay_acceptance.py
+- Acceptance: Epic B is accepted against the R2 tree/root/plan.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: world-integration
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py, test/api/semantic_state/test_world_overlay_acceptance.py
+- Conflict policy: Serial W3 integration join after all component merges.
+- Raw-source requirements: only exact R2-admitted fallback
+
+## LGSWF-020 Implement SemanticWorkBinding@1
+
+- Stable task ID: LGSWF-020
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: binding-completion
+- Goal id: LGSWF-G030
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G030
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/work_binding.py, test/api/semantic_state/test_semantic_work_binding.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Define a strict content-addressed binding for goals, subgoals, tasks and attempts covering every required semantic reference, condition, scope, effect, test/proof, limitation, invalidation, completion and authority field.
+- Depends on: LGSWF-013
+- Read scope: world overlay, datasets reference contracts, current formal planning/task contracts
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; SemanticWorkBinding@1
+- Resource demand: cpu_ms=9000000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=2048; disk_bandwidth_mib_s=80; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=30000; model_output_tokens=11000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=work-binding-file; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; binding validator is authority
+- Permitted effects: add immutable reference-only contract and tests
+- Prohibited effects: copy/reinterpret capsule/contract/proof contents; accept stale/mixed roots; operational data in datasets root; arbitrary paths/effects
+- Completion contract: All required binding fields validate, identities are deterministic, exact source/plan/root agreement is enforced, and absent facts require typed fallback/hold rather than fabricated CIDs.
+- Validation requirements: schema/roundtrip/CID tests; stale/mixed-root/forged-reference/adversarial cases
+- Proof requirements: field ownership table and content-identity vectors
+- Lease requirements: isolated worktree/path-exclusive lease, current fence and CAS acceptance
+- Rollback or compensation procedure: Discard worktree; prior reference contracts remain authoritative.
+- Required evidence: schema, identity vectors, ownership mapping, negative-case matrix
+- Final result identity: pending; accepted binding contract CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/work_binding.py, test/api/semantic_state/test_semantic_work_binding.py
+- Validation: python3 -m pytest -q test/api/semantic_state/test_semantic_work_binding.py
+- Acceptance: A binding can reference every required datasets artifact without copying semantic content.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: work-binding
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/work_binding.py, test/api/semantic_state/test_semantic_work_binding.py
+- Conflict policy: File-disjoint W4 contract lane.
+- Raw-source requirements: only exact symbol fallbacks admitted by R2
+
+## LGSWF-021 Implement goal and task completion contracts
+
+- Stable task ID: LGSWF-021
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: binding-completion
+- Goal id: LGSWF-G030
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G030
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/objectives/completion_contracts.py, test/api/test_agent_supervisor_semantic_completion_contracts.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Extend existing goal completion with observable semantic/evidence contracts and separate worker, validation, proof, merge, refresh and supervisor-acceptance gates.
+- Depends on: LGSWF-013
+- Read scope: objective graph/completion, task lifecycle, validation/proof/merge receipts, world view
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; GoalCompletionContract@1; TaskCompletionContract@1
+- Resource demand: cpu_ms=9000000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=2048; disk_bandwidth_mib_s=80; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=30000; model_output_tokens=11000; provider_quota_units=1; provider_concurrency=1; prover_class=local-logic; prover_concurrency=1; exclusive_keys=completion-contract-file; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; deterministic completion evaluator is authority
+- Permitted effects: add versioned completion records/evaluator and tests
+- Prohibited effects: task-count completion; worker/model self-approval; stale evidence; weakening tests/proofs; mutate historical goal/task records
+- Completion contract: Parent acceptance proves observable state, semantic properties, children, tests/proofs, resolved counterexamples/gaps, tree/root, and human approval; task acceptance requires every configured gate.
+- Validation requirements: false-completion tests, stale evidence, missing child/proof/counterexample/human approval, legal transitions
+- Proof requirements: completion conjunction truth table and authority separation witness
+- Lease requirements: isolated worktree/path lease; completion authority remains supervisor-only
+- Rollback or compensation procedure: Revert additive contract/evaluator commit; keep failed completion receipts as evidence.
+- Required evidence: schemas, transition matrix, false-completion cases, evaluator receipt
+- Final result identity: pending; accepted completion-contract CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/objectives/completion_contracts.py, test/api/test_agent_supervisor_semantic_completion_contracts.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_semantic_completion_contracts.py
+- Acceptance: Completed workers cannot directly complete tasks or parent goals.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: completion-contract
+- Predicted files: ipfs_accelerate_py/agent_supervisor/objectives/completion_contracts.py, test/api/test_agent_supervisor_semantic_completion_contracts.py
+- Conflict policy: File-disjoint W4 completion lane.
+- Raw-source requirements: none beyond admitted semantic binding
+
+## LGSWF-022 Enforce provisional versus canonical semantic state
+
+- Stable task ID: LGSWF-022
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: binding-completion
+- Goal id: LGSWF-G030
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G030
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/provisional_state.py, test/api/semantic_state/test_provisional_state_authority.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Bind provisional semantic roots to worktree/task/attempt and prevent them or worker results from advancing canonical repository semantic authority.
+- Depends on: LGSWF-013
+- Read scope: semantic harness/durable CAS, worktree/attempt/merge contracts
+- Write scope: owned paths only
+- External effect scope: none; test-local CAS only
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; ProvisionalSemanticState@1
+- Resource demand: cpu_ms=9000000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=10; worktree_slots=1; model_input_tokens=26000; model_output_tokens=9000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=provisional-state-file; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; CAS/authority tests are authority
+- Permitted effects: add provisional binding/gates and hermetic tests
+- Prohibited effects: publish provisional/worker root as canonical; omit attempt/worktree tree; bypass post-merge rescan; mutate datasets root
+- Completion contract: Provisional root is usable for impact/context/verification only; canonical publish requires accepted merge tree, fresh datasets rescan and predicted-observed delta receipt.
+- Validation requirements: provisional isolation, worker publish rejection, stale attempt, wrong worktree/tree and CAS tests
+- Proof requirements: authority-transition state machine and negative transition witnesses
+- Lease requirements: attempt-local provisional lease; canonical publisher role prohibited
+- Rollback or compensation procedure: Drop provisional pointer/blocks from reachability; preserve attempt receipt; canonical pointer unchanged.
+- Required evidence: state-machine schema, rejection cases, CAS receipt, block reachability audit
+- Final result identity: pending; accepted provisional-state gate CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/provisional_state.py, test/api/semantic_state/test_provisional_state_authority.py
+- Validation: python3 -m pytest -q test/api/semantic_state/test_provisional_state_authority.py
+- Acceptance: Only a post-merge supervisor refresh can advance the canonical semantic root.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: provisional-state
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/provisional_state.py, test/api/semantic_state/test_provisional_state_authority.py
+- Conflict policy: File-disjoint W4 provisional-state lane.
+- Raw-source requirements: changed symbols when capsules are stale or R2 requires source
+
+## LGSWF-023 Integrate semantic bindings into planning and admission
+
+- Stable task ID: LGSWF-023
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: binding-completion
+- Goal id: LGSWF-G030
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G030
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/planning/semantic_binding_admission.py, test/api/test_agent_supervisor_semantic_binding_admission.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Promote required Markdown metadata and canonical task records into typed semantic binding/completion admission inputs and join W4 contracts without changing accepted history.
+- Depends on: LGSWF-020, LGSWF-021, LGSWF-022
+- Read scope: W4 modules, task sources, formal planning, PlanRevisionStore, world view
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; SemanticBindingAdmission@1
+- Resource demand: cpu_ms=10800000; cpu_concurrency=3; ram_mib=6144; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; model_input_tokens=30000; model_output_tokens=10000; provider_quota_units=1; provider_concurrency=1; prover_class=local-logic; prover_concurrency=1; exclusive_keys=binding-admission; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; typed admission validator is authority
+- Permitted effects: add consumer-side admission adapter and integration tests
+- Prohibited effects: treat Markdown prose as semantic authority; silently default missing fields; mutate claimed/running specifications; duplicate task source
+- Completion contract: Every executable goal/task/attempt reaches dispatch with one verified current typed binding/completion policy; missing/stale/sentinel fields return explicit non-ready reasons.
+- Validation requirements: legacy metadata projection, canonical task projection, missing/stale/sentinel rejection, immutable history tests
+- Proof requirements: field-by-field projection coverage and no-default audit
+- Lease requirements: integration worktree lease, merge slot, current fence
+- Rollback or compensation procedure: Revert adapter; keep W4 standalone contracts; previous scheduler remains fail-closed.
+- Required evidence: projection matrix, rejection receipt set, integration tests, W4 seal
+- Final result identity: pending; accepted W4 integration CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/semantic_binding_admission.py, test/api/test_agent_supervisor_semantic_binding_admission.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_semantic_binding_admission.py test/api/semantic_state/test_semantic_work_binding.py test/api/test_agent_supervisor_semantic_completion_contracts.py test/api/semantic_state/test_provisional_state_authority.py
+- Acceptance: Semantic fields become typed admission data, not unused Markdown metadata.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: binding-integration
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/semantic_binding_admission.py, test/api/test_agent_supervisor_semantic_binding_admission.py
+- Conflict policy: Serial W4 integration join.
+- Raw-source requirements: only binding-declared exact fallbacks
+
+## LGSWF-030 Implement SemanticWorkGraph@1 composition
+
+- Stable task ID: LGSWF-030
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: graph
+- Goal id: LGSWF-G040
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G040
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/planning/semantic_work_graph.py, test/api/test_agent_supervisor_semantic_work_graph.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Compose all required goal/task/code/data/interface/schema/contract/proof/validation/policy/merge/lifecycle/scope/invalidation/conflict/supersession/generation/block/unlock edges with distinct authority and evidence.
+- Depends on: LGSWF-023
+- Read scope: objective/task/plan graphs, datasets semantic view, proof/validation/merge/lifecycle contracts
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; SemanticWorkGraph@1
+- Resource demand: cpu_ms=10800000; cpu_concurrency=3; ram_mib=6144; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=120; network=deny; network_bandwidth_kib_s=0; subprocesses=10; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=semantic-work-graph-file; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; graph verifier is authority
+- Permitted effects: add immutable graph/edge records, composer and tests
+- Prohibited effects: collapse edge meanings/authorities; invent datasets semantics; binary floats; implicit process-memory dependencies
+- Completion contract: Every edge has source/target/kind/authority/evidence/certainty/source-root/source-plan/invalidation; graph identity is order-independent; unsupported or mixed-root edges fail.
+- Validation requirements: all edge kinds, order independence, mixed-root/authority/adversarial cases, graph reachability
+- Proof requirements: canonical serialization vectors and edge provenance completeness
+- Lease requirements: isolated worktree/path lease, CAS acceptance
+- Rollback or compensation procedure: Discard graph commit; source authority graphs unchanged.
+- Required evidence: edge schema, composer provenance, graph root vectors, tests
+- Final result identity: pending; accepted work-graph contract CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/semantic_work_graph.py, test/api/test_agent_supervisor_semantic_work_graph.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_semantic_work_graph.py
+- Acceptance: Composite graph retains every required edge class and authority.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: work-graph
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/semantic_work_graph.py, test/api/test_agent_supervisor_semantic_work_graph.py
+- Conflict policy: File-disjoint W5 graph lane.
+- Raw-source requirements: graph nodes whose datasets binding explicitly requires source
+
+## LGSWF-031 Extend the dedicated conflict graph
+
+- Stable task ID: LGSWF-031
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: graph
+- Goal id: LGSWF-G040
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G040
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/core/conflict_graph.py, test/api/test_agent_supervisor_semantic_conflict_graph.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Extend the existing conflict graph with predicted paths, exact symbol/interface/schema/state/effect/generated/fixture/taskboard/database/merge/external/resource scopes and conservative opaque fallback.
+- Depends on: LGSWF-023
+- Read scope: existing conflict/parallel contracts, semantic bindings, generated relationships, resource exclusivity
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; ConflictGraph@current-version-extension
+- Resource demand: cpu_ms=10800000; cpu_concurrency=3; ram_mib=6144; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=120; network=deny; network_bandwidth_kib_s=0; subprocesses=10; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=conflict-graph-file; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; deterministic conflict evaluator is authority
+- Permitted effects: extend current conflict implementation and tests
+- Prohibited effects: serialize shared reads; admit unknown writes as independent; overlap live write leases; replace existing conflict graph
+- Completion contract: Compatible readers/writers run together; same-symbol/interface/schema/generated-authority/effect/exclusive-resource writers conflict; opaque scopes fall back to file/repository serialization with reasons.
+- Validation requirements: conflict truth table, exact-symbol concurrency, opaque fallback, generated/effect/resource cases
+- Proof requirements: symmetry/determinism properties and no-overlap admission invariant
+- Lease requirements: exclusive existing conflict-graph file lease, current fence, merge slot
+- Rollback or compensation procedure: Revert extension commit; prior conservative behavior remains.
+- Required evidence: conflict inputs/edges/reasons/root, property tests, overlap adversarial cases
+- Final result identity: pending; accepted conflict-graph result CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/core/conflict_graph.py, test/api/test_agent_supervisor_semantic_conflict_graph.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_semantic_conflict_graph.py
+- Acceptance: Unknown or truly overlapping writes cannot share an admitted frontier.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: conflict-graph
+- Predicted files: ipfs_accelerate_py/agent_supervisor/core/conflict_graph.py, test/api/test_agent_supervisor_semantic_conflict_graph.py
+- Conflict policy: Exclusive edit of existing conflict graph; other W5 tasks are file-disjoint.
+- Raw-source requirements: opaque changed scopes requiring file-level fallback
+
+## LGSWF-032 Compute deterministic critical-path and unlock metrics
+
+- Stable task ID: LGSWF-032
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: graph
+- Goal id: LGSWF-G040
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G040
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/planning/work_graph_metrics.py, test/api/test_agent_supervisor_work_graph_metrics.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Calculate topological depth, critical path, unlock and blocking-goal counts, estimated cost, uncertainty, merge risk, resource bottleneck and cache locality using durable integer/fixed-point values.
+- Depends on: LGSWF-023
+- Read scope: frozen graph/plan/resource/receipt interfaces
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; WorkGraphMetrics@1
+- Resource demand: cpu_ms=9000000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=2048; disk_bandwidth_mib_s=80; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=26000; model_output_tokens=9000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=graph-metrics-file; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; integer algorithm tests are authority
+- Permitted effects: add pure deterministic metrics and tests
+- Prohibited effects: binary floats in durable records; wall-clock-dependent tie breaks; mutate graph/task state
+- Completion contract: Metrics are bounded, overflow-checked, reproducible, and distinguish observed from predicted inputs; cycles/unknown costs return typed findings.
+- Validation requirements: known DAG vectors, overflow/bounds, deterministic ordering, cycle and missing-estimate cases
+- Proof requirements: recurrence/property tests and fixed-point serialization vectors
+- Lease requirements: isolated worktree/path lease
+- Rollback or compensation procedure: Discard worktree; no authority changes.
+- Required evidence: metric schema, golden vectors, property tests, complexity bound
+- Final result identity: pending; accepted metrics CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/work_graph_metrics.py, test/api/test_agent_supervisor_work_graph_metrics.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_work_graph_metrics.py
+- Acceptance: Identical graph/evidence produces byte-identical durable metrics.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: graph-metrics
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/work_graph_metrics.py, test/api/test_agent_supervisor_work_graph_metrics.py
+- Conflict policy: File-disjoint W5 metrics lane.
+- Raw-source requirements: none beyond R2 graph bindings
+
+## LGSWF-033 Integrate composite and conflict graphs
+
+- Stable task ID: LGSWF-033
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: graph
+- Goal id: LGSWF-G040
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G040
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/planning/semantic_work_graph_integration.py, test/api/test_agent_supervisor_semantic_work_graph_acceptance.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Compose accepted W5 components from one world view and prove dependency/conflict separation, authority provenance, conservative fallbacks and deterministic metrics.
+- Depends on: LGSWF-030, LGSWF-031, LGSWF-032
+- Read scope: W5 components and world/binding views
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; SemanticWorkGraph@1; ConflictGraph@current-version-extension
+- Resource demand: cpu_ms=10800000; cpu_concurrency=3; ram_mib=6144; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; model_input_tokens=28000; model_output_tokens=9000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=graph-integration; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; graph acceptance tests are authority
+- Permitted effects: add integration composer/tests and W5 seal
+- Prohibited effects: override datasets edges; conflate conflict/dependency; omit unknowns; mutate plan/world
+- Completion contract: One composite root and dedicated conflict root are reproducible from exact authorities and every scheduling-relevant edge/metric has evidence.
+- Validation requirements: W5 focused suite, mixed-authority fixture, hidden dependency, compatible read/write and opaque serialization cases
+- Proof requirements: root determinism, provenance coverage and conflict-free invariant inputs
+- Lease requirements: serial W5 integration lease, merge slot, current fence
+- Rollback or compensation procedure: Revert integration commit; component evidence remains.
+- Required evidence: composite/conflict roots, edge counts/classes, rejection reasons, W5 seal
+- Final result identity: pending; accepted W5 integration CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/semantic_work_graph_integration.py, test/api/test_agent_supervisor_semantic_work_graph_acceptance.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_semantic_work_graph.py test/api/test_agent_supervisor_semantic_conflict_graph.py test/api/test_agent_supervisor_work_graph_metrics.py test/api/test_agent_supervisor_semantic_work_graph_acceptance.py
+- Acceptance: Epic D graph roots are current and complete for the R2 snapshot.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: graph-integration
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/semantic_work_graph_integration.py, test/api/test_agent_supervisor_semantic_work_graph_acceptance.py
+- Conflict policy: Serial W5 join.
+- Raw-source requirements: only R2-declared opaque fallbacks
+
+## LGSWF-040 Implement all readiness gates and frontier construction
+
+- Stable task ID: LGSWF-040
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: frontier
+- Goal id: LGSWF-G050
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G050
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/planning/conflict_free_frontier.py, test/api/test_agent_supervisor_conflict_free_frontier.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Enforce the twelve readiness predicates and construct a deterministic candidate ready set plus conflict relation from one current world/graph snapshot.
+- Depends on: LGSWF-033
+- Read scope: world view, bindings/completion, work/conflict graphs, claims/resources/providers/proofs
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; ConflictFreeParallelFrontierPlanner@1
+- Resource demand: cpu_ms=10800000; cpu_concurrency=3; ram_mib=6144; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=10; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=frontier-core-file; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; deterministic readiness code is authority
+- Permitted effects: add pure readiness/frontier construction and tests
+- Prohibited effects: reserve/dispatch during planning; LLM admission; stale fallback; omit rejection reasons
+- Completion contract: Every task is selected or rejected with one or more typed reasons; no stale/blocked/superseded/quarantined/human-held/resource-unreservable/conflicting task enters candidates.
+- Validation requirements: one test per readiness predicate, combinations, deterministic ordering, conflict-free property
+- Proof requirements: readiness conjunction truth table and antichain invariant
+- Lease requirements: isolated path lease only; planner is read-only
+- Rollback or compensation procedure: Discard worktree; no claims/resources changed.
+- Required evidence: candidate/rejection fixture, predicate coverage, root/policy identities
+- Final result identity: pending; accepted frontier-core CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/conflict_free_frontier.py, test/api/test_agent_supervisor_conflict_free_frontier.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_conflict_free_frontier.py
+- Acceptance: Candidate ready frontier contains only legally dispatchable tasks.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: frontier-core
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/conflict_free_frontier.py, test/api/test_agent_supervisor_conflict_free_frontier.py
+- Conflict policy: File-disjoint W6 core lane.
+- Raw-source requirements: task-specific exact fallback only
+
+## LGSWF-041 Implement deterministic bounded frontier optimization
+
+- Stable task ID: LGSWF-041
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: frontier
+- Goal id: LGSWF-G050
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G050
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/planning/frontier_optimizer.py, test/api/test_agent_supervisor_frontier_optimizer.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Select a useful conflict-free antichain under hard resource constraints with fixed-point scoring, exact bounded search for small sets and deterministic greedy/local improvement for large sets.
+- Depends on: LGSWF-033
+- Read scope: graph metrics, conflict/root interfaces, resource/provider capacity schemas
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; FrontierOptimizer@1
+- Resource demand: cpu_ms=14400000; cpu_concurrency=3; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=10; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=frontier-optimizer-file; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; optimizer result verifier is authority
+- Permitted effects: add pure bounded optimizer/scoring and tests
+- Prohibited effects: binary floats; random/clock tie breaks; soft override of hard constraints; LLM authority
+- Completion contract: Score includes all documented positive/negative components, task-ID tie break is stable, resource/conflict feasibility verifies, and small fixtures match exhaustive optimum.
+- Validation requirements: exhaustive-small oracle, deterministic-large, overflow/bounds, fairness/aging/locality/provider/merge pressure cases
+- Proof requirements: feasibility invariant, score serialization vectors and algorithm bound
+- Lease requirements: isolated path lease only
+- Rollback or compensation procedure: Discard worktree; no authority effects.
+- Required evidence: score schema, exhaustive comparison, deterministic replay, complexity receipt
+- Final result identity: pending; accepted optimizer CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/frontier_optimizer.py, test/api/test_agent_supervisor_frontier_optimizer.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_frontier_optimizer.py
+- Acceptance: Identical snapshot/policy yields identical feasible selected frontier.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: frontier-optimizer
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/frontier_optimizer.py, test/api/test_agent_supervisor_frontier_optimizer.py
+- Conflict policy: File-disjoint W6 optimizer lane.
+- Raw-source requirements: none beyond R2 bindings
+
+## LGSWF-042 Add safe split, coalesce, rewire and speculation proposals
+
+- Stable task ID: LGSWF-042
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: frontier
+- Goal id: LGSWF-G050
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G050
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/planning/parallel_plan_compiler.py, test/api/test_agent_supervisor_lgswf_plan_transforms.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Extend current PlanDelta-based planning to propose bounded split/coalesce/rewire operations and isolated read-only speculation under the exact documented conditions.
+- Depends on: LGSWF-033
+- Read scope: existing parallel compiler, PlanDelta/lifecycle/conflict/completion contracts, semantic graph
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; existing PlanDelta contracts
+- Resource demand: cpu_ms=10800000; cpu_concurrency=3; ram_mib=6144; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=10; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=parallel-plan-compiler-file; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; PlanDelta validator is authority
+- Permitted effects: extend existing compiler with proposal-only transforms and tests
+- Prohibited effects: in-place mutation of claimed-through-accepted tasks; speculative merge/publish; unbounded task growth; completion weakening
+- Completion contract: Each proposal has evidence, coverage equivalence, predicted parallelism/critical/resource impact, bounds, validation, dedup key, fallback and human-review flag; speculation cannot mutate canonical authority.
+- Validation requirements: split coverage, coalesce inseparability, rewire evidence, immutable lifecycle, bounded amplification, cancellation safety
+- Proof requirements: completion-coverage equivalence and no-authority speculation invariant
+- Lease requirements: exclusive existing compiler file lease; proposals require no plan-writer lease
+- Rollback or compensation procedure: Revert compiler extension; submitted but unaccepted proposals remain immutable rejected evidence.
+- Required evidence: transform proposals, before/after DAGs, coverage/resource metrics, negative cases
+- Final result identity: pending; accepted transform-policy CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/parallel_plan_compiler.py, test/api/test_agent_supervisor_lgswf_plan_transforms.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_lgswf_plan_transforms.py
+- Acceptance: Future work can be reshaped safely without rewriting active/history records.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: plan-transforms
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/parallel_plan_compiler.py, test/api/test_agent_supervisor_lgswf_plan_transforms.py
+- Conflict policy: Exclusive existing parallel compiler edit; other W6 lanes are disjoint.
+- Raw-source requirements: target symbol sets when split evidence requires source
+
+## LGSWF-043 Integrate and qualify the frontier planner
+
+- Stable task ID: LGSWF-043
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: frontier
+- Goal id: LGSWF-G050
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G050
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/planning/frontier_integration.py, test/api/test_agent_supervisor_frontier_acceptance.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Integrate readiness, optimizer and plan-transform proposals with current planning while leaving resource reservation and dispatch to later authorities.
+- Depends on: LGSWF-040, LGSWF-041, LGSWF-042
+- Read scope: W6 components, W5 graphs, world/binding views, current planner contracts
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; ConflictFreeParallelFrontierPlanner@1
+- Resource demand: cpu_ms=10800000; cpu_concurrency=3; ram_mib=6144; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; model_input_tokens=28000; model_output_tokens=9000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=frontier-integration; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; integrated deterministic verifier is authority
+- Permitted effects: add integration adapter/receipt candidate and acceptance tests
+- Prohibited effects: claim/reserve/dispatch; mutate plan from Doctor/LLM proposal; hide rejection reasons
+- Completion contract: One call over a verified world produces candidates, typed rejections, conflict-free selection, score components and optional bounded PlanDelta proposals deterministically.
+- Validation requirements: W6 suite, identical-snapshot replay, hard-resource/conflict fixtures, fairness and transform cases
+- Proof requirements: frontier feasibility and deterministic receipt precursor
+- Lease requirements: serial W6 integration lease, merge slot, current fence
+- Rollback or compensation procedure: Revert integration commit; W6 components remain.
+- Required evidence: selected/rejected fixtures, scoring breakdown, transform candidates, W6 seal
+- Final result identity: pending; accepted W6 integration CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/frontier_integration.py, test/api/test_agent_supervisor_frontier_acceptance.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_conflict_free_frontier.py test/api/test_agent_supervisor_frontier_optimizer.py test/api/test_agent_supervisor_lgswf_plan_transforms.py test/api/test_agent_supervisor_frontier_acceptance.py
+- Acceptance: Epic E selects deterministic conflict-free work without executing it.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: frontier-integration
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/frontier_integration.py, test/api/test_agent_supervisor_frontier_acceptance.py
+- Conflict policy: Serial W6 join.
+- Raw-source requirements: only binding-declared exact fallback
+
+## LGSWF-050 Extend the resource vector and leased reservation authority
+
+- Stable task ID: LGSWF-050
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: resources
+- Goal id: LGSWF-G060
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G060
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py, test/api/test_agent_supervisor_lgswf_resource_scheduler.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Extend the current scheduler with the full integer resource vector and bounded leased reservation/release/reclaim semantics bound to task, attempt, supervisor and daemon.
+- Depends on: LGSWF-043
+- Read scope: existing resource/provider/prover/worktree/merge/persistence contracts and receipts
+- Write scope: owned paths only
+- External effect scope: local resource observations/reservations; no provider call in tests
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; ResourceVector@1; ResourceReservation@1
+- Resource demand: cpu_ms=14400000; cpu_concurrency=3; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=120; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=resource-scheduler-file; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; deterministic reservation/CAS code is authority
+- Permitted effects: extend current resource scheduler and focused tests
+- Prohibited effects: overcommit hard GPU/provider/prover/license/merge/database/worktree resources; float durable fields; reclaim live lease; replace scheduler
+- Completion contract: Every applicable dimension is declared; reserve precedes dispatch; release occurs on terminal/cancel/timeout/death; reclaim requires fenced expiry; concurrent CAS cannot oversubscribe hard capacity.
+- Validation requirements: vector bounds, concurrent reservation, expiry/fence, release paths, impossible telemetry and hard-capacity tests
+- Proof requirements: capacity conservation invariant and reservation state-machine properties
+- Lease requirements: exclusive resource-scheduler source lease; runtime reservation operations use their own fenced CAS leases
+- Rollback or compensation procedure: Revert extension; cancel/release new-version reservations with receipts; never reinterpret old evidence.
+- Required evidence: vector/schema, capacity snapshots, concurrent test receipts, reclaim/fence events
+- Final result identity: pending; accepted resource-scheduler CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py, test/api/test_agent_supervisor_lgswf_resource_scheduler.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_lgswf_resource_scheduler.py
+- Acceptance: No tested hard resource can be overcommitted or leaked past confirmed fenced expiry.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: resource-core
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py, test/api/test_agent_supervisor_lgswf_resource_scheduler.py
+- Conflict policy: Exclusive existing scheduler edit; other W7 tasks are file-disjoint.
+- Raw-source requirements: none beyond task binding
+
+## LGSWF-051 Add historical estimates, cache locality and single flight
+
+- Stable task ID: LGSWF-051
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: resources
+- Goal id: LGSWF-G060
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G060
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/work_cache_coordinator.py, test/api/test_agent_supervisor_work_cache_coordinator.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Learn bounded predictions from immutable receipts and coordinate cache affinity/single-flight reuse for scans, semantic blocks, capsules, contexts, providers, tests, proofs, dependencies and worktrees.
+- Depends on: LGSWF-043
+- Read scope: event/receipt/cache/context/proof/test/semantic/worktree stores
+- Write scope: owned paths only
+- External effect scope: local cache metadata and test fixtures only
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; WorkCacheCoordinator@1; HistoricalResourceEstimate@1
+- Resource demand: cpu_ms=10800000; cpu_concurrency=2; ram_mib=6144; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=8192; disk_bandwidth_mib_s=150; network=deny; network_bandwidth_kib_s=0; subprocesses=10; worktree_slots=1; model_input_tokens=30000; model_output_tokens=10000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=cache-coordinator-file; merge_slots=1; persistence_kib_s=4096
+- Model-route class: implementation/high; receipt verifier/single-flight CAS are authority
+- Permitted effects: add coordinator/prediction records and hermetic cache tests
+- Prohibited effects: overwrite observations with predictions; accept stale/mixed-root cache; duplicate canonical caches; persist credentials/provider payloads
+- Completion contract: Predictions and observations are distinct; keys bind all semantic/policy/tool inputs; concurrent identical requests elect one producer; locality influences score without overriding safety.
+- Validation requirements: single-flight races, cache-key invalidation, stale/mixed-root rejection, estimate bounds, hit/miss/reuse counters
+- Proof requirements: at-most-one producer property and observation immutability
+- Lease requirements: per-cache-key single-flight leases and fences; isolated source lease
+- Rollback or compensation procedure: Drop new cache metadata and release flights; immutable source receipts remain; revert code commit.
+- Required evidence: cache-key schemas, race receipts, estimate versus observation fixtures, reuse metrics
+- Final result identity: pending; accepted cache-coordinator CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/work_cache_coordinator.py, test/api/test_agent_supervisor_work_cache_coordinator.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_work_cache_coordinator.py
+- Acceptance: Identical work is coalesced while stale or semantically different work is not reused.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: cache-locality
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/work_cache_coordinator.py, test/api/test_agent_supervisor_work_cache_coordinator.py
+- Conflict policy: File-disjoint W7 cache lane.
+- Raw-source requirements: only cache misses with binding-declared source fallback
+
+## LGSWF-052 Implement independent stage backpressure and safe preemption
+
+- Stable task ID: LGSWF-052
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: resources
+- Goal id: LGSWF-G060
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G060
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/stage_backpressure.py, test/api/test_agent_supervisor_stage_backpressure.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Apply independent admission pressure to analysis/context/model/proof translation/solver/kernel/validation/merge/persistence and safely cancel/preempt stale or speculative work.
+- Depends on: LGSWF-043
+- Read scope: stage/resource/provider/prover/merge/cancellation/effect contracts
+- Write scope: owned paths only
+- External effect scope: local simulated queues/cancellation only
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; StageBackpressurePolicy@1
+- Resource demand: cpu_ms=9000000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=2048; disk_bandwidth_mib_s=80; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=28000; model_output_tokens=9000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=backpressure-file; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; deterministic policy is authority
+- Permitted effects: add policy/state and deterministic queue tests
+- Prohibited effects: global stall from one saturated stage; preempt uncompensated non-idempotent effect; ignore merge pressure; cancel accepted work
+- Completion contract: Each stage has independent bounds/reasons; provider/proof saturation permits CPU analysis; merge saturation reduces mutation; preemption selects only eligible work and emits cancellation/compensation evidence.
+- Validation requirements: saturation matrix, CPU coexistence, merge throttling, priority/stale/speculative preemption, effect compensation cases
+- Proof requirements: no-global-block and safe-preemption invariants
+- Lease requirements: isolated source lease; cancellation requires current task fence
+- Rollback or compensation procedure: Revert policy; release test reservations; any partial external effect is marked compensation-required.
+- Required evidence: pressure snapshots, admission reasons, cancellation receipts, saturation test matrix
+- Final result identity: pending; accepted backpressure-policy CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/stage_backpressure.py, test/api/test_agent_supervisor_stage_backpressure.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_stage_backpressure.py
+- Acceptance: Saturated stages exert targeted rather than global backpressure.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: backpressure
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/stage_backpressure.py, test/api/test_agent_supervisor_stage_backpressure.py
+- Conflict policy: File-disjoint W7 backpressure lane.
+- Raw-source requirements: none
+
+## LGSWF-053 Integrate resource admission with frontier dispatch
+
+- Stable task ID: LGSWF-053
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: resources
+- Goal id: LGSWF-G060
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G060
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/resource_admission.py, test/api/test_agent_supervisor_lgswf_resource_admission.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Atomically validate selected frontier resources, apply cache/backpressure decisions, reserve before dispatch and compensate partial multi-resource reservation failure.
+- Depends on: LGSWF-050, LGSWF-051, LGSWF-052
+- Read scope: W7 components and W6 frontier decisions
+- Write scope: owned paths only
+- External effect scope: local reservation/CAS operations
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; ResourceAdmission@1
+- Resource demand: cpu_ms=10800000; cpu_concurrency=3; ram_mib=6144; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=120; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; model_input_tokens=28000; model_output_tokens=9000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=resource-admission-file; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; reservation transaction verifier is authority
+- Permitted effects: reserve/release hermetic resources through injected ports; add integration tests
+- Prohibited effects: dispatch before all hard reservations; partial leak; accept stale telemetry; override frontier safety
+- Completion contract: Each admitted work item has bounded leases for every required dimension; failed composite admission releases acquired parts; decision is deterministic for identical snapshots.
+- Validation requirements: multi-resource atomicity/compensation, stale telemetry, backpressure/locality and concurrent frontier tests
+- Proof requirements: all-or-compensated reservation invariant
+- Lease requirements: resource shard writer leases, task/attempt/supervisor/daemon binding, current fences
+- Rollback or compensation procedure: Release all reservations in reverse acquisition order with receipts; revert integration code.
+- Required evidence: admission/reservation/release receipts, failure injection, W7 seal
+- Final result identity: pending; accepted W7 integration CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/resource_admission.py, test/api/test_agent_supervisor_lgswf_resource_admission.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_lgswf_resource_scheduler.py test/api/test_agent_supervisor_work_cache_coordinator.py test/api/test_agent_supervisor_stage_backpressure.py test/api/test_agent_supervisor_lgswf_resource_admission.py
+- Acceptance: No task dispatch occurs without complete current bounded resource reservations.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: resource-integration
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/resource_admission.py, test/api/test_agent_supervisor_lgswf_resource_admission.py
+- Conflict policy: Serial W7 integration join.
+- Raw-source requirements: none beyond admitted task binding
+
+## LGSWF-060 Implement supervisor capability and fenced coordination contracts
+
+- Stable task ID: LGSWF-060
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: supervisor-fabric
+- Goal id: LGSWF-G070
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G070
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py, test/api/test_agent_supervisor_fabric_coordination.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Define capability observations/roles and one fenced writer per mutable shard with heartbeat, lease policy, coordination-epoch failover and stale-coordinator commit rejection.
+- Depends on: LGSWF-053
+- Read scope: sealed process identity, daemon registry, lease/database coordination, resource/provider/prover/worktree/merge capability
+- Write scope: owned paths only
+- External effect scope: local coordination store/process fixtures only
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; SupervisorCapability@1; CoordinationEpoch@1
+- Resource demand: cpu_ms=14400000; cpu_concurrency=3; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=120; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=supervisor-fabric-file; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; lease/fence/process identity checks are authority
+- Permitted effects: add coordination contract/runtime and local failover tests
+- Prohibited effects: capability as authority; two shard writers; stale epoch commit; weaken sealed launch/process identity; hidden local dependency
+- Completion contract: Advertisements cover all required fields; roles are capability-based; coordinator crash permits later epoch; old coordinator/partitioned supervisor cannot publish mutable authority.
+- Validation requirements: capability schema, heartbeat/health, lease acquisition/failover, split brain, stale fence/process identity
+- Proof requirements: one-current-writer and monotonic-epoch invariants
+- Lease requirements: coordination-shard lease with fencing token; source path lease
+- Rollback or compensation procedure: Stop test coordinators, release/fence leases, revert additive code; retain event history.
+- Required evidence: capability roots, epoch/lease events, failover receipts, stale rejection cases
+- Final result identity: pending; accepted coordination CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py, test/api/test_agent_supervisor_fabric_coordination.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_fabric_coordination.py
+- Acceptance: Exactly one current fenced writer can mutate each coordination shard.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: supervisor-coordination
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py, test/api/test_agent_supervisor_fabric_coordination.py
+- Conflict policy: File-disjoint W8 coordination lane.
+- Raw-source requirements: none
+
+## LGSWF-061 Implement partitioning, eligible work stealing and logical acceptance
+
+- Stable task ID: LGSWF-061
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: supervisor-fabric
+- Goal id: LGSWF-G070
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G070
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/work_partitioning.py, test/api/test_agent_supervisor_work_partitioning.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Partition selected work by semantic/repository/goal/resource/provider/worktree/merge locality, preserve cross-partition edges, constrain stealing, and enforce exactly-once logical acceptance.
+- Depends on: LGSWF-053
+- Read scope: frontier/resource decisions, capabilities, claims/checkpoints/fences/idempotency, merge strategy
+- Write scope: owned paths only
+- External effect scope: local claim/partition test stores only
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; WorkPartition@1; LogicalAcceptanceKey@1
+- Resource demand: cpu_ms=10800000; cpu_concurrency=3; ram_mib=6144; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; model_input_tokens=30000; model_output_tokens=11000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=work-partition-file; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; deterministic partition/claim CAS is authority
+- Permitted effects: add partition/steal/acceptance logic and tests
+- Prohibited effects: hidden dependencies; steal live mutating task; reuse stale checkpoint/fence; accept duplicate tuple; move ineligible effect
+- Completion contract: Cross-partition edges remain explicit; only unclaimed/expired/dead/transferable work with verified checkpoint and later fence moves; one attempt wins acceptance for task/revision/tree/root/idempotency.
+- Validation requirements: deterministic partition, locality, cross-edge, stealing eligibility, duplicate attempts and live-mutation non-transfer
+- Proof requirements: partition coverage/no-duplication and single accepted-key invariant
+- Lease requirements: claim-shard/transfer leases with later fence; source path lease
+- Rollback or compensation procedure: Cancel/fence transferred test claims, restore unclaimed state through typed compensation, revert code.
+- Required evidence: partition root, edge manifest, transfer/denial receipts, acceptance CAS races
+- Final result identity: pending; accepted partition protocol CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/work_partitioning.py, test/api/test_agent_supervisor_work_partitioning.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_work_partitioning.py
+- Acceptance: Partitioning exposes dependencies and duplicate execution yields one logical acceptance.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: work-partition
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/work_partitioning.py, test/api/test_agent_supervisor_work_partitioning.py
+- Conflict policy: File-disjoint W8 partition lane.
+- Raw-source requirements: none beyond task bindings
+
+## LGSWF-062 Integrate the coordinated multi-supervisor fabric
+
+- Stable task ID: LGSWF-062
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: supervisor-fabric
+- Goal id: LGSWF-G070
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G070
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, test/api/test_agent_supervisor_multi_supervisor_fabric.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Extend the existing sealed runner, consolidate runtime-effective duplicate definitions as needed, and connect frontier/resource partitions to coordinated supervisors without replacing launch protections.
+- Depends on: LGSWF-060, LGSWF-061
+- Read scope: W8 components, current multi-supervisor runner/launch identity/lifecycle
+- Write scope: owned paths only
+- External effect scope: local bounded supervisor process fixtures
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; existing sealed control-plane contracts
+- Resource demand: cpu_ms=18000000; cpu_concurrency=4; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=8192; disk_bandwidth_mib_s=150; network=deny; network_bandwidth_kib_s=0; subprocesses=24; worktree_slots=3; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=multi-supervisor-runner-file; merge_slots=1; persistence_kib_s=4096
+- Model-route class: implementation/high; sealed launch/process/coordination tests are authority
+- Permitted effects: edit current runner minimally, preserve sealed launch, run bounded local process tests
+- Prohibited effects: new supervisor framework; bypass process identity/lifecycle; stale coordinator commit; orphan processes; hidden-memory coordination
+- Completion contract: Runner advertises capabilities, partitions admitted frontier, assigns bounded packets, fails over epochs, preserves cross edges and produces one accepted logical result per key.
+- Validation requirements: W8 suite, existing multi-supervisor tests, coordinator kill/failover, partitioned supervisor and duplicate result
+- Proof requirements: sealed control-plane identity continuity and epoch/fence invariants
+- Lease requirements: exclusive runner edit lease; test coordinator shard leases; merge slot/current fence
+- Rollback or compensation procedure: Terminate spawned fixtures, fence leases, revert runner integration; preserve logs/events.
+- Required evidence: launch identity, capability/partition/assignment roots, failover/duplicate receipts, W8 seal
+- Final result identity: pending; accepted W8 integration CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, test/api/test_agent_supervisor_multi_supervisor_fabric.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_fabric_coordination.py test/api/test_agent_supervisor_work_partitioning.py test/api/test_agent_supervisor_multi_supervisor_fabric.py
+- Acceptance: Current sealed runner operates as a fenced coordinated fabric without duplicate framework or stale authority.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: supervisor-integration
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, test/api/test_agent_supervisor_multi_supervisor_fabric.py
+- Conflict policy: Serial W8 integration; exclusive runtime-effective runner definitions.
+- Raw-source requirements: none
+
+## LGSWF-070 Extend the canonical daemon work-packet contract
+
+- Stable task ID: LGSWF-070
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: daemon-protocol
+- Goal id: LGSWF-G080
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G080
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/todo_daemon/work_packet.py, test/api/test_agent_supervisor_semantic_work_packet.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Extend one existing/canonical daemon packet to bind all required goal/plan/tree/semantic/context/scope/effect/resource/provider/model/validation/proof/completion/lease/fence/attempt/idempotency/checkpoint/cancellation/output fields.
+- Depends on: LGSWF-062
+- Read scope: implementation request/semantic work/claim/resource/provider/completion contracts
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; DaemonWorkPacket@current-version-extension
+- Resource demand: cpu_ms=10800000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=2048; disk_bandwidth_mib_s=80; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=30000; model_output_tokens=11000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=work-packet-file; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; packet validator is authority
+- Permitted effects: extend canonical packet/version and tests
+- Prohibited effects: parallel incompatible format; omit authority/scope/fence fields; embed secrets/prompts/provider payloads; accept sentinel/stale roots
+- Completion contract: Packet canonical identity binds every required field, rejects forbidden/unknown/mixed authority, and remains compatible through an explicit migration projection.
+- Validation requirements: roundtrip/CID, required field matrix, forged/stale/wrong tree/plan/fence/scope/effect cases, compatibility tests
+- Proof requirements: field completeness and content-identity vectors
+- Lease requirements: isolated source lease; packet itself binds admitted task/resource/claim leases
+- Rollback or compensation procedure: Revert version extension; old packet remains readable, new packet acceptance disabled.
+- Required evidence: schema, migration, vectors, adversarial rejection matrix
+- Final result identity: pending; accepted work-packet schema CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/work_packet.py, test/api/test_agent_supervisor_semantic_work_packet.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_semantic_work_packet.py
+- Acceptance: One canonical packet carries the complete bounded work authority.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: work-packet
+- Predicted files: ipfs_accelerate_py/agent_supervisor/todo_daemon/work_packet.py, test/api/test_agent_supervisor_semantic_work_packet.py
+- Conflict policy: File-disjoint W9 packet lane.
+- Raw-source requirements: exact packet field when binding requires source
+
+## LGSWF-071 Implement lifecycle, checkpoints and typed stale-stop behavior
+
+- Stable task ID: LGSWF-071
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: daemon-protocol
+- Goal id: LGSWF-G080
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G080
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/todo_daemon/checkpoints.py, test/api/test_agent_supervisor_daemon_checkpoints.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Implement the explicit lifecycle, complete content-addressed checkpoint schema, corruption-safe resume, and immediate typed stop on stale plan/root/lease/fence/scope/cancel/already-accepted state.
+- Depends on: LGSWF-062
+- Read scope: daemon lifecycle, claim/checkpoint/event/cancellation/semantic state contracts
+- Write scope: owned paths only
+- External effect scope: local checkpoint persistence only
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; DaemonCheckpoint@1; DaemonLifecycle@1
+- Resource demand: cpu_ms=10800000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=10; worktree_slots=1; model_input_tokens=30000; model_output_tokens=11000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=checkpoint-file; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; lifecycle/checkpoint verifier is authority
+- Permitted effects: add lifecycle/checkpoint records, local durable tests and typed stale results
+- Prohibited effects: checkpoint as completion; finish-after-fence; resume corrupt/stale checkpoint; omit partial effects/outstanding obligations
+- Completion contract: All main/side transitions are closed; checkpoint binds every required field/CID; valid crash resumes; every stale condition stops before another effect and records a typed result.
+- Validation requirements: transition matrix, checkpoint roundtrip/corruption, crash/resume, each stale condition, partial effect/compensation
+- Proof requirements: legal transition graph and no-effect-after-stale invariant
+- Lease requirements: checkpoint write lease bound to attempt/fence; isolated source lease
+- Rollback or compensation procedure: Quarantine corrupt checkpoints, fence attempt, mark partial effects, execute declared compensation; revert code.
+- Required evidence: lifecycle graph, checkpoint vectors, resume/stale receipts, corruption cases
+- Final result identity: pending; accepted checkpoint protocol CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/checkpoints.py, test/api/test_agent_supervisor_daemon_checkpoints.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_daemon_checkpoints.py
+- Acceptance: Losing authority always stops a daemon before further effects.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: checkpoint
+- Predicted files: ipfs_accelerate_py/agent_supervisor/todo_daemon/checkpoints.py, test/api/test_agent_supervisor_daemon_checkpoints.py
+- Conflict policy: File-disjoint W9 checkpoint lane.
+- Raw-source requirements: checkpoint-bound changed symbols only
+
+## LGSWF-072 Integrate packets and checkpoints into the existing daemon
+
+- Stable task ID: LGSWF-072
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: daemon-protocol
+- Goal id: LGSWF-G080
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G080
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_daemon_protocol_integration.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Wire admitted packets, lifecycle/checkpoints and stale-stop gates into the current daemon without replacing its parser/provider/worktree/lifecycle framework.
+- Depends on: LGSWF-070, LGSWF-071
+- Read scope: W9 components and current implementation daemon/semantic scheduling adapter
+- Write scope: owned paths only
+- External effect scope: bounded local worker/process/worktree fixtures
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; canonical daemon packet/lifecycle
+- Resource demand: cpu_ms=18000000; cpu_concurrency=4; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=8192; disk_bandwidth_mib_s=150; network=deny; network_bandwidth_kib_s=0; subprocesses=20; worktree_slots=2; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=implementation-daemon-file; merge_slots=1; persistence_kib_s=4096
+- Model-route class: implementation/high; supervisor verification/daemon integration tests are authority
+- Permitted effects: minimal current daemon integration, bounded local execution, checkpoint persistence
+- Prohibited effects: new daemon framework; self-acceptance; bypass provider/lease/scope; alter completion/scheduling policy; orphan worker
+- Completion contract: Daemon consumes only admitted current packets, checkpoints as configured, reports worker completion, stops stale, and cannot mark supervisor verification/acceptance.
+- Validation requirements: W9 suite plus current daemon/parser/worktree/provider tests, crash/resume and stale kill
+- Proof requirements: worker-versus-supervisor authority separation and no-effect-after-stale
+- Lease requirements: exclusive daemon file lease; runtime packet/task/worktree/resource leases and fences
+- Rollback or compensation procedure: Stop spawned workers, fence claims, preserve checkpoints/logs/partial effects, revert integration.
+- Required evidence: packet/attempt IDs, lifecycle events, checkpoint/resume, stale results, W9 seal
+- Final result identity: pending; accepted W9 integration CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_daemon_protocol_integration.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_semantic_work_packet.py test/api/test_agent_supervisor_daemon_checkpoints.py test/api/test_agent_supervisor_daemon_protocol_integration.py
+- Acceptance: Existing daemon executes bounded packets and never approves itself.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: daemon-integration
+- Predicted files: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_daemon_protocol_integration.py
+- Conflict policy: Serial W9 integration; exclusive daemon implementation edit.
+- Raw-source requirements: packet-declared exact source only
+
+## LGSWF-080 Implement bounded semantic refill proposals
+
+- Stable task ID: LGSWF-080
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: plan-revision
+- Goal id: LGSWF-G090
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G090
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/task_sources/semantic_refill.py, test/api/test_agent_supervisor_semantic_refill.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Produce typed evidence-backed refill proposals for every required trigger with semantic deduplication and hard successor/revision/population/retry/provider/token/frequency/no-progress bounds.
+- Depends on: LGSWF-072
+- Read scope: backlog refinery, PlanDelta, semantic deltas/invalidation/governor/assurance/proof/test/merge/provider/resource events
+- Write scope: owned paths only
+- External effect scope: none; proposal generation only
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; RefillProposal@1
+- Resource demand: cpu_ms=10800000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=30000; model_output_tokens=11000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=semantic-refill-file; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; deterministic proposal validator is authority
+- Permitted effects: add proposal/bounds/dedup logic and tests
+- Prohibited effects: mutate active plan; cosmetic-ID dedup escape; refill only because idle; weaken completion; unbounded calls/tasks/revisions
+- Completion contract: Every proposal contains trigger/evidence/goal/scope/current roots/deltas/impacts/validation/dedup/uncertainty/fallback/human flag and obeys all configured hard bounds.
+- Validation requirements: all trigger classes, semantic dedup, amplification/frequency/depth/retry/token/no-progress bounds
+- Proof requirements: bounded-generation and semantic-key idempotency properties
+- Lease requirements: isolated source lease; proposal needs no plan-writer lease
+- Rollback or compensation procedure: Discard code; proposals remain unaccepted evidence and make no authority change.
+- Required evidence: proposal schema, trigger matrix, bound counters, dedup cases
+- Final result identity: pending; accepted refill-policy CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/task_sources/semantic_refill.py, test/api/test_agent_supervisor_semantic_refill.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_semantic_refill.py
+- Acceptance: Refill is productive, deduplicated and bounded without mutating the plan.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: refill
+- Predicted files: ipfs_accelerate_py/agent_supervisor/task_sources/semantic_refill.py, test/api/test_agent_supervisor_semantic_refill.py
+- Conflict policy: File-disjoint W10 refill lane.
+- Raw-source requirements: affected scope only when evidence says source missing/opaque
+
+## LGSWF-081 Implement deterministic Plan Doctor
+
+- Stable task ID: LGSWF-081
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: plan-revision
+- Goal id: LGSWF-G090
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G090
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/planning/plan_doctor.py, test/api/test_agent_supervisor_plan_doctor.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Diagnose every required structural, semantic, conflict, resource, starvation, retry, freshness and parent-coverage pathology and emit proposals only.
+- Depends on: LGSWF-072
+- Read scope: world/work/conflict graphs, bindings/completion, plan/retry/resource/evidence history
+- Write scope: owned paths only
+- External effect scope: none
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; PlanHealthReport@1
+- Resource demand: cpu_ms=10800000; cpu_concurrency=2; ram_mib=6144; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=10; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=plan-doctor-file; merge_slots=1; persistence_kib_s=1024
+- Model-route class: implementation/high; deterministic doctor verifier is authority
+- Permitted effects: add pure diagnosis/proposal records and tests
+- Prohibited effects: directly mutate plan; omit stale/mismatch/coverage; LLM authority; weaken completion
+- Completion contract: Doctor detects cycles, unreachable/orphan/missing-parent/binding/verification/completion, hidden/over conflicts, unsafe parallelism, infeasible frontier, bottleneck/starvation/retry/stale/root mismatch and insufficient parent coverage.
+- Validation requirements: one fixture per pathology, determinism, no-mutation and proposal validation
+- Proof requirements: diagnosis completeness matrix and read-only effect audit
+- Lease requirements: isolated path lease; no plan-writer authority
+- Rollback or compensation procedure: Discard worktree; diagnosis artifacts remain optional evidence only.
+- Required evidence: finding schema, fixture matrix, proposed deltas, no-mutation receipt
+- Final result identity: pending; accepted Plan Doctor CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/plan_doctor.py, test/api/test_agent_supervisor_plan_doctor.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_plan_doctor.py
+- Acceptance: Plan Doctor finds all listed pathologies and cannot apply its proposal.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: plan-doctor
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/plan_doctor.py, test/api/test_agent_supervisor_plan_doctor.py
+- Conflict policy: File-disjoint W10 Doctor lane.
+- Raw-source requirements: only for diagnosed opaque/missing-source cases
+
+## LGSWF-082 Integrate immutable revision and history-safe steering
+
+- Stable task ID: LGSWF-082
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: plan-revision
+- Goal id: LGSWF-G090
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G090
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/task_sources/plan_revision_store.py, ipfs_accelerate_py/agent_supervisor/planning/plan_revision_contracts.py, test/api/test_agent_supervisor_lgswf_plan_revision.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Integrate refill/Doctor proposals through current PlanRevisionStore with explicit supersession, stale cancellation/fencing, future-task rebinding and immutable claimed-through-accepted history.
+- Depends on: LGSWF-080, LGSWF-081
+- Read scope: W10 proposal modules and current plan revision contracts/store/lifecycle/event history
+- Write scope: owned paths only plus store operations through its fenced API
+- External effect scope: local durable plan-store CAS/events
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; existing PlanRevisionContracts@1 extensions only if necessary
+- Resource demand: cpu_ms=18000000; cpu_concurrency=3; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=8192; disk_bandwidth_mib_s=150; network=deny; network_bandwidth_kib_s=0; subprocesses=14; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=plan-revision-store-files; merge_slots=1; persistence_kib_s=4096
+- Model-route class: implementation/high; PlanRevisionStore CAS/validator is authority
+- Permitted effects: extend existing contracts/store minimally, apply hermetic revisions, fence stale attempts
+- Prohibited effects: new plan store; in-place history rewrite; delete prior attempts/receipts; rebind active specs; completion weakening
+- Completion contract: Future changes are successors/rebindings in new revisions; active/history records remain byte-verifiable; stale attempts fence; CAS admits one pointer; bounds/dedup survive restart.
+- Validation requirements: crash/restart/CAS, supersession/cancellation/fencing, active-history immutability, refill/Doctor proposal flow and dedup
+- Proof requirements: append-only history and one-active-pointer invariants
+- Lease requirements: exclusive store/contract source lease; runtime plan-writer lease/current epoch/fence/CAS
+- Rollback or compensation procedure: Revert source extension; prior accepted pointer/history remains; fence any unaccepted new-revision attempts.
+- Required evidence: revisions/deltas/pointers/events/supersessions, stale fences, restart reconstruction, W10 seal
+- Final result identity: pending; accepted W10 integration CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/task_sources/plan_revision_store.py, ipfs_accelerate_py/agent_supervisor/planning/plan_revision_contracts.py, test/api/test_agent_supervisor_lgswf_plan_revision.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_semantic_refill.py test/api/test_agent_supervisor_plan_doctor.py test/api/test_agent_supervisor_lgswf_plan_revision.py
+- Acceptance: Steering is immutable, bounded, restart-safe and cannot rewrite active/history records.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: revision-integration
+- Predicted files: ipfs_accelerate_py/agent_supervisor/task_sources/plan_revision_store.py, ipfs_accelerate_py/agent_supervisor/planning/plan_revision_contracts.py, test/api/test_agent_supervisor_lgswf_plan_revision.py
+- Conflict policy: Serial W10 integration; exclusive plan-store and revision-contract edits.
+- Raw-source requirements: only successor bindings that explicitly require source
+
+## LGSWF-090 Implement pre-execution and provisional semantic work loop
+
+- Stable task ID: LGSWF-090
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: semantic-refresh
+- Goal id: LGSWF-G100
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G100
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/work_loop.py, test/api/semantic_state/test_semantic_work_loop.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Before execution resolve/verify the datasets view, blocks, capsule freshness, tests/proofs and ContextPack; during execution scan changed symbols, compute provisional delta/invalidation, enforce scope and replan verification.
+- Depends on: LGSWF-082
+- Read scope: datasets adapter/view/capsules/invalidation/selection, ContextPack, work packet, provisional state, validation/proof planning
+- Write scope: owned paths only
+- External effect scope: isolated worktree reads/writes through injected harness; local semantic blocks
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; SemanticWorkLoop@1
+- Resource demand: cpu_ms=18000000; cpu_concurrency=4; ram_mib=12288; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=16384; disk_bandwidth_mib_s=180; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=2; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=local-logic; prover_concurrency=2; exclusive_keys=semantic-work-loop-file; merge_slots=1; persistence_kib_s=8192
+- Model-route class: implementation/high; datasets verification/scope validator are authority
+- Permitted effects: add orchestration over canonical APIs, isolated provisional scans and tests
+- Prohibited effects: recompute semantic meaning; accept stale capsule/context; out-of-scope patch; canonical publish; skip selected tests/proofs
+- Completion contract: All inputs bind exact attempt; stale capsules use admitted raw source or hold; provisional change yields symbol/delta/invalidation/updated obligations and rejects scope escapes before settle.
+- Validation requirements: freshness/raw-source, forged/stale ContextPack, changed-symbol/delta/invalidation, out-of-scope and verification-replan tests
+- Proof requirements: exact-input seal, scope containment and provisional-root authority invariant
+- Lease requirements: task/worktree/resource/semantic single-flight leases with current fences
+- Rollback or compensation procedure: Discard provisional worktree/root, release resources, preserve checkpoint/delta/failure receipt; canonical unchanged.
+- Required evidence: input seal, ContextPack/test/proof refs, provisional tree/root/delta/invalidation, scope/validation plan
+- Final result identity: pending; accepted pre/during-loop CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/work_loop.py, test/api/semantic_state/test_semantic_work_loop.py
+- Validation: python3 -m pytest -q test/api/semantic_state/test_semantic_work_loop.py
+- Acceptance: Execution begins and proceeds only from current verified semantic inputs and in-scope provisional effects.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: semantic-work-loop
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/work_loop.py, test/api/semantic_state/test_semantic_work_loop.py
+- Conflict policy: File-disjoint W11 pre/during lane.
+- Raw-source requirements: binding-declared stale/missing capsule symbols only
+
+## LGSWF-091 Implement pre-merge seal and post-merge canonical refresh
+
+- Stable task ID: LGSWF-091
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: semantic-refresh
+- Goal id: LGSWF-G100
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G100
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/post_merge_refresh.py, test/api/semantic_state/test_post_merge_semantic_refresh.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Seal predicted effects/contracts/tests/proofs/governor/assurance before merge, then after accepted merge rescan the accepted tree, publish canonical root, compare deltas, invalidate downstream work and reevaluate completion/refill.
+- Depends on: LGSWF-082
+- Read scope: semantic governor/verification, merge queue, datasets producer, durable root CAS, invalidation/plan/objective systems
+- Write scope: owned paths only
+- External effect scope: test-local merge/CAS/event stores
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; IncrementalSeal@1; CanonicalSemanticRefresh@1
+- Resource demand: cpu_ms=21600000; cpu_concurrency=4; ram_mib=12288; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=16384; disk_bandwidth_mib_s=180; network=deny; network_bandwidth_kib_s=0; subprocesses=20; worktree_slots=2; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=local-logic; prover_concurrency=2; exclusive_keys=post-merge-refresh-file; merge_slots=1; persistence_kib_s=8192
+- Model-route class: implementation/high; tests/proofs/governor/merge/datasets CAS are authority
+- Permitted effects: add pre/post merge orchestration and hermetic tests
+- Prohibited effects: merge without seal; worker canonical publish; simulated proof as verified; ignore predicted-observed divergence; publish on rejected merge
+- Completion contract: Pre-merge seal covers configured checks; accepted merge alone triggers a fresh datasets rescan; canonical CAS binds accepted tree; differences invalidate exact dependents and drive completion/refill.
+- Validation requirements: predicted/observed match/diverge, failed proof/governor/assurance, rejected/accepted merge, CAS race, downstream invalidation
+- Proof requirements: merge-before-publish ordering and canonical-tree/root equality
+- Lease requirements: merge authority and canonical semantic publisher leases, later fence and generation CAS
+- Rollback or compensation procedure: Failed seal prevents merge; failed post-merge refresh quarantines completion and blocks further mutation until repair; never roll semantic root backward.
+- Required evidence: incremental seal, merge receipt, canonical scan/root/CAS, delta comparison, invalidation/completion/refill actions
+- Final result identity: pending; accepted post-merge refresh CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/post_merge_refresh.py, test/api/semantic_state/test_post_merge_semantic_refresh.py
+- Validation: python3 -m pytest -q test/api/semantic_state/test_post_merge_semantic_refresh.py
+- Acceptance: Accepted code and canonical semantic truth converge before dependent work or completion proceeds.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: post-merge-refresh
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/post_merge_refresh.py, test/api/semantic_state/test_post_merge_semantic_refresh.py
+- Conflict policy: File-disjoint W11 post-merge lane; runtime canonical publisher remains exclusive.
+- Raw-source requirements: accepted changed symbols and any invalidated raw-source-required dependents
+
+## LGSWF-092 Integrate the closed-loop semantic refresh pipeline
+
+- Stable task ID: LGSWF-092
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: semantic-refresh
+- Goal id: LGSWF-G100
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G100
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py, ipfs_accelerate_py/agent_supervisor/merge/semantic_refresh_integration.py, test/api/semantic_state/test_closed_loop_semantic_refresh.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Connect W11 stages to the existing semantic harness and merge path in exact before/during/pre-merge/post-merge order, with checkpoint/recovery and immutable events.
+- Depends on: LGSWF-090, LGSWF-091
+- Read scope: W11 modules, semantic harness, validation/proof/governor, merge queue, objective/refill
+- Write scope: owned paths only
+- External effect scope: bounded isolated worktree/merge/CAS fixtures
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; ClosedLoopSemanticRefresh@1
+- Resource demand: cpu_ms=21600000; cpu_concurrency=4; ram_mib=12288; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=16384; disk_bandwidth_mib_s=180; network=deny; network_bandwidth_kib_s=0; subprocesses=24; worktree_slots=3; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=local-logic; prover_concurrency=2; exclusive_keys=semantic-harness-and-merge-integration; merge_slots=1; persistence_kib_s=8192
+- Model-route class: implementation/high; end-to-end deterministic gates are authority
+- Permitted effects: minimal harness/merge integration, hermetic end-to-end fixtures
+- Prohibited effects: duplicate context/semantic engine; reorder gates; skip failure evidence; self-approval; canonical mutation from worker
+- Completion contract: One accepted mutation traverses exact stages, one rejected mutation leaves canonical state unchanged, restart resumes from durable events, and downstream tasks/completion use refreshed root.
+- Validation requirements: W11 suite plus existing semantic harness/merge/validation/proof tests and restart injection
+- Proof requirements: stage-order trace and authority-transition invariant
+- Lease requirements: exclusive existing harness edit, merge/publisher/task/resource leases, current fences
+- Rollback or compensation procedure: Stop dispatch, settle merge, fence attempt, preserve checkpoint/events, repair canonical refresh before resuming; revert integration code if unaccepted.
+- Required evidence: complete event trace, attempt/checkpoint, seals, merge/root/delta/invalidation, W11 seal
+- Final result identity: pending; accepted W11 integration CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py, ipfs_accelerate_py/agent_supervisor/merge/semantic_refresh_integration.py, test/api/semantic_state/test_closed_loop_semantic_refresh.py
+- Validation: python3 -m pytest -q test/api/semantic_state/test_semantic_work_loop.py test/api/semantic_state/test_post_merge_semantic_refresh.py test/api/semantic_state/test_closed_loop_semantic_refresh.py
+- Acceptance: Epic J operates as one ordered canonical semantic refresh loop.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: semantic-refresh-integration
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py, ipfs_accelerate_py/agent_supervisor/merge/semantic_refresh_integration.py, test/api/semantic_state/test_closed_loop_semantic_refresh.py
+- Conflict policy: Serial W11 join; exclusive harness and merge-integration edits.
+- Raw-source requirements: binding/invalidation-declared symbols only
+
+## LGSWF-100 Implement bounded fixed-point convergence and terminals
+
+- Stable task ID: LGSWF-100
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: convergence
+- Goal id: LGSWF-G110
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G110
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/logic_governed_fabric.py, test/api/test_agent_supervisor_logic_governed_convergence.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Implement the bounded observe/frontier/reserve/dispatch/checkpoint/verify/merge/refresh/complete/revise loop with the exact fixed-point conjunction and explicit non-success terminals.
+- Depends on: LGSWF-092
+- Read scope: all accepted A-J contracts/runtimes and durable event/plan/objective/claim/merge stores
+- Write scope: owned paths only
+- External effect scope: bounded local supervisor/daemon/merge fixtures
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; LogicGovernedSemanticWorkFabric@1; ConvergenceReceipt@1
+- Resource demand: cpu_ms=21600000; cpu_concurrency=4; ram_mib=12288; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=16384; disk_bandwidth_mib_s=180; network=deny; network_bandwidth_kib_s=0; subprocesses=24; worktree_slots=3; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=local-logic; prover_concurrency=2; exclusive_keys=convergence-runtime-file; merge_slots=1; persistence_kib_s=8192
+- Model-route class: implementation/high; deterministic convergence evaluator is authority
+- Permitted effects: add top-level loop/runtime and bounded hermetic integration tests
+- Prohibited effects: success with blocked/unresolved/stale state; unbounded retry/refill; process-dictionary authority; skip semantic refresh; weaken criteria
+- Completion contract: Success iff every K1 condition holds simultaneously; all listed K2 states are non-success; configured no-progress/exhaustion bounds stop; restart reconstructs from durable roots/events.
+- Validation requirements: each success conjunct removed in turn, each terminal, no-progress/refill bounds, crash/restart, accepted fixed point
+- Proof requirements: convergence state-machine, success conjunction and bounded-progress measure
+- Lease requirements: coordinator lease/current epoch, all stage-specific leases/fences; source path lease
+- Rollback or compensation procedure: Stop new dispatch, fence claims, settle/compensate effects, preserve events/checkpoints, resume from last verified world snapshot.
+- Required evidence: per-cycle snapshots/frontiers/reservations/attempts/merges/roots/revisions, convergence or terminal receipt
+- Final result identity: pending; accepted convergence runtime CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/logic_governed_fabric.py, test/api/test_agent_supervisor_logic_governed_convergence.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_logic_governed_convergence.py
+- Acceptance: Global completion is evidence-backed, restart-safe and bounded.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: convergence
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/logic_governed_fabric.py, test/api/test_agent_supervisor_logic_governed_convergence.py
+- Conflict policy: Serial W12 runtime integration.
+- Raw-source requirements: task/invalidation-specific only
+
+## LGSWF-110 Emit decision receipts, metrics and highest-level machine output
+
+- Stable task ID: LGSWF-110
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: observability
+- Goal id: LGSWF-G120
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G120
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/decision_receipts.py, ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_fabric.py, test/api/test_agent_supervisor_logic_governed_observability.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Emit every required scheduling decision field and metric as content-addressed machine-readable evidence through the existing highest-level entrypoint package.
+- Depends on: LGSWF-100
+- Read scope: convergence cycles, world/graph/frontier/resource/assignment/claim/cache/provider/proof/merge/refill receipts and existing entrypoints
+- Write scope: owned paths only
+- External effect scope: local immutable evidence output only
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; SchedulingDecisionReceipt@1; FabricMetrics@1
+- Resource demand: cpu_ms=14400000; cpu_concurrency=3; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=8192; disk_bandwidth_mib_s=150; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=observability-files; merge_slots=1; persistence_kib_s=4096
+- Model-route class: implementation/high; receipt/metric schema verifier is authority
+- Permitted effects: add receipt/metrics/entrypoint adapter and tests
+- Prohibited effects: new GUI; secrets/prompts/responses/mutable paths; missing rejections/score components; metrics as completion authority
+- Completion contract: Each cycle receipt includes all L fields and every required metric is emitted with exact units/source/root/window; identity is deterministic and sensitive fields are rejected/redacted.
+- Validation requirements: field/metric completeness, deterministic identity, redaction/adversarial payload, entrypoint JSON and restart continuity
+- Proof requirements: complete field matrix and content-address determinism
+- Lease requirements: immutable evidence writer/single-flight lease; source path lease
+- Rollback or compensation procedure: Disable new entrypoint projection, preserve immutable receipts, revert source; no authority rollback.
+- Required evidence: schema/vectors, full sample cycle, metric catalog, redaction cases, entrypoint output
+- Final result identity: pending; accepted observability CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/decision_receipts.py, ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_fabric.py, test/api/test_agent_supervisor_logic_governed_observability.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_logic_governed_observability.py
+- Acceptance: Evidence explains readiness, parallel safety, assignment, resources, governance, changes, verification and completion outcome.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: observability
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/decision_receipts.py, ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_fabric.py, test/api/test_agent_supervisor_logic_governed_observability.py
+- Conflict policy: Serial W13 entrypoint/receipt integration.
+- Raw-source requirements: none; reference CIDs only
+
+## LGSWF-120 Build the deterministic three-supervisor ten-daemon fixture
+
+- Stable task ID: LGSWF-120
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: fault-qualification
+- Goal id: LGSWF-G130
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G130
+- Owning repository: ipfs_accelerate_py
+- Owned paths: test/fixtures/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_fixture.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Build a reproducible fixture with three supervisors, ten daemons, multiple resource classes, independent/conflicting branches, multi-level goals, proof/validation tasks, merge queue and refill triggers.
+- Depends on: LGSWF-110
+- Read scope: accepted fabric entrypoint/contracts and existing supervisor/daemon/merge test utilities
+- Write scope: owned paths only
+- External effect scope: bounded local processes/files/worktrees; network denied
+- Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
+- Capsule CIDs: fixture-generated canonical datasets CIDs
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; LGSWFFaultFixture@1
+- Resource demand: cpu_ms=28800000; cpu_concurrency=8; ram_mib=16384; gpu_memory_mib=0; gpu_compute_class=simulated-declared; disk_mib=32768; disk_bandwidth_mib_s=250; network=deny; network_bandwidth_kib_s=0; subprocesses=48; worktree_slots=12; model_input_tokens=0; model_output_tokens=0; provider_quota_units=0; provider_concurrency=0; prover_class=fixture; prover_concurrency=3; exclusive_keys=fault-fixture-root; merge_slots=3; persistence_kib_s=16384
+- Model-route class: none at runtime fixture; deterministic actors only
+- Permitted effects: create hermetic fixture/worktrees/processes and cleanly terminate them
+- Prohibited effects: real provider/network/protected branch; shared mutable process dictionary as authority; nondeterministic seeds; leave processes/worktrees/leases
+- Completion contract: Fixture manifest pins seed/tree/root/plan/policy/capabilities/resources; 3 supervisors and 10 daemon identities are real bounded processes or deterministic process harness actors; restart reconstructs durable state.
+- Validation requirements: manifest replay, topology/resources/goals/conflicts/proofs/merge/refill assertions, cleanup and restart
+- Proof requirements: fixture determinism and population identity vectors
+- Lease requirements: exclusive fixture-root lease; per actor/claim/resource/worktree/merge leases
+- Rollback or compensation procedure: Terminate all actors, fence/release leases, remove only fixture-owned ephemeral worktrees through fixture cleanup, preserve logs/results.
+- Required evidence: fixture manifest/CIDs, process identities, population/graph/resource roots, cleanup receipt
+- Final result identity: pending; accepted fixture manifest CID
+- Outputs: test/fixtures/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_fixture.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_lgswf_fixture.py
+- Acceptance: The qualification fixture is deterministic, bounded, restartable and contains every required workload feature.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: fault-fixture
+- Predicted files: test/fixtures/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_fixture.py
+- Conflict policy: Serial fixture construction; later fault tasks read it independently.
+- Raw-source requirements: fixture source corpus named by manifest
+
+## LGSWF-121 Execute the 26 coordination and fault scenarios
+
+- Stable task ID: LGSWF-121
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: fault-qualification
+- Goal id: LGSWF-G130
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G130
+- Owning repository: ipfs_accelerate_py
+- Owned paths: test/api/test_agent_supervisor_logic_governed_fabric_faults.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/fault-results.json
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Run and record all 26 required concurrency, fencing, failover, checkpoint, effect, pressure, stealing, partition, semantic invalidation, proof/refill/history/split/coalesce/fixed-point/restart scenarios.
+- Depends on: LGSWF-120
+- Read scope: accepted fixture and full fabric runtime
+- Write scope: owned paths and fixture-owned ephemeral runtime only
+- External effect scope: bounded local processes/worktrees/resources; network denied
+- Relevant symbol IDs: fixture manifest bindings
+- Capsule CIDs: fixture manifest bindings
+- Contract and obligation CIDs: fixture manifest bindings; FaultQualificationResults@1
+- Resource demand: cpu_ms=43200000; cpu_concurrency=10; ram_mib=24576; gpu_memory_mib=0; gpu_compute_class=simulated-declared; disk_mib=49152; disk_bandwidth_mib_s=300; network=deny; network_bandwidth_kib_s=0; subprocesses=64; worktree_slots=12; model_input_tokens=0; model_output_tokens=0; provider_quota_units=0; provider_concurrency=0; prover_class=fixture; prover_concurrency=3; exclusive_keys=fault-run; merge_slots=4; persistence_kib_s=16384
+- Model-route class: none; deterministic fault injection
+- Permitted effects: inject documented local failures, kill fixture actors, exhaust simulated resources and persist immutable raw results
+- Prohibited effects: alter expected outcomes after run; conceal failures; real network/provider/hardware exhaustion; protected branch mutation
+- Completion contract: Every numbered scenario has setup/action/expected/observed/receipts/result; failures remain failures; all actors/resources settle; recurring failure reaches a typed bounded terminal.
+- Validation requirements: exact 26-case population, deterministic replay, cleanup, receipt verification and no hidden process state
+- Proof requirements: zero simultaneous conflicting write leases and exactly-once acceptance invariants across run
+- Lease requirements: exclusive fault-run lease plus fixture actor/resource/merge leases/fences
+- Rollback or compensation procedure: Fixture cleanup terminates/fences/releases all; partial effects use scenario compensation; raw failed results are retained.
+- Required evidence: raw per-case events/receipts, summary, process/resource cleanup, invariant report
+- Final result identity: pending; accepted fault-results CID
+- Outputs: test/api/test_agent_supervisor_logic_governed_fabric_faults.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/fault-results.json
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_logic_governed_fabric_faults.py
+- Acceptance: All 26 cases pass or produce a documented qualification no-go with raw evidence.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: fault-cases
+- Predicted files: test/api/test_agent_supervisor_logic_governed_fabric_faults.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/fault-results.json
+- Conflict policy: File/output-disjoint from adversarial run; shared fixture is read-only.
+- Raw-source requirements: fixture corpus only
+
+## LGSWF-122 Execute the critical adversarial fail-closed matrix
+
+- Stable task ID: LGSWF-122
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: fault-qualification
+- Goal id: LGSWF-G130
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G130
+- Owning repository: ipfs_accelerate_py
+- Owned paths: test/api/test_agent_supervisor_logic_governed_fabric_adversarial.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/adversarial-results.json
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Inject every required forged/stale/wrong/overlap/undeclared/self-modifying/weakened/deleted/model-claim/simulated-proof/duplicate/replay/corrupt/split-brain/impossible-capacity input and prove critical fail-closed behavior.
+- Depends on: LGSWF-120
+- Read scope: accepted fixture and all fabric admission/authority boundaries
+- Write scope: owned paths and fixture-owned adversarial runtime only
+- External effect scope: bounded local injection; network denied
+- Relevant symbol IDs: fixture bindings plus forged variants
+- Capsule CIDs: fixture canonical and forged references
+- Contract and obligation CIDs: fixture canonical and adversarial variants; AdversarialQualificationResults@1
+- Resource demand: cpu_ms=43200000; cpu_concurrency=10; ram_mib=24576; gpu_memory_mib=0; gpu_compute_class=simulated-declared; disk_mib=49152; disk_bandwidth_mib_s=300; network=deny; network_bandwidth_kib_s=0; subprocesses=64; worktree_slots=12; model_input_tokens=0; model_output_tokens=0; provider_quota_units=0; provider_concurrency=0; prover_class=fixture; prover_concurrency=3; exclusive_keys=adversarial-run; merge_slots=4; persistence_kib_s=16384
+- Model-route class: none; fixed adversarial corpus
+- Permitted effects: inject malformed/local hostile artifacts and persist immutable results
+- Prohibited effects: real credentials/provider/network; accept any critical hostile input; change policy/expected tests during run; omit negative result
+- Completion contract: Each listed adversarial case is rejected before accepted authority/effect; ambiguous external effects require repair/compensation; complete raw evidence and cleanup exist.
+- Validation requirements: exact adversarial population, rejection stage/reason, no accepted effect, deterministic replay and cleanup
+- Proof requirements: fail-closed authority invariant for every critical case
+- Lease requirements: exclusive adversarial-run lease plus fixture actor/resource/merge leases/fences
+- Rollback or compensation procedure: Fence/terminate fixture, compensate declared partial effects, quarantine hostile artifacts, preserve raw evidence.
+- Required evidence: adversarial corpus hashes, rejection receipts, accepted-authority audit, cleanup/compensation report
+- Final result identity: pending; accepted adversarial-results CID
+- Outputs: test/api/test_agent_supervisor_logic_governed_fabric_adversarial.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/adversarial-results.json
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_logic_governed_fabric_adversarial.py
+- Acceptance: Every critical adversarial case fails closed; otherwise qualification is no-go.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: adversarial
+- Predicted files: test/api/test_agent_supervisor_logic_governed_fabric_adversarial.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/adversarial-results.json
+- Conflict policy: File/output-disjoint from fault run; shared fixture read-only.
+- Raw-source requirements: fixture corpus and hostile variants only
+
+## LGSWF-130 Build the A-D benchmark corpus and harness
+
+- Stable task ID: LGSWF-130
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: benchmark
+- Goal id: LGSWF-G140
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G140
+- Owning repository: ipfs_accelerate_py
+- Owned paths: benchmarks/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_benchmark_manifest.py
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Define identical seeded workloads and configuration A/B/C/D harnesses covering all required graph shapes, task classes, bottlenecks, failures, invalidations and refill cycles.
+- Depends on: LGSWF-121, LGSWF-122
+- Read scope: accepted runtime/fixture/fault artifacts and existing benchmark utilities
+- Write scope: owned paths only
+- External effect scope: local benchmark harness; provider/model/prover calls are injectable and bounded by manifest
+- Relevant symbol IDs: benchmark manifest bindings
+- Capsule CIDs: benchmark manifest bindings
+- Contract and obligation CIDs: benchmark manifest bindings; FabricBenchmarkCorpus@1
+- Resource demand: cpu_ms=28800000; cpu_concurrency=8; ram_mib=16384; gpu_memory_mib=0; gpu_compute_class=manifest-controlled; disk_mib=32768; disk_bandwidth_mib_s=250; network=manifest-controlled; network_bandwidth_kib_s=1024; subprocesses=48; worktree_slots=12; model_input_tokens=200000; model_output_tokens=60000; provider_quota_units=40; provider_concurrency=4; prover_class=fixture; prover_concurrency=4; exclusive_keys=benchmark-corpus; merge_slots=4; persistence_kib_s=16384
+- Model-route class: benchmark/bounded; route and budgets sealed in corpus
+- Permitted effects: create deterministic corpus/harness and dry replay; bounded injected provider/prover interfaces
+- Prohibited effects: alter workload between configs; fabricate targets/results; unbounded paid/network calls; protected branch merge
+- Completion contract: A-D differ only by documented scheduling/fabric features; workload includes every required category; metrics/units/seeds/warmup/repetition/environment and stop bounds are sealed.
+- Validation requirements: corpus manifest, config diff whitelist, deterministic dry replay, metric completeness and budget enforcement
+- Proof requirements: workload/config comparability and manifest content identity
+- Lease requirements: exclusive benchmark-corpus source lease; run-time resource/provider/prover/worktree/merge leases
+- Rollback or compensation procedure: Cancel benchmark runs, release reservations, preserve partial raw results, revert unaccepted harness code.
+- Required evidence: corpus/config manifests/CIDs, seed/workload inventory, dry-run traces, budget/metric catalog
+- Final result identity: pending; accepted benchmark corpus CID
+- Outputs: benchmarks/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_benchmark_manifest.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_lgswf_benchmark_manifest.py
+- Acceptance: Configurations A-D are comparable and contain all required workloads/measurements.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: benchmark-corpus
+- Predicted files: benchmarks/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_benchmark_manifest.py
+- Conflict policy: Serial corpus seal before benchmark execution.
+- Raw-source requirements: benchmark corpus source files named by manifest
+
+## LGSWF-131 Run benchmarks and report actual results
+
+- Stable task ID: LGSWF-131
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: benchmark
+- Goal id: LGSWF-G140
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G140
+- Owning repository: ipfs_accelerate_py
+- Owned paths: data/agent_supervisor/logic_governed_semantic_work_fabric/benchmarks, docs/benchmarks/logic_governed_semantic_work_fabric_results.md
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Execute sealed A-D workloads, persist raw results, calculate every required performance/resource/reuse/cost metric, and compare actual values honestly with initial targets.
+- Depends on: LGSWF-130
+- Read scope: sealed benchmark corpus/harness and runtime metric entrypoint
+- Write scope: owned paths and benchmark-owned ephemeral runtime only
+- External effect scope: bounded provider/prover/network calls only if sealed configuration authorizes; local processes/resources/worktrees
+- Relevant symbol IDs: benchmark manifest bindings
+- Capsule CIDs: benchmark manifest bindings and observed run roots
+- Contract and obligation CIDs: benchmark manifest bindings; FabricBenchmarkResults@1
+- Resource demand: cpu_ms=172800000; cpu_concurrency=12; ram_mib=32768; gpu_memory_mib=0; gpu_compute_class=environment-observed; disk_mib=131072; disk_bandwidth_mib_s=400; network=bounded-provider-only; network_bandwidth_kib_s=4096; subprocesses=96; worktree_slots=16; model_input_tokens=1000000; model_output_tokens=300000; provider_quota_units=200; provider_concurrency=4; prover_class=available-qualified; prover_concurrency=4; exclusive_keys=benchmark-run; merge_slots=4; persistence_kib_s=32768
+- Model-route class: benchmark/bounded; sealed provider route, token and call limits
+- Permitted effects: execute bounded benchmark, persist immutable raw results/report, stop on budgets
+- Prohibited effects: exceed budgets; discard unfavorable runs; alter workload/policy; fabricate missing provider/GPU/proof capacity; claim maximum parallelism from process count
+- Completion contract: All feasible configs/repetitions complete or have typed unavailable/exhausted results; raw data verifies; report covers every required metric, environment/variance and target miss without substitution.
+- Validation requirements: raw schema/CIDs, recompute statistics, run population, budget audit, environment manifest and report-to-raw consistency
+- Proof requirements: deterministic aggregation and raw-to-report lineage
+- Lease requirements: exclusive benchmark-run lease and all declared resource/provider/prover/worktree/merge reservations/fences
+- Rollback or compensation procedure: Cancel remaining runs, release resources/provider sessions, settle merge/worktrees, preserve partial results and mark missing cells typed.
+- Required evidence: raw per-run receipts, metric tables, environment/provider/prover manifests, statistical/report lineage, cleanup
+- Final result identity: pending; accepted benchmark results root CID
+- Outputs: data/agent_supervisor/logic_governed_semantic_work_fabric/benchmarks, docs/benchmarks/logic_governed_semantic_work_fabric_results.md
+- Validation: python3 benchmarks/logic_governed_semantic_work_fabric/validate_results.py --results data/agent_supervisor/logic_governed_semantic_work_fabric/benchmarks
+- Acceptance: Actual results for every feasible configuration are reported honestly and scoped to the sealed environment.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: benchmark-run
+- Predicted files: data/agent_supervisor/logic_governed_semantic_work_fabric/benchmarks, docs/benchmarks/logic_governed_semantic_work_fabric_results.md
+- Conflict policy: Exclusive benchmark-run/result roots; configuration runs may parallelize only through harness resource partitions.
+- Raw-source requirements: sealed corpus only
+
+## LGSWF-140 Build and verify the qualification release manifest
+
+- Stable task ID: LGSWF-140
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: release
+- Goal id: LGSWF-G150
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G150
+- Owning repository: ipfs_accelerate_py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_release.py, test/api/test_agent_supervisor_logic_governed_release.py, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-release.json
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Produce one signed or content-addressed manifest transitively naming exact revisions, inventory/map, all schemas, tests, fault/adversarial/benchmark raw results, reports, security, limitations, migration, rollback and qualification decision inputs.
+- Depends on: LGSWF-131
+- Read scope: all accepted A-N evidence, Git trees, current semantic/plan/world roots and existing entrypoint/release patterns
+- Write scope: owned paths only
+- External effect scope: local content-address/signature operation only; no publication
+- Relevant symbol IDs: final accepted semantic binding set
+- Capsule CIDs: final accepted capsule references
+- Contract and obligation CIDs: final accepted contract/obligation set; QualificationRelease@1
+- Resource demand: cpu_ms=14400000; cpu_concurrency=3; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=16384; disk_bandwidth_mib_s=150; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=local-logic; prover_concurrency=1; exclusive_keys=release-manifest; merge_slots=1; persistence_kib_s=8192
+- Model-route class: implementation/high; release verifier is authority
+- Permitted effects: add release builder/verifier, construct local manifest and tests
+- Prohibited effects: omit failed results/limitations; assign unsupported production level; network publish/sign with unavailable credential; mutable path as identity
+- Completion contract: Manifest includes every O-required artifact, exact sources/policies/environment, all CIDs verify transitively, missing/unavailable items are explicit and qualification inputs are immutable.
+- Validation requirements: release schema/transitive CID/source-tree/policy/result completeness, corruption/missing artifact and signature/content-address tests
+- Proof requirements: manifest reachability and exact-source binding
+- Lease requirements: exclusive release-manifest single-flight lease, current plan/semantic/merge-settled gates
+- Rollback or compensation procedure: Quarantine invalid manifest; retain all component evidence; regenerate only under a new manifest identity after correcting inputs.
+- Required evidence: complete manifest, verification report, artifact inventory, security/limitation/migration/rollback records
+- Final result identity: pending; verified qualification-release CID
+- Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_release.py, test/api/test_agent_supervisor_logic_governed_release.py, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-release.json
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_logic_governed_release.py
+- Acceptance: One verified manifest transitively covers every required release artifact and exact environment.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: release-manifest
+- Predicted files: ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_release.py, test/api/test_agent_supervisor_logic_governed_release.py, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-release.json
+- Conflict policy: Exclusive release-manifest writer after benchmark settles.
+- Raw-source requirements: none; verified release references only
+
+## LGSWF-141 Issue the final qualification level and continuous-operation go/no-go
+
+- Stable task ID: LGSWF-141
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: release
+- Goal id: LGSWF-G150
+- Parent goal ID: LGSWF-G000
+- Subgoal ID: LGSWF-G150
+- Owning repository: ipfs_accelerate_py
+- Owned paths: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-decision.json
+- Base revision: 485edc0871c55b0e2ef21d83bece9fa12c2c8d84
+- Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
+- Base plan revision: LGSWF-PLAN-R2-required
+- Objective: Independently review the verified release, assign an evidence-supported qualification level and explicit go/no-go for continuous multi-supervisor operation, and emit the required 24-section report.
+- Depends on: LGSWF-140
+- Read scope: verified qualification manifest and every transitively referenced artifact
+- Write scope: owned paths only
+- External effect scope: none; no deployment or protected merge
+- Relevant symbol IDs: final manifest references
+- Capsule CIDs: final manifest references
+- Contract and obligation CIDs: final manifest references; QualificationDecision@1
+- Resource demand: cpu_ms=14400000; cpu_concurrency=2; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=8192; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=48000; model_output_tokens=18000; provider_quota_units=1; provider_concurrency=1; prover_class=local-logic; prover_concurrency=1; exclusive_keys=qualification-decision; merge_slots=1; persistence_kib_s=4096
+- Model-route class: review/high; deterministic release gates and human/supervisor review are authority
+- Permitted effects: review evidence and write scoped report/decision
+- Prohibited effects: fabricate/massage metrics; omit failures; call module presence production; weaken gates; deploy/publish/merge protected branch; model self-approval
+- Completion contract: Report contains all 24 required sections and permitted scoped claim; level is one of research_demo/internal_alpha/internal_pilot/supervised_external_pilot/production_candidate with rationale; go/no-go is explicit and limitations/conditions are binding.
+- Validation requirements: report-section and manifest-lineage validator, qualification-policy matrix, no unsupported claims, independent supervisor/human-review flag
+- Proof requirements: every conclusion traces to verified manifest evidence; fixed-point conditions rechecked at decision time
+- Lease requirements: exclusive qualification-decision lease; reviewer distinct from implementation attempt; settled merge/claim gates
+- Rollback or compensation procedure: Supersede, never overwrite, an invalid decision with a new decision CID; prior release/evidence remains; no deployment occurred.
+- Required evidence: reviewer identity/independence, decision inputs, level/go-no-go rationale, 24-section report, final fixed-point/terminal receipt
+- Final result identity: pending; accepted qualification-decision CID
+- Outputs: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-decision.json
+- Validation: python3 ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_release.py verify --manifest data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-release.json --decision data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-decision.json
+- Acceptance: Final report is evidence-backed, honest, exact-environment-scoped and explicitly recommends go or no-go.
+- Board namespace: logic-governed-semantic-work-fabric-v1
+- Parallel lane: qualification-decision
+- Predicted files: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-decision.json
+- Conflict policy: Final serial independent review; no worker self-acceptance.
+- Raw-source requirements: none; verified manifest references only
