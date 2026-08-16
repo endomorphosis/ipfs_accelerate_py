@@ -1081,7 +1081,7 @@ overlays. Never force-push.
 
 ## MCPP-034 Emit and verify envelopes from the accelerate runtime
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
