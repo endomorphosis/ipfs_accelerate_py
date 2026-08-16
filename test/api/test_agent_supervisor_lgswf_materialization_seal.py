@@ -1,7 +1,7 @@
 """Focused qualification for the two-stage LGSWF bootstrap authority.
 
 The fixtures deliberately redirect the materializer to ``tmp_path``.  They do
-not construct, inspect, or mutate the configured ``run-actual-v4`` namespace.
+not construct, inspect, or mutate the configured ``run-actual-v5`` namespace.
 """
 
 from __future__ import annotations

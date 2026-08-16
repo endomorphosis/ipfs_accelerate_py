@@ -944,12 +944,18 @@ def _verify_task_records(
             "ordinal": int(expected["ordinal"]),
             "priority": expected["priority"],
             "status": expected_status,
-            "dependencies": list(expected["dependencies"]),
+            "dependencies": sorted(str(item) for item in expected["dependencies"]),
             "outputs": expected_outputs,
             "acceptance": expected_acceptance,
             "validations": expected_validations,
         }
         observed_dict = observed.to_dict()
+        observed_dependencies = observed_dict.get("dependencies") or []
+        if isinstance(observed_dependencies, (list, tuple)):
+            observed_dict = {
+                **observed_dict,
+                "dependencies": sorted(str(item) for item in observed_dependencies),
+            }
         mismatches = [key for key, value in exact_fields.items() if observed_dict.get(key) != value]
         if mismatches:
             raise MaterializationError(
