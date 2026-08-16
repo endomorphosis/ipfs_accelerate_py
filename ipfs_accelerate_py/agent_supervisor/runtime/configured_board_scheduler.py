@@ -1791,6 +1791,8 @@ def load_configured_board(
                 "provider.fallback_model_id must be 'gpt-5.6-terra' for "
                 "the ordered provider contract"
             )
+        if not fallback_trigger:
+            fallback_trigger = ORDERED_FALLBACK_TRIGGER
         if fallback_trigger != ORDERED_FALLBACK_TRIGGER:
             raise ConfiguredBoardError(
                 "provider.fallback_trigger must be "
