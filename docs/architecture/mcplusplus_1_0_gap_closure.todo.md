@@ -646,7 +646,7 @@ overlays. Never force-push.
 
 ## MCPP-020 Specify and test the legacy MCP 2024-11-05 binding
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
