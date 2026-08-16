@@ -1702,7 +1702,7 @@ overlays. Never force-push.
 
 ## MCPP-054 Specify the A2A execution extension and mappings
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
