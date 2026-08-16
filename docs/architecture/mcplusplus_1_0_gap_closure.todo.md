@@ -2572,7 +2572,7 @@ overlays. Never force-push.
 
 ## MCPP-082 Write the implementation report and draft pull-request descriptions
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
