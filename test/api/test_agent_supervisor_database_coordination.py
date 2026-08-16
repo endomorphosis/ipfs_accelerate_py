@@ -11,6 +11,7 @@ creation are one transaction.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     duckdb_available,
     exclusive_scope_key,
     open_database_coordinator,
+    read_coordination_registry_projection,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -503,6 +505,144 @@ def test_coordination_registry_projection_makes_dependency_tamper_visible(
         assert after["projection_root"] != before["projection_root"]
     finally:
         coordinator.close()
+
+
+def test_read_only_projection_preserves_database_bytes_and_exposes_histories(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    database_path = coordinator.database_path
+    try:
+        coordinator.register_task(task_cid="task:expected", task_id="EXPECTED")
+        coordinator.register_task(task_cid="task:foreign", task_id="FOREIGN")
+        task_claim = coordinator.claim_task(
+            task_cid="task:foreign",
+            owner_session_id="session:foreign",
+            worktree_id="worktree:foreign",
+            idempotency_key="foreign-task-attempt",
+            body={"result_identity": "sha256:foreign"},
+        )
+        resource_claim = coordinator.claim_resource(
+            resource_kind="database_writer",
+            resource_id="writer:foreign",
+            owner_session_id="session:foreign",
+            task_cid="task:foreign",
+            repository_id="repo:foreign",
+            body={"permit": "foreign"},
+        )
+        maintenance = coordinator.acquire_maintenance_lease(
+            owner_session_id="session:maintenance",
+            scope="foreign-maintenance",
+            process_birth_id="process:foreign",
+            body={"reason": "foreign"},
+        )
+        coordinator.release(task_claim.as_fenced_lease(), reason="terminal foreign")
+        coordinator.release(resource_claim.as_fenced_lease(), reason="terminal foreign")
+        coordinator.release(maintenance.as_fenced_lease(), reason="terminal foreign")
+    finally:
+        coordinator.close()
+
+    before_bytes = database_path.read_bytes()
+    before_digest = hashlib.sha256(before_bytes).hexdigest()
+    before_entries = sorted(path.name for path in database_path.parent.iterdir())
+
+    projection = read_coordination_registry_projection(database_path)
+
+    assert hashlib.sha256(database_path.read_bytes()).hexdigest() == before_digest
+    assert database_path.read_bytes() == before_bytes
+    assert sorted(path.name for path in database_path.parent.iterdir()) == before_entries
+    assert projection["tasks"][1]["task_id"] == "FOREIGN"
+    assert projection["task_claims"] == [
+        {
+            "claim_id": task_claim.claim_id,
+            "task_cid": "task:foreign",
+            "owner_session_id": "session:foreign",
+            "fencing_token": task_claim.fencing_token,
+            "fence_epoch": task_claim.fence_epoch,
+            "state": "released",
+            "revision": 2,
+            "attempt_id": task_claim.attempt_id,
+            "attempt_number": 1,
+            "lease_id": task_claim.lease_id,
+            "worktree_id": "worktree:foreign",
+            "idempotency_key": "foreign-task-attempt",
+            "body": {"result_identity": "sha256:foreign"},
+        }
+    ]
+    assert projection["task_attempts"] == [
+        {
+            "attempt_id": task_claim.attempt_id,
+            "task_cid": "task:foreign",
+            "attempt_number": 1,
+            "owner_session_id": "session:foreign",
+            "fencing_token": task_claim.fencing_token,
+            "fence_epoch": task_claim.fence_epoch,
+            "status": "released",
+            "revision": 2,
+        }
+    ]
+    assert {item["lease_id"] for item in projection["fenced_leases"]} == {
+        task_claim.lease_id,
+        resource_claim.lease_id,
+        maintenance.lease_id,
+    }
+    assert projection["resource_claims"] == [
+        {
+            "claim_id": resource_claim.claim_id,
+            "resource_kind": "database_writer",
+            "resource_id": "writer:foreign",
+            "owner_session_id": "session:foreign",
+            "fencing_token": resource_claim.fencing_token,
+            "fence_epoch": resource_claim.fence_epoch,
+            "state": "released",
+            "revision": 2,
+            "lease_id": resource_claim.lease_id,
+            "task_cid": "task:foreign",
+            "repository_id": "repo:foreign",
+            "path": "",
+            "worktree_id": "",
+            "mode": "exclusive",
+            "body": {"permit": "foreign"},
+        }
+    ]
+    assert projection["maintenance_leases"] == [
+        {
+            "lease_id": maintenance.lease_id,
+            "scope": "foreign-maintenance",
+            "owner_session_id": "session:maintenance",
+            "process_birth_id": "process:foreign",
+            "fencing_token": maintenance.fencing_token,
+            "fence_epoch": maintenance.fence_epoch,
+            "state": "released",
+            "revision": 2,
+            "body": {"reason": "foreign"},
+        }
+    ]
+
+
+@pytest.mark.parametrize("tamper", ["metadata", "schema"])
+def test_read_only_projection_fails_closed_without_repairing_authority(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    database_path = coordinator.database_path
+    connection = coordinator._require()
+    if tamper == "metadata":
+        connection.execute(
+            "UPDATE coordination_metadata SET value = 'forged' WHERE key = 'schema'"
+        )
+    else:
+        connection.execute("DROP INDEX task_claims_task_idx")
+    coordinator._commit_if_idle(connection)
+    coordinator.close()
+
+    before_bytes = database_path.read_bytes()
+    before_digest = hashlib.sha256(before_bytes).hexdigest()
+    with pytest.raises(DatabaseCoordinationStaleFenceError, match="coordination authority"):
+        read_coordination_registry_projection(database_path)
+    assert hashlib.sha256(database_path.read_bytes()).hexdigest() == before_digest
+    assert database_path.read_bytes() == before_bytes
 
 
 def test_claim_and_task_attempt_are_one_transaction(tmp_path: Path) -> None:
