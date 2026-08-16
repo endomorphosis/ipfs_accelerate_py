@@ -1,0 +1,17 @@
+{
+  "accepted_pointer": "R2",
+  "execution_base": "79067e1acc05c405114995c37d03ff43a1814fb9",
+  "interface_freeze_schema": "lgswf/interface-freeze@1",
+  "preserved_r1_s1": "LGSWF-PLAN-ACTUAL-R1-S1",
+  "quarantined_r1_rewritten": false,
+  "r2_cid": "sha256:c8e80c45d6d9ece02cc7a79c59e29e75c4bbd5b212686ad62f89fd090b2922af",
+  "repository_head": "79067e1acc05c405114995c37d03ff43a1814fb9",
+  "repository_tree": "f38fe4912b72c53e1ab85f060e0540621c2eb950",
+  "revision": "LGSWF-PLAN-ACTUAL-R2",
+  "schema": "lgswf/plan-revision-r2@1",
+  "semantic_baseline_cid": "sha256:a0ac0691b21c5b17a52ddf1892373cafa9b0d62331a2136d0202abab99bf583e",
+  "sentinels_replaced": [
+    "ACCEPTED_LGSWF-006_SOURCE_HEAD"
+  ],
+  "supersedes": "LGSWF-PLAN-ACTUAL-R1-S1"
+}
