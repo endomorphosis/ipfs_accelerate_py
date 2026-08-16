@@ -34,13 +34,15 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final, TypeVar
 
+from ..analysis.semantic_truth_authority import (
+    assert_accelerator_semantic_writer_permitted,
+)
 from ..task_sources.control_plane_contracts import (
     REDACTION_MARKER,
     redact_mapping,
 )
 from ..task_sources.duckdb_state import open_duckdb_connection
 from ..task_sources.task_identity import canonical_json_bytes
-
 
 # ---------------------------------------------------------------------------
 # Contract identity
@@ -762,6 +764,7 @@ class DatabaseEvidenceStore:
         default_ttl_seconds: int = DEFAULT_TTL_SECONDS,
         clock: Callable[[], float] = time.time,
     ) -> None:
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         if not duckdb_available():
             raise DuckDBUnavailableError(
                 "DuckDB is required for DatabaseEvidenceStore; install the "
@@ -802,6 +805,7 @@ class DatabaseEvidenceStore:
         return int(self._clock() * 1000)
 
     def open(self) -> "DatabaseEvidenceStore":
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         with self._lock:
             if self.is_open:
                 return self

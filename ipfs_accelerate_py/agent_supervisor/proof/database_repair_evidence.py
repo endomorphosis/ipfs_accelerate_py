@@ -40,6 +40,9 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Final
 
+from ..analysis.semantic_truth_authority import (
+    assert_accelerator_semantic_writer_permitted,
+)
 from ..planning.database_symbolic_planning import (
     PLAN_AUTHORITY_POLICY,
     PlanDisposition,
@@ -1140,6 +1143,7 @@ class DatabaseRepairEvidenceStore:
         store_version: str = DEFAULT_STORE_VERSION,
         default_ttl_seconds: int = DEFAULT_CACHE_TTL_SECONDS,
     ) -> None:
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         if not duckdb_available():
             raise DuckDBUnavailableError(
                 "DuckDB is required for DatabaseRepairEvidenceStore; install "
@@ -1177,6 +1181,7 @@ class DatabaseRepairEvidenceStore:
         return not self._closed and self._connection is not None
 
     def open(self) -> "DatabaseRepairEvidenceStore":
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         with self._lock:
             if self.is_open:
                 return self

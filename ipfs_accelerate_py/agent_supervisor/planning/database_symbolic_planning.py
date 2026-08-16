@@ -41,12 +41,19 @@ from typing import Any, Final
 from ..analysis.database_impact_graph import (
     ImpactClosure,
     ImpactCompleteness,
+)
+from ..analysis.database_impact_graph import (
     duckdb_available as impact_duckdb_available,
 )
 from ..analysis.mutation_ledger import (
     MutationSet,
     MutationStatus,
+)
+from ..analysis.mutation_ledger import (
     duckdb_available as mutation_duckdb_available,
+)
+from ..analysis.semantic_truth_authority import (
+    assert_accelerator_semantic_writer_permitted,
 )
 from ..task_sources.duckdb_state import open_duckdb_connection
 
@@ -1188,6 +1195,7 @@ class DatabaseSymbolicPlanner:
         *,
         planner_version: str = DEFAULT_PLANNER_VERSION,
     ) -> None:
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         if not duckdb_available():
             raise DuckDBUnavailableError(
                 "DuckDB is required for DatabaseSymbolicPlanner; install the "
@@ -1218,6 +1226,7 @@ class DatabaseSymbolicPlanner:
         return not self._closed and self._connection is not None
 
     def open(self) -> "DatabaseSymbolicPlanner":
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         with self._lock:
             if self.is_open:
                 return self
