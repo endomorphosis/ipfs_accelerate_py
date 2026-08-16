@@ -47,6 +47,7 @@ ordered-log and diff hashes, are in the baseline JSON.
 | pinned accelerator comparison | `485edc0871c55b0e2ef21d83bece9fa12c2c8d84` / `17fefd8b21566766ec7058044d128374b12f81cd` | 1,245 commits after actual HEAD | comparison evidence only; not silently substituted |
 | isolated accelerator snapshot | `38cd50092d300b61327a9225e7f10cfe8acefb4f` / `005f885e270bbc7573710686a78fc2f740ee5b9f` | exact tracked patch plus 132 non-runtime untracked source files | reproducible source snapshot |
 | integrated accelerator base | `b6dc155c3d779a4166a8ee92c0e0214e0157e2e2` / `1313cf18fecd969f654f0233f6678c2d851116e8` | snapshot plus existing DuckDB/Quack history and seven resolved conflicts | task base and launch ancestor |
+| bootstrap contract seal | `3a07f2b9273161ce805feff98414ef3c66eae7cc` / `49df4554135a9fcd088f7b4d9c36a86ae4c508c9` | fail-closed Portal bridge, one-writer database policy and sealed board | exact base for post-bootstrap accelerator tasks |
 | actual datasets checkout | `ac82107e246b30e35a2bbdcf75e01370d22350c6` / `2b3d892dd1c31fb6b8a3eebdb88616d411c49a47` | dirty | checked-out semantic authority; preserved untouched |
 | isolated datasets snapshot | `0691203550c0f316852c74d293d8fc3c4ce130a6` / `35252228f51c1247a8f99939b36e74f0af36e411` | exact tracked patch plus 29 untracked source files | semantic task base and exact parent gitlink |
 | DuckDB/Quack reuse source | `9e39c6c9edb0b756f99f9857a89e70642ef1321c` / `ea321ea749103ece6a175c4e984372e42ac204bd` | historical run stopped; no live server or store | implementation history only; freshly qualify |

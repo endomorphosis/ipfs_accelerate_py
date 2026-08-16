@@ -9,7 +9,7 @@
   "board_namespace": "logic-governed-semantic-work-fabric-actual-v1",
   "merge_target_branch": "agent/logic-governed-semantic-work-fabric-actual-v1",
   "source_binding": {
-    "accelerator_required_ancestor": "b6dc155c3d779a4166a8ee92c0e0214e0157e2e2",
+    "accelerator_required_ancestor": "3a07f2b9273161ce805feff98414ef3c66eae7cc",
     "accelerator_required_branch": "agent/logic-governed-semantic-work-fabric-actual-v1",
     "bootstrap_task_source": "duckdb",
     "ipfs_datasets_submodule_path": "ipfs_datasets_py",

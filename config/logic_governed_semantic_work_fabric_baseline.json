@@ -40,6 +40,8 @@
     "board_seed_commit": "cba7c0b15ff187fbd7eb6fa42e5e4ce60d03bd31",
     "duckdb_integration_commit": "b6dc155c3d779a4166a8ee92c0e0214e0157e2e2",
     "duckdb_integration_tree": "1313cf18fecd969f654f0233f6678c2d851116e8",
+    "control_contract_commit": "3a07f2b9273161ce805feff98414ef3c66eae7cc",
+    "control_contract_tree": "49df4554135a9fcd088f7b4d9c36a86ae4c508c9",
     "launch_head_policy": "clean descendant of duckdb_integration_commit on the exact execution branch; captured in the launch receipt",
     "authority": true
   },

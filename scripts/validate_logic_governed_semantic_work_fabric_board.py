@@ -19,7 +19,8 @@ TASK_RE = re.compile(r"^## (LGSWF-(\d{3})) (.+)$", re.MULTILINE)
 GOAL_RE = re.compile(r"^## (LGSWF-G\d{3}) (.+)$", re.MULTILINE)
 META_RE = re.compile(r"^- ([^:\n]+):(?: (.*))?$", re.MULTILINE)
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
-ACCELERATOR_BASE = "b6dc155c3d779a4166a8ee92c0e0214e0157e2e2"
+BOOTSTRAP_BASE = "b6dc155c3d779a4166a8ee92c0e0214e0157e2e2"
+ACCELERATOR_BASE = "3a07f2b9273161ce805feff98414ef3c66eae7cc"
 DATASETS_BASE = "0691203550c0f316852c74d293d8fc3c4ce130a6"
 BOARD_NAMESPACE = "logic-governed-semantic-work-fabric-actual-v1"
 EXPECTED_READY = ["LGSWF-001", "LGSWF-002", "LGSWF-003"]
@@ -307,7 +308,13 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
             errors.append(f"{task_id}: schedulable/review metadata mismatch")
         owner = metadata.get("Owning repository")
         base = metadata.get("Base revision", "")
-        expected_base = DATASETS_BASE if owner == "ipfs_datasets_py" else ACCELERATOR_BASE
+        expected_base = (
+            DATASETS_BASE
+            if owner == "ipfs_datasets_py"
+            else BOOTSTRAP_BASE
+            if task_id == "LGSWF-000"
+            else ACCELERATOR_BASE
+        )
         if not HEX40_RE.fullmatch(base) or base != expected_base:
             errors.append(f"{task_id}: wrong exact base revision for {owner}: {base!r}")
         dependencies[task_id] = _csv(metadata.get("Depends on", ""))
@@ -456,8 +463,10 @@ def validate(*, require_database: bool = False) -> dict[str, Any]:
 
     selected = baseline.get("actual_accelerator_snapshot") if isinstance(baseline.get("actual_accelerator_snapshot"), dict) else {}
     semantic = baseline.get("semantic_authority") if isinstance(baseline.get("semantic_authority"), dict) else {}
-    if selected.get("duckdb_integration_commit") != ACCELERATOR_BASE or selected.get("duckdb_integration_tree") != "1313cf18fecd969f654f0233f6678c2d851116e8":
+    if selected.get("duckdb_integration_commit") != BOOTSTRAP_BASE or selected.get("duckdb_integration_tree") != "1313cf18fecd969f654f0233f6678c2d851116e8":
         errors.append("baseline selected accelerator identity mismatch")
+    if selected.get("control_contract_commit") != ACCELERATOR_BASE:
+        errors.append("baseline control-contract identity mismatch")
     if semantic.get("head") != DATASETS_BASE or semantic.get("semantic_state_root_status") != "unavailable" or semantic.get("semantic_state_root") is not None:
         errors.append("baseline datasets identity/root status mismatch")
     commitments = baseline.get("intervening_change_commitments")

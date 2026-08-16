@@ -91,7 +91,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G010
 - Owning repository: ipfs_accelerate_py
 - Owned paths: docs/architecture/logic_governed_semantic_work_fabric_inventory/current_state.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/accelerator_intervening_commits.tsv, docs/architecture/logic_governed_semantic_work_fabric_inventory/datasets_intervening_commits.tsv, docs/architecture/logic_governed_semantic_work_fabric_inventory/inventory.json
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: unavailable; raw-source fallback admitted for A only
 - Base plan revision: LGSWF-PLAN-ACTUAL-R1
 - Objective: Inventory every required semantic and operational implementation, classify authority/facade/projection/legacy/duplicate/experimental/obsolete/unresolved, and persist complete ordered revision histories whose hashes match the baseline.
@@ -136,7 +136,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G010
 - Owning repository: ipfs_accelerate_py
 - Owned paths: docs/architecture/logic_governed_semantic_work_fabric_inventory/package_dag.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/authority_map.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/interface_freeze.json, test/api/test_agent_supervisor_lgswf_package_dag.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: unavailable; raw-source fallback admitted for A only
 - Base plan revision: LGSWF-PLAN-ACTUAL-R1
 - Objective: Compute the actual package import graph, identify cycles/upward imports and compatibility boundaries, and freeze exact datasets-to-accelerator, ContextPack, completion, invalidation, proof, objective/plan, resource/claim and result/completion interfaces.
@@ -226,7 +226,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G010
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/baseline.py, test/api/semantic_state/test_lgswf_current_baseline.py, data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/semantic-baseline.json
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: unavailable; this task establishes it from LGSWF-003 producer authority
 - Base plan revision: LGSWF-PLAN-ACTUAL-R1
 - Objective: Assert import provenance, scan the exact selected tree, build/verify/persist datasets blocks, publish an accelerator root manifest through durable CAS, and record repository/tree/symbol/capsule/environment/contract/obligation availability separately.
@@ -271,7 +271,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G010
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/task_sources/lgswf_bootstrap_revision.py, test/api/test_agent_supervisor_lgswf_bootstrap_revision.py, data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/plan-r2.json
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: output of accepted LGSWF-004 only
 - Base plan revision: LGSWF-PLAN-ACTUAL-R1
 - Objective: Use the existing PlanRevisionStore to create and CAS-accept R2, replacing every future sentinel with exact tree, semantic, capsule, contract, obligation, policy and completion identities while preserving R1.
@@ -316,7 +316,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G020
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_contracts.py, test/api/semantic_state/test_world_snapshot_contracts.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Define one accelerator-owned content-addressed world snapshot schema with all required reference roots, statuses, epochs, cursor and strict exclusions.
@@ -361,7 +361,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G020
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_builder.py, test/api/semantic_state/test_world_snapshot_builder.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Build snapshots by independently verifying datasets, plan, objectives, claims, resources, capabilities, merge and event authorities, then enforce freshness and cross-authority consistency.
@@ -406,7 +406,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G020
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/world_view.py, test/api/semantic_state/test_world_view.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Provide mutation-free queries for goal/subgoal/task state, semantic binding, dependencies, conflicts, resources, claims, capsules/contracts/obligations, completion evidence and refill eligibility.
@@ -451,7 +451,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G020
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py, test/api/semantic_state/test_world_overlay_acceptance.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Export one canonical world overlay surface, reconcile W3 changes, and qualify end-to-end construction/admission/query behavior without creating a duplicate facade.
@@ -496,7 +496,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G030
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/work_binding.py, test/api/semantic_state/test_semantic_work_binding.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Define a strict content-addressed binding for goals, subgoals, tasks and attempts covering every required semantic reference, condition, scope, effect, test/proof, limitation, invalidation, completion and authority field.
@@ -541,7 +541,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G030
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/objectives/completion_contracts.py, test/api/test_agent_supervisor_semantic_completion_contracts.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Extend existing goal completion with observable semantic/evidence contracts and separate worker, validation, proof, merge, refresh and supervisor-acceptance gates.
@@ -586,7 +586,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G030
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/provisional_state.py, test/api/semantic_state/test_provisional_state_authority.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Bind provisional semantic roots to worktree/task/attempt and prevent them or worker results from advancing canonical repository semantic authority.
@@ -631,7 +631,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G030
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/semantic_binding_admission.py, test/api/test_agent_supervisor_semantic_binding_admission.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Promote required Markdown metadata and canonical task records into typed semantic binding/completion admission inputs and join W4 contracts without changing accepted history.
@@ -676,7 +676,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G040
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/semantic_work_graph.py, test/api/test_agent_supervisor_semantic_work_graph.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Compose all required goal/task/code/data/interface/schema/contract/proof/validation/policy/merge/lifecycle/scope/invalidation/conflict/supersession/generation/block/unlock edges with distinct authority and evidence.
@@ -721,7 +721,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G040
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/core/conflict_graph.py, test/api/test_agent_supervisor_semantic_conflict_graph.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Extend the existing conflict graph with predicted paths, exact symbol/interface/schema/state/effect/generated/fixture/taskboard/database/merge/external/resource scopes and conservative opaque fallback.
@@ -766,7 +766,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G040
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/work_graph_metrics.py, test/api/test_agent_supervisor_work_graph_metrics.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Calculate topological depth, critical path, unlock and blocking-goal counts, estimated cost, uncertainty, merge risk, resource bottleneck and cache locality using durable integer/fixed-point values.
@@ -811,7 +811,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G040
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/semantic_work_graph_integration.py, test/api/test_agent_supervisor_semantic_work_graph_acceptance.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Compose accepted W5 components from one world view and prove dependency/conflict separation, authority provenance, conservative fallbacks and deterministic metrics.
@@ -856,7 +856,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G050
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/conflict_free_frontier.py, test/api/test_agent_supervisor_conflict_free_frontier.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Enforce the twelve readiness predicates and construct a deterministic candidate ready set plus conflict relation from one current world/graph snapshot.
@@ -901,7 +901,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G050
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/frontier_optimizer.py, test/api/test_agent_supervisor_frontier_optimizer.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Select a useful conflict-free antichain under hard resource constraints with fixed-point scoring, exact bounded search for small sets and deterministic greedy/local improvement for large sets.
@@ -946,7 +946,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G050
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/parallel_plan_compiler.py, test/api/test_agent_supervisor_lgswf_plan_transforms.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Extend current PlanDelta-based planning to propose bounded split/coalesce/rewire operations and isolated read-only speculation under the exact documented conditions.
@@ -991,7 +991,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G050
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/frontier_integration.py, test/api/test_agent_supervisor_frontier_acceptance.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Integrate readiness, optimizer and plan-transform proposals with current planning while leaving resource reservation and dispatch to later authorities.
@@ -1036,7 +1036,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G060
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py, test/api/test_agent_supervisor_lgswf_resource_scheduler.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Extend the current scheduler with the full integer resource vector and bounded leased reservation/release/reclaim semantics bound to task, attempt, supervisor and daemon.
@@ -1081,7 +1081,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G060
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/work_cache_coordinator.py, test/api/test_agent_supervisor_work_cache_coordinator.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Learn bounded predictions from immutable receipts and coordinate cache affinity/single-flight reuse for scans, semantic blocks, capsules, contexts, providers, tests, proofs, dependencies and worktrees.
@@ -1126,7 +1126,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G060
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/stage_backpressure.py, test/api/test_agent_supervisor_stage_backpressure.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Apply independent admission pressure to analysis/context/model/proof translation/solver/kernel/validation/merge/persistence and safely cancel/preempt stale or speculative work.
@@ -1171,7 +1171,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G060
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/resource_admission.py, test/api/test_agent_supervisor_lgswf_resource_admission.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Atomically validate selected frontier resources, apply cache/backpressure decisions, reserve before dispatch and compensate partial multi-resource reservation failure.
@@ -1216,7 +1216,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G070
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py, test/api/test_agent_supervisor_fabric_coordination.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Define capability observations/roles and one fenced writer per mutable shard with heartbeat, lease policy, coordination-epoch failover and stale-coordinator commit rejection.
@@ -1261,7 +1261,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G070
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/work_partitioning.py, test/api/test_agent_supervisor_work_partitioning.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Partition selected work by semantic/repository/goal/resource/provider/worktree/merge locality, preserve cross-partition edges, constrain stealing, and enforce exactly-once logical acceptance.
@@ -1306,7 +1306,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G070
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, test/api/test_agent_supervisor_multi_supervisor_fabric.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Extend the existing sealed runner, consolidate runtime-effective duplicate definitions as needed, and connect frontier/resource partitions to coordinated supervisors without replacing launch protections.
@@ -1351,7 +1351,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G080
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/todo_daemon/work_packet.py, test/api/test_agent_supervisor_semantic_work_packet.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Extend one existing/canonical daemon packet to bind all required goal/plan/tree/semantic/context/scope/effect/resource/provider/model/validation/proof/completion/lease/fence/attempt/idempotency/checkpoint/cancellation/output fields.
@@ -1396,7 +1396,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G080
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/todo_daemon/checkpoints.py, test/api/test_agent_supervisor_daemon_checkpoints.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Implement the explicit lifecycle, complete content-addressed checkpoint schema, corruption-safe resume, and immediate typed stop on stale plan/root/lease/fence/scope/cancel/already-accepted state.
@@ -1441,7 +1441,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G080
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_daemon_protocol_integration.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Wire admitted packets, lifecycle/checkpoints and stale-stop gates into the current daemon without replacing its parser/provider/worktree/lifecycle framework.
@@ -1486,7 +1486,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G090
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/task_sources/semantic_refill.py, test/api/test_agent_supervisor_semantic_refill.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Produce typed evidence-backed refill proposals for every required trigger with semantic deduplication and hard successor/revision/population/retry/provider/token/frequency/no-progress bounds.
@@ -1531,7 +1531,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G090
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/plan_doctor.py, test/api/test_agent_supervisor_plan_doctor.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Diagnose every required structural, semantic, conflict, resource, starvation, retry, freshness and parent-coverage pathology and emit proposals only.
@@ -1576,7 +1576,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G090
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/task_sources/plan_revision_store.py, ipfs_accelerate_py/agent_supervisor/planning/plan_revision_contracts.py, test/api/test_agent_supervisor_lgswf_plan_revision.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Integrate refill/Doctor proposals through current PlanRevisionStore with explicit supersession, stale cancellation/fencing, future-task rebinding and immutable claimed-through-accepted history.
@@ -1621,7 +1621,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G100
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/work_loop.py, test/api/semantic_state/test_semantic_work_loop.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Before execution resolve/verify the datasets view, blocks, capsule freshness, tests/proofs and ContextPack; during execution scan changed symbols, compute provisional delta/invalidation, enforce scope and replan verification.
@@ -1666,7 +1666,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G100
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/post_merge_refresh.py, test/api/semantic_state/test_post_merge_semantic_refresh.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Seal predicted effects/contracts/tests/proofs/governor/assurance before merge, then after accepted merge rescan the accepted tree, publish canonical root, compare deltas, invalidate downstream work and reevaluate completion/refill.
@@ -1711,7 +1711,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G100
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py, ipfs_accelerate_py/agent_supervisor/merge/semantic_refresh_integration.py, test/api/semantic_state/test_closed_loop_semantic_refresh.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Connect W11 stages to the existing semantic harness and merge path in exact before/during/pre-merge/post-merge order, with checkpoint/recovery and immutable events.
@@ -1756,7 +1756,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G110
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/logic_governed_fabric.py, test/api/test_agent_supervisor_logic_governed_convergence.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Implement the bounded observe/frontier/reserve/dispatch/checkpoint/verify/merge/refresh/complete/revise loop with the exact fixed-point conjunction and explicit non-success terminals.
@@ -1801,7 +1801,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G120
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/decision_receipts.py, ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_fabric.py, test/api/test_agent_supervisor_logic_governed_observability.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Emit every required scheduling decision field and metric as content-addressed machine-readable evidence through the existing highest-level entrypoint package.
@@ -1846,7 +1846,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G130
 - Owning repository: ipfs_accelerate_py
 - Owned paths: test/fixtures/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_fixture.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Build a reproducible fixture with three supervisors, ten daemons, multiple resource classes, independent/conflicting branches, multi-level goals, proof/validation tasks, merge queue and refill triggers.
@@ -1891,7 +1891,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G130
 - Owning repository: ipfs_accelerate_py
 - Owned paths: test/api/test_agent_supervisor_logic_governed_fabric_faults.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/fault-results.json
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Run and record all 26 required concurrency, fencing, failover, checkpoint, effect, pressure, stealing, partition, semantic invalidation, proof/refill/history/split/coalesce/fixed-point/restart scenarios.
@@ -1936,7 +1936,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G130
 - Owning repository: ipfs_accelerate_py
 - Owned paths: test/api/test_agent_supervisor_logic_governed_fabric_adversarial.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/adversarial-results.json
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Inject every required forged/stale/wrong/overlap/undeclared/self-modifying/weakened/deleted/model-claim/simulated-proof/duplicate/replay/corrupt/split-brain/impossible-capacity input and prove critical fail-closed behavior.
@@ -1981,7 +1981,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G140
 - Owning repository: ipfs_accelerate_py
 - Owned paths: benchmarks/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_benchmark_manifest.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Define identical seeded workloads and configuration A/B/C/D harnesses covering all required graph shapes, task classes, bottlenecks, failures, invalidations and refill cycles.
@@ -2026,7 +2026,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G140
 - Owning repository: ipfs_accelerate_py
 - Owned paths: data/agent_supervisor/logic_governed_semantic_work_fabric/benchmarks, docs/benchmarks/logic_governed_semantic_work_fabric_results.md
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Execute sealed A-D workloads, persist raw results, calculate every required performance/resource/reuse/cost metric, and compare actual values honestly with initial targets.
@@ -2071,7 +2071,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G150
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_release.py, test/api/test_agent_supervisor_logic_governed_release.py, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-release.json
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Produce one signed or content-addressed manifest transitively naming exact revisions, inventory/map, all schemas, tests, fault/adversarial/benchmark raw results, reports, security, limitations, migration, rollback and qualification decision inputs.
@@ -2116,7 +2116,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G150
 - Owning repository: ipfs_accelerate_py
 - Owned paths: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-decision.json
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
+- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Independently review the verified release, assign an evidence-supported qualification level and explicit go/no-go for continuous multi-supervisor operation, and emit the required 24-section report.
