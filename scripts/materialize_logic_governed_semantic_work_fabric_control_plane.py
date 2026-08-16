@@ -21,6 +21,8 @@ from typing import Any, Mapping
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 CONFIG_PATH = ROOT / "config/logic_governed_semantic_work_fabric_scheduler.json"
 TASK_RE = re.compile(r"^## (LGSWF-(\d{3})) (.+)$", re.MULTILINE)
 GOAL_RE = re.compile(r"^## (LGSWF-G\d{3}) (.+)$", re.MULTILINE)

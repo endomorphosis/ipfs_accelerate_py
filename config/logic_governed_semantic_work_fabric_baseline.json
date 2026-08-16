@@ -156,6 +156,16 @@
     "The board must be materialized into a fresh database authority and pass exact-tree preflight.",
     "No verified datasets semantic-state root exists yet; only explicitly bounded Epic A raw-source work may dispatch."
   ],
+  "bootstrap_attempt_history": [
+    {
+      "attempt": 1,
+      "operation": "materialize DuckDB control plane",
+      "result": "failed_before_store_creation",
+      "error_type": "ModuleNotFoundError",
+      "error": "No module named 'ipfs_accelerate_py'",
+      "compensation": "none required; all three target database files remained absent"
+    }
+  ],
   "known_qualification_gaps": [
     "SupervisorWorldSnapshot@1, SemanticWorkBinding@1 and SemanticWorkGraph@1 are not implemented on this exact source.",
     "Current resource reservations and multi-supervisor coordination are not yet durable across all dimensions.",
