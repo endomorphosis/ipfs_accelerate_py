@@ -1,0 +1,177 @@
+{
+  "schema": "lgswf/authority-map@1",
+  "evidence_id": "lgswf/authority-map@1",
+  "interface_id": "AuthorityMap@1",
+  "task_id": "LGSWF-002",
+  "goal_id": "LGSWF-G010",
+  "track": "inventory-freeze",
+  "board_namespace": "logic-governed-semantic-work-fabric-v1",
+  "plan_revision": "LGSWF-PLAN-R1",
+  "inspected_at": "2026-08-16",
+  "conflict_policy": {
+    "rule": "One owner per semantic or operational concern; duplicates reject.",
+    "admission": "fail_closed",
+    "duplicate_semantic_authority_allowed": false,
+    "duplicate_operational_authority_allowed": false,
+    "compatibility_facade_grants_authority": false,
+    "remote_only_revision_adoption_allowed": false,
+    "operational_fields_in_semantic_state_root_allowed": false,
+    "new_semantic_index_allowed": false,
+    "new_capsule_compiler_allowed": false,
+    "new_proof_cache_allowed": false,
+    "new_plan_store_allowed": false,
+    "new_daemon_framework_allowed": false,
+    "new_mcpplusplus_profile_allowed": false
+  },
+  "canonical_owners": {
+    "semantic_identity_and_roots": {
+      "owner": "ipfs_datasets_py",
+      "role": "semantic_authority",
+      "owns": [
+        "symbol identity and versions",
+        "semantic relationships and impact",
+        "SemanticStateRoot and capsules",
+        "invalidation obligations",
+        "callable/program contracts and proof obligations",
+        "test/proof selection and governor findings"
+      ],
+      "does_not_own": [
+        "goals, claims, leases, worktrees",
+        "scheduler and multi-supervisor coordination",
+        "merge queue and operational events"
+      ],
+      "selected_revision": "ac82107e246b30e35a2bbdcf75e01370d22350c6"
+    },
+    "operational_coordination": {
+      "owner": "ipfs_accelerate_py",
+      "role": "operational_authority",
+      "owns": [
+        "goals, tasks, plan revisions",
+        "claims, leases, fences",
+        "resource scheduling and worktrees",
+        "daemon lifecycle and packets",
+        "validation orchestration and merge",
+        "ContextPack compilation and operational manifests"
+      ],
+      "does_not_own": [
+        "canonical semantic root production",
+        "symbol/CID identity reinterpretation",
+        "second semantic index or capsule compiler"
+      ],
+      "selected_revision": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84"
+    },
+    "durable_storage": {
+      "owner": "ipfs_kit_py",
+      "role": "persistence_dependency",
+      "owns": [
+        "durable CAS/coordination storage primitives"
+      ],
+      "does_not_own": [
+        "semantic meaning",
+        "supervisor completion authority"
+      ],
+      "selected_revision": "6196017ca3df016c7159dce43af60f2a0d96a9ae"
+    },
+    "mcpplusplus_wire": {
+      "owner": "Mcp-Plus-Plus",
+      "role": "integration_dependency",
+      "owns": [
+        "shared MCP++ wire/conformance profiles already landed"
+      ],
+      "does_not_own": [
+        "new LGSWF execution profile",
+        "semantic authority"
+      ],
+      "selected_revision": "dc3164653a48d059ae9812078359daeafb451c07"
+    }
+  },
+  "package_authority": {
+    "ipfs_accelerate_py.agent_supervisor.semantic_state": {
+      "authority_kind": "operational_consumer",
+      "may_import_datasets": true,
+      "may_redefine_semantic_identity": false,
+      "canonical_adapter": "ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py"
+    },
+    "ipfs_accelerate_py.agent_supervisor.verification": {
+      "authority_kind": "operational_verification_orchestrator",
+      "may_import_datasets": true,
+      "may_redefine_proof_obligation_identity": false
+    },
+    "ipfs_accelerate_py.agent_supervisor.integrations": {
+      "authority_kind": "optional_bridge_non_authoritative",
+      "completion_authoritative": false
+    },
+    "ipfs_accelerate_py.agent_supervisor.entrypoints": {
+      "authority_kind": "composition_facade",
+      "completion_authoritative": false,
+      "may_be_imported_by_domain_packages": false
+    },
+    "ipfs_datasets_py.logic.software_contracts.semantic_state": {
+      "authority_kind": "semantic_producer",
+      "completion_authoritative_for_tasks": false
+    },
+    "ipfs_datasets_py.logic.api": {
+      "authority_kind": "compatibility_facade",
+      "semantic_authority": false,
+      "notes": "Projection/facade only; not a second semantic index."
+    }
+  },
+  "facade_classifications": [
+    {
+      "surface": "ipfs_datasets_py.logic.api",
+      "classification": "compatibility_facade",
+      "authority": false
+    },
+    {
+      "surface": "ipfs_datasets_py.logic.verification_api",
+      "classification": "canonical_consumer_boundary",
+      "authority": "datasets_verification_api",
+      "interfaces": [
+        "LogicVerificationAPI@1",
+        "VerificationAPI@2",
+        "GoalTacticianAPI@1"
+      ]
+    },
+    {
+      "surface": "ipfs_accelerate_py.agent_supervisor.entrypoints",
+      "classification": "composition_facade",
+      "authority": false
+    },
+    {
+      "surface": "datasets reverse imports of ipfs_accelerate_py",
+      "classification": "dag_inversion_non_authority",
+      "count": 24,
+      "authority": false
+    }
+  ],
+  "duplicate_definition_risks": [
+    {
+      "surface": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "risk": "duplicate_runtime_effective_definitions",
+      "plan_reference": "LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md \u00a73.2",
+      "disposition": "inventoried; no second operational authority admitted",
+      "source_sha256": "5ade8088e9cb2f21a8ef81a224306eb28e354818c7aa032e8899409959448bc7"
+    },
+    {
+      "surface": "domain package multi-member SCC",
+      "risk": "cyclic_import_authority_ambiguity",
+      "size": 16,
+      "disposition": "recorded in package_dag.json; remediation map only"
+    }
+  ],
+  "no_new_authority_guarantees": [
+    "No new semantic index",
+    "No new capsule compiler",
+    "No new proof cache as authority",
+    "No new plan store",
+    "No new objective tracker",
+    "No new daemon framework",
+    "No new model router",
+    "No new MCP++ profile",
+    "No operational fields added to datasets SemanticStateRoot"
+  ],
+  "acceptance": {
+    "criteria": "Every concern has one owner; no new duplicate semantic or operational authority.",
+    "satisfied": true
+  }
+}

@@ -1,0 +1,418 @@
+{
+  "schema": "lgswf/integration-interface-freeze@1",
+  "evidence_id": "lgswf/interface-freeze@1",
+  "interface_id": "IntegrationInterfaceFreeze@1",
+  "task_id": "LGSWF-002",
+  "goal_id": "LGSWF-G010",
+  "track": "inventory-freeze",
+  "board_namespace": "logic-governed-semantic-work-fabric-v1",
+  "plan_revision": "LGSWF-PLAN-R1",
+  "inspected_at": "2026-08-16",
+  "freeze_policy": {
+    "rule": "Each integration boundary names exactly one existing canonical interface (or an evidence-backed gap). No new duplicate semantic or operational authority may be introduced to satisfy a boundary.",
+    "admission": "fail_closed",
+    "version_addition_requires_evidence": true,
+    "compatibility_facade_is_not_canonical": true
+  },
+  "required_boundary_ids": [
+    "datasets-to-accelerator",
+    "context-pack",
+    "completion-authority",
+    "invalidation",
+    "proof-consumer-boundary",
+    "objective-plan",
+    "resource-claim",
+    "result-completion-work"
+  ],
+  "boundaries": [
+    {
+      "boundary_id": "datasets-to-accelerator",
+      "title": "Datasets semantic producer consumed by accelerator adapter",
+      "canonical_interface": "SemanticStateProvider@1",
+      "owner_repository": "ipfs_datasets_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py",
+      "source_exists": true,
+      "source_sha256": "8075843572a05070f3037c74680292647febc5ed7bd603c9cfca458b437ba391",
+      "symbols": [
+        "ADAPTER_ID",
+        "PROVIDER_CONTRACT",
+        "EXPECTED_PRODUCER_INTERFACE",
+        "EXPECTED_STATE_VIEW_INTERFACE",
+        "EXPECTED_BLOCK_READER_INTERFACE",
+        "SemanticStateProvider"
+      ],
+      "related_schemas": [
+        "ipfs-datasets-semantic-state-adapter@1",
+        "SemanticStateProducer@1",
+        "SemanticStateView@1",
+        "SemanticStateBlockReader@1",
+        "ipfs-datasets.software-contracts.semantic-state@1",
+        "ipfs-datasets.software-contracts.semantic-capsule@1",
+        "ipfs-datasets.software-contracts.semantic-index@2"
+      ],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "Single harness import boundary to datasets ISI/semantic-state. Identity CIDs remain datasets-produced; adapter never re-derives them.",
+      "gap": null
+    },
+    {
+      "boundary_id": "datasets-semantic-state-root",
+      "title": "Canonical datasets SemanticStateRoot model",
+      "canonical_interface": "SemanticStateRoot",
+      "owner_repository": "ipfs_datasets_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+      "source_exists": true,
+      "source_sha256": "488fa256322807b895a3f7e277fef5b4d5dc6ac1f3619696a6c288340aae0586",
+      "symbols": [
+        "SemanticStateRoot",
+        "SemanticCapsule",
+        "SEMANTIC_STATE_SCHEMA"
+      ],
+      "related_schemas": [
+        "ipfs-datasets.software-contracts.semantic-state@1"
+      ],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "Semantic-only root; operational fields prohibited.",
+      "gap": "No persisted current SemanticStateRoot at selected head (semantic_state_root_status=unavailable); LGSWF-003/004 must produce it."
+    },
+    {
+      "boundary_id": "context-pack",
+      "title": "Accelerator ContextPack compilation interface",
+      "canonical_interface": "ContextPack@1",
+      "owner_repository": "ipfs_accelerate_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py",
+      "source_exists": true,
+      "source_sha256": "0659cf081fa2d7f0746a7706a721e39cee254cc2ab4f32923666d85e18433c72",
+      "symbols": [
+        "CONTEXT_PACK_INTERFACE",
+        "ContextPacker",
+        "ContextPackResult"
+      ],
+      "related_schemas": [
+        "ContextPack@1",
+        "ipfs-accelerate.context-pack-result@1",
+        "ipfs-accelerate.context-coverage-policy@1"
+      ],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "Operational packing of datasets capsule/CID references; must not reinterpret semantic identity.",
+      "gap": null
+    },
+    {
+      "boundary_id": "context-pack-record",
+      "title": "Closed ContextPack record type",
+      "canonical_interface": "ContextPack",
+      "owner_repository": "ipfs_accelerate_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py",
+      "source_exists": true,
+      "source_sha256": "858a47dc092f6ef2caa0c560f5888636861febd86185a26e8e5a91a2e5382082",
+      "symbols": [
+        "ContextPack",
+        "SemanticCapsuleRef",
+        "SemanticStateRootManifest"
+      ],
+      "related_schemas": [
+        "semantic-state-harness@1",
+        "ipfs-accelerate.semantic-state-root-manifest@1"
+      ],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "",
+      "gap": null
+    },
+    {
+      "boundary_id": "invalidation",
+      "title": "Datasets invalidation authority",
+      "canonical_interface": "calculate_invalidation",
+      "owner_repository": "ipfs_datasets_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/invalidation.py",
+      "source_exists": true,
+      "source_sha256": "45c36b78be53bf6ec2dd65452eb282ba0e7e9b94d5385a0d8f66ebbad4f3f375",
+      "symbols": [
+        "calculate_invalidation",
+        "Invalidation"
+      ],
+      "related_schemas": [
+        "datasets semantic-index invalidation authority"
+      ],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "Accelerator may request invalidation through the datasets adapter forwarded ops only; it must not invent a second invalidation index. extend_semantic_invalidation on the state view is a related helper frozen under invalidation-extension, not a second authority.",
+      "gap": null
+    },
+    {
+      "boundary_id": "invalidation-extension",
+      "title": "Semantic invalidation extension on state view",
+      "canonical_interface": "SemanticStateView@1#extend_semantic_invalidation",
+      "owner_repository": "ipfs_datasets_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+      "source_exists": true,
+      "source_sha256": "66bc2376c4cdf6a8420ef8efb1940fecd2c846557e5c2f3974e665f4c6cabd96",
+      "symbols": [
+        "extend_semantic_invalidation",
+        "SEMANTIC_STATE_PRODUCER_INTERFACE",
+        "SEMANTIC_STATE_VIEW_INTERFACE"
+      ],
+      "related_schemas": [
+        "SemanticStateProducer@1",
+        "SemanticStateView@1",
+        "SemanticStateBlockReader@1"
+      ],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "View-level helper that extends invalidation; not a competing invalidation authority. Canonical authority remains calculate_invalidation.",
+      "gap": null
+    },
+    {
+      "boundary_id": "proof-consumer-boundary",
+      "title": "Datasets proof/verification public consumer boundary",
+      "canonical_interface": "LogicVerificationAPI@1",
+      "owner_repository": "ipfs_datasets_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+      "source_exists": true,
+      "source_sha256": "ab7dab72dc18cf8a4a4fccf8a97fe426875d26998680ea70f56aca5cbe118be8",
+      "symbols": [
+        "LogicVerificationAPI",
+        "LOGIC_VERIFICATION_API_INTERFACE",
+        "VERIFICATION_API_V2_INTERFACE",
+        "GOAL_TACTICIAN_API_INTERFACE"
+      ],
+      "related_schemas": [
+        "LogicVerificationAPI@1",
+        "VerificationAPI@2",
+        "GoalTacticianAPI@1"
+      ],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "Canonical datasets verification surface. Accelerator proof package orchestrates but does not redefine obligation identity.",
+      "gap": null
+    },
+    {
+      "boundary_id": "callable-contract",
+      "title": "Datasets callable contract authority",
+      "canonical_interface": "CallableContract",
+      "owner_repository": "ipfs_datasets_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/contracts.py",
+      "source_exists": true,
+      "source_sha256": "23066fc0877eefe2fedcf58369497124299a1748648723616a76b16ebb53a3a8",
+      "symbols": [
+        "CallableContract",
+        "ContractRegistry"
+      ],
+      "related_schemas": [],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "",
+      "gap": null
+    },
+    {
+      "boundary_id": "program-contract",
+      "title": "Datasets program contract / verification conditions",
+      "canonical_interface": "ProgramContract",
+      "owner_repository": "ipfs_datasets_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/contracts.py",
+      "source_exists": true,
+      "source_sha256": "0238a345e5c35aec78801891562e896d719bca0424eab8ad790d5da2c239c5aa",
+      "symbols": [
+        "ProgramContract"
+      ],
+      "related_schemas": [],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "",
+      "gap": null
+    },
+    {
+      "boundary_id": "objective-plan",
+      "title": "Immutable plan revision contracts",
+      "canonical_interface": "PlanRevisionContracts@1",
+      "owner_repository": "ipfs_accelerate_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/planning/plan_revision_contracts.py",
+      "source_exists": true,
+      "source_sha256": "9429528838c416824fbca243afe41a0341282329717708a84915bfafaab6ad99",
+      "symbols": [
+        "PLAN_REVISION_CONTRACTS_INTERFACE",
+        "PlanAuthorityRoots",
+        "PlanResourceContract",
+        "CompletionAuthority"
+      ],
+      "related_schemas": [
+        "PlanRevisionContracts@1",
+        "ipfs_accelerate_py/agent-supervisor/plan-revision@1",
+        "ipfs_accelerate_py/agent-supervisor/plan-completion-rule@1"
+      ],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "",
+      "gap": null
+    },
+    {
+      "boundary_id": "resource-claim",
+      "title": "Task and resource claim coordination interfaces",
+      "canonical_interface": "TaskClaim@1 / ResourceClaim@1",
+      "owner_repository": "ipfs_accelerate_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
+      "source_exists": true,
+      "source_sha256": "55583d6b3c07cfa5e871f3c8762d8b92df3ca3009adff705e9b9e7458c5059e5",
+      "symbols": [
+        "TASK_CLAIM_INTERFACE",
+        "RESOURCE_CLAIM_INTERFACE",
+        "TASK_CLAIM_SCHEMA",
+        "RESOURCE_CLAIM_SCHEMA"
+      ],
+      "related_schemas": [
+        "TaskClaim@1",
+        "ResourceClaim@1"
+      ],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "Operational claim authority; not a semantic identity surface.",
+      "gap": null
+    },
+    {
+      "boundary_id": "resource-scheduling",
+      "title": "Resource scheduler admission and leases",
+      "canonical_interface": "ResourceScheduler",
+      "owner_repository": "ipfs_accelerate_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "source_exists": true,
+      "source_sha256": "1b572b0f8a5ac822ada57a513e69f5325cbf07560c9c91ef65720d17b60e2b48",
+      "symbols": [
+        "ResourceScheduler",
+        "ResourceAdmissionLease",
+        "AdmissionDecision",
+        "ResourceLeaseBudget"
+      ],
+      "related_schemas": [],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "Operational resource vector/lease authority. LGSWF-050+ may extend vectors without creating a second scheduler authority.",
+      "gap": null
+    },
+    {
+      "boundary_id": "result-completion-work",
+      "title": "Semantic work request/result scheduling contracts",
+      "canonical_interface": "SemanticWorkScheduling@1",
+      "owner_repository": "ipfs_accelerate_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/scheduling_contracts.py",
+      "source_exists": true,
+      "source_sha256": "275a9b1bb53acf802d82541024fb85f522e6d05ee07729a0e05aba2d6262f5e9",
+      "symbols": [
+        "SEMANTIC_WORK_SCHEDULING_INTERFACE",
+        "SemanticWorkRequest",
+        "SemanticWorkResult",
+        "LeaseBinding",
+        "ResourceBinding"
+      ],
+      "related_schemas": [
+        "SemanticWorkScheduling@1",
+        "semantic-state-scheduling@1"
+      ],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "",
+      "gap": null
+    },
+    {
+      "boundary_id": "completion-authority",
+      "title": "External/supervisor completion authority surface",
+      "canonical_interface": "ExternalCompletionAuthority",
+      "owner_repository": "ipfs_accelerate_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/core/external_completion.py",
+      "source_exists": true,
+      "source_sha256": "8528981140edb7aea7fe5c81fe64d19b950bea053dddc4ec824c3e3246c94799",
+      "symbols": [
+        "ExternalCompletionAuthority"
+      ],
+      "related_schemas": [],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "Workers/models cannot self-approve. Only supervisor completion authority accepts results.",
+      "gap": null
+    },
+    {
+      "boundary_id": "conflict-graph",
+      "title": "Operational conflict graph foundation",
+      "canonical_interface": "ConflictGraph",
+      "owner_repository": "ipfs_accelerate_py",
+      "consumer_repository": "ipfs_accelerate_py",
+      "source_path": "ipfs_accelerate_py/agent_supervisor/core/conflict_graph.py",
+      "source_exists": true,
+      "source_sha256": "9d61047a56280bab0c285a8e9ef5cc3e24363c0f22ef0a476dbd66aca02d201a",
+      "symbols": [
+        "ConflictGraph"
+      ],
+      "related_schemas": [],
+      "status": "frozen",
+      "duplicate_authority_forbidden": true,
+      "new_parallel_interface_allowed": false,
+      "notes": "Operational conflict edges remain distinct from semantic dependency edges.",
+      "gap": null
+    }
+  ],
+  "cross_checks": {
+    "package_dag_evidence": "docs/architecture/logic_governed_semantic_work_fabric_inventory/package_dag.json",
+    "authority_map_evidence": "docs/architecture/logic_governed_semantic_work_fabric_inventory/authority_map.json",
+    "package_dag_graph_root_sha256": "fb728d1c70f0009a4e8760faae865d3bc0ec73d79695d42a94663f1ba37b6626",
+    "all_boundary_sources_exist": true,
+    "duplicate_canonical_interface_names": [],
+    "gaps": [
+      {
+        "boundary_id": "datasets-semantic-state-root",
+        "title": "Canonical datasets SemanticStateRoot model",
+        "canonical_interface": "SemanticStateRoot",
+        "owner_repository": "ipfs_datasets_py",
+        "consumer_repository": "ipfs_accelerate_py",
+        "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+        "source_exists": true,
+        "source_sha256": "488fa256322807b895a3f7e277fef5b4d5dc6ac1f3619696a6c288340aae0586",
+        "symbols": [
+          "SemanticStateRoot",
+          "SemanticCapsule",
+          "SEMANTIC_STATE_SCHEMA"
+        ],
+        "related_schemas": [
+          "ipfs-datasets.software-contracts.semantic-state@1"
+        ],
+        "status": "frozen",
+        "duplicate_authority_forbidden": true,
+        "new_parallel_interface_allowed": false,
+        "notes": "Semantic-only root; operational fields prohibited.",
+        "gap": "No persisted current SemanticStateRoot at selected head (semantic_state_root_status=unavailable); LGSWF-003/004 must produce it."
+      }
+    ]
+  },
+  "acceptance": {
+    "criteria": "Every integration boundary is frozen without a new duplicate semantic or operational authority.",
+    "satisfied": true
+  }
+}
