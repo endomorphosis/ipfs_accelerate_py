@@ -832,7 +832,7 @@ overlays. Never force-push.
 
 ## MCPP-026 Implement mcpp-jcs-v1 in Python and TypeScript
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
