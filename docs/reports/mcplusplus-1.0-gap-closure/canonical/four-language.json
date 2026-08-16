@@ -1,0 +1,221 @@
+{
+  "acceptance": {
+    "case_count": 10,
+    "criteria": "Identical canonical bytes, SHA-256, and CID across Python, TypeScript, Go, and Rust. Mismatches fail the job.",
+    "identity_ok": true,
+    "mismatch_count": 0
+  },
+  "algorithm": "mcpp-jcs-v1",
+  "cases": [
+    {
+      "algorithm": "mcpp-jcs-v1",
+      "canonical_bytes_hex": "7b2261223a312c2262223a322c2263223a337d",
+      "category": "duplicate_keys",
+      "cid": "bafkreihgum4f7n34fb5hclt7ibvekfzh6brfaqmch3hshpvh5443fy4yau",
+      "id": "duplicate-keys-positive-unique-keys",
+      "languages_agree": [
+        "python",
+        "typescript",
+        "go",
+        "rust"
+      ],
+      "matches_golden": true,
+      "sha256": "e6a3385fb77c287a712e7f406a451727f0625041823ecf23bea7ef39b2e39805",
+      "signature_input_hex": "7b2261223a312c2262223a322c2263223a337d"
+    },
+    {
+      "algorithm": "mcpp-jcs-v1",
+      "canonical_bytes_hex": "7b7d",
+      "category": "empty_object",
+      "cid": "bafkreicecnx2gvntm6fbcrvnc336qze6st5u7qq7457igegamd3bzkx7ri",
+      "id": "empty-object-positive",
+      "languages_agree": [
+        "python",
+        "typescript",
+        "go",
+        "rust"
+      ],
+      "matches_golden": true,
+      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "signature_input_hex": "7b7d"
+    },
+    {
+      "algorithm": "mcpp-jcs-v1",
+      "canonical_bytes_hex": "7b226f75746572223a7b7d7d",
+      "category": "empty_object",
+      "cid": "bafkreiajoei6sqjoemhzcpyyra2jbwgyoo66fft7qzdu73mpcm3rjktrem",
+      "id": "empty-object-positive-nested",
+      "languages_agree": [
+        "python",
+        "typescript",
+        "go",
+        "rust"
+      ],
+      "matches_golden": true,
+      "sha256": "097111e9412e230f913f18883490d8d873bde2967f86474fed8f133714aa7123",
+      "signature_input_hex": "7b226f75746572223a7b7d7d"
+    },
+    {
+      "algorithm": "mcpp-jcs-v1",
+      "canonical_bytes_hex": "7b2261223a7b2278223a302c2279223a7b2261223a312c2262223a322c2263223a337d7d2c226d223a5b7b226a223a312c226b223a327d2c7b2261223a302c2262223a317d5d2c227a223a7b2261223a312c2262223a327d7d",
+      "category": "nested_keys",
+      "cid": "bafkreibdzn4yjiezugokydw7vyqwcjshrancuflfwcx5os2ivggp7fw77i",
+      "id": "nested-keys-positive-recursive-sort",
+      "languages_agree": [
+        "python",
+        "typescript",
+        "go",
+        "rust"
+      ],
+      "matches_golden": true,
+      "sha256": "23cb7984a099a19cac0edfae21612647881a2a1565b0afd74b48a98cff96dffa",
+      "signature_input_hex": "7b2261223a7b2278223a302c2279223a7b2261223a312c2262223a322c2263223a337d7d2c226d223a5b7b226a223a312c226b223a327d2c7b2261223a302c2262223a317d5d2c227a223a7b2261223a312c2262223a327d7d"
+    },
+    {
+      "algorithm": "mcpp-jcs-v1",
+      "canonical_bytes_hex": "7b2261223a6e756c6c2c2262223a317d",
+      "category": "null",
+      "cid": "bafkreigax6bk2a3mwcs2aplhlha3pofr64fdtmzn3fxnhf34p4udd3r3ky",
+      "id": "null-positive-present-property",
+      "languages_agree": [
+        "python",
+        "typescript",
+        "go",
+        "rust"
+      ],
+      "matches_golden": true,
+      "sha256": "c0bf82ad036cb0a5a03d6759c1b7b8b1f70a39b32dd96ed3977c7f2831ee3b56",
+      "signature_input_hex": "7b2261223a6e756c6c2c2262223a317d"
+    },
+    {
+      "algorithm": "mcpp-jcs-v1",
+      "canonical_bytes_hex": "7b226974656d73223a5b6e756c6c2c66616c73652c747275655d7d",
+      "category": "null",
+      "cid": "bafkreid2zgp2elerhabe3b4c7jc6jar2kuzk7mzo4m3doymeyqf5nm7hyy",
+      "id": "null-positive-array-element",
+      "languages_agree": [
+        "python",
+        "typescript",
+        "go",
+        "rust"
+      ],
+      "matches_golden": true,
+      "sha256": "7ac99fa22c9138024d8782fa45e4823a5532afb32ee336376184c40bd6b3e7c6",
+      "signature_input_hex": "7b226974656d73223a5b6e756c6c2c66616c73652c747275655d7d"
+    },
+    {
+      "algorithm": "mcpp-jcs-v1",
+      "canonical_bytes_hex": "7b2276616c756573223a5b302c302c312c2d312c342e352c302e3030322c31652b33302c31652d32372c393030373139393235343734303939312c2d393030373139393235343734303939315d7d",
+      "category": "numbers",
+      "cid": "bafkreifz2r4scza473dra6mc3r772ldgbkan3g6bynk6cvfu6otxq5fcua",
+      "id": "numbers-positive-es6-forms",
+      "languages_agree": [
+        "python",
+        "typescript",
+        "go",
+        "rust"
+      ],
+      "matches_golden": true,
+      "sha256": "b9d47921641cfec7107982dc7ffd2c660a80dd9bc1c355e154b4f3a77874a2a0",
+      "signature_input_hex": "7b2276616c756573223a5b302c302c312c2d312c342e352c302e3030322c31652b33302c31652d32372c393030373139393235343734303939312c2d393030373139393235343734303939315d7d"
+    },
+    {
+      "algorithm": "mcpp-jcs-v1",
+      "canonical_bytes_hex": "7b226c69746572616c73223a5b6e756c6c2c747275652c66616c73655d2c226e756d62657273223a5b3333333333333333332e333333333333332c31652b33302c342e352c302e3030322c31652d32375d2c22737472696e67223a22e282ac245c75303030665c6e4127425c225c5c5c5c5c222f227d",
+      "category": "numbers",
+      "cid": "bafkreibnlya2gggq6cdzvnliys7crheld5so7cjbuu6ge56v4buzpc5kzm",
+      "id": "numbers-positive-rfc8785-appendix-sample",
+      "languages_agree": [
+        "python",
+        "typescript",
+        "go",
+        "rust"
+      ],
+      "matches_golden": true,
+      "sha256": "2d5e01a318d0f0879ab568c4be289c8b1f64ef8921a53c6277d5e069978baacb",
+      "signature_input_hex": "7b226c69746572616c73223a5b6e756c6c2c747275652c66616c73655d2c226e756d62657273223a5b3333333333333333332e333333333333332c31652b33302c342e352c302e3030322c31652d32375d2c22737472696e67223a22e282ac245c75303030665c6e4127425c225c5c5c5c5c222f227d"
+    },
+    {
+      "algorithm": "mcpp-jcs-v1",
+      "canonical_bytes_hex": "7b2263305f6f74686572223a225c75303030315c7530303066222c22636f6e74726f6c5f7530303830223a22c280222c22636f6e74726f6c73223a225c625c745c6e5c665c72222c226575726f223a22e282ac222c226772696e6e696e67223a22f09f9880222c226f5f646961657265736973223a22c3b6222c2271756f74655f616e645f736c617368223a22736179205c2268695c22205c5c206f6b227d",
+      "category": "unicode",
+      "cid": "bafkreifpqorsaojunxekrkjgffzlrofs7wr2rzpn7lik3s25x7mtm5nziu",
+      "id": "unicode-positive-escapes-and-utf8",
+      "languages_agree": [
+        "python",
+        "typescript",
+        "go",
+        "rust"
+      ],
+      "matches_golden": true,
+      "sha256": "af83a32039346dc8a8a9262972b8b8b2fda3a8e5edfad0adcb5dbfd93675b945",
+      "signature_input_hex": "7b2263305f6f74686572223a225c75303030315c7530303066222c22636f6e74726f6c5f7530303830223a22c280222c22636f6e74726f6c73223a225c625c745c6e5c665c72222c226575726f223a22e282ac222c226772696e6e696e67223a22f09f9880222c226f5f646961657265736973223a22c3b6222c2271756f74655f616e645f736c617368223a22736179205c2268695c22205c5c206f6b227d"
+    },
+    {
+      "algorithm": "mcpp-jcs-v1",
+      "canonical_bytes_hex": "7b225c72223a2243617272696167652052657475726e222c2231223a224f6e65222c22c280223a22436f6e74726f6c222c22c3b6223a224c6174696e20536d616c6c204c6574746572204f205769746820446961657265736973222c22e282ac223a224575726f205369676e222c22f09f9880223a22456d6f6a693a204772696e6e696e672046616365222c22efacb3223a22486562726577204c65747465722044616c6574205769746820446167657368227d",
+      "category": "unicode",
+      "cid": "bafkreic6gikvnuradcuwk2mrvhuu657mc5p2de7ffisctuys7baz5sfqrq",
+      "id": "unicode-positive-key-sort-utf16",
+      "languages_agree": [
+        "python",
+        "typescript",
+        "go",
+        "rust"
+      ],
+      "matches_golden": true,
+      "sha256": "5e321556d22018a9656991a9e94f77ec175fa193e52a2429d312f8419ec8b08c",
+      "signature_input_hex": "7b225c72223a2243617272696167652052657475726e222c2231223a224f6e65222c22c280223a22436f6e74726f6c222c22c3b6223a224c6174696e20536d616c6c204c6574746572204f205769746820446961657265736973222c22e282ac223a224575726f205369676e222c22f09f9880223a22456d6f6a693a204772696e6e696e672046616365222c22efacb3223a22486562726577204c65747465722044616c6574205769746820446167657368227d"
+    }
+  ],
+  "cid_defaults": {
+    "cid_version": 1,
+    "multibase": "base32",
+    "multicodec": "raw",
+    "multicodec_code": 85,
+    "multihash": "sha2-256",
+    "multihash_code": 18
+  },
+  "coverage": {
+    "four_language_golden_identity": true,
+    "malformed_unicode_rejected": true,
+    "mutation_changes_cid": true,
+    "numeric_edge_rejected_or_normalized": true,
+    "property_key_order_invariance": true,
+    "signature_input_is_canonical_bytes": true,
+    "unknown_field_affects_identity": true,
+    "version_mismatch_no_silent_rewrite": true
+  },
+  "identity_fields": [
+    "canonical_bytes_hex",
+    "sha256",
+    "cid",
+    "signature_input_hex"
+  ],
+  "implementations": {
+    "go": "ipfs_accelerate_py/mcplusplus/tests-go/canonical_jcs.go",
+    "python": "ipfs_accelerate_py/mcplusplus/tests-py/validators/canonical_jcs.py",
+    "rust": "ipfs_accelerate_py/mcplusplus/tests-rs/src/canonical_jcs.rs",
+    "typescript": "ipfs_accelerate_py/mcplusplus/tests-ts/src/validators/canonicalJcs.ts"
+  },
+  "interface": "CrossLanguageIdentityReceipt@1",
+  "languages": [
+    "python",
+    "typescript",
+    "go",
+    "rust"
+  ],
+  "mismatches": [],
+  "schema": "mcp++/conformance/cross-language-identity-receipt@1",
+  "standard": {
+    "name": "JSON Canonicalization Scheme",
+    "standard": "RFC 8785",
+    "url": "https://www.rfc-editor.org/rfc/rfc8785"
+  },
+  "task_id": "MCPP-028",
+  "vectors": {
+    "dir": "ipfs_accelerate_py/mcplusplus/conformance/vectors/mcpp-jcs-v1",
+    "manifest_task_id": "MCPP-025",
+    "suite_revision": "mcpp-jcs-v1-golden@1.0.1"
+  }
+}
