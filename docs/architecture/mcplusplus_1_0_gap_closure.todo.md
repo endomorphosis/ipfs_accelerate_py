@@ -2010,7 +2010,7 @@ overlays. Never force-push.
 
 ## MCPP-064 Add adversarial P2P framing and abuse tests
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
