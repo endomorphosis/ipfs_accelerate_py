@@ -1,0 +1,11 @@
+{
+  "filename": "releases/20261004-historical-git-assets-v1/objects/829685569fa11e2a699d973fed8a6d68e59d5e76c4c2205edf82e521a30d34c5.bin",
+  "original_git_blob": "9b6ded832adffea56cd1402bb08d1dca484eb3c8",
+  "original_path": "data/agent_supervisor/proof_grounded_ir_learning/datasets/pgir-objective-ast.jsonl",
+  "repo_id": "Publicus/autoencoder-decoder-checkpoints",
+  "repository": "https://github.com/endomorphosis/ipfs_accelerate_py",
+  "revision": "cce278a763b5f7435a9895333a8af99b7fe8ea43",
+  "schema": "huggingface-historical-git-asset@1",
+  "sha256": "829685569fa11e2a699d973fed8a6d68e59d5e76c4c2205edf82e521a30d34c5",
+  "size_bytes": 2022179327
+}
