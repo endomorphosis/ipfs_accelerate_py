@@ -2510,7 +2510,7 @@ overlays. Never force-push.
 
 ## MCPP-080 Add CI for all languages, vectors, crypto negatives, P2P abuse, demo, and scans
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
