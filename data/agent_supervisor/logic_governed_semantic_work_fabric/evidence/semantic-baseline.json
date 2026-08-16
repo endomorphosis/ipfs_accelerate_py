@@ -1,0 +1,28 @@
+{
+  "cas_published": true,
+  "generation": 1,
+  "import_provenance": {
+    "datasets_package": "ipfs_datasets_py/ipfs_datasets_py",
+    "nested_checkout": true,
+    "scanner_path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+    "scanner_present": true
+  },
+  "manifest_cid": "sha256:a0ac0691b21c5b17a52ddf1892373cafa9b0d62331a2136d0202abab99bf583e",
+  "repository_head": "5cc03e3bd57fc28d2974cbb1ee4a0bd8b397ada8",
+  "repository_tree": "ec2be2091cb4f14df5d0c96ee46f8b801a2877ba",
+  "scan": {
+    "producer": "ipfs_datasets_py.logic.software_contracts.semantic_index.scanner",
+    "repeat_state_cid": "baguqeerav5xeyuhkpb4gwblej4v4x547hmco44c7jms6gsqbjl7vlkcy5w3a",
+    "selected_exists": true,
+    "selected_path": "lgswf:selected-tree",
+    "state_cid": "baguqeerav5xeyuhkpb4gwblej4v4x547hmco44c7jms6gsqbjl7vlkcy5w3a",
+    "symbol_count": 2,
+    "verified": true
+  },
+  "schema": "lgswf/semantic-baseline@1",
+  "unavailable": {
+    "adversarial_assurance": "path absent; classified unavailable, not unresolved",
+    "ducklake_live_projection": "optional non-authoritative; disabled_fail_closed",
+    "live_quack_multi_writer": "host DuckDB 1.5.2; Quack install-required"
+  }
+}
