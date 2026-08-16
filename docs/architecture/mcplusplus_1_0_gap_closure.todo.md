@@ -1390,7 +1390,7 @@ overlays. Never force-push.
 
 ## MCPP-044 Add adversarial cryptographic negative vectors in all four languages
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
