@@ -708,7 +708,7 @@ overlays. Never force-push.
 
 ## MCPP-022 Prove dual-binding peers and reject protocol-version downgrade or forgery
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
