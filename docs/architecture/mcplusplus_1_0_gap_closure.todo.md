@@ -2291,7 +2291,7 @@ overlays. Never force-push.
 
 ## MCPP-073 Specify EncryptedArtifactRef and key-envelope semantics
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
