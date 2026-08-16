@@ -1175,7 +1175,7 @@ overlays. Never force-push.
 
 ## MCPP-037 Implement durable single-authority SQLite state with CAS, leases, and restart
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
