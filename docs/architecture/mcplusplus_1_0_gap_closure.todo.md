@@ -2322,7 +2322,7 @@ overlays. Never force-push.
 
 ## MCPP-074 Prevent plaintext leaks in logs, Event DAG metadata, and persistence fallbacks
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
