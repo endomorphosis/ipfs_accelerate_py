@@ -70,7 +70,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-002 Inventory canonical semantic implementations
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
