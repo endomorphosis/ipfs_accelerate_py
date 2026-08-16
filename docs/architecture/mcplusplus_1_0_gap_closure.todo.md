@@ -2168,7 +2168,7 @@ overlays. Never force-push.
 
 ## MCPP-069 Bind kit and accelerate Profile G runtimes and reject stale fenced completion
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
