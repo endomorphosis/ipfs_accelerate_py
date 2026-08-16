@@ -12,10 +12,14 @@ local DuckDB or file authority; provider subprocess lacks state credentials.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    multi_supervisor_runner as multi_runner_module,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
     ConfiguredBoardError,
     configured_board_common_args,
@@ -316,10 +320,25 @@ def test_configured_board_propagates_database_program(
     (
         repo
         / "scripts"
+        / "validate_logic_governed_semantic_work_fabric_board.py"
+    ).write_text("print('ok')\n", encoding="utf-8")
+    (
+        repo
+        / "scripts"
+        / "materialize_logic_governed_semantic_work_fabric_control_plane.py"
+    ).write_text("print('ok')\n", encoding="utf-8")
+    (
+        repo
+        / "scripts"
         / "ops"
         / "agent_supervisor"
         / "implementation_supervisor_entry.py"
     ).write_text("raise SystemExit(0)\n", encoding="utf-8")
+    birth_gate_path = (
+        repo / multi_runner_module.PLAN_BOUND_GATE_ENTRY_PATH
+    )
+    birth_gate_path.parent.mkdir(parents=True)
+    birth_gate_path.write_text("# isolated live-seal birth gate\n", encoding="utf-8")
 
     import subprocess
 
@@ -341,7 +360,10 @@ def test_configured_board_propagates_database_program(
         "docs/objectives.md",
         "docs/plan.md",
         "scripts/validate_board.py",
+        "scripts/validate_logic_governed_semantic_work_fabric_board.py",
+        "scripts/materialize_logic_governed_semantic_work_fabric_control_plane.py",
         "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+        multi_runner_module.PLAN_BOUND_GATE_ENTRY_PATH,
     ):
         _git("add", path)
     _git("commit", "-m", "seed")
@@ -353,7 +375,10 @@ def test_configured_board_propagates_database_program(
         check=True,
     ).stdout.strip()
 
-    config_path = repo / "config" / "scheduler.json"
+    config_path = (
+        repo
+        / multi_runner_module.CONFIGURED_BOARD_LIVE_SEAL_CONFIG_PATH
+    )
     payload = {
         "schema": (
             "ipfs_accelerate_py.agent_supervisor."
@@ -366,6 +391,12 @@ def test_configured_board_propagates_database_program(
         "task_prefix": "TEST-",
         "goal_prefix": "TEST-G",
         "board_namespace": "configured-board-db",
+        "bootstrap_seal": {
+            "required_before_live_launch": True,
+            "receipt_path": (
+                "data/configured-board/evidence/bootstrap/duckdb-seal.json"
+            ),
+        },
         "merge_target_branch": "main",
         "source_binding": {
             "accelerator_required_ancestor": ancestor,
@@ -391,7 +422,7 @@ def test_configured_board_propagates_database_program(
         "implementation_log_stall_seconds": 1200,
         "worktree_submodule_paths": [],
         "protected_paths": [
-            "config/scheduler.json",
+            multi_runner_module.CONFIGURED_BOARD_LIVE_SEAL_CONFIG_PATH,
             "docs/plan.md",
             "docs/objectives.md",
             "docs/tasks.md",
@@ -419,7 +450,9 @@ def test_configured_board_propagates_database_program(
             "endpoint_secret_handle": "env://QUACK_TOKEN",
             "store_id": "control.duckdb",
             "store_generation": "gen-1",
-            "schema_revision": "schema-v1",
+            "schema_revision": (
+                multi_runner_module.DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION
+            ),
             "event_store_path": "data/configured-board/events",
             "runtime_registry_path": "data/configured-board/registry",
             "export_profile": "board-export",
@@ -430,7 +463,7 @@ def test_configured_board_propagates_database_program(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    _git("add", "config/scheduler.json")
+    _git("add", multi_runner_module.CONFIGURED_BOARD_LIVE_SEAL_CONFIG_PATH)
     _git("commit", "-m", "add database program")
 
     board = load_configured_board(config_path, repo_root=repo)
@@ -456,6 +489,12 @@ def test_configured_board_propagates_database_program(
         detach=True,
         stamp="20260809T120000Z",
     )
+    direct_plan = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=False,
+        stamp="20260809T120000Z",
+    )
     assert plan["database_program"]["authority_mode"] == "quack"
     assert plan["environment"][STATE_AUTHORITY_MODE_ENV] == "quack"
     assert plan["environment"][TASK_SOURCE_KIND_ENV] == "duckdb"
@@ -465,6 +504,11 @@ def test_configured_board_propagates_database_program(
     # Raw credentials never enter the launch environment.
     assert "QUACK_TOKEN" not in plan["environment"]
     assert "raw" not in json.dumps(plan["database_program"])
+    assert "live_seal_profile" not in plan
+    assert plan.get("live_launch_status") != "no-go"
+    assert "--require-configured-board-live-seal" not in plan["argv"]
+    assert "--detach" in plan["argv"]
+    assert "--detach" not in direct_plan["argv"]
 
     # Common-arg propagation preserves the selection through multi-runner argv.
     common_from_plan = [

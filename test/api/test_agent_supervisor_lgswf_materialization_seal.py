@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+    DatabaseCoordinationExpiredError,
     DatabaseCoordinator,
     open_database_coordinator,
 )
@@ -288,15 +289,35 @@ def _acquire_test_bootstrap_writer(
     return writer, seal_basis
 
 
-def _cross_store_guard_event_count(path: Path) -> int:
+def _control_cross_store_guard_event_count(
+    module: ModuleType,
+    paths: dict[str, Path],
+    population: dict[str, Any],
+) -> int:
     import duckdb  # type: ignore
 
-    connection = duckdb.connect(str(path), read_only=True)
+    task_source = DatabaseTaskSource(
+        paths["control"],
+        owner_id="control-guard-count",
+        repository_tree_id=population["repository_tree_id"],
+        plan_root_cid=population["plan_root_cid"],
+        install_schema=False,
+    )
+    try:
+        task = task_source.get(population["task_cids_by_alias"]["LGSWF-006"])
+        if task is None or task.status != "completed":
+            return 0
+        control_result_digest = module._identity(task.to_dict())
+    finally:
+        task_source.close()
+    connection = duckdb.connect(str(paths["coordination"]), read_only=True)
     try:
         return int(
             connection.execute(
                 "SELECT COUNT(*) FROM lease_events "
-                "WHERE event_type = 'cross_store_fence_guard_succeeded'"
+                "WHERE event_type = 'cross_store_fence_guard_succeeded' "
+                "AND json_extract_string(body_json, '$.control_result_digest') = ?",
+                [control_result_digest],
             ).fetchone()[0]
         )
     finally:
@@ -842,6 +863,128 @@ def test_prepared_retry_reuses_one_attempt_bound_validation_and_basis_evidence(
 
 
 @requires_duckdb
+@pytest.mark.parametrize("expiry_stage", ["validation", "basis_evidence"])
+def test_expired_partial_evidence_is_immutably_superseded_by_later_fenced_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    expiry_stage: str,
+) -> None:
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
+    paths = module._paths(config)
+    original_now_ms = DatabaseCoordinator._now_ms
+    mutation_name = (
+        "record_validation_result" if expiry_stage == "validation" else "record_evidence"
+    )
+    original_mutation = getattr(DatabaseTaskSource, mutation_name)
+    clock = {"expired": False}
+
+    def injected_now_ms(self: DatabaseCoordinator) -> int:
+        observed = original_now_ms(self)
+        return observed + 600_000 if clock["expired"] else observed
+
+    def expire_after_external_mutation(
+        self: DatabaseTaskSource,
+        **kwargs: Any,
+    ) -> Any:
+        receipt = original_mutation(self, **kwargs)
+        clock["expired"] = True
+        return receipt
+
+    with monkeypatch.context() as injected:
+        injected.setattr(DatabaseCoordinator, "_now_ms", injected_now_ms)
+        injected.setattr(DatabaseTaskSource, mutation_name, expire_after_external_mutation)
+        with pytest.raises(
+            DatabaseCoordinationExpiredError,
+            match="task claim .* is not accepted",
+        ):
+            module.seal(config, population)
+
+    qualification = module._load_qualification_receipt(config, population)
+    materialization = module._load_materialization_receipt(config, population)
+    launch_plan = module._render_launch_plan_evidence(config)
+    seal_basis = module._build_seal_basis(
+        config=config,
+        population=population,
+        materialization_receipt=materialization,
+        qualification_receipt=qualification,
+        launch_plan=launch_plan,
+    )
+    accepted_result_cid = module._identity(seal_basis)
+    old_validations, old_basis = module._read_manual_seal_evidence(
+        control_path=paths["control"],
+        task_cid=population["task_cids_by_alias"]["LGSWF-006"],
+        qualification_receipt_cid=qualification["receipt_cid"],
+        seal_basis_cid=accepted_result_cid,
+    )
+    assert len(old_validations) == 1
+    assert len(old_basis) == (0 if expiry_stage == "validation" else 1)
+    old_attempt_id = old_validations[0]["body"]["attempt_id"]
+    old_fence = (
+        old_validations[0]["body"]["fence_epoch"],
+        old_validations[0]["body"]["fencing_token"],
+    )
+
+    deadline = time.time_ns() // 1_000_000 - 1
+    connection = open_duckdb_connection(paths["coordination"])
+    try:
+        connection.execute(
+            "UPDATE task_claims SET expires_at_ms = ? WHERE state = 'accepted'",
+            [deadline],
+        )
+        connection.execute(
+            "UPDATE resource_claims SET expires_at_ms = ? WHERE state = 'accepted'",
+            [deadline],
+        )
+        connection.execute(
+            "UPDATE fenced_leases SET expires_at_ms = ? WHERE state = 'accepted'",
+            [deadline],
+        )
+    finally:
+        connection.close()
+
+    sealed = _canonical_receipt(
+        module,
+        module.seal(config, population),
+        operation="seal",
+    )
+    assert sealed["claim"]["attempt_id"] != old_attempt_id
+    assert (sealed["claim"]["fence_epoch"], sealed["claim"]["fencing_token"]) > old_fence
+    links = sealed["validation_receipt"]["body"]["superseded_partial_evidence"]
+    assert sealed["seal_basis_evidence_receipt"]["body"][
+        "superseded_partial_evidence"
+    ] == links
+    assert len(links) == 1 + len(old_basis)
+    assert {item["receipt_cid"] for item in links} == {
+        module._identity(item) for item in [*old_validations, *old_basis]
+    }
+    admissions = {item["stage"]: item["fence_admission"] for item in links}
+    if expiry_stage == "validation":
+        assert admissions == {"validation": "post_fence_failed"}
+    else:
+        assert admissions == {
+            "validation": "guarded",
+            "basis_evidence": "post_fence_failed",
+        }
+
+    all_validations, all_basis = module._read_manual_seal_evidence(
+        control_path=paths["control"],
+        task_cid=population["task_cids_by_alias"]["LGSWF-006"],
+        qualification_receipt_cid=qualification["receipt_cid"],
+        seal_basis_cid=accepted_result_cid,
+    )
+    assert all(item in all_validations for item in old_validations)
+    assert all(item in all_basis for item in old_basis)
+    assert len(all_validations) == 2
+    assert len(all_basis) == 1 + len(old_basis)
+    projection = module._verify_live_store(config, population)
+    assert projection["seal"]["receipt_cid"] == sealed["receipt_cid"]
+    replay = _canonical_receipt(module, module.seal(config, population), operation="seal")
+    assert replay == sealed
+
+
+@requires_duckdb
 def test_control_cas_before_guard_replays_idempotently_under_live_fences(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -852,25 +995,20 @@ def test_control_cas_before_guard_replays_idempotently_under_live_fences(
     writer, _seal_basis = _acquire_test_bootstrap_writer(module, config, population)
     paths = module._paths(config)
 
-    original_protect = DatabaseCoordinator._protect_resource_claim_unlocked
-    calls = 0
+    original_cas = DatabaseTaskSource.compare_and_set_status
 
     def fail_after_control_cas(
-        self: DatabaseCoordinator,
-        connection: Any,
+        self: DatabaseTaskSource,
+        *args: Any,
         **kwargs: Any,
     ) -> Any:
-        nonlocal calls
-        calls += 1
-        result = original_protect(self, connection, **kwargs)
-        if calls == 2:
-            raise RuntimeError("injected crash after control CAS before guard")
-        return result
+        original_cas(self, *args, **kwargs)
+        raise RuntimeError("injected crash after control CAS before guard")
 
     with monkeypatch.context() as injected:
         injected.setattr(
-            DatabaseCoordinator,
-            "_protect_resource_claim_unlocked",
+            DatabaseTaskSource,
+            "compare_and_set_status",
             fail_after_control_cas,
         )
         with pytest.raises(
@@ -891,7 +1029,7 @@ def test_control_cas_before_guard_replays_idempotently_under_live_fences(
         assert task is not None and task.status == "completed"
     finally:
         task_source.close()
-    assert _cross_store_guard_event_count(paths["coordination"]) == 0
+    assert _control_cross_store_guard_event_count(module, paths, population) == 0
 
     resumed = _canonical_receipt(
         module,
@@ -905,7 +1043,7 @@ def test_control_cas_before_guard_replays_idempotently_under_live_fences(
     assert resumed["cross_store_guard"]["control_result_digest"] == module._identity(
         resumed["control_cas"]["task"]
     )
-    assert _cross_store_guard_event_count(paths["coordination"]) == 1
+    assert _control_cross_store_guard_event_count(module, paths, population) == 1
 
 
 @requires_duckdb
@@ -938,7 +1076,7 @@ def test_guard_before_promotion_recovers_without_duplicate_guard_event(
         ):
             module._seal_with_writer(config, population, writer_claim=writer)
 
-    assert _cross_store_guard_event_count(paths["coordination"]) == 1
+    assert _control_cross_store_guard_event_count(module, paths, population) == 1
     resumed = _canonical_receipt(
         module,
         module.seal(config, population),
@@ -946,7 +1084,7 @@ def test_guard_before_promotion_recovers_without_duplicate_guard_event(
     )
     assert resumed["coordination_promotion"]["status"] == "succeeded"
     assert resumed["settled_lease"]["state"] == "released"
-    assert _cross_store_guard_event_count(paths["coordination"]) == 1
+    assert _control_cross_store_guard_event_count(module, paths, population) == 1
 
 
 @requires_duckdb
@@ -1002,7 +1140,7 @@ def test_naturally_expired_guarded_task_recovers_from_exact_durable_guard(
     assert any(item.get("recovered") is True for item in resumed["recovery"])
     assert resumed["claim"]["state"] == "completed"
     assert resumed["settled_lease"]["state"] == "completed"
-    assert _cross_store_guard_event_count(paths["coordination"]) == 1
+    assert _control_cross_store_guard_event_count(module, paths, population) == 1
     assert module._load_existing_seal_receipt(config, population) is not None
 
     forged_release = dict(resumed["writer_release"])
@@ -1107,25 +1245,20 @@ def test_expired_prepared_control_effect_without_guard_fails_closed(
     writer, _seal_basis = _acquire_test_bootstrap_writer(module, config, population)
     paths = module._paths(config)
 
-    original_protect = DatabaseCoordinator._protect_resource_claim_unlocked
-    calls = 0
+    original_cas = DatabaseTaskSource.compare_and_set_status
 
     def fail_after_control_cas(
-        self: DatabaseCoordinator,
-        connection: Any,
+        self: DatabaseTaskSource,
+        *args: Any,
         **kwargs: Any,
     ) -> Any:
-        nonlocal calls
-        calls += 1
-        result = original_protect(self, connection, **kwargs)
-        if calls == 2:
-            raise RuntimeError("injected unguarded control effect")
-        return result
+        original_cas(self, *args, **kwargs)
+        raise RuntimeError("injected unguarded control effect")
 
     with monkeypatch.context() as injected:
         injected.setattr(
-            DatabaseCoordinator,
-            "_protect_resource_claim_unlocked",
+            DatabaseTaskSource,
+            "compare_and_set_status",
             fail_after_control_cas,
         )
         with pytest.raises(RuntimeError, match="injected unguarded control effect"):
@@ -1151,7 +1284,7 @@ def test_expired_prepared_control_effect_without_guard_fails_closed(
         match="expired manual seal completion has no durable cross-store fence guard",
     ):
         module.seal(config, population)
-    assert _cross_store_guard_event_count(paths["coordination"]) == 0
+    assert _control_cross_store_guard_event_count(module, paths, population) == 0
     assert not module._bootstrap_receipt_path(config, "duckdb-seal.json").exists()
 
 
@@ -1754,7 +1887,10 @@ def test_board_check_all_delegates_to_live_verifier(
     report = validator.validate(require_database=True)
 
     assert calls == [
-        ([sys.executable, str(validator.MATERIALIZER), "verify-live"], validator.ROOT)
+        (
+            [sys.executable, "-I", str(validator.MATERIALIZER), "verify-live"],
+            validator.ROOT,
+        )
     ]
     database_errors = [
         item for item in report["errors"] if item.startswith("DuckDB control-plane verification")

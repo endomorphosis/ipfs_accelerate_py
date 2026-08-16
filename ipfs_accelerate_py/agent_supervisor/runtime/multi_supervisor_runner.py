@@ -20,6 +20,20 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Callable, ClassVar, Mapping, MutableMapping, Protocol, Sequence
 
+# A datasets-authoritative configured-board process must not import repository
+# code before its complete dependency closure is available as one immutable
+# capsule.  Reject direct script/FD births before package-path restoration or
+# any repository import.  Programmatic entry points repeat this decision.
+_CONFIGURED_BOARD_LIVE_LAUNCH_FLAG = "--require-configured-board-live-seal"
+_CONFIGURED_BOARD_LIVE_BIRTH_MARKER = (
+    "--run-configured-board-live-seal-launch-gate"
+)
+if __package__ in {None, ""} and (
+    _CONFIGURED_BOARD_LIVE_LAUNCH_FLAG in sys.argv[1:]
+    or _CONFIGURED_BOARD_LIVE_BIRTH_MARKER in sys.argv[1:]
+):
+    raise SystemExit(78)
+
 if __package__ in {None, ""}:
     # ``python -I /accepted/tree/.../multi_supervisor_runner.py`` excludes
     # ambient cwd, user-site, and PYTHONPATH authority.  Restore only this
@@ -72,6 +86,34 @@ PLAN_BOUND_ACCEPTED_ENTRY_PATH = (
 )
 PLAN_BOUND_GATE_ENTRY_PATH = (
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py"
+)
+CONFIGURED_BOARD_LIVE_SEAL_PROFILE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/configured-board-live-seal-profile@2"
+)
+CONFIGURED_BOARD_LIVE_SEAL_CHILD_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/configured-board-live-seal-child@2"
+)
+CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_GATE_MARKER = (
+    "--run-configured-board-live-seal-launch-gate"
+)
+CONFIGURED_BOARD_LIVE_SEAL_CONFIG_PATH = (
+    "config/logic_governed_semantic_work_fabric_scheduler.json"
+)
+CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO = (
+    "configured-board live multi-supervisor launch is NO-GO until the "
+    "validator, verifier, scheduler, runner, target, and imported dependency "
+    "closure are loaded from one immutable accepted control-plane capsule"
+)
+DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION = (
+    "datasets-authoritative-operational-v1"
+)
+CONFIGURED_BOARD_LIVE_SEAL_VERIFIERS = MappingProxyType(
+    {
+        "scripts/validate_logic_governed_semantic_work_fabric_board.py": (
+            "scripts/"
+            "materialize_logic_governed_semantic_work_fabric_control_plane.py"
+        ),
+    }
 )
 PLAN_BOUND_REPLAN_RETURN_CODE = 75
 SEALED_CONTROL_PLANE_MODULES = frozenset(
@@ -1697,6 +1739,217 @@ def _read_stable_regular_json(
             f"coordination artifact must be a JSON object: {artifact}"
         )
     return dict(payload), evidence
+
+
+def _configured_board_gate_relative_path(value: Any, *, field: str) -> str:
+    """Return one canonical repository-relative launch declaration."""
+
+    if not isinstance(value, str) or value != value.strip():
+        raise ValueError(f"{field} must be a canonical relative path")
+    path = PurePosixPath(value)
+    if (
+        not value
+        or "\x00" in value
+        or "\\" in value
+        or path.is_absolute()
+        or ".." in path.parts
+        or path.as_posix() != value
+    ):
+        raise ValueError(f"{field} is not a safe repository-relative path")
+    return value
+
+
+def _configured_board_profile_path(
+    root: Path,
+    path: Path,
+    *,
+    stamp: str = "",
+    require_regular: bool = False,
+) -> str:
+    resolved = _resolve_path(root, Path(path))
+    _lexical_contained_path(root, resolved, require_regular=require_regular)
+    try:
+        rendered = resolved.relative_to(root).as_posix()
+    except ValueError as exc:
+        raise ValueError("configured-board launch path escapes repository") from exc
+    return rendered.replace(stamp, "{stamp}") if stamp else rendered
+
+
+_CONFIGURED_BOARD_DATABASE_PROFILE_OPTIONS = (
+    "--task-source-kind",
+    "--authority-mode",
+    "--state-failover-policy",
+    "--endpoint-secret-handle",
+    "--state-store-id",
+    "--state-store-generation",
+    "--state-schema-revision",
+    "--event-store-path",
+    "--runtime-registry-path",
+    "--worktree-root",
+    "--export-profile",
+)
+
+
+def _configured_board_database_profile(argv: Sequence[str]) -> dict[str, Any]:
+    tokens = [str(item) for item in argv]
+    if redact_database_program_argv(tokens) != tokens:
+        raise ValueError(
+            "configured-board launch profile contains raw credential material"
+        )
+    return {
+        "options": {
+            option: list(_profile_option_values(tokens, option))
+            for option in _CONFIGURED_BOARD_DATABASE_PROFILE_OPTIONS
+        },
+        "explicit_legacy_task_source_count": tokens.count(
+            "--explicit-legacy-task-source"
+        ),
+    }
+
+
+def configured_board_live_seal_launch_profile(
+    *,
+    tracks: Sequence[SupervisorTrack],
+    repo_root: Path,
+    common_args: Sequence[str],
+    python_executable: str,
+    stamp: str = "",
+) -> dict[str, Any]:
+    """Render deterministic dry-run evidence for the disabled live profile."""
+
+    root = _canonical_accepted_tree_root(Path(repo_root))
+    requested_python = str(python_executable)
+    executable_candidate = requested_python
+    if not Path(executable_candidate).is_absolute():
+        executable_candidate = shutil.which(executable_candidate) or ""
+    if not executable_candidate:
+        raise ValueError("configured-board Python executable cannot be resolved")
+    executable, executable_sha256 = _python_executable_sha256(
+        executable_candidate
+    )
+    common = tuple(str(item) for item in common_args)
+    projected_tracks: list[dict[str, Any]] = []
+    names: set[str] = set()
+    for track in tracks:
+        resolved = track.resolve(root)
+        if not resolved.name or resolved.name in names or resolved.module_name:
+            raise ValueError(
+                "configured-board live profile requires unique exact-script tracks"
+            )
+        names.add(resolved.name)
+        script_bytes, script_evidence = _read_stable_regular_bytes(
+            resolved.script_path,
+            max_bytes=8_388_608,
+        )
+        if script_bytes is None:
+            raise ValueError("configured-board target script is absent")
+        extra_args = tuple(str(item) for item in resolved.extra_args)
+        child_argv = [
+            requested_python,
+            str(resolved.script_path),
+            *common,
+            *extra_args,
+        ]
+        projected_tracks.append(
+            {
+                "name": resolved.name,
+                "script_path": _configured_board_profile_path(
+                    root, resolved.script_path, require_regular=True
+                ),
+                "script_sha256": script_evidence["content_sha256"],
+                "log_path": _configured_board_profile_path(
+                    root, resolved.log_path, stamp=stamp
+                ),
+                "supervisor_pid_path": _configured_board_profile_path(
+                    root, resolved.supervisor_pid_path
+                ),
+                "daemon_pid_path": _configured_board_profile_path(
+                    root, resolved.daemon_pid_path
+                ),
+                "supervisor_status_path": (
+                    _configured_board_profile_path(
+                        root, resolved.supervisor_status_path
+                    )
+                    if resolved.supervisor_status_path is not None
+                    else ""
+                ),
+                "extra_args": list(extra_args),
+                "database_profile": _configured_board_database_profile(
+                    extra_args
+                ),
+                "declared_database_program": (
+                    resolved.database_program.redacted_dict()
+                    if resolved.database_program is not None
+                    else None
+                ),
+                "child_argv_cid": content_identity(
+                    {
+                        "schema": CONFIGURED_BOARD_LIVE_SEAL_CHILD_SCHEMA,
+                        "argv": child_argv,
+                    }
+                ),
+            }
+        )
+    validator_relative, verifier_relative = next(
+        iter(CONFIGURED_BOARD_LIVE_SEAL_VERIFIERS.items())
+    )
+    source_evidence: dict[str, str] = {}
+    for label, relative, bound in (
+        ("runner", PLAN_BOUND_GATE_ENTRY_PATH, 8_388_608),
+        ("validator", validator_relative, 4_194_304),
+        ("live_verifier", verifier_relative, 8_388_608),
+    ):
+        raw, evidence = _read_stable_regular_bytes(root / relative, max_bytes=bound)
+        if raw is None:
+            raise ValueError(f"configured-board {label} source is absent")
+        source_evidence[f"{label}_path"] = relative
+        source_evidence[f"{label}_sha256"] = evidence["content_sha256"]
+    combined = (*common, *(arg for track in tracks for arg in track.extra_args))
+    return {
+        "schema": CONFIGURED_BOARD_LIVE_SEAL_PROFILE_SCHEMA,
+        "python_executable": requested_python,
+        "python_executable_path": executable,
+        "python_executable_sha256": executable_sha256,
+        "python_flags_required": ["-I", "-S"],
+        "common_args": list(common),
+        "database_profile": _configured_board_database_profile(common),
+        "source_evidence": source_evidence,
+        "tracks": projected_tracks,
+        "lane_policy": {
+            "track_count": len(projected_tracks),
+            "track_names": [item["name"] for item in projected_tracks],
+            "strict_task_sharding_count": combined.count(
+                "--strict-task-sharding"
+            ),
+            "task_shards": [
+                {
+                    "name": item["name"],
+                    "count": list(
+                        _profile_option_values(source.extra_args, "--task-shard-count")
+                    ),
+                    "index": list(
+                        _profile_option_values(source.extra_args, "--task-shard-index")
+                    ),
+                }
+                for item, source in zip(projected_tracks, tracks)
+            ],
+        },
+        "launch_policy": {
+            "status": "no-go",
+            "blocker": CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO,
+        },
+    }
+
+
+def _configured_board_live_seal_required(
+    common_args: Sequence[str],
+    tracks: Sequence[SupervisorTrack] = (),
+) -> bool:
+    argv = [str(item) for item in common_args]
+    argv.extend(str(arg) for track in tracks for arg in track.extra_args)
+    return DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION in (
+        _profile_option_values(argv, "--state-schema-revision")
+    )
 
 
 def _strict_plan_bound_process_fence_observation(
@@ -4179,6 +4432,9 @@ def start_track(
     returned process, never the PID projection.
     """
 
+    if _configured_board_live_seal_required(common_args, (track,)):
+        raise ValueError(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
+
     resolved = track.resolve(repo_root)
     child_command = (
         [python_executable, "-m", resolved.module_name, *resolved.extra_args]
@@ -6488,12 +6744,33 @@ def run_supervisor_tracks(
     plan_bound_children: Sequence[PlanBoundSupervisorChild] = (),
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
     accepted_control_plane_descriptor: int = -1,
+    require_configured_board_live_seal: str = "",
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
     """Run and supervise multiple tracks for the requested duration."""
 
-    resolved_repo_root = repo_root.resolve()
     managed_tracks = list(tracks)
+    live_profile_required = _configured_board_live_seal_required(
+        common_args,
+        managed_tracks,
+    )
+    live_config = str(require_configured_board_live_seal or "")
+    if live_config and not live_profile_required:
+        raise ValueError(
+            "configured-board live-seal flag requires the exact "
+            "datasets-authoritative operational profile"
+        )
+    if live_config:
+        relative = _configured_board_gate_relative_path(
+            live_config,
+            field="configured-board live-seal config",
+        )
+        if relative != CONFIGURED_BOARD_LIVE_SEAL_CONFIG_PATH:
+            raise ValueError(
+                "configured-board live seal requires the canonical scheduler config"
+            )
+        raise ValueError(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
+    resolved_repo_root = repo_root.resolve()
     plan_children_by_name = {
         child.name: child for child in plan_bound_children
     }
@@ -7170,6 +7447,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=-1,
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--require-configured-board-live-seal",
+        default="",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--common-arg", action="append", default=[])
     parser.add_argument(
         "--implementation-supervisor-defaults",
@@ -7277,6 +7559,9 @@ def _stream_targets_path(stream: _SupportsFileno, path: Path) -> bool:
 
 def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, object]:
     """Launch this runner detached, redirecting output to the master log."""
+
+    if args.require_configured_board_live_seal:
+        raise ValueError(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
 
     master_log, master_pid = _master_paths(args)
     master_log.parent.mkdir(parents=True, exist_ok=True)
@@ -7609,6 +7894,8 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args_list = list(sys.argv[1:] if argv is None else argv)
+    if args_list[:1] == [CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_GATE_MARKER]:
+        return 78
     if args_list[:1] == [PLAN_BOUND_LAUNCH_GATE_MARKER]:
         return _run_plan_bound_launch_gate(args_list[1:])
     parser = build_arg_parser()
@@ -7620,6 +7907,8 @@ def main(argv: list[str] | None = None) -> int:
         and not args.plan_bound_wave
     ):
         parser.error("at least one --track or --implementation-track is required")
+    if args.require_configured_board_live_seal:
+        parser.error(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
     if (
         args.implementation_track
         or args.implementation_plan_bound_track

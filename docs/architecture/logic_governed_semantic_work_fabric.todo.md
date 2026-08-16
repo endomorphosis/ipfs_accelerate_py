@@ -1,8 +1,18 @@
 # Logic-Governed Semantic Work Fabric task board
 
-Sealed bootstrap projection for `ipfs_accelerate_py.agent_supervisor`.
+Unsealed successor bootstrap projection for `ipfs_accelerate_py.agent_supervisor`.
 Task prefix: `LGSWF-`. Board namespace:
-`logic-governed-semantic-work-fabric-actual-v1`. Plan revision: `LGSWF-PLAN-ACTUAL-R1`.
+`logic-governed-semantic-work-fabric-actual-v1`. Plan revision:
+`LGSWF-PLAN-ACTUAL-R1-S1`, an immutable successor to the quarantined
+run-actual-v2 plan root. Its unsupported `LGSWF-000` completion remains
+quarantined in that store and in the baseline; this plan uses explicit
+successor task `LGSWF-006` and does not reinterpret that history.
+
+`ACCEPTED_LGSWF-006_SOURCE_HEAD` is a sealed resolution selector, not an
+executable revision. During clean-tree materialization it is replaced in every
+accelerator TaskRecord by the exact accepted plan `source_head` and
+`repository_tree_id`; the unresolved selector is prohibited at dispatch.
+`LGSWF-005` must rebind future execution bases again when it accepts R2.
 
 The board is intentionally bootstrap-bound. `LGSWF-001` through `LGSWF-004`
 may use declared raw-source fallback because no current datasets semantic root
@@ -13,7 +23,7 @@ task is admitted. The dispatcher must treat the sentinel as not dispatchable.
 ## Parallel waves
 
 ```text
-W0   LGSWF-000 (completed control seal)
+W0   LGSWF-006 (trusted manual operational seal)
 W1   LGSWF-001 | LGSWF-002 | LGSWF-003
 W2   LGSWF-004 -> LGSWF-005
 W3   LGSWF-010 | LGSWF-011 | LGSWF-012 -> LGSWF-013
@@ -32,50 +42,51 @@ W15  LGSWF-130 -> LGSWF-131
 W16  LGSWF-140 -> LGSWF-141
 ```
 
-## LGSWF-000 Seal the actual-source DuckDB bootstrap control plane
+## LGSWF-006 Seal and accept the corrected operational bootstrap
 
-- Stable task ID: LGSWF-000
-- Status: completed
+- Stable task ID: LGSWF-006
+- Status: todo
 - Completion: manual
-- Is schedulable: true
-- Review only: false
+- Is schedulable: false
+- Review only: true
 - Priority: P0
 - Track: control
-- Goal id: LGSWF-G000
+- Goal id: LGSWF-G010
 - Parent goal ID: LGSWF-G000
 - Subgoal ID: LGSWF-G010
 - Owning repository: ipfs_accelerate_py
-- Owned paths: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py, scripts/materialize_logic_governed_semantic_work_fabric_control_plane.py, ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py, test/api/test_agent_supervisor_database_coordination.py, test/api/test_agent_supervisor_database_implementation_daemon.py, test/api/test_agent_supervisor_database_portal_bridge.py
-- Base revision: b6dc155c3d779a4166a8ee92c0e0214e0157e2e2
-- Base semantic-state root: unavailable; exact absence recorded by config/logic_governed_semantic_work_fabric_baseline.json
-- Base plan revision: LGSWF-PLAN-ACTUAL-R1
-- Objective: Preserve the actual dirty checkouts in isolated exact snapshots, integrate the existing DuckDB/Quack implementation, eliminate synthetic database completion, prohibit completed-task reclaims, seal the dependency board, and materialize a one-writer DuckDB authority before supervisor launch.
+- Owned paths: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py, scripts/materialize_logic_governed_semantic_work_fabric_control_plane.py, ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py, ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py, ipfs_accelerate_py/agent_supervisor/analysis/semantic_truth_authority.py, ipfs_accelerate_py/agent_supervisor/analysis/duckdb_ast_index.py, ipfs_accelerate_py/agent_supervisor/analysis/database_repository_indexer.py, ipfs_accelerate_py/agent_supervisor/analysis/mutation_ledger.py, ipfs_accelerate_py/agent_supervisor/analysis/database_impact_graph.py, ipfs_accelerate_py/agent_supervisor/planning/database_symbolic_planning.py, ipfs_accelerate_py/agent_supervisor/proof/database_evidence_store.py, ipfs_accelerate_py/agent_supervisor/proof/database_repair_evidence.py, ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py, ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py, ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py, test/api/test_agent_supervisor_control_plane_schema.py, test/api/test_agent_supervisor_datasets_authoritative_operational_schema.py, test/api/test_agent_supervisor_datasets_authoritative_writer_guards.py, test/api/test_agent_supervisor_datasets_authoritative_proof_writer_guards.py, test/api/test_agent_supervisor_database_coordination.py, test/api/test_agent_supervisor_configured_board_scheduler.py, test/api/test_agent_supervisor_database_implementation_daemon.py, test/api/test_agent_supervisor_database_portal_bridge.py, test/api/test_agent_supervisor_database_runner_propagation.py, test/api/test_agent_supervisor_intent_repository.py, test/api/test_agent_supervisor_lgswf_materialization_seal.py
+- Base revision: 489fba3ba2728d2e4399961b863d45c56a50b7e3
+- Base semantic-state root: unavailable; raw-source control bootstrap only
+- Base plan revision: LGSWF-PLAN-ACTUAL-R1-S1
+- Objective: Supersede the quarantined LGSWF-000 attempt without rewriting it; seal the datasets-authoritative operational schema, Portal acceptance bridge, semantic/proof writer guards, exact lease/fence and restart recovery, immutable board controls, and a fresh one-writer DuckDB population before any implementation task is admitted.
 - Depends on:
-- Read scope: actual dirty accelerator/datasets checkouts, isolated snapshot trees, historical DuckDB/Quack worktree, configured control artifacts, database daemon, Portal daemon and checked-out nested gitlinks
-- Write scope: owned paths only
-- External effect scope: local isolated Git commits, exact local gitlink initialization, fresh DuckDB store creation and local validation only
-- Relevant symbol IDs: none; control-artifact bootstrap
-- Capsule CIDs: none; raw-source bootstrap
-- Contract and obligation CIDs: LogicGovernedSemanticWorkFabricPlan@1; ConfiguredBoardPreflight@1; DatabaseProgramConfig@1; DatabaseImplementationDaemon@1; PortalAcceptanceReceipt@1; DatabaseTaskSource@1
-- Resource demand: cpu_ms=600000; cpu_concurrency=1; ram_mib=1024; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=256; disk_bandwidth_mib_s=20; network=deny; network_bandwidth_kib_s=0; subprocesses=4; worktree_slots=1; model_input_tokens=0; model_output_tokens=0; provider_quota_units=0; provider_concurrency=0; prover_class=none; prover_concurrency=0; exclusive_keys=control-seal; merge_slots=0; persistence_kib_s=256
-- Model-route class: none; manually reviewed control bootstrap
-- Permitted effects: create and commit protected controls; make the smallest fail-closed daemon/coordination repair; initialize a fresh bounded DuckDB authority; run local validators and dry launch rendering
-- Prohibited effects: mutation of the user's source checkouts; synthetic/noop completion; direct multi-process DuckDB writers; semantic-root publication; speculative provider calls; protected-branch merge; credential access
-- Completion contract: Exact checkout patches/manifests and intervening changes are sealed; the existing DQP history is integrated; production execution cannot accept noop or missing Portal evidence; logically completed tasks cannot be reclaimed; all control artifacts are tracked and internally consistent; a fresh DuckDB population has 47 tasks, 16 goals and exactly the expected ready frontier; configured-board preflight and dry launch pass from a clean isolated branch.
-- Validation requirements: python3 scripts/validate_logic_governed_semantic_work_fabric_board.py --check-all; focused database daemon/coordination tests; database materialization verification; configured-board preflight; dry launch render
-- Proof requirements: SHA-256 control inventory, exact Git/tree/gitlink identity, content-addressed DuckDB population and receipt, acyclic task and goal DAG, no unsafe parallel owned-path overlap, explicit single-writer bound while Quack is unavailable
-- Lease requirements: exclusive control-seal lease during authoring; no worker lease
-- Rollback or compensation procedure: Revert only the control commit on the isolated branch; preserve baseline and validation receipts as rejected evidence.
-- Required evidence: exact source snapshot receipts, intervening-change commitments, DQP merge/test receipt, fail-closed Portal bridge tests, completed-task reclaim regression, board validator report, DuckDB materialization receipt, preflight report, dry-launch plan and control commit
-- Final result identity: pending; set to the accepted bootstrap receipt CID after exact-tree materialization
-- Outputs: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py, scripts/materialize_logic_governed_semantic_work_fabric_control_plane.py, ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py, test/api/test_agent_supervisor_database_coordination.py, test/api/test_agent_supervisor_database_portal_bridge.py
+- Read scope: exact isolated accelerator and datasets snapshots and content-manifest roots, C1 plus every intervening commit/tree pair, quarantined run-actual-v1/v2 receipts, stale legacy-Markdown supervisor shutdown/orphan-worker evidence, DQP history, protected controls, operational schema, IntentRepository, coordinator, daemon, Portal bridge and focused tests
+- Write scope: owned paths plus ignored data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v3 operational artifacts only
+- External effect scope: local isolated Git commits, fresh local DuckDB files, local subprocess validation and dry-run rendering; no provider, network or merge effect
+- Relevant symbol IDs: none; control bootstrap uses declared raw-source fallback
+- Capsule CIDs: none; no capsule content is copied
+- Contract and obligation CIDs: DatasetsAuthoritativeOperationalControlPlane@1; IntentRepository@1; DatabaseTaskSource@1; DatabaseTaskCompletionPreparation@1; PortalAcceptanceReceipt@1; ConfiguredBoardPreflight@1; BootstrapQualificationReceipt@1
+- Resource demand: cpu_ms=1200000; cpu_concurrency=1; ram_mib=2048; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=512; disk_bandwidth_mib_s=40; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=0; model_output_tokens=0; provider_quota_units=0; provider_concurrency=0; prover_class=none; prover_concurrency=0; exclusive_keys=control-seal,embedded-duckdb-writer; merge_slots=0; persistence_kib_s=512
+- Model-route class: none; deterministic trusted supervisor seal only
+- Permitted effects: modify and commit the declared protected bootstrap controls; install only the operational schema profile; create a fresh ignored v3 database; acquire one exact manual task claim; record validation, preflight and dry-run evidence; accept through CAS; preserve every rejected attempt
+- Prohibited effects: provider or model dispatch; mutation of user checkouts; full control-plane-v1 installation; accelerator-owned semantic/proof truth; direct multi-process DuckDB writers; synthetic completion; stale or duplicate acceptance; protected-branch merge; credentials or network
+- Completion contract: The exact branch is clean; all owned changes and tests are committed; the operational schema verifier reports no forbidden semantic/proof relations or contracts; local semantic/proof writers fail before I/O in both supervisor and provider contexts; current and historical IntentRepository task/goal/plan identity remains content-addressed; expired claim, attempt and lease authority cannot settle; missing/tampered profile, stale lease/fence, duplicate completion and all injected restart windows fail closed or reconcile exactly once; no stale legacy-Markdown supervisor descendant, orphan worktree or result has authority; the fresh unsealed population contains 47 tasks and 16 goals with only LGSWF-006 ready; deterministic launch-plan rendering truthfully records the bounded legacy configured-board profile, one DuckDB-authoritative embedded lane, strict sharding, and no process start; one fenced manual claim accepts LGSWF-006 with content-addressed evidence and unlocks exactly LGSWF-001, LGSWF-002 and LGSWF-003. Plan-bound execution remains gated on LGSWF-005.
+- Validation requirements: structural board validator; designated operational-schema 14/14 in 4.09 s, intent-repository `test/api/test_agent_supervisor_intent_repository.py` 12/12 in 8.80 s, semantic/proof guard 62/62 in 13.37 s, coordination/daemon/Portal/runner 89/89 in 43.49 s, configured-board live-seal gate 7/7, and materialization-seal 34/34 in 91.93 s suites, each with zero skips/failures and exit code 0; unsealed database/profile verification; deterministic implementation-authorized launch-plan rendering without process start; sealed database verification; fresh self-addressed qualification receipt from the final clean source
+- Proof requirements: exact Git/tree/gitlink identity; schema catalog/fingerprint; content-addressed board population, seal evidence and CAS receipt; acyclic graph; no same-wave write overlap; explicit one-writer bound; restart reconstruction without process dictionaries
+- Lease requirements: one bounded task claim and exclusive embedded-writer lease owned by the trusted seal process; exact token, epoch, attempt, plan and tree binding; settle before implementation launch
+- Rollback or compensation procedure: Never overwrite a partial namespace; quarantine and preserve run-actual-v3 plus its receipt, advance to a fresh namespace, and keep LGSWF-006 unaccepted.
+- Required evidence: exact external source HEAD/tree, tracked-patch and untracked content-manifest-root recheck; C1 `301d7318868bbc238abb6862d38c77253d5653b0` / `b08b08e17c4a10c8f0627daf4e1eb4348ef8ad3f` and all seven intervening commit/tree pairs; exact argv, expected/observed population, duration, exit, skip and failure fields for the 14, 12, 62, 89, 7 and 34 test suites including `test/api/test_agent_supervisor_intent_repository.py`; exact-head content-addressed final qualification receipt; schema/profile verification; guard, intent and daemon receipts; quarantined v1/v2 receipts; legacy-Markdown signal-15 shutdown, orphan termination/quarantine and non-authority record; unsealed and sealed control/coordination/execution verification; deterministic launch-plan CID; manual claim/preparation/CAS/settlement receipt and clean-tree identity
+- Final result identity: pending; DuckDB accepts the seal-basis result CID, while the self-addressed seal receipt names that accepted result and remains immutable evidence
+- Outputs: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py, scripts/materialize_logic_governed_semantic_work_fabric_control_plane.py, ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py, ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py, ipfs_accelerate_py/agent_supervisor/analysis/semantic_truth_authority.py, ipfs_accelerate_py/agent_supervisor/analysis/duckdb_ast_index.py, ipfs_accelerate_py/agent_supervisor/analysis/database_repository_indexer.py, ipfs_accelerate_py/agent_supervisor/analysis/mutation_ledger.py, ipfs_accelerate_py/agent_supervisor/analysis/database_impact_graph.py, ipfs_accelerate_py/agent_supervisor/planning/database_symbolic_planning.py, ipfs_accelerate_py/agent_supervisor/proof/database_evidence_store.py, ipfs_accelerate_py/agent_supervisor/proof/database_repair_evidence.py, ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py, ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py, ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py, test/api/test_agent_supervisor_control_plane_schema.py, test/api/test_agent_supervisor_datasets_authoritative_operational_schema.py, test/api/test_agent_supervisor_datasets_authoritative_writer_guards.py, test/api/test_agent_supervisor_datasets_authoritative_proof_writer_guards.py, test/api/test_agent_supervisor_database_coordination.py, test/api/test_agent_supervisor_configured_board_scheduler.py, test/api/test_agent_supervisor_database_implementation_daemon.py, test/api/test_agent_supervisor_database_portal_bridge.py, test/api/test_agent_supervisor_database_runner_propagation.py, test/api/test_agent_supervisor_intent_repository.py, test/api/test_agent_supervisor_lgswf_materialization_seal.py
 - Validation: python3 scripts/validate_logic_governed_semantic_work_fabric_board.py --check-all
-- Acceptance: The exact-source branch is clean, database authority is freshly content-addressed, no synthetic or duplicate logical completion path remains, and the rendered launch admits only one embedded writer until Quack is actually qualified.
+- Acceptance: Only an exact fenced manual supervisor seal backed by current profile, test and deterministic launch-plan evidence may accept this task; Markdown never self-approves it. Configured preflight and dry run remain mandatory post-seal launch gates.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: control
-- Predicted files: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py, scripts/materialize_logic_governed_semantic_work_fabric_control_plane.py, ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py, test/api/test_agent_supervisor_database_coordination.py, test/api/test_agent_supervisor_database_implementation_daemon.py, test/api/test_agent_supervisor_database_portal_bridge.py
-- Conflict policy: Exclusive protected control-artifact seal; later workers cannot write these paths.
-- Raw-source requirements: actual checkout snapshots, DQP integration tree, daemon/coordination sources and baseline observations
+- Predicted files: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md, docs/architecture/logic_governed_semantic_work_fabric.objectives.md, docs/architecture/logic_governed_semantic_work_fabric.todo.md, config/logic_governed_semantic_work_fabric_baseline.json, config/logic_governed_semantic_work_fabric_scheduler.json, scripts/validate_logic_governed_semantic_work_fabric_board.py, scripts/materialize_logic_governed_semantic_work_fabric_control_plane.py, ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py, ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py, ipfs_accelerate_py/agent_supervisor/analysis/semantic_truth_authority.py, ipfs_accelerate_py/agent_supervisor/analysis/duckdb_ast_index.py, ipfs_accelerate_py/agent_supervisor/analysis/database_repository_indexer.py, ipfs_accelerate_py/agent_supervisor/analysis/mutation_ledger.py, ipfs_accelerate_py/agent_supervisor/analysis/database_impact_graph.py, ipfs_accelerate_py/agent_supervisor/planning/database_symbolic_planning.py, ipfs_accelerate_py/agent_supervisor/proof/database_evidence_store.py, ipfs_accelerate_py/agent_supervisor/proof/database_repair_evidence.py, ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py, ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py, ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py, test/api/test_agent_supervisor_control_plane_schema.py, test/api/test_agent_supervisor_datasets_authoritative_operational_schema.py, test/api/test_agent_supervisor_datasets_authoritative_writer_guards.py, test/api/test_agent_supervisor_datasets_authoritative_proof_writer_guards.py, test/api/test_agent_supervisor_database_coordination.py, test/api/test_agent_supervisor_configured_board_scheduler.py, test/api/test_agent_supervisor_database_implementation_daemon.py, test/api/test_agent_supervisor_database_portal_bridge.py, test/api/test_agent_supervisor_database_runner_propagation.py, test/api/test_agent_supervisor_intent_repository.py, test/api/test_agent_supervisor_lgswf_materialization_seal.py
+- Conflict policy: Exclusive protected control seal; no implementation dispatch or overlapping writer is admitted until acceptance.
+- Raw-source requirements: exact accelerator/datasets snapshots and manifest roots, C1 and every intervening commit/tree pair, DQP integration tree, operational schema/IntentRepository/daemon sources, configured-board scheduler and multi-supervisor runner sources, `test/api/test_agent_supervisor_intent_repository.py`, `test/api/test_agent_supervisor_configured_board_scheduler.py`, `test/api/test_agent_supervisor_database_runner_propagation.py`, all launch-safety tests, and the preserved legacy-Markdown supervisor shutdown/orphan-quarantine logs
+- Generated from: quarantined LGSWF-000 in run-actual-v2; preserved receipt sha256:5f6d2b6a035548c8103fae6921aac1389c6f3547df0ef940d3d9a7f4cad6e31a
 
 ## LGSWF-001 Inventory current implementations and persist revision ledgers
 
@@ -91,31 +102,31 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G010
 - Owning repository: ipfs_accelerate_py
 - Owned paths: docs/architecture/logic_governed_semantic_work_fabric_inventory/current_state.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/accelerator_intervening_commits.tsv, docs/architecture/logic_governed_semantic_work_fabric_inventory/datasets_intervening_commits.tsv, docs/architecture/logic_governed_semantic_work_fabric_inventory/inventory.json
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: unavailable; raw-source fallback admitted for A only
-- Base plan revision: LGSWF-PLAN-ACTUAL-R1
-- Objective: Inventory every required semantic and operational implementation, classify authority/facade/projection/legacy/duplicate/experimental/obsolete/unresolved, and persist complete ordered revision histories whose hashes match the baseline.
-- Depends on: LGSWF-000
-- Read scope: agent_supervisor, ipfs_datasets_py/ipfs_datasets_py/logic, Git objects for all baseline ranges, existing SCG inventory
+- Base plan revision: LGSWF-PLAN-ACTUAL-R1-S1
+- Objective: Inventory every required semantic and operational implementation, including the nested `ipfs_datasets_py.ducklake` package and accelerator `DatabaseArtifactStore@1` export/projection semantics, classify authority/facade/projection/legacy/duplicate/experimental/obsolete/unresolved, and persist complete ordered revision histories whose hashes match the baseline.
+- Depends on: LGSWF-006
+- Read scope: agent_supervisor, ipfs_datasets_py/ipfs_datasets_py/logic, ipfs_datasets_py/ipfs_datasets_py/ducklake public typed surfaces, Git objects for all baseline ranges, existing SCG inventory
 - Write scope: owned paths only
 - External effect scope: none; local Git object reads and local artifact writes
 - Relevant symbol IDs: raw-source discovery for all requested modules
 - Capsule CIDs: none; raw-source-required=true
-- Contract and obligation CIDs: CurrentStateInventory@1; RevisionLedger@1
+- Contract and obligation CIDs: CurrentStateInventory@1; RevisionLedger@1; DatabaseArtifactStore@1 export/projection receipt semantics; datasets DuckLake capability/catalog-owner/registry/ingest/snapshot/execution/security/recovery contracts
 - Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; model_input_tokens=24000; model_output_tokens=8000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=inventory-output; merge_slots=1; persistence_kib_s=2048
 - Model-route class: implementation/high; deterministic inventory validation is authority
 - Permitted effects: read declared trees and Git objects; write machine-readable inventory/ledgers; run import and static probes
 - Prohibited effects: source revision adoption; network fetch; source-code mutation; semantic reinterpretation; plan/board mutation; canonical-root publication
-- Completion contract: Every requested concern has a discovered path and classification; runtime-effective duplicate definitions are identified; full ordered logs reproduce sealed counts/hashes; absent APIs remain unavailable.
-- Validation requirements: JSON schema/checks; Git log count/hash replay; import origins under selected worktree; inventory has no unresolved unclassified row
+- Completion contract: Every requested concern has a discovered path and classification; DuckDB + Quack are identified as the operational control plane, with DuckDB owning transactional records/schema/CAS/fencing and Quack the required multi-reader/multi-writer transport/exclusive state-owner boundary, while DuckLake is optional non-authoritative projection/query storage; the current Quack `install-required`/`import_only_insufficient` probe and DuckDB/Quack profile mismatch remain explicit, separately from downstream DuckLake/httpfs pin and catalog/binding gaps; runtime-effective duplicate definitions are identified; full ordered logs reproduce sealed counts/hashes; absent APIs, catalog profiles and environment bindings remain unavailable.
+- Validation requirements: JSON schema/checks; Git log count/hash replay; import origins under selected worktree; Quack capability/repository and DuckLake public-export/exact-1.5.5 lock inventory; inventory has no unresolved unclassified row
 - Proof requirements: content hashes for ledgers/inventory and deterministic rerun equality
-- Lease requirements: isolated worktree read/write lease; fence epoch and idempotency key inventory-selected-tree-R1
+- Lease requirements: isolated worktree read/write lease; fence epoch and idempotency key inventory-selected-tree-R1-S1
 - Rollback or compensation procedure: Discard worktree on failure; retain mismatched ledger as quarantined evidence; no external compensation.
-- Required evidence: exact revisions/trees/status, complete ledgers, inventory classifications, import-origin receipt, command/version receipt
+- Required evidence: exact revisions/trees/status, complete ledgers, inventory classifications, DuckDB/DuckLake authority classification and capability/profile availability, import-origin receipt, command/version receipt
 - Final result identity: pending; supervisor sets inventory root CID after acceptance
-- Outputs: docs/architecture/logic_governed_semantic_work_fabric_inventory/current_state.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/inventory.json
+- Outputs: docs/architecture/logic_governed_semantic_work_fabric_inventory/current_state.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/accelerator_intervening_commits.tsv, docs/architecture/logic_governed_semantic_work_fabric_inventory/datasets_intervening_commits.tsv, docs/architecture/logic_governed_semantic_work_fabric_inventory/inventory.json
 - Validation: python3 -m json.tool docs/architecture/logic_governed_semantic_work_fabric_inventory/inventory.json
-- Acceptance: Machine-readable inventory is complete and all intervening-change commitments verify.
+- Acceptance: Machine-readable inventory is complete, all intervening-change commitments verify, no unsafe current daemon Quack mode is called multi-writer qualified, and no DuckLake surface is misclassified as semantic or operational authority.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: inventory
 - Predicted files: docs/architecture/logic_governed_semantic_work_fabric_inventory/current_state.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/accelerator_intervening_commits.tsv, docs/architecture/logic_governed_semantic_work_fabric_inventory/datasets_intervening_commits.tsv, docs/architecture/logic_governed_semantic_work_fabric_inventory/inventory.json
@@ -136,31 +147,31 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G010
 - Owning repository: ipfs_accelerate_py
 - Owned paths: docs/architecture/logic_governed_semantic_work_fabric_inventory/package_dag.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/authority_map.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/interface_freeze.json, test/api/test_agent_supervisor_lgswf_package_dag.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: unavailable; raw-source fallback admitted for A only
-- Base plan revision: LGSWF-PLAN-ACTUAL-R1
-- Objective: Compute the actual package import graph, identify cycles/upward imports and compatibility boundaries, and freeze exact datasets-to-accelerator, ContextPack, completion, invalidation, proof, objective/plan, resource/claim and result/completion interfaces.
-- Depends on: LGSWF-000
-- Read scope: all requested accelerator/datasets package roots, existing contract seals and public facades
+- Base plan revision: LGSWF-PLAN-ACTUAL-R1-S1
+- Objective: Compute the actual package import graph, identify cycles/upward imports and compatibility boundaries, and freeze exact datasets-to-accelerator, ContextPack, completion, invalidation, proof, objective/plan, resource/claim, result/completion, DuckDB + Quack operational, and authoritative-DuckDB-outbox-to-public-DuckLake projection interfaces, including `StateRepository`, `QuackStateRepository`, `QuackStateClient`, `QuackStateServer`, `StateServerIdentity`, `ControlPlaneStoreIdentity`, `StateCommand`, `DatabaseProgramConfig`, and server-side datasets `quack_security` scoped authorization.
+- Depends on: LGSWF-006
+- Read scope: all requested accelerator/datasets package roots, existing contract seals and public facades, the named Quack repository/client/server/identity/command/program contracts, and datasets `duckdb_control.quack_security`
 - Write scope: owned paths only
 - External effect scope: none
 - Relevant symbol IDs: raw-source discovery for public facades and runtime-effective definitions
 - Capsule CIDs: none; raw-source-required=true
-- Contract and obligation CIDs: PackageDependencyDAG@1; AuthorityMap@1; IntegrationInterfaceFreeze@1
+- Contract and obligation CIDs: PackageDependencyDAG@1; AuthorityMap@1; IntegrationInterfaceFreeze@1; StateRepository; QuackStateRepository; QuackStateClient; QuackStateServer; StateServerIdentity; ControlPlaneStoreIdentity; StateCommand; DatabaseProgramConfig; datasets quack_security scoped-authorization contract; DatabaseArtifactStore@1 export/projection receipts; datasets DuckLake typed capability/catalog-owner/registry/ingest/snapshot/execution/security/recovery contracts
 - Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=2048; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=10; worktree_slots=1; model_input_tokens=28000; model_output_tokens=9000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=dag-freeze-output; merge_slots=1; persistence_kib_s=1024
 - Model-route class: implementation/high; static DAG/interface verifier is authority
 - Permitted effects: AST/import analysis; contract comparison; write freeze artifacts and focused test
-- Prohibited effects: moving packages before evidence; adding duplicate contract names; adopting compatibility facades as authority; plan/board mutation
-- Completion contract: Actual SCCs and upward imports are recorded; intended bottom-up direction has a remediation map; each integration boundary names one existing canonical interface or an evidence-backed gap/version addition.
-- Validation requirements: hermetic static import graph test; import-smoke tests; duplicate contract-name scan; JSON validation
+- Prohibited effects: moving packages before evidence; adding duplicate contract names; adopting compatibility facades as authority; weakening or bypassing server-side datasets `quack_security` authorization; direct accelerator DuckLake ATTACH/raw SQL/catalog-file/credential access; opening incompatible DatabaseArtifactStore DDL against operational-v1; plan/board mutation
+- Completion contract: Actual SCCs and upward imports are recorded; intended bottom-up direction has a remediation map; each integration boundary names one existing canonical interface or an evidence-backed gap/version addition; the freeze explicitly seals `StateRepository`, `QuackStateRepository`, `QuackStateClient`, `QuackStateServer`, `StateServerIdentity`, `ControlPlaneStoreIdentity`, `StateCommand`, `DatabaseProgramConfig`, and server-side datasets `quack_security` scoped authorization; it defines the accelerator DuckDB + Quack control-plane split, requires Quack for multi-process reader/writer and exclusive state-owner access to DuckDB task/coordination/attempt/provider/effect/validation/CAS repositories, preserves one-writer embedded bootstrap, and permits DuckLake only through reviewed public typed APIs as an optional projection/query consumer.
+- Validation requirements: hermetic static import graph test; import-smoke tests; duplicate contract-name scan; named Quack interface signature/source-identity and datasets server-authorization checks; direct multi-process DuckDB writer/current-daemon-Quack safety scan; forbidden DuckLake direct-access scan; JSON validation
 - Proof requirements: deterministic graph root, SCC witness paths, interface source hashes
-- Lease requirements: isolated worktree lease; fence epoch; idempotency key dag-interface-freeze-R1
+- Lease requirements: isolated worktree lease; fence epoch; idempotency key dag-interface-freeze-R1-S1
 - Rollback or compensation procedure: Discard worktree; preserve failed cycle witnesses as gap evidence.
-- Required evidence: package graph, SCCs, dependency-direction violations, authority map, interface signatures/versions, facade classifications
+- Required evidence: package graph, SCCs, dependency-direction violations, authority map, DuckDB/Quack/DuckLake interface and forbidden-access map, named interface signatures/versions/source identities, datasets server-side authorization scope, facade classifications
 - Final result identity: pending; supervisor sets interface-freeze CID after acceptance
-- Outputs: docs/architecture/logic_governed_semantic_work_fabric_inventory/package_dag.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/authority_map.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/interface_freeze.json
+- Outputs: docs/architecture/logic_governed_semantic_work_fabric_inventory/package_dag.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/authority_map.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/interface_freeze.json, test/api/test_agent_supervisor_lgswf_package_dag.py
 - Validation: python3 -m pytest -q test/api/test_agent_supervisor_lgswf_package_dag.py
-- Acceptance: Every integration boundary is frozen without a new duplicate semantic or operational authority.
+- Acceptance: Every integration boundary, including the named Quack state-service contracts and datasets server-side scoped authorization, is frozen without a new duplicate semantic, lake, store or operational authority.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: authority-dag
 - Predicted files: docs/architecture/logic_governed_semantic_work_fabric_inventory/package_dag.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/authority_map.json, docs/architecture/logic_governed_semantic_work_fabric_inventory/interface_freeze.json, test/api/test_agent_supervisor_lgswf_package_dag.py
@@ -183,9 +194,9 @@ W16  LGSWF-140 -> LGSWF-141
 - Owned paths: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/contract_bindings.py, ipfs_datasets_py/tests/unit/logic/software_contracts/test_lgswf_semantic_producer.py
 - Base revision: 0691203550c0f316852c74d293d8fc3c4ce130a6
 - Base semantic-state root: unavailable; this producer-readiness task is authorized to use raw source
-- Base plan revision: LGSWF-PLAN-ACTUAL-R1
+- Base plan revision: LGSWF-PLAN-ACTUAL-R1-S1
 - Objective: Reproduce and minimally repair checked-head semantic scanning/namespace/duplicate-argument failures, then bind canonical callable/program contracts and proof-obligation references through datasets-owned metadata without adding operational fields or a new index.
-- Depends on: LGSWF-000
+- Depends on: LGSWF-006
 - Read scope: datasets semantic index/state/contracts/verification/formalization/backends/families and their tests
 - Write scope: owned paths only in the datasets submodule
 - External effect scope: none; local scans/tests only
@@ -199,11 +210,11 @@ W16  LGSWF-140 -> LGSWF-141
 - Completion contract: Selected source scopes scan deterministically; duplicate argument records and empty namespace fail safely or are correctly represented; canonical contract/proof CIDs flow through producer metadata/capsules; cold/incremental roots match; absent adversarial assurance stays unavailable.
 - Validation requirements: focused datasets producer tests; existing semantic index/state/capsule tests; cold versus incremental equality; full changed-scope scan
 - Proof requirements: semantic bundle verify; contract/proof reference provenance; no root excluded-field regression
-- Lease requirements: exclusive datasets submodule worktree mutation lease; fence epoch; CAS result; idempotency key datasets-producer-ac821-R1
+- Lease requirements: exclusive datasets submodule worktree mutation lease; fence epoch; CAS result; idempotency key datasets-producer-ac821-R1-S1
 - Rollback or compensation procedure: Revert datasets submodule commit in isolated worktree; retain failing scan inputs and stack traces; no canonical root publication.
 - Required evidence: reproduced failures, patch diff, scanner/capsule tests, verified bundle, provenance map, limitation record
 - Final result identity: pending; supervisor sets datasets producer result CID after acceptance
-- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/contract_bindings.py, ipfs_datasets_py/tests/unit/logic/software_contracts/test_lgswf_semantic_producer.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/contract_bindings.py, ipfs_datasets_py/tests/unit/logic/software_contracts/test_lgswf_semantic_producer.py
 - Validation: python3 -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/test_lgswf_semantic_producer.py
 - Acceptance: The canonical producer can build a verified root for the selected source without duplicating semantic or operational authority.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
@@ -226,9 +237,9 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G010
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/baseline.py, test/api/semantic_state/test_lgswf_current_baseline.py, data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/semantic-baseline.json
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: unavailable; this task establishes it from LGSWF-003 producer authority
-- Base plan revision: LGSWF-PLAN-ACTUAL-R1
+- Base plan revision: LGSWF-PLAN-ACTUAL-R1-S1
 - Objective: Assert import provenance, scan the exact selected tree, build/verify/persist datasets blocks, publish an accelerator root manifest through durable CAS, and record repository/tree/symbol/capsule/environment/contract/obligation availability separately.
 - Depends on: LGSWF-001, LGSWF-002, LGSWF-003
 - Read scope: accepted selected tree, LGSWF inventory/interface freeze, datasets producer API, accelerator semantic durable state
@@ -244,11 +255,11 @@ W16  LGSWF-140 -> LGSWF-141
 - Completion contract: Import files resolve under exact nested datasets checkout; repository state and semantic bundle verify; all referenced blocks are reachable; accepted root manifest is CAS-published once and binds exact repository/tree; unavailable dimensions remain typed.
 - Validation requirements: focused baseline test; datasets bundle verification; block reachability; CAS race/ABA tests; import-origin check
 - Proof requirements: repository/tree equality, deterministic cold/repeat root identity, content-address verification
-- Lease requirements: semantic-baseline single-flight lease; generation-bearing CAS; fence epoch; idempotency key selected-tree-semantic-baseline-R1
+- Lease requirements: semantic-baseline single-flight lease; generation-bearing CAS; fence epoch; idempotency key selected-tree-semantic-baseline-R1-S1
 - Rollback or compensation procedure: Never advance accepted manifest on failure; quarantine partial blocks (unreachable); discard code worktree; retain failure receipt.
 - Required evidence: import provenance, scan receipt, root CID, block inventory, verify receipt, manifest CID/generation, unavailable-gap list
 - Final result identity: pending; accepted semantic baseline manifest CID
-- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/baseline.py, data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/semantic-baseline.json
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/baseline.py, test/api/semantic_state/test_lgswf_current_baseline.py, data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/semantic-baseline.json
 - Validation: python3 -m pytest -q test/api/semantic_state/test_lgswf_current_baseline.py
 - Acceptance: A verified current datasets root and accelerator reference manifest exist for the exact selected tree.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
@@ -271,12 +282,12 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G010
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/task_sources/lgswf_bootstrap_revision.py, test/api/test_agent_supervisor_lgswf_bootstrap_revision.py, data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/plan-r2.json
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: output of accepted LGSWF-004 only
-- Base plan revision: LGSWF-PLAN-ACTUAL-R1
-- Objective: Use the existing PlanRevisionStore to create and CAS-accept R2, replacing every future sentinel with exact tree, semantic, capsule, contract, obligation, policy and completion identities while preserving R1.
+- Base plan revision: LGSWF-PLAN-ACTUAL-R1-S1
+- Objective: Use the existing PlanRevisionStore to create and CAS-accept R2, replacing every future sentinel with exact tree, semantic, capsule, contract, obligation, policy, execution-base and completion identities while preserving accepted R1-S1 and the separately quarantined R1 evidence.
 - Depends on: LGSWF-004
-- Read scope: R1 board/objectives, accepted semantic baseline, inventory/interface freeze, PlanRevisionStore/contracts
+- Read scope: accepted R1-S1 board/objectives, quarantined R1 evidence, accepted semantic baseline, inventory/interface freeze, PlanRevisionStore/contracts
 - Write scope: owned paths and existing PlanRevisionStore runtime data through its API only
 - External effect scope: local durable CAS/event append only
 - Relevant symbol IDs: exact sets derived per future task from accepted semantic view
@@ -284,16 +295,16 @@ W16  LGSWF-140 -> LGSWF-141
 - Contract and obligation CIDs: exact canonical datasets CIDs or typed unavailable blockers
 - Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=80; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=20000; model_output_tokens=8000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=plan-store-writer; merge_slots=1; persistence_kib_s=2048
 - Model-route class: implementation/high; deterministic PlanRevisionStore admission is authority
-- Permitted effects: submit/apply one immutable PlanDelta; fence stale R1 future claims; persist R2 receipt
-- Prohibited effects: edit R1/history in place; weaken completion; rebind claimed/running records; fabricate unavailable CIDs; direct board mutation by worker
-- Completion contract: R2 is the sole accepted pointer; R1 remains verifiable; future tasks have exact current semantic bindings or explicit typed holds; no running history is rewritten; all R2 roots/populations validate.
+- Permitted effects: submit/apply one immutable PlanDelta; fence stale R1-S1 future claims; persist R2 receipt
+- Prohibited effects: edit R1-S1 or quarantined R1 history in place; weaken completion; rebind claimed/running records; fabricate unavailable CIDs; direct board mutation by worker
+- Completion contract: R2 is the sole accepted pointer; R1-S1 and quarantined R1 remain separately verifiable; future tasks have exact current execution and semantic bindings or explicit typed holds; no running history is rewritten; all R2 roots/populations validate.
 - Validation requirements: focused revision test; PlanRevisionStore crash/CAS tests; task population/dedup; sentinel absence in admitted R2
 - Proof requirements: old/new plan roots, delta operations, supersession/fence receipts, semantic-root equality
 - Lease requirements: exclusive plan-store writer lease, current coordination fence, CAS expected pointer, idempotency key lgswf-bootstrap-r2
 - Rollback or compensation procedure: If CAS fails, retain rejected proposal and do not retry with a new semantic key; prior accepted pointer remains; fence any partial projection.
-- Required evidence: R1/R2 CIDs, PlanDelta, accepted pointer CAS, rebound task bindings, stale-claim fence results, event cursor
+- Required evidence: quarantined R1 CID, accepted R1-S1 CID, R2 CID, PlanDelta, accepted pointer CAS, rebound task bindings, stale-claim fence results, event cursor
 - Final result identity: pending; accepted PlanRevision R2 CID
-- Outputs: data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/plan-r2.json
+- Outputs: ipfs_accelerate_py/agent_supervisor/task_sources/lgswf_bootstrap_revision.py, test/api/test_agent_supervisor_lgswf_bootstrap_revision.py, data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/plan-r2.json
 - Validation: python3 -m pytest -q test/api/test_agent_supervisor_lgswf_bootstrap_revision.py
 - Acceptance: No post-A task is dispatchable with a sentinel or stale semantic binding.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
@@ -316,7 +327,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G020
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_contracts.py, test/api/semantic_state/test_world_snapshot_contracts.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Define one accelerator-owned content-addressed world snapshot schema with all required reference roots, statuses, epochs, cursor and strict exclusions.
@@ -361,12 +372,12 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G020
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_builder.py, test/api/semantic_state/test_world_snapshot_builder.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Build snapshots by independently verifying datasets, plan, objectives, claims, resources, capabilities, merge and event authorities, then enforce freshness and cross-authority consistency.
+- Objective: Build snapshots by independently verifying datasets, plan, objectives, claims, resources, capabilities, merge and event authorities, observe optional DuckLake projection health only through a DuckDB-recorded receipt, then enforce freshness and cross-authority consistency.
 - Depends on: LGSWF-005
-- Read scope: frozen authority adapters and world snapshot interface description from plan
+- Read scope: frozen authority adapters, world snapshot interface description from plan, and optional read-only DuckDB projection-health receipt
 - Write scope: owned paths only
 - External effect scope: none; injected read ports only
 - Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
@@ -375,13 +386,13 @@ W16  LGSWF-140 -> LGSWF-141
 - Resource demand: cpu_ms=9000000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=2048; disk_bandwidth_mib_s=80; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=28000; model_output_tokens=10000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=world-builder-file; merge_slots=1; persistence_kib_s=1024
 - Model-route class: implementation/high; deterministic authority adapters are authority
 - Permitted effects: add pure/injected builder and admission tests
-- Prohibited effects: single-source omniscience; authority mutation; stale fallback; implicit filesystem/provider lookup
-- Completion contract: Every component records status/evidence; required agreement covers repository/tree/plan/task population/semantic generation/policy; any stale/unavailable/inconsistent/quarantined required input makes snapshot unschedulable with typed reasons.
-- Validation requirements: authority disagreement matrix, stale-plan/root tests, unavailable/quarantine tests, deterministic rerun
+- Prohibited effects: single-source omniscience; authority mutation; stale fallback; implicit filesystem/provider lookup; DuckLake query as semantic, plan, task, claim, lease, resource, cursor or acceptance authority
+- Completion contract: Every required component records status/evidence; required agreement covers repository/tree/plan/task population/semantic generation/policy; any stale/unavailable/inconsistent/quarantined required input makes snapshot unschedulable with typed reasons; optional DuckLake projection health cannot grant authority and its absence/outage cannot make an otherwise valid snapshot unschedulable.
+- Validation requirements: authority disagreement matrix, stale-plan/root tests, unavailable/quarantine tests, optional-projection outage/tamper/non-authority cases, deterministic rerun
 - Proof requirements: authority-to-field provenance and fail-closed truth table
 - Lease requirements: isolated worktree/path write lease; no coordination-writer authority
 - Rollback or compensation procedure: Discard worktree; no authority was mutated.
-- Required evidence: builder receipt, component status matrix, disagreement cases, test results
+- Required evidence: builder receipt, component status matrix, disagreement cases, optional-projection observation/non-authority cases, test results
 - Final result identity: pending; accepted builder result CID
 - Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_builder.py, test/api/semantic_state/test_world_snapshot_builder.py
 - Validation: python3 -m pytest -q test/api/semantic_state/test_world_snapshot_builder.py
@@ -406,7 +417,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G020
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/world_view.py, test/api/semantic_state/test_world_view.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Provide mutation-free queries for goal/subgoal/task state, semantic binding, dependencies, conflicts, resources, claims, capsules/contracts/obligations, completion evidence and refill eligibility.
@@ -451,7 +462,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G020
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py, test/api/semantic_state/test_world_overlay_acceptance.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Export one canonical world overlay surface, reconcile W3 changes, and qualify end-to-end construction/admission/query behavior without creating a duplicate facade.
@@ -496,7 +507,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G030
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/work_binding.py, test/api/semantic_state/test_semantic_work_binding.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Define a strict content-addressed binding for goals, subgoals, tasks and attempts covering every required semantic reference, condition, scope, effect, test/proof, limitation, invalidation, completion and authority field.
@@ -541,7 +552,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G030
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/objectives/completion_contracts.py, test/api/test_agent_supervisor_semantic_completion_contracts.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Extend existing goal completion with observable semantic/evidence contracts and separate worker, validation, proof, merge, refresh and supervisor-acceptance gates.
@@ -586,7 +597,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G030
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/provisional_state.py, test/api/semantic_state/test_provisional_state_authority.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Bind provisional semantic roots to worktree/task/attempt and prevent them or worker results from advancing canonical repository semantic authority.
@@ -631,7 +642,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G030
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/semantic_binding_admission.py, test/api/test_agent_supervisor_semantic_binding_admission.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Promote required Markdown metadata and canonical task records into typed semantic binding/completion admission inputs and join W4 contracts without changing accepted history.
@@ -676,7 +687,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G040
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/semantic_work_graph.py, test/api/test_agent_supervisor_semantic_work_graph.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Compose all required goal/task/code/data/interface/schema/contract/proof/validation/policy/merge/lifecycle/scope/invalidation/conflict/supersession/generation/block/unlock edges with distinct authority and evidence.
@@ -721,7 +732,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G040
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/core/conflict_graph.py, test/api/test_agent_supervisor_semantic_conflict_graph.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Extend the existing conflict graph with predicted paths, exact symbol/interface/schema/state/effect/generated/fixture/taskboard/database/merge/external/resource scopes and conservative opaque fallback.
@@ -766,7 +777,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G040
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/work_graph_metrics.py, test/api/test_agent_supervisor_work_graph_metrics.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Calculate topological depth, critical path, unlock and blocking-goal counts, estimated cost, uncertainty, merge risk, resource bottleneck and cache locality using durable integer/fixed-point values.
@@ -811,7 +822,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G040
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/semantic_work_graph_integration.py, test/api/test_agent_supervisor_semantic_work_graph_acceptance.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Compose accepted W5 components from one world view and prove dependency/conflict separation, authority provenance, conservative fallbacks and deterministic metrics.
@@ -856,7 +867,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G050
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/conflict_free_frontier.py, test/api/test_agent_supervisor_conflict_free_frontier.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Enforce the twelve readiness predicates and construct a deterministic candidate ready set plus conflict relation from one current world/graph snapshot.
@@ -901,7 +912,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G050
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/frontier_optimizer.py, test/api/test_agent_supervisor_frontier_optimizer.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Select a useful conflict-free antichain under hard resource constraints with fixed-point scoring, exact bounded search for small sets and deterministic greedy/local improvement for large sets.
@@ -946,7 +957,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G050
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/parallel_plan_compiler.py, test/api/test_agent_supervisor_lgswf_plan_transforms.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Extend current PlanDelta-based planning to propose bounded split/coalesce/rewire operations and isolated read-only speculation under the exact documented conditions.
@@ -991,7 +1002,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G050
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/frontier_integration.py, test/api/test_agent_supervisor_frontier_acceptance.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Integrate readiness, optimizer and plan-transform proposals with current planning while leaving resource reservation and dispatch to later authorities.
@@ -1036,7 +1047,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G060
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py, test/api/test_agent_supervisor_lgswf_resource_scheduler.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Extend the current scheduler with the full integer resource vector and bounded leased reservation/release/reclaim semantics bound to task, attempt, supervisor and daemon.
@@ -1081,7 +1092,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G060
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/work_cache_coordinator.py, test/api/test_agent_supervisor_work_cache_coordinator.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Learn bounded predictions from immutable receipts and coordinate cache affinity/single-flight reuse for scans, semantic blocks, capsules, contexts, providers, tests, proofs, dependencies and worktrees.
@@ -1126,12 +1137,12 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G060
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/stage_backpressure.py, test/api/test_agent_supervisor_stage_backpressure.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Apply independent admission pressure to analysis/context/model/proof translation/solver/kernel/validation/merge/persistence and safely cancel/preempt stale or speculative work.
+- Objective: Apply independent admission pressure to analysis/context/model/proof translation/solver/kernel/validation/merge/persistence and the DuckDB + Quack-control-plane-outbox-to-DuckLake projection stage, then safely cancel/preempt stale or speculative work.
 - Depends on: LGSWF-043
-- Read scope: stage/resource/provider/prover/merge/cancellation/effect contracts
+- Read scope: stage/resource/provider/prover/merge/cancellation/effect contracts plus authoritative DuckDB outbox/cursor and optional projection-health receipts
 - Write scope: owned paths only
 - External effect scope: local simulated queues/cancellation only
 - Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
@@ -1139,18 +1150,18 @@ W16  LGSWF-140 -> LGSWF-141
 - Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; StageBackpressurePolicy@1
 - Resource demand: cpu_ms=9000000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=2048; disk_bandwidth_mib_s=80; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=28000; model_output_tokens=9000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=backpressure-file; merge_slots=1; persistence_kib_s=1024
 - Model-route class: implementation/high; deterministic policy is authority
-- Permitted effects: add policy/state and deterministic queue tests
-- Prohibited effects: global stall from one saturated stage; preempt uncompensated non-idempotent effect; ignore merge pressure; cancel accepted work
-- Completion contract: Each stage has independent bounds/reasons; provider/proof saturation permits CPU analysis; merge saturation reduces mutation; preemption selects only eligible work and emits cancellation/compensation evidence.
-- Validation requirements: saturation matrix, CPU coexistence, merge throttling, priority/stale/speculative preemption, effect compensation cases
-- Proof requirements: no-global-block and safe-preemption invariants
+- Permitted effects: add policy/state and deterministic queue tests, including hermetic projection outage/replay
+- Prohibited effects: global stall from one saturated stage; lake/network call inside a DuckDB authority transaction; projection acquiring operational writer authority; preempt uncompensated non-idempotent effect; ignore merge pressure; cancel accepted work
+- Completion contract: Each stage has independent bounds/reasons; provider/proof/projection saturation permits CPU analysis; merge saturation reduces mutation; DuckLake projection batches are at most 5,000 rows, 16 MiB and 10 seconds and replay idempotently from the DuckDB cursor after outage; preemption selects only eligible work and emits cancellation/compensation evidence.
+- Validation requirements: saturation matrix, CPU coexistence, merge throttling, projection batch bounds/outage/backlog replay, no lake/network inside DuckDB transaction, priority/stale/speculative preemption, effect compensation cases
+- Proof requirements: no-global-block, DuckDB-orchestrated projection isolation, and safe-preemption invariants
 - Lease requirements: isolated source lease; cancellation requires current task fence
 - Rollback or compensation procedure: Revert policy; release test reservations; any partial external effect is marked compensation-required.
-- Required evidence: pressure snapshots, admission reasons, cancellation receipts, saturation test matrix
+- Required evidence: pressure snapshots, admission reasons, projection queue/outage/replay receipts, cancellation receipts, saturation test matrix
 - Final result identity: pending; accepted backpressure-policy CID
 - Outputs: ipfs_accelerate_py/agent_supervisor/runtime/stage_backpressure.py, test/api/test_agent_supervisor_stage_backpressure.py
 - Validation: python3 -m pytest -q test/api/test_agent_supervisor_stage_backpressure.py
-- Acceptance: Saturated stages exert targeted rather than global backpressure.
+- Acceptance: Saturated stages exert targeted rather than global backpressure, and optional DuckLake cannot stall scheduling or acceptance.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: backpressure
 - Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/stage_backpressure.py, test/api/test_agent_supervisor_stage_backpressure.py
@@ -1171,7 +1182,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G060
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/resource_admission.py, test/api/test_agent_supervisor_lgswf_resource_admission.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Atomically validate selected frontier resources, apply cache/backpressure decisions, reserve before dispatch and compensate partial multi-resource reservation failure.
@@ -1216,10 +1227,10 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G070
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py, test/api/test_agent_supervisor_fabric_coordination.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Define capability observations/roles and one fenced writer per mutable shard with heartbeat, lease policy, coordination-epoch failover and stale-coordinator commit rejection.
+- Objective: Define capability observations/roles and one fenced writer per mutable shard with heartbeat, lease policy, coordination-epoch failover and stale-coordinator commit rejection, explicitly modeling DuckDB records/schema/CAS/fencing behind the mandatory Quack multi-reader/multi-writer transport and exclusive state-owner boundary.
 - Depends on: LGSWF-053
 - Read scope: sealed process identity, daemon registry, lease/database coordination, resource/provider/prover/worktree/merge capability
 - Write scope: owned paths only
@@ -1230,9 +1241,9 @@ W16  LGSWF-140 -> LGSWF-141
 - Resource demand: cpu_ms=14400000; cpu_concurrency=3; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=120; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=supervisor-fabric-file; merge_slots=1; persistence_kib_s=2048
 - Model-route class: implementation/high; lease/fence/process identity checks are authority
 - Permitted effects: add coordination contract/runtime and local failover tests
-- Prohibited effects: capability as authority; two shard writers; stale epoch commit; weaken sealed launch/process identity; hidden local dependency
-- Completion contract: Advertisements cover all required fields; roles are capability-based; coordinator crash permits later epoch; old coordinator/partitioned supervisor cannot publish mutable authority.
-- Validation requirements: capability schema, heartbeat/health, lease acquisition/failover, split brain, stale fence/process identity
+- Prohibited effects: capability as authority; direct multi-process DuckDB file writers; calling current `DatabaseImplementationDaemon` Quack mode safe; two shard writers; stale epoch commit; weaken sealed launch/process identity; hidden local dependency
+- Completion contract: Advertisements cover all required fields; roles are capability-based; embedded bootstrap retains one DuckDB writer; multi-process admission requires an exact pinned DuckDB/Quack 1.5.5 receipt and exclusive Quack state owner; coordinator crash permits later epoch; old coordinator/partitioned supervisor cannot publish mutable authority.
+- Validation requirements: capability schema including current install-required/import-only no-go, heartbeat/health, exact profile, lease acquisition/failover, split brain, stale fence/process identity, direct-file-writer rejection
 - Proof requirements: one-current-writer and monotonic-epoch invariants
 - Lease requirements: coordination-shard lease with fencing token; source path lease
 - Rollback or compensation procedure: Stop test coordinators, release/fence leases, revert additive code; retain event history.
@@ -1240,7 +1251,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Final result identity: pending; accepted coordination CID
 - Outputs: ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py, test/api/test_agent_supervisor_fabric_coordination.py
 - Validation: python3 -m pytest -q test/api/test_agent_supervisor_fabric_coordination.py
-- Acceptance: Exactly one current fenced writer can mutate each coordination shard.
+- Acceptance: Exactly one current fenced Quack state owner can mutate each DuckDB coordination shard in multi-process mode; otherwise the embedded one-writer limit remains.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: supervisor-coordination
 - Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py, test/api/test_agent_supervisor_fabric_coordination.py
@@ -1261,10 +1272,10 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G070
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/work_partitioning.py, test/api/test_agent_supervisor_work_partitioning.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Partition selected work by semantic/repository/goal/resource/provider/worktree/merge locality, preserve cross-partition edges, constrain stealing, and enforce exactly-once logical acceptance.
+- Objective: Partition selected work by semantic/repository/goal/resource/provider/worktree/merge locality, preserve cross-partition edges, route multi-supervisor reads through sealed Quack snapshots, constrain stealing, and enforce exactly-once logical acceptance through DuckDB CAS/fencing at the Quack state-owner boundary.
 - Depends on: LGSWF-053
 - Read scope: frontier/resource decisions, capabilities, claims/checkpoints/fences/idempotency, merge strategy
 - Write scope: owned paths only
@@ -1275,9 +1286,9 @@ W16  LGSWF-140 -> LGSWF-141
 - Resource demand: cpu_ms=10800000; cpu_concurrency=3; ram_mib=6144; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; model_input_tokens=30000; model_output_tokens=11000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=work-partition-file; merge_slots=1; persistence_kib_s=2048
 - Model-route class: implementation/high; deterministic partition/claim CAS is authority
 - Permitted effects: add partition/steal/acceptance logic and tests
-- Prohibited effects: hidden dependencies; steal live mutating task; reuse stale checkpoint/fence; accept duplicate tuple; move ineligible effect
-- Completion contract: Cross-partition edges remain explicit; only unclaimed/expired/dead/transferable work with verified checkpoint and later fence moves; one attempt wins acceptance for task/revision/tree/root/idempotency.
-- Validation requirements: deterministic partition, locality, cross-edge, stealing eligibility, duplicate attempts and live-mutation non-transfer
+- Prohibited effects: hidden dependencies; direct multi-process DuckDB read/write bypass; stale Quack snapshot admission; steal live mutating task; reuse stale checkpoint/fence; accept duplicate tuple; move ineligible effect
+- Completion contract: Cross-partition edges remain explicit; Quack readers bind snapshot/epoch and cannot mutate; only unclaimed/expired/dead/transferable work with verified checkpoint and later Quack/DuckDB fence moves; one attempt wins DuckDB acceptance for task/revision/tree/root/idempotency.
+- Validation requirements: deterministic partition, locality, cross-edge, Quack read snapshot/epoch, bypass rejection, stealing eligibility, duplicate attempts and live-mutation non-transfer
 - Proof requirements: partition coverage/no-duplication and single accepted-key invariant
 - Lease requirements: claim-shard/transfer leases with later fence; source path lease
 - Rollback or compensation procedure: Cancel/fence transferred test claims, restore unclaimed state through typed compensation, revert code.
@@ -1305,35 +1316,35 @@ W16  LGSWF-140 -> LGSWF-141
 - Parent goal ID: LGSWF-G000
 - Subgoal ID: LGSWF-G070
 - Owning repository: ipfs_accelerate_py
-- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, test/api/test_agent_supervisor_multi_supervisor_fabric.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py, scripts/ops/agent_supervisor/configured_board_scheduler.py, test/api/test_agent_supervisor_multi_supervisor_fabric.py, test/api/test_agent_supervisor_configured_board_scheduler.py, test/api/test_agent_supervisor_database_runner_propagation.py
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Extend the existing sealed runner, consolidate runtime-effective duplicate definitions as needed, and connect frontier/resource partitions to coordinated supervisors without replacing launch protections.
+- Objective: Extend the existing sealed runner and configured-board scheduler, consolidate runtime-effective duplicate definitions as needed, and propagate a live Quack endpoint plus `StateServerIdentity` through configured-board/runner launch, start/stop and independent remote-readiness paths while connecting frontier/resource partitions to coordinated supervisors without replacing launch protections.
 - Depends on: LGSWF-060, LGSWF-061
-- Read scope: W8 components, current multi-supervisor runner/launch identity/lifecycle
+- Read scope: W8 components, current multi-supervisor runner, configured-board runtime and operations entrypoint, launch identity/lifecycle, Quack endpoint and state-server identity contracts, and remote-readiness probes
 - Write scope: owned paths only
 - External effect scope: local bounded supervisor process fixtures
 - Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
 - Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
-- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; existing sealed control-plane contracts
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; existing sealed control-plane contracts; StateServerIdentity; DatabaseProgramConfig; configured-board/runner propagation contract; independent Quack remote-readiness receipt
 - Resource demand: cpu_ms=18000000; cpu_concurrency=4; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=8192; disk_bandwidth_mib_s=150; network=deny; network_bandwidth_kib_s=0; subprocesses=24; worktree_slots=3; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=multi-supervisor-runner-file; merge_slots=1; persistence_kib_s=4096
 - Model-route class: implementation/high; sealed launch/process/coordination tests are authority
 - Permitted effects: edit current runner minimally, preserve sealed launch, run bounded local process tests
-- Prohibited effects: new supervisor framework; bypass process identity/lifecycle; stale coordinator commit; orphan processes; hidden-memory coordination
-- Completion contract: Runner advertises capabilities, partitions admitted frontier, assigns bounded packets, fails over epochs, preserves cross edges and produces one accepted logical result per key.
-- Validation requirements: W8 suite, existing multi-supervisor tests, coordinator kill/failover, partitioned supervisor and duplicate result
+- Prohibited effects: new supervisor framework; bypass process identity/lifecycle or Quack state owner; direct multi-process DuckDB access; substitute local file readiness for remote state-server readiness; drop endpoint/server identity between configured-board and runner layers; claim unsafe current daemon Quack mode qualified; stale coordinator commit; orphan processes; hidden-memory coordination
+- Completion contract: Configured-board and runner paths bind and propagate the admitted live Quack endpoint and `StateServerIdentity`, start and stop the exclusive state-owner service exactly once, prove its readiness independently from local DuckDB/file readiness, advertise capabilities, partition the admitted frontier, assign bounded packets, fail over Quack state-owner epochs, preserve cross edges and produce one DuckDB-accepted logical result per key; production multi-process mutation stays disabled until LGSWF-072 qualifies every operational repository path.
+- Validation requirements: W8 suite, existing multi-supervisor/configured-board/runner-propagation tests, live endpoint and state-server-identity propagation, state-owner start/stop and independent remote-readiness cases, missing/mismatched Quack capability fail-closed, coordinator kill/failover, partitioned supervisor and duplicate result
 - Proof requirements: sealed control-plane identity continuity and epoch/fence invariants
 - Lease requirements: exclusive runner edit lease; test coordinator shard leases; merge slot/current fence
 - Rollback or compensation procedure: Terminate spawned fixtures, fence leases, revert runner integration; preserve logs/events.
-- Required evidence: launch identity, capability/partition/assignment roots, failover/duplicate receipts, W8 seal
+- Required evidence: launch and state-server identities, propagated endpoint/config identities, start/stop and independent remote-readiness receipts, capability/partition/assignment roots, failover/duplicate receipts, W8 seal
 - Final result identity: pending; accepted W8 integration CID
-- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, test/api/test_agent_supervisor_multi_supervisor_fabric.py
-- Validation: python3 -m pytest -q test/api/test_agent_supervisor_fabric_coordination.py test/api/test_agent_supervisor_work_partitioning.py test/api/test_agent_supervisor_multi_supervisor_fabric.py
-- Acceptance: Current sealed runner operates as a fenced coordinated fabric without duplicate framework or stale authority.
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py, scripts/ops/agent_supervisor/configured_board_scheduler.py, test/api/test_agent_supervisor_multi_supervisor_fabric.py, test/api/test_agent_supervisor_configured_board_scheduler.py, test/api/test_agent_supervisor_database_runner_propagation.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_fabric_coordination.py test/api/test_agent_supervisor_work_partitioning.py test/api/test_agent_supervisor_multi_supervisor_fabric.py test/api/test_agent_supervisor_configured_board_scheduler.py test/api/test_agent_supervisor_database_runner_propagation.py
+- Acceptance: Current sealed runner and configured-board entrypoint operate as a fenced coordinated fabric with live endpoint/server-identity propagation, one start/stop owner and independent remote readiness, without duplicate framework or stale authority.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: supervisor-integration
-- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, test/api/test_agent_supervisor_multi_supervisor_fabric.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py, scripts/ops/agent_supervisor/configured_board_scheduler.py, test/api/test_agent_supervisor_multi_supervisor_fabric.py, test/api/test_agent_supervisor_configured_board_scheduler.py, test/api/test_agent_supervisor_database_runner_propagation.py
 - Conflict policy: Serial W8 integration; exclusive runtime-effective runner definitions.
 - Raw-source requirements: none
 
@@ -1351,23 +1362,23 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G080
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/todo_daemon/work_packet.py, test/api/test_agent_supervisor_semantic_work_packet.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Extend one existing/canonical daemon packet to bind all required goal/plan/tree/semantic/context/scope/effect/resource/provider/model/validation/proof/completion/lease/fence/attempt/idempotency/checkpoint/cancellation/output fields.
+- Objective: Extend one existing/canonical daemon packet to bind all required goal/plan/tree/semantic/context/scope/effect/resource/provider/model/validation/proof/completion/lease/fence/attempt/idempotency/checkpoint/cancellation/output fields plus the admitted DuckDB + Quack control-plane profile, endpoint-free service identity, state-owner epoch and repository capabilities.
 - Depends on: LGSWF-062
-- Read scope: implementation request/semantic work/claim/resource/provider/completion contracts
+- Read scope: implementation request/semantic work/claim/resource/provider/completion contracts and frozen Quack service/repository/capability contracts
 - Write scope: owned paths only
 - External effect scope: none
 - Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
 - Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
-- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; DaemonWorkPacket@current-version-extension
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; DaemonWorkPacket@current-version-extension; QuackStateRepository@1; exact DuckDB/Quack capability/profile receipt
 - Resource demand: cpu_ms=10800000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=2048; disk_bandwidth_mib_s=80; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=30000; model_output_tokens=11000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=work-packet-file; merge_slots=1; persistence_kib_s=1024
 - Model-route class: implementation/high; packet validator is authority
 - Permitted effects: extend canonical packet/version and tests
-- Prohibited effects: parallel incompatible format; omit authority/scope/fence fields; embed secrets/prompts/provider payloads; accept sentinel/stale roots
-- Completion contract: Packet canonical identity binds every required field, rejects forbidden/unknown/mixed authority, and remains compatible through an explicit migration projection.
-- Validation requirements: roundtrip/CID, required field matrix, forged/stale/wrong tree/plan/fence/scope/effect cases, compatibility tests
+- Prohibited effects: parallel incompatible format; omit authority/scope/fence/Quack state-owner fields; embed raw endpoint, database path, credentials, secrets/prompts/provider payloads; accept sentinel/stale roots or generic 1.5 profile for multi-process authority
+- Completion contract: Packet canonical identity binds every required field, selects embedded one-writer or exact-profile Quack mode, rejects forbidden/unknown/mixed authority and direct multi-process DuckDB paths, and remains compatible through an explicit migration projection.
+- Validation requirements: roundtrip/CID, required field matrix, exact-1.5.5 and current install-required/import-only no-go cases, forged/stale/wrong tree/plan/fence/state-owner/scope/effect cases, compatibility tests
 - Proof requirements: field completeness and content-identity vectors
 - Lease requirements: isolated source lease; packet itself binds admitted task/resource/claim leases
 - Rollback or compensation procedure: Revert version extension; old packet remains readable, new packet acceptance disabled.
@@ -1375,7 +1386,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Final result identity: pending; accepted work-packet schema CID
 - Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/work_packet.py, test/api/test_agent_supervisor_semantic_work_packet.py
 - Validation: python3 -m pytest -q test/api/test_agent_supervisor_semantic_work_packet.py
-- Acceptance: One canonical packet carries the complete bounded work authority.
+- Acceptance: One canonical packet carries the complete bounded work authority and cannot grant multi-process access without the sealed Quack state-owner binding.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: work-packet
 - Predicted files: ipfs_accelerate_py/agent_supervisor/todo_daemon/work_packet.py, test/api/test_agent_supervisor_semantic_work_packet.py
@@ -1396,12 +1407,12 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G080
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/todo_daemon/checkpoints.py, test/api/test_agent_supervisor_daemon_checkpoints.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Implement the explicit lifecycle, complete content-addressed checkpoint schema, corruption-safe resume, and immediate typed stop on stale plan/root/lease/fence/scope/cancel/already-accepted state.
+- Objective: Implement the explicit lifecycle, complete content-addressed checkpoint schema, corruption-safe resume, Quack snapshot-bound multi-reader recovery, and immediate typed stop on stale plan/root/lease/fence/state-owner-epoch/scope/cancel/already-accepted state.
 - Depends on: LGSWF-062
-- Read scope: daemon lifecycle, claim/checkpoint/event/cancellation/semantic state contracts
+- Read scope: daemon lifecycle, claim/checkpoint/event/cancellation/semantic state contracts and Quack snapshot/epoch/read-only repository contracts
 - Write scope: owned paths only
 - External effect scope: local checkpoint persistence only
 - Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
@@ -1410,10 +1421,10 @@ W16  LGSWF-140 -> LGSWF-141
 - Resource demand: cpu_ms=10800000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=10; worktree_slots=1; model_input_tokens=30000; model_output_tokens=11000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=checkpoint-file; merge_slots=1; persistence_kib_s=2048
 - Model-route class: implementation/high; lifecycle/checkpoint verifier is authority
 - Permitted effects: add lifecycle/checkpoint records, local durable tests and typed stale results
-- Prohibited effects: checkpoint as completion; finish-after-fence; resume corrupt/stale checkpoint; omit partial effects/outstanding obligations
-- Completion contract: All main/side transitions are closed; checkpoint binds every required field/CID; valid crash resumes; every stale condition stops before another effect and records a typed result.
-- Validation requirements: transition matrix, checkpoint roundtrip/corruption, crash/resume, each stale condition, partial effect/compensation
-- Proof requirements: legal transition graph and no-effect-after-stale invariant
+- Prohibited effects: checkpoint as completion; direct multi-process DuckDB read/write; Quack reader mutation; finish-after-fence; resume corrupt/stale checkpoint or state-owner epoch; omit partial effects/outstanding obligations
+- Completion contract: All main/side transitions are closed; checkpoint binds every required field/CID plus Quack snapshot/state-owner epoch when active; valid crash resumes through a current verified read path; every stale condition stops before another effect and records a typed result.
+- Validation requirements: transition matrix, checkpoint roundtrip/corruption, embedded and Quack snapshot read paths, crash/resume, each stale condition including owner failover, partial effect/compensation
+- Proof requirements: legal transition graph, snapshot-read purity and no-effect-after-stale invariant
 - Lease requirements: checkpoint write lease bound to attempt/fence; isolated source lease
 - Rollback or compensation procedure: Quarantine corrupt checkpoints, fence attempt, mark partial effects, execute declared compensation; revert code.
 - Required evidence: lifecycle graph, checkpoint vectors, resume/stale receipts, corruption cases
@@ -1440,35 +1451,35 @@ W16  LGSWF-140 -> LGSWF-141
 - Parent goal ID: LGSWF-G000
 - Subgoal ID: LGSWF-G080
 - Owning repository: ipfs_accelerate_py
-- Owned paths: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_daemon_protocol_integration.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Owned paths: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py, ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py, ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py, ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py, ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py, ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py, ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py, ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py, ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py, ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py, scripts/ops/agent_supervisor/quack_state_server.py, ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_quack_security.py, test/api/test_agent_supervisor_daemon_protocol_integration.py, test/api/test_agent_supervisor_control_plane_repository.py, test/api/test_agent_supervisor_control_plane_contracts.py, test/api/test_agent_supervisor_quack_state_client.py, test/api/test_agent_supervisor_quack_state_server.py, test/api/test_agent_supervisor_quack_capabilities.py, test/api/test_agent_supervisor_intent_repository.py, test/api/test_agent_supervisor_database_portal_bridge.py, test/api/test_agent_supervisor_ipfs_datasets_quack_security.py
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Wire admitted packets, lifecycle/checkpoints and stale-stop gates into the current daemon without replacing its parser/provider/worktree/lifecycle framework.
+- Objective: Wire admitted packets, lifecycle/checkpoints and stale-stop gates into the current daemon; consolidate the currently separate intent, transaction, portal, task, coordination, attempt, provider, effect, validation and CAS authorities behind one canonical Quack state-owner gateway with server-side datasets `quack_security` scoped authorization; and include eligible work-steal/refence handoff without replacing the daemon's parser/provider/worktree/lifecycle framework.
 - Depends on: LGSWF-070, LGSWF-071
-- Read scope: W9 components and current implementation daemon/semantic scheduling adapter
+- Read scope: W9 components, accepted W8 partition/steal protocol, QuackStateRepository/client/server, datasets `duckdb_control.quack_security`, and current implementation daemon/intent/transaction/portal/task/coordination/attempt/provider/effect/validation/CAS adapters
 - Write scope: owned paths only
 - External effect scope: bounded local worker/process/worktree fixtures
 - Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
 - Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
-- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; canonical daemon packet/lifecycle
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; canonical daemon packet/lifecycle; QuackStateRepository@1; exact DuckDB/Quack 1.5.5 capability/profile; canonical state-owner gateway contract; datasets quack_security scoped-authorization contract; task/coordination/attempt/provider/effect/validation/CAS repository seals
 - Resource demand: cpu_ms=18000000; cpu_concurrency=4; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=8192; disk_bandwidth_mib_s=150; network=deny; network_bandwidth_kib_s=0; subprocesses=20; worktree_slots=2; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=implementation-daemon-file; merge_slots=1; persistence_kib_s=4096
 - Model-route class: implementation/high; supervisor verification/daemon integration tests are authority
-- Permitted effects: minimal current daemon integration, bounded local execution, checkpoint persistence
-- Prohibited effects: new daemon framework; self-acceptance; bypass provider/lease/scope; alter completion/scheduling policy; orphan worker
-- Completion contract: Daemon consumes only admitted current packets, checkpoints as configured, reports worker completion, stops stale, and cannot mark supervisor verification/acceptance.
-- Validation requirements: W9 suite plus current daemon/parser/worktree/provider tests, crash/resume and stale kill
-- Proof requirements: worker-versus-supervisor authority separation and no-effect-after-stale
+- Permitted effects: minimal current daemon/repository/gateway integration, a thin high-level adapter to public datasets `quack_security`, bounded hermetic embedded and Quack-service execution, checkpoint persistence, eligible virgin/read-only or expired/dead-worker transfer with later fence
+- Prohibited effects: new daemon framework or parallel authority; self-acceptance; direct multi-process DuckDB file access; current `DatabaseImplementationDaemon` Quack/direct-DuckDB fallback claimed safe; separate coordination/execution writers or partial repository migration; client-side-only authorization; bypass provider/lease/scope/state-owner/server authorization; transfer live mutating work; alter completion/scheduling policy; orphan worker
+- Completion contract: Daemon consumes only admitted current packets; embedded bootstrap retains one writer; exact-profile Quack mode consolidates intent, transaction, portal, task, coordination, attempt, provider, effect, validation and CAS reads/writes through one canonical exclusive state-owner gateway, with a thin high-level adapter enforcing datasets `quack_security` scopes server-side; work stealing obtains a later fence and transfers only eligible work; checkpoints as configured, reports worker completion, stops stale, and cannot mark supervisor verification/acceptance.
+- Validation requirements: W9 suite plus current daemon/parser/worktree/provider/intent/portal/transaction tests, exact capability/profile gate, all seven repository-path transport assertions, canonical-gateway and no-separate-authority assertions, datasets server-side scoped authorization, no direct file opens in multi-process mode, coordinator/owner failover, work stealing/refencing, crash/resume and stale kill
+- Proof requirements: worker-versus-supervisor authority separation, one Quack state owner, DuckDB CAS/fence monotonicity, exactly-once logical acceptance and no-effect-after-stale
 - Lease requirements: exclusive daemon file lease; runtime packet/task/worktree/resource leases and fences
 - Rollback or compensation procedure: Stop spawned workers, fence claims, preserve checkpoints/logs/partial effects, revert integration.
-- Required evidence: packet/attempt IDs, lifecycle events, checkpoint/resume, stale results, W9 seal
+- Required evidence: packet/attempt IDs, exact profile/capability receipt, seven repository transport seals, canonical-gateway and authority-consolidation receipt, datasets server-side authorization receipts, Quack owner/reader/steal/fence events, lifecycle events, checkpoint/resume, direct-file-open audit, stale results, W9 seal
 - Final result identity: pending; accepted W9 integration CID
-- Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_daemon_protocol_integration.py
-- Validation: python3 -m pytest -q test/api/test_agent_supervisor_semantic_work_packet.py test/api/test_agent_supervisor_daemon_checkpoints.py test/api/test_agent_supervisor_daemon_protocol_integration.py
-- Acceptance: Existing daemon executes bounded packets and never approves itself.
+- Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py, ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py, ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py, ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py, ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py, ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py, ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py, ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py, ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py, ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py, scripts/ops/agent_supervisor/quack_state_server.py, ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_quack_security.py, test/api/test_agent_supervisor_daemon_protocol_integration.py, test/api/test_agent_supervisor_control_plane_repository.py, test/api/test_agent_supervisor_control_plane_contracts.py, test/api/test_agent_supervisor_quack_state_client.py, test/api/test_agent_supervisor_quack_state_server.py, test/api/test_agent_supervisor_quack_capabilities.py, test/api/test_agent_supervisor_intent_repository.py, test/api/test_agent_supervisor_database_portal_bridge.py, test/api/test_agent_supervisor_ipfs_datasets_quack_security.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_semantic_work_packet.py test/api/test_agent_supervisor_daemon_checkpoints.py test/api/test_agent_supervisor_daemon_protocol_integration.py test/api/test_agent_supervisor_control_plane_repository.py test/api/test_agent_supervisor_control_plane_contracts.py test/api/test_agent_supervisor_quack_state_client.py test/api/test_agent_supervisor_quack_state_server.py test/api/test_agent_supervisor_quack_capabilities.py test/api/test_agent_supervisor_intent_repository.py test/api/test_agent_supervisor_database_portal_bridge.py test/api/test_agent_supervisor_ipfs_datasets_quack_security.py ipfs_datasets_py/tests/security/test_quack_security.py
+- Acceptance: Existing daemon executes bounded packets and never approves itself; continuous multi-reader/multi-writer mutation remains NO-GO unless the canonical gateway, server-side scoped authorization, every declared Quack repository and exact profile gate pass with no separate coordination/execution authority or direct-file path.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: daemon-integration
-- Predicted files: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_daemon_protocol_integration.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py, ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py, ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py, ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py, ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py, ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py, ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py, ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py, ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py, ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py, scripts/ops/agent_supervisor/quack_state_server.py, ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_quack_security.py, test/api/test_agent_supervisor_daemon_protocol_integration.py, test/api/test_agent_supervisor_control_plane_repository.py, test/api/test_agent_supervisor_control_plane_contracts.py, test/api/test_agent_supervisor_quack_state_client.py, test/api/test_agent_supervisor_quack_state_server.py, test/api/test_agent_supervisor_quack_capabilities.py, test/api/test_agent_supervisor_intent_repository.py, test/api/test_agent_supervisor_database_portal_bridge.py, test/api/test_agent_supervisor_ipfs_datasets_quack_security.py
 - Conflict policy: Serial W9 integration; exclusive daemon implementation edit.
 - Raw-source requirements: packet-declared exact source only
 
@@ -1486,7 +1497,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G090
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/task_sources/semantic_refill.py, test/api/test_agent_supervisor_semantic_refill.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Produce typed evidence-backed refill proposals for every required trigger with semantic deduplication and hard successor/revision/population/retry/provider/token/frequency/no-progress bounds.
@@ -1531,7 +1542,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G090
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/planning/plan_doctor.py, test/api/test_agent_supervisor_plan_doctor.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Diagnose every required structural, semantic, conflict, resource, starvation, retry, freshness and parent-coverage pathology and emit proposals only.
@@ -1576,7 +1587,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G090
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/task_sources/plan_revision_store.py, ipfs_accelerate_py/agent_supervisor/planning/plan_revision_contracts.py, test/api/test_agent_supervisor_lgswf_plan_revision.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Integrate refill/Doctor proposals through current PlanRevisionStore with explicit supersession, stale cancellation/fencing, future-task rebinding and immutable claimed-through-accepted history.
@@ -1621,7 +1632,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G100
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/work_loop.py, test/api/semantic_state/test_semantic_work_loop.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Before execution resolve/verify the datasets view, blocks, capsule freshness, tests/proofs and ContextPack; during execution scan changed symbols, compute provisional delta/invalidation, enforce scope and replan verification.
@@ -1666,7 +1677,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G100
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/post_merge_refresh.py, test/api/semantic_state/test_post_merge_semantic_refresh.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Seal predicted effects/contracts/tests/proofs/governor/assurance before merge, then after accepted merge rescan the accepted tree, publish canonical root, compare deltas, invalidate downstream work and reevaluate completion/refill.
@@ -1711,7 +1722,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G100
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py, ipfs_accelerate_py/agent_supervisor/merge/semantic_refresh_integration.py, test/api/semantic_state/test_closed_loop_semantic_refresh.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Connect W11 stages to the existing semantic harness and merge path in exact before/during/pre-merge/post-merge order, with checkpoint/recovery and immutable events.
@@ -1756,7 +1767,7 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G110
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/logic_governed_fabric.py, test/api/test_agent_supervisor_logic_governed_convergence.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
 - Objective: Implement the bounded observe/frontier/reserve/dispatch/checkpoint/verify/merge/refresh/complete/revise loop with the exact fixed-point conjunction and explicit non-success terminals.
@@ -1800,35 +1811,35 @@ W16  LGSWF-140 -> LGSWF-141
 - Parent goal ID: LGSWF-G000
 - Subgoal ID: LGSWF-G120
 - Owning repository: ipfs_accelerate_py
-- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/decision_receipts.py, ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_fabric.py, test/api/test_agent_supervisor_logic_governed_observability.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/decision_receipts.py, ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_fabric.py, ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py, test/api/test_agent_supervisor_logic_governed_observability.py, test/api/test_agent_supervisor_ducklake_history_projection.py
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Emit every required scheduling decision field and metric as content-addressed machine-readable evidence through the existing highest-level entrypoint package.
+- Objective: Emit every required scheduling decision field and metric as content-addressed machine-readable evidence through the existing highest-level entrypoint package, then project the three existing logical datasets (events, artifacts and benchmarks) through a DuckDB + Quack-control-plane-orchestrated adapter from the authoritative DuckDB outbox to reviewed public datasets DuckLake APIs.
 - Depends on: LGSWF-100
-- Read scope: convergence cycles, world/graph/frontier/resource/assignment/claim/cache/provider/proof/merge/refill receipts and existing entrypoints
+- Read scope: convergence cycles, world/graph/frontier/resource/assignment/claim/cache/provider/proof/merge/refill receipts, verified read-only operational-v1 task/phase/provider/effect/domain-event/artifact/metric snapshots, DatabaseArtifactStore@1 export/projection receipt semantics, reviewed public datasets DuckLake typed APIs, and existing entrypoints
 - Write scope: owned paths only
-- External effect scope: local immutable evidence output only
+- External effect scope: local immutable evidence output and hermetic injected DuckLake projection only; live lake/network disabled until separately promoted
 - Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
 - Capsule CIDs: REBIND_REQUIRED_BY_LGSWF-005
-- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; SchedulingDecisionReceipt@1; FabricMetrics@1
+- Contract and obligation CIDs: REBIND_REQUIRED_BY_LGSWF-005; SchedulingDecisionReceipt@1; FabricMetrics@1; DatabaseArtifactStore@1 export/projection receipts; datasets DuckLake capability/catalog-owner/registry/ingest/snapshot/execution/security/recovery contracts
 - Resource demand: cpu_ms=14400000; cpu_concurrency=3; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=8192; disk_bandwidth_mib_s=150; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=none; prover_concurrency=0; exclusive_keys=observability-files; merge_slots=1; persistence_kib_s=4096
 - Model-route class: implementation/high; receipt/metric schema verifier is authority
-- Permitted effects: add receipt/metrics/entrypoint adapter and tests
-- Prohibited effects: new GUI; secrets/prompts/responses/mutable paths; missing rejections/score components; metrics as completion authority
-- Completion contract: Each cycle receipt includes all L fields and every required metric is emitted with exact units/source/root/window; identity is deterministic and sensitive fields are rejected/redacted.
-- Validation requirements: field/metric completeness, deterministic identity, redaction/adversarial payload, entrypoint JSON and restart continuity
-- Proof requirements: complete field matrix and content-address determinism
+- Permitted effects: add receipt/metrics/entrypoint and DuckLake history-projection adapters and hermetic tests; record content-addressed projection receipts back through DuckDB after the external operation
+- Prohibited effects: new GUI/lake/store; opening DatabaseArtifactStore or event-log DDL against operational-v1; direct accelerator ATTACH/raw SQL/catalog-file/credential/object-URI access; lake/network inside DuckDB transaction; DuckLake as semantic/plan/task/lease/resource/cursor/acceptance authority; secrets/prompts/responses/mutable paths; missing rejections/score components; metrics as completion authority
+- Completion contract: Each cycle receipt includes all L fields and every required metric is emitted with exact units/source/root/window; identity is deterministic and sensitive fields are rejected/redacted; DuckDB owns outbox/cursor/idempotency/retry/acceptance and multi-process access uses the sealed Quack state-owner boundary, projection batches are bounded to 5,000 rows/16 MiB/10 seconds, and DuckLake outage yields independent backpressure plus exact idempotent replay without blocking core operation.
+- Validation requirements: field/metric completeness, deterministic identity, redaction/adversarial payload, entrypoint JSON and restart continuity; sealed 19 direct plus 7 adjacent projection cases cover typed API boundary, transaction separation, batch bounds, outage/replay/parity, duplicates, recovery and non-authority
+- Proof requirements: complete field matrix, content-address determinism, 100% logical-row parity with zero duplicate/missing rows, and exactly-once logical projection under at-least-once execution
 - Lease requirements: immutable evidence writer/single-flight lease; source path lease
-- Rollback or compensation procedure: Disable new entrypoint projection, preserve immutable receipts, revert source; no authority rollback.
-- Required evidence: schema/vectors, full sample cycle, metric catalog, redaction cases, entrypoint output
+- Rollback or compensation procedure: Disable projection dispatch, preserve DuckDB outbox/cursor and immutable receipts, quarantine partial lake receipts, replay later from DuckDB, revert source; no semantic or operational authority rollback.
+- Required evidence: schema/vectors, full sample cycle, metric catalog, redaction cases, entrypoint output, capability/profile state, outbox/projection receipt lineage, 19-direct/7-adjacent sealed qualification manifest and results
 - Final result identity: pending; accepted observability CID
-- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/decision_receipts.py, ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_fabric.py, test/api/test_agent_supervisor_logic_governed_observability.py
-- Validation: python3 -m pytest -q test/api/test_agent_supervisor_logic_governed_observability.py
-- Acceptance: Evidence explains readiness, parallel safety, assignment, resources, governance, changes, verification and completion outcome.
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/decision_receipts.py, ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_fabric.py, ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py, test/api/test_agent_supervisor_logic_governed_observability.py, test/api/test_agent_supervisor_ducklake_history_projection.py
+- Validation: python3 -m pytest -q test/api/test_agent_supervisor_logic_governed_observability.py test/api/test_agent_supervisor_ducklake_history_projection.py
+- Acceptance: Evidence explains readiness, parallel safety, assignment, resources, governance, changes, verification and completion outcome; optional projections are DuckDB-orchestrated, typed, non-authoritative and outage-isolated.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: observability
-- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/decision_receipts.py, ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_fabric.py, test/api/test_agent_supervisor_logic_governed_observability.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/decision_receipts.py, ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_fabric.py, ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py, test/api/test_agent_supervisor_logic_governed_observability.py, test/api/test_agent_supervisor_ducklake_history_projection.py
 - Conflict policy: Serial W13 entrypoint/receipt integration.
 - Raw-source requirements: none; reference CIDs only
 
@@ -1846,12 +1857,12 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G130
 - Owning repository: ipfs_accelerate_py
 - Owned paths: test/fixtures/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_fixture.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Build a reproducible fixture with three supervisors, ten daemons, multiple resource classes, independent/conflicting branches, multi-level goals, proof/validation tasks, merge queue and refill triggers.
+- Objective: Build a reproducible fixture with three supervisors, ten daemons, multiple resource classes, independent/conflicting branches, multi-level goals, proof/validation tasks, merge queue, refill triggers, embedded DuckDB and a real hermetic exact-profile Quack state-owner mode, an authoritative DuckDB projection outbox, and an optional hermetic typed DuckLake projection sink; fake Quack transports remain unit-test-only and cannot qualify the integration fixture.
 - Depends on: LGSWF-110
-- Read scope: accepted fabric entrypoint/contracts and existing supervisor/daemon/merge test utilities
+- Read scope: accepted fabric entrypoint/contracts, DuckDB/Quack control-plane and seven repository seals, DuckDB-outbox projection adapter/public datasets DuckLake contract fixtures, and existing supervisor/daemon/merge test utilities
 - Write scope: owned paths only
 - External effect scope: bounded local processes/files/worktrees; network denied
 - Relevant symbol IDs: REBIND_REQUIRED_BY_LGSWF-005
@@ -1860,17 +1871,17 @@ W16  LGSWF-140 -> LGSWF-141
 - Resource demand: cpu_ms=28800000; cpu_concurrency=8; ram_mib=16384; gpu_memory_mib=0; gpu_compute_class=simulated-declared; disk_mib=32768; disk_bandwidth_mib_s=250; network=deny; network_bandwidth_kib_s=0; subprocesses=48; worktree_slots=12; model_input_tokens=0; model_output_tokens=0; provider_quota_units=0; provider_concurrency=0; prover_class=fixture; prover_concurrency=3; exclusive_keys=fault-fixture-root; merge_slots=3; persistence_kib_s=16384
 - Model-route class: none at runtime fixture; deterministic actors only
 - Permitted effects: create hermetic fixture/worktrees/processes and cleanly terminate them
-- Prohibited effects: real provider/network/protected branch; shared mutable process dictionary as authority; nondeterministic seeds; leave processes/worktrees/leases
-- Completion contract: Fixture manifest pins seed/tree/root/plan/policy/capabilities/resources; 3 supervisors and 10 daemon identities are real bounded processes or deterministic process harness actors; restart reconstructs durable state.
-- Validation requirements: manifest replay, topology/resources/goals/conflicts/proofs/merge/refill assertions, cleanup and restart
+- Prohibited effects: real provider/network/live DuckLake/protected branch; DuckLake authority or scheduling prerequisite; direct ATTACH/raw SQL/catalog/credential access; fake/in-memory Quack transport as integration evidence; shared mutable process dictionary as authority; nondeterministic seeds; leave processes/worktrees/leases
+- Completion contract: Fixture manifest pins seed/tree/root/plan/policy/capabilities/resources and embedded-DuckDB, real exact-profile DuckDB + Quack, and optional projection modes; the multi-supervisor fixture exercises a real hermetic Quack extension/state-owner service, while fakes are accepted only for isolated unit tests and never satisfy the qualification gate; 3 supervisors and 10 daemon identities are real bounded processes or deterministic process harness actors; restart reconstructs durable DuckDB state, including outbox cursor, through a later Quack state-owner epoch independently of the optional sink.
+- Validation requirements: manifest replay, topology/resources/goals/conflicts/proofs/merge/refill assertions, admitted exact-profile real-Quack extension/service identity and remote-readiness receipt, proof that fake transports are unit-only, Quack owner/read/write/failover and direct-file-bypass controls, projection mode/typed-boundary/outage controls, cleanup and restart
 - Proof requirements: fixture determinism and population identity vectors
 - Lease requirements: exclusive fixture-root lease; per actor/claim/resource/worktree/merge leases
 - Rollback or compensation procedure: Terminate all actors, fence/release leases, remove only fixture-owned ephemeral worktrees through fixture cleanup, preserve logs/results.
-- Required evidence: fixture manifest/CIDs, process identities, population/graph/resource roots, cleanup receipt
+- Required evidence: fixture manifest/CIDs, process identities, real exact-profile Quack capability/extension/service/remote-readiness receipts, fake-unit-only audit, population/graph/resource roots, projection capability/outbox/sink identities, cleanup receipt
 - Final result identity: pending; accepted fixture manifest CID
 - Outputs: test/fixtures/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_fixture.py
 - Validation: python3 -m pytest -q test/api/test_agent_supervisor_lgswf_fixture.py
-- Acceptance: The qualification fixture is deterministic, bounded, restartable and contains every required workload feature.
+- Acceptance: The qualification fixture is deterministic, bounded, restartable, uses real exact-profile Quack for multi-supervisor integration, contains every required workload feature, and cannot confuse a fake Quack unit transport or hermetic DuckLake sink with DuckDB-record authority or the Quack state-owner boundary.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: fault-fixture
 - Predicted files: test/fixtures/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_fixture.py
@@ -1891,10 +1902,10 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G130
 - Owning repository: ipfs_accelerate_py
 - Owned paths: test/api/test_agent_supervisor_logic_governed_fabric_faults.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/fault-results.json
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Run and record all 26 required concurrency, fencing, failover, checkpoint, effect, pressure, stealing, partition, semantic invalidation, proof/refill/history/split/coalesce/fixed-point/restart scenarios.
+- Objective: Run and record all 26 required concurrency, fencing, Quack state-owner failover, checkpoint, effect, pressure, stealing/refencing, partition, semantic invalidation, proof/refill/history/split/coalesce/fixed-point/restart scenarios, including DuckLake projection outage, backlog replay and cold recovery within the existing population.
 - Depends on: LGSWF-120
 - Read scope: accepted fixture and full fabric runtime
 - Write scope: owned paths and fixture-owned ephemeral runtime only
@@ -1904,18 +1915,18 @@ W16  LGSWF-140 -> LGSWF-141
 - Contract and obligation CIDs: fixture manifest bindings; FaultQualificationResults@1
 - Resource demand: cpu_ms=43200000; cpu_concurrency=10; ram_mib=24576; gpu_memory_mib=0; gpu_compute_class=simulated-declared; disk_mib=49152; disk_bandwidth_mib_s=300; network=deny; network_bandwidth_kib_s=0; subprocesses=64; worktree_slots=12; model_input_tokens=0; model_output_tokens=0; provider_quota_units=0; provider_concurrency=0; prover_class=fixture; prover_concurrency=3; exclusive_keys=fault-run; merge_slots=4; persistence_kib_s=16384
 - Model-route class: none; deterministic fault injection
-- Permitted effects: inject documented local failures, kill fixture actors, exhaust simulated resources and persist immutable raw results
-- Prohibited effects: alter expected outcomes after run; conceal failures; real network/provider/hardware exhaustion; protected branch mutation
-- Completion contract: Every numbered scenario has setup/action/expected/observed/receipts/result; failures remain failures; all actors/resources settle; recurring failure reaches a typed bounded terminal.
-- Validation requirements: exact 26-case population, deterministic replay, cleanup, receipt verification and no hidden process state
-- Proof requirements: zero simultaneous conflicting write leases and exactly-once acceptance invariants across run
+- Permitted effects: inject documented local failures, kill fixture actors, exhaust simulated resources, fail/restart the hermetic projection sink, and persist immutable raw results
+- Prohibited effects: alter expected outcomes after run; conceal failures; real network/provider/hardware/live-DuckLake exhaustion; direct multi-process DuckDB; allow Quack or projection outage to create stale/duplicate acceptance; allow projection outage to block control-plane scheduling/acceptance; protected branch mutation
+- Completion contract: Every numbered scenario has setup/action/expected/observed/receipts/result; projection outage applies independent backpressure, replays from the DuckDB cursor to 100% parity with zero duplicate/missing rows, and cold recovery records RPO 0 and RTO at most 300 seconds or an honest target miss; all actors/resources settle; recurring failure reaches a typed bounded terminal.
+- Validation requirements: exact 26-case population, deterministic replay, cleanup, receipt verification, projection throughput at least 2x observed peak, 30-minute backlog drain within 30 minutes, DuckDB heartbeat p99 <=50 ms and commit p95/p99 regressions <=5%/10%, and no hidden process state
+- Proof requirements: one exclusive Quack state owner, zero simultaneous conflicting write leases, exactly-once DuckDB task acceptance, and exactly-once logical projection under duplicate/replayed attempts across run
 - Lease requirements: exclusive fault-run lease plus fixture actor/resource/merge leases/fences
 - Rollback or compensation procedure: Fixture cleanup terminates/fences/releases all; partial effects use scenario compensation; raw failed results are retained.
-- Required evidence: raw per-case events/receipts, summary, process/resource cleanup, invariant report
+- Required evidence: raw per-case events/receipts, embedded-DuckDB, DuckDB + Quack and optional-projection latency/throughput/backlog/parity/recovery receipts, summary, process/resource cleanup, invariant report
 - Final result identity: pending; accepted fault-results CID
 - Outputs: test/api/test_agent_supervisor_logic_governed_fabric_faults.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/fault-results.json
 - Validation: python3 -m pytest -q test/api/test_agent_supervisor_logic_governed_fabric_faults.py
-- Acceptance: All 26 cases pass or produce a documented qualification no-go with raw evidence.
+- Acceptance: All 26 cases pass or produce a documented qualification no-go with raw evidence; target misses are not relabeled as success.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: fault-cases
 - Predicted files: test/api/test_agent_supervisor_logic_governed_fabric_faults.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/fault-results.json
@@ -1936,10 +1947,10 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G130
 - Owning repository: ipfs_accelerate_py
 - Owned paths: test/api/test_agent_supervisor_logic_governed_fabric_adversarial.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/adversarial-results.json
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Inject every required forged/stale/wrong/overlap/undeclared/self-modifying/weakened/deleted/model-claim/simulated-proof/duplicate/replay/corrupt/split-brain/impossible-capacity input and prove critical fail-closed behavior.
+- Objective: Inject every required forged/stale/wrong/overlap/undeclared/self-modifying/weakened/deleted/model-claim/simulated-proof/duplicate/replay/corrupt/split-brain/impossible-capacity input plus separately forged/mismatched DuckDB + Quack control-plane receipts and DuckLake/httpfs/catalog/projection/release receipts, fake Quack state owners, direct multi-process DuckDB, and DuckLake ATTACH/raw-SQL/catalog/credential attempts, then prove critical fail-closed behavior.
 - Depends on: LGSWF-120
 - Read scope: accepted fixture and all fabric admission/authority boundaries
 - Write scope: owned paths and fixture-owned adversarial runtime only
@@ -1949,18 +1960,18 @@ W16  LGSWF-140 -> LGSWF-141
 - Contract and obligation CIDs: fixture canonical and adversarial variants; AdversarialQualificationResults@1
 - Resource demand: cpu_ms=43200000; cpu_concurrency=10; ram_mib=24576; gpu_memory_mib=0; gpu_compute_class=simulated-declared; disk_mib=49152; disk_bandwidth_mib_s=300; network=deny; network_bandwidth_kib_s=0; subprocesses=64; worktree_slots=12; model_input_tokens=0; model_output_tokens=0; provider_quota_units=0; provider_concurrency=0; prover_class=fixture; prover_concurrency=3; exclusive_keys=adversarial-run; merge_slots=4; persistence_kib_s=16384
 - Model-route class: none; fixed adversarial corpus
-- Permitted effects: inject malformed/local hostile artifacts and persist immutable results
-- Prohibited effects: real credentials/provider/network; accept any critical hostile input; change policy/expected tests during run; omit negative result
-- Completion contract: Each listed adversarial case is rejected before accepted authority/effect; ambiguous external effects require repair/compensation; complete raw evidence and cleanup exist.
-- Validation requirements: exact adversarial population, rejection stage/reason, no accepted effect, deterministic replay and cleanup
-- Proof requirements: fail-closed authority invariant for every critical case
+- Permitted effects: inject malformed/local hostile artifacts and typed fake DuckLake responses, then persist immutable results
+- Prohibited effects: real credentials/provider/network/live DuckLake; accept any critical hostile input; allow lake data to grant semantic or operational authority; change policy/expected tests during run; omit negative result
+- Completion contract: Each listed adversarial case is rejected before accepted authority/effect; a forged/mismatched DuckDB/Quack pinned profile, generic minor-version profile, or fake Quack owner/repository seal cannot promote continuous mutation, while forged/mismatched DuckLake/httpfs pins, catalog profile/binding, release receipt, projection receipt, cursor or row cannot promote the downstream lake; neither chain can alter DuckDB records/CAS/fences; ambiguous external effects require repair/compensation; complete raw evidence and cleanup exist.
+- Validation requirements: exact adversarial population, rejection stage/reason, forbidden-interface scan/runtime traps, no accepted effect, deterministic replay and cleanup
+- Proof requirements: fail-closed semantic/operational/projection authority invariant for every critical case
 - Lease requirements: exclusive adversarial-run lease plus fixture actor/resource/merge leases/fences
 - Rollback or compensation procedure: Fence/terminate fixture, compensate declared partial effects, quarantine hostile artifacts, preserve raw evidence.
-- Required evidence: adversarial corpus hashes, rejection receipts, accepted-authority audit, cleanup/compensation report
+- Required evidence: adversarial corpus hashes, capability/profile/release and direct-access rejection receipts, accepted-authority audit, cleanup/compensation report
 - Final result identity: pending; accepted adversarial-results CID
 - Outputs: test/api/test_agent_supervisor_logic_governed_fabric_adversarial.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/adversarial-results.json
 - Validation: python3 -m pytest -q test/api/test_agent_supervisor_logic_governed_fabric_adversarial.py
-- Acceptance: Every critical adversarial case fails closed; otherwise qualification is no-go.
+- Acceptance: Every critical adversarial case fails closed, the DuckDB + Quack authority split remains intact, continuous mutation and live DuckLake stay disabled without their separate exact accepted promotion chains, and current direct-DuckDB daemon Quack mode is never accepted as safe; otherwise qualification is no-go.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: adversarial
 - Predicted files: test/api/test_agent_supervisor_logic_governed_fabric_adversarial.py, data/agent_supervisor/logic_governed_semantic_work_fabric/qualification/adversarial-results.json
@@ -1981,12 +1992,12 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G140
 - Owning repository: ipfs_accelerate_py
 - Owned paths: benchmarks/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_benchmark_manifest.py
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Define identical seeded workloads and configuration A/B/C/D harnesses covering all required graph shapes, task classes, bottlenecks, failures, invalidations and refill cycles.
+- Objective: Define identical seeded workloads and configuration A/B/C/D harnesses covering all required graph shapes, task classes, bottlenecks, failures, invalidations and refill cycles, with sealed embedded-single-writer DuckDB, exact-profile DuckDB + Quack, and optional DuckLake projection modes.
 - Depends on: LGSWF-121, LGSWF-122
-- Read scope: accepted runtime/fixture/fault artifacts and existing benchmark utilities
+- Read scope: accepted runtime/fixture/fault artifacts, DuckDB/Quack capability and repository seals, DuckLake projection receipts, and existing benchmark utilities
 - Write scope: owned paths only
 - External effect scope: local benchmark harness; provider/model/prover calls are injectable and bounded by manifest
 - Relevant symbol IDs: benchmark manifest bindings
@@ -1995,17 +2006,17 @@ W16  LGSWF-140 -> LGSWF-141
 - Resource demand: cpu_ms=28800000; cpu_concurrency=8; ram_mib=16384; gpu_memory_mib=0; gpu_compute_class=manifest-controlled; disk_mib=32768; disk_bandwidth_mib_s=250; network=manifest-controlled; network_bandwidth_kib_s=1024; subprocesses=48; worktree_slots=12; model_input_tokens=200000; model_output_tokens=60000; provider_quota_units=40; provider_concurrency=4; prover_class=fixture; prover_concurrency=4; exclusive_keys=benchmark-corpus; merge_slots=4; persistence_kib_s=16384
 - Model-route class: benchmark/bounded; route and budgets sealed in corpus
 - Permitted effects: create deterministic corpus/harness and dry replay; bounded injected provider/prover interfaces
-- Prohibited effects: alter workload between configs; fabricate targets/results; unbounded paid/network calls; protected branch merge
-- Completion contract: A-D differ only by documented scheduling/fabric features; workload includes every required category; metrics/units/seeds/warmup/repetition/environment and stop bounds are sealed.
-- Validation requirements: corpus manifest, config diff whitelist, deterministic dry replay, metric completeness and budget enforcement
+- Prohibited effects: alter workload between configs/modes; treat direct multi-process DuckDB as a Quack baseline; fabricate Quack/DuckLake availability or targets/results; unbounded paid/network calls; protected branch merge
+- Completion contract: A-D differ only by documented scheduling/fabric features; control-plane modes distinguish embedded one-writer from sealed Quack multi-reader/multi-writer and optional hermetic DuckLake projection; workload includes every required category; metrics/units/seeds/warmup/repetition/environment and stop bounds are sealed; unavailable live modes remain typed cells.
+- Validation requirements: corpus manifest, config/mode diff whitelist, separate exact DuckDB + Quack control-plane and DuckLake/httpfs extension gates, deterministic dry replay, metric completeness and budget enforcement
 - Proof requirements: workload/config comparability and manifest content identity
 - Lease requirements: exclusive benchmark-corpus source lease; run-time resource/provider/prover/worktree/merge leases
 - Rollback or compensation procedure: Cancel benchmark runs, release reservations, preserve partial raw results, revert unaccepted harness code.
-- Required evidence: corpus/config manifests/CIDs, seed/workload inventory, dry-run traces, budget/metric catalog
+- Required evidence: corpus/config/control-plane/projection manifests/CIDs, seed/workload inventory, capability/profile/repository bindings, dry-run traces, budget/metric catalog
 - Final result identity: pending; accepted benchmark corpus CID
 - Outputs: benchmarks/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_benchmark_manifest.py
 - Validation: python3 -m pytest -q test/api/test_agent_supervisor_lgswf_benchmark_manifest.py
-- Acceptance: Configurations A-D are comparable and contain all required workloads/measurements.
+- Acceptance: Configurations A-D and embedded-versus-Quack-versus-optional-projection modes are comparable and contain all required workloads/measurements without fabricating unavailable modes.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: benchmark-corpus
 - Predicted files: benchmarks/logic_governed_semantic_work_fabric, test/api/test_agent_supervisor_lgswf_benchmark_manifest.py
@@ -2016,7 +2027,7 @@ W16  LGSWF-140 -> LGSWF-141
 
 - Stable task ID: LGSWF-131
 - Status: todo
-- Completion: manual
+- Completion: auto
 - Is schedulable: true
 - Review only: false
 - Priority: P1
@@ -2026,12 +2037,12 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G140
 - Owning repository: ipfs_accelerate_py
 - Owned paths: data/agent_supervisor/logic_governed_semantic_work_fabric/benchmarks, docs/benchmarks/logic_governed_semantic_work_fabric_results.md
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Execute sealed A-D workloads, persist raw results, calculate every required performance/resource/reuse/cost metric, and compare actual values honestly with initial targets.
+- Objective: Execute sealed A-D workloads across every feasible embedded DuckDB, DuckDB + Quack, and optional DuckLake projection mode, persist raw results, calculate every required performance/resource/reuse/cost metric, and compare actual values honestly with initial targets.
 - Depends on: LGSWF-130
-- Read scope: sealed benchmark corpus/harness and runtime metric entrypoint
+- Read scope: sealed benchmark corpus/harness, exact control-plane/projection mode receipts, and runtime metric entrypoint
 - Write scope: owned paths and benchmark-owned ephemeral runtime only
 - External effect scope: bounded provider/prover/network calls only if sealed configuration authorizes; local processes/resources/worktrees
 - Relevant symbol IDs: benchmark manifest bindings
@@ -2039,18 +2050,18 @@ W16  LGSWF-140 -> LGSWF-141
 - Contract and obligation CIDs: benchmark manifest bindings; FabricBenchmarkResults@1
 - Resource demand: cpu_ms=172800000; cpu_concurrency=12; ram_mib=32768; gpu_memory_mib=0; gpu_compute_class=environment-observed; disk_mib=131072; disk_bandwidth_mib_s=400; network=bounded-provider-only; network_bandwidth_kib_s=4096; subprocesses=96; worktree_slots=16; model_input_tokens=1000000; model_output_tokens=300000; provider_quota_units=200; provider_concurrency=4; prover_class=available-qualified; prover_concurrency=4; exclusive_keys=benchmark-run; merge_slots=4; persistence_kib_s=32768
 - Model-route class: benchmark/bounded; sealed provider route, token and call limits
-- Permitted effects: execute bounded benchmark, persist immutable raw results/report, stop on budgets
-- Prohibited effects: exceed budgets; discard unfavorable runs; alter workload/policy; fabricate missing provider/GPU/proof capacity; claim maximum parallelism from process count
-- Completion contract: All feasible configs/repetitions complete or have typed unavailable/exhausted results; raw data verifies; report covers every required metric, environment/variance and target miss without substitution.
-- Validation requirements: raw schema/CIDs, recompute statistics, run population, budget audit, environment manifest and report-to-raw consistency
+- Permitted effects: execute bounded embedded and hermetic qualified-service benchmarks, persist immutable raw results/report, stop on budgets
+- Prohibited effects: exceed budgets; discard unfavorable runs; alter workload/policy; benchmark direct multi-process DuckDB as safe; fabricate Quack/DuckLake/provider/GPU/proof capacity; claim maximum parallelism from process count
+- Completion contract: All feasible configs/repetitions complete or have typed unavailable/exhausted results; embedded-vs-Quack throughput/latency and Quack-vs-optional-DuckLake projection overhead/value are reported separately; heartbeat p99 <=50 ms, commit p95/p99 regression <=5%/10%, projection >=2x peak, 30-minute backlog drain <=30 minutes, 100% parity/zero duplicate-or-missing rows, and RPO 0/RTO <=300 seconds remain honest targets; raw data verifies and target misses are not substituted.
+- Validation requirements: raw schema/CIDs, recompute statistics, run/mode population, exact capability/profile/repository audit, budget audit, environment manifest and report-to-raw consistency
 - Proof requirements: deterministic aggregation and raw-to-report lineage
 - Lease requirements: exclusive benchmark-run lease and all declared resource/provider/prover/worktree/merge reservations/fences
 - Rollback or compensation procedure: Cancel remaining runs, release resources/provider sessions, settle merge/worktrees, preserve partial results and mark missing cells typed.
-- Required evidence: raw per-run receipts, metric tables, environment/provider/prover manifests, statistical/report lineage, cleanup
+- Required evidence: raw per-run receipts, embedded/Quack/DuckLake mode and metric tables, capability/profile/repository/environment/provider/prover manifests, parity/backlog/recovery results, statistical/report lineage, cleanup
 - Final result identity: pending; accepted benchmark results root CID
 - Outputs: data/agent_supervisor/logic_governed_semantic_work_fabric/benchmarks, docs/benchmarks/logic_governed_semantic_work_fabric_results.md
 - Validation: python3 benchmarks/logic_governed_semantic_work_fabric/validate_results.py --results data/agent_supervisor/logic_governed_semantic_work_fabric/benchmarks
-- Acceptance: Actual results for every feasible configuration are reported honestly and scoped to the sealed environment.
+- Acceptance: Actual results for every feasible configuration and control-plane/projection mode are reported honestly and scoped to the sealed environment; unavailable Quack/live-DuckLake is a no-go cell, not a simulated success.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: benchmark-run
 - Predicted files: data/agent_supervisor/logic_governed_semantic_work_fabric/benchmarks, docs/benchmarks/logic_governed_semantic_work_fabric_results.md
@@ -2071,10 +2082,10 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G150
 - Owning repository: ipfs_accelerate_py
 - Owned paths: ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_release.py, test/api/test_agent_supervisor_logic_governed_release.py, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-release.json
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Produce one signed or content-addressed manifest transitively naming exact revisions, inventory/map, all schemas, tests, fault/adversarial/benchmark raw results, reports, security, limitations, migration, rollback and qualification decision inputs.
+- Objective: Produce one signed or content-addressed manifest transitively naming exact revisions, inventory/map, all schemas, tests, fault/adversarial/benchmark raw results, reports, security, limitations, migration, rollback, the exact DuckDB + Quack profile/seven-repository/canonical-gateway chain with remote readiness and server-side authorization, the additional downstream DuckLake/httpfs/catalog/projection chain, and qualification decision inputs.
 - Depends on: LGSWF-131
 - Read scope: all accepted A-N evidence, Git trees, current semantic/plan/world roots and existing entrypoint/release patterns
 - Write scope: owned paths only
@@ -2085,17 +2096,17 @@ W16  LGSWF-140 -> LGSWF-141
 - Resource demand: cpu_ms=14400000; cpu_concurrency=3; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=16384; disk_bandwidth_mib_s=150; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; model_input_tokens=32000; model_output_tokens=12000; provider_quota_units=1; provider_concurrency=1; prover_class=local-logic; prover_concurrency=1; exclusive_keys=release-manifest; merge_slots=1; persistence_kib_s=8192
 - Model-route class: implementation/high; release verifier is authority
 - Permitted effects: add release builder/verifier, construct local manifest and tests
-- Prohibited effects: omit failed results/limitations; assign unsupported production level; network publish/sign with unavailable credential; mutable path as identity
-- Completion contract: Manifest includes every O-required artifact, exact sources/policies/environment, all CIDs verify transitively, missing/unavailable items are explicit and qualification inputs are immutable.
-- Validation requirements: release schema/transitive CID/source-tree/policy/result completeness, corruption/missing artifact and signature/content-address tests
+- Prohibited effects: omit failed results/limitations; merge embedded, continuous-Quack and live-DuckLake decisions; assign unsupported production level; network publish/sign with unavailable credential; mutable path as identity
+- Completion contract: Manifest includes every O-required artifact, exact sources/policies/environment, current no-go probe, the continuous-control-plane chain (exact DuckDB + Quack pinned profile, seven Quack-backed repository seals, canonical gateway, independent remote-readiness and server-side scoped-authorization receipts, and a zero-bypass direct-file-open audit), and only as a separate optional extension the live-lake chain (admitted control plane plus exact DuckLake/httpfs pins, catalog/profile/binding, projection/security/recovery evidence and release receipt); all CIDs verify transitively, missing/unavailable items are explicit and qualification inputs are immutable.
+- Validation requirements: release schema/transitive CID/source-tree/policy/result completeness, three separate activation gates, remote state-server readiness, server-side authorization and direct-file-open audits, corruption/missing artifact and signature/content-address tests
 - Proof requirements: manifest reachability and exact-source binding
 - Lease requirements: exclusive release-manifest single-flight lease, current plan/semantic/merge-settled gates
 - Rollback or compensation procedure: Quarantine invalid manifest; retain all component evidence; regenerate only under a new manifest identity after correcting inputs.
-- Required evidence: complete manifest, verification report, artifact inventory, security/limitation/migration/rollback records
+- Required evidence: complete manifest, verification report, artifact inventory, current/proposed capability profiles, Quack repository and canonical-gateway seals, independent remote-readiness receipt, server-side authorization receipt, direct-file-open audit, DuckLake projection receipts, security/limitation/migration/rollback records
 - Final result identity: pending; verified qualification-release CID
 - Outputs: ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_release.py, test/api/test_agent_supervisor_logic_governed_release.py, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-release.json
 - Validation: python3 -m pytest -q test/api/test_agent_supervisor_logic_governed_release.py
-- Acceptance: One verified manifest transitively covers every required release artifact and exact environment.
+- Acceptance: One verified manifest transitively covers every required release artifact and exact environment and cannot promote Quack or DuckLake from a generic/missing profile, local-file-only readiness, client-side-only authorization or a nonzero multi-process direct-file-open audit.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: release-manifest
 - Predicted files: ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_release.py, test/api/test_agent_supervisor_logic_governed_release.py, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-release.json
@@ -2107,8 +2118,8 @@ W16  LGSWF-140 -> LGSWF-141
 - Stable task ID: LGSWF-141
 - Status: todo
 - Completion: manual
-- Is schedulable: true
-- Review only: false
+- Is schedulable: false
+- Review only: true
 - Priority: P0
 - Track: release
 - Goal id: LGSWF-G150
@@ -2116,10 +2127,10 @@ W16  LGSWF-140 -> LGSWF-141
 - Subgoal ID: LGSWF-G150
 - Owning repository: ipfs_accelerate_py
 - Owned paths: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-decision.json
-- Base revision: 3a07f2b9273161ce805feff98414ef3c66eae7cc
+- Base revision: ACCEPTED_LGSWF-006_SOURCE_HEAD
 - Base semantic-state root: REBIND_REQUIRED_BY_LGSWF-005
 - Base plan revision: LGSWF-PLAN-R2-required
-- Objective: Independently review the verified release, assign an evidence-supported qualification level and explicit go/no-go for continuous multi-supervisor operation, and emit the required 24-section report.
+- Objective: Independently review the verified release, assign an evidence-supported qualification level, issue separate go/no-go decisions for embedded one-writer operation, continuous DuckDB + Quack multi-supervisor mutation, and live DuckLake analytics/history, and emit the required 24-section report.
 - Depends on: LGSWF-140
 - Read scope: verified qualification manifest and every transitively referenced artifact
 - Write scope: owned paths only
@@ -2130,17 +2141,17 @@ W16  LGSWF-140 -> LGSWF-141
 - Resource demand: cpu_ms=14400000; cpu_concurrency=2; ram_mib=8192; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=8192; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=8; worktree_slots=1; model_input_tokens=48000; model_output_tokens=18000; provider_quota_units=1; provider_concurrency=1; prover_class=local-logic; prover_concurrency=1; exclusive_keys=qualification-decision; merge_slots=1; persistence_kib_s=4096
 - Model-route class: review/high; deterministic release gates and human/supervisor review are authority
 - Permitted effects: review evidence and write scoped report/decision
-- Prohibited effects: fabricate/massage metrics; omit failures; call module presence production; weaken gates; deploy/publish/merge protected branch; model self-approval
-- Completion contract: Report contains all 24 required sections and permitted scoped claim; level is one of research_demo/internal_alpha/internal_pilot/supervised_external_pilot/production_candidate with rationale; go/no-go is explicit and limitations/conditions are binding.
-- Validation requirements: report-section and manifest-lineage validator, qualification-policy matrix, no unsupported claims, independent supervisor/human-review flag
+- Prohibited effects: fabricate/massage metrics; omit failures; call module presence or current daemon Quack mode production; infer DuckLake approval from Quack approval; weaken gates; deploy/publish/merge protected branch; model self-approval
+- Completion contract: When all deterministic release gates pass, the task enters typed human_review_required rather than idling or self-claiming. An independent supervisor/human then reviews and signs the 24 required sections; level is one of research_demo/internal_alpha/internal_pilot/supervised_external_pilot/production_candidate with rationale; embedded, continuous-Quack and live-DuckLake go/no-go decisions are explicit and limitations/conditions are binding. Continuous Quack depends only on the exact admitted DuckDB + Quack pinned profile, seven Quack repository seals, canonical-gateway consolidation, independent remote readiness, server-side scoped authorization and zero direct-file-open bypass. Live DuckLake may be considered only after that admission and additionally requires exact DuckLake/httpfs pins, catalog/profile/binding, projection/security/recovery evidence and its release receipt.
+- Validation requirements: report-section and manifest-lineage validator, three-gate qualification-policy matrix, current probe versus exact-profile checks, canonical-gateway/remote-readiness/server-authorization/direct-file-open audit checks, no unsupported claims, independent supervisor/human-review flag
 - Proof requirements: every conclusion traces to verified manifest evidence; fixed-point conditions rechecked at decision time
 - Lease requirements: exclusive qualification-decision lease; reviewer distinct from implementation attempt; settled merge/claim gates
 - Rollback or compensation procedure: Supersede, never overwrite, an invalid decision with a new decision CID; prior release/evidence remains; no deployment occurred.
-- Required evidence: reviewer identity/independence, decision inputs, level/go-no-go rationale, 24-section report, final fixed-point/terminal receipt
+- Required evidence: reviewer identity/independence, decision inputs, embedded/continuous-Quack/live-DuckLake rationale, remote-readiness/server-authorization/direct-file-open audit conclusions, level/go-no-go rationale, 24-section report, final fixed-point/terminal receipt
 - Final result identity: pending; accepted qualification-decision CID
 - Outputs: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-decision.json
 - Validation: python3 ipfs_accelerate_py/agent_supervisor/entrypoints/logic_governed_release.py verify --manifest data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-release.json --decision data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-decision.json
-- Acceptance: Final report is evidence-backed, honest, exact-environment-scoped and explicitly recommends go or no-go.
+- Acceptance: Final report is evidence-backed, honest, exact-environment-scoped and explicitly recommends go or no-go for each of embedded, continuous Quack and live DuckLake operation.
 - Board namespace: logic-governed-semantic-work-fabric-actual-v1
 - Parallel lane: qualification-decision
 - Predicted files: docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md, data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-decision.json

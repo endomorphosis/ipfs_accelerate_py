@@ -30,6 +30,15 @@ META_RE = re.compile(r"^- ([^:\n]+):(?: (.*))?$", re.MULTILINE)
 SCHEMA = "ipfs_accelerate_py/agent-supervisor/lgswf-duckdb-materialization@1"
 RECEIPT_RESULT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/content-addressed-receipt-result@1"
 QUALIFICATION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/lgswf-bootstrap-qualification@1"
+_MANUAL_SEAL_STAGE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/manual-seal-stage-receipt@1"
+)
+_MANUAL_SEAL_PARTIAL_LINK_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/manual-seal-partial-evidence-link@1"
+)
+_MANUAL_SEAL_STAGE_GUARD_POLICY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/manual-seal-stage-guard-policy@1"
+)
 
 
 class MaterializationError(RuntimeError):
@@ -2980,6 +2989,8 @@ def _qualification_commands() -> tuple[tuple[str, tuple[str, ...], int | None], 
             "operational_schema",
             (
                 python,
+                "-E",
+                "-P",
                 "-m",
                 "pytest",
                 "-q",
@@ -2992,6 +3003,8 @@ def _qualification_commands() -> tuple[tuple[str, tuple[str, ...], int | None], 
             "intent_repository",
             (
                 python,
+                "-E",
+                "-P",
                 "-m",
                 "pytest",
                 "-q",
@@ -3003,6 +3016,8 @@ def _qualification_commands() -> tuple[tuple[str, tuple[str, ...], int | None], 
             "semantic_and_proof_writer_guards",
             (
                 python,
+                "-E",
+                "-P",
                 "-m",
                 "pytest",
                 "-q",
@@ -3017,6 +3032,8 @@ def _qualification_commands() -> tuple[tuple[str, tuple[str, ...], int | None], 
             "coordination_daemon_portal_runner",
             (
                 python,
+                "-E",
+                "-P",
                 "-m",
                 "pytest",
                 "-q",
@@ -3028,20 +3045,42 @@ def _qualification_commands() -> tuple[tuple[str, tuple[str, ...], int | None], 
             89,
         ),
         (
+            "configured_board_live_seal_gate",
+            (
+                python,
+                "-E",
+                "-P",
+                "-m",
+                "pytest",
+                "-q",
+                "test/api/test_agent_supervisor_configured_board_scheduler.py::test_configured_board_live_seal_dry_profile_binds_target_and_no_go",
+                "test/api/test_agent_supervisor_configured_board_scheduler.py::test_configured_board_live_seal_target_swap_changes_dry_profile",
+                "test/api/test_agent_supervisor_configured_board_scheduler.py::test_configured_board_live_seal_no_go_is_zero_popen_and_zero_io",
+                "test/api/test_agent_supervisor_configured_board_scheduler.py::test_configured_board_live_seal_profile_and_flag_remain_bidirectional",
+                "test/api/test_agent_supervisor_configured_board_scheduler.py::test_configured_board_live_seal_start_and_detach_are_zero_effect_no_go",
+                "test/api/test_agent_supervisor_configured_board_scheduler.py::test_configured_board_live_seal_real_birth_rejects_before_startup_hook",
+            ),
+            7,
+        ),
+        (
             "bootstrap_seal",
             (
                 python,
+                "-E",
+                "-P",
                 "-m",
                 "pytest",
                 "-q",
                 "test/api/test_agent_supervisor_lgswf_materialization_seal.py",
             ),
-            32,
+            34,
         ),
         (
             "board_structure",
             (
                 python,
+                "-E",
+                "-P",
                 "scripts/validate_logic_governed_semantic_work_fabric_board.py",
             ),
             None,
@@ -3568,15 +3607,26 @@ def _manual_seal_validation_body(
     binding: Mapping[str, Any],
     qualification_receipt_cid: str,
     seal_basis_cid: str,
+    superseded_partial_evidence: list[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    return {
+    result = {
         "qualification_receipt_cid": qualification_receipt_cid,
         "seal_basis_cid": seal_basis_cid,
         "live_supervisor_process_started": False,
         "daemon_process_started": False,
         "qualification_subprocesses_started": True,
+        "stage_guard_policy": {
+            "schema": _MANUAL_SEAL_STAGE_GUARD_POLICY_SCHEMA,
+            "stage": "validation",
+            "required": True,
+        },
         **dict(binding),
     }
+    if superseded_partial_evidence:
+        result["superseded_partial_evidence"] = [
+            dict(item) for item in superseded_partial_evidence
+        ]
+    return result
 
 
 def _manual_seal_basis_evidence_body(
@@ -3584,12 +3634,23 @@ def _manual_seal_basis_evidence_body(
     binding: Mapping[str, Any],
     qualification_receipt_cid: str,
     materialization_receipt_cid: str,
+    superseded_partial_evidence: list[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    return {
+    result = {
         "qualification_receipt_cid": qualification_receipt_cid,
         "materialization_receipt_cid": materialization_receipt_cid,
+        "stage_guard_policy": {
+            "schema": _MANUAL_SEAL_STAGE_GUARD_POLICY_SCHEMA,
+            "stage": "basis_evidence",
+            "required": True,
+        },
         **dict(binding),
     }
+    if superseded_partial_evidence:
+        result["superseded_partial_evidence"] = [
+            dict(item) for item in superseded_partial_evidence
+        ]
+    return result
 
 
 def _read_manual_seal_evidence(
@@ -3678,17 +3739,14 @@ def _validate_manual_seal_evidence(
     seal_basis_cid: str,
     require_validation: bool,
     require_evidence: bool,
-) -> None:
-    """Reject duplicate, foreign-attempt, or differently fenced seal evidence."""
+    superseded_partial_evidence: list[Mapping[str, Any]] | None = None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Select only exact current-attempt evidence; history is checked separately."""
 
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
         content_identity,
     )
 
-    if len(validations) > 1 or (require_validation and len(validations) != 1):
-        raise MaterializationError("manual seal does not have one exact validation receipt")
-    if len(evidence) > 1 or (require_evidence and len(evidence) != 1):
-        raise MaterializationError("manual seal does not have one exact basis evidence receipt")
     evidence_binding = {
         field: binding.get(field)
         for field in (
@@ -3705,15 +3763,27 @@ def _validate_manual_seal_evidence(
         binding=evidence_binding,
         qualification_receipt_cid=qualification_receipt_cid,
         seal_basis_cid=seal_basis_cid,
+        superseded_partial_evidence=superseded_partial_evidence,
     )
     evidence_body = _manual_seal_basis_evidence_body(
         binding=evidence_binding,
         qualification_receipt_cid=qualification_receipt_cid,
         materialization_receipt_cid=materialization_receipt_cid,
+        superseded_partial_evidence=superseded_partial_evidence,
     )
-    if validations:
-        validation = validations[0]
-        if (
+    validation_rows = [
+        dict(validation)
+        for validation in validations
+        if validation.get("attempt_id") == evidence_binding.get("attempt_id")
+        or (
+            isinstance(validation.get("body"), Mapping)
+            and validation["body"].get("claim_id") == evidence_binding.get("claim_id")
+        )
+    ]
+    exact_validations = [
+        validation
+        for validation in validation_rows
+        if not (
             validation.get("task_cid") != evidence_binding.get("task_cid")
             or validation.get("attempt_id") != evidence_binding.get("attempt_id")
             or validation.get("ordinal") != 0
@@ -3723,22 +3793,581 @@ def _validate_manual_seal_evidence(
             or validation.get("command_digest") != content_identity({"argv": argv})
             or validation.get("body") != validation_body
             or validation.get("run_body") != {"argv": argv, **validation_body}
-        ):
-            raise MaterializationError(
-                "manual seal validation is bound to a different attempt or fence"
-            )
-    if evidence:
-        basis_evidence = evidence[0]
-        if (
+        )
+    ]
+    if len(validation_rows) != len(exact_validations) or len(exact_validations) > 1:
+        raise MaterializationError(
+            "manual seal validation is bound to a different attempt or fence"
+        )
+    evidence_rows = [
+        dict(basis_evidence)
+        for basis_evidence in evidence
+        if isinstance(basis_evidence.get("body"), Mapping)
+        and (
+            basis_evidence["body"].get("attempt_id") == evidence_binding.get("attempt_id")
+            or basis_evidence["body"].get("claim_id") == evidence_binding.get("claim_id")
+        )
+    ]
+    exact_evidence = [
+        basis_evidence
+        for basis_evidence in evidence_rows
+        if not (
             basis_evidence.get("task_cid") != evidence_binding.get("task_cid")
             or basis_evidence.get("parent_evidence_id") != ""
             or basis_evidence.get("evidence_kind") != "bootstrap_seal_basis"
             or basis_evidence.get("digest") != seal_basis_cid
             or basis_evidence.get("body") != evidence_body
+        )
+    ]
+    if len(evidence_rows) != len(exact_evidence) or len(exact_evidence) > 1:
+        raise MaterializationError(
+            "manual seal basis evidence is bound to a different attempt or fence"
+        )
+    if require_validation and len(exact_validations) != 1:
+        raise MaterializationError("manual seal does not have one exact validation receipt")
+    if require_evidence and len(exact_evidence) != 1:
+        raise MaterializationError("manual seal does not have one exact basis evidence receipt")
+    return (
+        exact_validations[0] if exact_validations else None,
+        exact_evidence[0] if exact_evidence else None,
+    )
+
+
+def _manual_seal_evidence_binding(body: Mapping[str, Any]) -> dict[str, Any]:
+    """Project the exact task authority carried by one evidence row."""
+
+    fields = (
+        "task_cid",
+        "claim_id",
+        "attempt_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+    )
+    binding = {field: body.get(field) for field in fields}
+    if (
+        any(not str(binding[field] or "") for field in fields[:4])
+        or type(binding["fencing_token"]) is not int
+        or type(binding["fence_epoch"]) is not int
+        or int(binding["fencing_token"]) < 1
+        or int(binding["fence_epoch"]) < 1
+    ):
+        raise MaterializationError("manual seal evidence omitted its exact task fence")
+    return binding
+
+
+def _manual_seal_stage_receipt(
+    *, stage: str, evidence_receipt: Mapping[str, Any]
+) -> dict[str, Any]:
+    if stage not in {"validation", "basis_evidence"}:
+        raise MaterializationError(f"unsupported manual seal evidence stage {stage!r}")
+    return {
+        "schema": _MANUAL_SEAL_STAGE_RECEIPT_SCHEMA,
+        "stage": stage,
+        "evidence_receipt": dict(evidence_receipt),
+    }
+
+
+def _read_manual_seal_guard_events(coordination_path: Path) -> list[dict[str, Any]]:
+    """Read immutable cross-store guard events without mutating coordination."""
+
+    try:
+        import duckdb  # type: ignore
+
+        connection = duckdb.connect(str(coordination_path), read_only=True)
+    except Exception as exc:
+        raise MaterializationError("manual seal guard history cannot be opened read-only") from exc
+    try:
+        rows = connection.execute(
+            """
+            SELECT event_id, lease_id, scope_key, event_type, fencing_token,
+                   fence_epoch, observed_at_ms, body_json
+            FROM lease_events
+            WHERE event_type = 'cross_store_fence_guard_succeeded'
+            ORDER BY observed_at_ms, event_id
+            """
+        ).fetchall()
+    finally:
+        connection.close()
+    return [
+        {
+            "event_id": str(row[0]),
+            "lease_id": str(row[1]),
+            "scope_key": str(row[2]),
+            "event_type": str(row[3]),
+            "fencing_token": int(row[4]),
+            "fence_epoch": int(row[5]),
+            "observed_at_ms": int(row[6]),
+            "body": _decode_projection_body(row[7], label=f"lease event {row[0]} body"),
+        }
+        for row in rows
+    ]
+
+
+def _manual_seal_stage_guard(
+    *,
+    stage: str,
+    evidence_receipt: Mapping[str, Any],
+    binding: Mapping[str, Any],
+    projection: Mapping[str, Any],
+    guard_events: list[Mapping[str, Any]],
+    expected_writer: Mapping[str, Any],
+    preparation_digest: str = "",
+) -> dict[str, Any] | None:
+    """Return one exact durable guard admitting a validation/evidence stage."""
+
+    expected_result_digest = _identity(
+        _manual_seal_stage_receipt(stage=stage, evidence_receipt=evidence_receipt)
+    )
+    resource_claims = {
+        str(item.get("claim_id") or ""): item
+        for item in projection.get("resource_claims") or ()
+    }
+    leases = {
+        str(item.get("lease_id") or ""): item
+        for item in projection.get("fenced_leases") or ()
+    }
+    matches: list[dict[str, Any]] = []
+    for event in guard_events:
+        body = event.get("body")
+        if not isinstance(body, Mapping):
+            continue
+        if (
+            event.get("event_type") != "cross_store_fence_guard_succeeded"
+            or event.get("lease_id") != binding.get("lease_id")
+            or event.get("fencing_token") != binding.get("fencing_token")
+            or event.get("fence_epoch") != binding.get("fence_epoch")
+            or body.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/cross-store-fence-guard@1"
+            or body.get("task_cid") != binding.get("task_cid")
+            or body.get("claim_id") != binding.get("claim_id")
+            or body.get("attempt_id") != binding.get("attempt_id")
+            or body.get("lease_id") != binding.get("lease_id")
+            or body.get("fencing_token") != binding.get("fencing_token")
+            or body.get("fence_epoch") != binding.get("fence_epoch")
+            or body.get("control_result_digest") != expected_result_digest
+            or (preparation_digest and body.get("preparation_digest") != preparation_digest)
         ):
-            raise MaterializationError(
-                "manual seal basis evidence is bound to a different attempt or fence"
+            continue
+        writer_claim = resource_claims.get(str(body.get("writer_claim_id") or ""))
+        writer_lease = leases.get(str(body.get("writer_lease_id") or ""))
+        if (
+            not isinstance(writer_claim, Mapping)
+            or not isinstance(writer_lease, Mapping)
+            or writer_claim.get("lease_id") != writer_lease.get("lease_id")
+            or writer_claim.get("owner_session_id") != body.get("writer_owner_session_id")
+            or writer_claim.get("task_cid") != binding.get("task_cid")
+            or writer_claim.get("resource_kind") != body.get("writer_resource_kind")
+            or writer_claim.get("resource_id") != body.get("writer_resource_id")
+            or writer_claim.get("mode") != body.get("writer_mode")
+            or writer_claim.get("fencing_token") != body.get("writer_fencing_token")
+            or writer_claim.get("fence_epoch") != body.get("writer_fence_epoch")
+            or any(
+                writer_claim.get(field) != expected_writer.get(field)
+                for field in (
+                    "owner_session_id",
+                    "task_cid",
+                    "resource_kind",
+                    "resource_id",
+                    "repository_id",
+                    "path",
+                    "worktree_id",
+                    "mode",
+                    "body",
+                )
             )
+            or any(
+                writer_claim.get(field) != writer_lease.get(field)
+                for field in (
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "task_cid",
+                    "resource_kind",
+                    "resource_id",
+                    "repository_id",
+                    "path",
+                    "worktree_id",
+                    "mode",
+                    "fencing_token",
+                    "fence_epoch",
+                    "state",
+                    "revision",
+                    "body",
+                )
+            )
+            or writer_claim.get("state") not in {"accepted", "released", "expired"}
+        ):
+            continue
+        matches.append(
+            {
+                "event_id": str(event.get("event_id") or ""),
+                "guard_digest": _identity(body),
+                "preparation_digest": str(body.get("preparation_digest") or ""),
+                "control_result_digest": expected_result_digest,
+                "writer_claim_id": str(writer_claim.get("claim_id") or ""),
+                "writer_lease_id": str(writer_lease.get("lease_id") or ""),
+                "writer_fencing_token": int(writer_claim.get("fencing_token") or 0),
+                "writer_fence_epoch": int(writer_claim.get("fence_epoch") or 0),
+            }
+        )
+    if not matches:
+        return None
+    return sorted(matches, key=lambda item: item["event_id"])[0]
+
+
+def _manual_seal_partial_link(
+    *,
+    stage: str,
+    evidence_receipt: Mapping[str, Any],
+    binding: Mapping[str, Any],
+    stage_guard: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "schema": _MANUAL_SEAL_PARTIAL_LINK_SCHEMA,
+        "stage": stage,
+        "receipt_cid": _identity(evidence_receipt),
+        **dict(binding),
+        "fence_admission": "guarded" if stage_guard is not None else "post_fence_failed",
+        "guard_event_id": str(stage_guard.get("event_id") or "") if stage_guard else "",
+        "guard_digest": str(stage_guard.get("guard_digest") or "") if stage_guard else "",
+    }
+
+
+def _verify_manual_seal_partial_history(
+    *,
+    control_path: Path,
+    projection: Mapping[str, Any],
+    guard_events: list[Mapping[str, Any]],
+    population: Mapping[str, Any],
+    task_cid: str,
+    owner_id: str,
+    idempotency_key: str,
+    accepted_result_cid: str,
+    qualification_receipt_cid: str,
+    materialization_receipt_cid: str,
+    baseline_event_cursor: int,
+    current_binding: Mapping[str, Any] | None = None,
+    current_preparation_digest: str = "",
+    strict_unsealed_events: bool,
+) -> dict[str, Any]:
+    """Authenticate immutable partial evidence and derive explicit supersession links."""
+
+    validations, evidence = _read_manual_seal_evidence(
+        control_path=control_path,
+        task_cid=task_cid,
+        qualification_receipt_cid=qualification_receipt_cid,
+        seal_basis_cid=accepted_result_cid,
+    )
+    claims = {
+        str(item.get("claim_id") or ""): item for item in projection.get("task_claims") or ()
+    }
+    attempts = {
+        str(item.get("attempt_id") or ""): item
+        for item in projection.get("task_attempts") or ()
+    }
+    leases = {
+        str(item.get("lease_id") or ""): item
+        for item in projection.get("fenced_leases") or ()
+        if item.get("lease_kind") == "task"
+    }
+    expected_writer = {
+        "owner_session_id": owner_id,
+        "task_cid": task_cid,
+        "resource_kind": "database_writer",
+        "resource_id": (
+            "lgswf-control-store:"
+            + _identity(
+                {
+                    "plan_root_cid": population["plan_root_cid"],
+                    "repository_tree_id": population["repository_tree_id"],
+                }
+            ).split(":", 1)[1]
+        ),
+        "repository_id": population["source_head"],
+        "path": "",
+        "worktree_id": "",
+        "mode": "exclusive",
+        "body": {
+            "kind": "trusted_manual_bootstrap_writer",
+            "accepted_result_cid": accepted_result_cid,
+            "plan_root_cid": population["plan_root_cid"],
+        },
+    }
+    records: list[dict[str, Any]] = []
+    seen_stages: set[tuple[str, str]] = set()
+    for stage, rows in (("validation", validations), ("basis_evidence", evidence)):
+        for raw in rows:
+            row = dict(raw)
+            body = row.get("body")
+            if not isinstance(body, Mapping):
+                raise MaterializationError("manual seal partial evidence body is unavailable")
+            binding = _manual_seal_evidence_binding(body)
+            claim = claims.get(str(binding["claim_id"]))
+            attempt = attempts.get(str(binding["attempt_id"]))
+            lease = leases.get(str(binding["lease_id"]))
+            expected_claim_body = {
+                "kind": "trusted_manual_bootstrap_seal",
+                "accepted_result_cid": accepted_result_cid,
+            }
+            if (
+                not isinstance(claim, Mapping)
+                or not isinstance(attempt, Mapping)
+                or not isinstance(lease, Mapping)
+                or claim.get("task_cid") != task_cid
+                or claim.get("owner_session_id") != owner_id
+                or claim.get("idempotency_key") != idempotency_key
+                or claim.get("body") != expected_claim_body
+                or any(
+                    claim.get(field) != binding.get(field)
+                    for field in (
+                        "task_cid",
+                        "claim_id",
+                        "attempt_id",
+                        "lease_id",
+                        "fencing_token",
+                        "fence_epoch",
+                    )
+                )
+                or any(
+                    claim.get(field) != attempt.get(field)
+                    for field in (
+                        "task_cid",
+                        "attempt_id",
+                        "attempt_number",
+                        "owner_session_id",
+                        "fencing_token",
+                        "fence_epoch",
+                    )
+                )
+                or any(
+                    claim.get(field) != lease.get(field)
+                    for field in (
+                        "task_cid",
+                        "claim_id",
+                        "attempt_id",
+                        "attempt_number",
+                        "lease_id",
+                        "owner_session_id",
+                        "fencing_token",
+                        "fence_epoch",
+                        "idempotency_key",
+                        "state",
+                        "body",
+                    )
+                )
+            ):
+                raise MaterializationError(
+                    "manual seal evidence is bound to a different attempt or fence"
+                )
+            transition = (claim.get("state"), attempt.get("status"), lease.get("state"))
+            if transition not in {
+                ("accepted", "running", "accepted"),
+                ("expired", "expired", "expired"),
+                ("released", "succeeded", "released"),
+                ("completed", "succeeded", "completed"),
+            }:
+                raise MaterializationError(
+                    "manual seal partial evidence names an invalid task transition"
+                )
+            stage_key = (str(binding["attempt_id"]), stage)
+            if stage_key in seen_stages:
+                raise MaterializationError("manual seal contains duplicate per-attempt evidence")
+            seen_stages.add(stage_key)
+            guard = _manual_seal_stage_guard(
+                stage=stage,
+                evidence_receipt=row,
+                binding=binding,
+                projection=projection,
+                guard_events=guard_events,
+                expected_writer=expected_writer,
+                preparation_digest=(
+                    current_preparation_digest
+                    if current_binding is not None
+                    and all(binding.get(key) == current_binding.get(key) for key in binding)
+                    else ""
+                ),
+            )
+            if guard is None and transition not in {
+                ("accepted", "running", "accepted"),
+                ("expired", "expired", "expired"),
+            }:
+                raise MaterializationError(
+                    "terminal manual seal evidence is bound to a different attempt or fence: "
+                    "no exact stage fence guard"
+                )
+            records.append(
+                {
+                    "stage": stage,
+                    "row": row,
+                    "binding": binding,
+                    "guard": guard,
+                    "link": _manual_seal_partial_link(
+                        stage=stage,
+                        evidence_receipt=row,
+                        binding=binding,
+                        stage_guard=guard,
+                    ),
+                }
+            )
+
+    records.sort(
+        key=lambda item: (
+            int(item["binding"]["fence_epoch"]),
+            int(item["binding"]["fencing_token"]),
+            item["stage"],
+            item["link"]["receipt_cid"],
+        )
+    )
+    for record in records:
+        binding = record["binding"]
+        prior_links = [
+            dict(item["link"])
+            for item in records
+            if (
+                int(item["binding"]["fence_epoch"]),
+                int(item["binding"]["fencing_token"]),
+            )
+            < (int(binding["fence_epoch"]), int(binding["fencing_token"]))
+        ]
+        row = record["row"]
+        if record["stage"] == "validation":
+            expected_body = _manual_seal_validation_body(
+                binding=binding,
+                qualification_receipt_cid=qualification_receipt_cid,
+                seal_basis_cid=accepted_result_cid,
+                superseded_partial_evidence=prior_links,
+            )
+            if (
+                row.get("task_cid") != task_cid
+                or row.get("attempt_id") != binding.get("attempt_id")
+                or row.get("ordinal") != 0
+                or row.get("outcome") != "passed"
+                or row.get("run_status") != "passed"
+                or row.get("evidence_digest") != qualification_receipt_cid
+                or row.get("body") != expected_body
+                or row.get("run_body")
+                != {"argv": ["verified-content-addressed-bootstrap-qualification"], **expected_body}
+            ):
+                raise MaterializationError(
+                    "manual seal validation is bound to a different attempt or fence"
+                )
+        else:
+            expected_body = _manual_seal_basis_evidence_body(
+                binding=binding,
+                qualification_receipt_cid=qualification_receipt_cid,
+                materialization_receipt_cid=materialization_receipt_cid,
+                superseded_partial_evidence=prior_links,
+            )
+            if (
+                row.get("task_cid") != task_cid
+                or row.get("parent_evidence_id") != ""
+                or row.get("evidence_kind") != "bootstrap_seal_basis"
+                or row.get("digest") != accepted_result_cid
+                or row.get("body") != expected_body
+            ):
+                raise MaterializationError(
+                    "manual seal basis evidence is bound to a different attempt or fence"
+                )
+
+    expected_events = sorted(
+        (
+            "intent.validation_recorded" if item["stage"] == "validation" else "intent.evidence_recorded",
+            str(
+                item["row"].get("result_id")
+                if item["stage"] == "validation"
+                else item["row"].get("evidence_id")
+            ),
+            str(item["binding"]["attempt_id"]) if item["stage"] == "validation" else "",
+        )
+        for item in records
+    )
+    try:
+        import duckdb  # type: ignore
+
+        connection = duckdb.connect(str(control_path), read_only=True)
+    except Exception as exc:
+        raise MaterializationError("manual seal partial history cannot be opened read-only") from exc
+    try:
+        validation_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM validation_results WHERE task_cid = ?",
+                [task_cid],
+            ).fetchone()[0]
+        )
+        evidence_rows = connection.execute(
+            "SELECT evidence_kind, digest FROM evidence_nodes WHERE task_cid = ?",
+            [task_cid],
+        ).fetchall()
+        domain_rows = connection.execute(
+            """
+            SELECT event_type, json_extract_string(body_json, '$.subject_id'),
+                   attempt_id, task_cid
+            FROM domain_events
+            WHERE global_sequence > ?
+            ORDER BY global_sequence
+            """,
+            [int(baseline_event_cursor)],
+        ).fetchall()
+    finally:
+        connection.close()
+    if validation_count != len(validations):
+        raise MaterializationError("manual seal contains foreign validation history")
+    allowed_partial_nodes = [
+        (str(row[0]), str(row[1]))
+        for row in evidence_rows
+        if str(row[0]) in {"validation", "bootstrap_seal_basis"}
+    ]
+    expected_partial_nodes = sorted(
+        [("validation", qualification_receipt_cid)] * len(validations)
+        + [("bootstrap_seal_basis", accepted_result_cid)] * len(evidence)
+    )
+    if sorted(allowed_partial_nodes) != expected_partial_nodes:
+        raise MaterializationError("manual seal contains foreign partial evidence nodes")
+    all_events = [
+        (str(row[0]), str(row[1]), str(row[2] or ""), str(row[3] or ""))
+        for row in domain_rows
+    ]
+    observed_events = sorted(
+        (event_type, subject_id, attempt_id)
+        for event_type, subject_id, attempt_id, event_task_cid in all_events
+        if event_task_cid == task_cid
+    )
+    if len(evidence_rows) != len(expected_partial_nodes):
+        raise MaterializationError("manual seal contains foreign post-materialization evidence")
+    expected_post_materialization_events = list(expected_events)
+    if not strict_unsealed_events:
+        expected_post_materialization_events.append(
+            ("intent.completion_recorded", task_cid, "")
+        )
+        expected_post_materialization_events.sort()
+    if (
+        observed_events != expected_post_materialization_events
+        or (strict_unsealed_events and len(all_events) != len(observed_events))
+    ):
+        raise MaterializationError("manual seal partial evidence lost its immutable event")
+
+    current = dict(current_binding) if current_binding is not None else None
+    current_records = [
+        item
+        for item in records
+        if current is not None
+        and all(item["binding"].get(key) == current.get(key) for key in item["binding"])
+    ]
+    superseded = [
+        dict(item["link"])
+        for item in records
+        if item not in current_records
+    ]
+    by_stage = {item["stage"]: item for item in current_records}
+    return {
+        "validations": validations,
+        "evidence": evidence,
+        "superseded_partial_evidence": superseded,
+        "current_validation": by_stage.get("validation"),
+        "current_basis_evidence": by_stage.get("basis_evidence"),
+        "has_partial_evidence": bool(records),
+    }
 
 
 def _writer_fence_authority(
@@ -4041,24 +4670,44 @@ def _durable_seal_authority(
     materialization_cid = str(
         preparation["body"]["seal_basis"]["materialization_receipt_cid"]
     )
-    validations, evidence = _read_manual_seal_evidence(
+    history = _verify_manual_seal_partial_history(
         control_path=paths["control"],
+        projection=projection,
+        guard_events=_read_manual_seal_guard_events(paths["coordination"]),
+        population=population,
         task_cid=str(binding["task_cid"]),
+        owner_id=str(binding.get("owner_session_id") or claim.get("owner_session_id") or ""),
+        idempotency_key=str(claim.get("idempotency_key") or ""),
+        accepted_result_cid=accepted_result_cid,
         qualification_receipt_cid=qualification_cid,
-        seal_basis_cid=accepted_result_cid,
+        materialization_receipt_cid=materialization_cid,
+        baseline_event_cursor=int(
+            preparation["body"]["seal_basis"]["task_source_snapshot"]["event_cursor"]
+        ),
+        current_binding=binding,
+        current_preparation_digest=str(preparation.get("preparation_digest") or ""),
+        strict_unsealed_events=False,
     )
-    _validate_manual_seal_evidence(
-        validations=validations,
-        evidence=evidence,
+    validation_receipt, basis_evidence = _validate_manual_seal_evidence(
+        validations=history["validations"],
+        evidence=history["evidence"],
         binding=binding,
         qualification_receipt_cid=qualification_cid,
         materialization_receipt_cid=materialization_cid,
         seal_basis_cid=accepted_result_cid,
         require_validation=True,
         require_evidence=True,
+        superseded_partial_evidence=history["superseded_partial_evidence"],
     )
-    validation_receipt = validations[0]
-    basis_evidence = evidence[0]
+    if (
+        history["current_validation"] is None
+        or history["current_validation"].get("guard") is None
+        or history["current_basis_evidence"] is None
+        or history["current_basis_evidence"].get("guard") is None
+        or validation_receipt is None
+        or basis_evidence is None
+    ):
+        raise MaterializationError("accepted seal evidence lacks exact stage fence guards")
     control_cas = {
         "schema": "ipfs_accelerate_py/agent-supervisor/durable-control-completion@1",
         "changed": True,
@@ -4352,23 +5001,43 @@ def _verify_live_seal_receipt(
         raise MaterializationError("accepted LGSWF-006 seal history cannot be reconstructed")
 
     qualification_cid = str(qualification["receipt_cid"])
-    validations, evidence = _read_manual_seal_evidence(
+    history = _verify_manual_seal_partial_history(
         control_path=_paths(config)["control"],
+        projection=coordination_projection,
+        guard_events=_read_manual_seal_guard_events(_paths(config)["coordination"]),
+        population=population,
         task_cid=str(binding["task_cid"]),
+        owner_id=str(persisted_claim.get("owner_session_id") or ""),
+        idempotency_key=str(persisted_claim.get("idempotency_key") or ""),
+        accepted_result_cid=accepted_result_cid,
         qualification_receipt_cid=qualification_cid,
-        seal_basis_cid=accepted_result_cid,
+        materialization_receipt_cid=str(materialization["receipt_cid"]),
+        baseline_event_cursor=int(
+            preparation["body"]["seal_basis"]["task_source_snapshot"]["event_cursor"]
+        ),
+        current_binding=binding,
+        current_preparation_digest=str(preparation.get("preparation_digest") or ""),
+        strict_unsealed_events=False,
     )
-    _validate_manual_seal_evidence(
-        validations=validations,
-        evidence=evidence,
+    current_validation, current_evidence = _validate_manual_seal_evidence(
+        validations=history["validations"],
+        evidence=history["evidence"],
         binding=binding,
         qualification_receipt_cid=qualification_cid,
         materialization_receipt_cid=str(materialization["receipt_cid"]),
         seal_basis_cid=accepted_result_cid,
         require_validation=True,
         require_evidence=True,
+        superseded_partial_evidence=history["superseded_partial_evidence"],
     )
-    if validations[0] != validation or evidence[0] != basis_evidence:
+    if (
+        history["current_validation"] is None
+        or history["current_validation"].get("guard") is None
+        or history["current_basis_evidence"] is None
+        or history["current_basis_evidence"].get("guard") is None
+        or current_validation != validation
+        or current_evidence != basis_evidence
+    ):
         raise MaterializationError("bootstrap seal receipt differs from durable evidence")
 
     captured_task = control_cas.get("task")
@@ -5158,6 +5827,7 @@ def _seal_with_writer(
     from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
         CROSS_STORE_FENCE_GUARD_REQUIRED_FIELD,
         open_database_coordinator,
+        read_coordination_registry_projection,
     )
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
@@ -5228,6 +5898,22 @@ def _seal_with_writer(
         }
     finally:
         current.close()
+    partial_history: dict[str, Any] | None = None
+    if not already_completed:
+        partial_history = _verify_manual_seal_partial_history(
+            control_path=paths["control"],
+            projection=read_coordination_registry_projection(paths["coordination"]),
+            guard_events=_read_manual_seal_guard_events(paths["coordination"]),
+            population=population,
+            task_cid=task_cid,
+            owner_id=owner_id,
+            idempotency_key=idempotency_key,
+            accepted_result_cid=accepted_result_cid,
+            qualification_receipt_cid=str(qualification_receipt["receipt_cid"]),
+            materialization_receipt_cid=str(materialization_receipt["receipt_cid"]),
+            baseline_event_cursor=int(seal_basis["task_source_snapshot"]["event_cursor"]),
+            strict_unsealed_events=True,
+        )
     guard_replay_required = any(
         item.get("status") == "guard_replay_required" for item in recovery
     )
@@ -5297,7 +5983,11 @@ def _seal_with_writer(
             pre_verification.get("ready_task_aliases") != seal_basis["ready_task_aliases"]
             or pre_verification.get("schema_profile", {}).get("schema_fingerprint")
             != seal_basis["schema_profile_fingerprint"]
-            or pre_verification.get("task_source_snapshot") != seal_basis["task_source_snapshot"]
+            or (
+                pre_verification.get("task_source_snapshot")
+                != seal_basis["task_source_snapshot"]
+                and not bool(partial_history and partial_history["has_partial_evidence"])
+            )
             or pre_verification.get("task_spec_root") != seal_basis["task_spec_root"]
             or pre_verification.get("control_population", {}).get("population_root")
             != seal_basis["control_population_root"]
@@ -5407,48 +6097,108 @@ def _seal_with_writer(
         evidence_binding = _manual_seal_attempt_binding(claim)
         qualification_cid = str(qualification_receipt["receipt_cid"])
         materialization_cid = str(materialization_receipt["receipt_cid"])
+
+        def inspect_partial_history() -> dict[str, Any]:
+            return _verify_manual_seal_partial_history(
+                control_path=paths["control"],
+                projection=coordinator.coordination_registry_projection(),
+                guard_events=coordinator.lease_events(limit=10_000),
+                population=population,
+                task_cid=task_cid,
+                owner_id=owner_id,
+                idempotency_key=idempotency_key,
+                accepted_result_cid=accepted_result_cid,
+                qualification_receipt_cid=qualification_cid,
+                materialization_receipt_cid=materialization_cid,
+                baseline_event_cursor=int(seal_basis["task_source_snapshot"]["event_cursor"]),
+                current_binding=evidence_binding,
+                current_preparation_digest=str(preparation["preparation_digest"]),
+                strict_unsealed_events=not control_already_completed,
+            )
+
+        partial = inspect_partial_history()
+        superseded = partial["superseded_partial_evidence"]
         validation_body = _manual_seal_validation_body(
             binding=evidence_binding,
             qualification_receipt_cid=qualification_cid,
             seal_basis_cid=accepted_result_cid,
+            superseded_partial_evidence=superseded,
         )
         basis_evidence_body = _manual_seal_basis_evidence_body(
             binding=evidence_binding,
             qualification_receipt_cid=qualification_cid,
             materialization_receipt_cid=materialization_cid,
+            superseded_partial_evidence=superseded,
         )
-        validations, basis_evidence_rows = _read_manual_seal_evidence(
-            control_path=paths["control"],
-            task_cid=task_cid,
-            qualification_receipt_cid=qualification_cid,
-            seal_basis_cid=accepted_result_cid,
-        )
-        _validate_manual_seal_evidence(
-            validations=validations,
-            evidence=basis_evidence_rows,
-            binding=evidence_binding,
-            qualification_receipt_cid=qualification_cid,
-            materialization_receipt_cid=materialization_cid,
-            seal_basis_cid=accepted_result_cid,
-            require_validation=False,
-            require_evidence=False,
-        )
-        if not validations:
-            task_source.record_validation_result(
-                task_cid=task_cid,
-                outcome="passed",
-                evidence_digest=qualification_cid,
-                argv=["verified-content-addressed-bootstrap-qualification"],
-                attempt_id=str(claim.attempt_id),
-                body=validation_body,
-            )
+
+        def guarded_validation_stage() -> dict[str, Any]:
             validations, basis_evidence_rows = _read_manual_seal_evidence(
                 control_path=paths["control"],
                 task_cid=task_cid,
                 qualification_receipt_cid=qualification_cid,
                 seal_basis_cid=accepted_result_cid,
             )
-            _validate_manual_seal_evidence(
+            validation, _basis = _validate_manual_seal_evidence(
+                validations=validations,
+                evidence=basis_evidence_rows,
+                binding=evidence_binding,
+                qualification_receipt_cid=qualification_cid,
+                materialization_receipt_cid=materialization_cid,
+                seal_basis_cid=accepted_result_cid,
+                require_validation=False,
+                require_evidence=False,
+                superseded_partial_evidence=superseded,
+            )
+            if validation is None:
+                task_source.record_validation_result(
+                    task_cid=task_cid,
+                    outcome="passed",
+                    evidence_digest=qualification_cid,
+                    argv=["verified-content-addressed-bootstrap-qualification"],
+                    attempt_id=str(claim.attempt_id),
+                    body=validation_body,
+                )
+                validations, basis_evidence_rows = _read_manual_seal_evidence(
+                    control_path=paths["control"],
+                    task_cid=task_cid,
+                    qualification_receipt_cid=qualification_cid,
+                    seal_basis_cid=accepted_result_cid,
+                )
+                validation, _basis = _validate_manual_seal_evidence(
+                    validations=validations,
+                    evidence=basis_evidence_rows,
+                    binding=evidence_binding,
+                    qualification_receipt_cid=qualification_cid,
+                    materialization_receipt_cid=materialization_cid,
+                    seal_basis_cid=accepted_result_cid,
+                    require_validation=True,
+                    require_evidence=False,
+                    superseded_partial_evidence=superseded,
+                )
+            assert validation is not None
+            return _manual_seal_stage_receipt(
+                stage="validation", evidence_receipt=validation
+            )
+
+        if partial["current_validation"] is None or partial["current_validation"]["guard"] is None:
+            coordinator.execute_with_task_and_resource_fences(
+                claim,
+                writer_claim,
+                guarded_validation_stage,
+                allow_logically_completed=True,
+            )
+        partial = inspect_partial_history()
+        if partial["current_validation"] is None or partial["current_validation"]["guard"] is None:
+            raise MaterializationError("manual seal validation was not fence-admitted")
+
+        def guarded_basis_evidence_stage() -> dict[str, Any]:
+            validations, basis_evidence_rows = _read_manual_seal_evidence(
+                control_path=paths["control"],
+                task_cid=task_cid,
+                qualification_receipt_cid=qualification_cid,
+                seal_basis_cid=accepted_result_cid,
+            )
+            _validation, basis_evidence = _validate_manual_seal_evidence(
                 validations=validations,
                 evidence=basis_evidence_rows,
                 binding=evidence_binding,
@@ -5457,30 +6207,57 @@ def _seal_with_writer(
                 seal_basis_cid=accepted_result_cid,
                 require_validation=True,
                 require_evidence=False,
+                superseded_partial_evidence=superseded,
             )
-        if not basis_evidence_rows:
-            task_source.record_evidence(
-                task_cid=task_cid,
-                evidence_kind="bootstrap_seal_basis",
-                digest=accepted_result_cid,
-                body=basis_evidence_body,
+            if basis_evidence is None:
+                task_source.record_evidence(
+                    task_cid=task_cid,
+                    evidence_kind="bootstrap_seal_basis",
+                    digest=accepted_result_cid,
+                    body=basis_evidence_body,
+                )
+                validations, basis_evidence_rows = _read_manual_seal_evidence(
+                    control_path=paths["control"],
+                    task_cid=task_cid,
+                    qualification_receipt_cid=qualification_cid,
+                    seal_basis_cid=accepted_result_cid,
+                )
+                _validation, basis_evidence = _validate_manual_seal_evidence(
+                    validations=validations,
+                    evidence=basis_evidence_rows,
+                    binding=evidence_binding,
+                    qualification_receipt_cid=qualification_cid,
+                    materialization_receipt_cid=materialization_cid,
+                    seal_basis_cid=accepted_result_cid,
+                    require_validation=True,
+                    require_evidence=True,
+                    superseded_partial_evidence=superseded,
+                )
+            assert basis_evidence is not None
+            return _manual_seal_stage_receipt(
+                stage="basis_evidence", evidence_receipt=basis_evidence
             )
-        validations, basis_evidence_rows = _read_manual_seal_evidence(
-            control_path=paths["control"],
-            task_cid=task_cid,
-            qualification_receipt_cid=qualification_cid,
-            seal_basis_cid=accepted_result_cid,
-        )
-        _validate_manual_seal_evidence(
-            validations=validations,
-            evidence=basis_evidence_rows,
-            binding=evidence_binding,
-            qualification_receipt_cid=qualification_cid,
-            materialization_receipt_cid=materialization_cid,
-            seal_basis_cid=accepted_result_cid,
-            require_validation=True,
-            require_evidence=True,
-        )
+
+        if (
+            partial["current_basis_evidence"] is None
+            or partial["current_basis_evidence"]["guard"] is None
+        ):
+            coordinator.execute_with_task_and_resource_fences(
+                claim,
+                writer_claim,
+                guarded_basis_evidence_stage,
+                allow_logically_completed=True,
+            )
+        partial = inspect_partial_history()
+        current_validation = partial["current_validation"]
+        current_basis = partial["current_basis_evidence"]
+        if (
+            current_validation is None
+            or current_validation["guard"] is None
+            or current_basis is None
+            or current_basis["guard"] is None
+        ):
+            raise MaterializationError("manual seal evidence stages were not fence-admitted")
         expected_control_revision = int(preparation["control_expected_revision"])
         completion_receipt = _manual_seal_control_receipt(
             accepted_result_cid=accepted_result_cid,

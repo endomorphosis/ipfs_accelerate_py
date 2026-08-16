@@ -7172,3 +7172,254 @@ def test_loader_rejects_runtime_path_escape(tmp_path: Path) -> None:
 
     with pytest.raises(ConfiguredBoardError, match="unsafe relative path"):
         load_configured_board(unsafe, repo_root=repo)
+
+
+def _seed_configured_board_live_seal_no_go(
+    tmp_path: Path,
+) -> tuple[Path, multi_runner_module.SupervisorTrack, tuple[str, ...]]:
+    repo = (tmp_path / "live-no-go").resolve()
+    _write(repo / "worker.py", "raise SystemExit(0)\n")
+    _write(
+        repo / multi_runner_module.PLAN_BOUND_GATE_ENTRY_PATH,
+        "# dry evidence runner\n",
+    )
+    _write(
+        repo / "scripts/validate_logic_governed_semantic_work_fabric_board.py",
+        "# dry evidence validator\n",
+    )
+    _write(
+        repo
+        / "scripts/materialize_logic_governed_semantic_work_fabric_control_plane.py",
+        "# dry evidence verifier\n",
+    )
+    track = multi_runner_module.SupervisorTrack(
+        name="sealed-lane",
+        script_path=Path("worker.py"),
+        log_path=Path("state/worker.log"),
+        supervisor_pid_path=Path("state/supervisor.pid"),
+        daemon_pid_path=Path("state/daemon.pid"),
+    )
+    common = (
+        "--task-source-kind",
+        "duckdb",
+        "--authority-mode",
+        "embedded",
+        "--state-store-id",
+        "data/runtime/control.duckdb",
+        "--state-schema-revision",
+        multi_runner_module.DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION,
+    )
+    return repo, track, common
+
+
+def test_configured_board_live_seal_dry_profile_binds_target_and_no_go(
+    tmp_path: Path,
+) -> None:
+    repo, track, common = _seed_configured_board_live_seal_no_go(tmp_path)
+    profile = multi_runner_module.configured_board_live_seal_launch_profile(
+        tracks=(track,),
+        repo_root=repo,
+        common_args=common,
+        python_executable=sys.executable,
+    )
+
+    assert profile["schema"] == (
+        multi_runner_module.CONFIGURED_BOARD_LIVE_SEAL_PROFILE_SCHEMA
+    )
+    assert profile["python_flags_required"] == ["-I", "-S"]
+    assert profile["launch_policy"]["status"] == "no-go"
+    assert "immutable accepted control-plane capsule" in profile[
+        "launch_policy"
+    ]["blocker"]
+    assert profile["tracks"][0]["script_sha256"] == (
+        "sha256:" + hashlib.sha256((repo / "worker.py").read_bytes()).hexdigest()
+    )
+    assert "QUACK_TOKEN" not in json.dumps(profile, sort_keys=True)
+
+
+def test_configured_board_live_seal_target_swap_changes_dry_profile(
+    tmp_path: Path,
+) -> None:
+    repo, track, common = _seed_configured_board_live_seal_no_go(tmp_path)
+    before = multi_runner_module.configured_board_live_seal_launch_profile(
+        tracks=(track,),
+        repo_root=repo,
+        common_args=common,
+        python_executable=sys.executable,
+    )
+    _write(repo / "worker.py", "raise SystemExit('replacement')\n")
+    after = multi_runner_module.configured_board_live_seal_launch_profile(
+        tracks=(track,),
+        repo_root=repo,
+        common_args=common,
+        python_executable=sys.executable,
+    )
+
+    assert before["tracks"][0]["script_sha256"] != after["tracks"][0][
+        "script_sha256"
+    ]
+    assert multi_runner_module.content_identity(before) != (
+        multi_runner_module.content_identity(after)
+    )
+
+
+@pytest.mark.parametrize("artifact", ("log", "pid"))
+def test_configured_board_live_seal_no_go_is_zero_popen_and_zero_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artifact: str,
+) -> None:
+    repo, track, common = _seed_configured_board_live_seal_no_go(tmp_path)
+    state = repo / "state"
+    state.mkdir()
+    victim = repo / "operator-owned"
+    _write(victim, "must remain unchanged\n")
+    os.link(
+        victim,
+        state / ("worker.log" if artifact == "log" else "supervisor.pid"),
+    )
+    popen_calls: list[object] = []
+    monkeypatch.setattr(
+        multi_runner_module.subprocess,
+        "Popen",
+        lambda *args, **kwargs: popen_calls.append((args, kwargs)),
+    )
+    monkeypatch.setenv("QUACK_TOKEN", "must-not-cross-no-go")
+
+    def unexpected_io(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("live NO-GO reached filesystem I/O")
+
+    with monkeypatch.context() as no_io:
+        no_io.setattr(type(repo), "resolve", unexpected_io)
+        no_io.setattr(
+            multi_runner_module,
+            "_read_stable_regular_bytes",
+            unexpected_io,
+        )
+        with pytest.raises(ValueError, match="NO-GO.*immutable accepted"):
+            multi_runner_module.run_supervisor_tracks(
+                (track,),
+                repo_root=repo,
+                common_args=common,
+                duration_seconds=0,
+                python_executable=sys.executable,
+                require_configured_board_live_seal=(
+                    multi_runner_module.CONFIGURED_BOARD_LIVE_SEAL_CONFIG_PATH
+                ),
+                output=lambda _message: None,
+            )
+
+    assert popen_calls == []
+    assert victim.read_text(encoding="utf-8") == "must remain unchanged\n"
+    assert os.lstat(victim).st_nlink == 2
+
+
+def test_configured_board_live_seal_profile_and_flag_remain_bidirectional(
+    tmp_path: Path,
+) -> None:
+    repo, track, _sealed_common = _seed_configured_board_live_seal_no_go(
+        tmp_path
+    )
+    with pytest.raises(
+        ValueError, match="flag requires the exact datasets-authoritative"
+    ):
+        multi_runner_module.run_supervisor_tracks(
+            (track,),
+            repo_root=repo,
+            common_args=("--state-schema-revision", "ordinary"),
+            duration_seconds=0,
+            require_configured_board_live_seal=(
+                multi_runner_module.CONFIGURED_BOARD_LIVE_SEAL_CONFIG_PATH
+            ),
+            output=lambda _message: None,
+        )
+
+
+def test_configured_board_live_seal_start_and_detach_are_zero_effect_no_go(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, track, common = _seed_configured_board_live_seal_no_go(tmp_path)
+    calls: list[object] = []
+    monkeypatch.setattr(
+        multi_runner_module.subprocess,
+        "Popen",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    def unexpected_effect(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("live NO-GO reached a runtime path")
+
+    monkeypatch.setattr(
+        multi_runner_module.SupervisorTrack,
+        "resolve",
+        unexpected_effect,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_master_paths",
+        unexpected_effect,
+    )
+    with pytest.raises(ValueError, match="NO-GO"):
+        multi_runner_module.start_track(
+            track,
+            repo_root=repo,
+            common_args=common,
+        )
+    args = SimpleNamespace(
+        require_configured_board_live_seal=(
+            multi_runner_module.CONFIGURED_BOARD_LIVE_SEAL_CONFIG_PATH
+        ),
+    )
+    with pytest.raises(ValueError, match="NO-GO"):
+        multi_runner_module.launch_detached(
+            args,
+            ("--detach",),
+        )
+    assert calls == []
+    assert not (repo / "state").exists()
+
+
+def test_configured_board_live_seal_real_birth_rejects_before_startup_hook(
+    tmp_path: Path,
+) -> None:
+    sentinel = tmp_path / "startup-or-target-ran"
+    hook = tmp_path / "sitecustomize.py"
+    _write(
+        hook,
+        "from pathlib import Path\n"
+        f"Path({str(sentinel)!r}).write_text('startup hook')\n",
+    )
+    target = tmp_path / "target.py"
+    _write(
+        target,
+        "from pathlib import Path\n"
+        f"Path({str(sentinel)!r}).write_text('target')\n",
+    )
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "PYTHONPATH": str(tmp_path),
+            "PYTHONSTARTUP": str(hook),
+            "QUACK_TOKEN": "must-not-cross-no-go",
+        }
+    )
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            str(Path(multi_runner_module.__file__).resolve()),
+            multi_runner_module.CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_GATE_MARKER,
+            "--",
+            sys.executable,
+            str(target),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert completed.returncode == 78
+    assert not sentinel.exists()

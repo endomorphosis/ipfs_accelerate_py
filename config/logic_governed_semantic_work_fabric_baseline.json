@@ -1,11 +1,14 @@
 {
   "schema": "ipfs_accelerate_py.agent_supervisor.logic-governed-semantic-work-fabric.baseline@2",
-  "observed_at": "2026-08-16T02:22:22Z",
+  "observed_at": "2026-08-16T06:47:29Z",
   "policy": {
     "source_rule": "The actual checked-out source, including its tracked and non-runtime untracked changes, is implementation authority.",
     "snapshot_rule": "Dirty user work is preserved untouched and reproduced in isolated, committed worktrees before integration.",
     "semantic_truth_owner": "ipfs_datasets_py",
     "operational_coordination_owner": "ipfs_accelerate_py",
+    "operational_orchestrator": "ipfs_accelerate_py DuckDB + Quack control plane",
+    "operational_authority_split": "DuckDB owns authoritative transactional records, schema, CAS and fencing; Quack is the mandatory multi-reader/multi-writer transport and exclusive state-owner service boundary",
+    "ducklake_role": "optional non-authoritative immutable analytics/history substrate downstream of the DuckDB + Quack control plane",
     "remote_fetch_or_revision_adoption_authorized": false,
     "operational_fields_in_semantic_state_root": false
   },
@@ -42,6 +45,57 @@
     "duckdb_integration_tree": "1313cf18fecd969f654f0233f6678c2d851116e8",
     "control_contract_commit": "3a07f2b9273161ce805feff98414ef3c66eae7cc",
     "control_contract_tree": "49df4554135a9fcd088f7b4d9c36a86ae4c508c9",
+    "datasets_authoritative_operational_schema_commit": "ca9d0b8a5d9d0aea392107c1fd8f6842d38bb4e5",
+    "datasets_authoritative_operational_schema_tree": "05870e3ccd0b1b64a16e733f31e549b1990d3ca2",
+    "semantic_writer_guard_commit": "286cb11ae997b91f3971e1d038fd8ede9a99c1c0",
+    "semantic_writer_guard_tree": "8a876e6dfa669663331ff2c1fdacd2153b3b4d49",
+    "proof_writer_guard_commit": "dc4409783cedea6d36f46667b0b0d916edacf0fb",
+    "proof_writer_guard_tree": "35615d50849ce1652a11027b13338fb6b66bb2a4",
+    "semantic_authority_context_commit": "489fba3ba2728d2e4399961b863d45c56a50b7e3",
+    "semantic_authority_context_tree": "f48f0a3b5f44849d650ce2cad9929ac60eb464fd",
+    "database_launch_safety_commit": "29136a4e1e6a846f0019a8601513ae9ccf7222d0",
+    "database_launch_safety_tree": "d2e3ed94526d3de70e1b9d9b7f3b336657df5fad",
+    "bootstrap_seal_test_commit": "301d7318868bbc238abb6862d38c77253d5653b0",
+    "bootstrap_seal_test_tree": "b08b08e17c4a10c8f0627daf4e1eb4348ef8ad3f",
+    "c1_release_baseline_commit": "301d7318868bbc238abb6862d38c77253d5653b0",
+    "c1_release_baseline_tree": "b08b08e17c4a10c8f0627daf4e1eb4348ef8ad3f",
+    "bootstrap_seal_test_history": [
+      {
+        "commit": "2f38f681b79155bf9bb8cdc86575d6145c81a666",
+        "tree": "98ded23b267e9a39e5f2b6c9da540a269c4f83bd",
+        "subject": "test(agent-supervisor): qualify LGSWF bootstrap seal"
+      },
+      {
+        "commit": "07f0458da41b4c3667b2c2676b37dfb8988e7666",
+        "tree": "15aee88357170da885515c80dcc29ebc9ed189d1",
+        "subject": "test(agent-supervisor): cover LGSWF seal audit fixes"
+      },
+      {
+        "commit": "b5bd8f5901e8162b9908613608a8ba92ec0ab73e",
+        "tree": "8c6fd3bab1872c4c5c84bfca21469c408c5e95a4",
+        "subject": "test(agent-supervisor): qualify LGSWF seal restart windows"
+      },
+      {
+        "commit": "f2648dec2f6984e34382569ff5b60376892f2841",
+        "tree": "2fd1a1c41326e6b864a09060ec7fbee130645bb6",
+        "subject": "feat(agent-supervisor): project coordination registry state"
+      },
+      {
+        "commit": "314da0c8f4940394b48000003adf9bb8110f1ef5",
+        "tree": "35e25d9664b371559607c7fd9959da9d56cab5d2",
+        "subject": "test lgswf qualified materialization bindings"
+      },
+      {
+        "commit": "b9a4b0f5184f48a4bf23209c9424730297be80ce",
+        "tree": "9e10c03b0ae27935e7fcd75df3dacdf1917f687b",
+        "subject": "Add read-only coordination history projection"
+      },
+      {
+        "commit": "301d7318868bbc238abb6862d38c77253d5653b0",
+        "tree": "b08b08e17c4a10c8f0627daf4e1eb4348ef8ad3f",
+        "subject": "Harden LGSWF DuckDB bootstrap authority"
+      }
+    ],
     "launch_head_policy": "clean descendant of duckdb_integration_commit on the exact execution branch; captured in the launch receipt",
     "authority": true
   },
@@ -54,6 +108,32 @@
     "included_untracked_source_entries": 29,
     "included_untracked_manifest_sha256": "b3b6a01967e8d722714022048f873aff8af2204c067ac7b4d4ba8fa6e0a73281",
     "excluded_nested_dirty_work": [".tools/ipfs_kit_py"]
+  },
+  "prelaunch_source_recheck": {
+    "observed_at": "2026-08-16T06:47:29Z",
+    "c1_release_baseline_commit": "301d7318868bbc238abb6862d38c77253d5653b0",
+    "c1_release_baseline_tree": "b08b08e17c4a10c8f0627daf4e1eb4348ef8ad3f",
+    "actual_accelerator_head": "ea11293bb996f052d620eae989f5377a956764b1",
+    "actual_accelerator_head_unchanged": true,
+    "actual_accelerator_tree": "ea6869d70e25c7bc8b80e6458c1a46b8c03f945f",
+    "actual_accelerator_tree_unchanged": true,
+    "actual_accelerator_tracked_patch_sha1": "e5ef6b048a0c14234229b6d4241ac4e5d60789ef",
+    "actual_accelerator_tracked_patch_unchanged": true,
+    "actual_accelerator_untracked_count": 134,
+    "actual_accelerator_included_untracked_source_entries": 132,
+    "actual_accelerator_included_untracked_manifest_sha256": "cf811d654180947e968a2076bdcceb22ab14fbabc8fc9a5acb60512f41bd5d9a",
+    "actual_accelerator_included_untracked_manifest_unchanged": true,
+    "actual_datasets_head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "actual_datasets_head_unchanged": true,
+    "actual_datasets_tree": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47",
+    "actual_datasets_tree_unchanged": true,
+    "actual_datasets_tracked_patch_excluding_nested_gitlink_sha1": "e5c96f2332d22ff35ba118ba75a416ba55a01995",
+    "actual_datasets_tracked_patch_excluding_nested_gitlink_unchanged": true,
+    "actual_datasets_status_entries": 31,
+    "actual_datasets_untracked_count": 29,
+    "actual_datasets_included_untracked_manifest_sha256": "b3b6a01967e8d722714022048f873aff8af2204c067ac7b4d4ba8fa6e0a73281",
+    "actual_datasets_included_untracked_manifest_unchanged": true,
+    "authority_decision": "the isolated exact snapshots remain the implementation authority; no newer external revision was adopted"
   },
   "semantic_authority": {
     "repository": "ipfs_datasets_py",
@@ -93,7 +173,36 @@
     "unique_reused_ordered_log_sha256": "fe27fdf1019238d53e7edf1f05b13f74fff271e8cb4f83c254da299bb61d1a2b",
     "historical_board_status": "40 markdown tasks projected complete",
     "historical_runtime_status": "stopped; no live Quack process and no persisted control.duckdb found",
-    "qualification_status": "implementation history reused; current authority must be freshly materialized and qualified",
+    "qualification_status": "implementation history reused; current embedded single-writer authority must be freshly materialized and qualified, while continuous multi-reader/multi-writer Quack transport remains no-go",
+    "current_capability_probe": {
+      "receipt_status": "read-only observation; stable content-addressed receipt not yet accepted",
+      "duckdb_version": "1.5.2",
+      "quack_status": "install-required",
+      "available": false,
+      "passes_health_check": false,
+      "extension_installed": false,
+      "extension_loaded": false,
+      "reason": "import_only_insufficient",
+      "network_install_permitted": false,
+      "beta_limitations_recorded": true,
+      "accelerator_compatibility_profile": "generic DuckDB 1.5 minor; insufficient for the exact sealed 1.5.5 profile"
+    },
+    "quack_outage_policy": "fail closed for multi-process readers/writers; never fall back to direct shared DuckDB file access; the separately qualified embedded one-writer mode requires an explicit restart/profile",
+    "interface_freeze_required": [
+      "StateRepository",
+      "QuackStateRepository",
+      "QuackStateClient",
+      "QuackStateServer",
+      "StateServerIdentity",
+      "ControlPlaneStoreIdentity",
+      "StateCommand",
+      "DatabaseProgramConfig",
+      "ipfs_datasets_py.duckdb_control.quack_security scoped server authorization"
+    ],
+    "canonical_gateway_requirement": "task, coordination, intent, attempt, provider, effect, validation, execution and CAS paths must converge on the StateRepository/QuackStateRepository transaction gateway; separate coordination/execution state authorities are prohibited",
+    "remote_readiness_requirement": "live endpoint and state-server identity propagate through configured-board and runner paths; start/stop ownership and an independent remote readiness probe must verify before admission",
+    "server_authorization_requirement": "a thin high-level accelerator adapter invokes datasets quack_security for server-side scoped authorization; client-side declaration alone is insufficient",
+    "direct_file_open_audit_required": true,
     "core_test_receipt": {
       "passed": 75,
       "failed": 0,
@@ -106,6 +215,128 @@
       "classification": "non-launch-blocking provider-route and environment gaps; not claimed qualified"
     }
   },
+  "ducklake_projection_reuse": {
+    "package": "ipfs_datasets_py/ipfs_datasets_py/ducklake",
+    "classification": "existing optional datasets dependency; typed content-addressed projection/query substrate, never semantic or operational authority",
+    "operational_orchestrator": "accelerator DuckDB + Quack control plane; DuckDB is the authoritative transactional model and outbox, Quack is the required multi-reader/multi-writer service transport",
+    "authoritative_duckdb_dimensions": [
+      "goals",
+      "plan revisions and accepted plan pointer",
+      "tasks and attempts",
+      "claims, leases, epochs and fences",
+      "resource reservations",
+      "projection outbox cursor",
+      "logical acceptance"
+    ],
+    "logical_projection_datasets": [
+      "events",
+      "artifacts",
+      "benchmarks"
+    ],
+    "accelerator_contract_reuse": "DatabaseArtifactStore@1 export/projection receipt semantics only; neither its unsealed store DDL nor database_event_log DDL is opened against operational-v1",
+    "datasets_contract_reuse": [
+      "ducklake capabilities and environment-receipt binding",
+      "catalog-owner and registry",
+      "transactional ingest and snapshot vectors",
+      "bounded execution and query API",
+      "security and audit",
+      "recovery and release"
+    ],
+    "accelerator_access_boundary": "reviewed public typed ipfs_datasets_py.ducklake APIs only; no accelerator ATTACH, raw SQL, catalog-file access, credential access or unrestricted object URI",
+    "projection_source": "verified read-only operational-v1 snapshots of task, phase, provider, effect, domain-event, artifact and metric rows",
+    "projection_authority": false,
+    "semantic_truth_authority": false,
+    "scheduling_prerequisite": false,
+    "outage_behavior": "independent projection backpressure; preserve DuckDB acceptance and replay idempotently from its durable outbox cursor",
+    "current_host_duckdb_version": "1.5.2",
+    "required_duckdb_version": "1.5.5",
+    "catalog_profile_present": false,
+    "environment_binding_present": false,
+    "live_state": "disabled_fail_closed",
+    "hermetic_qualification_permitted": true,
+    "live_promotion_requires": [
+      "admitted DuckDB + Quack control plane under its separate exact-profile and seven-repository promotion chain",
+      "accepted exact-1.5.5 DuckLake and httpfs capability/environment pins for the admitted control-plane runtime",
+      "accepted catalog profile and binding",
+      "accepted security/recovery qualification",
+      "accepted release receipt authorizing this exact projection profile"
+    ],
+    "batch_bounds": {
+      "maximum_rows": 5000,
+      "maximum_bytes": 16777216,
+      "maximum_seconds": 10
+    },
+    "qualification_targets": {
+      "heartbeat_p99_ms_max": 50,
+      "commit_latency_p95_regression_percent_max": 5,
+      "commit_latency_p99_regression_percent_max": 10,
+      "projection_throughput_to_peak_ratio_min": 2,
+      "backlog_window_minutes": 30,
+      "backlog_drain_minutes_max": 30,
+      "parity_percent": 100,
+      "duplicate_rows": 0,
+      "missing_rows": 0,
+      "cold_recovery_rpo": 0,
+      "cold_recovery_rto_seconds_max": 300,
+      "sealed_direct_cases": 19,
+      "sealed_adjacent_cases": 7
+    }
+  },
+  "control_plane_semantic_authority_audit": {
+    "verdict": "control-plane-v1 is prohibited for this program because it structurally creates and advertises semantic truth owned by ipfs_datasets_py",
+    "quarantined_profile": "control-plane-v1",
+    "required_profile": "datasets-authoritative-operational-v1",
+    "forbidden_relation_count": 24,
+    "forbidden_contract_count": 2,
+    "forbidden_relations": [
+      "source_snapshots",
+      "source_files",
+      "file_versions",
+      "parse_runs",
+      "symbols",
+      "symbol_versions",
+      "ast_nodes",
+      "ast_edges",
+      "imports",
+      "calls",
+      "references",
+      "definitions",
+      "type_relations",
+      "mutations",
+      "mutation_files",
+      "mutation_hunks",
+      "ast_mutations",
+      "impact_edges",
+      "impact_closures",
+      "repair_candidates",
+      "repair_applications",
+      "proof_obligations",
+      "proof_attempts",
+      "counterexamples"
+    ],
+    "forbidden_contracts": [
+      "contract:code@1",
+      "contract:evidence@1"
+    ],
+    "forbidden_profile": "control-plane-v1",
+    "forbidden_profile_or_contract_count": 3,
+    "duplicate_writer_symbols": [
+      "analysis.duckdb_ast_index.DuckDBASTIndex.ingest_snapshot",
+      "analysis.database_repository_indexer.DatabaseRepositoryIndexer.full_scan",
+      "analysis.database_repository_indexer.DatabaseRepositoryIndexer.incremental_scan",
+      "analysis.mutation_ledger.MutationLedger.record_mutation",
+      "analysis.database_impact_graph.DatabaseImpactGraph.materialize_from_ast_index",
+      "proof.database_evidence_store.DatabaseEvidenceStore.open",
+      "proof.database_repair_evidence.DatabaseRepairEvidenceStore.open",
+      "planning.database_symbolic_planning.DatabaseSymbolicPlanner.open"
+    ],
+    "quarantined_v2_semantic_relation_rows": 0,
+    "evidence_nodes_classification": "retained only as the existing opaque operational task-completion receipt projection; it cannot assert proof or semantic truth",
+    "proof_authority_fallback_permitted": false,
+    "local_ast_or_impact_fallback_permitted": false,
+    "provider_child_marker": "IPFS_ACCELERATE_AGENT_SEMANTIC_TRUTH_AUTHORITY=ipfs_datasets_py",
+    "state_credentials_exposed_to_provider": false
+  },
   "interrupted_prior_lgswf_run": {
     "worktree": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-logic-governed-semantic-work-fabric",
     "branch": "agent/logic-governed-semantic-work-fabric-v1",
@@ -113,9 +344,29 @@
     "tree": "cf6d20b03160ca14a89f9beba1a73c64f03d4260",
     "base_revision": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
     "task_source": "legacy-markdown",
-    "observed_progress": "LGSWF-000 through LGSWF-003 only",
-    "termination": "SIGTERM before LGSWF-004",
-    "decision": "preserved and stopped; not resumed because base and task authority differ from this run"
+    "observed_progress": "LGSWF-000 through LGSWF-003 completed; LGSWF-004 attempt 1 started but was never accepted",
+    "lgswf_004_attempt_1_started_at": "2026-08-16T02:00:31.023330+00:00",
+    "termination": "configured-board wrapper received signal 15 during LGSWF-004 attempt 1",
+    "termination_observed_at": "2026-08-16T02:01:12+00:00",
+    "shutdown_incident": {
+      "classification": "stale_legacy_markdown_supervisor_shutdown_and_orphan_worker_quarantine",
+      "wrapper_action": "stopping supervisor wrapper and managed daemons",
+      "lane_1_reconciled_at": "2026-08-16T02:01:13.333432+00:00",
+      "lane_1_reconciliation_reason": "supervisor_shutdown_quiesced_attempt",
+      "worker_risk_evidence": "lane 0 and lane 2 supervisor logs repeatedly recorded 'Supervisor maintenance hook failed; leaving child alive' before shutdown",
+      "later_orphan_worker_disposition": "terminated and quarantined; no descendant output or result was admitted",
+      "orphan_worker_pid": null,
+      "orphan_worker_pid_reason": "no exact orphan PID is retained in the durable historical receipt",
+      "evidence_paths": [
+        "data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1/logs/configured-board-20260816T014103Z.log",
+        "data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1/state/lane-1/implementation_logs/lgswf-004-attempt-1.log",
+        "data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1/state/lane-1/lgswf_lane_1_supervisor_status.json",
+        "data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1/state/lane-0/lgswf_lane_0_8h_run_20260816T014103Z.log",
+        "data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1/state/lane-2/lgswf_lane_2_8h_run_20260816T014103Z.log"
+      ],
+      "completion_authority": false
+    },
+    "decision": "preserved, terminated and quarantined; not resumed and no worktree, result or completion is reused because base and legacy-Markdown task authority differ from this run"
   },
   "intervening_change_commitments": [
     {
@@ -151,11 +402,124 @@
       "name_status_sha256": "not-applicable-merge-history"
     }
   ],
+  "c1_release_lineage": {
+    "repository": "ipfs_accelerate_py",
+    "range": "29136a4e1e6a846f0019a8601513ae9ccf7222d0..301d7318868bbc238abb6862d38c77253d5653b0",
+    "direction": "launch-safety base through frozen C1 release baseline",
+    "commit_count": 7,
+    "release_baseline_commit": "301d7318868bbc238abb6862d38c77253d5653b0",
+    "release_baseline_tree": "b08b08e17c4a10c8f0627daf4e1eb4348ef8ad3f",
+    "ordered_commit_tree_pairs_oldest_first": [
+      "2f38f681b79155bf9bb8cdc86575d6145c81a666/98ded23b267e9a39e5f2b6c9da540a269c4f83bd",
+      "07f0458da41b4c3667b2c2676b37dfb8988e7666/15aee88357170da885515c80dcc29ebc9ed189d1",
+      "b5bd8f5901e8162b9908613608a8ba92ec0ab73e/8c6fd3bab1872c4c5c84bfca21469c408c5e95a4",
+      "f2648dec2f6984e34382569ff5b60376892f2841/2fd1a1c41326e6b864a09060ec7fbee130645bb6",
+      "314da0c8f4940394b48000003adf9bb8110f1ef5/35e25d9664b371559607c7fd9959da9d56cab5d2",
+      "b9a4b0f5184f48a4bf23209c9424730297be80ce/9e10c03b0ae27935e7fcd75df3dacdf1917f687b",
+      "301d7318868bbc238abb6862d38c77253d5653b0/b08b08e17c4a10c8f0627daf4e1eb4348ef8ad3f"
+    ]
+  },
+  "launch_safety_qualification": {
+    "scope": "pre-materialization bounded embedded launch gate",
+    "c1_release_baseline_commit": "301d7318868bbc238abb6862d38c77253d5653b0",
+    "c1_release_baseline_tree": "b08b08e17c4a10c8f0627daf4e1eb4348ef8ad3f",
+    "evidence_status": "designated exact-byte-state diagnostic suites passed before the C1 code/test freeze; the clean final C2 source must still produce the self-addressed materializer qualification receipt",
+    "operational_schema_suite": {
+      "collected": 14,
+      "passed": 14,
+      "skipped": 0,
+      "failed": 0,
+      "warnings": 1,
+      "duration_seconds": 4.09,
+      "exit_code": 0
+    },
+    "intent_repository_suite": {
+      "collected": 12,
+      "passed": 12,
+      "skipped": 0,
+      "failed": 0,
+      "warnings": 1,
+      "duration_seconds": 8.80,
+      "exit_code": 0
+    },
+    "semantic_and_proof_writer_guard_suite": {
+      "collected": 62,
+      "passed": 62,
+      "skipped": 0,
+      "failed": 0,
+      "warnings": 1,
+      "duration_seconds": 13.37,
+      "exit_code": 0
+    },
+    "coordination_daemon_portal_and_runner_suite": {
+      "collected": 89,
+      "passed": 89,
+      "skipped": 0,
+      "failed": 0,
+      "warnings": 1,
+      "duration_seconds": 43.49,
+      "exit_code": 0
+    },
+    "configured_board_live_seal_gate_suite": {
+      "collected": 7,
+      "passed": 7,
+      "skipped": 0,
+      "failed": 0,
+      "warnings": 0,
+      "duration_seconds": 2.00,
+      "exit_code": 0
+    },
+    "bootstrap_seal_suite": {
+      "collected": 34,
+      "passed": 34,
+      "skipped": 0,
+      "failed": 0,
+      "warnings": 1,
+      "duration_seconds": 91.93,
+      "exit_code": 0
+    },
+    "aggregate": {
+      "collected": 218,
+      "passed": 218,
+      "skipped": 0,
+      "failed": 0
+    },
+    "covered_fail_closed_cases": [
+      "missing, full or tampered operational profile",
+      "expired and stale task authority",
+      "PREPARED before and after control CAS",
+      "promoted completion before settlement",
+      "expired same-idempotency-key refencing",
+      "completed-task reclaim",
+      "concurrent embedded writer",
+      "manual task automatic claim",
+      "provider-child semantic authority"
+    ],
+    "continuous_multi_supervisor_claim": false
+  },
   "launch_blockers": [
-    "DatabaseImplementationDaemon production callbacks must fail closed and bridge to real Portal implementation/validation/merge evidence.",
-    "The board must be materialized into a fresh database authority and pass exact-tree preflight.",
+    "The corrected LGSWF-006 successor must be manually sealed through a fresh exact-tree datasets-authoritative operational database, then pass configured preflight and dry launch.",
+    "Multi-process mutation remains prohibited until exact pinned DuckDB/Quack 1.5.5 capabilities pass and task, coordination, attempt, provider, effect, validation and CAS repositories use the sealed Quack exclusive state-owner boundary.",
     "No verified datasets semantic-state root exists yet; only explicitly bounded Epic A raw-source work may dispatch."
   ],
+  "launch_qualification_scope": {
+    "bootstrap_scope": "single_embedded_supervisor_one_lane",
+    "continuous_multi_supervisor_operation": "no_go",
+    "continuous_quack_multi_reader_writer": "no_go; current 1.5.2/install-required/import-only probe and incomplete repository migration fail closed",
+    "ducklake_live_projection": "no_go; optional projection remains disabled and is not a supervisor scheduling prerequisite",
+    "promotion_requires": [
+      "exact pinned DuckDB/Quack 1.5.5 capability/profile receipt",
+      "Quack-backed task/coordination/attempt/provider/effect/validation/CAS repository qualification",
+      "LGSWF-062 acceptance",
+      "Epic M fault qualification"
+    ],
+    "ducklake_promotion_requires_after_control_plane_admission": [
+      "exact pinned DuckLake/httpfs 1.5.5 capability/environment receipt",
+      "accepted catalog profile and binding",
+      "projection parity, security and recovery qualification",
+      "accepted DuckLake release receipt"
+    ]
+  },
   "bootstrap_attempt_history": [
     {
       "attempt": 1,
@@ -176,6 +540,37 @@
       "verification": "47 tasks, 16 goals, 63 dependencies and expected frontier passed",
       "supersession_reason": "runtime output was not ignored and therefore made exact-tree preflight dirty",
       "compensation": "store and receipt preserved read-only under run-actual-v1; fresh namespace required"
+    },
+    {
+      "attempt": 3,
+      "operation": "materialize DuckDB control plane in run-actual-v2",
+      "result": "verified_then_quarantined_before_launch",
+      "source_head": "21d397b9112c4d8160bc425ddb9241b3287eb158",
+      "source_tree": "4b2689e63c19e00f012b0da5e68a1c86d89a13bf",
+      "plan_root_cid": "sha256:7b1b68177b09d71905c2e88790a68544b2c82ac64618d2c2689f3937359291ba",
+      "population_cid": "sha256:6540d59cfb69f8c9cf10a80e14570d83405a0ce449ef7815beedaa73d258498a",
+      "receipt_cid": "sha256:5f6d2b6a035548c8103fae6921aac1389c6f3547df0ef940d3d9a7f4cad6e31a",
+      "unsupported_task_record": {
+        "task_alias": "LGSWF-000",
+        "task_cid": "sha256:262e356c9018966e1752de11fb55887e47d610d05f064ab7dd763f9d556dcd3c",
+        "control_status": "completed",
+        "control_revision": 1,
+        "final_result_identity": "pending",
+        "control_completion_receipt_count": 0,
+        "control_validation_result_count": 0,
+        "coordination_completion_status": "succeeded",
+        "coordination_completed_at_ms": 1786849103073,
+        "coordination_body_kind": "imported_control_seal",
+        "coordination_claim_id": null,
+        "coordination_attempt_id": null,
+        "coordination_lease_id": null,
+        "coordination_fencing_token": null,
+        "coordination_evidence_digest": null
+      },
+      "verification": "47 tasks, 16 goals, 63 dependencies and expected frontier passed against the exact committed tree",
+      "quarantine_reason": "launch review proved expired leases could still settle and the full control-plane-v1 DDL created accelerator-owned AST, impact and proof-authority relations forbidden by the datasets ownership boundary",
+      "observed_semantic_relation_rows": 0,
+      "compensation": "no process was launched; store and receipt remain immutable ignored evidence under run-actual-v2; fresh operational-only namespace required"
     }
   ],
   "known_qualification_gaps": [
@@ -183,6 +578,11 @@
     "Current resource reservations and multi-supervisor coordination are not yet durable across all dimensions.",
     "Conflict-graph durable artifacts contain binary floating-point fields.",
     "Package-direction violations and runtime-effective duplicate definitions require Epic A evidence and repair.",
-    "Full provider-route, fault-injection, benchmark and continuous-operation qualification have not run."
+    "Full provider-route, fault-injection, benchmark and continuous-operation qualification have not run.",
+    "The DuckDB/Quack-outbox-to-DuckLake history projector and its sealed 19 direct plus 7 adjacent qualification cases are not yet implemented or run.",
+    "The current Quack probe is NO-GO: DuckDB 1.5.2, install-required, unavailable, health check false, extension neither installed nor loaded, import_only_insufficient, and network installation forbidden; no stable capability receipt exists yet.",
+    "Configured-board and runner propagation of the live Quack endpoint/state-server identity, start/stop ownership and independent remote readiness are not yet qualified.",
+    "Separate coordination/execution store paths have not yet been proven consolidated behind the canonical StateRepository/QuackStateRepository gateway with datasets quack_security server-side scoped authorization and zero direct multi-process file opens.",
+    "Live DuckLake projection is disabled: the host DuckDB is 1.5.2 while the checked-in capability locks require exact 1.5.5, and no accepted catalog profile, environment binding or release receipt exists."
   ]
 }
