@@ -1359,7 +1359,7 @@ overlays. Never force-push.
 
 ## MCPP-043 Specify and implement RevocationRecord@1
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
