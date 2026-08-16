@@ -1857,7 +1857,7 @@ overlays. Never force-push.
 
 ## MCPP-059 Implement the registry interface and static test registry
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
