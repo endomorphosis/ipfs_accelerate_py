@@ -1485,7 +1485,7 @@ overlays. Never force-push.
 
 ## MCPP-047 Implement obligation lifecycle events
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
