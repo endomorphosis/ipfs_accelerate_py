@@ -2105,7 +2105,7 @@ overlays. Never force-push.
 
 ## MCPP-067 Implement claims, leases, epochs, and fencing tokens
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
