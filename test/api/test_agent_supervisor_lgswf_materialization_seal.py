@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -73,11 +74,15 @@ def _temporary_population() -> dict[str, Any]:
             "task_alias": alias,
             "goal_cid": "goal:lgswf-root",
             "plan_cid": "plan:lgswf-test",
+            "objective_id": "objective:lgswf-root",
             "status": "todo",
             "priority": "P0",
             "ordinal": ordinal,
             "title": alias,
             "dependencies": ([] if alias == "LGSWF-006" else ["task:LGSWF-006"]),
+            "outputs": [],
+            "acceptance": [],
+            "validations": [],
         }
         if alias == "LGSWF-006":
             task.update(
@@ -123,6 +128,7 @@ def _materialize_temporary_plane(
     module.ROOT = tmp_path
     config = _temporary_config()
     population = _temporary_population()
+    _install_test_qualification(module, config, population)
     receipt = module.materialize(config, population)
     return module, config, population, receipt
 
@@ -181,28 +187,38 @@ def _stub_seal_evidence(
     config: dict[str, Any],
     population: dict[str, Any],
 ) -> None:
+    module._load_qualification_receipt(config, population)
     monkeypatch.setattr(
         module, "_render_launch_plan_evidence", lambda _config: _stub_launch_evidence()
     )
     monkeypatch.setattr(module, "_sha256_file", lambda _path: "sha256:" + "2" * 64)
-    commands = [list(argv) for _label, argv in module._qualification_commands()]
+
+
+def _install_test_qualification(
+    module: ModuleType,
+    config: dict[str, Any],
+    population: dict[str, Any],
+) -> dict[str, Any]:
+    commands = module._qualification_commands()
     receipt = {
         "schema": module.QUALIFICATION_SCHEMA,
         "source_head": population["source_head"],
         "repository_tree_id": population["repository_tree_id"],
         "plan_root_cid": population["plan_root_cid"],
         "population_cid": module._identity(population),
-        "command_argv": commands,
+        "command_argv": [list(argv) for _label, argv, _expected in commands],
         "qualified": True,
         "results": [
             {
                 "label": label,
                 "argv": list(argv),
                 "returncode": 0,
+                "expected_passed": expected_passed,
+                "required_outcomes_valid": True,
                 "stdout_sha256": "sha256:" + "a" * 64,
                 "stderr_sha256": "sha256:" + "b" * 64,
             }
-            for label, argv in module._qualification_commands()
+            for label, argv, expected_passed in commands
         ],
     }
     receipt["receipt_cid"] = module._identity(receipt)
@@ -210,6 +226,19 @@ def _stub_seal_evidence(
         module._bootstrap_receipt_path(config, "qualification.json"),
         receipt,
     )
+    assert module._load_qualification_receipt(config, population) == receipt
+    return receipt
+
+
+def _git(repository: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
 
 
 def test_dirty_worktree_fails_closed_before_population_reads(
@@ -231,6 +260,160 @@ def test_dirty_worktree_fails_closed_before_population_reads(
         module.build_population({})
 
     assert calls == [["git", "status", "--porcelain=v1", "--untracked-files=all"]]
+
+
+def test_population_binds_clean_execution_head_tree_and_explicit_goal_edges(
+    tmp_path: Path,
+) -> None:
+    module = _load_materializer()
+    repository = tmp_path / "accelerator"
+    datasets = repository / "datasets"
+    datasets.mkdir(parents=True)
+
+    _git(datasets, "init", "-q")
+    (datasets / "semantic.py").write_text("SEMANTIC_AUTHORITY = True\n", encoding="utf-8")
+    _git(datasets, "add", "semantic.py")
+    _git(
+        datasets,
+        "-c",
+        "user.name=LGSWF Test",
+        "-c",
+        "user.email=lgswf@example.invalid",
+        "commit",
+        "-qm",
+        "datasets authority",
+    )
+    datasets_head = _git(datasets, "rev-parse", "HEAD")
+
+    board_path = repository / "board.md"
+    objectives_path = repository / "objectives.md"
+    plan_path = repository / "plan.md"
+    config_path = repository / "scheduler.json"
+    board_template = """# Board
+
+## LGSWF-001 Execute bound task
+- Status: todo
+- Owning repository: ipfs_accelerate_py
+- Base revision: {planning_revision}
+- Subgoal ID: LGSWF-G010
+- Depends on:
+"""
+    objectives_path.write_text(
+        """# Objectives
+
+## LGSWF-G000 Root goal
+- Priority: P0
+
+## LGSWF-G010 Child goal
+- Parent: LGSWF-G000
+- Priority: P0
+
+## LGSWF-G020 Dependent goal
+- Parent: LGSWF-G000
+- Depends on: LGSWF-G010
+- Priority: P0
+""",
+        encoding="utf-8",
+    )
+    plan_path.write_text("# Plan\n", encoding="utf-8")
+
+    def write_inputs(planning_revision: str) -> None:
+        board_path.write_text(
+            board_template.format(planning_revision=planning_revision),
+            encoding="utf-8",
+        )
+        config_path.write_text(
+            json.dumps(
+                {
+                    "taskboard_path": "board.md",
+                    "objectives_path": "objectives.md",
+                    "plan_path": "plan.md",
+                    "initial_projection": {"task_count": 1, "goal_count": 3},
+                    "source_binding": {
+                        "accelerator_required_ancestor": planning_revision,
+                        "ipfs_datasets_submodule_path": "datasets",
+                        "ipfs_datasets_planning_revision": datasets_head,
+                    },
+                    "supersedes_quarantined_plan_root_cid": "sha256:" + "0" * 64,
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    _git(repository, "init", "-q")
+    write_inputs("planning-lineage-placeholder")
+    _git(repository, "add", ".")
+    _git(
+        repository,
+        "-c",
+        "user.name=LGSWF Test",
+        "-c",
+        "user.email=lgswf@example.invalid",
+        "commit",
+        "-qm",
+        "planning lineage",
+    )
+    planning_revision = _git(repository, "rev-parse", "HEAD")
+    write_inputs(planning_revision)
+    _git(repository, "add", "board.md", "scheduler.json")
+    _git(
+        repository,
+        "-c",
+        "user.name=LGSWF Test",
+        "-c",
+        "user.email=lgswf@example.invalid",
+        "commit",
+        "-qm",
+        "execution head",
+    )
+    execution_head = _git(repository, "rev-parse", "HEAD")
+    execution_tree = _git(repository, "rev-parse", "HEAD^{tree}")
+    assert execution_head != planning_revision
+    assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+    module.ROOT = repository
+    module.CONFIG_PATH = config_path
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    population = module.build_population(config)
+
+    assert population["source_head"] == execution_head
+    assert population["repository_tree_id"] == execution_tree
+    assert population["plans"][0]["source_head"] == execution_head
+    assert population["plans"][0]["repository_tree_id"] == execution_tree
+    task = population["tasks"][0]
+    assert task["owning_repository"] == "ipfs_accelerate_py"
+    assert task["planning_lineage_revision"] == planning_revision
+    assert task["base_revision"] == execution_head
+    assert task["base_repository_tree_id"] == execution_tree
+    assert task["accepted_plan_root_cid"] == population["plan_root_cid"]
+
+    task_body = {
+        key: value for key, value in task.items() if key not in module._TASK_BODY_TOP_LEVEL_FIELDS
+    }
+    assert task_body["planning_lineage_revision"] == planning_revision
+    assert task_body["base_revision"] == execution_head
+    assert task_body["base_repository_tree_id"] == execution_tree
+
+    goal_cids = population["goal_cids_by_alias"]
+    assert population["goal_edges"] == [
+        {
+            "parent_goal_cid": goal_cids["LGSWF-G000"],
+            "child_goal_cid": goal_cids["LGSWF-G010"],
+            "edge_kind": "goal_parent",
+        },
+        {
+            "parent_goal_cid": goal_cids["LGSWF-G000"],
+            "child_goal_cid": goal_cids["LGSWF-G020"],
+            "edge_kind": "goal_parent",
+        },
+        {
+            "parent_goal_cid": goal_cids["LGSWF-G010"],
+            "child_goal_cid": goal_cids["LGSWF-G020"],
+            "edge_kind": "goal_dependency",
+        },
+    ]
 
 
 def test_actual_launch_evidence_reports_bounded_legacy_dispatch_truthfully() -> None:
@@ -593,13 +776,14 @@ def test_self_consistent_receipt_with_wrong_result_identity_fails_seal_replay(
     tampered["receipt_cid"] = module._identity(tampered)
     module._write_receipt(receipt_path, tampered)
 
-    loaded = module._load_existing_seal_receipt(config, population)
-    assert loaded is not None
-    assert loaded["receipt_cid"] == tampered["receipt_cid"]
-    assert loaded["accepted_result_cid"] == tampered["accepted_result_cid"]
     with pytest.raises(
         module.MaterializationError,
-        match="existing bootstrap seal disagrees with control authority",
+        match="existing bootstrap seal is stale: accepted_result_cid",
+    ):
+        module._load_existing_seal_receipt(config, population)
+    with pytest.raises(
+        module.MaterializationError,
+        match="existing bootstrap seal is stale: accepted_result_cid",
     ):
         module.seal(config, population)
 
