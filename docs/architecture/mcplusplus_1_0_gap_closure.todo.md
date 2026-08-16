@@ -2386,7 +2386,7 @@ overlays. Never force-push.
 
 ## MCPP-076 Create the three-peer Docker Compose demonstration
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
