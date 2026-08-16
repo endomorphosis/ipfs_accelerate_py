@@ -1948,7 +1948,7 @@ overlays. Never force-push.
 
 ## MCPP-062 Split Profile E into transport negotiation, MCP semantics, and execution authority
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
