@@ -2479,7 +2479,7 @@ overlays. Never force-push.
 
 ## MCPP-079 Rewrite stale coverage and production-readiness claims to match CI evidence
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
