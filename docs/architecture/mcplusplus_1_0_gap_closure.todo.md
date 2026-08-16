@@ -1268,7 +1268,7 @@ overlays. Never force-push.
 
 ## MCPP-040 Prove Event DAG branches do not silently merge mutable state
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
