@@ -42,7 +42,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G010
 - Subgoal: revision-reconciliation
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/**`
+- Owned paths: data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: none; no dataset rows consumed
 - Data split identity: not-applicable/inventory
@@ -61,11 +61,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `source-revision-manifest`; checkpoint after each repository
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-001)`
-- Outputs: `data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/manifest.json`
+- Outputs: data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/manifest.json
 - Validation: `python -m pytest test/api/test_agent_supervisor_repository_forest_manifest.py -q`
 - Bundle: pgir/freeze/revisions
 - Parallel lane: revision-audit
-- Predicted files: `data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/manifest.json`
+- Predicted files: data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/manifest.json
 - Conflict policy: serial owner of source-root identities
 
 ## PGIR-002 Inventory canonical semantic implementations
@@ -78,7 +78,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G010
 - Subgoal: datasets-module-classification
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/inventory/**`
+- Owned paths: ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/inventory/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `JDAO-PINSET-1` metadata only
 - Data split identity: not-applicable/inventory
@@ -97,11 +97,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `datasets-inventory`
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-002)`
-- Outputs: `ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/inventory/modules.json`
+- Outputs: ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/inventory/modules.json
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/integration/logic/test_ir_family_conformance.py ipfs_datasets_py/tests/unit/logic/formalization`
 - Bundle: pgir/freeze/datasets-inventory
 - Parallel lane: datasets-inventory
-- Predicted files: `ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/inventory/modules.json`
+- Predicted files: ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/inventory/modules.json
 - Conflict policy: read-only source scan; one inventory writer
 
 ## PGIR-003 Inventory canonical supervisor learning infrastructure
@@ -114,7 +114,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G010
 - Subgoal: accelerator-module-classification
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `docs/architecture/proof_grounded_ir_learning/inventory/**`
+- Owned paths: docs/architecture/proof_grounded_ir_learning/inventory/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `JDAO-PINSET-1` metadata only
 - Data split identity: not-applicable/inventory
@@ -133,11 +133,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `accelerator-inventory`
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-003)`
-- Outputs: `docs/architecture/proof_grounded_ir_learning/inventory/supervisor.json`
+- Outputs: docs/architecture/proof_grounded_ir_learning/inventory/supervisor.json
 - Validation: `python -m pytest -q test/api/test_agent_supervisor_formal_verification_capabilities.py test/api/test_agent_supervisor_resource_scheduler.py test/api/test_agent_supervisor_implementation_supervisor_runner.py`
 - Bundle: pgir/freeze/accelerator-inventory
 - Parallel lane: accelerator-inventory
-- Predicted files: `docs/architecture/proof_grounded_ir_learning/inventory/supervisor.json`
+- Predicted files: docs/architecture/proof_grounded_ir_learning/inventory/supervisor.json
 - Conflict policy: read-only source scan; one inventory writer
 
 ## PGIR-004 Pin and classify JusticeDAO releases
@@ -150,7 +150,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G010
 - Subgoal: hf-release-inventory
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/data/ir_learning/source_inventory/**`
+- Owned paths: ipfs_datasets_py/data/ir_learning/source_inventory/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `JDAO-PINSET-1` exact 21-repository population
 - Data split identity: Hub-provided `train` only; explicitly not an admissible campaign split
@@ -169,11 +169,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `hf-pinset`; checkpoint per repository
 - Rollback procedure: `ROLLBACK-DEFAULT`; quarantine partial downloads
 - Result identity: `RESULT(PGIR-004)`
-- Outputs: `ipfs_datasets_py/data/ir_learning/source_inventory/release_inventory.json`
+- Outputs: ipfs_datasets_py/data/ir_learning/source_inventory/release_inventory.json
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/logic/intent_ir/graphrag/test_skillcenter_hf_release.py`
 - Bundle: pgir/freeze/hf-inventory
 - Parallel lane: hf-inventory
-- Predicted files: `ipfs_datasets_py/data/ir_learning/source_inventory/release_inventory.json`
+- Predicted files: ipfs_datasets_py/data/ir_learning/source_inventory/release_inventory.json
 - Conflict policy: exclusive release-inventory root; network allowlist is immutable
 
 ## PGIR-005 Seal focused pre-change test evidence and repair prerequisites
@@ -186,7 +186,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G010
 - Subgoal: baseline-test-receipts
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `data/agent_supervisor/proof_grounded_ir_learning/baseline_tests/**`
+- Owned paths: data/agent_supervisor/proof_grounded_ir_learning/baseline_tests/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: none; synthetic/current fixtures only
 - Data split identity: fixture populations named in each receipt
@@ -205,11 +205,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `baseline-tests`; one sublease per test group
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-005)`
-- Outputs: `data/agent_supervisor/proof_grounded_ir_learning/baseline_tests/summary.json`
+- Outputs: data/agent_supervisor/proof_grounded_ir_learning/baseline_tests/summary.json
 - Validation: `python -m pytest -q test/api/test_agent_supervisor_proof_workflow_e2e.py test/api/test_agent_supervisor_autonomous_unstall.py`
 - Bundle: pgir/freeze/baseline-tests
 - Parallel lane: baseline-tests
-- Predicted files: `data/agent_supervisor/proof_grounded_ir_learning/baseline_tests/summary.json`
+- Predicted files: data/agent_supervisor/proof_grounded_ir_learning/baseline_tests/summary.json
 - Conflict policy: evidence-only; repairs receive separate task revisions
 
 ## PGIR-006 Build the compiler/decompiler gap matrix
@@ -222,7 +222,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G010
 - Subgoal: direction-gap-matrix
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/gap_matrix.*`
+- Owned paths: ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/gap_matrix.*
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `JDAO-PINSET-1`
 - Data split identity: not-applicable; availability only
@@ -241,11 +241,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `gap-matrix`
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-006)`
-- Outputs: `ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/gap_matrix.json`
+- Outputs: ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/gap_matrix.json
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/integration/logic/test_canonical_semantic_roundtrip.py`
 - Bundle: pgir/freeze/gap-matrix
 - Parallel lane: gap-matrix
-- Predicted files: `ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/gap_matrix.json`
+- Predicted files: ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/gap_matrix.json
 - Conflict policy: begins after all inventories seal
 
 ## PGIR-010 Extend canonical source and lineage contracts
@@ -258,7 +258,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G020
 - Subgoal: source-lineage-schema
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/**`, `ipfs_datasets_py/tests/unit/logic/ir_core/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/**, ipfs_datasets_py/tests/unit/logic/ir_core/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `JDAO-PINSET-1` schema fixtures only
 - Data split identity: not-yet-created
@@ -277,11 +277,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `ir-source-contract`
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-010)`
-- Outputs: canonical source/lineage contract code and tests
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/, ipfs_datasets_py/tests/unit/logic/ir_core/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/logic/ir_core`
 - Bundle: pgir/freeze/source-contracts
 - Parallel lane: source-contracts
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/`, `ipfs_datasets_py/tests/unit/logic/ir_core/`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/, ipfs_datasets_py/tests/unit/logic/ir_core/
 - Conflict policy: exclusive `ir_core` schema-registry lease
 
 ## PGIR-011 Build a safe pinned corpus and source/derivative manifest
@@ -294,7 +294,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G020
 - Subgoal: corpus-build
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/huggingface/**`, `ipfs_datasets_py/data/ir_learning/corpora/**`, `ipfs_datasets_py/tests/unit/logic/ir_learning/source/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/huggingface/**, ipfs_datasets_py/data/ir_learning/corpora/**, ipfs_datasets_py/tests/unit/logic/ir_learning/source/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: exact admitted/quarantined config revisions from `RESULT(PGIR-004)`; initial `JDAO-PINSET-1`
 - Data split identity: not-yet-created; sealed corpus groups only
@@ -313,11 +313,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, exclusive key `corpus-build`; shard checkpoints immutable
 - Rollback procedure: `ROLLBACK-DEFAULT`; quarantine partial shard
 - Result identity: `RESULT(PGIR-011)`
-- Outputs: `IRCorpusBuildManifest@1` root and tests
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/huggingface/, ipfs_datasets_py/data/ir_learning/corpora/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/logic/ir_learning/source`
 - Bundle: pgir/freeze/corpus
 - Parallel lane: corpus-builder
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/huggingface/`, `ipfs_datasets_py/data/ir_learning/corpora/`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/huggingface/, ipfs_datasets_py/data/ir_learning/corpora/
 - Conflict policy: one corpus root writer; shard workers produce immutable candidates
 
 ## PGIR-012 Implement lineage-safe multidimensional splits
@@ -330,7 +330,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G020
 - Subgoal: split-and-leakage
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_eval_splits.py`, `ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/test_legal_ir_eval_splits.py`, `ipfs_datasets_py/data/ir_learning/splits/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_eval_splits.py, ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/test_legal_ir_eval_splits.py, ipfs_datasets_py/data/ir_learning/splits/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: sealed corpus `RESULT(PGIR-011)`
 - Data split identity: output `IRSplitManifest@1`
@@ -349,11 +349,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, exclusive key `split-manifest`
 - Rollback procedure: `ROLLBACK-DEFAULT`; revoke entire manifest root, never patch membership in place
 - Result identity: `RESULT(PGIR-012)`
-- Outputs: `IRSplitManifest@1` and leakage receipt
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_eval_splits.py, ipfs_datasets_py/data/ir_learning/splits/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/test_legal_ir_eval_splits.py`
 - Bundle: pgir/freeze/splits
 - Parallel lane: split-auditor
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_eval_splits.py`, `ipfs_datasets_py/data/ir_learning/splits/`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_eval_splits.py, ipfs_datasets_py/data/ir_learning/splits/
 - Conflict policy: exclusive split authority and fencing token
 
 ## PGIR-013 Implement training-example and trace contracts
@@ -366,7 +366,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G030
 - Subgoal: examples-label-authority
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/logic/formalization/**`, `ipfs_datasets_py/tests/unit/logic/formalization/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/logic/formalization/**, ipfs_datasets_py/tests/unit/logic/formalization/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: sealed corpus `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)`
@@ -385,11 +385,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `training-example-contract`
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-013)`
-- Outputs: versioned example/trace schemas and tests
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/formalization/, ipfs_datasets_py/tests/unit/logic/formalization/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/logic/formalization`
 - Bundle: pgir/freeze/example-contracts
 - Parallel lane: example-contracts
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/logic/formalization/`, `ipfs_datasets_py/tests/unit/logic/formalization/`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/formalization/, ipfs_datasets_py/tests/unit/logic/formalization/
 - Conflict policy: begins after split freeze; exclusive formalization schema lease
 
 ## PGIR-014 Freeze semantic campaign inputs
@@ -402,7 +402,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G030
 - Subgoal: shared-freeze-root
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `data/agent_supervisor/proof_grounded_ir_learning/freeze/**`
+- Owned paths: data/agent_supervisor/proof_grounded_ir_learning/freeze/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: exact `RESULT(PGIR-011)`
 - Data split identity: exact `RESULT(PGIR-012)`
@@ -421,11 +421,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, exclusive key `campaign-freeze-root`
 - Rollback procedure: `ROLLBACK-DEFAULT`; supersede, never overwrite, a freeze root
 - Result identity: `RESULT(PGIR-014)`
-- Outputs: `data/agent_supervisor/proof_grounded_ir_learning/freeze/campaign_input_root.json`
+- Outputs: data/agent_supervisor/proof_grounded_ir_learning/freeze/
 - Validation: `python -m pytest -q test/api/test_agent_supervisor_formal_plan_validator.py test/api/test_agent_supervisor_task_identity.py`
 - Bundle: pgir/freeze/root
 - Parallel lane: freeze-root
-- Predicted files: `data/agent_supervisor/proof_grounded_ir_learning/freeze/`
+- Predicted files: data/agent_supervisor/proof_grounded_ir_learning/freeze/
 - Conflict policy: global serial freeze barrier; no downstream fan-out before admission
 
 ## PGIR-020 Consolidate the canonical typed bridge
@@ -438,7 +438,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G040
 - Subgoal: bridge-ir
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/logic/bridge/**`, `ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_contracts.py`, `ipfs_datasets_py/tests/unit/logic/legal_ir/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/logic/bridge/**, ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_contracts.py, ipfs_datasets_py/tests/unit/logic/legal_ir/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)` fixtures only
 - Data split identity: `RESULT(PGIR-012)`
@@ -457,11 +457,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `canonical-bridge-contract`
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-020)`
-- Outputs: canonical bridge revision
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/bridge/, ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_contracts.py
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/integration/logic/test_ir_family_conformance.py ipfs_datasets_py/tests/unit/logic/legal_ir`
 - Bundle: pgir/bridge/contracts
 - Parallel lane: bridge-contract
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/logic/bridge/`, `ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_contracts.py`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/bridge/, ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_contracts.py
 - Conflict policy: exclusive bridge schema lease
 
 ## PGIR-021 Consolidate deterministic compiler pipeline
@@ -474,7 +474,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G040
 - Subgoal: compiler-pipeline
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py`, `ipfs_datasets_py/ipfs_datasets_py/logic/integration/reasoning/legal_ir_*`, `ipfs_datasets_py/tests/unit/logic/legal_ir/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py, ipfs_datasets_py/ipfs_datasets_py/logic/integration/reasoning/legal_ir_*, ipfs_datasets_py/tests/unit/logic/legal_ir/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)` development partition only
@@ -493,11 +493,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `compiler-contract`
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-021)`
-- Outputs: canonical compiler identity and traces
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py, ipfs_datasets_py/ipfs_datasets_py/logic/integration/reasoning/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/logic/legal_ir ipfs_datasets_py/tests/integration/logic/test_canonical_semantic_roundtrip.py`
 - Bundle: pgir/bridge/compiler
 - Parallel lane: compiler
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py`, `ipfs_datasets_py/ipfs_datasets_py/logic/integration/reasoning/`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py, ipfs_datasets_py/ipfs_datasets_py/logic/integration/reasoning/
 - Conflict policy: exclusive compiler contract/tokenization inputs
 
 ## PGIR-022 Consolidate decompiler and translation preservation
@@ -510,7 +510,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G040
 - Subgoal: decompiler-translation
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py`, `ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_roundtrip.py`, `ipfs_datasets_py/ipfs_datasets_py/logic/bridge/**`, `ipfs_datasets_py/tests/unit/logic/legal_ir/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py, ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_roundtrip.py, ipfs_datasets_py/ipfs_datasets_py/logic/bridge/**, ipfs_datasets_py/tests/unit/logic/legal_ir/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)` development partition only
@@ -529,11 +529,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `decompiler-contract`
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-022)`
-- Outputs: canonical decompiler/translation identities
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py, ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_roundtrip.py
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/logic/legal_ir ipfs_datasets_py/tests/integration/logic/test_canonical_semantic_roundtrip.py`
 - Bundle: pgir/bridge/decompiler
 - Parallel lane: decompiler
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py`, `ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_roundtrip.py`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py, ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_roundtrip.py
 - Conflict policy: begins after compiler identity; shared bridge changes serialized
 
 ## PGIR-023 Measure deterministic compiler/decompiler baseline
@@ -546,7 +546,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G040
 - Subgoal: deterministic-baseline
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/benchmarks/semantic_roundtrip/**`, `ipfs_datasets_py/data/ir_learning/evaluations/deterministic/**`
+- Owned paths: ipfs_datasets_py/benchmarks/semantic_roundtrip/**, ipfs_datasets_py/data/ir_learning/evaluations/deterministic/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)` frozen non-hidden partitions
@@ -565,11 +565,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `evaluation:deterministic`; immutable shards
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-023)`
-- Outputs: deterministic baseline report/root
+- Outputs: ipfs_datasets_py/benchmarks/semantic_roundtrip/, ipfs_datasets_py/data/ir_learning/evaluations/deterministic/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/integration/logic/test_canonical_semantic_roundtrip.py`
 - Bundle: pgir/baseline/deterministic
 - Parallel lane: deterministic-eval
-- Predicted files: `ipfs_datasets_py/benchmarks/semantic_roundtrip/`, `ipfs_datasets_py/data/ir_learning/evaluations/deterministic/`
+- Predicted files: ipfs_datasets_py/benchmarks/semantic_roundtrip/, ipfs_datasets_py/data/ir_learning/evaluations/deterministic/
 - Conflict policy: evaluation shards read frozen inputs; one report reducer lease
 
 ## PGIR-030 Implement compatible learned architectures and frozen tokenizer
@@ -582,7 +582,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G050
 - Subgoal: architecture-tokenizer
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder.py`, `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py`, `ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder.py, ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py, ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)` train/development only
@@ -601,11 +601,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, exclusive `tokenizer` and per-arm checkpoint keys
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-030)`
-- Outputs: architecture/tokenizer manifests
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/test_modal_autoencoder.py`
 - Bundle: pgir/model/architecture
 - Parallel lane: model-architecture
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/
 - Conflict policy: serial tokenizer/vocabulary freeze; arm checkpoints separate
 
 ## PGIR-031 Add grammar, binder, type, and proof-state constrained decoding
@@ -618,7 +618,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G050
 - Subgoal: constrained-decoding
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py`, `ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py, ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)` train/development only
@@ -637,11 +637,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `decoder-constraints`; no checkpoint weight mutation
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-031)`
-- Outputs: constrained decoder revision
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer`
 - Bundle: pgir/model/decoding
 - Parallel lane: constrained-decoding
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py
 - Conflict policy: serialized with tokenizer; no concurrent vocabulary mutation
 
 ## PGIR-032 Implement versioned composite loss and sampling contracts
@@ -654,7 +654,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G050
 - Subgoal: losses-and-samplers
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/**`, `ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/**, ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)` train/development only
@@ -673,11 +673,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, exclusive `loss-configuration`; memory bank bound to checkpoint
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-032)`
-- Outputs: loss/sampler configuration root
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer`
 - Bundle: pgir/model/loss
 - Parallel lane: loss-config
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/
 - Conflict policy: follows decoder; exclusive loss config root
 
 ## PGIR-033 Implement latent diagnostics and calibration instrumentation
@@ -690,7 +690,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G050
 - Subgoal: latent-diagnostics
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_{semantic_metrics,family_evaluator,metric_lineage,uncertainty,evaluation_artifacts}.py`, `ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_{semantic_metrics,family_evaluator,metric_lineage,uncertainty,evaluation_artifacts}.py, ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)` development/calibration only
@@ -709,11 +709,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `latent-diagnostics`
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-033)`
-- Outputs: latent/calibration diagnostic suite
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer`
 - Bundle: pgir/model/diagnostics
 - Parallel lane: latent-diagnostics
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/
 - Conflict policy: read-only checkpoint evaluation; disjoint from loss implementation
 
 ## PGIR-040 Mine typed proof-aware positive pairs
@@ -726,7 +726,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G060
 - Subgoal: positive-pairs
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/**`, `ipfs_datasets_py/data/ir_learning/pairs/positive/**`, `ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/**, ipfs_datasets_py/data/ir_learning/pairs/positive/**, ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)` train only; lineage groups indivisible
@@ -745,11 +745,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key per pair shard; reducer CAS
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-040)`
-- Outputs: positive-pair manifest/root
+- Outputs: ipfs_datasets_py/data/ir_learning/pairs/positive/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer`
 - Bundle: pgir/curriculum/positives
 - Parallel lane: positive-miner
-- Predicted files: `ipfs_datasets_py/data/ir_learning/pairs/positive/`
+- Predicted files: ipfs_datasets_py/data/ir_learning/pairs/positive/
 - Conflict policy: shards parallel; no shared source/split mutation
 
 ## PGIR-041 Mine and validate hard semantic negatives
@@ -762,7 +762,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G060
 - Subgoal: hard-negatives
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_{hard_negatives,fuzzing}.py`, `ipfs_datasets_py/data/ir_learning/pairs/negative/**`, `ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_{hard_negatives,fuzzing}.py, ipfs_datasets_py/data/ir_learning/pairs/negative/**, ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)` train only; lineage groups indivisible
@@ -781,11 +781,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, proof-shard fence and reducer CAS
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-041)`
-- Outputs: hard-negative/unknown manifests
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_hard_negatives.py, ipfs_datasets_py/data/ir_learning/pairs/negative/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/test_legal_ir_hard_negatives.py`
 - Bundle: pgir/curriculum/negatives
 - Parallel lane: negative-miner
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_hard_negatives.py`, `ipfs_datasets_py/data/ir_learning/pairs/negative/`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_hard_negatives.py, ipfs_datasets_py/data/ir_learning/pairs/negative/
 - Conflict policy: shards parallel; positive-equivalence index read-only
 
 ## PGIR-050 Capture Lean-capable proposal and proof-attempt traces
@@ -798,7 +798,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G070
 - Subgoal: lean-proposal-traces
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `ipfs_accelerate_py/agent_supervisor/proof/leanstral_proof_provider.py`, `ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py`, `test/api/test_agent_supervisor_leanstral_*`, `data/agent_supervisor/proof_grounded_ir_learning/proof_traces/**`
+- Owned paths: ipfs_accelerate_py/agent_supervisor/proof/leanstral_proof_provider.py, ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py, test/api/test_agent_supervisor_leanstral_*, data/agent_supervisor/proof_grounded_ir_learning/proof_traces/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)` proof-eligible shards only
 - Data split identity: `RESULT(PGIR-012)` train/development only
@@ -817,11 +817,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, provider-call and trace-shard keys
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-050)`
-- Outputs: proof trace schema/store integration
+- Outputs: ipfs_accelerate_py/agent_supervisor/proof/leanstral_proof_provider.py, data/agent_supervisor/proof_grounded_ir_learning/proof_traces/
 - Validation: `python -m pytest -q test/api/test_agent_supervisor_leanstral_proof_provider.py test/api/test_agent_supervisor_leanstral_proof_gate.py`
 - Bundle: pgir/proof/lean-proposals
 - Parallel lane: lean-proposals
-- Predicted files: `ipfs_accelerate_py/agent_supervisor/proof/leanstral_proof_provider.py`, `data/agent_supervisor/proof_grounded_ir_learning/proof_traces/`
+- Predicted files: ipfs_accelerate_py/agent_supervisor/proof/leanstral_proof_provider.py, data/agent_supervisor/proof_grounded_ir_learning/proof_traces/
 - Conflict policy: trace shards immutable; provider capacity leased
 
 ## PGIR-051 Extend proof-state tactician and curriculum projection
@@ -834,7 +834,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G070
 - Subgoal: tactician
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `ipfs_accelerate_py/agent_supervisor/proof/{goal_directed_tactician,counterexample_guided_tactician,goal_tactician_lifecycle,proof_directed_retrieval}.py`, `test/api/*tactician*`
+- Owned paths: ipfs_accelerate_py/agent_supervisor/proof/{goal_directed_tactician,counterexample_guided_tactician,goal_tactician_lifecycle,proof_directed_retrieval}.py, test/api/*tactician*
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)` proof-eligible shards only
 - Data split identity: `RESULT(PGIR-012)` train/development only
@@ -853,11 +853,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, proof-plan shard fence
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-051)`
-- Outputs: tactician revision and evaluation traces
+- Outputs: ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py, ipfs_accelerate_py/agent_supervisor/proof/counterexample_guided_tactician.py
 - Validation: `python -m pytest -q test/api/test_counterexample_guided_tactician.py test/api/test_goal_directed_tactician_integration.py test/api/test_goal_tactician_supervisor_lifecycle.py test/api/test_goal_tactician_supervisor_restart.py`
 - Bundle: pgir/proof/tactician
 - Parallel lane: tactician
-- Predicted files: `ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py`, `ipfs_accelerate_py/agent_supervisor/proof/counterexample_guided_tactician.py`
+- Predicted files: ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py, ipfs_accelerate_py/agent_supervisor/proof/counterexample_guided_tactician.py
 - Conflict policy: one proof-plan lifecycle writer; ranked candidates immutable
 
 ## PGIR-052 Integrate hammer portfolio with independent checker authority
@@ -870,7 +870,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G070
 - Subgoal: hammer-kernel
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py`, `ipfs_accelerate_py/agent_supervisor/proof/{multi_prover_router,multi_prover_resources,kernel_verification,prover_evidence_store}.py`, `test/api/test_agent_supervisor_{ipfs_datasets_logic_provider,multi_prover_router,kernel_verification}.py`
+- Owned paths: ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py, ipfs_accelerate_py/agent_supervisor/proof/{multi_prover_router,multi_prover_resources,kernel_verification,prover_evidence_store}.py, test/api/test_agent_supervisor_{ipfs_datasets_logic_provider,multi_prover_router,kernel_verification}.py
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)` proof-eligible shards only
 - Data split identity: `RESULT(PGIR-012)` train/development only
@@ -889,11 +889,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, separate solver/checker shard fences
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-052)`
-- Outputs: integrated proof/counterexample authority pipeline
+- Outputs: ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py, ipfs_accelerate_py/agent_supervisor/proof/
 - Validation: `python -m pytest -q test/api/test_agent_supervisor_ipfs_datasets_logic_provider.py test/api/test_agent_supervisor_multi_prover_router.py test/api/test_agent_supervisor_kernel_verification.py`
 - Bundle: pgir/proof/hammer-kernel
 - Parallel lane: hammer-kernel
-- Predicted files: `ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py`, `ipfs_accelerate_py/agent_supervisor/proof/`
+- Predicted files: ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py, ipfs_accelerate_py/agent_supervisor/proof/
 - Conflict policy: router/checker mutation serialized; proof shards parallel
 
 ## PGIR-053 Implement bounded expert iteration
@@ -906,7 +906,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G070
 - Subgoal: expert-iteration
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `ipfs_accelerate_py/agent_supervisor/proof/**`, `ipfs_accelerate_py/agent_supervisor/objectives/**`, `test/api/test_agent_supervisor_proof_*`
+- Owned paths: ipfs_accelerate_py/agent_supervisor/proof/**, ipfs_accelerate_py/agent_supervisor/objectives/**, test/api/test_agent_supervisor_proof_*
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)` train/development only
@@ -925,11 +925,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, per-round curriculum/checkpoint/proof fences
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-053)`
-- Outputs: expert-iteration campaign stage
+- Outputs: ipfs_accelerate_py/agent_supervisor/proof/, ipfs_accelerate_py/agent_supervisor/objectives/
 - Validation: `python -m pytest -q test/api/test_agent_supervisor_proof_workflow_e2e.py test/api/test_agent_supervisor_self_improvement_refill.py`
 - Bundle: pgir/proof/expert-iteration
 - Parallel lane: expert-iteration
-- Predicted files: `ipfs_accelerate_py/agent_supervisor/proof/`, `ipfs_accelerate_py/agent_supervisor/objectives/`
+- Predicted files: ipfs_accelerate_py/agent_supervisor/proof/, ipfs_accelerate_py/agent_supervisor/objectives/
 - Conflict policy: round coordinator exclusive; stage workers use immutable inputs
 
 ## PGIR-060 Implement IR learning campaign contracts and APIs
@@ -942,7 +942,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G080
 - Subgoal: campaign-work-graph
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `ipfs_accelerate_py/agent_supervisor/objectives/**`, `ipfs_accelerate_py/agent_supervisor/planning/**`, `test/api/test_agent_supervisor_ir_learning_*`
+- Owned paths: ipfs_accelerate_py/agent_supervisor/objectives/**, ipfs_accelerate_py/agent_supervisor/planning/**, test/api/test_agent_supervisor_ir_learning_*
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)`
@@ -961,11 +961,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `campaign-plan`
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-060)`
-- Outputs: IR campaign contracts/control handlers
+- Outputs: ipfs_accelerate_py/agent_supervisor/objectives/, ipfs_accelerate_py/agent_supervisor/planning/
 - Validation: `python -m pytest -q test/api/test_agent_supervisor_formal_plan_compiler.py test/api/test_agent_supervisor_formal_plan_validator.py test/api/test_agent_supervisor_control_plane.py`
 - Bundle: pgir/campaign/contracts
 - Parallel lane: campaign-contracts
-- Predicted files: `ipfs_accelerate_py/agent_supervisor/objectives/`, `ipfs_accelerate_py/agent_supervisor/planning/`
+- Predicted files: ipfs_accelerate_py/agent_supervisor/objectives/, ipfs_accelerate_py/agent_supervisor/planning/
 - Conflict policy: campaign schema/control catalog exclusive
 
 ## PGIR-061 Extend resource admission and safe pipeline overlap
@@ -978,7 +978,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G080
 - Subgoal: resource-scheduling
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `ipfs_accelerate_py/agent_supervisor/runtime/{resource_scheduler,provider_batch_scheduler,scheduler_metrics}.py`, `test/api/test_agent_supervisor_{resource_scheduler,provider_batch_scheduler,scheduler_metrics}.py`
+- Owned paths: ipfs_accelerate_py/agent_supervisor/runtime/{resource_scheduler,provider_batch_scheduler,scheduler_metrics}.py, test/api/test_agent_supervisor_{resource_scheduler,provider_batch_scheduler,scheduler_metrics}.py
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)` identity only
 - Data split identity: `RESULT(PGIR-012)` identity only
@@ -997,11 +997,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, scheduler policy key; resource subleases fenced
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-061)`
-- Outputs: IR stage resource policies
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/
 - Validation: `python -m pytest -q test/api/test_agent_supervisor_resource_scheduler.py test/api/test_agent_supervisor_provider_batch_scheduler.py test/api/test_agent_supervisor_scheduler_metrics.py`
 - Bundle: pgir/campaign/resources
 - Parallel lane: resource-scheduler
-- Predicted files: `ipfs_accelerate_py/agent_supervisor/runtime/`
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/
 - Conflict policy: extend existing scheduler only
 
 ## PGIR-062 Add checkpoint, resume, leases, fencing, and refill policy
@@ -1014,7 +1014,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G080
 - Subgoal: durable-runtime
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `ipfs_accelerate_py/agent_supervisor/{runtime,merge,rescue,self_improvement,todo_daemon}/**`, `test/api/test_agent_supervisor_*`
+- Owned paths: ipfs_accelerate_py/agent_supervisor/{runtime,merge,rescue,self_improvement,todo_daemon}/**, test/api/test_agent_supervisor_*
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)`
@@ -1033,11 +1033,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`; all named L3 resources get distinct keys
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-062)`
-- Outputs: durable learning campaign runtime
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/, ipfs_accelerate_py/agent_supervisor/rescue/, ipfs_accelerate_py/agent_supervisor/self_improvement/
 - Validation: `python -m pytest -q test/api/test_agent_supervisor_fault_recovery_v2.py test/api/test_agent_supervisor_daemon_recovery_lease.py test/api/test_agent_supervisor_worktree_lifecycle.py test/api/test_agent_supervisor_autonomous_unstall.py`
 - Bundle: pgir/campaign/durability
 - Parallel lane: campaign-durability
-- Predicted files: `ipfs_accelerate_py/agent_supervisor/runtime/`, `ipfs_accelerate_py/agent_supervisor/rescue/`, `ipfs_accelerate_py/agent_supervisor/self_improvement/`
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/, ipfs_accelerate_py/agent_supervisor/rescue/, ipfs_accelerate_py/agent_supervisor/self_improvement/
 - Conflict policy: shared runtime mutations serialized; immutable shards parallel
 
 ## PGIR-070 Implement checkpoint lifecycle and promotion manifest
@@ -1050,7 +1050,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G090
 - Subgoal: checkpoint-promotion
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder_checkpoint.py`, `ipfs_datasets_py/ipfs_datasets_py/logic/formalization/checkpoints.py`, `ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder_checkpoint.py, ipfs_datasets_py/ipfs_datasets_py/logic/formalization/checkpoints.py, ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)`
@@ -1069,11 +1069,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, exclusive checkpoint-write and promotion keys
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-070)`
-- Outputs: `IRCheckpointManifest@1` and lifecycle policy
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder_checkpoint.py, ipfs_datasets_py/ipfs_datasets_py/logic/formalization/checkpoints.py
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/test_modal_autoencoder_checkpoint.py`
 - Bundle: pgir/qualification/checkpoints
 - Parallel lane: checkpoint-lifecycle
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder_checkpoint.py`, `ipfs_datasets_py/ipfs_datasets_py/logic/formalization/checkpoints.py`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder_checkpoint.py, ipfs_datasets_py/ipfs_datasets_py/logic/formalization/checkpoints.py
 - Conflict policy: semantic owner defines manifest; accelerator only executes lifecycle
 
 ## PGIR-071 Implement comprehensive evaluation and statistical gates
@@ -1086,7 +1086,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G090
 - Subgoal: evaluation-suite
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_{semantic_metrics,family_evaluator,metric_lineage,uncertainty,evaluation_artifacts}.py`, `ipfs_datasets_py/benchmarks/semantic_roundtrip/**`, `ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_{semantic_metrics,family_evaluator,metric_lineage,uncertainty,evaluation_artifacts}.py, ipfs_datasets_py/benchmarks/semantic_roundtrip/**, ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)` frozen development/calibration/test/OOD; hidden labels evaluator-only
@@ -1105,11 +1105,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, per-evaluation-shard fence and report reducer CAS
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-071)`
-- Outputs: `IREvaluationSuite@1` and report schemas
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/, ipfs_datasets_py/benchmarks/semantic_roundtrip/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer ipfs_datasets_py/tests/integration/logic/test_canonical_semantic_roundtrip.py`
 - Bundle: pgir/qualification/evaluation
 - Parallel lane: evaluation-suite
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/`, `ipfs_datasets_py/benchmarks/semantic_roundtrip/`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/, ipfs_datasets_py/benchmarks/semantic_roundtrip/
 - Conflict policy: metric schema lease; shards read immutable checkpoints
 
 ## PGIR-072 Implement deterministic promotion comparison and policy admission
@@ -1122,7 +1122,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G090
 - Subgoal: promotion-gates
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `ipfs_accelerate_py/agent_supervisor/validation/**`, `ipfs_accelerate_py/agent_supervisor/control/**`, `ipfs_accelerate_py/agent_supervisor/merge/**`, `test/api/test_agent_supervisor_ir_learning_*`
+- Owned paths: ipfs_accelerate_py/agent_supervisor/validation/**, ipfs_accelerate_py/agent_supervisor/control/**, ipfs_accelerate_py/agent_supervisor/merge/**, test/api/test_agent_supervisor_ir_learning_*
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)`
@@ -1141,11 +1141,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, exclusive `promotion-pointer`
 - Rollback procedure: `ROLLBACK-DEFAULT`; CAS restore prior pointer only with new decision
 - Result identity: `RESULT(PGIR-072)`
-- Outputs: promotion comparison/admission handler
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/, ipfs_accelerate_py/agent_supervisor/control/
 - Validation: `python -m pytest -q test/api/test_agent_supervisor_proposal_validation.py test/api/test_agent_supervisor_control_transactions.py test/api/test_agent_supervisor_parallel_acceptance_flow.py`
 - Bundle: pgir/qualification/promotion
 - Parallel lane: promotion-gate
-- Predicted files: `ipfs_accelerate_py/agent_supervisor/validation/`, `ipfs_accelerate_py/agent_supervisor/control/`
+- Predicted files: ipfs_accelerate_py/agent_supervisor/validation/, ipfs_accelerate_py/agent_supervisor/control/
 - Conflict policy: promotion authority serialized and independent of evaluator/model
 
 ## PGIR-080 Publish stable semantic APIs
@@ -1158,7 +1158,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G100
 - Subgoal: datasets-public-api
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/logic/**`, `ipfs_datasets_py/tests/integration/logic/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/logic/**, ipfs_datasets_py/tests/integration/logic/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: `RESULT(PGIR-012)`
@@ -1177,11 +1177,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, key `datasets-public-api`
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-080)`
-- Outputs: stable semantic API surface
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/integration/logic/test_ir_compatibility_exports.py`
 - Bundle: pgir/api/datasets
 - Parallel lane: datasets-api
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/logic/`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/
 - Conflict policy: public export changes serialized after implementations settle
 
 ## PGIR-081 Publish stable operational campaign APIs and prompt handoff
@@ -1194,7 +1194,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G100
 - Subgoal: accelerator-public-api
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `ipfs_accelerate_py/agent_supervisor/{control,objectives,planning,runtime,proof}/**`, `test/api/test_agent_supervisor_ir_learning_*`
+- Owned paths: ipfs_accelerate_py/agent_supervisor/{control,objectives,planning,runtime,proof}/**, test/api/test_agent_supervisor_ir_learning_*
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)` allowlisted identities
 - Data split identity: `RESULT(PGIR-012)` immutable membership
@@ -1213,11 +1213,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, control catalog and lifecycle keys
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-081)`
-- Outputs: stable campaign API surface
+- Outputs: ipfs_accelerate_py/agent_supervisor/control/, ipfs_accelerate_py/agent_supervisor/objectives/
 - Validation: `python -m pytest -q test/api/test_agent_supervisor_control_plane.py test/api/test_agent_supervisor_prompt_plan_admission.py test/api/test_agent_supervisor_v2_public_api.py`
 - Bundle: pgir/api/accelerator
 - Parallel lane: accelerator-api
-- Predicted files: `ipfs_accelerate_py/agent_supervisor/control/`, `ipfs_accelerate_py/agent_supervisor/objectives/`
+- Predicted files: ipfs_accelerate_py/agent_supervisor/control/, ipfs_accelerate_py/agent_supervisor/objectives/
 - Conflict policy: control catalog mutation serialized
 
 ## PGIR-090 Implement append-only IR release packaging
@@ -1230,7 +1230,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G100
 - Subgoal: dataset-checkpoint-publication
 - Owning repository: ipfs_datasets_py
-- Owned paths: `ipfs_datasets_py/ipfs_datasets_py/huggingface/**`, `ipfs_datasets_py/tests/unit/logic/ir_learning/publication/**`, `ipfs_datasets_py/data/ir_learning/releases/**`
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/huggingface/**, ipfs_datasets_py/tests/unit/logic/ir_learning/publication/**, ipfs_datasets_py/data/ir_learning/releases/**
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)` and exact output release revision only after upload
 - Data split identity: `RESULT(PGIR-012)`
@@ -1249,11 +1249,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, exclusive `hf-publication:<repo>` fence
 - Rollback procedure: `ROLLBACK-DEFAULT`; never delete published version, publish revocation/supersession record
 - Result identity: `RESULT(PGIR-090)`
-- Outputs: append-only release package/publisher
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/huggingface/, ipfs_datasets_py/data/ir_learning/releases/
 - Validation: `python -m pytest -q ipfs_datasets_py/tests/unit/logic/ir_learning/publication`
 - Bundle: pgir/publication/package
 - Parallel lane: release-packager
-- Predicted files: `ipfs_datasets_py/ipfs_datasets_py/huggingface/`, `ipfs_datasets_py/data/ir_learning/releases/`
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/huggingface/, ipfs_datasets_py/data/ir_learning/releases/
 - Conflict policy: one release root and publication pointer writer
 
 ## PGIR-100 Add integrated dataset, proof, training, and recovery security
@@ -1266,7 +1266,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G100
 - Subgoal: fail-closed-security
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `ipfs_accelerate_py/agent_supervisor/{validation,rescue,proof,todo_daemon}/**`, `test/security/**`, `test/api/test_agent_supervisor_ir_learning_*`
+- Owned paths: ipfs_accelerate_py/agent_supervisor/{validation,rescue,proof,todo_daemon}/**, test/security/**, test/api/test_agent_supervisor_ir_learning_*
 - Base source revisions: `SRCSET-1`
 - Source dataset revisions: `RESULT(PGIR-011)` hostile and admitted fixtures
 - Data split identity: `RESULT(PGIR-012)` including hidden-label policy
@@ -1285,11 +1285,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, fault-scoped leases; no production pointer mutation in tests
 - Rollback procedure: `ROLLBACK-DEFAULT`
 - Result identity: `RESULT(PGIR-100)`
-- Outputs: integrated security/recovery qualification suite
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/, ipfs_accelerate_py/agent_supervisor/rescue/, test/security/
 - Validation: `python -m pytest -q test/security test/api/test_agent_supervisor_fault_recovery_v2.py test/api/test_agent_supervisor_process_tree_fencing.py`
 - Bundle: pgir/security/recovery
 - Parallel lane: security-recovery
-- Predicted files: `ipfs_accelerate_py/agent_supervisor/validation/`, `ipfs_accelerate_py/agent_supervisor/rescue/`, `test/security/`
+- Predicted files: ipfs_accelerate_py/agent_supervisor/validation/, ipfs_accelerate_py/agent_supervisor/rescue/, test/security/
 - Conflict policy: hostile tests isolated; production state/pointers protected
 
 ## PGIR-110 Run R1-R6 controlled campaign
@@ -1302,7 +1302,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G110
 - Subgoal: controlled-comparisons
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `data/agent_supervisor/proof_grounded_ir_learning/experiments/**`
+- Owned paths: data/agent_supervisor/proof_grounded_ir_learning/experiments/**
 - Base source revisions: exact post-implementation repository commits plus `SRCSET-1` ancestry
 - Source dataset revisions: `RESULT(PGIR-011)`
 - Data split identity: immutable `RESULT(PGIR-012)` identical across R1-R6
@@ -1321,11 +1321,11 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, separate arm/seed/checkpoint/proof/evaluation leases; reducer CAS
 - Rollback procedure: `ROLLBACK-DEFAULT`; reject/quarantine failed arm, preserve artifacts
 - Result identity: `RESULT(PGIR-110)`
-- Outputs: R1-R6 experiment root and comparison report
+- Outputs: data/agent_supervisor/proof_grounded_ir_learning/experiments/
 - Validation: `python -m pytest -q test/api/test_agent_supervisor_proof_workflow_e2e.py test/api/test_agent_supervisor_scheduler.py`
 - Bundle: pgir/experiments/r1-r6
 - Parallel lane: experiment-orchestrator
-- Predicted files: `data/agent_supervisor/proof_grounded_ir_learning/experiments/`
+- Predicted files: data/agent_supervisor/proof_grounded_ir_learning/experiments/
 - Conflict policy: arms parallel only after freeze; promotion/test reducer independent
 
 ## PGIR-111 Qualify, publish or reject, and issue the next board
@@ -1338,7 +1338,7 @@ authority roots into a revised task input binding.
 - Parent goal: PGIR-G110
 - Subgoal: final-decision-report
 - Owning repository: ipfs_accelerate_py
-- Owned paths: `data/agent_supervisor/proof_grounded_ir_learning/qualification/**`, `docs/architecture/proof_grounded_ir_learning/final_report.md`, `docs/architecture/proof_grounded_ir_learning/next.todo.md`
+- Owned paths: data/agent_supervisor/proof_grounded_ir_learning/qualification/**, docs/architecture/proof_grounded_ir_learning/final_report.md, docs/architecture/proof_grounded_ir_learning/next.todo.md
 - Base source revisions: exact final repository/source ancestry from `RESULT(PGIR-110)`
 - Source dataset revisions: `RESULT(PGIR-011)` and any append-only output revision from `RESULT(PGIR-090)`
 - Data split identity: `RESULT(PGIR-012)`
@@ -1357,9 +1357,9 @@ authority roots into a revised task input binding.
 - Lease and checkpoint policy: `LEASE-DEFAULT`, exclusive final-decision/promotion/publication keys
 - Rollback procedure: `ROLLBACK-DEFAULT`; append correction/supersession, never rewrite released evidence
 - Result identity: `RESULT(PGIR-111)`
-- Outputs: final qualification root and next dependency board
+- Outputs: data/agent_supervisor/proof_grounded_ir_learning/qualification/, docs/architecture/proof_grounded_ir_learning/
 - Validation: `python -m pytest -q test/api/test_agent_supervisor_goal_completion.py test/api/test_agent_supervisor_proof_goal_completion.py`
 - Bundle: pgir/qualification/final
 - Parallel lane: final-qualifier
-- Predicted files: `data/agent_supervisor/proof_grounded_ir_learning/qualification/`, `docs/architecture/proof_grounded_ir_learning/`
+- Predicted files: data/agent_supervisor/proof_grounded_ir_learning/qualification/, docs/architecture/proof_grounded_ir_learning/
 - Conflict policy: one independent qualification/promotion authority; evaluator/model cannot hold it
