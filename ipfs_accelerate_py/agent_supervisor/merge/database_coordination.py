@@ -66,6 +66,9 @@ MAINTENANCE_LEASE_INTERFACE: Final[str] = "MaintenanceLease@1"
 DATABASE_COORDINATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-coordination@1"
 )
+COORDINATION_REGISTRY_PROJECTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/coordination-registry-projection@1"
+)
 FENCED_LEASE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/fenced-lease@1"
 )
@@ -1360,6 +1363,249 @@ class DatabaseCoordinator:
                     "completed_at_ms": now,
                     "status": status_text,
                 }
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+
+    def coordination_registry_projection(self) -> dict[str, Any]:
+        """Return a deterministic, content-addressed coordination read model.
+
+        The projection deliberately excludes registration, completion, claim,
+        lease, and attempt timestamps.  Those values are execution evidence,
+        but they are not part of the logical task registry identity.  Stored
+        task and completion bodies remain exact and are decoded fail-closed so
+        callers can compare the projection with the authority that populated
+        this database.
+
+        Claim, attempt, and lease records are represented by exact totals and
+        closed state/kind breakdowns.  In particular, the ``active_*`` counts
+        reflect rows still stored in the accepted/running state; this method
+        does not sweep expiry or otherwise mutate coordination authority.
+        """
+
+        def decode_body(value: Any, *, table: str, identity: str) -> dict[str, Any]:
+            try:
+                decoded = json.loads(str(value or "{}"))
+            except json.JSONDecodeError as exc:
+                raise DatabaseCoordinationStaleFenceError(
+                    f"{table} body for {identity} is not valid JSON"
+                ) from exc
+            if not isinstance(decoded, Mapping):
+                raise DatabaseCoordinationStaleFenceError(
+                    f"{table} body for {identity} is not a mapping"
+                )
+            return dict(decoded)
+
+        def grouped_counts(
+            connection: Any,
+            *,
+            table: str,
+            columns: tuple[str, ...],
+        ) -> list[dict[str, Any]]:
+            selected = ", ".join(columns)
+            rows = connection.execute(
+                f"""
+                SELECT {selected}, COUNT(*) AS record_count
+                FROM {table}
+                GROUP BY {selected}
+                ORDER BY {selected}
+                """
+            ).fetchall()
+            result: list[dict[str, Any]] = []
+            for row in rows:
+                mapping = _row_mapping(row)
+                item = {
+                    name: str(_row_get(mapping, name, str(index), default=""))
+                    for index, name in enumerate(columns)
+                }
+                item["count"] = int(
+                    _row_get(
+                        mapping,
+                        "record_count",
+                        str(len(columns)),
+                        default=0,
+                    )
+                )
+                result.append(item)
+            return result
+
+        def total(items: Sequence[Mapping[str, Any]]) -> int:
+            return sum(int(item["count"]) for item in items)
+
+        def state_total(
+            items: Sequence[Mapping[str, Any]],
+            *states: str,
+        ) -> int:
+            accepted = set(states)
+            return sum(
+                int(item["count"])
+                for item in items
+                if str(item.get("state") or item.get("status") or "") in accepted
+            )
+
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            try:
+                task_rows = connection.execute(
+                    """
+                    SELECT task_cid, task_id, worktree_id, ready, body_json
+                    FROM coordination_tasks
+                    ORDER BY task_cid
+                    """
+                ).fetchall()
+                tasks: list[dict[str, Any]] = []
+                for row in task_rows:
+                    mapping = _row_mapping(row)
+                    task_cid = str(
+                        _row_get(mapping, "task_cid", "0", default="")
+                    )
+                    tasks.append(
+                        {
+                            "task_cid": task_cid,
+                            "task_id": str(
+                                _row_get(mapping, "task_id", "1", default="")
+                            ),
+                            "worktree_id": str(
+                                _row_get(mapping, "worktree_id", "2", default="")
+                                or ""
+                            ),
+                            "ready": bool(
+                                _row_get(mapping, "ready", "3", default=False)
+                            ),
+                            "body": decode_body(
+                                _row_get(mapping, "body_json", "4", default="{}"),
+                                table="coordination_tasks",
+                                identity=task_cid,
+                            ),
+                        }
+                    )
+
+                dependency_rows = connection.execute(
+                    """
+                    SELECT task_cid, dependency_task_cid
+                    FROM task_dependencies
+                    ORDER BY task_cid, dependency_task_cid
+                    """
+                ).fetchall()
+                dependencies = [
+                    {
+                        "task_cid": str(
+                            _row_get(
+                                _row_mapping(row),
+                                "task_cid",
+                                "0",
+                                default="",
+                            )
+                        ),
+                        "dependency_task_cid": str(
+                            _row_get(
+                                _row_mapping(row),
+                                "dependency_task_cid",
+                                "1",
+                                default="",
+                            )
+                        ),
+                    }
+                    for row in dependency_rows
+                ]
+
+                completion_rows = connection.execute(
+                    """
+                    SELECT task_cid, status, body_json
+                    FROM task_completions
+                    ORDER BY task_cid
+                    """
+                ).fetchall()
+                completions: list[dict[str, Any]] = []
+                for row in completion_rows:
+                    mapping = _row_mapping(row)
+                    task_cid = str(
+                        _row_get(mapping, "task_cid", "0", default="")
+                    )
+                    completions.append(
+                        {
+                            "task_cid": task_cid,
+                            "status": str(
+                                _row_get(mapping, "status", "1", default="")
+                            ),
+                            "body": decode_body(
+                                _row_get(mapping, "body_json", "2", default="{}"),
+                                table="task_completions",
+                                identity=task_cid,
+                            ),
+                        }
+                    )
+
+                task_claim_states = grouped_counts(
+                    connection,
+                    table="task_claims",
+                    columns=("state",),
+                )
+                resource_claim_states = grouped_counts(
+                    connection,
+                    table="resource_claims",
+                    columns=("state",),
+                )
+                attempt_statuses = grouped_counts(
+                    connection,
+                    table="task_attempts",
+                    columns=("status",),
+                )
+                fenced_lease_kind_states = grouped_counts(
+                    connection,
+                    table="fenced_leases",
+                    columns=("lease_kind", "state"),
+                )
+                maintenance_lease_states = grouped_counts(
+                    connection,
+                    table="maintenance_leases",
+                    columns=("state",),
+                )
+
+                counts = {
+                    "registered_tasks": len(tasks),
+                    "dependency_edges": len(dependencies),
+                    "logical_completions": len(completions),
+                    "task_claims": total(task_claim_states),
+                    "active_task_claims": state_total(
+                        task_claim_states, LeaseState.ACCEPTED.value
+                    ),
+                    "resource_claims": total(resource_claim_states),
+                    "active_resource_claims": state_total(
+                        resource_claim_states, LeaseState.ACCEPTED.value
+                    ),
+                    "task_attempts": total(attempt_statuses),
+                    "active_task_attempts": state_total(
+                        attempt_statuses, AttemptStatus.RUNNING.value
+                    ),
+                    "fenced_leases": total(fenced_lease_kind_states),
+                    "active_fenced_leases": state_total(
+                        fenced_lease_kind_states, LeaseState.ACCEPTED.value
+                    ),
+                    "maintenance_leases": total(maintenance_lease_states),
+                    "active_maintenance_leases": state_total(
+                        maintenance_lease_states, LeaseState.ACCEPTED.value
+                    ),
+                }
+                projection: dict[str, Any] = {
+                    "schema": COORDINATION_REGISTRY_PROJECTION_SCHEMA,
+                    "authority_schema": DATABASE_COORDINATION_SCHEMA,
+                    "tasks": tasks,
+                    "dependency_edges": dependencies,
+                    "logical_completions": completions,
+                    "counts": counts,
+                    "task_claim_state_counts": task_claim_states,
+                    "resource_claim_state_counts": resource_claim_states,
+                    "task_attempt_status_counts": attempt_statuses,
+                    "fenced_lease_kind_state_counts": fenced_lease_kind_states,
+                    "maintenance_lease_state_counts": maintenance_lease_states,
+                }
+                projection["projection_root"] = _sha256_hex(
+                    _canonical_json(projection).encode("utf-8")
+                )
+                self._commit_if_idle(connection)
+                return projection
             except Exception:
                 self._rollback_if_open(connection)
                 raise
@@ -5194,6 +5440,7 @@ __all__ = [
     "RESOURCE_CLAIM_INTERFACE",
     "MAINTENANCE_LEASE_INTERFACE",
     "DATABASE_COORDINATION_SCHEMA",
+    "COORDINATION_REGISTRY_PROJECTION_SCHEMA",
     "FENCED_LEASE_SCHEMA",
     "TASK_CLAIM_SCHEMA",
     "RESOURCE_CLAIM_SCHEMA",

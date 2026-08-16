@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+    COORDINATION_REGISTRY_PROJECTION_SCHEMA,
     DATABASE_COORDINATOR_INTERFACE,
     FENCED_LEASE_INTERFACE,
     MAINTENANCE_LEASE_INTERFACE,
@@ -330,6 +331,178 @@ def test_stale_fencing_epoch_rejected_on_protected_writes(tmp_path: Path) -> Non
 # ---------------------------------------------------------------------------
 # Task claims, attempts, fairness, dependency readiness, response loss
 # ---------------------------------------------------------------------------
+
+
+def test_coordination_registry_projection_is_exact_and_timestamp_free(
+    tmp_path: Path,
+) -> None:
+    first, _first_clock = _open(tmp_path / "first", clock=FakeClock(1_000_000))
+    second, _second_clock = _open(tmp_path / "second", clock=FakeClock(9_000_000))
+    try:
+        for coordinator, timestamp in ((first, 1_000_000), (second, 9_000_000)):
+            coordinator.register_task(
+                task_cid="task:dep",
+                task_id="DEP",
+                body={"kind": "analysis", "nested": {"ordinal": 1}},
+                now_ms=timestamp,
+            )
+            coordinator.register_task(
+                task_cid="task:child",
+                task_id="CHILD",
+                worktree_id="worktree:child",
+                dependency_task_cids=("task:dep",),
+                body={"kind": "implementation"},
+                now_ms=timestamp + 50,
+            )
+            coordinator.mark_task_complete(
+                "task:dep",
+                status="succeeded",
+                body={"receipt_cid": "sha256:dep"},
+                now_ms=timestamp + 100,
+            )
+
+        projection = first.coordination_registry_projection()
+        assert projection["schema"] == COORDINATION_REGISTRY_PROJECTION_SCHEMA
+        assert projection["tasks"] == [
+            {
+                "task_cid": "task:child",
+                "task_id": "CHILD",
+                "worktree_id": "worktree:child",
+                "ready": True,
+                "body": {"kind": "implementation"},
+            },
+            {
+                "task_cid": "task:dep",
+                "task_id": "DEP",
+                "worktree_id": "",
+                "ready": False,
+                "body": {"kind": "analysis", "nested": {"ordinal": 1}},
+            },
+        ]
+        assert projection["dependency_edges"] == [
+            {
+                "task_cid": "task:child",
+                "dependency_task_cid": "task:dep",
+            }
+        ]
+        assert projection["logical_completions"] == [
+            {
+                "task_cid": "task:dep",
+                "status": "succeeded",
+                "body": {"receipt_cid": "sha256:dep"},
+            }
+        ]
+        assert projection["counts"] == {
+            "registered_tasks": 2,
+            "dependency_edges": 1,
+            "logical_completions": 1,
+            "task_claims": 0,
+            "active_task_claims": 0,
+            "resource_claims": 0,
+            "active_resource_claims": 0,
+            "task_attempts": 0,
+            "active_task_attempts": 0,
+            "fenced_leases": 0,
+            "active_fenced_leases": 0,
+            "maintenance_leases": 0,
+            "active_maintenance_leases": 0,
+        }
+        assert projection["projection_root"].startswith("sha256:")
+        assert len(projection["projection_root"]) == 71
+
+        # Registration and completion wall-clock values are deliberately not
+        # logical registry identity.
+        assert second.coordination_registry_projection() == projection
+        assert first.coordination_registry_projection() == projection
+    finally:
+        first.close()
+        second.close()
+
+
+def test_coordination_registry_projection_exposes_exact_claim_and_lease_counts(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:work", task_id="WORK")
+        coordinator.claim_task(
+            task_cid="task:work",
+            owner_session_id="session:worker",
+        )
+        coordinator.claim_resource(
+            resource_kind="gpu",
+            resource_id="gpu:0",
+            owner_session_id="session:worker",
+            task_cid="task:work",
+        )
+
+        projection = coordinator.coordination_registry_projection()
+        assert projection["counts"] == {
+            "registered_tasks": 1,
+            "dependency_edges": 0,
+            "logical_completions": 0,
+            "task_claims": 1,
+            "active_task_claims": 1,
+            "resource_claims": 1,
+            "active_resource_claims": 1,
+            "task_attempts": 1,
+            "active_task_attempts": 1,
+            "fenced_leases": 2,
+            "active_fenced_leases": 2,
+            "maintenance_leases": 0,
+            "active_maintenance_leases": 0,
+        }
+        assert projection["task_claim_state_counts"] == [
+            {"state": "accepted", "count": 1}
+        ]
+        assert projection["resource_claim_state_counts"] == [
+            {"state": "accepted", "count": 1}
+        ]
+        assert projection["task_attempt_status_counts"] == [
+            {"status": "running", "count": 1}
+        ]
+        assert projection["fenced_lease_kind_state_counts"] == [
+            {"lease_kind": "resource", "state": "accepted", "count": 1},
+            {"lease_kind": "task", "state": "accepted", "count": 1},
+        ]
+    finally:
+        coordinator.close()
+
+
+def test_coordination_registry_projection_makes_dependency_tamper_visible(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:dep", task_id="DEP")
+        coordinator.register_task(
+            task_cid="task:child",
+            task_id="CHILD",
+            dependency_task_cids=("task:dep",),
+        )
+        before = coordinator.coordination_registry_projection()
+
+        # Simulate an out-of-band database writer changing the registry edge.
+        connection = coordinator._require()
+        connection.execute(
+            """
+            UPDATE task_dependencies
+            SET dependency_task_cid = 'task:forged'
+            WHERE task_cid = 'task:child'
+            """
+        )
+        coordinator._commit_if_idle(connection)
+
+        after = coordinator.coordination_registry_projection()
+        assert after["dependency_edges"] == [
+            {
+                "task_cid": "task:child",
+                "dependency_task_cid": "task:forged",
+            }
+        ]
+        assert after["projection_root"] != before["projection_root"]
+    finally:
+        coordinator.close()
 
 
 def test_claim_and_task_attempt_are_one_transaction(tmp_path: Path) -> None:
