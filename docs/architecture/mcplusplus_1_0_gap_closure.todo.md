@@ -1050,7 +1050,7 @@ overlays. Never force-push.
 
 ## MCPP-033 Add four-language envelope validators and vectors
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
