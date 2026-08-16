@@ -34,7 +34,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-001 Record source history and live authority
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0

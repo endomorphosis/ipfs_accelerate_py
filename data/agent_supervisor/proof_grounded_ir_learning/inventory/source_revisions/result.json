@@ -1,0 +1,55 @@
+{
+  "schema": "pgir-task-result@1",
+  "task_id": "PGIR-001",
+  "executed_task_revision": "baguqeeraa3ltwmsx2hkyxhigmfkadmyfy2js7cir3jl2kticrqexsemd75rq",
+  "admitted_task_revision": "baguqeeraqps5qlahfst4tnamkjac7xxwun52ngvlike676yvldpsye5fwb3q",
+  "plan_projection_repair_commit": "52756763d98e0a1b9ef40bcf842e41f79039886c",
+  "base_source_revisions": {
+    "ipfs_accelerate_py": "8d46a6d25dd006c8cab3c9d9612707d2a014e79c",
+    "ipfs_datasets_py": "df93e91e6338c84a17c3208ef68b88de8566f78c"
+  },
+  "source_dataset_revisions": [],
+  "data_split_identity": "not-applicable/inventory",
+  "compiler_identity": "COMPILER-CURRENT-1",
+  "decompiler_identity": "DECOMPILER-CURRENT-1",
+  "model_checkpoint_identity": "MODEL-LEGACY-1",
+  "lease": {
+    "attempt": 2,
+    "fence": 3,
+    "disposition": "terminal"
+  },
+  "artifact": {
+    "path": "data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/manifest.json",
+    "git_blob": "34a293010fca8f7db43a79a41baa0d58561e13d4",
+    "sha256": "3db018b70be45870a2c4b2ad6fb5d65258751d0c8c3d7d089af74e2a4ee9f92b",
+    "cid": "baguqeerasownoxqyrppw3ft3us3yvd26ghvqnjl74nr2rw5o7sm3sjehip7a",
+    "byte_count": 571591,
+    "commit_count": 5333
+  },
+  "evidence": {
+    "repository_count": 2,
+    "datasets_forward_commit_count": 1717,
+    "accelerator_forward_commit_count": 3616,
+    "reverse_commit_count": 0,
+    "residual_submodule_count": 14,
+    "git_fsck_exit_codes": [0, 0],
+    "focused_test": "python -m pytest test/api/test_agent_supervisor_repository_forest_manifest.py -q",
+    "focused_test_result": "19 passed, 1 warning",
+    "deterministic_replay": "passed"
+  },
+  "incident": {
+    "kind": "plan_projection_path_quoting",
+    "original_scope_adjudication": "denied",
+    "semantic_output_invalid": false,
+    "repair": "removed Markdown code delimiters from machine-parsed path fields and normalized Outputs to Predicted files",
+    "recovery": "recovered the exact staged Git blob, rechecked its CID, replayed range counts and git fsck, and reran the focused test"
+  },
+  "allowed_effects": [
+    "write owned source-revision evidence paths",
+    "mark PGIR-001 completed after independent replay"
+  ],
+  "prohibited_effects_observed": [],
+  "rollback": "revert this acceptance commit; retain the immutable failed-attempt log and recovered blob",
+  "disposition": "accepted_after_projection_repair",
+  "result_identity": "sha256:86f7c07cf7b62847b81315b6529942da7647acf9922f32cf5ccef9d8bb221e9c"
+}
