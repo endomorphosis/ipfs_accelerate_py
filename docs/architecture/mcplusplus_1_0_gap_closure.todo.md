@@ -1237,7 +1237,7 @@ overlays. Never force-push.
 
 ## MCPP-039 Define the consensus plugin contract with honest guarantee labels
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
