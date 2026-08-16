@@ -1454,7 +1454,7 @@ overlays. Never force-push.
 
 ## MCPP-046 Implement the deterministic policy evaluator interface
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
