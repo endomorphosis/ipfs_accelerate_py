@@ -1826,7 +1826,7 @@ overlays. Never force-push.
 
 ## MCPP-058 Specify the agent advertisement schema
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
