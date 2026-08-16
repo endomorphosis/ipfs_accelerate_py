@@ -1979,7 +1979,7 @@ overlays. Never force-push.
 
 ## MCPP-063 Implement deterministic framing, quotas, correlation, and replay detection
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
