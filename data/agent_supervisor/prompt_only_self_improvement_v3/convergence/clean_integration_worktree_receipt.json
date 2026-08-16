@@ -1,0 +1,34 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.prompt-v3-clean-worktree-receipt@1",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "observed_at": "2026-08-08T07:12:11Z",
+  "worktree": {
+    "path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3",
+    "branch": "agent/prompt-self-improvement-v3",
+    "creation_head": "7d70a558e0f54a16a04b3a145fe3d43360cac4c5",
+    "creation_tree": "d9162b360129ab32f765bb524828e061838a360f",
+    "clean_at_creation": true,
+    "isolated_from_source_checkout": true,
+    "working_tree_is_expected_to_change_after_receipt": true
+  },
+  "protected_source_checkout": {
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate",
+    "head": "34420f615d3eebfefa3cc1a3e4ebf8f51b16afac",
+    "status_sha256": "sha256:b4fd43043138b7a07e6e969a5bcd1da3085836a6c5b6a2311c096837e4e2458e",
+    "dirty_entry_count": 140,
+    "modified_by_bootstrap": false,
+    "preservation_policy": "read-only-protected"
+  },
+  "state_namespace": {
+    "path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/state",
+    "fresh_for_board": true,
+    "historical_import_allowed": false,
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "downstream_binding": {
+    "required_ancestor": "7d70a558e0f54a16a04b3a145fe3d43360cac4c5",
+    "required_branch": "agent/prompt-self-improvement-v3",
+    "changed_revision_requires_fresh_validation": true,
+    "historical_ase_or_ase2_receipt_satisfies_v3": false
+  }
+}

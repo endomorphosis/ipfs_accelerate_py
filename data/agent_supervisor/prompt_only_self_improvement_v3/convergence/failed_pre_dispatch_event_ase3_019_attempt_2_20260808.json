@@ -1,0 +1,573 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.ase3-019-attempt2-event-bundle@1",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "task_id": "ASE3-019",
+  "canonical_task_cid": "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a",
+  "canonical_task_key": "task/v1/b75326e8a50dd83ba6aa9aa6328c2abd3e340c441f083c2d03903874f390c674",
+  "attempt": 2,
+  "stream_id": "event-log:sha256:9ee0a20648d584188480d373c3f1aa0284d70ca1271a0d562ea5ef7d62199b97",
+  "snapshot_id": "event-log-snapshot:sha256:9ee0a20648d584188480d373c3f1aa0284d70ca1271a0d562ea5ef7d62199b97",
+  "event_order": [
+    "prior_attempt_seeded",
+    "implementation_started",
+    "implementation_finished",
+    "implementation_shutdown_reconciled"
+  ],
+  "sequence_order": [
+    128,
+    130,
+    134,
+    160
+  ],
+  "event_ids": [
+    "sha256:6f69feb3b06607060c5d69e790066addf9434c7bbda66f51f83c0cb5b4357f09",
+    "sha256:190828f5596ac57a1790f87131dff3cd4db3bf07e4f6f32c2b59751d34f7e0aa",
+    "sha256:e0c223f22824466570825cae33c68ef5baceeaae267e7a968bbea13d5b2e9682",
+    "sha256:878bc907f4ee2f844c245cc7a0677496b87dd9b59e21aef4651929b8845aaefb"
+  ],
+  "events": {
+    "prior_attempt_seeded": {
+      "applied": true,
+      "attempt": 2,
+      "baseline_ref": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+      "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+      "branch": "implementation/ase3-019-b75326e8a50d-attempt-2-1786210208",
+      "canonical_task_cid": "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a",
+      "canonical_task_key": "task/v1/b75326e8a50dd83ba6aa9aa6328c2abd3e340c441f083c2d03903874f390c674",
+      "event_id": "sha256:6f69feb3b06607060c5d69e790066addf9434c7bbda66f51f83c0cb5b4357f09",
+      "merge_base": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+      "no_change": false,
+      "pre_dispatch_proposal_gate": {
+        "accepted": true,
+        "attempted": true,
+        "changed_paths": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+          "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "ipfs_accelerate_py/llm_router.py",
+          "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+          "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+        ],
+        "completion_authoritative": false,
+        "policy_id": "411b80bd36962dbf0097f983ec9b49c75b7635a8a5cb9e7b7ce67fa48a6abca7",
+        "proof_authoritative": false,
+        "proposal_id": "a32f7a7bb88d0ce15c99c563863fb72849539121f04bf25c12ebdb6cf8c61d0e",
+        "reason_codes": [],
+        "receipt_id": "48d3a0b8b0bcbadd2ad07e26ec9d077a8b4d7deebe2b693bdd01a86323c85d96",
+        "repository_tree_id": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a"
+      },
+      "previous_event_id": "sha256:3602b6527ea0cae351b53577d0cb9a2aa58b93a376ebc1bd2c4f4cda12838df1",
+      "proposal_authority": {
+        "authorized_paths": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+          "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "ipfs_accelerate_py/llm_router.py",
+          "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+          "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+        ],
+        "canonical_task_cid": "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a",
+        "canonical_task_key": "task/v1/b75326e8a50dd83ba6aa9aa6328c2abd3e340c441f083c2d03903874f390c674",
+        "declared_scope_paths": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+          "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "ipfs_accelerate_py/llm_router.py",
+          "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+          "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+        ],
+        "dropped_protected_paths": [],
+        "dropped_receipt_paths": [],
+        "event_id": "sha256:3bdcff23af2f2eb5bff60018e20029ee97b0de8ba250fe8df2debc72b9d2c2d7",
+        "ok": true,
+        "proposal_id": "6f8d2a2f23fbb24adcafd570053de58b6536b53e10ae46657534ce96f7d161c2",
+        "reason": "accepted_proposal_paths_bound",
+        "receipt_id": "c28a6aef8070e9939b53c5be85234c966586fe6d2edc7783ab98a356802a8dbd",
+        "receipt_paths": [
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+          "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+          "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+          "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "ipfs_accelerate_py/llm_router.py",
+          "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+          "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+        ],
+        "sequence": 113,
+        "task_id": "ASE3-019"
+      },
+      "reason": "replayed_prior_delta",
+      "replayed_root_paths": [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+      ],
+      "scope_paths": [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+      ],
+      "seed_ref": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+      "sequence": 128,
+      "skipped_root_paths": [],
+      "snapshot_id": "event-log-snapshot:sha256:9ee0a20648d584188480d373c3f1aa0284d70ca1271a0d562ea5ef7d62199b97",
+      "stream_id": "event-log:sha256:9ee0a20648d584188480d373c3f1aa0284d70ca1271a0d562ea5ef7d62199b97",
+      "submodule_reconciliation": {
+        "reason": "configured_submodules_reconciled",
+        "reconciled": true,
+        "results": []
+      },
+      "task_id": "ASE3-019",
+      "timestamp": "2026-08-08T17:30:18.723055+00:00",
+      "type": "implementation_prior_attempt_seeded",
+      "worktree_path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-7fb9a620a3a4-75e6cfd1bfbf"
+    },
+    "implementation_started": {
+      "attempt": 2,
+      "baseline_ref": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+      "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+      "branch": "implementation/ase3-019-b75326e8a50d-attempt-2-1786210208",
+      "cache_hit": false,
+      "canonical_task_cid": "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a",
+      "canonical_task_key": "task/v1/b75326e8a50dd83ba6aa9aa6328c2abd3e340c441f083c2d03903874f390c674",
+      "checkpoint_directory": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-1/implementation_checkpoints/ase3-019-b75326e8a50d",
+      "command": [
+        "/home/barberb/.local/bin/python",
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        "--workspace",
+        "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-7fb9a620a3a4-75e6cfd1bfbf",
+        "--model",
+        "grok-4.5",
+        "--max-turns",
+        "100000",
+        "--mode",
+        "agent",
+        "--codex-fallback-command-json",
+        "[\"/usr/local/bin/codex\",\"exec\",\"--ignore-user-config\",\"--ignore-rules\",\"--ephemeral\",\"-s\",\"workspace-write\",\"-C\",\"/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-7fb9a620a3a4-75e6cfd1bfbf\",\"-m\",\"gpt-5.6-terra\",\"-c\",\"model_reasoning_effort=\\\"high\\\"\",\"-\"]",
+        "--grok-bin",
+        "/home/barberb/.local/bin/grok",
+        "--grok-failure-receipt-nonce",
+        "b522bf77fe34f87317b970ba36e23d1fab1e61cb560ff0a207568548d02b50ae",
+        "--agent-implementation-route-json",
+        "{\"authorization\":{\"artifact_path\":\"data/agent_supervisor/prompt_only_self_improvement_v3/convergence/provider_fallback_policy_authorization_20260808.json\",\"artifact_sha256\":\"sha256:dcbf5e539cda6d160752fd0bfb7bf2a3c98dbec58d5e51e4d26a4a8c1dd36fd2\",\"authorization_id\":\"sha256:a7b61f919d8eac24e7b5071a395afb3a015ea36f2d63704b4104b77b039ccc28\",\"authorization_kind\":\"explicit_operator_override\",\"board_namespace\":\"agent-supervisor-prompt-only-self-improvement-v3\",\"source_head\":\"b9c1368a35cee206dff6ff34553782be851fc571\",\"source_tree\":\"7aeb7e4d78f5b45d2213173a10deebcf6114092f\"},\"fallback_model_id\":\"gpt-5.6-terra\",\"fallback_provider_id\":\"codex\",\"fallback_reasoning_effort\":\"high\",\"fallback_trigger\":\"primary_quota_or_auth_unavailable\",\"primary_model_id\":\"grok-4.5\",\"primary_provider_id\":\"grok_cli\",\"route_id\":\"agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1\"}"
+      ],
+      "event_id": "sha256:190828f5596ac57a1790f87131dff3cd4db3bf07e4f6f32c2b59751d34f7e0aa",
+      "execution_mode": "model-assisted",
+      "log_path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-1/implementation_logs/ase3-019-attempt-2.log",
+      "outputs": [
+        "ipfs_accelerate_py/llm_router.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py"
+      ],
+      "previous_event_id": "sha256:c140051dcce74e0997284bd3ecde4a5763dd8eeb95f76ed0c0f5646597a106b1",
+      "saved_duration_seconds": 0.0,
+      "sequence": 130,
+      "setup_duration_seconds": 5.543349,
+      "snapshot_id": "event-log-snapshot:sha256:9ee0a20648d584188480d373c3f1aa0284d70ca1271a0d562ea5ef7d62199b97",
+      "stream_id": "event-log:sha256:9ee0a20648d584188480d373c3f1aa0284d70ca1271a0d562ea5ef7d62199b97",
+      "task_id": "ASE3-019",
+      "timeout_policy": {
+        "configured_timeout_seconds": "3600",
+        "max_timeout_seconds": "3600",
+        "progress_aware": false,
+        "progress_timeout_seconds": "3600",
+        "source": "configured_absolute"
+      },
+      "timestamp": "2026-08-08T17:30:18.807528+00:00",
+      "type": "implementation_started",
+      "workspace_setup": {
+        "base_commit": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+        "base_ref": "agent/prompt-self-improvement-v3",
+        "branch": "implementation/ase3-019-b75326e8a50d-attempt-2-1786210208",
+        "cache_hit": false,
+        "cache_key": "bfd547ea1dcfb7b863add0677d395737b76bb264eac7b35d9491c9b2632a9673",
+        "dependency_paths": [],
+        "entry_id": "7fb9a620a3a4-75e6cfd1bfbf",
+        "estimated_seconds_saved": 0.0,
+        "invalidation_reason": "",
+        "invalidation_reasons": [],
+        "prior_attempt_seed": {
+          "applied": true,
+          "baseline_ref": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+          "merge_base": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+          "no_change": false,
+          "pre_dispatch_proposal_gate": {
+            "accepted": true,
+            "attempted": true,
+            "changed_paths": [
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+              "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+              "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+              "ipfs_accelerate_py/llm_router.py",
+              "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+              "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+            ],
+            "completion_authoritative": false,
+            "policy_id": "411b80bd36962dbf0097f983ec9b49c75b7635a8a5cb9e7b7ce67fa48a6abca7",
+            "proof_authoritative": false,
+            "proposal_id": "a32f7a7bb88d0ce15c99c563863fb72849539121f04bf25c12ebdb6cf8c61d0e",
+            "reason_codes": [],
+            "receipt_id": "48d3a0b8b0bcbadd2ad07e26ec9d077a8b4d7deebe2b693bdd01a86323c85d96",
+            "repository_tree_id": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a"
+          },
+          "proposal_authority": {
+            "authorized_paths": [
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+              "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+              "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+              "ipfs_accelerate_py/llm_router.py",
+              "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+              "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+            ],
+            "canonical_task_cid": "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a",
+            "canonical_task_key": "task/v1/b75326e8a50dd83ba6aa9aa6328c2abd3e340c441f083c2d03903874f390c674",
+            "declared_scope_paths": [
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+              "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+              "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+              "ipfs_accelerate_py/llm_router.py",
+              "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+              "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+            ],
+            "dropped_protected_paths": [],
+            "dropped_receipt_paths": [],
+            "event_id": "sha256:3bdcff23af2f2eb5bff60018e20029ee97b0de8ba250fe8df2debc72b9d2c2d7",
+            "ok": true,
+            "proposal_id": "6f8d2a2f23fbb24adcafd570053de58b6536b53e10ae46657534ce96f7d161c2",
+            "reason": "accepted_proposal_paths_bound",
+            "receipt_id": "c28a6aef8070e9939b53c5be85234c966586fe6d2edc7783ab98a356802a8dbd",
+            "receipt_paths": [
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+              "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+              "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+              "ipfs_accelerate_py/llm_router.py",
+              "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+              "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+            ],
+            "sequence": 113,
+            "task_id": "ASE3-019"
+          },
+          "reason": "replayed_prior_delta",
+          "replayed_root_paths": [
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "ipfs_accelerate_py/llm_router.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+          ],
+          "scope_paths": [
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "ipfs_accelerate_py/llm_router.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+          ],
+          "seed_ref": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+          "skipped_root_paths": [],
+          "submodule_reconciliation": {
+            "reason": "configured_submodules_reconciled",
+            "reconciled": true,
+            "results": []
+          }
+        },
+        "reused": false,
+        "saved_duration_seconds": 0.0,
+        "setup_duration_seconds": 5.543349,
+        "setup_seconds": 5.543349,
+        "setup_time_saved_seconds": 0.0,
+        "worktree_path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-7fb9a620a3a4-75e6cfd1bfbf"
+      },
+      "worktree_lifecycle": {
+        "fence": 3,
+        "lease_id": "0ed5a0de7d4b22c415072befa106f40dff8ee254",
+        "requirement_id": "asi-171:fenced-cross-lane-worktree-lifecycle",
+        "state": "active"
+      },
+      "worktree_path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-7fb9a620a3a4-75e6cfd1bfbf"
+    },
+    "implementation_finished": {
+      "attempt": 2,
+      "attempt_consumed": true,
+      "baseline_ref": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+      "board_completion": {
+        "complete": false,
+        "pending_merge": false,
+        "reason": "implementation_or_validation_failed"
+      },
+      "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+      "branch": "implementation/ase3-019-b75326e8a50d-attempt-2-1786210208",
+      "cache_hit": false,
+      "canonical_task_cid": "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a",
+      "canonical_task_key": "task/v1/b75326e8a50dd83ba6aa9aa6328c2abd3e340c441f083c2d03903874f390c674",
+      "cleanup_result": {
+        "cleaned": true,
+        "lifecycle_finalize": {
+          "finalized": false,
+          "reason": "no_lifecycle_record"
+        },
+        "pool_release": {
+          "attempted": true,
+          "base_commit": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+          "base_ref": "agent/prompt-self-improvement-v3",
+          "branch": "implementation/ase3-019-b75326e8a50d-attempt-2-1786210208",
+          "cache_hit": false,
+          "cache_key": "bfd547ea1dcfb7b863add0677d395737b76bb264eac7b35d9491c9b2632a9673",
+          "dependency_paths": [],
+          "discard": {
+            "git_remove": {
+              "command": [
+                "git",
+                "worktree",
+                "remove",
+                "--force",
+                "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-7fb9a620a3a4-75e6cfd1bfbf"
+              ],
+              "returncode": 0,
+              "stderr": "",
+              "stdout": ""
+            },
+            "path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-7fb9a620a3a4-75e6cfd1bfbf",
+            "removed": true
+          },
+          "entry_id": "7fb9a620a3a4-75e6cfd1bfbf",
+          "estimated_seconds_saved": 0.0,
+          "handoff_reason": "implementation_command_failed",
+          "invalidation_reason": "",
+          "invalidation_reasons": [],
+          "lifecycle_finalize": {
+            "fence": 4,
+            "finalized": true,
+            "reason": "pool_release_implementation_command_failed",
+            "state": "terminal"
+          },
+          "pooled": false,
+          "reason": "dirty_worktree",
+          "released": true,
+          "reused": false,
+          "setup_seconds": 5.543349,
+          "setup_time_saved_seconds": 0.0,
+          "worktree_path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-7fb9a620a3a4-75e6cfd1bfbf"
+        },
+        "pooled": false,
+        "reason": "failed_implementation_pool_lease_released"
+      },
+      "commit_result": {
+        "committed": false
+      },
+      "diagnostic_receipt_id": "baguqeera6vodxq2olihnecnsqz7oquciiarnhtoegrwihq64scp4w656bgwq",
+      "event_id": "sha256:e0c223f22824466570825cae33c68ef5baceeaae267e7a968bbea13d5b2e9682",
+      "failed_preservation_result": {},
+      "implementation_commit": "",
+      "lifecycle_finalize": {
+        "finalized": false,
+        "reason": "no_lifecycle_record"
+      },
+      "log_path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/state/lane-1/implementation_logs/ase3-019-attempt-2.log",
+      "merge_result": {
+        "merged": false,
+        "reason": "not_attempted"
+      },
+      "previous_event_id": "sha256:46d4ff58626ad776666879bedc03d7cc132e01e3b9dc1a4fb501731fe2adec19",
+      "provider_dispatched": true,
+      "returncode": 2,
+      "saved_duration_seconds": 0.0,
+      "sequence": 134,
+      "setup_duration_seconds": 5.543349,
+      "snapshot_id": "event-log-snapshot:sha256:9ee0a20648d584188480d373c3f1aa0284d70ca1271a0d562ea5ef7d62199b97",
+      "stream_id": "event-log:sha256:9ee0a20648d584188480d373c3f1aa0284d70ca1271a0d562ea5ef7d62199b97",
+      "task_cid": "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a",
+      "task_id": "ASE3-019",
+      "timestamp": "2026-08-08T17:30:19.700406+00:00",
+      "type": "implementation_finished",
+      "validation_result": {
+        "attempted": false,
+        "passed": true,
+        "reason": "not_run",
+        "results": [],
+        "returncode": 0
+      },
+      "workspace_setup": {
+        "base_commit": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+        "base_ref": "agent/prompt-self-improvement-v3",
+        "branch": "implementation/ase3-019-b75326e8a50d-attempt-2-1786210208",
+        "cache_hit": false,
+        "cache_key": "bfd547ea1dcfb7b863add0677d395737b76bb264eac7b35d9491c9b2632a9673",
+        "dependency_paths": [],
+        "entry_id": "7fb9a620a3a4-75e6cfd1bfbf",
+        "estimated_seconds_saved": 0.0,
+        "invalidation_reason": "",
+        "invalidation_reasons": [],
+        "prior_attempt_seed": {
+          "applied": true,
+          "baseline_ref": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+          "merge_base": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+          "no_change": false,
+          "pre_dispatch_proposal_gate": {
+            "accepted": true,
+            "attempted": true,
+            "changed_paths": [
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+              "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+              "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+              "ipfs_accelerate_py/llm_router.py",
+              "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+              "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+            ],
+            "completion_authoritative": false,
+            "policy_id": "411b80bd36962dbf0097f983ec9b49c75b7635a8a5cb9e7b7ce67fa48a6abca7",
+            "proof_authoritative": false,
+            "proposal_id": "a32f7a7bb88d0ce15c99c563863fb72849539121f04bf25c12ebdb6cf8c61d0e",
+            "reason_codes": [],
+            "receipt_id": "48d3a0b8b0bcbadd2ad07e26ec9d077a8b4d7deebe2b693bdd01a86323c85d96",
+            "repository_tree_id": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a"
+          },
+          "proposal_authority": {
+            "authorized_paths": [
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+              "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+              "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+              "ipfs_accelerate_py/llm_router.py",
+              "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+              "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+            ],
+            "canonical_task_cid": "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a",
+            "canonical_task_key": "task/v1/b75326e8a50dd83ba6aa9aa6328c2abd3e340c441f083c2d03903874f390c674",
+            "declared_scope_paths": [
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+              "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+              "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+              "ipfs_accelerate_py/llm_router.py",
+              "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+              "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+            ],
+            "dropped_protected_paths": [],
+            "dropped_receipt_paths": [],
+            "event_id": "sha256:3bdcff23af2f2eb5bff60018e20029ee97b0de8ba250fe8df2debc72b9d2c2d7",
+            "ok": true,
+            "proposal_id": "6f8d2a2f23fbb24adcafd570053de58b6536b53e10ae46657534ce96f7d161c2",
+            "reason": "accepted_proposal_paths_bound",
+            "receipt_id": "c28a6aef8070e9939b53c5be85234c966586fe6d2edc7783ab98a356802a8dbd",
+            "receipt_paths": [
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+              "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+              "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+              "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+              "ipfs_accelerate_py/llm_router.py",
+              "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+              "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+            ],
+            "sequence": 113,
+            "task_id": "ASE3-019"
+          },
+          "reason": "replayed_prior_delta",
+          "replayed_root_paths": [
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "ipfs_accelerate_py/llm_router.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+          ],
+          "scope_paths": [
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "ipfs_accelerate_py/llm_router.py",
+            "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+            "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+          ],
+          "seed_ref": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+          "skipped_root_paths": [],
+          "submodule_reconciliation": {
+            "reason": "configured_submodules_reconciled",
+            "reconciled": true,
+            "results": []
+          }
+        },
+        "reused": false,
+        "saved_duration_seconds": 0.0,
+        "setup_duration_seconds": 5.543349,
+        "setup_seconds": 5.543349,
+        "setup_time_saved_seconds": 0.0,
+        "worktree_path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-7fb9a620a3a4-75e6cfd1bfbf"
+      },
+      "worktree_path": "/home/barberb/lift_coding/.worktrees/prompt-self-improvement-v3/data/agent_supervisor/prompt_only_self_improvement_v3/live/worktrees/workspace-7fb9a620a3a4-75e6cfd1bfbf"
+    },
+    "implementation_shutdown_reconciled": {
+      "attempt": 0,
+      "attempt_recovery": {},
+      "blocked": false,
+      "event_id": "sha256:878bc907f4ee2f844c245cc7a0677496b87dd9b59e21aef4651929b8845aaefb",
+      "previous_event_id": "sha256:4d10a7be9baefc0c4e362d076ccf8230c43ddc569e3f3c34b7714c1b5bf79d81",
+      "protected_path_reconciliation": {
+        "blocked": false,
+        "critical_section_entered": false,
+        "reason": "no_active_snapshot",
+        "scan_outside_lease": true
+      },
+      "reason": "already_quiesced",
+      "reconciled": true,
+      "reconciled_at": "2026-08-08T17:37:32.695666+00:00",
+      "sequence": 160,
+      "snapshot_id": "event-log-snapshot:sha256:9ee0a20648d584188480d373c3f1aa0284d70ca1271a0d562ea5ef7d62199b97",
+      "stale_lock_cleared": false,
+      "stream_id": "event-log:sha256:9ee0a20648d584188480d373c3f1aa0284d70ca1271a0d562ea5ef7d62199b97",
+      "task_id": "ASE3-019",
+      "timestamp": "2026-08-08T17:37:32.695934+00:00",
+      "type": "implementation_shutdown_reconciled",
+      "worktree_lifecycle_reconciliation": {
+        "blocked": false,
+        "reason": "no_active_worktree",
+        "reconciled": false
+      }
+    }
+  },
+  "completion_authority": false
+}

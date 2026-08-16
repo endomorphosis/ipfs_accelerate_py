@@ -1903,7 +1903,23 @@ def test_python_surface_executes_every_closed_operation_with_canonical_results(
     for operation in Operation:
         if operation in MUTATION_OPERATIONS:
             parameters = None
-            if operation is Operation.WORKFLOW_MATERIALIZE:
+            if operation is Operation.PLAN_CREATE_APPLY:
+                parameters = {
+                    "preview_ref": "receipt:create-preview",
+                    "preview_root": "plan:create-root",
+                    "apply_request": {
+                        "idempotency_key": "asi-078:plan-create-apply"
+                    },
+                }
+            elif operation is Operation.PLAN_STEER_APPLY:
+                parameters = {
+                    "preview_ref": "receipt:steer-preview",
+                    "preview_root": "plan:steer-root",
+                    "apply_request": {
+                        "idempotency_key": "asi-078:plan-steer-apply"
+                    },
+                }
+            elif operation is Operation.WORKFLOW_MATERIALIZE:
                 parameters = {
                     "preview_ref": "preview:fixture",
                     "preview_root": str(repo_root),
@@ -1938,7 +1954,11 @@ def test_python_surface_executes_every_closed_operation_with_canonical_results(
             )
         elif operation in PROPOSAL_OPERATIONS:
             parameters = {"target_id": "objective:fixture"}
-            if operation is Operation.WORKFLOW_PREVIEW:
+            if operation is Operation.PLAN_CREATE_PREVIEW:
+                parameters = {"mode": "deterministic"}
+            elif operation is Operation.PLAN_STEER_PREVIEW:
+                parameters = {}
+            elif operation is Operation.WORKFLOW_PREVIEW:
                 parameters = {
                     "directory": "docs",
                     "prompt_source": {

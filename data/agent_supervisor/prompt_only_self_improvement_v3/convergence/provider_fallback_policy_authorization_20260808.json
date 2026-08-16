@@ -1,0 +1,119 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.provider-fallback-policy-authorization@1",
+  "created_at": "2026-08-08T13:59:09Z",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "authorization_source": {
+    "kind": "explicit_operator_override",
+    "source_head": "b9c1368a35cee206dff6ff34553782be851fc571",
+    "source_tree": "7aeb7e4d78f5b45d2213173a10deebcf6114092f",
+    "prospective_only": true,
+    "requires_descendant_tree": true
+  },
+  "route": {
+    "route_id": "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1",
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_reasoning_effort": "high",
+    "allowed_trigger_classes": [
+      "grok_authentication_unavailable",
+      "grok_hard_quota_exhausted"
+    ]
+  },
+  "ownership_contract": {
+    "canonical_route_plan_owner": "ipfs_accelerate_py.llm_router",
+    "typed_fallback_decision_owner": "ipfs_accelerate_py.llm_router",
+    "route_plan_and_decision_exports_required_before_bootstrap_dispatch": true,
+    "route_authority_binding_fields": [
+      "board_namespace",
+      "authorization_artifact_sha256",
+      "authorization_source.kind",
+      "authorization_source.source_head",
+      "authorization_source.source_tree"
+    ],
+    "verified_authority_binding_must_reach_terminal_outcome_and_daemon_accounting": true,
+    "ambient_six_field_route_profile_alone_authorizes_fallback": false,
+    "runner_role": "isolation_process_effect_and_terminal_outcome_emitter",
+    "daemon_role": "task_retry_accounting_only",
+    "scheduler_role": "route_profile_input_only",
+    "duplicate_route_policy_or_failure_classification_outside_router_allowed": false
+  },
+  "bootstrap_route_guarantees": {
+    "nonce_bound_auth_or_quota_finding_required": true,
+    "primary_probe_is_fixed_no_tools": true,
+    "direct_auth_signal_allowlist": [
+      "not signed in",
+      "not authenticated"
+    ],
+    "ambiguous_direct_auth_signals_denied": [
+      "401",
+      "403",
+      "forbidden",
+      "unauthorized"
+    ],
+    "ambiguous_signal_may_continue_only_as_independently_confirmed_hard_quota": true,
+    "hard_quota_independent_confirmation_required": true,
+    "pre_effect_workspace_fingerprint_required": true,
+    "explicit_codex_review_conflict_denied": true,
+    "fallback_dispatch_scope": "once_per_runner_same_daemon_attempt",
+    "fallback_remains_same_daemon_attempt": true,
+    "durable_cross_process_restart_reservation_present": false,
+    "full_signed_field_equality_present": false
+  },
+  "ase3_019_completion_requirements": {
+    "typed_failure_evidence_required": true,
+    "quota_evidence_must_be_independently_verified": true,
+    "evidence_must_precede_repository_effect": true,
+    "signed_equality_fields": [
+      "invocation",
+      "task",
+      "prompt",
+      "scope",
+      "budget",
+      "authority",
+      "provider"
+    ],
+    "durable_cross_process_restart_once_only_cas_required": true,
+    "restart_must_adopt_existing_reservation": true,
+    "auth_signal_policy_expansion_requires_signed_typed_policy": true,
+    "canonical_route_plan_and_typed_decision_must_remain_router_owned": true,
+    "provider_capacity_attempt_restoration_must_remain_denied": true,
+    "signed_reviewer_identity_and_provider_required": true,
+    "fallback_implementer_and_reviewer_must_differ": true
+  },
+  "external_docker_boundary": {
+    "required": true,
+    "runtime": "runc",
+    "image_id": "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6",
+    "image_label": "2026-08-03-v2",
+    "pull_allowed": false,
+    "read_only_root": true,
+    "cap_drop": "ALL",
+    "no_new_privileges": true,
+    "workspace_is_only_writable_bind_mount": true,
+    "codex_auth_mount_read_only": true,
+    "docker_socket_mounted": false,
+    "host_home_mounted": false,
+    "environment_sealed": true
+  },
+  "denials": {
+    "arbitrary_error_fallback_allowed": false,
+    "rate_limit_fallback_allowed": false,
+    "transport_error_fallback_allowed": false,
+    "invalid_request_fallback_allowed": false,
+    "unknown_error_fallback_allowed": false,
+    "post_effect_fallback_allowed": false,
+    "workspace_changed_before_fallback_allowed": false,
+    "attempt_counter_mutation_authorized": false,
+    "provider_capacity_attempt_restoration_allowed": false,
+    "legacy_objective_refill_authorized": false,
+    "legacy_codebase_refill_authorized": false
+  },
+  "historical_evidence": {
+    "post_wave3_residual_report_is_immutable": true,
+    "historical_incident_reclassified": false,
+    "incident_event_id": "sha256:e2dee32eb866a9a4216c809318f4066bc49bf33e1e0ef3290365cf4ccaf58f97",
+    "incident_log_sha256": "sha256:2724af1a5b52fadae7130b4a80081cf9849dabc0f0104f839033474fff332596"
+  }
+}

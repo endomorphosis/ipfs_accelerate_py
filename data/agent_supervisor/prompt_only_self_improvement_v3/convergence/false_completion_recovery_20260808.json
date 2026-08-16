@@ -1,0 +1,103 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.false-completion-recovery@1",
+  "created_at": "2026-08-08T16:35:00Z",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "source": {
+    "branch": "agent/prompt-self-improvement-v3",
+    "launch_stamp": "20260808T162057Z",
+    "launch_base_head": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+    "launch_base_tree": "917a307ed4f4854a8f9cfb74290e8a475e831d08",
+    "recovery_parent_head": "733e63333f992477d091449319869e23912d4f9c",
+    "recovery_parent_tree": "641c15fd65d64953b3fbf5971454fcc56143c4c6",
+    "protected_parent_blobs": {
+      "config/agent_supervisor_prompt_only_self_improvement_v3_scheduler.json": "867dbb193029f28ac5d9face7c99f7c9cbeb63b0",
+      "docs/architecture/AGENT_SUPERVISOR_PROMPT_ONLY_SELF_IMPROVEMENT_V3_PLAN.md": "7dd1310ab239b6da56be704d4e475d4784809a0e",
+      "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.objectives.md": "7b9b1e86a9d5aeb4887dd53094f542b5624684d4",
+      "docs/architecture/agent_supervisor_prompt_only_self_improvement_v3.todo.md": "3765d05d04cde1866eedf1f6c7f5d22732a68ca9"
+    }
+  },
+  "false_completions": {
+    "ASE3-006": {
+      "canonical_task_cid": "baguqeeraz5pve2rmjuvo6qivduhrvf4o6nrclgu2jtdjo3kll7aqpnyipzkq",
+      "attempt": 1,
+      "implementation_commit": "159b298910a11ba4adbafa3c0192a9585639c53a",
+      "implementation_tree": "f91558d857ca640066fd33637ebf126dbf442250",
+      "merge_commit": "9d8f1062583f4e7b717ac535878716e04f2d7577",
+      "status_commit": "78eeaad86de70b61d5cc03940aa043c84fd441d8",
+      "source_merge_receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/merge-queue/train/receipts/90732ac34f5c00e9dfeeeee018d137ae9d057084caa64e55a32c64e9adf2c797.json",
+      "merge_receipt_snapshot": "false_completion_merge_receipt_ase3_006_20260808.json",
+      "merge_receipt_sha256": "sha256:838237cd8c8c5fbc47e4ca989d5e2e9f0a27aa7a8b1f9a3ba2552b67048acf0d",
+      "acceptance_authoritative": false,
+      "findings": [
+        "adaptive scheduler and compiler have no production scheduler or runtime consumer",
+        "execution_plan defines a duplicate InvocationBudget instead of consuming entrypoints.contracts.InvocationBudget",
+        "standalone SQLite ledger duplicates production task-source and claim authority",
+        "whole-plan and exact-slice restart adoption are not integrated or proven"
+      ],
+      "repair_task": "ASE3-023",
+      "repair_goal": "ASE3-G040",
+      "repair_strict_shard": 2
+    },
+    "ASE3-018": {
+      "canonical_task_cid": "baguqeeraifrriecjdwkl2yz266asjxkgkeleqgq2uonuc5mxugyuuojeeehq",
+      "attempt": 1,
+      "implementation_commit": "23bf69ff8517de100f5cd4918e479af3667ec70a",
+      "implementation_tree": "5a8be38132e792684dc6ab7de203998238bc9bd5",
+      "merge_commit": "518830810013fde1b13599591146356001aa774a",
+      "status_commit": "733e63333f992477d091449319869e23912d4f9c",
+      "source_merge_receipt_path": "data/agent_supervisor/prompt_only_self_improvement_v3/live/merge-queue/train/receipts/27843f980b7b5687fba68692b159f05b2cbdbc981a972e1ae0b957b6ad69d3ec.json",
+      "merge_receipt_snapshot": "false_completion_merge_receipt_ase3_018_20260808.json",
+      "merge_receipt_sha256": "sha256:aee69ba91156b9a6ec9ed75a191ec579d6389a4b4298a2a93af777840612f85b",
+      "acceptance_authoritative": false,
+      "findings": [
+        "production defaults still resolve only repository instead of all nine required launch fields",
+        "prefilled context values bypass real leaf-resolver composition",
+        "profile authorization trusts signature shape and a caller profile_signed boolean",
+        "caller-constructible UCAN evidence is treated as verified without cryptographic attenuation",
+        "mixed mapping keys still raise TypeError in production receipt identity"
+      ],
+      "repair_task": "ASE3-027",
+      "repair_goal": "ASE3-G020",
+      "repair_strict_shard": 0
+    }
+  },
+  "failed_attempt": {
+    "task_id": "ASE3-019",
+    "canonical_task_cid": "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a",
+    "attempt": 1,
+    "implementation_commit": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+    "implementation_tree": "695e2d6f07bc1c48bdc34ebb490342444de2cbef",
+    "failed_event_id": "sha256:6b6482b68fef226ab3bc631cb722de49ccfb863cc5350fdf91a79ac1e34cfce4",
+    "failed_event_snapshot": "failed_validation_event_ase3_019_20260808.json",
+    "failed_event_snapshot_sha256": "sha256:df2cb757d0330996c3a586acfd649fdfcf7d76758bddd3c35689ea4998a1115e",
+    "rescue_branch": "rescue/ase3-019-b75326e8a50d-attempt-1-1786206062-failed-validation",
+    "validation_returncode": 1,
+    "merge_dispatched": false,
+    "attempt_counter_mutation_authorized": false,
+    "continuation": "same_identity_attempt_2_with_prior_attempt_seed",
+    "retry_strict_shard": 1
+  },
+  "fence": {
+    "master_pid": 1009686,
+    "supervisor_pids": [1009840, 1009841, 1009842],
+    "daemon_pids": [1012621, 1010240, 1010193],
+    "shutdown_signal": "SIGTERM",
+    "lane_statuses": ["stopped", "stopped", "stopped"],
+    "lane_restart_counts": [0, 0, 0],
+    "zero_owned_processes": true,
+    "zero_scoped_provider_containers": true,
+    "active_attempts_cleared": true
+  },
+  "disposition": {
+    "completion_authority": false,
+    "old_completion_satisfies_repair": false,
+    "runtime_state_mutation_authorized": false,
+    "attempt_counter_mutation_authorized": false,
+    "queue_history_mutation_authorized": false,
+    "legacy_refill_enablement_authorized": false,
+    "repair_tasks": ["ASE3-023", "ASE3-027"],
+    "retry_task": "ASE3-019",
+    "reload_gate": "ASE3-022",
+    "reload_gate_must_remain_blocked": true
+  }
+}

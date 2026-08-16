@@ -698,6 +698,84 @@ def test_daemon_restart_quarantines_invalid_runtime_checkpoint(
     assert loaded[0]["result"]["completed_count"] == 1
 
 
+def test_daemon_restart_reconciles_board_before_reusing_cached_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def completed_board(task_count: int) -> str:
+        tasks = ["# Completed task board"]
+        for index in range(1, task_count + 1):
+            tasks.extend(
+                [
+                    "",
+                    f"## PORTAL-{index:03d} Completed task {index}",
+                    "",
+                    "- Status: completed",
+                ]
+            )
+        return "\n".join(tasks) + "\n"
+
+    daemon = _drained_daemon(tmp_path)
+    daemon.todo_path.write_text(completed_board(12), encoding="utf-8")
+    first = daemon.run_once()
+    assert first["completed_count"] == 12
+
+    # Model a shutdown checkpoint which observed the current board bytes but
+    # still contains the prior task-state projection. A restarted watcher
+    # baselines those current bytes, so no file notification will arrive.
+    daemon.todo_path.write_text(completed_board(14), encoding="utf-8")
+    current_source_digest, current_sources = daemon._runtime_source_head()
+    loaded = daemon.runtime_checkpoint_store.load()
+    assert loaded is not None
+    stale_projection, cursor = loaded
+    stale_projection = dict(stale_projection)
+    assert stale_projection["result"]["completed_count"] == 12
+    stale_projection["source_digest"] = current_source_digest
+    daemon.runtime_checkpoint_store.materialize(stale_projection, cursor)
+
+    restarted = PortalImplementationDaemon(
+        todo_path=daemon.todo_path,
+        state_path=daemon.state_path,
+        strategy_path=daemon.strategy_path,
+        events_path=daemon.events_path,
+        repo_root=tmp_path,
+        worktree_pool_enabled=False,
+        validation_cache_dir=tmp_path / "runtime" / "validation-cache",
+        merge_queue_dir=tmp_path / "runtime" / "merge-queue",
+    )
+    assert (
+        restarted._runtime_checkpoint["source_digest"]
+        == current_source_digest
+    )
+    assert restarted._runtime_last_result["completed_count"] == 12
+    # Constructor setup may create previously absent runtime directories.
+    # Model the production stall after that setup has been included in the
+    # persisted source head: the checkpoint digest is current, but its cached
+    # result and the task-state projection are still stale.
+    real_source_head = restarted._runtime_source_head
+    source_head_calls = 0
+
+    def startup_source_head() -> tuple[str, dict[str, Any]]:
+        nonlocal source_head_calls
+        source_head_calls += 1
+        if source_head_calls == 1:
+            return current_source_digest, current_sources
+        return real_source_head()
+
+    monkeypatch.setattr(restarted, "_runtime_source_head", startup_source_head)
+
+    reconciled = restarted.run_once()
+
+    assert reconciled["unchanged"] is False
+    assert reconciled["wake_kinds"] == []
+    assert reconciled["completed_count"] == 14
+    assert PortalTaskState.load(restarted.state_path).completed_count == 14
+    unchanged = restarted.run_once()
+    assert unchanged["unchanged"] is True
+    assert unchanged["write_count"] == 0
+    assert unchanged["completed_count"] == 14
+
+
 def test_running_daemon_repairs_checkpoint_corrupted_between_passes(
     tmp_path: Path,
 ) -> None:

@@ -376,6 +376,42 @@ _VALIDATION_CONFIG_PATHS = (
     "setup.cfg",
     "tox.ini",
 )
+_VALIDATION_WEAKENING_ADDITION_RE = re.compile(
+    r"(?im)(?:"
+    r"^\s*(?:addopts|filterwarnings)\s*=|"
+    r"^\s*(?:continue-on-error|fail-fast)\s*[:=]\s*(?:true|false)\s*$|"
+    r"^\s*xfail_strict\s*=\s*false\s*$|"
+    r"\bpytest\b[^\r\n]*(?:\s-k\s|--ignore\b|--deselect\b|--maxfail\b)|"
+    r"\|\|\s*true\b"
+    r")"
+)
+
+
+def _validation_config_change_is_additive(entry: CandidateDiffEntry) -> bool:
+    """Allow only non-weakening insertions into an existing config file."""
+
+    if (
+        entry.change_kind is DiffChangeKind.DELETE
+        or entry.before_source is None
+        or entry.after_source is None
+    ):
+        return False
+    before_lines = entry.before_source.splitlines(keepends=True)
+    after_lines = entry.after_source.splitlines(keepends=True)
+    added_lines: list[str] = []
+    after_index = 0
+    for before_line in before_lines:
+        while (
+            after_index < len(after_lines)
+            and after_lines[after_index] != before_line
+        ):
+            added_lines.append(after_lines[after_index])
+            after_index += 1
+        if after_index >= len(after_lines):
+            return False
+        after_index += 1
+    added_lines.extend(after_lines[after_index:])
+    return not _VALIDATION_WEAKENING_ADDITION_RE.search("".join(added_lines))
 
 
 def _strict_repo_path(value: Any, *, field_name: str) -> str:
@@ -3943,19 +3979,24 @@ class ProposalValidator:
                     "generated content markers require explicit policy authority",
                     entry.path,
                 )
-            if (
-                not policy.allow_validation_config_changes
-                and any(
-                    _path_matches(entry.path, config_path)
-                    for config_path in _VALIDATION_CONFIG_PATHS
-                )
+            if any(
+                _path_matches(entry.path, config_path)
+                for config_path in _VALIDATION_CONFIG_PATHS
             ):
-                add(
-                    ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN,
-                    ProposalGate.CONTENT,
-                    "validation configuration changes require explicit task authority",
-                    entry.path,
-                )
+                if not policy.allow_validation_config_changes:
+                    add(
+                        ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN,
+                        ProposalGate.CONTENT,
+                        "validation configuration changes require explicit task authority",
+                        entry.path,
+                    )
+                elif not _validation_config_change_is_additive(entry):
+                    add(
+                        ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN,
+                        ProposalGate.CONTENT,
+                        "authorized validation configuration changes must be additive and non-weakening",
+                        entry.path,
+                    )
             if (
                 _is_test_path(entry.path)
                 and entry.change_kind is not DiffChangeKind.DELETE

@@ -77,6 +77,10 @@ from .state_resolver import (
     WorktreeIsolationMode,
     classify_run_candidate,
 )
+# The original file registry remains a compatibility/projection reader.  New
+# lifecycle code imports this owner through the familiar registry module so it
+# cannot accidentally treat a JSON head as mutable authority.
+from .run_registry_backend import DuckDBRunRegistryBackend
 
 RUN_REGISTRY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/entrypoints/run-registry@1"
@@ -2063,4 +2067,5 @@ __all__ = (
     "RunHandle",
     "RunHealth",
     "RunState",
+    "DuckDBRunRegistryBackend",
 )
