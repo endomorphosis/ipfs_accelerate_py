@@ -42,6 +42,9 @@ from ..core.conflict_graph import (
     build_python_ast_blob_record,
 )
 from ..task_sources.duckdb_state import open_duckdb_connection
+from .semantic_truth_authority import (
+    assert_accelerator_semantic_writer_permitted,
+)
 
 # ---------------------------------------------------------------------------
 # Contract identity
@@ -1705,6 +1708,7 @@ class MutationLedger:
         parser_id: str = DEFAULT_PARSER_ID,
         ledger_version: str = DEFAULT_LEDGER_VERSION,
     ) -> None:
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         if not duckdb_available():
             raise DuckDBUnavailableError(
                 "DuckDB is required for MutationLedger; install the optional "
@@ -1738,6 +1742,7 @@ class MutationLedger:
         return not self._closed and self._connection is not None
 
     def open(self) -> "MutationLedger":
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         with self._lock:
             if self.is_open:
                 return self

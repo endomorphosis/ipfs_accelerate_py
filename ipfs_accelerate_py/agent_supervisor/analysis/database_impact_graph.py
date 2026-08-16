@@ -42,6 +42,9 @@ from types import MappingProxyType
 from typing import Any, Final
 
 from ..task_sources.duckdb_state import open_duckdb_connection
+from .semantic_truth_authority import (
+    assert_accelerator_semantic_writer_permitted,
+)
 
 # ---------------------------------------------------------------------------
 # Contract identity
@@ -1442,6 +1445,7 @@ class DatabaseImpactGraph:
         policy_id: str = DEFAULT_POLICY_ID,
         parser_id: str = "",
     ) -> None:
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         if not duckdb_available():
             raise DuckDBUnavailableError(
                 "DuckDB is required for DatabaseImpactGraph; install the "
@@ -1478,6 +1482,7 @@ class DatabaseImpactGraph:
         return self._current_revision_id
 
     def open(self) -> "DatabaseImpactGraph":
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         with self._lock:
             if self.is_open:
                 return self

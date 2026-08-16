@@ -54,6 +54,9 @@ from .duckdb_ast_index import (
     duckdb_available,
     open_duckdb_ast_index,
 )
+from .semantic_truth_authority import (
+    assert_accelerator_semantic_writer_permitted,
+)
 from ..task_sources.duckdb_state import open_duckdb_connection
 
 # ---------------------------------------------------------------------------
@@ -1101,6 +1104,7 @@ class DatabaseRepositoryIndexer:
         policy_id: str = DEFAULT_POLICY_ID,
         ast_index: DuckDBASTIndex | None = None,
     ) -> None:
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         if not duckdb_available():
             raise DuckDBUnavailableError(
                 "DuckDB is required for DatabaseRepositoryIndexer; install "
@@ -1159,6 +1163,7 @@ class DatabaseRepositoryIndexer:
         return self._ast
 
     def open(self) -> "DatabaseRepositoryIndexer":
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         with self._lock:
             if self.is_open:
                 return self

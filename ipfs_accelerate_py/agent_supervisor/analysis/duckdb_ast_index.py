@@ -43,6 +43,9 @@ from ..core.conflict_graph import (
     build_python_ast_blob_record,
     coerce_ast_blob_record,
 )
+from .semantic_truth_authority import (
+    assert_accelerator_semantic_writer_permitted,
+)
 from ..task_sources.duckdb_state import open_duckdb_connection
 
 # ---------------------------------------------------------------------------
@@ -1145,6 +1148,7 @@ class DuckDBASTIndex:
         parser_id: str = DEFAULT_PARSER_ID,
         scanner_version: str = DEFAULT_SCANNER_VERSION,
     ) -> None:
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         if not duckdb_available():
             raise DuckDBUnavailableError(
                 "DuckDB is required for DuckDBASTIndex; install the optional "
@@ -1178,6 +1182,7 @@ class DuckDBASTIndex:
         return not self._closed and self._connection is not None
 
     def open(self) -> "DuckDBASTIndex":
+        assert_accelerator_semantic_writer_permitted(writer=self.INTERFACE)
         with self._lock:
             if self.is_open:
                 return self
