@@ -1,0 +1,981 @@
+{
+  "schema": "lgswf/inventory@1",
+  "evidence_id": "lgswf/current-state@1",
+  "contract": "CurrentStateInventory@1",
+  "task_id": "LGSWF-001",
+  "goal_id": "LGSWF-G010",
+  "track": "inventory-freeze",
+  "board_namespace": "logic-governed-semantic-work-fabric-v1",
+  "plan_revision": "LGSWF-PLAN-R1",
+  "inspected_at": "2026-08-16T01:59:05Z",
+  "inventory_kind": "semantic_and_operational_implementation_classification",
+  "classification_vocabulary": [
+    "authority",
+    "facade",
+    "projection",
+    "legacy",
+    "duplicate",
+    "experimental",
+    "obsolete",
+    "unavailable",
+    "unresolved"
+  ],
+  "selected_revisions": {
+    "ipfs_accelerate_py": {
+      "head": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+      "tree": "17fefd8b21566766ec7058044d128374b12f81cd",
+      "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor"
+    },
+    "ipfs_datasets_py": {
+      "head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "tree": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47",
+      "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_datasets_py"
+    },
+    "ipfs_kit_py": {
+      "head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "tree": "93070c709af29095fdff11f3e2698543449c08ef",
+      "clean": true
+    },
+    "mcplusplus": {
+      "head": "dc3164653a48d059ae9812078359daeafb451c07",
+      "tree": "6560c3d0c926be12df860afb7d7c82043a1769ba",
+      "clean": true
+    }
+  },
+  "intervening_change_commitments": {
+    "all_match": true,
+    "ledgers": [
+      {
+        "id": "accelerator_legacy_to_selected",
+        "repository": "ipfs_accelerate_py",
+        "range": "ea11293bb996f052d620eae989f5377a956764b1..485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+        "commit_count": 1245,
+        "ordered_log_sha256": "a3094d3ecc2e116e4f636f66863d98503f65e85aae48bb7046eb14571065e850",
+        "ordered_log_match": true,
+        "raw_diff_match": true,
+        "name_status_match": true,
+        "diff_stat_match": true,
+        "adoption_status": "selected_authority"
+      },
+      {
+        "id": "accelerator_selected_to_newer_unadopted",
+        "repository": "ipfs_accelerate_py",
+        "range": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84..c821d0b43877591bbb0fa3f328fbccff187b56e7",
+        "commit_count": 694,
+        "ordered_log_sha256": "aa6b99c539463d84aeb5f7f4baad055b6d8dc3bc2fec97b3843e40cf3a0d397f",
+        "ordered_log_match": true,
+        "raw_diff_match": true,
+        "name_status_match": true,
+        "diff_stat_match": true,
+        "adoption_status": "not_authorized"
+      },
+      {
+        "id": "datasets_legacy_to_selected",
+        "repository": "ipfs_datasets_py",
+        "range": "a2f5400b7cb89c8481819379a1b7b9959fe81d45..ac82107e246b30e35a2bbdcf75e01370d22350c6",
+        "commit_count": 568,
+        "ordered_log_sha256": "ef3d31d11243bb09253451e8a778e9b2ff7bd9d1ca638adfd9ec85c2e46f272f",
+        "ordered_log_match": true,
+        "raw_diff_match": true,
+        "name_status_match": true,
+        "diff_stat_match": true,
+        "adoption_status": "selected_authority"
+      },
+      {
+        "id": "datasets_selected_to_observed_remote",
+        "repository": "ipfs_datasets_py",
+        "range": "ac82107e246b30e35a2bbdcf75e01370d22350c6..7f0fe2bbad3c70928234c6e2312ee3182fd7681f",
+        "commit_count": 96,
+        "ordered_log_sha256": "5efa585fd778edd8a5365156790422c4a23bc719a221c8f475b2ebe5894a51c9",
+        "ordered_log_match": true,
+        "raw_diff_match": true,
+        "name_status_match": true,
+        "diff_stat_match": true,
+        "adoption_status": "not_authorized"
+      }
+    ],
+    "tsv_projections": {
+      "accelerator_intervening_commits.tsv": {
+        "path": "docs/architecture/logic_governed_semantic_work_fabric_inventory/accelerator_intervening_commits.tsv",
+        "ledger_ids": [
+          "accelerator_legacy_to_selected",
+          "accelerator_selected_to_newer_unadopted"
+        ],
+        "commit_count": 1939,
+        "line_count": 1939,
+        "sha256": "6842702283322590559b6e08f075fcd8142a4f6e796782cf501e2e1a9a87295f",
+        "materialized": true,
+        "materialization": "embedded_in_current_state_revision_ledgers",
+        "note": "Declared edit policy admits only inventory JSON outputs; full ordered logs are embedded under revision_ledgers.by_id and concatenated here as content-addressed TSV projection."
+      },
+      "datasets_intervening_commits.tsv": {
+        "path": "docs/architecture/logic_governed_semantic_work_fabric_inventory/datasets_intervening_commits.tsv",
+        "ledger_ids": [
+          "datasets_legacy_to_selected",
+          "datasets_selected_to_observed_remote"
+        ],
+        "commit_count": 664,
+        "line_count": 664,
+        "sha256": "cb86e762b28c6a19bb9331a4f12ce4b30acfac072d14932216840da342c586cf",
+        "materialized": true,
+        "materialization": "embedded_in_current_state_revision_ledgers",
+        "note": "Declared edit policy admits only inventory JSON outputs; full ordered logs are embedded under revision_ledgers.by_id and concatenated here as content-addressed TSV projection."
+      }
+    }
+  },
+  "rows": [
+    {
+      "concern_id": "datasets.semantic_index",
+      "authority_domain": "semantic",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 14,
+      "source_revision": "896cc6c23b1045f6df4ad1cedf64226f21c0d570",
+      "notes": "repository/AST symbol, version, relationship, diff, impact, invalidation authority",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "datasets.semantic_state",
+      "authority_domain": "semantic",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 11,
+      "source_revision": "2b7cb83fa6dc52d14527a47f2ca7d156fc96f7bd",
+      "notes": "semantic-state assembly, verification, capsules, freshness, raw-source fallback",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "datasets.contracts",
+      "authority_domain": "semantic",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/software_contracts/contracts.py",
+      "exists": true,
+      "path_kind": "file",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 1,
+      "source_revision": "af65ebc8ae7fbead814fe5238bb42d0f5e09b275",
+      "notes": "callable contract authority",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "datasets.registry",
+      "authority_domain": "semantic",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/software_contracts/registry.py",
+      "exists": true,
+      "path_kind": "file",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 1,
+      "source_revision": "69b6f89fa8ad381bdbfce621b4772b2d3f462404",
+      "notes": "contract registry authority",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "datasets.software_verification",
+      "authority_domain": "semantic",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/software_verification",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 40,
+      "source_revision": "f51a6cef383e808fcc9b5f9bb2d197d77dd8071d",
+      "notes": "program contracts, VCs, proof graphs/plans, counterexamples, proof evidence",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "datasets.semantic_governor",
+      "authority_domain": "semantic",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_governor",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 12,
+      "source_revision": "dd672facbf1f48ff37fd0d344a088ee4512c08f0",
+      "notes": "coverage, sufficiency, omission, expansion, calibration, rule-proposal findings",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "datasets.verification_api",
+      "authority_domain": "semantic",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/verification_api.py",
+      "exists": true,
+      "path_kind": "file",
+      "classification": "facade",
+      "expected_role": "facade",
+      "python_file_count": 1,
+      "source_revision": "6ec47b0749e64d48fff2c6b24ba5219813d938c0",
+      "notes": "LogicVerificationAPI@1 / VerificationAPI@2 / GoalTacticianAPI@1 consumer boundary",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "datasets.formalization",
+      "authority_domain": "semantic",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/formalization",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 12,
+      "source_revision": "e46c89f45759ebfd762f72af997e032ebd3ec95f",
+      "notes": "formalization capability registry",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "datasets.backends",
+      "authority_domain": "semantic",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/backends",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 51,
+      "source_revision": "73889bdc6e35b2d80945a46911d80210cd91d527",
+      "notes": "prover/backend capability registry",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "datasets.families",
+      "authority_domain": "semantic",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/families",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 12,
+      "source_revision": "b6fffc2c3b94f69403bf411483417b5ce9a05787",
+      "notes": "logic family capability registry",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "datasets.logic_api_projection",
+      "authority_domain": "semantic",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/api.py",
+      "exists": true,
+      "path_kind": "file",
+      "classification": "projection",
+      "expected_role": "projection",
+      "python_file_count": 1,
+      "source_revision": "ce04d10d4754235d0e0323194898ef1f59761c79",
+      "notes": "CLI/API compatibility projection; not semantic authority",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "datasets.adversarial_assurance",
+      "authority_domain": "semantic",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/adversarial_assurance",
+      "exists": false,
+      "path_kind": "absent",
+      "classification": "unavailable",
+      "expected_role": "authority",
+      "python_file_count": 0,
+      "source_revision": null,
+      "notes": "absent at selected datasets head; remote-only not adopted",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "datasets.semantic_state_root_persisted",
+      "authority_domain": "semantic",
+      "owner": "ipfs_datasets_py",
+      "path": null,
+      "exists": false,
+      "path_kind": "absent",
+      "classification": "unavailable",
+      "expected_role": "authority",
+      "python_file_count": 0,
+      "source_revision": null,
+      "notes": "no persisted current SemanticStateRoot; LGSWF-003/004 must produce and bind",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.semantic_state",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 19,
+      "source_revision": "bb58ff4034269dc01f01abd66569b13fc6f78c93",
+      "notes": "strict datasets adapters, ContextPack, root manifests, durable CAS, SemanticWorkRequest/Result",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.plan_revision_contracts",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/plan_revision_contracts.py",
+      "exists": true,
+      "path_kind": "file",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 1,
+      "source_revision": "3ea81c197db00366bf97427a6f0cc568e6c65371",
+      "notes": "plan revision contracts",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.plan_revision_store",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/plan_revision_store.py",
+      "exists": true,
+      "path_kind": "file",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 1,
+      "source_revision": "aaa38361350e2ace50d339ad58de636c348c3cfe",
+      "notes": "immutable plan revision store",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.formal_planning",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 40,
+      "source_revision": "0471b5e3d1f51a56c86a6d53815defa541caabf4",
+      "notes": "planning package including formal planning contracts and frontier",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.objectives",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/objectives",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 21,
+      "source_revision": "5e87047e94abd994a58fbda926ceb13d009336e2",
+      "notes": "objective graph and completion contracts",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.task_sources",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 25,
+      "source_revision": "bea59549306998344bbbadc6d24d6b5dfd7c32c4",
+      "notes": "task sources, backlog refinery, configured-board compiler",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.conflict_graph",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/core/conflict_graph.py",
+      "exists": true,
+      "path_kind": "file",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 1,
+      "source_revision": "966384dbfd71997e7b3120384ae992fcb6735b97",
+      "notes": "conflict graph authority",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.program_graph",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/program_graph.py",
+      "exists": true,
+      "path_kind": "file",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 1,
+      "source_revision": "96314dca9c2f94406e0cbf77852dfc63f2f642c7",
+      "notes": "program/change propagation graph",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.resource_scheduler",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "exists": true,
+      "path_kind": "file",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 1,
+      "source_revision": "b6d8b5d799fc095d549ebdb239254e90b19df01d",
+      "notes": "resource scheduler",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.multi_supervisor_runner",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "exists": true,
+      "path_kind": "file",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 1,
+      "source_revision": "0f52b3b1de1c994bcd4eded17e67db8f32b652cb",
+      "notes": "multi-supervisor runner; contains runtime-effective duplicate definitions",
+      "runtime_effective_duplicate": true
+    },
+    {
+      "concern_id": "accelerate.todo_daemon",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 63,
+      "source_revision": "f9d41830ef9efb6718c0280d5b009938c7a45110",
+      "notes": "daemon packet, checkpoints, registry",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.merge",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/merge",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 15,
+      "source_revision": "a631c1b81ffc301582a5af77b0f089f52244b924",
+      "notes": "merge queue and train",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.validation",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/validation",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 55,
+      "source_revision": "44a903d046b948c07072999f65d2efec8e957d05",
+      "notes": "validation orchestration",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.verification",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/verification",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 17,
+      "source_revision": "8f3b218832eead7c42213ce2886a0425e2471915",
+      "notes": "verification orchestration",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.semantic_governor",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_governor",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 19,
+      "source_revision": "d82d17df802113bff815474760c12c117b8ed7c2",
+      "notes": "operational semantic governor integration",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.proof",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 97,
+      "source_revision": "245ca454ebb560399a563a9a9585aab825e335bd",
+      "notes": "proof scheduling and cache integration",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.contracts",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/contracts",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 4,
+      "source_revision": "3076a949bcefc01692716a42a36119f36221d73a",
+      "notes": "operational contracts package",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.control",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/control",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 20,
+      "source_revision": "204bdcd956a5f3a486355838754bd20dd3b6d286",
+      "notes": "control-plane helpers",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.rescue",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/rescue",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 9,
+      "source_revision": "7f50a53eecc49c737679a81f64bf3af2bfb3271a",
+      "notes": "rescue and unstall systems",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.entrypoints",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "facade",
+      "expected_role": "facade",
+      "python_file_count": 54,
+      "source_revision": "bb051a5cdac62876e7d30c1007d3e2a5fe256814",
+      "notes": "highest-level entry facades",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.self_improvement",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/self_improvement",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 17,
+      "source_revision": "a4522cf6afc97b301b437bd03ea06187028bd02b",
+      "notes": "self-improvement closed loop",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.integrations",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/integrations",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "facade",
+      "expected_role": "facade",
+      "python_file_count": 17,
+      "source_revision": "5545ec8bb79bdd8eece8c82d89de9820bf631304",
+      "notes": "integration facades",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "accelerate.runtime_package",
+      "authority_domain": "operational",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 32,
+      "source_revision": "666ee529262dbeb6d9197c97ccaf626088bd80fa",
+      "notes": "runtime package: schedulers, multi-supervisor, leases, fencing",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "kit.persistence_dependency",
+      "authority_domain": "coordination",
+      "owner": "ipfs_kit_py",
+      "path": "ipfs_kit_py",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 5247,
+      "source_revision": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "notes": "persistence dependency; selected nested gitlink",
+      "runtime_effective_duplicate": false
+    },
+    {
+      "concern_id": "mcpplusplus.integration_dependency",
+      "authority_domain": "coordination",
+      "owner": "mcplusplus",
+      "path": "ipfs_accelerate_py/mcplusplus",
+      "exists": true,
+      "path_kind": "directory",
+      "classification": "authority",
+      "expected_role": "authority",
+      "python_file_count": 40,
+      "source_revision": "dc3164653a48d059ae9812078359daeafb451c07",
+      "notes": "MCP++ integration dependency; selected nested gitlink",
+      "runtime_effective_duplicate": false
+    }
+  ],
+  "classification_counts": {
+    "authority": 32,
+    "facade": 3,
+    "projection": 1,
+    "unavailable": 2
+  },
+  "unresolved_concerns": [],
+  "supporting_surfaces": {
+    "datasets_logic_top_level": [
+      "CEC",
+      "ErgoAI",
+      "README.md",
+      "TDFOL",
+      "__init__.py",
+      "__pycache__",
+      "admissibility",
+      "api.py",
+      "api_server.py",
+      "backends",
+      "batch_processing.py",
+      "benchmarks.py",
+      "bridge",
+      "cli.py",
+      "common",
+      "config.py",
+      "conformance",
+      "crypto_ir",
+      "deontic",
+      "docs",
+      "e2e_validation.py",
+      "external_provers",
+      "families",
+      "flogic",
+      "flogic_optimizer.py",
+      "fol",
+      "formalization",
+      "hammers",
+      "integration",
+      "integrations",
+      "intent_ir",
+      "ipld_cid.py",
+      "ir_core",
+      "knowledge_graphs",
+      "legal_ir",
+      "ml_confidence.py",
+      "modal",
+      "monitoring.py",
+      "mypy.ini",
+      "observability",
+      "parsers",
+      "phase7_4_benchmarks.py",
+      "profile_d_policy.py",
+      "profile_g.py",
+      "proof_corpus",
+      "security",
+      "security_ir",
+      "security_models",
+      "software_contracts",
+      "software_verification",
+      "submodule_registry.py",
+      "syntax_core",
+      "tactician",
+      "test_flogic_optimizer.py",
+      "tools",
+      "translations",
+      "types",
+      "verification_api.py",
+      "zkp"
+    ],
+    "agent_supervisor_top_level": [
+      "README.md",
+      "__init__.py",
+      "__pycache__",
+      "analysis",
+      "autonomous_repair",
+      "cli_implement_runner.py",
+      "context",
+      "contract_analysis",
+      "contracts",
+      "control",
+      "core",
+      "entrypoints",
+      "evaluation",
+      "grok_cli_runner.py",
+      "integrations",
+      "merge",
+      "objectives",
+      "planning",
+      "prompt",
+      "prompt_workflow.py",
+      "proof",
+      "provider_fallback_runner.py",
+      "py.typed",
+      "rescue",
+      "runtime",
+      "self_improvement",
+      "semantic_governor",
+      "semantic_state",
+      "task_sources",
+      "todo_daemon",
+      "validation",
+      "verification"
+    ]
+  },
+  "runtime_effective_duplicates": {
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "duplicate_definitions": [
+      {
+        "symbol": "ConfiguredMultiSupervisorCliRunner",
+        "definition_lines": [
+          1130,
+          2634
+        ],
+        "count": 2
+      },
+      {
+        "symbol": "ConfiguredMultiSupervisorLauncher",
+        "definition_lines": [
+          1152,
+          2656
+        ],
+        "count": 2
+      },
+      {
+        "symbol": "ImplementationSupervisorNamespaceTrackSpec",
+        "definition_lines": [
+          1045,
+          2549
+        ],
+        "count": 2
+      },
+      {
+        "symbol": "SupervisorRunInterrupted",
+        "definition_lines": [
+          1185,
+          2689
+        ],
+        "count": 2
+      },
+      {
+        "symbol": "_SupportsFileno",
+        "definition_lines": [
+          173,
+          479
+        ],
+        "count": 2
+      },
+      {
+        "symbol": "_env_int",
+        "definition_lines": [
+          311,
+          483
+        ],
+        "count": 2
+      },
+      {
+        "symbol": "_implementation_supervisor_namespace_track_spec",
+        "definition_lines": [
+          1071,
+          2575
+        ],
+        "count": 2
+      },
+      {
+        "symbol": "_resolve_path",
+        "definition_lines": [
+          1201,
+          2723
+        ],
+        "count": 2
+      },
+      {
+        "symbol": "implementation_supervisor_namespace_track_config",
+        "definition_lines": [
+          1054,
+          2558
+        ],
+        "count": 2
+      },
+      {
+        "symbol": "implementation_supervisor_namespace_track_configs",
+        "definition_lines": [
+          1098,
+          2602
+        ],
+        "count": 2
+      },
+      {
+        "symbol": "implementation_supervisor_track_spec",
+        "definition_lines": [
+          1227,
+          2749
+        ],
+        "count": 2
+      },
+      {
+        "symbol": "iso_timestamp",
+        "definition_lines": [
+          1195,
+          2717
+        ],
+        "count": 2
+      },
+      {
+        "symbol": "parse_track_spec",
+        "definition_lines": [
+          1205,
+          2727
+        ],
+        "count": 2
+      },
+      {
+        "symbol": "utc_run_stamp",
+        "definition_lines": [
+          1189,
+          2711
+        ],
+        "count": 2
+      }
+    ],
+    "other_runtime_modules_with_duplicates": []
+  },
+  "import_origin_receipt": [
+    {
+      "module": "ipfs_accelerate_py.agent_supervisor.semantic_state",
+      "expected_root": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor",
+      "origin": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py",
+      "resolved_ok": true,
+      "under_selected_root": true
+    },
+    {
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler",
+      "expected_root": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor",
+      "origin": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "resolved_ok": true,
+      "under_selected_root": true
+    },
+    {
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
+      "expected_root": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor",
+      "origin": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "resolved_ok": true,
+      "under_selected_root": true
+    },
+    {
+      "module": "ipfs_accelerate_py.agent_supervisor.core.conflict_graph",
+      "expected_root": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor",
+      "origin": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_accelerate_py/agent_supervisor/core/conflict_graph.py",
+      "resolved_ok": true,
+      "under_selected_root": true
+    },
+    {
+      "module": "ipfs_accelerate_py.agent_supervisor.planning.plan_revision_contracts",
+      "expected_root": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor",
+      "origin": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_accelerate_py/agent_supervisor/planning/plan_revision_contracts.py",
+      "resolved_ok": true,
+      "under_selected_root": true
+    },
+    {
+      "module": "ipfs_accelerate_py.agent_supervisor.task_sources.plan_revision_store",
+      "expected_root": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor",
+      "origin": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_accelerate_py/agent_supervisor/task_sources/plan_revision_store.py",
+      "resolved_ok": true,
+      "under_selected_root": true
+    },
+    {
+      "module": "ipfs_datasets_py.logic.software_contracts.semantic_state",
+      "expected_root": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_datasets_py",
+      "origin": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/__init__.py",
+      "resolved_ok": true,
+      "under_selected_root": true
+    },
+    {
+      "module": "ipfs_datasets_py.logic.software_contracts.semantic_index",
+      "expected_root": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_datasets_py",
+      "origin": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/__init__.py",
+      "resolved_ok": true,
+      "under_selected_root": true
+    },
+    {
+      "module": "ipfs_datasets_py.logic.verification_api",
+      "expected_root": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_datasets_py",
+      "origin": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+      "resolved_ok": true,
+      "under_selected_root": true
+    },
+    {
+      "module": "ipfs_datasets_py.logic.software_contracts.contracts",
+      "expected_root": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_datasets_py",
+      "origin": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor/ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/contracts.py",
+      "resolved_ok": true,
+      "under_selected_root": true
+    }
+  ],
+  "absent_apis": [
+    {
+      "name": "adversarial_assurance",
+      "status": "unavailable",
+      "path": "ipfs_datasets_py/logic/adversarial_assurance",
+      "policy": "remain unavailable; not adopted from remote-only revisions"
+    },
+    {
+      "name": "SemanticStateRoot",
+      "status": "unavailable",
+      "path": null,
+      "policy": "no persisted current root; LGSWF-003/004 must produce and bind"
+    }
+  ],
+  "scg_inventory_reuse": {
+    "path": "docs/architecture/AGENT_SUPERVISOR_STATE_SINK_INVENTORY.md",
+    "role": "prior operational state-sink inventory reused as non-authority supporting evidence"
+  },
+  "acceptance": {
+    "every_requested_concern_classified": true,
+    "no_unresolved_unclassified_row": true,
+    "runtime_effective_duplicates_identified": true,
+    "intervening_change_commitments_verify": true,
+    "absent_apis_remain_unavailable": true,
+    "import_origins_under_selected_worktree": true,
+    "tsv_projections_materialized": true
+  }
+}
