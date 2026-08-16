@@ -128,7 +128,10 @@ def _stub_launch_evidence() -> dict[str, Any]:
         "configured_schema_profile": "datasets-authoritative-operational",
         "semantic_relations_permitted": False,
         "lanes": 1,
-        "plan_bound_dispatch": True,
+        "admitted_lanes": 1,
+        "plan_bound_dispatch": False,
+        "effective_strict_task_sharding": True,
+        "plan_bound_promotion_task": "LGSWF-005",
         "implement": True,
         "process_started": False,
     }
@@ -153,6 +156,23 @@ def test_dirty_worktree_fails_closed_before_population_reads(
         module.build_population({})
 
     assert calls == [["git", "status", "--porcelain=v1", "--untracked-files=all"]]
+
+
+def test_actual_launch_evidence_reports_bounded_legacy_dispatch_truthfully() -> None:
+    module = _load_materializer()
+    config = module._load_config()
+
+    evidence = module._render_launch_plan_evidence(config)
+
+    assert evidence["authority_mode"] == "embedded"
+    assert evidence["task_source_kind"] == "duckdb"
+    assert evidence["lanes"] == 1
+    assert evidence["admitted_lanes"] == 1
+    assert evidence["effective_strict_task_sharding"] is True
+    assert evidence["plan_bound_dispatch"] is False
+    assert evidence["plan_bound_promotion_task"] == "LGSWF-005"
+    assert evidence["implement"] is True
+    assert evidence["process_started"] is False
 
 
 @requires_duckdb
@@ -228,6 +248,78 @@ def test_trusted_seal_prepares_cas_promotes_settles_and_replays_immutably(
     assert replay["receipt_cid"] == sealed["receipt_cid"]
     assert replay["accepted_result_cid"] == accepted_result_cid
     assert receipt_path.read_bytes() == stored_before
+
+
+@requires_duckdb
+def test_post_settlement_reconstruction_writes_identity_default_verify_accepts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module, config, population, _receipt = _materialize_temporary_plane(tmp_path)
+    monkeypatch.setattr(
+        module, "_render_launch_plan_evidence", lambda _config: _stub_launch_evidence()
+    )
+    monkeypatch.setattr(module, "_sha256_file", lambda _path: "sha256:" + "2" * 64)
+
+    sealed = module.seal(config, population)
+    accepted_result_cid = sealed["accepted_result_cid"]
+    assert sealed["coordination_promotion"]["status"] == "succeeded"
+    assert sealed["settled_lease"]["state"] == "released"
+    assert (
+        module._verify_store(config, population, expected_stage="sealed")["accepted_result_cid"]
+        == accepted_result_cid
+    )
+
+    receipt_path = module._bootstrap_receipt_path(config, "duckdb-seal.json")
+    receipt_path.unlink()
+    assert not receipt_path.exists()
+
+    reconstructed = module.seal(config, population)
+    assert reconstructed["accepted_result_cid"] == accepted_result_cid
+    assert reconstructed["post_verification"]["accepted_result_cid"] == (accepted_result_cid)
+    persisted = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert persisted["accepted_result_cid"] == accepted_result_cid
+    claimed_receipt_cid = persisted.pop("receipt_cid")
+    assert module._identity(persisted) == claimed_receipt_cid
+
+    monkeypatch.setattr(module, "_load_config", lambda: config)
+    monkeypatch.setattr(module, "build_population", lambda _config: population)
+    assert module.main(["verify"]) == 0
+    verification = json.loads(capsys.readouterr().out)
+    assert verification["valid"] is True
+    assert verification["seal_receipt_cid"] == claimed_receipt_cid
+
+
+@requires_duckdb
+def test_self_consistent_receipt_with_wrong_result_identity_fails_seal_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, config, population, _receipt = _materialize_temporary_plane(tmp_path)
+    monkeypatch.setattr(
+        module, "_render_launch_plan_evidence", lambda _config: _stub_launch_evidence()
+    )
+    monkeypatch.setattr(module, "_sha256_file", lambda _path: "sha256:" + "2" * 64)
+
+    sealed = module.seal(config, population)
+    receipt_path = module._bootstrap_receipt_path(config, "duckdb-seal.json")
+    tampered = json.loads(receipt_path.read_text(encoding="utf-8"))
+    tampered.pop("receipt_cid")
+    tampered["accepted_result_cid"] = "sha256:" + "f" * 64
+    assert tampered["accepted_result_cid"] != sealed["accepted_result_cid"]
+    tampered["receipt_cid"] = module._identity(tampered)
+    module._write_receipt(receipt_path, tampered)
+
+    loaded = module._load_existing_seal_receipt(config, population)
+    assert loaded is not None
+    assert loaded["receipt_cid"] == tampered["receipt_cid"]
+    assert loaded["accepted_result_cid"] == tampered["accepted_result_cid"]
+    with pytest.raises(
+        module.MaterializationError,
+        match="existing bootstrap seal disagrees with control authority",
+    ):
+        module.seal(config, population)
 
 
 @pytest.mark.parametrize(
