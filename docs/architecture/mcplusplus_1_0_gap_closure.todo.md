@@ -1297,7 +1297,7 @@ overlays. Never force-push.
 
 ## MCPP-041 Implement real Ed25519 delegation verification over canonical bytes
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
