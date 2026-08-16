@@ -1516,7 +1516,7 @@ overlays. Never force-push.
 
 ## MCPP-048 Add policy version, stale context, revocation-before-execution, and conflict tests
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
