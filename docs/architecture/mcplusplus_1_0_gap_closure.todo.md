@@ -2448,7 +2448,7 @@ overlays. Never force-push.
 
 ## MCPP-078 Write architecture, threat-model, trust-boundary, and migration docs
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
