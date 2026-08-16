@@ -1423,7 +1423,7 @@ overlays. Never force-push.
 
 ## MCPP-045 Require signed cross-trust-domain receipts and separate transport identity from authority
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
