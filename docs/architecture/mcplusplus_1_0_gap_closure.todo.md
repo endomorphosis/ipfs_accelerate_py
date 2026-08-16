@@ -894,7 +894,7 @@ overlays. Never force-push.
 
 ## MCPP-028 Prove four-language canonical, CID, and signature-input identity
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
