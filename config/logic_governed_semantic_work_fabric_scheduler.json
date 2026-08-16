@@ -38,13 +38,13 @@
   "database_program": {
     "authority_mode": "embedded",
     "task_source_kind": "duckdb",
-    "store_id": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/control.duckdb",
-    "store_generation": "lgswf-actual-v1",
+    "store_id": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v2/control.duckdb",
+    "store_generation": "lgswf-actual-v2",
     "schema_revision": "control-plane-v1",
-    "event_store_path": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/events",
-    "runtime_registry_path": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/registry",
-    "worktree_root": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/worktrees",
-    "export_profile": "lgswf-actual-v1",
+    "event_store_path": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v2/events",
+    "runtime_registry_path": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v2/registry",
+    "worktree_root": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v2/worktrees",
+    "export_profile": "lgswf-actual-v2",
     "failover_policy": "fail_closed",
     "explicit_legacy": false
   },
@@ -87,12 +87,12 @@
     "scripts/materialize_logic_governed_semantic_work_fabric_control_plane.py"
   ],
   "runtime_paths": {
-    "root": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1",
-    "state": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/state",
-    "worktrees": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/worktrees",
-    "merge_queue": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/merge-queue",
-    "logs": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/logs",
-    "evidence": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/evidence",
+    "root": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v2",
+    "state": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v2/state",
+    "worktrees": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v2/worktrees",
+    "merge_queue": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v2/merge-queue",
+    "logs": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v2/logs",
+    "evidence": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v2/evidence",
     "generated_runtime_artifacts_are_completion_authority": false
   },
   "lanes": [

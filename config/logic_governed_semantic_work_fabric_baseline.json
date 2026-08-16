@@ -164,6 +164,18 @@
       "error_type": "ModuleNotFoundError",
       "error": "No module named 'ipfs_accelerate_py'",
       "compensation": "none required; all three target database files remained absent"
+    },
+    {
+      "attempt": 2,
+      "operation": "materialize DuckDB control plane in run-actual-v1",
+      "result": "verified_then_superseded_before_launch",
+      "source_head": "99c44131fe7ee25f5f88af2377a533cc9f8a8c56",
+      "source_tree": "734509dee6a8d913fa1b5f997d1a50c625fe753d",
+      "plan_root_cid": "sha256:7f046e9ceb97a1616c5a725b58aab3195b1a8d35aa3ded3776d2e9f7c73849dd",
+      "receipt_cid": "sha256:65a97ec8970d54c5e34d401b2d20e18c3a2ab8ff9fa1a5df0afa3a37c2d0361a",
+      "verification": "47 tasks, 16 goals, 63 dependencies and expected frontier passed",
+      "supersession_reason": "runtime output was not ignored and therefore made exact-tree preflight dirty",
+      "compensation": "store and receipt preserved read-only under run-actual-v1; fresh namespace required"
     }
   ],
   "known_qualification_gaps": [
