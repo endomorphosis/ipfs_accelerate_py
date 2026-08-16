@@ -956,8 +956,9 @@ overlays. Never force-push.
 
 ## MCPP-030 Create ExecutionEnvelope@1, ExecutionResult@1, ExecutionReceipt@1, and PortableError@1
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
+- Completion evidence: ExecutionEnvelope@1 / Result@1 / Receipt@1 / PortableError@1 schemas and docs/spec/execution-envelope.md published by MCPP-095 (submodule 6c1677d); python -m json.tool on the envelope schema exits 0. Proposal-gate command_forbidden was inherited redirect-token debt, not a missing artifact.
 - Is schedulable: true
 - Review only: false
 - Priority: P0
@@ -965,7 +966,7 @@ overlays. Never force-push.
 - Depends on: MCPP-028, MCPP-029
 - Goal id: MCPP-G050
 - Outputs: ipfs_accelerate_py/mcplusplus/schemas/execution/execution-envelope-1.schema.json, ipfs_accelerate_py/mcplusplus/schemas/execution/execution-result-1.schema.json, ipfs_accelerate_py/mcplusplus/schemas/execution/execution-receipt-1.schema.json, ipfs_accelerate_py/mcplusplus/schemas/execution/portable-error-1.schema.json, ipfs_accelerate_py/mcplusplus/docs/spec/execution-envelope.md
-- Validation: python -m json.tool ipfs_accelerate_py/mcplusplus/schemas/execution/execution-envelope-1.schema.json > /dev/null
+- Validation: python -m json.tool ipfs_accelerate_py/mcplusplus/schemas/execution/execution-envelope-1.schema.json
 - Board namespace: mcplusplus-1-0-gap-closure-v1
 - Bundle: mcplusplus/1.0/envelope-schemas
 - Parallel lane: mcpp-lane-spec
@@ -1111,8 +1112,9 @@ overlays. Never force-push.
 
 ## MCPP-035 Specify StateRef@1 with mandatory consistency modes
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
+- Completion evidence: StateRef@1 schema and docs/spec/state-ref.md published by MCPP-094 (submodule 1f04006 / 6c1677d); python -m json.tool on the state-ref schema exits 0. Proposal-gate command_forbidden was inherited redirect-token debt, not a missing artifact.
 - Is schedulable: true
 - Review only: false
 - Priority: P0
@@ -1120,7 +1122,7 @@ overlays. Never force-push.
 - Depends on: MCPP-028, MCPP-016
 - Goal id: MCPP-G060
 - Outputs: ipfs_accelerate_py/mcplusplus/schemas/state/state-ref-1.schema.json, ipfs_accelerate_py/mcplusplus/docs/spec/state-ref.md
-- Validation: python -m json.tool ipfs_accelerate_py/mcplusplus/schemas/state/state-ref-1.schema.json > /dev/null
+- Validation: python -m json.tool ipfs_accelerate_py/mcplusplus/schemas/state/state-ref-1.schema.json
 - Board namespace: mcplusplus-1-0-gap-closure-v1
 - Bundle: mcplusplus/1.0/state-schema
 - Parallel lane: mcpp-lane-runtime
@@ -1833,7 +1835,7 @@ overlays. Never force-push.
 - Depends on: MCPP-054
 - Goal id: MCPP-G110
 - Outputs: ipfs_accelerate_py/mcplusplus/schemas/discovery/agent-advertisement-1.schema.json, ipfs_accelerate_py/mcplusplus/docs/spec/mcp-idl.md
-- Validation: python -m json.tool ipfs_accelerate_py/mcplusplus/schemas/discovery/agent-advertisement-1.schema.json > /dev/null
+- Validation: python -m json.tool ipfs_accelerate_py/mcplusplus/schemas/discovery/agent-advertisement-1.schema.json
 - Board namespace: mcplusplus-1-0-gap-closure-v1
 - Bundle: mcplusplus/1.0/discovery-schema
 - Parallel lane: mcpp-lane-transport
@@ -2298,7 +2300,7 @@ overlays. Never force-push.
 - Depends on: MCPP-030, MCPP-015
 - Goal id: MCPP-G150
 - Outputs: ipfs_accelerate_py/mcplusplus/schemas/confidential/encrypted-artifact-ref-1.schema.json, ipfs_accelerate_py/mcplusplus/docs/spec/cid-native-artifacts.md
-- Validation: python -m json.tool ipfs_accelerate_py/mcplusplus/schemas/confidential/encrypted-artifact-ref-1.schema.json > /dev/null
+- Validation: python -m json.tool ipfs_accelerate_py/mcplusplus/schemas/confidential/encrypted-artifact-ref-1.schema.json
 - Board namespace: mcplusplus-1-0-gap-closure-v1
 - Bundle: mcplusplus/1.0/confidential-schema
 - Parallel lane: mcpp-lane-schema
@@ -2484,7 +2486,7 @@ overlays. Never force-push.
 - Depends on: MCPP-012, MCPP-078
 - Goal id: MCPP-G170
 - Outputs: ipfs_accelerate_py/mcplusplus/README.md, ipfs_accelerate_py/mcplusplus/docs/testing
-- Validation: rg -n "production-ready|zero vulnerabilities|fully conformant|100 percent coverage" ipfs_accelerate_py/mcplusplus/README.md docs/testing || true
+- Validation: rg -n "production-ready|zero vulnerabilities|fully conformant|100 percent coverage" ipfs_accelerate_py/mcplusplus/README.md docs/testing
 - Board namespace: mcplusplus-1-0-gap-closure-v1
 - Bundle: mcplusplus/1.0/docs-stale-claims
 - Parallel lane: mcpp-lane-schema
@@ -2732,6 +2734,7 @@ overlays. Never force-push.
 
 - Status: completed
 - Completion: manual
+- Canonical board task: false
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-012
@@ -2744,6 +2747,7 @@ overlays. Never force-push.
 
 - Status: completed
 - Completion: manual
+- Canonical board task: false
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-024
@@ -2756,6 +2760,7 @@ overlays. Never force-push.
 
 - Status: completed
 - Completion: manual
+- Canonical board task: false
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-025
@@ -2768,6 +2773,7 @@ overlays. Never force-push.
 
 - Status: completed
 - Completion: manual
+- Canonical board task: false
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-028, MCPP-016
@@ -2780,6 +2786,7 @@ overlays. Never force-push.
 
 - Status: completed
 - Completion: manual
+- Canonical board task: false
 - Priority: P1
 - Track: ops
 - Depends on: MCPP-028, MCPP-029
