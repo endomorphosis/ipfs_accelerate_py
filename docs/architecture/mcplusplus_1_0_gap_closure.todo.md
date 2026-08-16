@@ -1888,15 +1888,16 @@ overlays. Never force-push.
 
 ## MCPP-060 Add libp2p discovery and an isolated AGNTCY adapter package
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
+- Completion evidence: Libp2pDiscovery@1 + isolated AgntcyAdapter@1 landed; hermetic test/api/test_mcplusplus_registry_libp2p.py 19 tests (in-memory mesh + typed AGNTCY_UNSUPPORTED reject). Prior attempts failed validation because the test path was undeclared and omitted from the hermetic snapshot.
 - Is schedulable: true
 - Review only: false
 - Priority: P0
 - Track: discovery-libp2p
 - Depends on: MCPP-059
 - Goal id: MCPP-G110
-- Outputs: ipfs_accelerate_py/mcp_server/mcplusplus/registry/libp2p.py, ipfs_accelerate_py/mcp_server/mcplusplus/registry/agntcy.py
+- Outputs: ipfs_accelerate_py/mcp_server/mcplusplus/registry/libp2p.py, ipfs_accelerate_py/mcp_server/mcplusplus/registry/agntcy.py, test/api/test_mcplusplus_registry_libp2p.py
 - Validation: python -m pytest -q test/api/test_mcplusplus_registry_libp2p.py
 - Board namespace: mcplusplus-1-0-gap-closure-v1
 - Bundle: mcplusplus/1.0/discovery-libp2p
@@ -1905,7 +1906,7 @@ overlays. Never force-push.
 - Resource stage: implementation
 - Estimated tokens: 22000
 - Implementation timeout seconds: 7200
-- Predicted files: ipfs_accelerate_py/mcp_server/mcplusplus/registry/libp2p.py, ipfs_accelerate_py/mcp_server/mcplusplus/registry/agntcy.py
+- Predicted files: ipfs_accelerate_py/mcp_server/mcplusplus/registry/libp2p.py, ipfs_accelerate_py/mcp_server/mcplusplus/registry/agntcy.py, test/api/test_mcplusplus_registry_libp2p.py
 - Interfaces: Libp2pDiscovery@1, AgntcyAdapter@1
 - Allow concurrent with: 
 - Conflict policy: New adapters. If official AGNTCY SDK is unusable, keep the package isolated and document the blocker.
