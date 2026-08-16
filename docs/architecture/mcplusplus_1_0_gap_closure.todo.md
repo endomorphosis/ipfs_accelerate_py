@@ -1764,7 +1764,7 @@ overlays. Never force-push.
 
 ## MCPP-056 Implement the A2A reference adapter and two-agent handoff test
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
