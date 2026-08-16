@@ -801,7 +801,7 @@ overlays. Never force-push.
 
 ## MCPP-025 Publish golden canonicalization vectors
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
