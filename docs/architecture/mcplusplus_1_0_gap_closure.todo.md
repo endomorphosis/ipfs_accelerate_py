@@ -2541,7 +2541,7 @@ overlays. Never force-push.
 
 ## MCPP-081 Close remaining runtime adapter and documentation gaps
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
