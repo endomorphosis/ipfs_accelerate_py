@@ -1019,7 +1019,7 @@ overlays. Never force-push.
 
 ## MCPP-032 Adapt existing Profile G artifacts to ExecutionEnvelope@1
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
