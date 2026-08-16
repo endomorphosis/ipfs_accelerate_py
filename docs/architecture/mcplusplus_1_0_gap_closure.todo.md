@@ -1795,7 +1795,7 @@ overlays. Never force-push.
 
 ## MCPP-057 Adapt SwissKnife to the A2A execution extension
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
