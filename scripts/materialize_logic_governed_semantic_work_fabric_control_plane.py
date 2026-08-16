@@ -2984,16 +2984,24 @@ def _receipt_result(
 
 def _qualification_commands() -> tuple[tuple[str, tuple[str, ...], int | None], ...]:
     python = str(Path(sys.executable).resolve())
+    pytest_prefix = (
+        python,
+        "-E",
+        "-P",
+        "-m",
+        "pytest",
+        "-q",
+        "--color=no",
+        "-o",
+        "console_output_style=classic",
+        "-p",
+        "no:cacheprovider",
+    )
     return (
         (
             "operational_schema",
             (
-                python,
-                "-E",
-                "-P",
-                "-m",
-                "pytest",
-                "-q",
+                *pytest_prefix,
                 "test/api/test_agent_supervisor_control_plane_schema.py",
                 "test/api/test_agent_supervisor_datasets_authoritative_operational_schema.py",
             ),
@@ -3002,12 +3010,7 @@ def _qualification_commands() -> tuple[tuple[str, tuple[str, ...], int | None], 
         (
             "intent_repository",
             (
-                python,
-                "-E",
-                "-P",
-                "-m",
-                "pytest",
-                "-q",
+                *pytest_prefix,
                 "test/api/test_agent_supervisor_intent_repository.py",
             ),
             12,
@@ -3015,12 +3018,7 @@ def _qualification_commands() -> tuple[tuple[str, tuple[str, ...], int | None], 
         (
             "semantic_and_proof_writer_guards",
             (
-                python,
-                "-E",
-                "-P",
-                "-m",
-                "pytest",
-                "-q",
+                *pytest_prefix,
                 "test/api/test_agent_supervisor_datasets_authoritative_writer_guards.py",
                 "test/api/test_agent_supervisor_database_evidence_stores.py",
                 "test/api/test_agent_supervisor_database_symbolic_repair.py",
@@ -3031,12 +3029,7 @@ def _qualification_commands() -> tuple[tuple[str, tuple[str, ...], int | None], 
         (
             "coordination_daemon_portal_runner",
             (
-                python,
-                "-E",
-                "-P",
-                "-m",
-                "pytest",
-                "-q",
+                *pytest_prefix,
                 "test/api/test_agent_supervisor_database_coordination.py",
                 "test/api/test_agent_supervisor_database_implementation_daemon.py",
                 "test/api/test_agent_supervisor_database_portal_bridge.py",
@@ -3047,12 +3040,7 @@ def _qualification_commands() -> tuple[tuple[str, tuple[str, ...], int | None], 
         (
             "configured_board_live_seal_gate",
             (
-                python,
-                "-E",
-                "-P",
-                "-m",
-                "pytest",
-                "-q",
+                *pytest_prefix,
                 "test/api/test_agent_supervisor_configured_board_scheduler.py::test_configured_board_live_seal_dry_profile_binds_target_and_no_go",
                 "test/api/test_agent_supervisor_configured_board_scheduler.py::test_configured_board_live_seal_target_swap_changes_dry_profile",
                 "test/api/test_agent_supervisor_configured_board_scheduler.py::test_configured_board_live_seal_no_go_is_zero_popen_and_zero_io",
@@ -3065,12 +3053,7 @@ def _qualification_commands() -> tuple[tuple[str, tuple[str, ...], int | None], 
         (
             "bootstrap_seal",
             (
-                python,
-                "-E",
-                "-P",
-                "-m",
-                "pytest",
-                "-q",
+                *pytest_prefix,
                 "test/api/test_agent_supervisor_lgswf_materialization_seal.py",
             ),
             34,
@@ -3179,11 +3162,24 @@ def qualify(config: Mapping[str, Any], population: Mapping[str, Any]) -> dict[st
         observed_passed: int | None = None
         required_outcomes_valid = returncode == 0
         if expected_passed is not None:
-            passed_matches = re.findall(r"(?:^|\s)([0-9]+) passed(?:[,\s]|$)", stdout)
+            plain_stdout = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", stdout)
+            passed_matches = re.findall(
+                r"(?m)^(?:=+\s*)?(\d+) passed\b",
+                plain_stdout,
+            )
+            if not passed_matches:
+                passed_matches = re.findall(r"\b(\d+) passed\b", plain_stdout)
             observed_passed = int(passed_matches[-1]) if passed_matches else None
+            summary_lines = [
+                line
+                for line in plain_stdout.splitlines()
+                if re.search(r"\b\d+ passed\b", line)
+                or re.search(r"=+\s+.+\s+=+", line)
+            ]
+            summary_text = "\n".join(summary_lines).casefold()
             prohibited_outcomes = re.search(
-                r"(?:^|[ ,])(?:[1-9][0-9]* )?(?:failed|error|errors|skipped|xfailed|xpassed)(?:[,\s]|$)",
-                stdout.casefold(),
+                r"(?:^|[ ,=])(?:[1-9][0-9]* )?(?:failed|error|errors|skipped|xfailed|xpassed)(?:[,\s=]|$)",
+                summary_text,
             )
             required_outcomes_valid = (
                 required_outcomes_valid

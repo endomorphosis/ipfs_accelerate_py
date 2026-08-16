@@ -1,7 +1,7 @@
 """Focused qualification for the two-stage LGSWF bootstrap authority.
 
 The fixtures deliberately redirect the materializer to ``tmp_path``.  They do
-not construct, inspect, or mutate the configured ``run-actual-v3`` namespace.
+not construct, inspect, or mutate the configured ``run-actual-v4`` namespace.
 """
 
 from __future__ import annotations
@@ -1888,7 +1888,7 @@ def test_board_check_all_delegates_to_live_verifier(
 
     assert calls == [
         (
-            [sys.executable, "-I", str(validator.MATERIALIZER), "verify-live"],
+            [sys.executable, str(validator.MATERIALIZER), "verify-live"],
             validator.ROOT,
         )
     ]
