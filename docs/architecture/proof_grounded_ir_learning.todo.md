@@ -142,7 +142,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-004 Pin and classify JusticeDAO releases
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
