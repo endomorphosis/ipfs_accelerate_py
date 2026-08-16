@@ -2074,7 +2074,7 @@ overlays. Never force-push.
 
 ## MCPP-066 Publish one normative Profile G coordination specification
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
