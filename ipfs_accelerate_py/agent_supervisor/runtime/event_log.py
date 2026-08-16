@@ -82,6 +82,7 @@ class SemanticChangeKind(str, Enum):
     INTENT_IR = "intent_ir"
     LEGAL_IR = "legal_ir"
     SECURITY_IR = "security_ir"
+    UI_IR = "ui_ir"
     POLICY = "policy"
     TOOL_CATALOG = "tool_catalog"
     CAPABILITY = "capability"

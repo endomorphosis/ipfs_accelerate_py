@@ -35,7 +35,6 @@ from .deterministic_doctor_service import (
     create_deterministic_doctor_service,
 )
 
-
 # ---------------------------------------------------------------------------
 # Interface identity
 # ---------------------------------------------------------------------------
@@ -259,11 +258,7 @@ class DefaultDoctorFactory:
         baseline_modules = frozenset(sys.modules)
         assert_no_llm_surface_loaded(baseline_modules=baseline_modules)
 
-        use_live = (
-            checkout_root is not None
-            and backends is None
-            and bind_live_stages is not False
-        )
+        use_live = checkout_root is not None and backends is None and bind_live_stages is not False
         if use_live:
             service = self._build_live_service(
                 checkout_root,  # type: ignore[arg-type]
@@ -319,9 +314,7 @@ class DefaultDoctorFactory:
         if allowlist is None:
             allowlist = self._repository_allowlist
         # When no allowlist is configured, admit only the exact resolved root.
-        effective_allowlist: Sequence[str | Path] = (
-            allowlist if allowlist is not None else (root,)
-        )
+        effective_allowlist: Sequence[str | Path] = allowlist if allowlist is not None else (root,)
         resolved_index_root = index_root if index_root is not None else self._index_root
         try:
             runtime = create_deterministic_doctor_runtime(
@@ -329,16 +322,10 @@ class DefaultDoctorFactory:
                 repository_allowlist=effective_allowlist,
                 policy=policy,
                 control_service=(
-                    control_service
-                    if control_service is not None
-                    else self._control_service
+                    control_service if control_service is not None else self._control_service
                 ),
-                receipt_store=(
-                    receipt_store if receipt_store is not None else self._receipt_store
-                ),
-                scope_policy=(
-                    scope_policy if scope_policy is not None else self._scope_policy
-                ),
+                receipt_store=(receipt_store if receipt_store is not None else self._receipt_store),
+                scope_policy=(scope_policy if scope_policy is not None else self._scope_policy),
                 index_root=resolved_index_root,
                 deterministic=self._deterministic,
             )
@@ -397,14 +384,10 @@ class DefaultDoctorFactory:
         resolved_backends = backends if backends is not None else DoctorStageBackends()
         service = create_deterministic_doctor_service(
             policy=policy,
-            receipt_store=(
-                receipt_store if receipt_store is not None else self._receipt_store
-            ),
+            receipt_store=(receipt_store if receipt_store is not None else self._receipt_store),
             backends=resolved_backends,
             control_service=(
-                control_service
-                if control_service is not None
-                else self._control_service
+                control_service if control_service is not None else self._control_service
             ),
             cas=cas,
         )
@@ -497,6 +480,326 @@ def build_default_doctor_service(
     return service
 
 
+# ---------------------------------------------------------------------------
+# DCR-050 strict composition projection
+# ---------------------------------------------------------------------------
+
+DCR_DOCTOR_CAPABILITIES_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/dcr-doctor-capabilities@1"
+)
+DCR_DOCTOR_COMPOSITION_INTERFACE: Final[str] = "DcrDoctorCompositionAdapter@1"
+_DCR_DOCTOR_PENDING_GATE: Final[str] = "dcr047_dcr072_live_authority_integration_required"
+_DCR_DOCTOR_TRANSITIONAL_BINDINGS: Final[str] = "transitional_self_attested_bindings_non_live"
+
+
+class DcrDoctorCompositionError(ValueError):
+    """A DCR-050 binding is not exact, typed, and current enough to project."""
+
+
+@dataclass(frozen=True)
+class DcrDoctorCompositionResult:
+    """Non-authoritative DCR-050 composition result.
+
+    This is intentionally not a Doctor service.  It records the exact
+    composition that a later DCR-047/DCR-072 live binding must revalidate;
+    consequently it cannot accidentally turn caller-supplied identities into
+    execution authority.
+    """
+
+    disposition: str
+    reason_codes: tuple[str, ...]
+    identities: Mapping[str, str]
+    binding_complete: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        body = {
+            "schema": DCR_DOCTOR_CAPABILITIES_SCHEMA,
+            "interface": DCR_DOCTOR_COMPOSITION_INTERFACE,
+            "factory_interface": DEFAULT_DOCTOR_FACTORY_INTERFACE,
+            "service_interface": DeterministicDoctorService.INTERFACE,
+            "authoritative": False,
+            "execution_authorized": False,
+            "completion_authorized": False,
+            "disposition": self.disposition,
+            "reason_codes": list(self.reason_codes),
+            "binding_complete": self.binding_complete,
+            "identities": dict(sorted(self.identities.items())),
+            "model_call_count": 0,
+            "provider_call_count": 0,
+            "network_call_count": 0,
+        }
+        from ..proof.formal_verification_contracts import content_identity
+
+        return {**body, "composition_cid": content_identity(body)}
+
+
+def _contains_callable(value: Any) -> bool:
+    if callable(value):
+        return True
+    if isinstance(value, Mapping):
+        return any(_contains_callable(item) for item in value.values())
+    if isinstance(value, (tuple, list, set, frozenset)):
+        return any(_contains_callable(item) for item in value)
+    return False
+
+
+def _identity_record(
+    value: Any,
+    *,
+    kind: str,
+    required_binding: frozenset[str],
+) -> tuple[str, Mapping[str, str]]:
+    """Validate a closed, content-addressed read-only identity/self-test."""
+
+    from ..proof.formal_verification_contracts import content_identity
+
+    if not isinstance(value, Mapping) or set(value) != {"kind", "identity", "binding", "self_test"}:
+        raise DcrDoctorCompositionError(f"{kind}_identity_shape_invalid")
+    if value["kind"] != kind or not isinstance(value["binding"], Mapping):
+        raise DcrDoctorCompositionError(f"{kind}_identity_kind_invalid")
+    binding = dict(value["binding"])
+    if set(binding) != required_binding or not all(
+        isinstance(item, str) and item for item in binding.values()
+    ):
+        raise DcrDoctorCompositionError(f"{kind}_binding_invalid")
+    self_test = value["self_test"]
+    if not isinstance(self_test, Mapping) or set(self_test) != {
+        "kind",
+        "binding_cid",
+        "outcome",
+        "mode",
+        "model_call_count",
+        "provider_call_count",
+        "network_call_count",
+    }:
+        raise DcrDoctorCompositionError(f"{kind}_self_test_shape_invalid")
+    binding_cid = content_identity({"kind": kind, "binding": dict(sorted(binding.items()))})
+    if (
+        self_test.get("kind") != kind
+        or self_test.get("binding_cid") != binding_cid
+        or self_test.get("outcome") != "passed"
+        or self_test.get("mode") != "read_only"
+        or any(
+            self_test.get(name) != 0
+            for name in ("model_call_count", "provider_call_count", "network_call_count")
+        )
+    ):
+        raise DcrDoctorCompositionError(f"{kind}_self_test_invalid")
+    canonical = {
+        "kind": kind,
+        "binding": dict(sorted(binding.items())),
+        "self_test": dict(sorted(self_test.items())),
+    }
+    if value["identity"] != content_identity(canonical):
+        raise DcrDoctorCompositionError(f"{kind}_identity_stale_or_forged")
+    return str(value["identity"]), dict(sorted(binding.items()))
+
+
+class DcrDoctorCompositionAdapter:
+    """Strict DCR-050 read-only adapter around the existing Doctor factory.
+
+    It intentionally retains a concrete :class:`DefaultDoctorFactory` rather
+    than accepting stage callables.  It never calls ``build``: DCR-047/DCR-072
+    must supply the future live authority integration before a Doctor could be
+    constructed from this projection.
+    """
+
+    def __init__(self, factory: DefaultDoctorFactory | None = None) -> None:
+        if factory is not None and not isinstance(factory, DefaultDoctorFactory):
+            raise DcrDoctorCompositionError("default_doctor_factory_required")
+        self._factory = factory if factory is not None else DefaultDoctorFactory()
+
+    @property
+    def factory(self) -> DefaultDoctorFactory:
+        return self._factory
+
+    def inspect(self, binding: Mapping[str, Any]) -> DcrDoctorCompositionResult:
+        """Validate exact prerequisites without building a service or stage."""
+
+        import sys
+
+        from ..autonomous_repair.capabilities import (
+            CapabilityEvidenceReceipt,
+            CapabilityReceipt,
+            CapabilityStatus,
+            NetworkMode,
+        )
+        from ..autonomous_repair.operators.registry import OperatorRegistry
+        from ..proof.formal_verification_contracts import content_identity
+        from ..proof.ir_logic_application import (
+            REQUIRED_IR_LOGIC_IDENTITIES,
+            REQUIRED_IR_LOGIC_STAGES,
+            IrLogicRequiredGateDisposition,
+            IrLogicRequiredGateResult,
+        )
+
+        baseline_modules = frozenset(sys.modules)
+        reasons: list[str] = []
+        identities: dict[str, str] = {}
+        expected = {
+            "checkout_forest",
+            "graph_findings",
+            "logic_capability_receipt",
+            "logic_evidence_receipts",
+            "dcr035_gate",
+            "operator_registry",
+            "reviewed_registry_cid",
+            "proof_cache",
+            "receipt_store",
+            "source_reader",
+            "transaction_controller",
+        }
+        if (
+            not isinstance(binding, Mapping)
+            or set(binding) != expected
+            or _contains_callable(binding)
+        ):
+            reasons.append("closed_typed_binding_required")
+        else:
+            try:
+                checkout_id, checkout = _identity_record(
+                    binding["checkout_forest"],
+                    kind="checkout_forest",
+                    required_binding=frozenset({"checkout_id", "forest_id"}),
+                )
+                graph_id, graph = _identity_record(
+                    binding["graph_findings"],
+                    kind="graph_findings",
+                    required_binding=frozenset({"forest_id", "graph_cid", "findings_cid"}),
+                )
+                if graph["forest_id"] != checkout["forest_id"]:
+                    raise DcrDoctorCompositionError("graph_forest_binding_mismatch")
+                identities.update(checkout_forest=checkout_id, graph_findings=graph_id)
+
+                capability = binding["logic_capability_receipt"]
+                evidence = binding["logic_evidence_receipts"]
+                if not isinstance(capability, CapabilityReceipt) or not isinstance(evidence, tuple):
+                    raise DcrDoctorCompositionError("typed_dcr004_receipts_required")
+                if (
+                    capability.capability_id != "ipfs_datasets_py.logic"
+                    or capability.status is not CapabilityStatus.AVAILABLE
+                    or not capability.available
+                    or not capability.content_digest.startswith("module:sha256:")
+                    or not capability.initialized
+                    or not capability.reconstructed
+                    or not capability.self_test_passed
+                    or capability.network_mode is not NetworkMode.OFFLINE
+                    or capability.missing_symbols
+                    or capability.reason_codes
+                    or capability.distribution_version != capability.expected_version
+                ):
+                    raise DcrDoctorCompositionError("dcr004_logic_receipt_not_current")
+                required_kinds = {"initialization", "reconstruction", "self_test"}
+                if (
+                    len(evidence) != 3
+                    or {
+                        item.evidence_kind
+                        for item in evidence
+                        if isinstance(item, CapabilityEvidenceReceipt)
+                    }
+                    != required_kinds
+                ):
+                    raise DcrDoctorCompositionError("dcr004_evidence_receipts_incomplete")
+                if not all(
+                    isinstance(item, CapabilityEvidenceReceipt)
+                    and item.verifies(
+                        evidence_id=capability.capability_id,
+                        evidence_kind=item.evidence_kind,
+                        subject_id=capability.capability_id,
+                        subject_digest=capability.content_digest,
+                        subject_version=capability.expected_version,
+                    )
+                    for item in evidence
+                ):
+                    raise DcrDoctorCompositionError("dcr004_evidence_receipts_stale")
+                identities["dcr004_logic"] = capability.receipt_id
+
+                gate = binding["dcr035_gate"]
+                if (
+                    not isinstance(gate, IrLogicRequiredGateResult)
+                    or gate.disposition is not IrLogicRequiredGateDisposition.PASSING
+                    or gate.model_call_count != 0
+                    or gate.provider_call_count != 0
+                    or set(gate.required_identity_cids) != set(REQUIRED_IR_LOGIC_IDENTITIES)
+                    or len(gate.receipt_ids) != len(REQUIRED_IR_LOGIC_STAGES)
+                    or not all(isinstance(item, str) and item for item in gate.receipt_ids)
+                ):
+                    raise DcrDoctorCompositionError("dcr035_required_stages_not_passing")
+                identities["dcr035_gate"] = content_identity(gate.to_dict())
+
+                registry = binding["operator_registry"]
+                if not isinstance(registry, OperatorRegistry):
+                    raise DcrDoctorCompositionError("typed_dcr040_registry_required")
+                report = registry.report()
+                if binding["reviewed_registry_cid"] != report.get("registry_cid"):
+                    raise DcrDoctorCompositionError("dcr040_registry_cid_stale_or_forged")
+                identities["dcr040_registry"] = str(report["registry_cid"])
+
+                proof_id, proof = _identity_record(
+                    binding["proof_cache"],
+                    kind="proof_cache",
+                    required_binding=frozenset({"cache_id", "forest_id", "graph_cid"}),
+                )
+                store_id, store = _identity_record(
+                    binding["receipt_store"],
+                    kind="receipt_store",
+                    required_binding=frozenset({"forest_id", "store_id"}),
+                )
+                reader_id, reader = _identity_record(
+                    binding["source_reader"],
+                    kind="source_reader",
+                    required_binding=frozenset({"forest_id", "reader_id", "source_digest"}),
+                )
+                transaction_id, transaction = _identity_record(
+                    binding["transaction_controller"],
+                    kind="transaction_controller",
+                    required_binding=frozenset({"forest_id", "receipt_store_id", "controller_id"}),
+                )
+                if (
+                    proof["forest_id"] != checkout["forest_id"]
+                    or proof["graph_cid"] != graph["graph_cid"]
+                    or store["forest_id"] != checkout["forest_id"]
+                    or reader["forest_id"] != checkout["forest_id"]
+                    or transaction["forest_id"] != checkout["forest_id"]
+                    or transaction["receipt_store_id"] != store["store_id"]
+                    or gate.required_identity_cids.get("dcr034") != proof_id
+                ):
+                    raise DcrDoctorCompositionError("cross_identity_binding_mismatch")
+                identities.update(
+                    dcr034_proof_cache=proof_id,
+                    receipt_store=store_id,
+                    source_reader=reader_id,
+                    transaction_controller=transaction_id,
+                )
+            except DcrDoctorCompositionError as exc:
+                reasons.append(str(exc))
+
+        assert_no_llm_surface_loaded(baseline_modules=baseline_modules)
+        if reasons:
+            return DcrDoctorCompositionResult(
+                disposition="deferred",
+                reason_codes=tuple(sorted(set(reasons))),
+                identities=identities,
+                binding_complete=False,
+            )
+        # There is deliberately no untyped `live=True` escape hatch.  DCR-047
+        # and DCR-072 must land their own concrete witness/controller types.
+        return DcrDoctorCompositionResult(
+            disposition="integration_pending",
+            reason_codes=(_DCR_DOCTOR_PENDING_GATE, _DCR_DOCTOR_TRANSITIONAL_BINDINGS),
+            identities=identities,
+            binding_complete=True,
+        )
+
+
+def inspect_dcr_doctor_composition(
+    binding: Mapping[str, Any], *, factory: DefaultDoctorFactory | None = None
+) -> DcrDoctorCompositionResult:
+    """Convenience entry point for the strict, non-authoritative DCR-050 adapter."""
+
+    return DcrDoctorCompositionAdapter(factory).inspect(binding)
+
+
 __all__ = [
     "DEFAULT_DOCTOR_FACTORY_BINDING_SCHEMA",
     "DEFAULT_DOCTOR_FACTORY_DISCOVERY_SCHEMA",
@@ -507,7 +810,13 @@ __all__ = [
     "DefaultDoctorCheckoutError",
     "DefaultDoctorFactory",
     "DefaultDoctorFactoryError",
+    "DCR_DOCTOR_CAPABILITIES_SCHEMA",
+    "DCR_DOCTOR_COMPOSITION_INTERFACE",
+    "DcrDoctorCompositionAdapter",
+    "DcrDoctorCompositionError",
+    "DcrDoctorCompositionResult",
     "assert_no_llm_surface_loaded",
     "build_default_doctor_factory",
     "build_default_doctor_service",
+    "inspect_dcr_doctor_composition",
 ]

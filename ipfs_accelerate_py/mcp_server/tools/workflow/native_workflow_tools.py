@@ -9,6 +9,52 @@ def _error_result(message: str) -> Dict[str, Any]:
     return {"status": "error", "success": False, "error": message}
 
 
+def workflow_coordinator_submit_task(
+    task_id: str,
+    task_type: str,
+    data: Optional[Dict[str, Any]] = None,
+    priority: int = 5,
+    tags: Optional[list] = None,
+) -> Dict[str, Any]:
+    """MCP tool surface for WorkflowCoordinator.submit_task.
+
+    Implementation stays **inside** ``ipfs_accelerate_py`` (same package).
+    Cross-package work (datasets/kit) must use
+    :mod:`package_mcp_interop` / ``tools_dispatch`` — not direct imports of
+    peer packages. This handler only wraps the local coordinator behind MCP
+    registration so observed contracts resolve on the MCP++ path.
+    """
+    try:
+        from ipfs_accelerate_py.datasets_integration.workflow import (
+            WorkflowCoordinator,
+        )
+
+        coordinator = WorkflowCoordinator()
+        ok = coordinator.submit_task(
+            task_id=task_id,
+            task_type=task_type,
+            data=data or {},
+            priority=priority,
+            tags=tags,
+        )
+        return {
+            "status": "success" if ok else "error",
+            "success": bool(ok),
+            "task_id": task_id,
+            "task_type": task_type,
+            "mediation": "mcp_plus_plus",
+            "package_id": "ipfs_accelerate_py",
+        }
+    except Exception as exc:  # pragma: no cover - defensive boundary
+        return {
+            "status": "error",
+            "success": False,
+            "error": str(exc),
+            "task_id": task_id,
+            "mediation": "mcp_plus_plus",
+        }
+
+
 def _normalize_delegate_payload(result: Any) -> Optional[Dict[str, Any]]:
     """Normalize contradictory manager payloads into deterministic envelopes."""
     if not isinstance(result, dict):
@@ -530,4 +576,27 @@ def register_native_workflow_tools(manager: Any) -> None:
         },
         runtime="fastapi",
         tags=["native", "wave-a", "workflow"],
+    )
+
+    manager.register_tool(
+        category="workflow",
+        name="WorkflowCoordinator.submit_task",
+        func=workflow_coordinator_submit_task,
+        description=(
+            "Submit a workflow task via WorkflowCoordinator "
+            "(observed contract surface)."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "minLength": 1},
+                "task_type": {"type": "string", "minLength": 1},
+                "data": {"type": "object"},
+                "priority": {"type": "integer", "default": 5},
+                "tags": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["task_id", "task_type"],
+        },
+        runtime="fastapi",
+        tags=["native", "wave-a", "workflow", "surface"],
     )

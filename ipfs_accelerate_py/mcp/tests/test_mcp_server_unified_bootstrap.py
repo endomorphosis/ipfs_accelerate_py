@@ -9991,7 +9991,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("generate_embedding", names)
             self.assertIn("generate_embeddings_from_file", names)
-            self.assertIn("semantic_search", names)
+            self.assertIn("embedding_semantic_search", names)
             self.assertIn("hybrid_search", names)
             self.assertIn("search_with_filters", names)
             self.assertIn("multi_modal_search", names)
@@ -10006,7 +10006,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             file_props = (file_schema.get("input_schema") or {}).get("properties", {})
             self.assertIn("json", (file_props.get("output_format") or {}).get("enum", []))
 
-            semantic_schema = await get_schema("embedding_tools", "semantic_search")
+            semantic_schema = await get_schema("embedding_tools", "embedding_semantic_search")
             semantic_props = (semantic_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((semantic_props.get("top_k") or {}).get("maximum"), 1000)
 
@@ -10071,7 +10071,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             invalid_semantic_top_k = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "embedding_tools",
-                    "semantic_search",
+                    "embedding_semantic_search",
                     {
                         "query": "hello",
                         "vector_store_id": "vs-1",

@@ -354,6 +354,12 @@ def test_natural_language_markers_fail_closed() -> None:
             schema_version="1",
             metadata={"nl_claim": True},
         )
+    # Reviewed schema field paths may contain the substring "freeform" without
+    # being freeform/prose claim markers (e.g. UI/UX IR freeform_touch).
+    reject_natural_language_claim(
+        {"field_path": "freeform_touch", "source_count": 1}
+    )
+    reject_natural_language_claim({"field_path": "freeform_touch_allowed"})
 
 
 def test_unknown_contract_id_fails_closed() -> None:

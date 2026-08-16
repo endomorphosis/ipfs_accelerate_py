@@ -28,7 +28,7 @@ import sys
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, ClassVar, Final
@@ -39,6 +39,7 @@ from ..analysis.deterministic_doctor_contracts import (
     DoctorOperation,
     DoctorRepairDisposition,
 )
+from ..autonomous_repair.contracts import DeterministicRepairDisposition
 from ..control.deterministic_doctor_service import (
     DeterministicDoctorService,
     DoctorOperationRequest,
@@ -51,9 +52,7 @@ from ..control.deterministic_doctor_service import (
 from ..proof.formal_verification_contracts import content_identity
 from ..validation.deterministic_doctor_policy import DeterministicDoctorPolicy
 
-DETERMINISTIC_DOCTOR_BACKEND_FACTORY_INTERFACE: Final[str] = (
-    "DeterministicDoctorBackendFactory@1"
-)
+DETERMINISTIC_DOCTOR_BACKEND_FACTORY_INTERFACE: Final[str] = "DeterministicDoctorBackendFactory@1"
 DETERMINISTIC_DOCTOR_RUNTIME_INTERFACE: Final[str] = "DeterministicDoctorRuntime@1"
 DETERMINISTIC_DOCTOR_RUNTIME_DISCOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/runtime-discovery@1"
@@ -81,9 +80,7 @@ _MODEL_MODULE_ROOTS: Final[frozenset[str]] = frozenset(
         "transformers",
     }
 )
-_NETWORK_MODULE_ROOTS: Final[frozenset[str]] = frozenset(
-    {"aiohttp", "httpx", "requests"}
-)
+_NETWORK_MODULE_ROOTS: Final[frozenset[str]] = frozenset({"aiohttp", "httpx", "requests"})
 
 
 class DeterministicDoctorRuntimeError(RuntimeError):
@@ -115,19 +112,14 @@ class DoctorRuntimeStageUnavailable(DeterministicDoctorRuntimeError):
         *,
         cause: BaseException | None = None,
     ) -> None:
-        self.stage = (
-            stage.value if isinstance(stage, DoctorRuntimeStage) else str(stage)
-        )
+        self.stage = stage.value if isinstance(stage, DoctorRuntimeStage) else str(stage)
         self.remediation = str(remediation)
-        message = (
-            f"stage {self.stage!r} is unavailable ({reason_code}); "
-            f"{self.remediation}"
-        )
+        message = f"stage {self.stage!r} is unavailable ({reason_code}); {self.remediation}"
         super().__init__(reason_code, message)
         self.__cause__ = cause
 
 
-class DoctorRuntimeStage(str, Enum):
+class DoctorRuntimeStage(StrEnum):
     """Closed lazy production pipeline."""
 
     EVIDENCE = "evidence"
@@ -301,8 +293,7 @@ class DeterministicDoctorRuntimeReport:
             "result": self.result.to_dict(),
             "evidence": self.evidence.to_dict() if self.evidence is not None else None,
             "stage_receipts": {
-                str(key): dict(value)
-                for key, value in sorted(self.stage_receipts.items())
+                str(key): dict(value) for key, value in sorted(self.stage_receipts.items())
             },
         }
 
@@ -363,10 +354,7 @@ class DeterministicDoctorBackendFactory:
     def __init__(
         self,
         *,
-        stage_factories: Mapping[
-            DoctorRuntimeStage | str, Callable[[], Any] | Any
-        ]
-        | None = None,
+        stage_factories: Mapping[DoctorRuntimeStage | str, Callable[[], Any] | Any] | None = None,
         deterministic: bool = True,
     ) -> None:
         loaders = _default_stage_loaders()
@@ -443,9 +431,7 @@ class DeterministicDoctorBackendFactory:
             return tuple(stage.value for stage in _STAGE_ORDER if stage in self._instances)
 
     def get(self, stage: DoctorRuntimeStage | str) -> Any:
-        selected = (
-            stage if isinstance(stage, DoctorRuntimeStage) else DoctorRuntimeStage(stage)
-        )
+        selected = stage if isinstance(stage, DoctorRuntimeStage) else DoctorRuntimeStage(stage)
         with self._lock:
             if selected in self._instances:
                 return self._instances[selected]
@@ -565,9 +551,7 @@ def _submodule_records(entries: Sequence[Any]) -> tuple[Mapping[str, Any], ...]:
                     "commit_id": str(getattr(entry, "commit_id", "") or ""),
                     "depth": int(getattr(entry, "depth", 0)),
                     "available": bool(getattr(entry, "available", False)),
-                    "reason_code": str(
-                        getattr(entry, "reason_code", "configured_submodule")
-                    ),
+                    "reason_code": str(getattr(entry, "reason_code", "configured_submodule")),
                 }
             )
         )
@@ -621,9 +605,7 @@ class DeterministicDoctorRuntime:
             backends=DoctorStageBackends(
                 diagnose=self._diagnose_backend,
                 plan=self._plan_backend,
-                synthesis=self._deferred_stage_backend(
-                    DoctorRuntimeStage.SYNTHESIS_PREVIEW
-                ),
+                synthesis=self._deferred_stage_backend(DoctorRuntimeStage.SYNTHESIS_PREVIEW),
                 impact=self._deferred_stage_backend(DoctorRuntimeStage.IMPACT),
                 transaction=self._transaction_backend,
                 fixed_point=self._deferred_stage_backend(DoctorRuntimeStage.FIXED_POINT),
@@ -705,22 +687,23 @@ class DeterministicDoctorRuntime:
             )
 
         # Report/plan operations can be invoked without caller-authored JSON.
-        if operation in {
-            DoctorOperation.INSPECT.value,
-            DoctorOperation.EXPLAIN.value,
-            DoctorOperation.PLAN.value,
-            DoctorOperation.REPAIR.value,
-        } and "snapshot" not in payload:
+        if (
+            operation
+            in {
+                DoctorOperation.INSPECT.value,
+                DoctorOperation.EXPLAIN.value,
+                DoctorOperation.PLAN.value,
+                DoctorOperation.REPAIR.value,
+            }
+            and "snapshot" not in payload
+        ):
             evidence = self.build_evidence()
             payload["snapshot"] = evidence.snapshot.to_dict()
             payload.setdefault("roots", evidence.snapshot.roots.to_dict())
             payload.setdefault(
                 "finding_ids",
                 tuple(
-                    str(
-                        getattr(item, "finding_id", "")
-                        or getattr(item, "content_id", "")
-                    )
+                    str(getattr(item, "finding_id", "") or getattr(item, "content_id", ""))
                     for item in evidence.findings
                 ),
             )
@@ -760,8 +743,7 @@ class DeterministicDoctorRuntime:
                     continue
                 if (
                     len(diagnostic_paths_list) >= MAX_DIAGNOSTIC_SOURCE_PATHS
-                    or diagnostic_bytes + item.byte_count
-                    > MAX_DIAGNOSTIC_TOTAL_BYTES
+                    or diagnostic_bytes + item.byte_count > MAX_DIAGNOSTIC_TOTAL_BYTES
                 ):
                     bounded_sources = True
                     continue
@@ -802,9 +784,7 @@ class DeterministicDoctorRuntime:
             }
             return bundle
 
-    def _enumerate_sources(
-        self, view: Any
-    ) -> tuple[DoctorSourceInventoryEntry, ...]:
+    def _enumerate_sources(self, view: Any) -> tuple[DoctorSourceInventoryEntry, ...]:
         from ..analysis.repository_snapshot import CoverageKind, EntryKind
 
         rows: dict[str, DoctorSourceInventoryEntry] = {}
@@ -816,9 +796,7 @@ class DeterministicDoctorRuntime:
                 if disposition.entry_kind is not EntryKind.REGULAR:
                     continue
                 relative = (
-                    str(PurePosixPath(prefix, disposition.path))
-                    if prefix
-                    else disposition.path
+                    str(PurePosixPath(prefix, disposition.path)) if prefix else disposition.path
                 )
                 candidate = self.checkout_root.joinpath(*PurePosixPath(relative).parts)
                 try:
@@ -1042,8 +1020,7 @@ class DeterministicDoctorRuntime:
                 "automatic_fallback": False,
             },
             stage_refs={
-                name: str(value.get("reason_code", ""))
-                for name, value in receipts.items()
+                name: str(value.get("reason_code", "")) for name, value in receipts.items()
             },
         )
 
@@ -1117,12 +1094,239 @@ def create_deterministic_doctor_runtime(
     return DeterministicDoctorRuntime(checkout_root=checkout_root, **kwargs)
 
 
+# ---------------------------------------------------------------------------
+# DCR-053 fixed-point projection (no Doctor service/stage invocation)
+# ---------------------------------------------------------------------------
+
+DCR_DOCTOR_FIXED_POINT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/dcr-doctor-fixed-point@1"
+)
+
+
+class DoctorFixedPointStateKind(StrEnum):
+    OPEN = "open"
+    PROVED = "proved"
+    REFUTED = "refuted"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class DoctorFixedPointState:
+    """One closed evidence state; it carries no source, command, or callback."""
+
+    state_id: str
+    kind: DoctorFixedPointStateKind
+    progress_measure: int
+    finding_id: str
+    transform_id: str
+    evidence_cid: str
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.kind, DoctorFixedPointStateKind)
+            or type(self.progress_measure) is not int
+            or self.progress_measure < 0
+            or not all(
+                isinstance(value, str) and value
+                for value in (self.state_id, self.finding_id, self.transform_id, self.evidence_cid)
+            )
+        ):
+            raise DeterministicDoctorRuntimeError("dcr053_state_invalid")
+        body = {
+            "kind": self.kind.value,
+            "progress_measure": self.progress_measure,
+            "finding_id": self.finding_id,
+            "transform_id": self.transform_id,
+            "evidence_cid": self.evidence_cid,
+        }
+        if self.state_id != content_identity(body):
+            raise DeterministicDoctorRuntimeError("dcr053_state_id_stale_or_forged")
+
+
+@dataclass(frozen=True)
+class DoctorFixedPointResult:
+    disposition: DeterministicRepairDisposition
+    reason_code: str
+    finding_id: str = ""
+    transform_id: str = ""
+    roots_cid: str = ""
+    state_ids: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        body = {
+            "schema": DCR_DOCTOR_FIXED_POINT_SCHEMA,
+            "interface": DETERMINISTIC_DOCTOR_RUNTIME_INTERFACE,
+            "authoritative": False,
+            "execution_authorized": False,
+            "mutation_authorized": False,
+            "completion_authorized": False,
+            "disposition": self.disposition.value,
+            "reason_code": self.reason_code,
+            "finding_id": self.finding_id,
+            "transform_id": self.transform_id,
+            "roots_cid": self.roots_cid,
+            "state_ids": list(self.state_ids),
+            "model_call_count": 0,
+            "provider_call_count": 0,
+            "network_call_count": 0,
+        }
+        return {**body, "fixed_point_cid": content_identity(body)}
+
+
+def _dcr053_result(
+    disposition: DeterministicRepairDisposition,
+    reason_code: str,
+    *,
+    finding_id: str = "",
+    transform_id: str = "",
+    roots_cid: str = "",
+    states: Sequence[DoctorFixedPointState] = (),
+) -> DoctorFixedPointResult:
+    return DoctorFixedPointResult(
+        disposition=disposition,
+        reason_code=reason_code,
+        finding_id=finding_id,
+        transform_id=transform_id,
+        roots_cid=roots_cid,
+        state_ids=tuple(item.state_id for item in states),
+    )
+
+
+def evaluate_deterministic_doctor_fixed_point(
+    *,
+    finding: Any,
+    transform: Any,
+    dcr035_gate: Any,
+    roots: Mapping[str, Any],
+    states: tuple[DoctorFixedPointState, ...],
+    maximum_states: int,
+) -> DoctorFixedPointResult:
+    """Evaluate a bounded evidence sequence without retrying or executing a repair."""
+
+    from ..proof.ir_logic_application import (
+        IrLogicRequiredGateDisposition,
+        IrLogicRequiredGateResult,
+    )
+    from ..sca_doctor_bridge import (
+        DoctorFinding,
+        DoctorFindingDisposition,
+        DoctorTransform,
+        DoctorTransformDisposition,
+    )
+
+    if (
+        not isinstance(finding, DoctorFinding)
+        or finding.disposition is not DoctorFindingDisposition.FINDING
+        or not isinstance(transform, DoctorTransform)
+        or transform.disposition is not DoctorTransformDisposition.TRANSFORM
+        or transform.finding_id != finding.finding_id
+        or not isinstance(dcr035_gate, IrLogicRequiredGateResult)
+        or dcr035_gate.disposition is not IrLogicRequiredGateDisposition.PASSING
+        or dcr035_gate.model_call_count != 0
+        or dcr035_gate.provider_call_count != 0
+    ):
+        return _dcr053_result(
+            DeterministicRepairDisposition.DEFER_CAPABILITY, "current_typed_inputs_required"
+        )
+    if (
+        type(maximum_states) is not int
+        or not 1 <= maximum_states <= 128
+        or not isinstance(states, tuple)
+        or any(not isinstance(item, DoctorFixedPointState) for item in states)
+    ):
+        return _dcr053_result(
+            DeterministicRepairDisposition.REJECTED, "closed_state_sequence_required"
+        )
+    root_fields = {"forest_id", "graph_cid", "epoch_cid", "findings_cid", "roots_cid", "status"}
+    if not isinstance(roots, Mapping) or set(roots) != root_fields:
+        return _dcr053_result(DeterministicRepairDisposition.REJECTED, "closed_roots_required")
+    canonical_roots = {key: roots[key] for key in root_fields if key not in {"roots_cid", "status"}}
+    if (
+        not all(isinstance(value, str) and value for value in canonical_roots.values())
+        or roots.get("roots_cid") != content_identity(canonical_roots)
+        or roots.get("forest_id") != finding.forest_id
+        or roots.get("graph_cid") != finding.graph_cid
+        or roots.get("epoch_cid") != finding.epoch_cid
+        or roots.get("findings_cid") != finding.findings_cid
+        or roots.get("roots_cid") != transform.roots_cid
+    ):
+        return _dcr053_result(
+            DeterministicRepairDisposition.DEFER_CAPABILITY, "roots_stale_or_mismatched"
+        )
+    if roots["status"] != "current_live":
+        return _dcr053_result(
+            DeterministicRepairDisposition.DEFER_CAPABILITY,
+            "transitional_or_nonlive_roots",
+            finding_id=finding.finding_id,
+            transform_id=transform.transform_id,
+            roots_cid=str(roots["roots_cid"]),
+        )
+    if len(states) > maximum_states:
+        return _dcr053_result(
+            DeterministicRepairDisposition.DEFER_CAPABILITY, "state_bound_exhausted"
+        )
+    previous_measure: int | None = None
+    seen: set[str] = set()
+    for state in states:
+        if state.finding_id != finding.finding_id or state.transform_id != transform.transform_id:
+            return _dcr053_result(DeterministicRepairDisposition.REJECTED, "state_binding_mismatch")
+        if state.state_id in seen:
+            return _dcr053_result(
+                DeterministicRepairDisposition.ABSTAIN_REVIEW,
+                "repeated_state_cycle",
+                finding_id=finding.finding_id,
+                transform_id=transform.transform_id,
+                roots_cid=str(roots["roots_cid"]),
+                states=states,
+            )
+        seen.add(state.state_id)
+        if previous_measure is not None and state.kind is DoctorFixedPointStateKind.OPEN:
+            if state.progress_measure == previous_measure:
+                return _dcr053_result(DeterministicRepairDisposition.ABSTAIN_REVIEW, "no_progress")
+            if state.progress_measure > previous_measure:
+                return _dcr053_result(
+                    DeterministicRepairDisposition.REJECTED, "progress_measure_increased"
+                )
+        previous_measure = state.progress_measure
+        if state.kind is DoctorFixedPointStateKind.PROVED:
+            return _dcr053_result(
+                DeterministicRepairDisposition.PROVED_VALID,
+                "proved_fixed_point",
+                finding_id=finding.finding_id,
+                transform_id=transform.transform_id,
+                roots_cid=str(roots["roots_cid"]),
+                states=states,
+            )
+        if state.kind is DoctorFixedPointStateKind.REFUTED:
+            return _dcr053_result(
+                DeterministicRepairDisposition.REFUTED_REPAIRABLE,
+                "refuted_repairable_no_retry",
+                finding_id=finding.finding_id,
+                transform_id=transform.transform_id,
+                roots_cid=str(roots["roots_cid"]),
+                states=states,
+            )
+        if state.kind is DoctorFixedPointStateKind.UNKNOWN:
+            return _dcr053_result(
+                DeterministicRepairDisposition.ABSTAIN_REVIEW, "unknown_terminal_state"
+            )
+    return _dcr053_result(
+        DeterministicRepairDisposition.ABSTAIN_REVIEW,
+        "empty_or_open_sequence_no_progress",
+        finding_id=finding.finding_id,
+        transform_id=transform.transform_id,
+        roots_cid=str(roots["roots_cid"]),
+        states=states,
+    )
+
+
 __all__ = [
     "DETERMINISTIC_DOCTOR_BACKEND_FACTORY_INTERFACE",
     "DETERMINISTIC_DOCTOR_EVIDENCE_BUNDLE_SCHEMA",
     "DETERMINISTIC_DOCTOR_RUNTIME_DISCOVERY_SCHEMA",
     "DETERMINISTIC_DOCTOR_RUNTIME_INTERFACE",
     "DETERMINISTIC_DOCTOR_RUNTIME_REPORT_SCHEMA",
+    "DCR_DOCTOR_FIXED_POINT_SCHEMA",
     "DeterministicDoctorBackendFactory",
     "DeterministicDoctorEvidenceBundle",
     "DeterministicDoctorRuntime",
@@ -1131,7 +1335,11 @@ __all__ = [
     "DeterministicDoctorRuntimeSafetyError",
     "DoctorRuntimeStage",
     "DoctorRuntimeStageUnavailable",
+    "DoctorFixedPointResult",
+    "DoctorFixedPointState",
+    "DoctorFixedPointStateKind",
     "DoctorSourceInventoryEntry",
     "DoctorStageCapability",
     "create_deterministic_doctor_runtime",
+    "evaluate_deterministic_doctor_fixed_point",
 ]

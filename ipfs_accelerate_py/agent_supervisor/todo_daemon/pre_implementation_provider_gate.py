@@ -10,7 +10,7 @@ the provider path unreachable.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -18,17 +18,16 @@ from .implementation_disposition import (
     ImplementationDisposition,
     ImplementationForestRoots,
     PreImplementationKernelReceipt,
-    implementation_disposition_cid,
     provider_invocation_authorized,
 )
 from .pre_implementation_kernel import (
     AnalyticalRepairCandidate,
+    AuthorityReceiptResolver,
     KernelEvaluationRequest,
     KernelEvaluationResult,
     PreImplementationKernel,
     build_pre_implementation_kernel,
 )
-
 
 PRE_IMPLEMENTATION_PROVIDER_GATE_INTERFACE: Final[str] = (
     "ImplementationDaemon@pre_implementation_kernel"
@@ -109,38 +108,24 @@ def evaluate_provider_gate(
     kernel: PreImplementationKernel | None = None,
     planner_available: bool = True,
     doctor_available: bool = True,
-    allow_legacy_residual: bool = True,
+    allow_legacy_residual: bool = False,
     policy_revision: str = "1",
+    authority_receipt_cids: Mapping[str, str] | None = None,
+    authority_receipt_resolver: AuthorityReceiptResolver | None = None,
 ) -> ProviderGateDecision:
     """Evaluate the pre-implementation kernel and return a provider gate.
 
-    When no analytical candidates exist and no residual packet is supplied,
-    ``allow_legacy_residual`` seals a synthetic residual packet identity so
-    existing model-assisted workers remain reachable until WPD-023 tightens
-    residual packet construction.  The gate still requires
-    ``residual_llm_authorized`` for any provider call.
+    ``allow_legacy_residual`` is retained only for call compatibility and has
+    no authority effect.  A packet/CID or availability boolean cannot admit a
+    provider: residual use needs all typed, resolvable authority receipts.
     """
 
     packet = str(residual_packet_cid or "").strip()
     candidates = tuple(analytical_candidates or ())
-    if (
-        allow_legacy_residual
-        and not packet
-        and not candidates
-        and planner_available
-        and doctor_available
-    ):
-        packet = implementation_disposition_cid(
-            {
-                "kind": "legacy_worker_prompt_residual",
-                "task_cid": task_cid,
-                "attempt": int(attempt),
-            }
-        )
-
     active_kernel = kernel or build_pre_implementation_kernel(
         planner_available=planner_available,
         doctor_available=doctor_available,
+        authority_receipt_resolver=authority_receipt_resolver,
     )
     # When a kernel instance is injected, leave request capability flags unset
     # so the kernel's own planner/doctor availability controls deferral.
@@ -153,6 +138,7 @@ def evaluate_provider_gate(
         policy_revision=policy_revision,
         planner_available=None if kernel is not None else planner_available,
         doctor_available=None if kernel is not None else doctor_available,
+        authority_receipt_cids=dict(authority_receipt_cids or {}),
     )
     result: KernelEvaluationResult = active_kernel.evaluate(request)
     disposition = result.disposition

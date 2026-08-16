@@ -1090,9 +1090,11 @@ def register_native_embedding_tools(manager: Any) -> None:
         tags=["native", "mcpp", "embedding"],
     )
 
+    # Distinct public name from search_tools.semantic_search so static surface
+    # extraction is not multi-match ambiguous (observed_contract_incomplete).
     manager.register_tool(
         category="embedding_tools",
-        name="semantic_search",
+        name="embedding_semantic_search",
         func=semantic_search,
         description="Perform semantic search over a vector store using embedding similarity.",
         input_schema={

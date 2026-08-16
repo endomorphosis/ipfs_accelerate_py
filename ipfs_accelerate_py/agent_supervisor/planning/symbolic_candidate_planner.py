@@ -1669,6 +1669,29 @@ class SymbolicCandidatePlanner:
         allow_model: bool = True,
         hard_gate_evaluator: HardGateEvaluator = deterministic_hard_gate_receipts,
     ) -> SymbolicCandidatePortfolio:
+        # Deep IR hook: bind Intent/Legal/Security/UI + AST/KG/vector into the
+        # frozen planning context (domain-agnostic; not SCA-taskboard-only).
+        try:
+            from .ir_logic_hooks import (
+                compose_hard_gate_with_ir,
+                prepare_planning_context,
+            )
+
+            context = prepare_planning_context(
+                context,
+                domain=str((context or {}).get("domain") or "planner"),
+            )
+            if (context or {}).get("require_ir_logic") or (
+                context or {}
+            ).get("ir_logic_bound"):
+                hard_gate_evaluator = compose_hard_gate_with_ir(
+                    hard_gate_evaluator,
+                    context=context,
+                    require_ir=bool((context or {}).get("require_ir_logic")),
+                )
+        except Exception:  # noqa: BLE001
+            pass
+
         graph = (
             obligation_graph
             if isinstance(obligation_graph, ObligationGraph)

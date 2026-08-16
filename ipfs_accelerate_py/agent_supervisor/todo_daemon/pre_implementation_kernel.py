@@ -17,7 +17,9 @@ Order of evaluation (deterministic-first):
    ambiguity signal → ``abstain_review`` (typed residual for operator; no
    provider call).
 4. Residual authorization — only when an explicit residual packet CID is
-   supplied and capabilities are present → ``residual_llm_authorized``.
+   supplied, capabilities are present, and all typed authority receipts plus
+   their exact planner/doctor/obligation view identities resolve →
+   ``residual_llm_authorized``.
 
 Fail-closed rules:
 
@@ -29,10 +31,11 @@ Fail-closed rules:
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, fields
 from typing import Any, Final, Protocol
 
+from ..proof.formal_verification_contracts import content_identity
 from .implementation_disposition import (
     ImplementationDisposition,
     ImplementationDispositionAuthorityError,
@@ -42,7 +45,6 @@ from .implementation_disposition import (
     implementation_disposition_cid,
     seal_pre_implementation_kernel_receipt,
 )
-
 
 # ---------------------------------------------------------------------------
 # Interface identity
@@ -59,6 +61,12 @@ REASON_AMBIGUOUS_CANDIDATES: Final[str] = "ambiguous_repair_candidates"
 REASON_MISSING_BACKEND: Final[str] = "missing_required_backend"
 REASON_RESIDUAL_AUTHORIZED: Final[str] = "residual_packet_authorized"
 REASON_NO_ANALYTICAL_CLOSE: Final[str] = "no_analytical_close"
+REASON_MISSING_TYPED_AUTHORITY_RECEIPTS: Final[str] = (
+    "missing_typed_resolvable_authority_receipts"
+)
+_REQUIRED_AUTHORITY_RECEIPT_KINDS: Final[tuple[str, ...]] = (
+    "planner", "doctor", "obligation", "logic", "repair",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +138,14 @@ class AnalyticalRepairCandidate:
 class AnalyticalProbe(Protocol):
     """Optional probe that returns ordered analytical repair candidates."""
 
-    def __call__(self, request: "KernelEvaluationRequest") -> Sequence[AnalyticalRepairCandidate]:
+    def __call__(self, request: KernelEvaluationRequest) -> Sequence[AnalyticalRepairCandidate]:
+        ...
+
+
+class AuthorityReceiptResolver(Protocol):
+    """Resolve an authority receipt from a reviewed durable store."""
+
+    def __call__(self, receipt_cid: str) -> Mapping[str, Any] | None:
         ...
 
 
@@ -159,6 +174,7 @@ class KernelEvaluationRequest:
     doctor_cid: str = ""
     shared_validation_command_cids: tuple[str, ...] = ()
     shared_edit_packet_cids: tuple[str, ...] = ()
+    authority_receipt_cids: Mapping[str, str] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -218,6 +234,17 @@ class KernelEvaluationRequest:
                 if str(item).strip()
             ),
         )
+        authority_receipts = self.authority_receipt_cids
+        if not isinstance(authority_receipts, Mapping):
+            raise PreImplementationKernelInputError(
+                "authority_receipt_cids must be a mapping",
+                reason_code="invalid_authority_receipts",
+            )
+        object.__setattr__(
+            self,
+            "authority_receipt_cids",
+            {str(key).strip(): str(value).strip() for key, value in authority_receipts.items()},
+        )
 
 
 @dataclass(frozen=True)
@@ -257,6 +284,7 @@ class PreImplementationKernel:
     doctor_available: bool = True
     analytical_probe: AnalyticalProbe | None = None
     allow_residual_without_explicit_packet: bool = False
+    authority_receipt_resolver: AuthorityReceiptResolver | None = None
 
     def evaluate(
         self,
@@ -321,6 +349,20 @@ class PreImplementationKernel:
             )
 
         if normalized.residual_packet_cid:
+            authority_reason = self._residual_authority_disposition(normalized)
+            if authority_reason:
+                receipt = self._seal(
+                    normalized,
+                    disposition=ImplementationDisposition.DEFER_CAPABILITY,
+                    reason_code=authority_reason,
+                    evidence_cids=normalized.evidence_cids,
+                )
+                return KernelEvaluationResult(
+                    receipt=receipt,
+                    provider_hook_count=0,
+                    analytical_candidate_count=len(candidates),
+                    reason_code=authority_reason,
+                )
             receipt = self._seal(
                 normalized,
                 disposition=ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED,
@@ -360,6 +402,21 @@ class PreImplementationKernel:
     ) -> KernelEvaluationRequest:
         if isinstance(request, KernelEvaluationRequest):
             return request
+        # Cold-import tests and plugin reloads can leave a gate holding a
+        # same-module request class from before a reload. Rebuild it through
+        # the current closed validator rather than accepting stale authority.
+        if (
+            type(request).__name__ == "KernelEvaluationRequest"
+            and type(request).__module__ == __name__
+        ):
+            payload = {
+                item.name: getattr(request, item.name)
+                for item in fields(KernelEvaluationRequest)
+            }
+            forest = payload.get("forest_roots")
+            if hasattr(forest, "to_dict"):
+                payload["forest_roots"] = forest.to_dict()
+            return self._normalize_request(payload)
         if not isinstance(request, Mapping):
             raise PreImplementationKernelInputError(
                 "request must be KernelEvaluationRequest or mapping",
@@ -377,6 +434,21 @@ class PreImplementationKernel:
         for item in candidates:
             if isinstance(item, AnalyticalRepairCandidate):
                 normalized_candidates.append(item)
+            elif (
+                type(item).__name__ == "AnalyticalRepairCandidate"
+                and type(item).__module__ == __name__
+            ):
+                normalized_candidates.append(
+                    AnalyticalRepairCandidate(
+                        candidate_id=str(getattr(item, "candidate_id", "") or ""),
+                        reason_code=str(
+                            getattr(item, "reason_code", "")
+                            or REASON_ANALYTICAL_UNIQUE_MAPPING
+                        ),
+                        closes_claim=bool(getattr(item, "closes_claim", True)),
+                        evidence_cids=tuple(getattr(item, "evidence_cids", ()) or ()),
+                    )
+                )
             elif isinstance(item, Mapping):
                 normalized_candidates.append(
                     AnalyticalRepairCandidate(
@@ -434,6 +506,59 @@ class PreImplementationKernel:
                     )
         return candidates
 
+    def _residual_authority_disposition(
+        self, request: KernelEvaluationRequest
+    ) -> str | None:
+        """Require resolvable typed receipts; booleans and CIDs are insufficient."""
+
+        resolver = self.authority_receipt_resolver
+        if resolver is None:
+            return REASON_MISSING_TYPED_AUTHORITY_RECEIPTS
+        if tuple(sorted(request.authority_receipt_cids)) != tuple(
+            sorted(_REQUIRED_AUTHORITY_RECEIPT_KINDS)
+        ):
+            return REASON_MISSING_TYPED_AUTHORITY_RECEIPTS
+        # Provider authority must bind the three public views to the exact
+        # durable receipts that supplied that authority.  Never substitute
+        # the diagnostic CIDs used by non-authorizing dispositions below.
+        required_views = {
+            "obligation": str(request.obligation_graph_cid or "").strip(),
+            "planner": str(request.plan_cid or "").strip(),
+            "doctor": str(request.doctor_cid or "").strip(),
+        }
+        if any(
+            not view_cid
+            or view_cid != request.authority_receipt_cids[kind]
+            for kind, view_cid in required_views.items()
+        ):
+            return REASON_MISSING_TYPED_AUTHORITY_RECEIPTS
+        for kind in _REQUIRED_AUTHORITY_RECEIPT_KINDS:
+            receipt_cid = request.authority_receipt_cids.get(kind, "")
+            if not receipt_cid:
+                return REASON_MISSING_TYPED_AUTHORITY_RECEIPTS
+            try:
+                resolved = resolver(receipt_cid)
+            except Exception:
+                return REASON_MISSING_TYPED_AUTHORITY_RECEIPTS
+            if not isinstance(resolved, Mapping):
+                return REASON_MISSING_TYPED_AUTHORITY_RECEIPTS
+            payload = dict(resolved)
+            supplied_identity = str(
+                payload.pop("content_id", payload.pop("cid", "")) or ""
+            )
+            if (
+                supplied_identity != receipt_cid
+                or content_identity(payload) != receipt_cid
+                or payload.get("receipt_kind") != kind
+                or payload.get("task_cid") != request.task_cid
+                or payload.get("repository_forest_cid")
+                != request.forest_roots.repository_forest_cid
+                or not isinstance(payload.get("schema"), str)
+                or not payload["schema"].startswith("ipfs_accelerate_py/")
+            ):
+                return REASON_MISSING_TYPED_AUTHORITY_RECEIPTS
+        return None
+
     def _view_cids(
         self,
         request: KernelEvaluationRequest,
@@ -441,7 +566,14 @@ class PreImplementationKernel:
         disposition: ImplementationDisposition,
         reason_code: str,
     ) -> tuple[str, str, str]:
-        """Derive stable dual-view CIDs from the evaluation identity."""
+        """Return explicit views or non-authorizing diagnostic identities.
+
+        ``residual_llm_authorized`` is checked by
+        :meth:`_residual_authority_disposition` before this method runs, so
+        its three views are explicit receipt CIDs.  Other dispositions may
+        retain deterministic synthetic *diagnostic* view CIDs for backwards
+        compatible observability; they never convey provider authority.
+        """
 
         base = {
             "task_cid": request.task_cid,
@@ -513,6 +645,7 @@ def build_pre_implementation_kernel(
     planner_available: bool = True,
     doctor_available: bool = True,
     analytical_probe: AnalyticalProbe | None = None,
+    authority_receipt_resolver: AuthorityReceiptResolver | None = None,
 ) -> PreImplementationKernel:
     """Construct a production-default pre-implementation kernel."""
 
@@ -520,6 +653,7 @@ def build_pre_implementation_kernel(
         planner_available=planner_available,
         doctor_available=doctor_available,
         analytical_probe=analytical_probe,
+        authority_receipt_resolver=authority_receipt_resolver,
     )
 
 
@@ -529,6 +663,7 @@ def evaluate_pre_implementation(
     planner_available: bool = True,
     doctor_available: bool = True,
     analytical_probe: AnalyticalProbe | None = None,
+    authority_receipt_resolver: AuthorityReceiptResolver | None = None,
 ) -> KernelEvaluationResult:
     """Module-level convenience wrapper around :meth:`PreImplementationKernel.evaluate`."""
 
@@ -536,6 +671,7 @@ def evaluate_pre_implementation(
         planner_available=planner_available,
         doctor_available=doctor_available,
         analytical_probe=analytical_probe,
+        authority_receipt_resolver=authority_receipt_resolver,
     ).evaluate(request)
 
 
@@ -547,10 +683,12 @@ __all__ = [
     "REASON_AMBIGUOUS_CANDIDATES",
     "REASON_ANALYTICAL_UNIQUE_MAPPING",
     "REASON_MISSING_BACKEND",
+    "REASON_MISSING_TYPED_AUTHORITY_RECEIPTS",
     "REASON_NO_ANALYTICAL_CLOSE",
     "REASON_RESIDUAL_AUTHORIZED",
     "AnalyticalProbe",
     "AnalyticalRepairCandidate",
+    "AuthorityReceiptResolver",
     "KernelEvaluationRequest",
     "KernelEvaluationResult",
     "PreImplementationKernel",

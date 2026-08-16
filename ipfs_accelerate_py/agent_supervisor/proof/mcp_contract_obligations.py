@@ -25,10 +25,12 @@ required assurance level.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
 
@@ -1377,6 +1379,501 @@ def compile_code_proof_obligation(
     return compile_contract_claim(claim, **bindings).code_obligation
 
 
+# DCR-031 is intentionally separate from the historical catalog compiler
+# above.  It turns only DCR-030 candidate context and a canonically verified
+# DCR-021 graph into *open* obligations; it never promotes a profile draft,
+# a graph edge, or LogicIR normalization into a proof result.
+MCP_GRAPH_OBLIGATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/mcp-graph-contract-obligation@1"
+)
+MCP_GRAPH_OBLIGATION_COMPILATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/mcp-graph-contract-obligation-compilation@1"
+)
+
+
+class McpObligationFamily(str, Enum):
+    """Closed DCR-031 obligation coverage families."""
+
+    JSONRPC_BASELINE = "jsonrpc_baseline"
+    NEGOTIATION = "negotiation"
+    PROFILE_A = "profile_a"
+    PROFILE_B = "profile_b"
+    PROFILE_C = "profile_c"
+    PROFILE_D = "profile_d"
+    PROFILE_E = "profile_e"
+    PROFILE_F = "profile_f"
+    REGISTRY_DISPATCH = "registry_dispatch"
+    RUNTIME_IDENTITY = "runtime_identity"
+    MEDIATION = "mediation"
+    EVIDENCE_LIFECYCLE = "evidence_lifecycle"
+
+
+class McpObligationFragment(str, Enum):
+    """Closed semantic fragments; none is a theorem result."""
+
+    JSONRPC = "jsonrpc"
+    NEGOTIATION = "negotiation"
+    IDL = "idl"
+    CID = "cid"
+    DELEGATION = "delegation"
+    POLICY = "policy"
+    TRANSPORT = "transport"
+    EVENT_DAG = "event_dag"
+    REGISTRY = "registry"
+    MEDIATION = "mediation"
+    RUNTIME_IDENTITY = "runtime_identity"
+    EFFECT = "effect"
+    UNSUPPORTED = "unsupported"
+
+
+class McpObligationBackend(str, Enum):
+    """The closed non-proving backends available to this compiler."""
+
+    LOGIC_IR_CANDIDATE = "logic_ir_candidate"
+    UNSUPPORTED = "unsupported"
+
+
+class McpObligationDisposition(str, Enum):
+    """No DCR-031 disposition is a proof or completion assertion."""
+
+    OPEN = "open"
+    UNSUPPORTED = "unsupported"
+    INTEGRATION_PENDING = "integration_pending"
+
+
+class McpObligationUnsupportedReason(str, Enum):
+    """Closed reasons prevent caller prose from being mistaken for evidence."""
+
+    GRAPH_SEMANTIC_EDGE_ABSENT = "graph_semantic_edge_absent"
+    PROFILE_DECLARATION_DRAFT_NON_AUTHORITATIVE = (
+        "profile_declaration_draft_non_authoritative"
+    )
+    PROFILE_BACKEND_UNAVAILABLE = "profile_backend_unavailable"
+    DCR030_CANDIDATE_INVALID = "dcr030_candidate_invalid"
+    DCR021_GRAPH_INVALID = "dcr021_graph_invalid"
+    DCR021_GRAPH_BLOCKED = "dcr021_graph_blocked"
+
+
+_DCR021_RELATION_BINDINGS: Final[
+    Mapping[str, tuple[McpObligationFamily, McpObligationFragment]]
+] = MappingProxyType(
+    {
+        "expects_descriptor": (
+            McpObligationFamily.JSONRPC_BASELINE,
+            McpObligationFragment.JSONRPC,
+        ),
+        "binds_orb_idl": (McpObligationFamily.PROFILE_A, McpObligationFragment.IDL),
+        "defines_method_schema": (McpObligationFamily.PROFILE_A, McpObligationFragment.IDL),
+        "binds_mediator_route": (McpObligationFamily.MEDIATION, McpObligationFragment.MEDIATION),
+        "routes_to_observed_dispatcher": (
+            McpObligationFamily.REGISTRY_DISPATCH,
+            McpObligationFragment.REGISTRY,
+        ),
+        "dispatches_to_handler": (
+            McpObligationFamily.REGISTRY_DISPATCH,
+            McpObligationFragment.REGISTRY,
+        ),
+        "performs_effect": (
+            McpObligationFamily.REGISTRY_DISPATCH,
+            McpObligationFragment.EFFECT,
+        ),
+        "emits_receipt_runtime_identity": (
+            McpObligationFamily.RUNTIME_IDENTITY,
+            McpObligationFragment.RUNTIME_IDENTITY,
+        ),
+    }
+)
+_PROFILE_FAMILIES: Final[tuple[McpObligationFamily, ...]] = (
+    McpObligationFamily.PROFILE_A,
+    McpObligationFamily.PROFILE_B,
+    McpObligationFamily.PROFILE_C,
+    McpObligationFamily.PROFILE_D,
+    McpObligationFamily.PROFILE_E,
+    McpObligationFamily.PROFILE_F,
+)
+_FAMILY_FRAGMENT: Final[Mapping[McpObligationFamily, McpObligationFragment]] = (
+    MappingProxyType(
+        {
+            McpObligationFamily.JSONRPC_BASELINE: McpObligationFragment.JSONRPC,
+            McpObligationFamily.NEGOTIATION: McpObligationFragment.NEGOTIATION,
+            McpObligationFamily.PROFILE_A: McpObligationFragment.IDL,
+            McpObligationFamily.PROFILE_B: McpObligationFragment.CID,
+            McpObligationFamily.PROFILE_C: McpObligationFragment.DELEGATION,
+            McpObligationFamily.PROFILE_D: McpObligationFragment.POLICY,
+            McpObligationFamily.PROFILE_E: McpObligationFragment.TRANSPORT,
+            McpObligationFamily.PROFILE_F: McpObligationFragment.EVENT_DAG,
+            McpObligationFamily.REGISTRY_DISPATCH: McpObligationFragment.REGISTRY,
+            McpObligationFamily.RUNTIME_IDENTITY: McpObligationFragment.RUNTIME_IDENTITY,
+            McpObligationFamily.MEDIATION: McpObligationFragment.MEDIATION,
+            McpObligationFamily.EVIDENCE_LIFECYCLE: McpObligationFragment.CID,
+        }
+    )
+)
+_MCP_PROFILE_DRAFT_RELATIVE_PATH: Final = "Mcp-Plus-Plus/docs/spec/mcp++-profiles-draft.md"
+
+
+def _profile_declaration_binding() -> dict[str, str]:
+    """Read the current MCP++ profile registry without granting it authority.
+
+    The discoverable registry declares itself draft/non-normative.  Its exact
+    bytes are useful provenance for an unsupported obligation, never a proof
+    or an implementation capability.
+    """
+
+    try:
+        path = Path(__file__).resolve().parents[5] / _MCP_PROFILE_DRAFT_RELATIVE_PATH
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return {
+            "path": _MCP_PROFILE_DRAFT_RELATIVE_PATH,
+            "status": "unavailable",
+        }
+    return {
+        "path": _MCP_PROFILE_DRAFT_RELATIVE_PATH,
+        "sha256": "sha256:" + digest,
+        "status": "draft_non_normative",
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class McpGraphContractObligation:
+    """One exact graph edge (or explicit gap), retained as an open obligation."""
+
+    obligation_id: str
+    family: McpObligationFamily
+    fragment: McpObligationFragment
+    backend: McpObligationBackend
+    disposition: McpObligationDisposition
+    graph_cid: str
+    candidate_cid: str
+    input_cids: tuple[str, ...]
+    edge_id: str = ""
+    direction: tuple[str, str] = ()
+    relation: str = ""
+    temporal_authority: str = ""
+    cid_bindings: tuple[str, ...] = ()
+    schema_bindings: tuple[str, ...] = ()
+    effect_semantics: str = ""
+    unsupported_reason: McpObligationUnsupportedReason | None = None
+    profile_declaration: Mapping[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": MCP_GRAPH_OBLIGATION_SCHEMA,
+            "obligation_id": self.obligation_id,
+            "family": self.family.value,
+            "fragment": self.fragment.value,
+            "backend": self.backend.value,
+            "disposition": self.disposition.value,
+            "graph_cid": self.graph_cid,
+            "candidate_cid": self.candidate_cid,
+            "input_cids": list(self.input_cids),
+            "edge_id": self.edge_id,
+            "direction": list(self.direction),
+            "relation": self.relation,
+            "temporal_authority": self.temporal_authority,
+            "cid_bindings": list(self.cid_bindings),
+            "schema_bindings": list(self.schema_bindings),
+            "effect_semantics": self.effect_semantics,
+            "unsupported_reason": (
+                self.unsupported_reason.value if self.unsupported_reason else None
+            ),
+            "profile_declaration": dict(self.profile_declaration),
+            "proof_status": "not_proved",
+            "completion_authoritative": False,
+            "mutation_authorized": False,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class McpGraphObligationCompilation:
+    """Canonical DCR-031 output, explicitly non-authoritative and non-proving."""
+
+    disposition: McpObligationDisposition
+    graph_cid: str
+    candidate_cid: str
+    input_cids: tuple[str, ...]
+    obligations: tuple[McpGraphContractObligation, ...]
+    reason: McpObligationUnsupportedReason | None = None
+
+    @property
+    def compilation_cid(self) -> str:
+        return content_identity(self.to_dict(include_cid=False))
+
+    def to_dict(self, *, include_cid: bool = True) -> dict[str, Any]:
+        body = {
+            "schema": MCP_GRAPH_OBLIGATION_COMPILATION_SCHEMA,
+            "interface": MCP_CONTRACT_OBLIGATIONS_INTERFACE,
+            "authoritative": False,
+            "completion_authoritative": False,
+            "mutation_authorized": False,
+            "model_call_count": 0,
+            "disposition": self.disposition.value,
+            "graph_cid": self.graph_cid,
+            "candidate_cid": self.candidate_cid,
+            "input_cids": list(self.input_cids),
+            "reason": self.reason.value if self.reason else None,
+            "obligations": [item.to_dict() for item in self.obligations],
+        }
+        if include_cid:
+            body["compilation_cid"] = self.compilation_cid
+        return body
+
+
+def _valid_dcr030_candidate(candidate: Any) -> tuple[bool, str, tuple[str, ...]]:
+    """Admit only the typed, candidate-context-only DCR-030 result."""
+
+    from .ir_integration import DatasetsLogicIrDisposition, DatasetsLogicIrResult
+
+    if not isinstance(candidate, DatasetsLogicIrResult):
+        return False, "", ()
+    input_cids = tuple(candidate.input_cids)
+    binding = candidate.module_binding
+    identity = candidate.normalized_ir.get("identity")
+    if (
+        candidate.disposition is not DatasetsLogicIrDisposition.NORMALIZED
+        or candidate.model_call_count != 0
+        or candidate.mutation_authorized
+        or not input_cids
+        or tuple(sorted(set(input_cids))) != input_cids
+        or candidate.normalized_ir.get("integration_status") != "candidate_context_only"
+        or candidate.normalized_ir.get("input_schema")
+        != "ipfs_accelerate_py/agent-supervisor/datasets-logic-ir-input@1"
+        or not all(isinstance(item, str) and item for item in input_cids)
+        or not isinstance(binding, Mapping)
+        or not all(
+            isinstance(binding.get(field), str) and binding[field]
+            for field in ("module", "origin", "version", "content_digest")
+        )
+        or not isinstance(identity, Mapping)
+        or not all(
+            isinstance(identity.get(field), str) and identity[field]
+            for field in ("cid", "digest", "profile", "logic_ir_interface")
+        )
+    ):
+        return False, "", ()
+    return True, content_identity(candidate.to_dict()), input_cids
+
+
+def _canonical_dcr021_graph(
+    graph: Any,
+) -> tuple[dict[str, Any] | None, str]:
+    """Verify the exact DCR-021 graph body, CID, and canonical serialization."""
+
+    from ..analysis.mcp_contract_graph import (
+        MCP_CONTRACT_GRAPH_INTERFACE,
+        MCP_CONTRACT_GRAPH_SCHEMA,
+    )
+    from .formal_verification_contracts import canonical_json_bytes
+
+    if not isinstance(graph, Mapping):
+        return None, ""
+    value = dict(graph)
+    graph_cid = value.pop("graph_cid", "")
+    encoded = value.pop("canonical_bytes", "")
+    if (
+        value.get("schema") != MCP_CONTRACT_GRAPH_SCHEMA
+        or value.get("interface") != MCP_CONTRACT_GRAPH_INTERFACE
+        or value.get("authoritative") is not False
+        or not isinstance(encoded, str)
+        or encoded != canonical_json_bytes(value).decode("utf-8")
+        or graph_cid != content_identity(value)
+    ):
+        return None, ""
+    nodes = value.get("nodes")
+    edges = value.get("edges")
+    if not isinstance(nodes, Sequence) or isinstance(nodes, (str, bytes)):
+        return None, ""
+    if not isinstance(edges, Sequence) or isinstance(edges, (str, bytes)):
+        return None, ""
+    node_ids = {
+        node.get("id")
+        for node in nodes
+        if isinstance(node, Mapping) and isinstance(node.get("id"), str) and node["id"]
+    }
+    if len(node_ids) != len(nodes):
+        return None, ""
+    seen_edges: set[str] = set()
+    for edge in edges:
+        if not isinstance(edge, Mapping):
+            return None, ""
+        edge_id = edge.get("id")
+        relation = edge.get("relation")
+        if (
+            not isinstance(edge_id, str)
+            or edge_id in seen_edges
+            or relation not in _DCR021_RELATION_BINDINGS
+            or edge.get("source") not in node_ids
+            or edge.get("target") not in node_ids
+            or not isinstance(edge.get("authority_class"), str)
+            or not edge["authority_class"]
+        ):
+            return None, ""
+        seen_edges.add(edge_id)
+    return value, graph_cid
+
+
+def _graph_obligation(
+    *,
+    family: McpObligationFamily,
+    fragment: McpObligationFragment,
+    graph_cid: str,
+    candidate_cid: str,
+    input_cids: tuple[str, ...],
+    edge: Mapping[str, Any] | None,
+    unsupported_reason: McpObligationUnsupportedReason | None = None,
+) -> McpGraphContractObligation:
+    edge_id = str(edge.get("id")) if edge else ""
+    source = str(edge.get("source")) if edge else ""
+    target = str(edge.get("target")) if edge else ""
+    relation = str(edge.get("relation")) if edge else ""
+    authority = str(edge.get("authority_class")) if edge else ""
+    disposition = (
+        McpObligationDisposition.UNSUPPORTED
+        if unsupported_reason
+        else McpObligationDisposition.OPEN
+    )
+    backend = (
+        McpObligationBackend.UNSUPPORTED
+        if unsupported_reason
+        else McpObligationBackend.LOGIC_IR_CANDIDATE
+    )
+    effect = (
+        "observed_provider_effect_edge"
+        if relation == "performs_effect"
+        else "no_effect_edge"
+    )
+    seed = {
+        "family": family.value,
+        "fragment": fragment.value,
+        "graph_cid": graph_cid,
+        "candidate_cid": candidate_cid,
+        "edge_id": edge_id,
+        "unsupported_reason": unsupported_reason.value if unsupported_reason else None,
+    }
+    return McpGraphContractObligation(
+        obligation_id=content_identity(seed),
+        family=family,
+        fragment=fragment,
+        backend=backend,
+        disposition=disposition,
+        graph_cid=graph_cid,
+        candidate_cid=candidate_cid,
+        input_cids=input_cids,
+        edge_id=edge_id,
+        direction=(source, target) if edge else (),
+        relation=relation,
+        temporal_authority=authority,
+        cid_bindings=tuple(sorted({graph_cid, candidate_cid, *input_cids})),
+        schema_bindings=(
+            MCP_GRAPH_OBLIGATION_SCHEMA,
+            MCP_GRAPH_OBLIGATION_COMPILATION_SCHEMA,
+        ),
+        effect_semantics=effect,
+        unsupported_reason=unsupported_reason,
+        profile_declaration=(
+            _profile_declaration_binding() if family in _PROFILE_FAMILIES else {}
+        ),
+    )
+
+
+def compile_dcr031_mcp_contract_obligations(
+    candidate: Any,
+    *,
+    graph: Mapping[str, Any],
+) -> McpGraphObligationCompilation:
+    """Compile open obligations from one DCR-030 candidate and exact DCR-021 graph.
+
+    DCR-030 remains candidate context only.  Profile declarations A--F are
+    known draft material in the current MCP++ tree, so absence of a graph edge
+    or a verifier backend is represented as a typed unsupported obligation.
+    """
+
+    candidate_ok, candidate_cid, input_cids = _valid_dcr030_candidate(candidate)
+    graph_body, graph_cid = _canonical_dcr021_graph(graph)
+    if not candidate_ok:
+        return McpGraphObligationCompilation(
+            disposition=McpObligationDisposition.INTEGRATION_PENDING,
+            graph_cid=graph_cid,
+            candidate_cid="",
+            input_cids=(),
+            obligations=(),
+            reason=McpObligationUnsupportedReason.DCR030_CANDIDATE_INVALID,
+        )
+    if graph_body is None or graph_cid not in input_cids:
+        return McpGraphObligationCompilation(
+            disposition=McpObligationDisposition.INTEGRATION_PENDING,
+            graph_cid=graph_cid,
+            candidate_cid=candidate_cid,
+            input_cids=input_cids,
+            obligations=(),
+            reason=McpObligationUnsupportedReason.DCR021_GRAPH_INVALID,
+        )
+    if graph_body.get("blockers"):
+        return McpGraphObligationCompilation(
+            disposition=McpObligationDisposition.INTEGRATION_PENDING,
+            graph_cid=graph_cid,
+            candidate_cid=candidate_cid,
+            input_cids=input_cids,
+            obligations=(),
+            reason=McpObligationUnsupportedReason.DCR021_GRAPH_BLOCKED,
+        )
+    obligations: list[McpGraphContractObligation] = []
+    represented: set[McpObligationFamily] = set()
+    for edge in sorted(graph_body["edges"], key=lambda item: str(item["id"])):
+        family, fragment = _DCR021_RELATION_BINDINGS[str(edge["relation"])]
+        obligations.append(
+            _graph_obligation(
+                family=family,
+                fragment=fragment,
+                graph_cid=graph_cid,
+                candidate_cid=candidate_cid,
+                input_cids=input_cids,
+                edge=edge,
+            )
+        )
+        represented.add(family)
+        if edge["relation"] == "emits_receipt_runtime_identity":
+            obligations.append(
+                _graph_obligation(
+                    family=McpObligationFamily.EVIDENCE_LIFECYCLE,
+                    fragment=McpObligationFragment.CID,
+                    graph_cid=graph_cid,
+                    candidate_cid=candidate_cid,
+                    input_cids=input_cids,
+                    edge=edge,
+                )
+            )
+            represented.add(McpObligationFamily.EVIDENCE_LIFECYCLE)
+    for family in McpObligationFamily:
+        if family in represented:
+            continue
+        fragment = _FAMILY_FRAGMENT[family]
+        reason = (
+            McpObligationUnsupportedReason.PROFILE_DECLARATION_DRAFT_NON_AUTHORITATIVE
+            if family in _PROFILE_FAMILIES
+            else McpObligationUnsupportedReason.GRAPH_SEMANTIC_EDGE_ABSENT
+        )
+        obligations.append(
+            _graph_obligation(
+                family=family,
+                fragment=fragment,
+                graph_cid=graph_cid,
+                candidate_cid=candidate_cid,
+                input_cids=input_cids,
+                edge=None,
+                unsupported_reason=reason,
+            )
+        )
+    return McpGraphObligationCompilation(
+        disposition=McpObligationDisposition.OPEN,
+        graph_cid=graph_cid,
+        candidate_cid=candidate_cid,
+        input_cids=input_cids,
+        obligations=tuple(sorted(obligations, key=lambda item: item.obligation_id)),
+    )
+
+
 __all__ = [
     "MCP_CONTRACT_OBLIGATIONS_INTERFACE",
     "MCP_CONTRACT_OBLIGATION_INTERFACE",
@@ -1384,6 +1881,8 @@ __all__ = [
     "MCP_LOGIC_VIEW_SCHEMA",
     "MCP_LOGIC_EXPRESSION_SCHEMA",
     "MCP_CONTRACT_OBLIGATION_VERSION",
+    "MCP_GRAPH_OBLIGATION_SCHEMA",
+    "MCP_GRAPH_OBLIGATION_COMPILATION_SCHEMA",
     "MCP_LOGIC_IR_DOMAIN",
     "MCP_LOGIC_IR_SCHEMA_VERSION",
     "MCP_OBLIGATION_COMPILER_ID",
@@ -1394,6 +1893,13 @@ __all__ = [
     "McpContractObligationError",
     "LogicFragment",
     "LogicOperator",
+    "McpObligationFamily",
+    "McpObligationFragment",
+    "McpObligationBackend",
+    "McpObligationDisposition",
+    "McpObligationUnsupportedReason",
+    "McpGraphContractObligation",
+    "McpGraphObligationCompilation",
     "McpLogicView",
     "CanonicalMcpLogicView",
     "McpContractObligation",
@@ -1403,4 +1909,5 @@ __all__ = [
     "compile_mcp_contract_obligation",
     "compile_code_proof_obligation",
     "compile_contract_claims",
+    "compile_dcr031_mcp_contract_obligations",
 ]

@@ -23,6 +23,7 @@ contract patterns; retain one assurance lattice (no parallel authority model).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -348,31 +349,46 @@ def is_prose_or_unreviewed_source(
     return False
 
 
+def _natural_language_tokens(text: str) -> frozenset[str]:
+    """Tokenize claim text for closed NL-marker matching.
+
+    Underscore- and hyphen-connected identifiers stay as one token so reviewed
+    schema field paths such as ``freeform_touch`` do not false-positive the
+    ``freeform`` marker. Hyphens normalize to underscores before split.
+    """
+
+    normalized = str(text or "").strip().lower().replace("-", "_")
+    if not normalized:
+        return frozenset()
+    return frozenset(
+        token for token in re.findall(r"[a-z0-9_]+", normalized) if token
+    )
+
+
 def reject_natural_language_claim(payload: Mapping[str, Any] | str | None) -> None:
     """Fail closed when freeform / natural-language claim markers are present."""
 
     if payload is None:
         return
     if isinstance(payload, str):
-        lowered = payload.strip().lower()
+        tokens = _natural_language_tokens(payload)
         for marker in _NL_MARKERS:
-            if marker in lowered.replace("-", "_"):
+            if marker in tokens:
                 raise UnreviewedContractError(
                     f"natural-language / unreviewed prose fails closed: {marker}"
                 )
         return
     if not isinstance(payload, Mapping):
         raise McpContractCatalogError("claim payload must be a mapping or string")
-    blob_parts: list[str] = []
+    tokens: set[str] = set()
     for key, value in payload.items():
-        blob_parts.append(str(key).lower())
+        tokens.update(_natural_language_tokens(str(key)))
         if isinstance(value, str):
-            blob_parts.append(value.lower())
+            tokens.update(_natural_language_tokens(value))
         elif value is True or value == 1:
-            blob_parts.append(str(key).lower())
-    blob = " ".join(blob_parts)
+            tokens.update(_natural_language_tokens(str(key)))
     for marker in _NL_MARKERS:
-        if marker in blob.replace("-", "_"):
+        if marker in tokens:
             raise UnreviewedContractError(
                 f"natural-language / unreviewed prose fails closed: {marker}"
             )

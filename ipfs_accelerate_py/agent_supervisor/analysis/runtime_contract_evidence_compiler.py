@@ -908,8 +908,62 @@ def _match_nodes(
         return (preferred[0],), ()
     if len(unique) == 1:
         return (unique[0],), ()
+
+    def _node_text(node: ContractGraphNode) -> str:
+        payload = getattr(node, "payload", None) or {}
+        try:
+            payload_text = json.dumps(payload, sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            payload_text = str(payload)
+        return f"{node.stable_key}\n{payload_text}".lower()
+
+    def _prefer_pool(pool: Sequence[ContractGraphNode]) -> tuple[ContractGraphNode, ...] | None:
+        if not pool:
+            return None
+        if len(pool) == 1:
+            return (pool[0],)
+        # Package-qualified exact tool key wins over bare short names.
+        qualified = [
+            node
+            for node in pool
+            if f"{package_id}:{tool_name}".lower() in node.stable_key.lower()
+            or f"tool:{package_id}:{tool_name}".lower() in node.stable_key.lower()
+            or f"method:{package_id}:{tool_name}".lower() in node.stable_key.lower()
+            or f"handler:{package_id}:{tool_name}".lower() in node.stable_key.lower()
+        ]
+        if len(qualified) == 1:
+            return (qualified[0],)
+        # Prefer unified mcp_server surfaces over legacy mcp/tools when both
+        # appear for the same catalog name (post registration-alias repair).
+        mcp_server = [
+            node
+            for node in pool
+            if "mcp_server" in _node_text(node) or "register_tool" in _node_text(node)
+        ]
+        if len(mcp_server) == 1:
+            return (mcp_server[0],)
+        if mcp_server and len({n.kind for n in mcp_server}) == 1:
+            # Same kind family under mcp_server: pick stable order, not popularity.
+            ranked = sorted(
+                mcp_server,
+                key=lambda node: (node.stable_key, node.node_id),
+            )
+            # Only auto-select when all candidates share one package hint.
+            package_ok = all(
+                (not _node_package_hints(node)) or package_id in _node_package_hints(node)
+                for node in ranked
+            )
+            if package_ok and len(ranked) == 1:
+                return (ranked[0],)
+        return None
+
+    for pool in (preferred, unique):
+        selected = _prefer_pool(pool)
+        if selected is not None and len(selected) == 1:
+            return selected, ()
+
     # Multiple handlers / methods for the same tool without a reviewed unique
-    # join is ambiguous — never pick by name popularity.
+    # join is ambiguous — never pick by name popularity alone.
     return tuple(unique), (f"ambiguous_{role}_anchor",)
 
 
@@ -1302,6 +1356,93 @@ def compile_endpoint_anchor(
     return anchor, tuple(findings)
 
 
+def _collapse_equivalent_tool_surfaces(
+    matches: Sequence[PythonMcpToolSurface],
+) -> PythonMcpToolSurface | None:
+    """Select one tool surface when multi-matches are observation-equivalent.
+
+    Static extraction often yields both a function-def surface and a
+    ``register_tool`` surface for the same handler.  Those must collapse to a
+    single observed registration so evidence compilation is not stuck on
+    ``observed_contract_incomplete``.  Distinct handler symbols remain
+    ambiguous and fail closed (caller returns None), except when a preferred
+    unified ``mcp_server`` ``register_tool`` family can be selected over legacy
+    ``mcp.tool`` / ``mcp/tools`` surfaces.
+    """
+
+    if not matches:
+        return None
+    if len(matches) == 1:
+        return matches[0]
+
+    def _path(tool: PythonMcpToolSurface) -> str:
+        span = getattr(tool, "registration_span", None)
+        return str(getattr(span, "path", "") or "").replace("\\", "/")
+
+    def _rank(tool: PythonMcpToolSurface) -> tuple[int, int, int, int, str]:
+        api = str(getattr(tool, "registration_api", "") or "")
+        path = _path(tool)
+        prefers_mcp_server = 0 if "/mcp_server/" in f"/{path}" else 1
+        prefers_register = 0 if "register_tool" in api else 1
+        has_schema = 0 if getattr(tool, "input_schema", None) else 1
+        span = getattr(tool, "registration_span", None)
+        start = int(getattr(span, "start_line", 0) or 0)
+        symbol = str(getattr(getattr(tool, "handler", None), "symbol", "") or "")
+        return (prefers_mcp_server, prefers_register, has_schema, start, symbol)
+
+    def _collapse(pool: Sequence[PythonMcpToolSurface]) -> PythonMcpToolSurface | None:
+        if not pool:
+            return None
+        if len(pool) == 1:
+            return pool[0]
+        symbols = {
+            str(getattr(getattr(tool, "handler", None), "symbol", "") or "").strip()
+            for tool in pool
+        }
+        symbols.discard("")
+        if len(symbols) == 1:
+            return sorted(pool, key=_rank)[0]
+        by_path_handler: dict[tuple[str, str], list[PythonMcpToolSurface]] = {}
+        for tool in pool:
+            symbol = str(
+                getattr(getattr(tool, "handler", None), "symbol", "") or ""
+            )
+            by_path_handler.setdefault((_path(tool), symbol), []).append(tool)
+        if len(by_path_handler) == 1:
+            only = next(iter(by_path_handler.values()))
+            return sorted(only, key=_rank)[0]
+        return None
+
+    # Prefer unified mcp_server register_tool surfaces over legacy mcp/tools.
+    preferred = [
+        tool
+        for tool in matches
+        if "register_tool" in str(getattr(tool, "registration_api", "") or "")
+        and "/mcp_server/" in f"/{_path(tool)}"
+    ]
+    collapsed = _collapse(preferred)
+    if collapsed is not None:
+        return collapsed
+
+    collapsed = _collapse(matches)
+    if collapsed is not None:
+        return collapsed
+
+    # Last resort: single highest-ranked mcp_server surface even if sibling
+    # alias registrations share the same handler family with different names.
+    if preferred:
+        by_handler: dict[str, list[PythonMcpToolSurface]] = {}
+        for tool in preferred:
+            symbol = str(
+                getattr(getattr(tool, "handler", None), "symbol", "") or ""
+            ).strip()
+            by_handler.setdefault(symbol or _path(tool), []).append(tool)
+        if len(by_handler) == 1:
+            return sorted(next(iter(by_handler.values())), key=_rank)[0]
+
+    return None
+
+
 def _tool_surface_for_operation(
     operation: ReviewedRuntimeOperation,
     package_surfaces: Sequence[PythonMcpPackageSurface] | None,
@@ -1313,9 +1454,7 @@ def _tool_surface_for_operation(
         if surface.provider != operation.package_id:
             continue
         matches.extend(surface.tools_named(operation.tool_name))
-    if len(matches) == 1:
-        return matches[0]
-    return None
+    return _collapse_equivalent_tool_surfaces(matches)
 
 
 def _route_from_method(

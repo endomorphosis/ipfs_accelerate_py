@@ -14,6 +14,46 @@ def _error_result(message: str) -> Dict[str, Any]:
     return {"status": "error", "success": False, "data": None, "error": message}
 
 
+def dag_put(data: Any = None, format: str = "dag-json") -> Dict[str, Any]:
+    """Contract surface for IPLD DAG put.
+
+    Cross-package backend work goes through MCP protocol interop to
+    ``ipfs_kit_py`` (``tools/call`` / JSON-RPC), not a direct kit import.
+    Set ``IPFS_KIT_MCP_URL`` to the kit MCP endpoint.
+    """
+    try:
+        from ipfs_accelerate_py.mcp_server.package_mcp_interop import (
+            call_package_mcp_tool_sync,
+            mcp_envelope_to_tool_result,
+        )
+
+        # Prefer kit's MCP tool names used on consolidated/unified kit servers.
+        last_envelope: Dict[str, Any] = {
+            "ok": False,
+            "error": "ipfs_kit_py MCP dag_put unavailable",
+            "package_id": "ipfs_kit_py",
+            "tool": "ipfs_dag_put",
+        }
+        for tool_name in ("ipfs_dag_put", "dag_put", "ipfs.dag.put"):
+            envelope = call_package_mcp_tool_sync(
+                "ipfs_kit_py",
+                tool_name,
+                {"data": data, "format": format},
+            )
+            last_envelope = envelope if isinstance(envelope, dict) else last_envelope
+            if envelope.get("ok"):
+                return mcp_envelope_to_tool_result(envelope)
+            # tool_not_found → try next alias; endpoint missing is terminal
+            err = str(envelope.get("error") or "")
+            if "mcp_endpoint_unavailable" in err:
+                return mcp_envelope_to_tool_result(envelope)
+            if "tool_not_found" not in err:
+                return mcp_envelope_to_tool_result(envelope)
+        return mcp_envelope_to_tool_result(last_envelope)
+    except Exception as exc:  # pragma: no cover - defensive boundary
+        return _error_result(f"dag_put mcp interop error: {exc}")
+
+
 def _normalize_kit_result(result: Any) -> Dict[str, Any]:
     """Normalize kit result objects to deterministic envelopes."""
     if isinstance(result, dict):
@@ -300,6 +340,23 @@ def register_native_ipfs_tools(manager: Any) -> None:
         runtime="fastapi",
         tags=["native", "wave-a", "ipfs"],
     )
+    # Catalog alias: observed contracts still use bare ipfs_add.
+    manager.register_tool(
+        category="ipfs",
+        name="ipfs_add",
+        func=ipfs_files_add_file,
+        description="Alias of ipfs_files_add_file for bare ipfs_add contract surface.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "minLength": 1},
+                "pin": {"type": "boolean", "default": True},
+            },
+            "required": ["path"],
+        },
+        runtime="fastapi",
+        tags=["native", "wave-a", "ipfs", "alias"],
+    )
 
     manager.register_tool(
         category="ipfs",
@@ -364,6 +421,22 @@ def register_native_ipfs_tools(manager: Any) -> None:
         },
         runtime="fastapi",
         tags=["native", "wave-a", "ipfs"],
+    )
+    # Catalog alias: observed contracts still use bare ipfs_cat.
+    manager.register_tool(
+        category="ipfs",
+        name="ipfs_cat",
+        func=ipfs_files_cat,
+        description="Alias of ipfs_files_cat for bare ipfs_cat contract surface.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cid": {"type": "string", "minLength": 1},
+            },
+            "required": ["cid"],
+        },
+        runtime="fastapi",
+        tags=["native", "wave-a", "ipfs", "alias"],
     )
 
     # --- Additional IPFS file operations from legacy mcp/tools/ipfs_files.py ---
@@ -472,4 +545,24 @@ def register_native_ipfs_tools(manager: Any) -> None:
         },
         runtime="fastapi",
         tags=["native", "wave-a", "ipfs"],
+    )
+    manager.register_tool(
+        category="ipfs",
+        name="dag_put",
+        func=dag_put,
+        description="Put an IPLD node into IPFS (DAG put contract surface).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "data": {"description": "IPLD node payload."},
+                "format": {
+                    "type": "string",
+                    "default": "dag-json",
+                    "description": "Codec/format for the DAG node.",
+                },
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "wave-a", "ipfs", "surface"],
     )

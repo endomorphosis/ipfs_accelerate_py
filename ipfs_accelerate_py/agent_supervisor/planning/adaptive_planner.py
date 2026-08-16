@@ -3158,10 +3158,32 @@ class AdaptivePlanner:
             raise AdaptivePlannerValidationError(
                 "symbolic candidate_count exceeds adaptive max_candidates"
             )
-        return SymbolicCandidatePlanner(bounds=resolved_bounds).plan(
+        # Deep IR prepare before symbolic portfolio freeze (context becomes
+        # part of FrozenSymbolicCandidateRequest). Domain-agnostic.
+        ctx = dict(context or {})
+        try:
+            from .ir_logic_hooks import (
+                compose_hard_gate_with_ir,
+                prepare_planning_context,
+            )
+
+            ctx = prepare_planning_context(
+                ctx,
+                domain=str(ctx.get("domain") or "planner"),
+            )
+            if ctx.get("require_ir_logic") or ctx.get("ir_logic_bound"):
+                hard_gate_evaluator = compose_hard_gate_with_ir(
+                    hard_gate_evaluator,
+                    context=ctx,
+                    require_ir=bool(ctx.get("require_ir_logic")),
+                )
+        except Exception:  # noqa: BLE001
+            pass
+
+        result = SymbolicCandidatePlanner(bounds=resolved_bounds).plan(
             obligation_graph,
             frozen_goal,
-            context,
+            ctx,
             failure_memory=failure_memory,
             failure_scope=failure_scope,
             model_provider=model_provider,
@@ -3169,6 +3191,16 @@ class AdaptivePlanner:
             allow_model=allow_model,
             hard_gate_evaluator=hard_gate_evaluator,
         )
+        # Surface IR binding on portfolio objects when possible.
+        try:
+            from .ir_logic_consumers import attach_ir_logic_to_symbolic_plan
+
+            result = attach_ir_logic_to_symbolic_plan(
+                result, ctx, domain=str(ctx.get("domain") or "planner")
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return result
 
 
 class AdaptivePlanReceiptStore:

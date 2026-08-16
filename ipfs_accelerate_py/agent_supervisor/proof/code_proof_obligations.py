@@ -6576,14 +6576,31 @@ lookup_or_prove_code_obligation = prove_code_obligation_with_cache
 
 
 # CBP-050 re-exports (implementation lives in code_proof_reproof).
-from .code_proof_reproof import (  # noqa: E402
-    InvalidationReason,
-    ReproofDisposition,
-    ReproofReport,
-    invalidation_reasons,
-    plan_reproof_from_delta,
-    reprove_code_proof_compilation,
+# Lazy: an eager import here re-enters code_claim_contracts via
+# code_proof_reproof → code_proof_query while ClaimStatus is still loading.
+_REPROOF_EXPORTS = frozenset(
+    {
+        "InvalidationReason",
+        "ReproofDisposition",
+        "ReproofReport",
+        "invalidation_reasons",
+        "plan_reproof_from_delta",
+        "reprove_code_proof_compilation",
+    }
 )
+
+
+def __getattr__(name: str) -> Any:
+    if name in _REPROOF_EXPORTS:
+        from . import code_proof_reproof as _reproof
+
+        return getattr(_reproof, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(__all__) | set(globals()) | set(_REPROOF_EXPORTS))
+
 
 __all__ = [
     "ASTProofScope",

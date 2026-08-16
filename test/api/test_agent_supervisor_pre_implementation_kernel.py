@@ -14,10 +14,13 @@ import sys
 from typing import Any
 
 import pytest
-
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_disposition import (
     ImplementationDisposition,
     ImplementationForestRoots,
+    UnauthorizedProviderInvocationError,
     implementation_disposition_cid,
     provider_invocation_authorized,
     seal_pre_implementation_kernel_receipt,
@@ -28,7 +31,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.pre_implementation_kernel i
     REASON_AMBIGUOUS_CANDIDATES,
     REASON_ANALYTICAL_UNIQUE_MAPPING,
     REASON_MISSING_BACKEND,
-    REASON_RESIDUAL_AUTHORIZED,
+    REASON_MISSING_TYPED_AUTHORITY_RECEIPTS,
     AnalyticalRepairCandidate,
     KernelEvaluationRequest,
     PreImplementationKernel,
@@ -96,6 +99,7 @@ def test_cold_import_does_not_load_llm_client_modules() -> None:
     )
     # No hard dependency: module source must not reference client packages.
     import inspect
+
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
         pre_implementation_kernel as mod,
     )
@@ -220,19 +224,76 @@ def test_missing_doctor_backend_via_request_flag_defers(
 # ---------------------------------------------------------------------------
 
 
-def test_residual_packet_authorizes_provider_without_kernel_hooks(
+def test_packet_only_residual_defers_without_typed_resolvable_authority_receipts(
     forest_roots: ImplementationForestRoots,
 ) -> None:
     packet_cid = _cid("residual-packet")
     result = evaluate_pre_implementation(
         _request(forest_roots, residual_packet_cid=packet_cid)
     )
-    assert result.disposition is ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED
+    assert result.disposition is ImplementationDisposition.DEFER_CAPABILITY
     assert result.provider_hook_count == 0  # kernel itself never calls provider
-    assert result.reason_code == REASON_RESIDUAL_AUTHORIZED
-    assert result.authorizes_provider
-    assert result.receipt.residual_packet_cid == packet_cid
-    assert result.receipt.require_provider_gate() == packet_cid
+    assert result.reason_code == REASON_MISSING_TYPED_AUTHORITY_RECEIPTS
+    assert not result.authorizes_provider
+    assert result.receipt.residual_packet_cid == ""
+    with pytest.raises(UnauthorizedProviderInvocationError):
+        result.receipt.require_provider_gate()
+
+
+def test_residual_authorization_requires_exact_receipt_backed_views(
+    forest_roots: ImplementationForestRoots,
+) -> None:
+    task_cid = _cid("receipt-backed-task")
+    receipts: dict[str, dict[str, str]] = {}
+    for kind in ("planner", "doctor", "obligation", "logic", "repair"):
+        payload = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/authority-receipt@1",
+            "receipt_kind": kind,
+            "task_cid": task_cid,
+            "repository_forest_cid": forest_roots.repository_forest_cid,
+        }
+        receipts[kind] = {**payload, "content_id": content_identity(payload)}
+    receipt_cids = {kind: receipt["content_id"] for kind, receipt in receipts.items()}
+    kernel = PreImplementationKernel(
+        authority_receipt_resolver=lambda receipt_cid: next(
+            (
+                receipt
+                for receipt in receipts.values()
+                if receipt["content_id"] == receipt_cid
+            ),
+            None,
+        )
+    )
+
+    # A resolvable set alone cannot use synthetic diagnostic view CIDs.
+    missing_views = kernel.evaluate(
+        _request(
+            forest_roots,
+            task_cid=task_cid,
+            residual_packet_cid=_cid("packet"),
+            authority_receipt_cids=receipt_cids,
+        )
+    )
+    assert missing_views.disposition is ImplementationDisposition.DEFER_CAPABILITY
+    assert not missing_views.authorizes_provider
+    assert missing_views.receipt.plan_cid != receipt_cids["planner"]
+
+    authorized = kernel.evaluate(
+        _request(
+            forest_roots,
+            task_cid=task_cid,
+            residual_packet_cid=_cid("packet"),
+            authority_receipt_cids=receipt_cids,
+            obligation_graph_cid=receipt_cids["obligation"],
+            plan_cid=receipt_cids["planner"],
+            doctor_cid=receipt_cids["doctor"],
+        )
+    )
+    assert authorized.disposition is ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED
+    assert authorized.authorizes_provider
+    assert authorized.receipt.dual_view.obligation_graph_cid == receipt_cids["obligation"]
+    assert authorized.receipt.plan_cid == receipt_cids["planner"]
+    assert authorized.receipt.doctor_cid == receipt_cids["doctor"]
 
 
 # ---------------------------------------------------------------------------

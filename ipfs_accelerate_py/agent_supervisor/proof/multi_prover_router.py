@@ -24,12 +24,27 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol
 
+from ..autonomous_repair.capabilities import (
+    CapabilityEvidenceReceipt,
+    CapabilityReceipt,
+    DeterministicRepairCapabilities,
+    NetworkMode,
+    SolverReadiness,
+)
 from .formal_verification_contracts import (
     AssuranceLevel,
     CanonicalContract,
     CodeProofObligation,
     ContractValidationError,
     _canonical_value,
+    content_identity,
+)
+from .mcp_contract_obligations import (
+    MCP_GRAPH_OBLIGATION_SCHEMA,
+    McpGraphContractObligation,
+    McpObligationBackend,
+    McpObligationDisposition,
+    McpObligationFragment,
 )
 from .prover_conformance import (
     ConformanceGateDecision,
@@ -38,7 +53,6 @@ from .prover_conformance import (
     gate_prover_path,
 )
 from .prover_matrix_registry import ProverMatrixEntry, ProverMatrixSnapshot
-
 
 MULTI_PROVER_ROUTER_VERSION = 1
 PROPERTY_OBLIGATION_SCHEMA = (
@@ -198,7 +212,11 @@ class PropertyObligation(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "obligation_id", _text(self.obligation_id, "obligation_id"))
-        object.__setattr__(self, "property_kind", _enum(self.property_kind, PropertyKind, "property_kind"))
+        object.__setattr__(
+            self,
+            "property_kind",
+            _enum(self.property_kind, PropertyKind, "property_kind"),
+        )
         object.__setattr__(self, "statement", _text(self.statement, "statement"))
         object.__setattr__(self, "premise_ids", _strings(self.premise_ids, "premise_ids"))
         object.__setattr__(
@@ -883,7 +901,10 @@ class PortfolioResult(CanonicalContract):
             raise ContractValidationError(
                 "disproved result requires a conclusive counterexample"
             )
-        if self.verdict is not PortfolioVerdict.PROVED and self.assurance is not AssuranceLevel.UNVERIFIED:
+        if (
+            self.verdict is not PortfolioVerdict.PROVED
+            and self.assurance is not AssuranceLevel.UNVERIFIED
+        ):
             raise ContractValidationError("non-proved result must be unverified")
         if (
             isinstance(self.duration_ms, bool)
@@ -1542,6 +1563,395 @@ def execute_portfolio(
     )
 
 
+# ---------------------------------------------------------------------------
+# DCR-032 deterministic local-prover routing boundary
+# ---------------------------------------------------------------------------
+
+DCR032_PROVER_ROUTE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/dcr-032-prover-route@1"
+DCR032_INTEGRATION_PENDING_REASON = "dcr031_obligation_integration_pending"
+
+
+class DeterministicProverDisposition(str, Enum):
+    """Closed outcomes for the DCR-032 router; none proves an obligation."""
+
+    ROUTED = "routed"
+    UNAVAILABLE = "unavailable"
+    UNSUPPORTED = "unsupported"
+    DEFER_CAPABILITY = "defer_capability"
+
+
+@dataclass(frozen=True)
+class DeterministicProverBackend:
+    """Exact local module/toolchain binding for one permitted backend."""
+
+    backend_id: str
+    module_capability_id: str
+    toolchain_id: str
+    supported_fragments: tuple[str, ...]
+    provider_kind: str = "local_offline"
+
+    def __post_init__(self) -> None:
+        for name in ("backend_id", "module_capability_id", "toolchain_id", "provider_kind"):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        fragments = tuple(
+            sorted({_text(item, "supported_fragments") for item in self.supported_fragments})
+        )
+        if not fragments:
+            raise ContractValidationError("supported_fragments must not be empty")
+        object.__setattr__(self, "supported_fragments", fragments)
+
+
+@dataclass(frozen=True)
+class DeterministicProverResources:
+    """Bounded, replayable resource identity; the router executes nothing."""
+
+    seed: int
+    max_steps: int
+    max_memory_bytes: int
+
+    def __post_init__(self) -> None:
+        for name, lower, upper in (
+            ("seed", 0, 2**63 - 1),
+            ("max_steps", 1, 10_000_000),
+            ("max_memory_bytes", 1, 2**40),
+        ):
+            value = getattr(self, name)
+            if type(value) is not int or not lower <= value <= upper:
+                raise ContractValidationError(f"{name} is outside deterministic bounds")
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "seed": self.seed,
+            "max_steps": self.max_steps,
+            "max_memory_bytes": self.max_memory_bytes,
+        }
+
+
+@dataclass(frozen=True)
+class DeterministicProverRoute(CanonicalContract):
+    """A canonical, zero-execution router result.
+
+    The route has no proof authority.  Only an exact, current DCR-031 compiled
+    obligation can make it ``routed``; mappings and fixture-shaped data defer.
+    """
+
+    SCHEMA = DCR032_PROVER_ROUTE_SCHEMA
+
+    obligation_id: str
+    obligation_cid: str
+    backend_id: str
+    disposition: DeterministicProverDisposition
+    reason_codes: tuple[str, ...]
+    resources: DeterministicProverResources
+    capability_receipt_ids: tuple[str, ...] = ()
+    evidence_receipt_ids: tuple[str, ...] = ()
+    integration_pending: bool = True
+    proof_authority_call_count: int = 0
+    model_call_count: int = 0
+    external_execution_count: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "obligation_id", _text(self.obligation_id, "obligation_id", required=False)
+        )
+        object.__setattr__(
+            self, "obligation_cid", _text(self.obligation_cid, "obligation_cid", required=False)
+        )
+        object.__setattr__(
+            self, "backend_id", _text(self.backend_id, "backend_id", required=False)
+        )
+        object.__setattr__(
+            self,
+            "disposition",
+            _enum(self.disposition, DeterministicProverDisposition, "disposition"),
+        )
+        object.__setattr__(self, "reason_codes", _strings(self.reason_codes, "reason_codes"))
+        if not isinstance(self.resources, DeterministicProverResources):
+            raise ContractValidationError("resources must be DeterministicProverResources")
+        for name in (
+            "integration_pending",
+            "proof_authority_call_count",
+            "model_call_count",
+            "external_execution_count",
+        ):
+            value = getattr(self, name)
+            if name == "integration_pending":
+                if type(value) is not bool:
+                    raise ContractValidationError("integration_pending must be boolean")
+            elif type(value) is not int or value != 0:
+                raise ContractValidationError(f"{name} must be exactly zero")
+        object.__setattr__(
+            self,
+            "capability_receipt_ids",
+            _strings(self.capability_receipt_ids, "capability_receipt_ids"),
+        )
+        object.__setattr__(
+            self,
+            "evidence_receipt_ids",
+            _strings(self.evidence_receipt_ids, "evidence_receipt_ids"),
+        )
+
+    @property
+    def proof_authorized(self) -> bool:
+        return False
+
+    @property
+    def execution_permitted(self) -> bool:
+        """Whether a reviewed local runner may be selected, never trusted."""
+
+        return self.disposition is DeterministicProverDisposition.ROUTED
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "obligation_id": self.obligation_id,
+            "obligation_cid": self.obligation_cid,
+            "backend_id": self.backend_id,
+            "disposition": self.disposition,
+            "reason_codes": self.reason_codes,
+            "resources": self.resources.to_dict(),
+            "capability_receipt_ids": self.capability_receipt_ids,
+            "evidence_receipt_ids": self.evidence_receipt_ids,
+            "integration_pending": self.integration_pending,
+            "proof_authority_call_count": self.proof_authority_call_count,
+            "model_call_count": self.model_call_count,
+            "external_execution_count": self.external_execution_count,
+        }
+
+
+def _find_module(
+    inventory: DeterministicRepairCapabilities, capability_id: str
+) -> CapabilityReceipt | None:
+    return next((item for item in inventory.modules if item.capability_id == capability_id), None)
+
+
+def _find_toolchain(
+    inventory: DeterministicRepairCapabilities, tool_id: str
+) -> SolverReadiness | None:
+    return next((item for item in inventory.toolchains if item.tool_id == tool_id), None)
+
+
+def _has_evidence(
+    receipts: Sequence[CapabilityEvidenceReceipt],
+    *,
+    evidence_id: str,
+    evidence_kind: str,
+    subject_id: str,
+    subject_digest: str,
+    subject_version: str,
+) -> bool:
+    return any(
+        item.verifies(
+            evidence_id=evidence_id,
+            evidence_kind=evidence_kind,
+            subject_id=subject_id,
+            subject_digest=subject_digest,
+            subject_version=subject_version,
+        )
+        for item in receipts
+    )
+
+
+def _module_reasons(
+    module: CapabilityReceipt | None,
+    receipts: Sequence[CapabilityEvidenceReceipt],
+) -> list[str]:
+    if module is None:
+        return ["module_receipt_missing"]
+    reasons: list[str] = []
+    if (
+        not module.available
+        or module.network_mode is not NetworkMode.OFFLINE
+        or not module.origin
+        or not module.content_digest.startswith("module:sha256:")
+        or module.distribution_version != module.expected_version
+        or module.reason_codes
+    ):
+        reasons.append("module_receipt_unavailable_or_unqualified")
+    if not module.initialized or not _has_evidence(
+        receipts,
+        evidence_id=module.capability_id,
+        evidence_kind="initialization",
+        subject_id=module.capability_id,
+        subject_digest=module.content_digest,
+        subject_version=module.distribution_version,
+    ):
+        reasons.append("module_initialization_receipt_missing")
+    if not module.reconstructed or not _has_evidence(
+        receipts,
+        evidence_id=module.capability_id,
+        evidence_kind="reconstruction",
+        subject_id=module.capability_id,
+        subject_digest=module.content_digest,
+        subject_version=module.distribution_version,
+    ):
+        reasons.append("module_reconstruction_receipt_missing")
+    if not module.self_test_passed or not _has_evidence(
+        receipts,
+        evidence_id=module.capability_id,
+        evidence_kind="self_test",
+        subject_id=module.capability_id,
+        subject_digest=module.content_digest,
+        subject_version=module.distribution_version,
+    ):
+        reasons.append("module_self_test_receipt_missing")
+    return reasons
+
+
+def _toolchain_reasons(
+    toolchain: SolverReadiness | None,
+    receipts: Sequence[CapabilityEvidenceReceipt],
+) -> list[str]:
+    if toolchain is None:
+        return ["toolchain_receipt_missing"]
+    reasons: list[str] = []
+    if (
+        not toolchain.available
+        or toolchain.network_mode is not NetworkMode.OFFLINE
+        or not toolchain.path
+        or not toolchain.executable_digest.startswith("executable:sha256:")
+        or toolchain.version != toolchain.expected_version
+        or toolchain.reason_codes
+    ):
+        reasons.append("toolchain_receipt_unavailable_or_unqualified")
+    if not toolchain.reconstructed or not _has_evidence(
+        receipts,
+        evidence_id=toolchain.reconstruction_id,
+        evidence_kind="reconstruction",
+        subject_id=toolchain.tool_id,
+        subject_digest=toolchain.executable_digest,
+        subject_version=toolchain.version,
+    ):
+        reasons.append("toolchain_reconstruction_receipt_missing")
+    if not toolchain.self_test_passed or not _has_evidence(
+        receipts,
+        evidence_id=toolchain.self_test_id,
+        evidence_kind="self_test",
+        subject_id=toolchain.tool_id,
+        subject_digest=toolchain.executable_digest,
+        subject_version=toolchain.version,
+    ):
+        reasons.append("toolchain_self_test_receipt_missing")
+    return reasons
+
+
+def _valid_dcr031_obligation(
+    obligation: object,
+) -> tuple[McpGraphContractObligation | None, list[str]]:
+    """Accept only the published typed DCR-031 object and exact roots."""
+
+    if not isinstance(obligation, McpGraphContractObligation):
+        return None, [DCR032_INTEGRATION_PENDING_REASON]
+    payload = obligation.to_dict()
+    roots = (
+        obligation.graph_cid,
+        obligation.candidate_cid,
+        *obligation.input_cids,
+    )
+    if (
+        payload.get("schema") != MCP_GRAPH_OBLIGATION_SCHEMA
+        or payload.get("proof_status") != "not_proved"
+        or payload.get("completion_authoritative") is not False
+        or payload.get("mutation_authorized") is not False
+        or obligation.disposition is not McpObligationDisposition.OPEN
+        or obligation.backend is not McpObligationBackend.LOGIC_IR_CANDIDATE
+        or obligation.fragment is McpObligationFragment.UNSUPPORTED
+        or not obligation.input_cids
+        or tuple(sorted(set(obligation.input_cids))) != obligation.input_cids
+        or obligation.graph_cid not in obligation.input_cids
+        or any(not isinstance(item, str) or not item for item in roots)
+    ):
+        return None, ["invalid_current_dcr031_obligation"]
+    return obligation, []
+
+
+def route_dcr032_local_prover(
+    obligation: McpGraphContractObligation | Mapping[str, Any],
+    *,
+    backend: DeterministicProverBackend,
+    capabilities: DeterministicRepairCapabilities,
+    capability_evidence: Sequence[CapabilityEvidenceReceipt] = (),
+    resources: DeterministicProverResources,
+    reported_outcome: str = "",
+    proof_reconstruction_receipt_id: str = "",
+) -> DeterministicProverRoute:
+    """Deterministically validate a local route without importing or running it.
+
+    ``reported_outcome`` is only an untrusted diagnostic input.  In particular,
+    ``sat`` without a bound reconstruction receipt is deferred and no result
+    from this function carries proof authority.
+    """
+
+    normalized, input_reasons = _valid_dcr031_obligation(obligation)
+    if normalized is None:
+        return DeterministicProverRoute(
+            obligation_id="",
+            obligation_cid="",
+            backend_id=backend.backend_id,
+            disposition=DeterministicProverDisposition.DEFER_CAPABILITY,
+            reason_codes=tuple(input_reasons),
+            resources=resources,
+        )
+
+    reasons: list[str] = []
+    if backend.provider_kind != "local_offline":
+        reasons.append("remote_or_model_provider_forbidden")
+    if normalized.fragment.value not in backend.supported_fragments:
+        reasons.append("backend_does_not_support_logic_fragment")
+    if capabilities.network_mode is not NetworkMode.OFFLINE:
+        reasons.append("capability_inventory_not_offline")
+
+    module = _find_module(capabilities, backend.module_capability_id)
+    toolchain = _find_toolchain(capabilities, backend.toolchain_id)
+    reasons.extend(_module_reasons(module, capability_evidence))
+    reasons.extend(_toolchain_reasons(toolchain, capability_evidence))
+    outcome = str(reported_outcome or "").strip().lower()
+    if outcome in {"unknown", "error"}:
+        reasons.append(f"reported_{outcome}_is_not_proof")
+    elif outcome == "sat" and (
+        not proof_reconstruction_receipt_id
+        or toolchain is None
+        or proof_reconstruction_receipt_id != toolchain.reconstruction_id
+    ):
+        reasons.append("sat_without_required_reconstruction")
+    elif outcome not in {"", "sat", "unsat", "unknown", "error"}:
+        reasons.append("unsupported_reported_outcome")
+
+    unsupported = any(
+        reason.startswith(("unsupported_", "open_logic", "remote_or_model", "backend_"))
+        for reason in reasons
+    )
+    unavailable = any(
+        reason.startswith(("module_", "toolchain_", "capability_inventory"))
+        for reason in reasons
+    )
+    defer = any(
+        reason.startswith(("reported_", "sat_without_")) for reason in reasons
+    )
+    if unsupported:
+        disposition = DeterministicProverDisposition.UNSUPPORTED
+    elif unavailable:
+        disposition = DeterministicProverDisposition.UNAVAILABLE
+    elif defer:
+        disposition = DeterministicProverDisposition.DEFER_CAPABILITY
+    else:
+        disposition = DeterministicProverDisposition.ROUTED
+    receipt_ids = tuple(
+        item.receipt_id for item in (module, toolchain) if item is not None
+    )
+    evidence_ids = tuple(item.receipt_id for item in capability_evidence)
+    return DeterministicProverRoute(
+        obligation_id=normalized.obligation_id,
+        obligation_cid=content_identity(normalized.to_dict()),
+        backend_id=backend.backend_id,
+        disposition=disposition,
+        reason_codes=tuple(reasons),
+        resources=resources,
+        capability_receipt_ids=receipt_ids,
+        evidence_receipt_ids=evidence_ids,
+        integration_pending=False,
+    )
+
+
 __all__ = [
     "DEFAULT_MAX_EVIDENCE_BYTES",
     "DEFAULT_MAX_PARALLEL_PROVERS",
@@ -1554,6 +1964,12 @@ __all__ = [
     "PROPERTY_OBLIGATION_SCHEMA",
     "AttemptOutcome",
     "AttemptRequest",
+    "DCR032_INTEGRATION_PENDING_REASON",
+    "DCR032_PROVER_ROUTE_SCHEMA",
+    "DeterministicProverBackend",
+    "DeterministicProverDisposition",
+    "DeterministicProverResources",
+    "DeterministicProverRoute",
     "MultiProverRouter",
     "ObligationProperty",
     "PortfolioAttempt",
@@ -1573,5 +1989,6 @@ __all__ = [
     "classify_property_kind",
     "execute_portfolio",
     "route_obligation",
+    "route_dcr032_local_prover",
     "to_canonical_property_kind",
 ]

@@ -162,6 +162,39 @@ async def manage_ipfs_cluster(
     return payload
 
 
+async def list_pins(
+    filters: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """List cluster pins as an MCP tool surface.
+
+    Prefer MCP-mediated call into the datasets cluster tool when a peer
+    endpoint is configured; otherwise use the in-process ``manage_ipfs_cluster``
+    handler (already the registered MCP tool for this category — not a raw
+    peer-package import from callers).
+    """
+    try:
+        from ipfs_accelerate_py.mcp_server.package_mcp_interop import (
+            call_package_mcp_tool,
+            mcp_envelope_to_tool_result,
+            package_mcp_endpoint,
+        )
+
+        if package_mcp_endpoint("ipfs_datasets_py"):
+            envelope = await call_package_mcp_tool(
+                "ipfs_datasets_py",
+                "manage_ipfs_cluster",
+                {"action": "list_pins", "filters": filters},
+            )
+            if envelope.get("ok") or "mcp_endpoint_unavailable" not in str(
+                envelope.get("error") or ""
+            ):
+                return mcp_envelope_to_tool_result(envelope)
+    except Exception as exc:  # pragma: no cover - fall through to local MCP tool
+        logger.warning("list_pins MCP peer interop failed: %s", exc)
+    # Local MCP tool implementation (same accelerate MCP registry category).
+    return await manage_ipfs_cluster(action="list_pins", filters=filters)
+
+
 async def manage_ipfs_content(
     action: str,
     cid: Optional[str] = None,
@@ -298,4 +331,20 @@ def register_native_ipfs_cluster_tools(manager: Any) -> None:
         },
         runtime="fastapi",
         tags=["native", "mcpp", "ipfs-cluster"],
+    )
+
+    manager.register_tool(
+        category="ipfs_cluster_tools",
+        name="list_pins",
+        func=list_pins,
+        description="List pins on the IPFS cluster (managed via manage_ipfs_cluster).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "filters": {"type": ["object", "null"]},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "ipfs-cluster", "surface"],
     )

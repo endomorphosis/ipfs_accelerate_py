@@ -62,6 +62,9 @@ class IRFamily(str, Enum):
     INTENT = "intent_ir"
     LEGAL = "legal_ir"
     SECURITY = "security_ir"
+    # UI/UX IR: declaration-context family (never grants execution).
+    # Canonical body package: ipfs_datasets_py.logic.ui_ux_ir
+    UI = "ui_ir"
 
 
 class IROperation(str, Enum):
@@ -161,6 +164,12 @@ _FAMILY_ALIASES: Final[Mapping[str, IRFamily]] = MappingProxyType(
         "legalir": IRFamily.LEGAL,
         "security": IRFamily.SECURITY,
         "securityir": IRFamily.SECURITY,
+        "ui": IRFamily.UI,
+        "ui_ir": IRFamily.UI,
+        "uiir": IRFamily.UI,
+        "ui_ux_ir": IRFamily.UI,
+        "uiuxir": IRFamily.UI,
+        "ui-ux-ir": IRFamily.UI,
     }
 )
 
@@ -337,6 +346,13 @@ def _default_schema_support() -> tuple[IRSchemaSupport, ...]:
             "ipfs_datasets_py/logic/security_ir@1",
             "ipfs_datasets_py.logic.security_ir@1",
             "security-ir@1",
+        ),
+        IRFamily.UI: (
+            "ipfs_datasets_py/logic/ui-ux-ir@1",
+            "ipfs_datasets_py/logic/ui_ux_ir@1",
+            "ipfs_datasets_py.logic.ui_ux_ir@1",
+            "ui-ux-ir@1",
+            "ui-ir@1",
         ),
     }
     return tuple(

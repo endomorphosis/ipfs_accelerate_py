@@ -68,6 +68,9 @@ OPTIONAL_PROVER_RECORD_SCHEMA: Final[str] = (
 # Objective-heap evidence key for the WPD factories goal packet.
 DEFAULT_PLANNER_FACTORY_EVIDENCE: Final[str] = "wpd/default-planner-factory@1"
 
+# Domain-agnostic IR logic (Intent/Legal/Security/UI + AST/KG/vector)
+IR_LOGIC_CAPABILITY_EVIDENCE: Final[str] = "wpd/ir-logic-application@1"
+
 # Wire spelling shared with ImplementationDisposition.DEFER_CAPABILITY.
 DEFER_CAPABILITY_DISPOSITION: Final[str] = "defer_capability"
 
@@ -456,6 +459,43 @@ class DefaultPlannerHandles:
     def content_id(self) -> str:
         return content_identity(self.to_dict())
 
+    def _ir_logic_capability_projection(self) -> dict[str, Any]:
+        """Domain-agnostic IR logic capability (planner/doctor/repair shared).
+
+        Covers shared IR (intent/legal/security/ui) and structural IR
+        (AST/knowledge graph/vector index) — not SCA-taskboard-specific.
+        """
+        try:
+            from .ir_logic_consumers import probe_ir_logic_consumer_capability
+            from ..proof.ir_integration import probe_ir_integration
+
+            consumer = probe_ir_logic_consumer_capability()
+            inventory = probe_ir_integration(domain="planner")
+            return {
+                "evidence_key": IR_LOGIC_CAPABILITY_EVIDENCE,
+                **consumer,
+                "inventory_passed": bool(inventory.get("passed")),
+                "shared_ir_families": list(inventory.get("shared_ir_families") or []),
+                "structural_ir_families": list(
+                    inventory.get("structural_ir_families") or []
+                ),
+                "family_availability": {
+                    name: bool((doc or {}).get("available"))
+                    for name, doc in (inventory.get("families") or {}).items()
+                },
+                "consumer_hooks": {
+                    name: bool((doc or {}).get("available"))
+                    for name, doc in (inventory.get("consumers") or {}).items()
+                },
+            }
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "evidence_key": IR_LOGIC_CAPABILITY_EVIDENCE,
+                "available": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "grants_execution_authority": False,
+            }
+
     def to_dict(self) -> dict[str, Any]:
         """Body-free durable projection of the bound stack."""
 
@@ -494,6 +534,7 @@ class DefaultPlannerHandles:
                 "replanner": type(self.replanner).__name__,
                 "adaptive_planner": type(self.adaptive_planner).__name__,
             },
+            "ir_logic": self._ir_logic_capability_projection(),
             "shared_stack": {
                 "replanner_uses_factory_compiler": self.replanner.compiler
                 is self.compiler,
@@ -898,6 +939,461 @@ def build_default_planner_handles(**kwargs: Any) -> DefaultPlannerHandles:
     return build_default_planner_factory(**kwargs).build()
 
 
+# ---------------------------------------------------------------------------
+# DCR-060 composition-root readiness (non-authoritative)
+# ---------------------------------------------------------------------------
+
+# This intentionally lives beside the existing factory instead of becoming a
+# second planner implementation.  It only admits *already constructed* formal
+# planner handles after checking the cross-DCR identity surface.  In
+# particular, it never creates Doctor/provider/network clients and it never
+# calls a supplied service object.
+DCR_PLANNER_COMPOSITION_INTERFACE: Final[str] = "DcrPlannerComposition@1"
+DCR_PLANNER_COMPOSITION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/dcr-planner-composition@1"
+)
+DCR_PLANNER_SERVICE_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/dcr-planner-service-receipt@1"
+)
+DCR_PLANNER_LIVE_EVIDENCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/dcr-planner-live-evidence@1"
+)
+
+
+class DcrPlannerCompositionDisposition(str, Enum):
+    """Closed readiness outcomes; none is an execution authorization."""
+
+    READY = "ready_for_composition"
+    INTEGRATION_PENDING = "integration_pending"
+    DEFER_CAPABILITY = "defer_capability"
+    REJECTED = "rejected"
+
+
+class DcrPlannerServiceKind(str, Enum):
+    """Only the composition services that may be referenced by DCR-060."""
+
+    RECEIPT = "receipt_service"
+    CANDIDATE = "deterministic_candidate_service"
+    SCHEDULER = "deterministic_scheduler_service"
+
+
+def _dcr060_cid(value: Any) -> str:
+    """Keep DCR-060 identities on the canonical repository CID primitive."""
+
+    return content_identity(value)
+
+
+@dataclass(frozen=True)
+class DcrPlannerSelfTestReceipt:
+    """Content-bound, closed self-test result for one deterministic service.
+
+    A bare boolean/package-presence check is deliberately not represented.
+    This record is only a readiness input and grants no runtime authority.
+    """
+
+    service_kind: DcrPlannerServiceKind
+    service_identity: str
+    root_cids: tuple[str, ...]
+    input_cids: tuple[str, ...]
+    outcome: str = "passed"
+    model_call_count: int = 0
+    provider_call_count: int = 0
+    network_call_count: int = 0
+    swallowed_exception: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.service_kind, DcrPlannerServiceKind):
+            raise DefaultPlannerFactoryError("DCR-060 service kind must be closed")
+        for field_name in ("service_identity", "outcome"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value or value != value.strip():
+                raise DefaultPlannerFactoryError(
+                    f"DCR-060 {field_name} must be non-empty exact text"
+                )
+        for field_name in ("root_cids", "input_cids"):
+            values = tuple(getattr(self, field_name) or ())
+            if not values or any(
+                not isinstance(item, str) or not item or item != item.strip()
+                for item in values
+            ):
+                raise DefaultPlannerFactoryError(
+                    f"DCR-060 {field_name} must be non-empty exact CIDs"
+                )
+            object.__setattr__(self, field_name, tuple(sorted(set(values))))
+        if self.outcome != "passed":
+            raise DefaultPlannerFactoryError("DCR-060 self-test outcome must be passed")
+        if self.swallowed_exception is not False:
+            raise DefaultPlannerFactoryError("DCR-060 self-test may not swallow exceptions")
+        for field_name in (
+            "model_call_count",
+            "provider_call_count",
+            "network_call_count",
+        ):
+            value = getattr(self, field_name)
+            if type(value) is not int or value != 0:
+                raise DefaultPlannerFactoryError(
+                    f"DCR-060 self-test {field_name} must be exactly zero"
+                )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": DCR_PLANNER_SERVICE_RECEIPT_SCHEMA,
+            "kind": self.service_kind.value,
+            "service_identity": self.service_identity,
+            "root_cids": list(self.root_cids),
+            "input_cids": list(self.input_cids),
+            "outcome": self.outcome,
+            "model_call_count": self.model_call_count,
+            "provider_call_count": self.provider_call_count,
+            "network_call_count": self.network_call_count,
+            "swallowed_exception": self.swallowed_exception,
+        }
+
+    @property
+    def receipt_cid(self) -> str:
+        return _dcr060_cid(self.to_dict())
+
+
+@dataclass(frozen=True)
+class DcrPlannerServiceBinding:
+    """A non-callable service identity and its exact self-test receipt."""
+
+    service_kind: DcrPlannerServiceKind
+    service_interface: str
+    service_identity: str
+    self_test: DcrPlannerSelfTestReceipt
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.service_kind, DcrPlannerServiceKind):
+            raise DefaultPlannerFactoryError("DCR-060 service kind must be closed")
+        for field_name in ("service_interface", "service_identity"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value or value != value.strip():
+                raise DefaultPlannerFactoryError(
+                    f"DCR-060 {field_name} must be non-empty exact text"
+                )
+        if callable(self.self_test) or not isinstance(
+            self.self_test, DcrPlannerSelfTestReceipt
+        ):
+            raise DefaultPlannerFactoryError("DCR-060 typed self-test receipt is required")
+        if (
+            self.self_test.service_kind is not self.service_kind
+            or self.self_test.service_identity != self.service_identity
+        ):
+            raise DefaultPlannerFactoryError("DCR-060 service/self-test identity mismatch")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.service_kind.value,
+            "interface": self.service_interface,
+            "service_identity": self.service_identity,
+            "self_test_cid": self.self_test.receipt_cid,
+        }
+
+    @property
+    def binding_cid(self) -> str:
+        return _dcr060_cid(self.to_dict())
+
+
+@dataclass(frozen=True)
+class DcrPlannerRoots:
+    """The exact cross-DCR roots a planner composition must preserve."""
+
+    policy_cid: str
+    forest_cid: str
+    graph_cid: str
+    findings_cid: str
+    logic_candidate_cid: str
+    proof_cache_cid: str
+    operator_registry_cid: str
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "policy_cid",
+            "forest_cid",
+            "graph_cid",
+            "findings_cid",
+            "logic_candidate_cid",
+            "proof_cache_cid",
+            "operator_registry_cid",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value or value != value.strip():
+                raise DefaultPlannerFactoryError(
+                    f"DCR-060 {field_name} must be non-empty exact text"
+                )
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "policy_cid": self.policy_cid,
+            "forest_cid": self.forest_cid,
+            "graph_cid": self.graph_cid,
+            "findings_cid": self.findings_cid,
+            "logic_candidate_cid": self.logic_candidate_cid,
+            "proof_cache_cid": self.proof_cache_cid,
+            "operator_registry_cid": self.operator_registry_cid,
+        }
+
+
+@dataclass(frozen=True)
+class DcrPlannerLiveEvidence:
+    """Future DCR-050/053 live binding; typed but never execution authority."""
+
+    doctor_binding_cid: str
+    doctor_service_interface: str
+    dcr053_receipt_cid: str
+    roots: DcrPlannerRoots
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": DCR_PLANNER_LIVE_EVIDENCE_SCHEMA,
+            "doctor_binding_cid": self.doctor_binding_cid,
+            "doctor_service_interface": self.doctor_service_interface,
+            "dcr053_receipt_cid": self.dcr053_receipt_cid,
+            "roots": self.roots.to_dict() if isinstance(self.roots, DcrPlannerRoots) else {},
+        }
+
+    @property
+    def evidence_cid(self) -> str:
+        return _dcr060_cid(self.to_dict())
+
+
+@dataclass(frozen=True)
+class DcrPlannerCompositionEvidence:
+    """Strict typed inputs for DCR-060's non-authoritative adapter."""
+
+    doctor_binding: Any
+    doctor_service: Any
+    logic_candidate: Any
+    stage_gate: Any
+    proof_cache_binding: Any
+    operator_registry: Any
+    roots: DcrPlannerRoots
+    services: tuple[DcrPlannerServiceBinding, ...]
+    live_evidence: DcrPlannerLiveEvidence | None = None
+
+
+@dataclass(frozen=True)
+class DcrPlannerCompositionResult:
+    """Readiness projection.  It cannot authorize execution or completion."""
+
+    disposition: DcrPlannerCompositionDisposition
+    reason_codes: tuple[str, ...]
+    roots: DcrPlannerRoots | None = None
+    planner_handles: DefaultPlannerHandles | None = None
+    planner_view_cid: str = ""
+    model_call_count: int = 0
+    provider_call_count: int = 0
+    network_call_count: int = 0
+    execution_authorized: bool = False
+    completion_authorized: bool = False
+
+    @property
+    def integration_pending(self) -> bool:
+        return self.disposition is DcrPlannerCompositionDisposition.INTEGRATION_PENDING
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = {
+            "schema": DCR_PLANNER_COMPOSITION_SCHEMA,
+            "interface": DCR_PLANNER_COMPOSITION_INTERFACE,
+            "disposition": self.disposition.value,
+            "reason_codes": list(self.reason_codes),
+            "roots": self.roots.to_dict() if self.roots is not None else {},
+            "planner_view_cid": self.planner_view_cid,
+            "model_call_count": 0,
+            "provider_call_count": 0,
+            "network_call_count": 0,
+            "execution_authorized": False,
+            "completion_authorized": False,
+        }
+        return payload
+
+
+def _dcr060_reason_set(
+    handles: Any,
+    evidence: Any,
+) -> tuple[list[str], DcrPlannerRoots | None]:
+    """Perform type and identity checks without calling arbitrary objects."""
+
+    reasons: list[str] = []
+    roots = evidence.roots if isinstance(evidence, DcrPlannerCompositionEvidence) else None
+    if not isinstance(handles, DefaultPlannerHandles):
+        reasons.append("typed_default_planner_handles_required")
+    elif (
+        not handles.core_ready
+        or handles.disposition is not PlannerStackDisposition.READY
+        or not handles.claims_success
+        or handles.proof_carrying_handle is None
+        or not handles.proof_carrying_handle.available
+    ):
+        reasons.append("default_planner_handles_not_proof_carrying_ready")
+    if not isinstance(evidence, DcrPlannerCompositionEvidence):
+        reasons.append("typed_dcr060_evidence_required")
+        return reasons, None
+    if not isinstance(roots, DcrPlannerRoots):
+        reasons.append("typed_dcr060_roots_required")
+        return reasons, None
+
+    # Local imports defer cross-DCR module loading until this explicit
+    # assessment; construction of the DefaultPlannerFactory stays cold.
+    from ..proof.dcr_proof_cache import DcrProofCacheBinding
+    from ..proof.ir_integration import DatasetsLogicIrDisposition, DatasetsLogicIrResult
+    from ..proof.ir_logic_application import (
+        IrLogicRequiredGateDisposition,
+        IrLogicRequiredGateResult,
+    )
+    from ..autonomous_repair.operators.registry import (
+        OPERATOR_REGISTRY_SCHEMA,
+        OperatorRegistry,
+    )
+
+    # DefaultDoctorBinding/DeterministicDoctorService predate strict DCR-050
+    # composition and are not authority inputs here.  Until its typed result
+    # contract exists, any legacy objects are merely rejected/pending context.
+    if evidence.doctor_binding is not None or evidence.doctor_service is not None:
+        reasons.append("legacy_doctor_binding_cannot_satisfy_dcr050")
+    reasons.append("integration_pending_dcr050_typed_composition_unavailable")
+
+    candidate = evidence.logic_candidate
+    if not isinstance(candidate, DatasetsLogicIrResult):
+        reasons.append("typed_dcr030_logic_candidate_required")
+    elif (
+        candidate.disposition is not DatasetsLogicIrDisposition.NORMALIZED
+        or candidate.model_call_count != 0
+        or candidate.mutation_authorized
+        or not candidate.module_binding
+        or _dcr060_cid(candidate.to_dict()) != roots.logic_candidate_cid
+    ):
+        reasons.append("dcr030_logic_candidate_identity_or_disposition_invalid")
+
+    gate = evidence.stage_gate
+    if not isinstance(gate, IrLogicRequiredGateResult):
+        reasons.append("typed_dcr035_stage_gate_required")
+    elif (
+        gate.disposition is not IrLogicRequiredGateDisposition.PASSING
+        or gate.model_call_count != 0
+        or gate.provider_call_count != 0
+        or gate.execution_authorized
+        or gate.completion_authorized
+        or gate.required_identity_cids.get("dcr030") != roots.logic_candidate_cid
+        or gate.required_identity_cids.get("dcr034") != roots.proof_cache_cid
+    ):
+        reasons.append("dcr035_stage_gate_identity_or_verdict_invalid")
+
+    cache_binding = evidence.proof_cache_binding
+    if not isinstance(cache_binding, DcrProofCacheBinding):
+        reasons.append("typed_dcr034_cache_binding_required")
+    elif (
+        cache_binding.validation_reasons()
+        or cache_binding.key_cid != roots.proof_cache_cid
+        or cache_binding.policy_root != roots.policy_cid
+        or cache_binding.dcr030_forest_root != roots.forest_cid
+        or cache_binding.dcr031_obligation.graph_cid != roots.graph_cid
+    ):
+        reasons.append("dcr034_cache_binding_identity_or_receipt_invalid")
+
+    registry = evidence.operator_registry
+    if not isinstance(registry, OperatorRegistry):
+        reasons.append("typed_dcr040_operator_registry_required")
+    else:
+        report = registry.report()
+        report_body = dict(report)
+        report_cid = report_body.pop("registry_cid", "")
+        if (
+            report.get("schema") != OPERATOR_REGISTRY_SCHEMA
+            or report.get("authoritative") is not False
+            or report.get("execution_authorized") is not False
+            or report.get("model_call_count") != 0
+            or report_cid != _dcr060_cid(report_body)
+            or report_cid != roots.operator_registry_cid
+        ):
+            reasons.append("dcr040_operator_registry_identity_or_review_invalid")
+
+    services = evidence.services
+    if (
+        not isinstance(services, tuple)
+        or {item.service_kind for item in services if isinstance(item, DcrPlannerServiceBinding)}
+        != set(DcrPlannerServiceKind)
+        or len(services) != len(DcrPlannerServiceKind)
+    ):
+        reasons.append("closed_deterministic_service_bindings_required")
+    else:
+        expected_roots = set(roots.to_dict().values())
+        for item in services:
+            if not isinstance(item, DcrPlannerServiceBinding):
+                reasons.append("typed_deterministic_service_binding_required")
+                continue
+            receipt = item.self_test
+            if (
+                receipt.receipt_cid != _dcr060_cid(receipt.to_dict())
+                or not expected_roots.issubset(set(receipt.root_cids))
+                or not set(receipt.input_cids).issuperset(
+                    {roots.logic_candidate_cid, roots.findings_cid}
+                )
+                or "synthetic" in item.service_identity.lower()
+                or "stub" in item.service_interface.lower()
+            ):
+                reasons.append("deterministic_service_self_test_or_identity_invalid")
+
+    live = evidence.live_evidence
+    if not isinstance(live, DcrPlannerLiveEvidence):
+        reasons.append("integration_pending_dcr050_dcr053_live_evidence")
+    elif live.roots != roots or not live.dcr053_receipt_cid:
+        reasons.append("dcr053_live_evidence_identity_invalid")
+    # This checkout intentionally has no typed DCR-053 live-receipt contract
+    # yet.  A populated string in the transitional wrapper is not evidence,
+    # so it must never unlock a planner view on its own.
+    reasons.append("integration_pending_dcr053_typed_live_receipt_unavailable")
+    return reasons, roots
+
+
+def assess_dcr_planner_composition(
+    handles: DefaultPlannerHandles,
+    evidence: DcrPlannerCompositionEvidence,
+) -> DcrPlannerCompositionResult:
+    """Check whether existing planner handles may be exposed to DCR-060.
+
+    The function is pure with respect to its inputs: it does not build a
+    factory, run a self-test, execute a planner, access a network, or expose
+    completion authority.  Invalid/pending inputs intentionally have no
+    ``planner_view_cid`` and no retained handles.
+    """
+
+    reasons, roots = _dcr060_reason_set(handles, evidence)
+    if reasons:
+        disposition = (
+            DcrPlannerCompositionDisposition.INTEGRATION_PENDING
+            if all(
+                code.startswith("integration_pending_")
+                or code.endswith("_not_current_live")
+                for code in reasons
+            )
+            else DcrPlannerCompositionDisposition.DEFER_CAPABILITY
+        )
+        return DcrPlannerCompositionResult(
+            disposition=disposition,
+            reason_codes=tuple(sorted(set(reasons))),
+        )
+    assert roots is not None
+    # Handles are already checked as real planner components above.  The view
+    # identity binds their existing durable projection and all DCR roots; it
+    # is read-only metadata, never an evidence receipt or an authorization.
+    view_cid = _dcr060_cid(
+        {
+            "schema": DCR_PLANNER_COMPOSITION_SCHEMA,
+            "roots": roots.to_dict(),
+            "planner_handles_cid": handles.content_id,
+        }
+    )
+    return DcrPlannerCompositionResult(
+        disposition=DcrPlannerCompositionDisposition.READY,
+        reason_codes=(),
+        roots=roots,
+        planner_handles=handles,
+        planner_view_cid=view_cid,
+    )
+
+
 __all__ = [
     "DEFER_CAPABILITY_DISPOSITION",
     "DEFAULT_OPTIONAL_PROVERS",
@@ -907,6 +1403,18 @@ __all__ = [
     "DEFAULT_PLANNER_FACTORY_VERSION",
     "DEFAULT_PLANNER_HANDLES_INTERFACE",
     "DEFAULT_PLANNER_HANDLES_SCHEMA",
+    "DCR_PLANNER_COMPOSITION_INTERFACE",
+    "DCR_PLANNER_COMPOSITION_SCHEMA",
+    "DCR_PLANNER_LIVE_EVIDENCE_SCHEMA",
+    "DCR_PLANNER_SERVICE_RECEIPT_SCHEMA",
+    "DcrPlannerCompositionDisposition",
+    "DcrPlannerCompositionEvidence",
+    "DcrPlannerCompositionResult",
+    "DcrPlannerLiveEvidence",
+    "DcrPlannerRoots",
+    "DcrPlannerSelfTestReceipt",
+    "DcrPlannerServiceBinding",
+    "DcrPlannerServiceKind",
     "OPTIONAL_PROVER_RECORD_SCHEMA",
     "DefaultPlannerCapabilityError",
     "DefaultPlannerFactory",
@@ -919,4 +1427,5 @@ __all__ = [
     "ProofCarryingPlannerHandle",
     "build_default_planner_factory",
     "build_default_planner_handles",
+    "assess_dcr_planner_composition",
 ]

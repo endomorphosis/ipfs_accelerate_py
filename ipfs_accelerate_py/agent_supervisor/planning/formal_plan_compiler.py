@@ -1242,6 +1242,17 @@ class FormalPlanCompiler:
 
         try:
             payload = _record(source or {})
+            # Deep IR hook: project Intent/Legal/Security/UI + AST/KG/vector into
+            # compiler channels when requested or when work surfaces are present.
+            try:
+                from .ir_logic_hooks import inject_ir_into_formal_plan_source
+
+                payload = inject_ir_into_formal_plan_source(
+                    payload,
+                    domain=str(payload.get("domain") or "planner"),
+                )
+            except Exception:  # noqa: BLE001
+                pass
             additions = {
                 "objective_records": tuple(objective_records),
                 "task_records": tuple(task_records),
@@ -1252,7 +1263,9 @@ class FormalPlanCompiler:
             }
             for key, value in additions.items():
                 if value:
-                    payload[key] = [_record(item) for item in value]
+                    existing = list(payload.get(key) or [])
+                    existing.extend(_record(item) for item in value)
+                    payload[key] = existing
             if repository_tree_id:
                 payload["repository_tree_id"] = str(repository_tree_id)
             bundle = _normalize_bundle(payload)

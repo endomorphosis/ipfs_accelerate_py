@@ -209,6 +209,16 @@ def register_native_backend_management_tools(manager: Any) -> None:
         runtime="fastapi",
         tags=["native", "mcpp", "backend-management-tools"],
     )
+    # Catalog alias: observed contracts use get_backend_status.
+    manager.register_tool(
+        category="backend_management_tools",
+        name="get_backend_status",
+        func=backend_get_status,
+        description="Alias of backend_get_status for get_backend_status contract surface.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "backend-management-tools", "alias"],
+    )
     manager.register_tool(
         category="backend_management_tools",
         name="backend_select_for_inference",

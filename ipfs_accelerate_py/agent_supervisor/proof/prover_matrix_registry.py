@@ -1603,10 +1603,14 @@ DEFAULT_PROVER_DEFINITIONS: tuple[ProverDefinition, ...] = (
     ),
     ProverDefinition(
         "proverif", "ProVerif", "protocol", ("proverif",),
-        version_args=("-version",),
+        # ProVerif has no -version flag; -help prints the version banner and
+        # exits 0 (see protocol_verification.ProVerifAdapter.version_args).
+        version_args=("-help",),
         fixture=_fixture(
             "proverif-protocol-smoke@1",
-            "free c: channel.\nfree secret: bitstring [private].\nquery attacker(secret).\nprocess 0\n",
+            # Avoid reserved identifier ``secret`` (ProVerif syntax error).
+            "free c: channel.\nfree secret_data: bitstring [private].\n"
+            "query attacker(secret_data).\nprocess 0\n",
             "matrix.pv", ("{fixture}",), output_any=("result",),
             translator="supervisor-proverif", semantics="proverif-process",
             conformant=True, authority=("protocol_reachability",),

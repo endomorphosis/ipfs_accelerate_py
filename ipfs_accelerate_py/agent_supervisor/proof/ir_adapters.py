@@ -343,6 +343,9 @@ def _result_authority(
         return NormalizedResultAuthority.CONSTRAINT_INPUT
     if family is IRFamily.SECURITY:
         return NormalizedResultAuthority.POLICY_INPUT
+    if family is IRFamily.UI:
+        # UI/UX IR is declaration / interface-descriptor context only.
+        return NormalizedResultAuthority.CONTEXT_ONLY
     if declared is IRDeclaredAuthority.AUTHORITATIVE:
         return NormalizedResultAuthority.AUTHORITATIVE_INPUT
     if declared is IRDeclaredAuthority.VERIFIED:
@@ -937,6 +940,13 @@ class SecurityIRAdapter(BaseIRAdapter):
         super().__init__(IRFamily.SECURITY, **kwargs)
 
 
+class UiIrAdapter(BaseIRAdapter):
+    """Normalize verified ui_ir / ui_ux_ir artifacts (context-only authority)."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(IRFamily.UI, **kwargs)
+
+
 class IRAdapterRegistry:
     """Provider-free adapter selection with declaration-only discovery."""
 
@@ -951,6 +961,7 @@ class IRAdapterRegistry:
             IntentIRAdapter(bounds=selected_bounds),
             LegalIRAdapter(bounds=selected_bounds),
             SecurityIRAdapter(bounds=selected_bounds),
+            UiIrAdapter(bounds=selected_bounds),
         ]
         if include_shared:
             adapters.extend(
@@ -1066,5 +1077,6 @@ __all__ = [
     "NormalizedObligation",
     "NormalizedResultAuthority",
     "SecurityIRAdapter",
+    "UiIrAdapter",
     "normalize_ir_artifact",
 ]

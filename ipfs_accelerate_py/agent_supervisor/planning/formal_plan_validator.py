@@ -1007,6 +1007,22 @@ class FormalPlanValidator:
         if not isinstance(plan, FormalWorkPlan):
             raise TypeError("plan must be a FormalWorkPlan or canonical plan object")
 
+        # Deep IR hook: compute IR binding findings (non-mutating; callers read
+        # via plan.metadata when present, else advisory only).
+        _ir_validation_findings: list[dict[str, Any]] = []
+        try:
+            from .ir_logic_hooks import ir_validation_findings
+
+            meta = getattr(plan, "metadata", None) or {}
+            require_ir = bool(
+                (meta.get("require_ir_logic") if isinstance(meta, Mapping) else False)
+            )
+            _ir_validation_findings = ir_validation_findings(
+                plan, require_ir=require_ir
+            )
+        except Exception:  # noqa: BLE001
+            _ir_validation_findings = []
+
         guard = _BudgetGuard(self.bounds, cancellation_token, self._clock)
         effective_bound = min(plan.trace_bound, self.bounds.max_trace_steps)
         truncated: list[str] = []
@@ -1111,6 +1127,24 @@ class FormalPlanValidator:
         if not domain_sizes["provider_evidence"]:
             domain_sizes["provider_evidence"] = len(evidence)
         findings: list[PlanValidationFinding] = list(formula_findings)
+        # Deep IR hook: required IR binding becomes formal validation evidence.
+        for item in _ir_validation_findings:
+            if item.get("severity") != "error":
+                continue
+            findings.append(
+                PlanValidationFinding(
+                    PlanFindingCode.REQUIRED_EVIDENCE_UNAVAILABLE,
+                    FindingDisposition.UNSUPPORTED,
+                    PlanCheckKind.FORMULA_SUPPORT,
+                    str(item.get("message") or item.get("code") or "ir_logic_required"),
+                    (plan.plan_id,),
+                    details={
+                        "ir_finding_code": item.get("code"),
+                        "source": "ir_logic_hooks",
+                        "authoritative": False,
+                    },
+                )
+            )
         trace: _TraceModel | None = None
 
         try:

@@ -31,7 +31,7 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
         from_file_props = schemas["generate_embeddings_from_file"]["properties"]
         self.assertIn("json", from_file_props["output_format"].get("enum", []))
 
-        semantic_props = schemas["semantic_search"]["properties"]
+        semantic_props = schemas["embedding_semantic_search"]["properties"]
         self.assertEqual(semantic_props["top_k"].get("maximum"), 1000)
 
         hybrid_props = schemas["hybrid_search"]["properties"]

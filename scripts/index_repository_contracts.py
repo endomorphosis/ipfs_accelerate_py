@@ -27,6 +27,7 @@ import re
 import shutil
 import sys
 import tempfile
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -491,7 +492,35 @@ def validate_authoritative_publication_options(
         )
 
 
-def _provider_authority_summary(multi_root) -> dict[str, Any]:
+def _provider_authority_ready(multi_root, *, allow_dirty: bool) -> bool:
+    """Whether multi-root provider indexes satisfy handoff authority.
+
+    Exhaustive parity (clean, non-divergent roots) is preferred. When the run
+    already admitted dirty analysis, dirty / version-divergent checkouts may
+    still authoritatively bind package surfaces if every provider is indexed,
+    analyzer-healthy, symbol-complete, and free of opaque gitlinks.
+    """
+
+    if bool(multi_root.exhaustive_parity_allowed):
+        return True
+    if not allow_dirty:
+        return False
+    if not multi_root.providers:
+        return False
+    if multi_root.any_opaque_gitlink:
+        return False
+    if not multi_root.all_providers_indexed:
+        return False
+    if not multi_root.all_providers_healthy:
+        return False
+    if not multi_root.all_symbol_extractions_complete:
+        return False
+    return True
+
+
+def _provider_authority_summary(
+    multi_root, *, allow_dirty: bool = False
+) -> dict[str, Any]:
     """Compact zero-model multi-root authority ledger for the run summary."""
 
     providers: list[dict[str, Any]] = []
@@ -518,6 +547,9 @@ def _provider_authority_summary(multi_root) -> dict[str, Any]:
                 "origin_url": observation.origin_url,
             }
         )
+    authority_ready = _provider_authority_ready(
+        multi_root, allow_dirty=allow_dirty
+    )
     return {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
@@ -536,6 +568,16 @@ def _provider_authority_summary(multi_root) -> dict[str, Any]:
         ),
         "any_opaque_gitlink": multi_root.any_opaque_gitlink,
         "exhaustive_parity_allowed": multi_root.exhaustive_parity_allowed,
+        "authority_ready": authority_ready,
+        "authority_admission": (
+            "exhaustive_parity"
+            if multi_root.exhaustive_parity_allowed
+            else (
+                "dirty_analysis_package_surfaces"
+                if authority_ready
+                else "rejected"
+            )
+        ),
         "has_blocking_contradictions": (
             multi_root.multi_root_snapshot.has_blocking_contradictions
             or bool(multi_root.contradictions)
@@ -557,15 +599,39 @@ def _fsync_directory(path: Path) -> None:
 
 
 def _ensure_generation_link(path: Path, target: str) -> None:
-    """Install a stable canonical symlink without replacing regular files."""
+    """Install a stable canonical symlink for one authoritative artifact path.
+
+    Correct symlinks are left alone. Legacy regular files (pre-generation
+    baseline layout) are moved aside under ``audit/legacy-baseline-files/`` so
+    the generation link can be installed without a full reindex. Wrong
+    symlinks are replaced atomically.
+    """
 
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if os.path.lexists(path):
-        if not path.is_symlink() or os.readlink(path) != target:
+        if path.is_symlink() and os.readlink(path) == target:
+            return
+        if path.is_symlink():
+            path.unlink()
+        elif path.is_file():
+            # Migrate pre-generation durable files out of the link path.
+            audit_root = path
+            # Prefer SCA handoff root /audit when path is under baseline/ or
+            # analyzer_health/; otherwise keep a sibling backup.
+            candidates = []
+            for parent in path.parents:
+                if parent.name in {"baseline", "analyzer_health"}:
+                    candidates.append(parent.parent / "audit" / "legacy-baseline-files")
+                    break
+            backup_dir = candidates[0] if candidates else (path.parent / ".legacy-baseline-files")
+            backup_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+            backup = backup_dir / f"{path.name}.{stamp}"
+            os.replace(path, backup)
+        else:
             raise RepositoryIndexerError(
                 f"authoritative path is not the expected generation link: {path}"
             )
-        return
     temporary = path.parent / (
         f".{path.name}.link-{os.getpid()}-{hashlib.sha256(target.encode()).hexdigest()[:8]}"
     )
@@ -1118,11 +1184,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 multi_root,
                 output_root / "provider-index.json",
             )
-            multi_root_summary = _provider_authority_summary(multi_root)
+            multi_root_summary = _provider_authority_summary(
+                multi_root, allow_dirty=bool(args.allow_dirty)
+            )
             multi_root_summary["provider_index_path"] = str(provider_index_path)
             multi_root_summary["provider_index_root"] = str(multi_root_index_root)
-            multi_root_authority_failed = not bool(
-                multi_root.exhaustive_parity_allowed
+            multi_root_authority_failed = not _provider_authority_ready(
+                multi_root, allow_dirty=bool(args.allow_dirty)
             )
 
         handoff_root = resolve_handoff_root(

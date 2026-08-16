@@ -9,10 +9,9 @@ Acceptance:
 
 from __future__ import annotations
 
-from typing import Any
+import inspect
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_disposition import (
     ImplementationDisposition,
     ImplementationForestRoots,
@@ -20,14 +19,13 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_disposition 
     provider_invocation_authorized,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.pre_implementation_kernel import (
+    REASON_ANALYTICAL_UNIQUE_MAPPING,
     AnalyticalRepairCandidate,
     PreImplementationKernel,
-    REASON_ANALYTICAL_UNIQUE_MAPPING,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.pre_implementation_provider_gate import (
     EVENT_PRE_IMPLEMENTATION_KERNEL,
     PRE_IMPLEMENTATION_PROVIDER_GATE_INTERFACE,
-    ProviderGateDecision,
     assert_provider_dispatch_allowed,
     evaluate_provider_gate,
 )
@@ -98,18 +96,25 @@ def test_residual_path_requires_packet(forest: ImplementationForestRoots) -> Non
     with pytest.raises(PermissionError):
         assert_provider_dispatch_allowed(decision)
 
-    packet = _cid("residual-packet")
-    authorized = evaluate_provider_gate(
+    synthetic_packet = _cid("residual-packet")
+    blocked = evaluate_provider_gate(
         task_cid=_cid("task"),
         forest_roots=forest,
-        residual_packet_cid=packet,
-        allow_legacy_residual=False,
+        residual_packet_cid=synthetic_packet,
+        allow_legacy_residual=True,
+        planner_available=True,
+        doctor_available=True,
+        authority_receipt_cids={
+            kind: _cid(f"synthetic-{kind}")
+            for kind in ("planner", "doctor", "obligation", "logic", "repair")
+        },
     )
-    assert authorized.disposition is ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED
-    assert authorized.provider_authorized is True
-    assert authorized.skip_provider is False
-    assert authorized.residual_packet_cid == packet
-    assert_provider_dispatch_allowed(authorized)
+    assert blocked.disposition is ImplementationDisposition.DEFER_CAPABILITY
+    assert blocked.provider_authorized is False
+    assert blocked.skip_provider is True
+    assert blocked.provider_hook_count == 0
+    with pytest.raises(PermissionError):
+        assert_provider_dispatch_allowed(blocked)
 
 
 def test_event_payload_includes_receipt_identity(
@@ -149,18 +154,28 @@ def test_injectable_kernel_controls_disposition(
     assert not provider_invocation_authorized(decision.disposition)
 
 
-def test_legacy_residual_keeps_model_path_reachable(
+def test_legacy_residual_and_availability_booleans_cannot_reach_provider(
     forest: ImplementationForestRoots,
 ) -> None:
+    provider_calls = {"count": 0}
+
+    def fake_provider() -> None:
+        provider_calls["count"] += 1
+
     decision = evaluate_provider_gate(
         task_cid=_cid("task"),
         forest_roots=forest,
         allow_legacy_residual=True,
+        planner_available=True,
+        doctor_available=True,
     )
-    assert decision.disposition is ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED
-    assert decision.provider_authorized is True
-    assert decision.residual_packet_cid
-    assert_provider_dispatch_allowed(decision)
+    assert decision.disposition is ImplementationDisposition.ABSTAIN_REVIEW
+    assert decision.provider_authorized is False
+    assert decision.provider_hook_count == 0
+    with pytest.raises(PermissionError):
+        assert_provider_dispatch_allowed(decision)
+        fake_provider()
+    assert provider_calls["count"] == 0
 
 
 def test_daemon_method_exists_and_shapes_gate() -> None:
@@ -175,10 +190,15 @@ def test_daemon_method_exists_and_shapes_gate() -> None:
     source = inspect_source_contains_gate_hook()
     assert "pre_implementation_kernel_evaluated" in source
     assert "skip_provider" in source
+    gate_source = inspect.getsource(
+        PortalImplementationDaemon._evaluate_pre_implementation_provider_gate
+    )
+    assert "allow_legacy_residual=False" in gate_source
 
 
 def inspect_source_contains_gate_hook() -> str:
-    import inspect
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as mod
 
-    return inspect.getsource(mod.PortalImplementationDaemon._run_implementation_in_ephemeral_worktree)
+    return inspect.getsource(
+        mod.PortalImplementationDaemon._run_implementation_in_ephemeral_worktree
+    )

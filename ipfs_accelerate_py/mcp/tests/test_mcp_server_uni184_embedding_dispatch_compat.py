@@ -82,7 +82,7 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
                 semantic = self._assert_dispatch_success_envelope(
                     await dispatch(
                         "embedding_tools",
-                        "semantic_search",
+                        "embedding_semantic_search",
                         {
                             "query": "hello",
                             "vector_store_id": "vs-1",
@@ -176,7 +176,7 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
                 semantic = self._assert_dispatch_success_envelope(
                     await dispatch(
                         "embedding_tools",
-                        "semantic_search",
+                        "embedding_semantic_search",
                         {"query": "hello", "vector_store_id": "vs-1"},
                     )
                 )

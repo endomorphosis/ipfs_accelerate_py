@@ -766,6 +766,34 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 "details": str(exc),
             }
 
+        # Prefer autonomous-repair surface identity bindings for GUI/ORB/IDL names.
+        surface_binding_meta: dict[str, Any] = {}
+        try:
+            from .surface_identity_bindings import resolve_dispatch_target
+
+            resolved = resolve_dispatch_target(category, tool_name)
+            if isinstance(resolved, dict) and resolved.get("resolved"):
+                surface_binding_meta = {
+                    "surface_binding": {
+                        "requested_category": resolved.get("requested_category", category),
+                        "requested_tool_name": resolved.get(
+                            "requested_tool_name", tool_name
+                        ),
+                        "category": resolved.get("category"),
+                        "tool_name": resolved.get("tool_name"),
+                        "reason": resolved.get("reason"),
+                        "preferred_path": resolved.get("preferred_path"),
+                        "handler": resolved.get("handler"),
+                        "matched_key": resolved.get("matched_key"),
+                    }
+                }
+                # Apply only when we got a concrete category/tool remapping.
+                if resolved.get("reason") == "binding_applied":
+                    category = str(resolved.get("category") or category)
+                    tool_name = str(resolved.get("tool_name") or tool_name)
+        except Exception:
+            surface_binding_meta = {}
+
         dispatch_started = time.perf_counter()
 
         def _record_observability(status: str) -> None:
@@ -810,6 +838,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     response.setdefault(str(key), value)
             if isinstance(extra_fields, dict) and extra_fields:
                 response.update(extra_fields)
+            # Attach autonomous-repair surface binding metadata when present.
+            if surface_binding_meta:
+                for key, value in surface_binding_meta.items():
+                    response.setdefault(str(key), value)
             return response
 
         def _persist_artifact_store_snapshot() -> dict[str, Any]:
@@ -1829,7 +1861,21 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             },
         }
 
+        # Static name= literals so package surface extraction can resolve
+        # tools_dispatch / tools_runtime_metrics (dynamic loop variables are
+        # UnresolvedReason.DYNAMIC_NAME and leave observed contracts incomplete).
         for tool_name in get_unified_meta_tool_names():
+            if tool_name not in meta_tool_specs:
+                continue
+            # Prefer explicit registrations below for AST-visible surfaces.
+            if tool_name in {
+                "tools_list_categories",
+                "tools_list_tools",
+                "tools_get_schema",
+                "tools_dispatch",
+                "tools_runtime_metrics",
+            }:
+                continue
             spec = meta_tool_specs[tool_name]
             server.register_tool(
                 name=tool_name,
@@ -1839,6 +1885,46 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 execution_context="server",
                 tags=spec["tags"],
             )
+        server.register_tool(
+            name="tools_list_categories",
+            function=tools_list_categories,
+            description=meta_tool_specs["tools_list_categories"]["description"],
+            input_schema=meta_tool_specs["tools_list_categories"]["input_schema"],
+            execution_context="server",
+            tags=meta_tool_specs["tools_list_categories"]["tags"],
+        )
+        server.register_tool(
+            name="tools_list_tools",
+            function=tools_list_tools,
+            description=meta_tool_specs["tools_list_tools"]["description"],
+            input_schema=meta_tool_specs["tools_list_tools"]["input_schema"],
+            execution_context="server",
+            tags=meta_tool_specs["tools_list_tools"]["tags"],
+        )
+        server.register_tool(
+            name="tools_get_schema",
+            function=tools_get_schema,
+            description=meta_tool_specs["tools_get_schema"]["description"],
+            input_schema=meta_tool_specs["tools_get_schema"]["input_schema"],
+            execution_context="server",
+            tags=meta_tool_specs["tools_get_schema"]["tags"],
+        )
+        server.register_tool(
+            name="tools_dispatch",
+            function=tools_dispatch,
+            description=meta_tool_specs["tools_dispatch"]["description"],
+            input_schema=meta_tool_specs["tools_dispatch"]["input_schema"],
+            execution_context="server",
+            tags=meta_tool_specs["tools_dispatch"]["tags"],
+        )
+        server.register_tool(
+            name="tools_runtime_metrics",
+            function=tools_runtime_metrics,
+            description=meta_tool_specs["tools_runtime_metrics"]["description"],
+            input_schema=meta_tool_specs["tools_runtime_metrics"]["input_schema"],
+            execution_context="server",
+            tags=meta_tool_specs["tools_runtime_metrics"]["tags"],
+        )
 
 
 class StandaloneMCP:

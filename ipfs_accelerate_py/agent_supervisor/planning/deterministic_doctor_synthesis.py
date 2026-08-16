@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import PurePosixPath
 from types import MappingProxyType
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, Mapping
 
 from ..analysis.contract_repair_contracts import RepairTargetDecision
 from ..analysis.deterministic_doctor_contracts import (
@@ -1281,6 +1281,22 @@ class DeterministicDoctorSynthesizer:
                 "request must be DoctorSynthesisRequest",
                 reason_code=DoctorSynthesisReason.MALFORMED_INPUT,
             )
+        # Deep IR hook: bind Intent/Legal/Security/UI + AST/KG/vector into the
+        # synthesis request metadata (domain-agnostic intermediate context).
+        try:
+            from .ir_logic_hooks import attach_ir_logic_to_doctor_request
+
+            request = attach_ir_logic_to_doctor_request(
+                request,
+                domain=str(
+                    (request.metadata or {}).get("domain")
+                    if isinstance(request.metadata, Mapping)
+                    else "doctor"
+                )
+                or "doctor",
+            )
+        except Exception:  # noqa: BLE001
+            pass
         registry = self._resolve_registry(request.roots)
         identities = self._recompute_input_identities(request, registry)
         reasons = self._preflight(request, registry, identities)
