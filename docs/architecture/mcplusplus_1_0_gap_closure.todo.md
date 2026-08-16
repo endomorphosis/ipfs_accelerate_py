@@ -1547,7 +1547,7 @@ overlays. Never force-push.
 
 ## MCPP-049 Wire datasets Profile D to the real evaluator and fail closed
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
