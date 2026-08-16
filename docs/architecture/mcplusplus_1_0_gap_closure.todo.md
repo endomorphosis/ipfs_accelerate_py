@@ -1328,7 +1328,7 @@ overlays. Never force-push.
 
 ## MCPP-042 Enforce attenuation, audience, time, depth, replay, and executor binding
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
