@@ -80,7 +80,7 @@ W16  LGSWF-140 -> LGSWF-141
 ## LGSWF-001 Inventory current implementations and persist revision ledgers
 
 - Stable task ID: LGSWF-001
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
