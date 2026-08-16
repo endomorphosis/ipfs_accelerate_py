@@ -1578,7 +1578,7 @@ overlays. Never force-push.
 
 ## MCPP-050 Define the DurableExecutor interface
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
