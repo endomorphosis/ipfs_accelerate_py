@@ -19,9 +19,9 @@ TASK_RE = re.compile(r"^## (LGSWF-(\d{3})) (.+)$", re.MULTILINE)
 GOAL_RE = re.compile(r"^## (LGSWF-G\d{3}) (.+)$", re.MULTILINE)
 META_RE = re.compile(r"^- ([^:\n]+):(?: (.*))?$", re.MULTILINE)
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
-ACCELERATOR_BASE = "485edc0871c55b0e2ef21d83bece9fa12c2c8d84"
-DATASETS_BASE = "ac82107e246b30e35a2bbdcf75e01370d22350c6"
-BOARD_NAMESPACE = "logic-governed-semantic-work-fabric-v1"
+ACCELERATOR_BASE = "b6dc155c3d779a4166a8ee92c0e0214e0157e2e2"
+DATASETS_BASE = "0691203550c0f316852c74d293d8fc3c4ce130a6"
+BOARD_NAMESPACE = "logic-governed-semantic-work-fabric-actual-v1"
 EXPECTED_READY = ["LGSWF-001", "LGSWF-002", "LGSWF-003"]
 EXPECTED_COMPLETED = ["LGSWF-000"]
 EXPECTED_GOALS = ["LGSWF-G000"] + [f"LGSWF-G{i:03d}" for i in range(10, 151, 10)]
@@ -32,6 +32,7 @@ OBJECTIVES = ROOT / "docs/architecture/logic_governed_semantic_work_fabric.objec
 BOARD = ROOT / "docs/architecture/logic_governed_semantic_work_fabric.todo.md"
 CONFIG = ROOT / "config/logic_governed_semantic_work_fabric_scheduler.json"
 BASELINE = ROOT / "config/logic_governed_semantic_work_fabric_baseline.json"
+MATERIALIZER = ROOT / "scripts/materialize_logic_governed_semantic_work_fabric_control_plane.py"
 
 REQUIRED_TASK_FIELDS = (
     "Stable task ID",
@@ -221,7 +222,22 @@ def _git(args: list[str], cwd: Path = ROOT) -> tuple[int, str, str]:
     return completed.returncode, completed.stdout.strip(), completed.stderr.strip()
 
 
-def validate() -> dict[str, Any]:
+def _command(args: list[str], cwd: Path = ROOT) -> tuple[int, str, str]:
+    try:
+        completed = subprocess.run(
+            args,
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return 124, "", f"{type(exc).__name__}: {exc}"
+    return completed.returncode, completed.stdout.strip(), completed.stderr.strip()
+
+
+def validate(*, require_database: bool = False) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
     plan_text = _load_text(PLAN, errors)
@@ -347,8 +363,7 @@ def validate() -> dict[str, Any]:
                 errors.append(f"{task_id}: post-A semantic-root sentinel mismatch")
             if data.get("Base plan revision") != "LGSWF-PLAN-R2-required":
                 errors.append(f"{task_id}: post-A plan revision is not R2-required")
-        if task_id in EXPECTED_READY and number % 3 != {"LGSWF-001": 1, "LGSWF-002": 2, "LGSWF-003": 0}[task_id]:
-            errors.append(f"{task_id}: strict shard mismatch")
+        _ = number
 
     for goal_id, data in sorted(goals.items()):
         for field in ("Status", "Parent", "Depends on", "Priority", "Track", "Goal", "Completion contract", "Evidence", "Acceptance criteria", "Outputs", "Validation", "Acceptance", "Gap task"):
@@ -367,8 +382,29 @@ def validate() -> dict[str, Any]:
         errors.append("config board namespace mismatch")
     if config.get("task_prefix") != "LGSWF-" or config.get("goal_prefix") != "LGSWF-G":
         errors.append("config task/goal prefix mismatch")
-    if config.get("max_lanes") != 3 or config.get("strict_task_sharding") is not True:
-        errors.append("config must use three strict lanes")
+    if config.get("max_lanes") != 1 or config.get("strict_task_sharding") is not True:
+        errors.append("bootstrap config must use one strict single-writer lane")
+    if config.get("qualification_target_max_lanes") != 3:
+        errors.append("qualification target must retain three conflict-aware lanes")
+    writer_policy = config.get("bootstrap_writer_policy")
+    if not isinstance(writer_policy, dict) or writer_policy.get("maximum_processes") != 1:
+        errors.append("bootstrap writer policy must prohibit multiple DuckDB file writers")
+    source_binding = config.get("source_binding")
+    if not isinstance(source_binding, dict) or source_binding.get("bootstrap_task_source") != "duckdb":
+        errors.append("DuckDB must be the explicit bootstrap task authority")
+    database_program = config.get("database_program")
+    if not isinstance(database_program, dict):
+        errors.append("database_program is required")
+    else:
+        if database_program.get("authority_mode") != "embedded":
+            errors.append("bootstrap database authority must be bounded embedded mode")
+        if database_program.get("task_source_kind") != "duckdb":
+            errors.append("bootstrap task source must be duckdb")
+        if database_program.get("failover_policy") != "fail_closed":
+            errors.append("database authority must fail closed")
+        store_id = str(database_program.get("store_id") or "")
+        if not store_id.endswith("/control.duckdb") or ".." in PurePosixPath(store_id).parts:
+            errors.append("database store_id must be the sealed repository-relative control.duckdb")
     projection = config.get("initial_projection") if isinstance(config.get("initial_projection"), dict) else {}
     if projection.get("task_count") != len(tasks):
         errors.append("config initial task count mismatch")
@@ -390,6 +426,7 @@ def validate() -> dict[str, Any]:
         PLAN.relative_to(ROOT).as_posix(), OBJECTIVES.relative_to(ROOT).as_posix(),
         BOARD.relative_to(ROOT).as_posix(), CONFIG.relative_to(ROOT).as_posix(),
         BASELINE.relative_to(ROOT).as_posix(), Path(__file__).resolve().relative_to(ROOT).as_posix(),
+        MATERIALIZER.relative_to(ROOT).as_posix(),
     }
     protected = set(config.get("protected_paths") or [])
     if not expected_control_paths <= protected:
@@ -417,9 +454,9 @@ def validate() -> dict[str, Any]:
     if sorted(wave_population) != sorted(tasks):
         errors.append("waves do not contain each task exactly once")
 
-    selected = baseline.get("implementation_authority") if isinstance(baseline.get("implementation_authority"), dict) else {}
+    selected = baseline.get("actual_accelerator_snapshot") if isinstance(baseline.get("actual_accelerator_snapshot"), dict) else {}
     semantic = baseline.get("semantic_authority") if isinstance(baseline.get("semantic_authority"), dict) else {}
-    if selected.get("head") != ACCELERATOR_BASE or selected.get("tree") != "17fefd8b21566766ec7058044d128374b12f81cd":
+    if selected.get("duckdb_integration_commit") != ACCELERATOR_BASE or selected.get("duckdb_integration_tree") != "1313cf18fecd969f654f0233f6678c2d851116e8":
         errors.append("baseline selected accelerator identity mismatch")
     if semantic.get("head") != DATASETS_BASE or semantic.get("semantic_state_root_status") != "unavailable" or semantic.get("semantic_state_root") is not None:
         errors.append("baseline datasets identity/root status mismatch")
@@ -442,20 +479,30 @@ def validate() -> dict[str, Any]:
             errors.append(f"plan missing required phrase: {phrase!r}")
 
     branch_code, branch, branch_err = _git(["branch", "--show-current"])
-    if branch_code != 0 or branch != "agent/logic-governed-semantic-work-fabric-v1":
+    if branch_code != 0 or branch != "agent/logic-governed-semantic-work-fabric-actual-v1":
         errors.append(f"wrong launch branch: {branch or branch_err}")
     ancestor_code, _, ancestor_err = _git(["merge-base", "--is-ancestor", ACCELERATOR_BASE, "HEAD"])
     if ancestor_code != 0:
         errors.append(f"selected accelerator base is not an ancestor: {ancestor_err}")
     for relative, expected in (
         ("ipfs_datasets_py", DATASETS_BASE),
-        ("ipfs_kit_py", "6196017ca3df016c7159dce43af60f2a0d96a9ae"),
-        ("ipfs_accelerate_py/mcplusplus", "dc3164653a48d059ae9812078359daeafb451c07"),
+        ("ipfs_kit_py", "e164bb21c7a73b722a83aea7623e5677391bce54"),
+        ("ipfs_accelerate_py/mcplusplus", "15c1816d6c63a2b11edd505704f6a04a9abc6167"),
     ):
         path = ROOT / relative
         code, head, error = _git(["rev-parse", "HEAD"], cwd=path)
         if code != 0 or head != expected:
             errors.append(f"submodule {relative} identity mismatch: {head or error}")
+
+    if require_database:
+        code, output, error = _command(
+            [sys.executable, str(MATERIALIZER), "verify"], cwd=ROOT
+        )
+        if code != 0:
+            errors.append(
+                "DuckDB control-plane verification failed: "
+                + (output or error).strip()[:2000]
+            )
 
     artifacts = {}
     for path in (PLAN, OBJECTIVES, BOARD, CONFIG, BASELINE, Path(__file__).resolve()):
@@ -474,7 +521,7 @@ def validate() -> dict[str, Any]:
         "completed_task_ids": completed,
         "ready_task_ids": ready,
         "topological_task_ids": topo,
-        "initial_lane_assignments": {task_id: int(task_id[-3:]) % 3 for task_id in ready},
+        "initial_lane_assignments": {task_id: 0 for task_id in ready},
         "control_artifact_identities": artifacts,
         "source": {
             "branch": branch,
@@ -486,9 +533,9 @@ def validate() -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--check-all", action="store_true", help="validate the complete sealed bundle")
-    parser.parse_args()
-    report = validate()
+    parser.add_argument("--check-all", action="store_true", help="also require the materialized DuckDB authority")
+    args = parser.parse_args()
+    report = validate(require_database=args.check_all)
     json.dump(report, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0 if report["valid"] else 2

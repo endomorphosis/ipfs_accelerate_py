@@ -1,9 +1,9 @@
 # Logic-Governed Semantic Work Fabric implementation and qualification plan
 
-Plan identity: `LGSWF-PLAN-R1`  
-Parent goal: `LGSWF-G000`  
-Board namespace: `logic-governed-semantic-work-fabric-v1`  
-Source baseline: `config/logic_governed_semantic_work_fabric_baseline.json`  
+Plan identity: `LGSWF-PLAN-ACTUAL-R1`
+Parent goal: `LGSWF-G000`
+Board namespace: `logic-governed-semantic-work-fabric-actual-v1`
+Source baseline: `config/logic_governed_semantic_work_fabric_baseline.json`
 Executable board: `docs/architecture/logic_governed_semantic_work_fabric.todo.md`
 
 ## 1. Outcome and execution policy
@@ -41,34 +41,40 @@ The requested revisions were compared with every relevant checked-out head
 before this plan was authored. The complete comparison commitments, including
 ordered-log and diff hashes, are in the baseline JSON.
 
-| Repository/copy | Observed HEAD | Tree | State | Decision |
-|---|---|---|---|---|
-| selected accelerator checkout | `485edc0871c55b0e2ef21d83bece9fa12c2c8d84` | `17fefd8b21566766ec7058044d128374b12f81cd` | clean, superproject-pinned | implementation authority |
-| default accelerator checkout | `ea11293bb996f052d620eae989f5377a956764b1` | `ea6869d70e25c7bc8b80e6458c1a46b8c03f945f` | dirty, 1,245 commits older | legacy evidence only |
-| newer LPC accelerator checkout | `c821d0b43877591bbb0fa3f328fbccff187b56e7` | `d0db9783b577526b65946352836300783d462720` | clean, 694 commits newer, submodules absent | unadopted evidence only |
-| selected datasets checkout | `ac82107e246b30e35a2bbdcf75e01370d22350c6` | `2b3d892dd1c31fb6b8a3eebdb88616d411c49a47` | clean and exact nested gitlink | semantic authority |
-| selected kit checkout | `6196017ca3df016c7159dce43af60f2a0d96a9ae` | `93070c709af29095fdff11f3e2698543449c08ef` | clean and exact nested gitlink | persistence dependency |
-| selected MCP++ checkout | `dc3164653a48d059ae9812078359daeafb451c07` | `6560c3d0c926be12df860afb7d7c82043a1769ba` | clean and exact nested gitlink | integration dependency |
+| Repository/copy | Observed HEAD/tree | State | Decision |
+|---|---|---|---|
+| actual accelerator checkout | `ea11293bb996f052d620eae989f5377a956764b1` / `ea6869d70e25c7bc8b80e6458c1a46b8c03f945f` | dirty: 38 tracked and 134 untracked entries | checked-out implementation authority; preserved untouched |
+| pinned accelerator comparison | `485edc0871c55b0e2ef21d83bece9fa12c2c8d84` / `17fefd8b21566766ec7058044d128374b12f81cd` | 1,245 commits after actual HEAD | comparison evidence only; not silently substituted |
+| isolated accelerator snapshot | `38cd50092d300b61327a9225e7f10cfe8acefb4f` / `005f885e270bbc7573710686a78fc2f740ee5b9f` | exact tracked patch plus 132 non-runtime untracked source files | reproducible source snapshot |
+| integrated accelerator base | `b6dc155c3d779a4166a8ee92c0e0214e0157e2e2` / `1313cf18fecd969f654f0233f6678c2d851116e8` | snapshot plus existing DuckDB/Quack history and seven resolved conflicts | task base and launch ancestor |
+| actual datasets checkout | `ac82107e246b30e35a2bbdcf75e01370d22350c6` / `2b3d892dd1c31fb6b8a3eebdb88616d411c49a47` | dirty | checked-out semantic authority; preserved untouched |
+| isolated datasets snapshot | `0691203550c0f316852c74d293d8fc3c4ce130a6` / `35252228f51c1247a8f99939b36e74f0af36e411` | exact tracked patch plus 29 untracked source files | semantic task base and exact parent gitlink |
+| DuckDB/Quack reuse source | `9e39c6c9edb0b756f99f9857a89e70642ef1321c` / `ea321ea749103ece6a175c4e984372e42ac204bd` | historical run stopped; no live server or store | implementation history only; freshly qualify |
 
-The selected source is itself an actual checked-out head, is clean, equals the
-superproject gitlink, and contains the landed semantic-state/governor and
-configured-board control planes. This makes it the only observed revision that
-simultaneously satisfies implementation authority, reproducibility, and
-fail-closed launch preflight. Remote-only post-pin functionality is not silently
-adopted. In particular, datasets adversarial assurance is unavailable at the
-selected head and remains an explicit qualification gap until an admitted
-revision decision lands.
+The dirty checkouts are the implementation authority. They were not cleaned,
+reset, or overwritten. Their tracked patches and bounded non-runtime untracked
+files were copied into isolated commits; two accelerator lock/audit files and
+the datasets nested `.tools/ipfs_kit_py` dirty work were explicitly excluded.
+The exact patch and manifest hashes are sealed in the baseline.
 
-The baseline commits to all intervening changes with these exact ranges:
+The prior LGSWF run at `f7c7d19a78c956e58d1f431b49e3b6ea0ef687c7`
+completed only tasks 000--003 before SIGTERM. It used the pinned comparison
+revision and legacy Markdown authority, so its records are preserved as failed
+attempt evidence and are not resumed or accepted by this plan.
 
-- accelerator legacy to selected: 1,245 commits;
-- accelerator selected to newer unadopted: 694 commits;
-- datasets embedded legacy to selected: 568 commits;
-- datasets selected to observed remote: 96 commits.
+The existing DuckDB/Quack branch contributed 345 unique commits. Its core
+database contract suite passes 75 tests on the integrated tree, but the current
+host has DuckDB 1.5.2 without the Quack extension. Moreover, the production
+database daemon opens the file directly instead of consuming
+`QuackStateRepository`. A three-process launch would therefore violate the
+single-writer safety contract. R1 bootstraps with exactly one explicit embedded
+DuckDB writer; its parallel waves remain planned but dispatch serially until a
+tested Quack-backed claim path and capability report authorize an immutable
+concurrency revision. This is a qualification limitation, not fabricated
+parallelism.
 
-`LGSWF-001` materializes the full ordered commit ledgers and verifies their
-recorded hashes. A mismatch quarantines the baseline rather than changing the
-source decision implicitly.
+`LGSWF-001` persists the full revision ledgers and replays every baseline hash.
+A mismatch quarantines the baseline instead of changing source authority.
 
 ## 3. Current-state inventory and canonical authority map
 
@@ -112,9 +118,11 @@ qualification limitations. The accelerator must never reinterpret them.
 
 The implementation reuses and improves these landed modules:
 
-- semantic consumption: `agent_supervisor/semantic_state/`, including strict
-  datasets adapters, ContextPack records, root manifests, durable CAS, and
-  `SemanticWorkRequest`/`SemanticWorkResult`;
+- semantic consumption currently has no `agent_supervisor/semantic_state/`
+  package on the actual source. Existing change-propagation, semantic
+  dependency, capsule-reference and ContextPack consumers are reusable
+  projections; B and C must add only the missing accelerator-owned reference
+  contracts after A freezes their exact interfaces;
 - planning and authority: `planning/plan_revision_contracts.py`,
   `task_sources/plan_revision_store.py`, formal planning contracts, objective
   graph, task projections, backlog refinery, and configured-board compiler;

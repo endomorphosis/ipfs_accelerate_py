@@ -6,18 +6,18 @@
   "validator_path": "scripts/validate_logic_governed_semantic_work_fabric_board.py",
   "task_prefix": "LGSWF-",
   "goal_prefix": "LGSWF-G",
-  "board_namespace": "logic-governed-semantic-work-fabric-v1",
-  "merge_target_branch": "agent/logic-governed-semantic-work-fabric-v1",
+  "board_namespace": "logic-governed-semantic-work-fabric-actual-v1",
+  "merge_target_branch": "agent/logic-governed-semantic-work-fabric-actual-v1",
   "source_binding": {
-    "accelerator_required_ancestor": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
-    "accelerator_required_branch": "agent/logic-governed-semantic-work-fabric-v1",
-    "bootstrap_task_source": "legacy-markdown",
+    "accelerator_required_ancestor": "b6dc155c3d779a4166a8ee92c0e0214e0157e2e2",
+    "accelerator_required_branch": "agent/logic-governed-semantic-work-fabric-actual-v1",
+    "bootstrap_task_source": "duckdb",
     "ipfs_datasets_submodule_path": "ipfs_datasets_py",
-    "ipfs_datasets_planning_revision": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "ipfs_datasets_planning_revision": "0691203550c0f316852c74d293d8fc3c4ce130a6",
     "ipfs_kit_submodule_path": "ipfs_kit_py",
-    "ipfs_kit_planning_revision": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+    "ipfs_kit_planning_revision": "e164bb21c7a73b722a83aea7623e5677391bce54",
     "mcp_plus_plus_submodule_path": "ipfs_accelerate_py/mcplusplus",
-    "mcp_plus_plus_planning_revision": "dc3164653a48d059ae9812078359daeafb451c07",
+    "mcp_plus_plus_planning_revision": "15c1816d6c63a2b11edd505704f6a04a9abc6167",
     "baseline_path": "config/logic_governed_semantic_work_fabric_baseline.json",
     "require_initialized_gitlinks": true,
     "require_superproject_gitlink_equals_nested_head": true,
@@ -35,7 +35,26 @@
     "goal_count": 16,
     "root_goal_id": "LGSWF-G000"
   },
-  "max_lanes": 3,
+  "database_program": {
+    "authority_mode": "embedded",
+    "task_source_kind": "duckdb",
+    "store_id": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/control.duckdb",
+    "store_generation": "lgswf-actual-v1",
+    "schema_revision": "control-plane-v1",
+    "event_store_path": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/events",
+    "runtime_registry_path": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/registry",
+    "worktree_root": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/worktrees",
+    "export_profile": "lgswf-actual-v1",
+    "failover_policy": "fail_closed",
+    "explicit_legacy": false
+  },
+  "bootstrap_writer_policy": {
+    "maximum_processes": 1,
+    "reason": "The installed DuckDB 1.5.2 build lacks the Quack extension; direct multi-process file writers are prohibited.",
+    "promotion_condition": "A tested QuackStateRepository-backed daemon claim path and passing Quack capability report are required before raising concurrency."
+  },
+  "qualification_target_max_lanes": 3,
+  "max_lanes": 1,
   "strict_task_sharding": true,
   "exit_when_all_tracks_terminal": true,
   "objective_refill_enabled": false,
@@ -64,38 +83,25 @@
     "docs/architecture/logic_governed_semantic_work_fabric.todo.md",
     "config/logic_governed_semantic_work_fabric_baseline.json",
     "config/logic_governed_semantic_work_fabric_scheduler.json",
-    "scripts/validate_logic_governed_semantic_work_fabric_board.py"
+    "scripts/validate_logic_governed_semantic_work_fabric_board.py",
+    "scripts/materialize_logic_governed_semantic_work_fabric_control_plane.py"
   ],
   "runtime_paths": {
-    "root": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1",
-    "state": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1/state",
-    "worktrees": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1/worktrees",
-    "merge_queue": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1/merge-queue",
-    "logs": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1/logs",
-    "evidence": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-v1/evidence",
+    "root": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1",
+    "state": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/state",
+    "worktrees": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/worktrees",
+    "merge_queue": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/merge-queue",
+    "logs": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/logs",
+    "evidence": "data/agent_supervisor/logic_governed_semantic_work_fabric/run-actual-v1/evidence",
     "generated_runtime_artifacts_are_completion_authority": false
   },
   "lanes": [
     {
       "index": 0,
-      "name": "lgswf-lane-0",
+      "name": "lgswf-bootstrap-single-writer",
       "strict_shard_remainder": 0,
-      "initial_task_ids": ["LGSWF-003"],
-      "initial_focus": "datasets-semantic-producer"
-    },
-    {
-      "index": 1,
-      "name": "lgswf-lane-1",
-      "strict_shard_remainder": 1,
-      "initial_task_ids": ["LGSWF-001"],
-      "initial_focus": "current-state-and-revision-inventory"
-    },
-    {
-      "index": 2,
-      "name": "lgswf-lane-2",
-      "strict_shard_remainder": 2,
-      "initial_task_ids": ["LGSWF-002"],
-      "initial_focus": "authority-dag-and-interface-freeze"
+      "initial_task_ids": ["LGSWF-001", "LGSWF-002", "LGSWF-003"],
+      "initial_focus": "safe serial bootstrap until Quack-backed claims qualify"
     }
   ],
   "waves": [

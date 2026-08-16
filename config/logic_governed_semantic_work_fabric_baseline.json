@@ -1,136 +1,164 @@
 {
-  "schema": "ipfs_accelerate_py.agent_supervisor.logic-governed-semantic-work-fabric.baseline@1",
-  "observed_at": "2026-08-16T00:00:00Z",
+  "schema": "ipfs_accelerate_py.agent_supervisor.logic-governed-semantic-work-fabric.baseline@2",
+  "observed_at": "2026-08-16T02:22:22Z",
   "policy": {
-    "source_rule": "checked-out source is implementation authority; remote-only code is evidence, never authority",
-    "selection_rule": "prefer the clean checked-out worktree whose HEAD equals the superproject gitlink",
+    "source_rule": "The actual checked-out source, including its tracked and non-runtime untracked changes, is implementation authority.",
+    "snapshot_rule": "Dirty user work is preserved untouched and reproduced in isolated, committed worktrees before integration.",
     "semantic_truth_owner": "ipfs_datasets_py",
     "operational_coordination_owner": "ipfs_accelerate_py",
-    "remote_fetch_or_revision_adoption_authorized": false
+    "remote_fetch_or_revision_adoption_authorized": false,
+    "operational_fields_in_semantic_state_root": false
   },
-  "implementation_authority": {
-    "repository": "ipfs_accelerate_py",
-    "source_worktree": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-semantic-compression-governor",
-    "execution_worktree": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-logic-governed-semantic-work-fabric",
+  "requested_or_pinned_accelerator_revision": {
     "head": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
     "tree": "17fefd8b21566766ec7058044d128374b12f81cd",
-    "source_branch": "agent/semantic-compression-governor-v1",
-    "execution_branch": "agent/logic-governed-semantic-work-fabric-v1",
-    "clean_at_observation": true,
-    "superproject_gitlink_match": true,
-    "reason": "This is an actual checked-out, clean copy at the exact superproject-pinned revision and contains the landed semantic-state, semantic-governor, verification, contracts, plan-revision, resource, multi-supervisor, daemon, merge, and configured-board implementations."
+    "classification": "superproject_gitlink_and_prior_plan_assumption",
+    "authority": false
+  },
+  "actual_accelerator_checkout": {
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate",
+    "branch": "fix/implementation-auto-rescue-20260809",
+    "head": "ea11293bb996f052d620eae989f5377a956764b1",
+    "tree": "ea6869d70e25c7bc8b80e6458c1a46b8c03f945f",
+    "clean_at_observation": false,
+    "tracked_status_entries": 38,
+    "untracked_entries": 134,
+    "tracked_patch_sha1": "e5ef6b048a0c14234229b6d4241ac4e5d60789ef",
+    "included_untracked_source_entries": 132,
+    "included_untracked_manifest_sha256": "cf811d654180947e968a2076bdcceb22ab14fbabc8fc9a5acb60512f41bd5d9a",
+    "excluded_runtime_artifacts": [
+      "data/agent_supervisor/.control-transaction.lock",
+      "data/agent_supervisor/control-audit.jsonl"
+    ]
+  },
+  "actual_accelerator_snapshot": {
+    "worktree": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-lgswf-actual-head",
+    "branch": "agent/logic-governed-semantic-work-fabric-actual-v1",
+    "snapshot_commit": "38cd50092d300b61327a9225e7f10cfe8acefb4f",
+    "snapshot_tree": "005f885e270bbc7573710686a78fc2f740ee5b9f",
+    "datasets_binding_commit": "00ed888e9ae37b48c70ef1388ea6e6f24f043cd1",
+    "board_seed_commit": "cba7c0b15ff187fbd7eb6fa42e5e4ce60d03bd31",
+    "duckdb_integration_commit": "b6dc155c3d779a4166a8ee92c0e0214e0157e2e2",
+    "duckdb_integration_tree": "1313cf18fecd969f654f0233f6678c2d851116e8",
+    "launch_head_policy": "clean descendant of duckdb_integration_commit on the exact execution branch; captured in the launch receipt",
+    "authority": true
+  },
+  "actual_datasets_checkout": {
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets",
+    "head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "tree": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47",
+    "clean_at_observation": false,
+    "tracked_patch_sha1": "e5c96f2332d22ff35ba118ba75a416ba55a01995",
+    "included_untracked_source_entries": 29,
+    "included_untracked_manifest_sha256": "b3b6a01967e8d722714022048f873aff8af2204c067ac7b4d4ba8fa6e0a73281",
+    "excluded_nested_dirty_work": [".tools/ipfs_kit_py"]
   },
   "semantic_authority": {
     "repository": "ipfs_datasets_py",
     "path": "ipfs_datasets_py",
-    "head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
-    "tree": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47",
-    "clean_at_observation": true,
+    "branch": "agent/logic-governed-semantic-work-fabric-datasets-actual-v1",
+    "head": "0691203550c0f316852c74d293d8fc3c4ce130a6",
+    "tree": "35252228f51c1247a8f99939b36e74f0af36e411",
     "gitlink_match": true,
     "semantic_state_root": null,
     "semantic_state_root_status": "unavailable",
-    "semantic_state_root_reason": "No persisted current datasets SemanticStateRoot was found; LGSWF-003 and LGSWF-004 must build, verify, persist, and bind it before post-A mutation admission.",
-    "adversarial_assurance_status": "unavailable_at_checked_head"
+    "semantic_state_root_reason": "No verified canonical root exists for the exact composite tree. Epics A tasks may use declared raw-source fallback; LGSWF-005 must publish an immutable rebind revision before later mutation admission.",
+    "authority": true
   },
   "coordination_dependencies": {
     "ipfs_kit_py": {
-      "head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
-      "tree": "93070c709af29095fdff11f3e2698543449c08ef",
-      "clean_at_observation": true
+      "head": "e164bb21c7a73b722a83aea7623e5677391bce54",
+      "tree": "1f1cfce960738e09104fa88bbe9da0f90e0fedfb",
+      "gitlink_match": true,
+      "initialized_from_local_object_store": true
     },
     "mcplusplus": {
-      "head": "dc3164653a48d059ae9812078359daeafb451c07",
-      "tree": "6560c3d0c926be12df860afb7d7c82043a1769ba",
-      "clean_at_observation": true
+      "head": "15c1816d6c63a2b11edd505704f6a04a9abc6167",
+      "tree": "6da9cc54f17f5793719ea120ad1c1aca2a247fa2",
+      "gitlink_match": true,
+      "initialized_from_local_object_store": true,
+      "new_profile_created": false
     }
   },
-  "observed_alternatives": [
-    {
-      "repository": "ipfs_accelerate_py",
-      "path": "/home/barberb/lift_coding/external/ipfs_accelerate",
-      "head": "ea11293bb996f052d620eae989f5377a956764b1",
-      "tree": "ea6869d70e25c7bc8b80e6458c1a46b8c03f945f",
-      "classification": "legacy_dirty_checked_out_copy",
-      "selected": false,
-      "tracked_status_entries": 38,
-      "untracked_entries_observed": 134,
-      "commits_behind_selected": 1245
+  "duckdb_quack_reuse": {
+    "source_worktree": "/home/barberb/lift_coding/.worktrees/duckdb-quack-control-plane",
+    "source_branch": "agent/duckdb-quack-control-plane-20260808",
+    "source_head": "9e39c6c9edb0b756f99f9857a89e70642ef1321c",
+    "source_tree": "ea321ea749103ece6a175c4e984372e42ac204bd",
+    "integration_commit": "b6dc155c3d779a4166a8ee92c0e0214e0157e2e2",
+    "integration_parent_count": 2,
+    "unique_reused_commits": 345,
+    "unique_reused_ordered_log_sha256": "fe27fdf1019238d53e7edf1f05b13f74fff271e8cb4f83c254da299bb61d1a2b",
+    "historical_board_status": "40 markdown tasks projected complete",
+    "historical_runtime_status": "stopped; no live Quack process and no persisted control.duckdb found",
+    "qualification_status": "implementation history reused; current authority must be freshly materialized and qualified",
+    "core_test_receipt": {
+      "passed": 75,
+      "failed": 0,
+      "warnings": 1,
+      "duration_seconds": 18.25
     },
-    {
-      "repository": "ipfs_accelerate_py",
-      "path": "/home/barberb/lift_coding/.worktrees/ipfs_accelerate-lpc-main",
-      "head": "c821d0b43877591bbb0fa3f328fbccff187b56e7",
-      "tree": "d0db9783b577526b65946352836300783d462720",
-      "classification": "newer_clean_unadopted_revision",
-      "selected": false,
-      "commits_ahead_of_selected": 694,
-      "submodules_initialized": false
-    },
-    {
-      "repository": "ipfs_accelerate_py",
-      "path": "/home/barberb/lift_coding/hallucinate_app/ipfs_accelerate_py",
-      "head": "0cc04ebb640c4c981cf4650016e096a73ab0e8c0",
-      "tree": "18c2db31c98f218290ab1adc4dd33df6d45dd2cd",
-      "classification": "stale_dirty_duplicate",
-      "selected": false,
-      "note": "This detached, heavily modified duplicate is evidence only and is prohibited as an implementation or launch authority."
+    "unqualified_provider_route_receipt": {
+      "passed": 111,
+      "failed": 23,
+      "classification": "non-launch-blocking provider-route and environment gaps; not claimed qualified"
     }
-  ],
+  },
+  "interrupted_prior_lgswf_run": {
+    "worktree": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-logic-governed-semantic-work-fabric",
+    "branch": "agent/logic-governed-semantic-work-fabric-v1",
+    "head": "f7c7d19a78c956e58d1f431b49e3b6ea0ef687c7",
+    "tree": "cf6d20b03160ca14a89f9beba1a73c64f03d4260",
+    "base_revision": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+    "task_source": "legacy-markdown",
+    "observed_progress": "LGSWF-000 through LGSWF-003 only",
+    "termination": "SIGTERM before LGSWF-004",
+    "decision": "preserved and stopped; not resumed because base and task authority differ from this run"
+  },
   "intervening_change_commitments": [
     {
       "repository": "ipfs_accelerate_py",
       "range": "ea11293bb996f052d620eae989f5377a956764b1..485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+      "direction": "actual checkout to pinned comparison revision",
       "commit_count": 1245,
-      "ordered_log_format": "%H\\t%cI\\t%P\\t%s",
       "ordered_log_sha256": "a3094d3ecc2e116e4f636f66863d98503f65e85aae48bb7046eb14571065e850",
-      "raw_diff_sha256": "bc4918853b55967ba0f391d098505135b49429f72d944e381b94cfe7912a953f",
-      "name_status_sha256": "92c4f31f205aa2ea097fe8636148efe2f98b7b5aff03efb853a722bc92c7f8f8",
-      "diff_stat": "711 files changed, 528307 insertions(+), 132429 deletions(-)"
+      "name_status_sha256": "92c4f31f205aa2ea097fe8636148efe2f98b7b5aff03efb853a722bc92c7f8f8"
     },
     {
       "repository": "ipfs_accelerate_py",
-      "range": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84..c821d0b43877591bbb0fa3f328fbccff187b56e7",
-      "commit_count": 694,
-      "ordered_log_format": "%H\\t%cI\\t%P\\t%s",
-      "ordered_log_sha256": "aa6b99c539463d84aeb5f7f4baad055b6d8dc3bc2fec97b3843e40cf3a0d397f",
-      "raw_diff_sha256": "c124f494ef0be71db37f57eb90b767833188721835a4262d68d67bd5e82ad8ce",
-      "name_status_sha256": "d101f26329037071da8b930ef47ef2fd59eb3fbeae28de2bc8532b9dbd56cb92",
-      "diff_stat": "373 files changed, 284074 insertions(+), 13741 deletions(-)",
-      "adoption_status": "not_authorized"
+      "range": "ea11293bb996f052d620eae989f5377a956764b1..38cd50092d300b61327a9225e7f10cfe8acefb4f",
+      "direction": "actual checkout plus captured dirty source",
+      "commit_count": 1,
+      "ordered_log_sha256": "d3949edf8732ba261a7757be685256578198a94a770a850763914087ec8bc1a2",
+      "name_status_sha256": "73f5f4ae4a4a47f11cab235d632a851bcc8e18ff27265babc88e3b9f8b977ea4"
     },
     {
       "repository": "ipfs_datasets_py",
-      "range": "a2f5400b7cb89c8481819379a1b7b9959fe81d45..ac82107e246b30e35a2bbdcf75e01370d22350c6",
-      "commit_count": 568,
-      "ordered_log_format": "%H\\t%cI\\t%P\\t%s",
-      "ordered_log_sha256": "ef3d31d11243bb09253451e8a778e9b2ff7bd9d1ca638adfd9ec85c2e46f272f",
-      "raw_diff_sha256": "dd578aa924bfe50149876e8ef8f2830f65808037ca5404b233f9ba8c0fc0bf33",
-      "name_status_sha256": "c3c3cd6306730fd87c9095f56de34816ec6d64ac9a956964e593269717d6bf63",
-      "diff_stat": "738 files changed, 638993 insertions(+), 949 deletions(-)"
+      "range": "ac82107e246b30e35a2bbdcf75e01370d22350c6..0691203550c0f316852c74d293d8fc3c4ce130a6",
+      "direction": "actual checkout plus captured dirty semantic source",
+      "commit_count": 1,
+      "ordered_log_sha256": "1904eeb29df94e30200b9a926ceed6a20ac7cf00200988c6069ab85eaa776b7a",
+      "name_status_sha256": "214fb485ca7d31f820bbf9609e7f7d32e2000d51652327e168b39a2538aec59f"
     },
     {
-      "repository": "ipfs_datasets_py",
-      "range": "ac82107e246b30e35a2bbdcf75e01370d22350c6..7f0fe2bbad3c70928234c6e2312ee3182fd7681f",
-      "commit_count": 96,
-      "ordered_log_format": "%H\\t%cI\\t%P\\t%s",
-      "ordered_log_sha256": "5efa585fd778edd8a5365156790422c4a23bc719a221c8f475b2ebe5894a51c9",
-      "raw_diff_sha256": "3ed38649028678a4cc2cb7c737367e6f5a0812748adf6c84559b677767921ab2",
-      "name_status_sha256": "e174f722fb952ddebb123f9661252ac24f6dc1748bd6fc45d6e56602723e18a8",
-      "diff_stat": "241 files changed, 170049 insertions(+)",
-      "adoption_status": "not_authorized"
+      "repository": "ipfs_accelerate_py",
+      "range": "DQP unique history merged into b6dc155c3d779a4166a8ee92c0e0214e0157e2e2",
+      "direction": "reuse existing DuckDB/Quack implementation",
+      "commit_count": 345,
+      "ordered_log_sha256": "fe27fdf1019238d53e7edf1f05b13f74fff271e8cb4f83c254da299bb61d1a2b",
+      "name_status_sha256": "not-applicable-merge-history"
     }
   ],
-  "reproduction": {
-    "ordered_log": "git log --reverse --format='%H%x09%cI%x09%P%x09%s' <range>",
-    "raw_diff": "git diff --raw <range>",
-    "name_status": "git diff --name-status <range>",
-    "rule": "A1 must persist the full ordered logs and verify the recorded hashes; a digest mismatch quarantines the baseline."
-  },
-  "known_fail_closed_gaps": [
-    "current datasets semantic-state root unavailable",
-    "production scanner does not yet bind canonical contract and proof CIDs into semantic capsules",
-    "datasets adversarial_assurance package absent at checked authority revision",
-    "documented package direction currently contains a multi-package import strongly-connected component",
-    "configured-board Markdown retains required semantic fields as metadata but does not yet promote all of them into typed dispatch admission"
+  "launch_blockers": [
+    "DatabaseImplementationDaemon production callbacks must fail closed and bridge to real Portal implementation/validation/merge evidence.",
+    "The board must be materialized into a fresh database authority and pass exact-tree preflight.",
+    "No verified datasets semantic-state root exists yet; only explicitly bounded Epic A raw-source work may dispatch."
+  ],
+  "known_qualification_gaps": [
+    "SupervisorWorldSnapshot@1, SemanticWorkBinding@1 and SemanticWorkGraph@1 are not implemented on this exact source.",
+    "Current resource reservations and multi-supervisor coordination are not yet durable across all dimensions.",
+    "Conflict-graph durable artifacts contain binary floating-point fields.",
+    "Package-direction violations and runtime-effective duplicate definitions require Epic A evidence and repair.",
+    "Full provider-route, fault-injection, benchmark and continuous-operation qualification have not run."
   ]
 }

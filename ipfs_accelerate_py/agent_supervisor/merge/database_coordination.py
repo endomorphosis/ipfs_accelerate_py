@@ -1345,6 +1345,10 @@ class DatabaseCoordinator:
                     """,
                     [cid, now, status_text, _canonical_json(dict(body or {}))],
                 )
+                connection.execute(
+                    "UPDATE coordination_tasks SET ready = FALSE WHERE task_cid = ?",
+                    [cid],
+                )
                 self._commit_if_idle(connection)
                 return {
                     "task_cid": cid,
@@ -2399,6 +2403,26 @@ class DatabaseCoordinator:
                 ).fetchone()
                 if task_row is None:
                     raise KeyError(f"unknown task CID: {cid}")
+                completion_row = connection.execute(
+                    "SELECT status FROM task_completions WHERE task_cid = ?",
+                    [cid],
+                ).fetchone()
+                if completion_row is not None:
+                    raise DatabaseCoordinationNotReadyError(
+                        f"task {cid} already has a logical completion",
+                        evidence={
+                            "task_cid": cid,
+                            "completion_status": str(
+                                _row_get(
+                                    _row_mapping(completion_row),
+                                    "status",
+                                    "0",
+                                    default="",
+                                )
+                            ),
+                            "reason": "already_completed",
+                        },
+                    )
                 readiness = self._claimability_unlocked(connection, cid)
                 if not readiness["claimable"]:
                     raise DatabaseCoordinationNotReadyError(
@@ -2608,7 +2632,7 @@ class DatabaseCoordinator:
                     )
                 candidates = connection.execute(
                     """
-                    SELECT * FROM coordination_tasks
+                    SELECT * FROM coordination_tasks WHERE ready = TRUE
                     ORDER BY registered_at_ms, task_cid
                     """
                 ).fetchall()

@@ -199,6 +199,7 @@ from ..runtime.resource_scheduler import (
 )
 from .implementation_daemon_runner import (
     IDLE_DAEMON_PASS_LOG_INTERVAL_SECONDS,
+    bind_database_portal_execution_from_args,
     daemon_pass_is_idle,
     log_daemon_pass_result,
 )
@@ -56213,19 +56214,30 @@ class DatabaseImplementationDaemon:
         provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
         effect_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
         validation_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
+        require_real_execution: bool = False,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
         coordinator: Any = None,
         install_schema: bool = True,
     ) -> None:
+        normalized_authority_mode = str(authority_mode or "embedded").strip().lower().replace(
+            "-", "_"
+        )
         if not is_database_authority_mode(
-            authority_mode=authority_mode,
+            authority_mode=normalized_authority_mode,
             task_source_kind=task_source_kind,
         ):
             raise DatabaseImplementationAuthorityError(
                 "DatabaseImplementationDaemon requires database authority "
                 f"(authority_mode={authority_mode!r}, "
                 f"task_source_kind={task_source_kind!r})"
+            )
+        if normalized_authority_mode == "quack":
+            raise DatabaseImplementationAuthorityError(
+                "DatabaseImplementationDaemon cannot execute in quack mode: "
+                "its task, coordination, and attempt repositories are direct "
+                "DuckDB connections rather than QuackStateClient-backed "
+                "transactions; refusing unsafe multi-process authority"
             )
         self.database_path = Path(database_path).absolute()
         self.coordination_path = Path(
@@ -56242,9 +56254,7 @@ class DatabaseImplementationDaemon:
                 f"{self.database_path.stem}.execution.duckdb"
             )
         ).absolute()
-        self.authority_mode = str(authority_mode or "embedded").strip().lower().replace(
-            "-", "_"
-        )
+        self.authority_mode = normalized_authority_mode
         self.task_source_kind = str(task_source_kind or "duckdb").strip().lower()
         self.owner_session_id = str(
             owner_session_id or _database_daemon_new_id("session")
@@ -56260,6 +56270,7 @@ class DatabaseImplementationDaemon:
         self._provider_fn = provider_fn
         self._effect_fn = effect_fn
         self._validation_fn = validation_fn
+        self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
         self._connection: Any = None
@@ -56353,6 +56364,55 @@ class DatabaseImplementationDaemon:
     @property
     def markdown_status_write_count(self) -> int:
         return int(self._markdown_status_writes)
+
+    @property
+    def execution_callbacks_bound(self) -> bool:
+        """Return whether all three production execution gates are configured."""
+
+        return all(
+            callable(callback)
+            for callback in (
+                self._provider_fn,
+                self._effect_fn,
+                self._validation_fn,
+            )
+        )
+
+    def bind_execution_callbacks(
+        self,
+        *,
+        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]],
+        effect_fn: Callable[
+            ["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]
+        ],
+        validation_fn: Callable[
+            ["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]
+        ],
+    ) -> None:
+        """Bind one real executor before a production attempt is dispatched."""
+
+        callbacks = (provider_fn, effect_fn, validation_fn)
+        if not all(callable(callback) for callback in callbacks):
+            raise TypeError("database execution callbacks must all be callable")
+        with self._lock:
+            if any(
+                callback is not None
+                for callback in (
+                    self._provider_fn,
+                    self._effect_fn,
+                    self._validation_fn,
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "database execution callbacks are already bound"
+                )
+            if self.list_running_attempts():
+                raise DatabaseImplementationAuthorityError(
+                    "cannot bind database execution callbacks after an attempt starts"
+                )
+            self._provider_fn = provider_fn
+            self._effect_fn = effect_fn
+            self._validation_fn = validation_fn
 
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
@@ -56857,6 +56917,14 @@ class DatabaseImplementationDaemon:
             attempt.attempt_id, idempotency_key=key
         )
         if prior is not None:
+            if self.require_real_execution and (
+                str(prior.get("status") or "").strip().lower()
+                in {"", "noop"}
+                or prior.get("accepted") is not True
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "production database attempt contains unaccepted provider evidence"
+                )
             current = self.get_attempt(attempt.attempt_id) or attempt
             if not current.phase_committed(ATTEMPT_PHASE_PROVIDER):
                 current = self.commit_phase(
@@ -56867,9 +56935,18 @@ class DatabaseImplementationDaemon:
             return current, prior, True
         if attempt.phase_committed(ATTEMPT_PHASE_PROVIDER):
             # Phase committed without a matching key — treat as already done.
+            if self.require_real_execution:
+                raise DatabaseImplementationAuthorityError(
+                    "production provider phase has no idempotent execution receipt"
+                )
             return attempt, {"status": "already_committed"}, True
         callback = provider_fn or self._provider_fn
         if callback is None:
+            if self.require_real_execution:
+                raise DatabaseImplementationAuthorityError(
+                    "production database task has no provider executor; "
+                    "refusing noop provider completion"
+                )
             result: dict[str, Any] = {
                 "status": "noop",
                 "provider": "database-implementation-daemon",
@@ -56878,6 +56955,13 @@ class DatabaseImplementationDaemon:
             }
         else:
             result = dict(callback(attempt))
+        if self.require_real_execution and (
+            str(result.get("status") or "").strip().lower() in {"", "noop"}
+            or result.get("accepted") is not True
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "production database provider result is not accepted real-execution evidence"
+            )
         connection = self._require_connection()
         connection.execute(
             """
@@ -56925,6 +57009,12 @@ class DatabaseImplementationDaemon:
         key = str(idempotency_key or f"effect:{attempt.attempt_id}").strip()
         prior = self.effect_claim_recorded(attempt.attempt_id, idempotency_key=key)
         if prior is not None:
+            if self.require_real_execution and str(
+                prior.get("status") or ""
+            ).strip().lower() not in {"applied", "succeeded"}:
+                raise DatabaseImplementationAuthorityError(
+                    "production database attempt contains unapplied effect evidence"
+                )
             current = self.get_attempt(attempt.attempt_id) or attempt
             if not current.phase_committed(ATTEMPT_PHASE_EFFECT):
                 current = self.commit_phase(
@@ -56934,9 +57024,18 @@ class DatabaseImplementationDaemon:
                 )
             return current, prior, True
         if attempt.phase_committed(ATTEMPT_PHASE_EFFECT):
+            if self.require_real_execution:
+                raise DatabaseImplementationAuthorityError(
+                    "production effect phase has no idempotent applied-effect receipt"
+                )
             return attempt, {"status": "already_committed"}, True
         callback = effect_fn or self._effect_fn
         if callback is None:
+            if self.require_real_execution:
+                raise DatabaseImplementationAuthorityError(
+                    "production database task has no effect executor; "
+                    "refusing noop effect completion"
+                )
             result: dict[str, Any] = {
                 "status": "noop",
                 "effect": "database-implementation-daemon",
@@ -56946,6 +57045,12 @@ class DatabaseImplementationDaemon:
             }
         else:
             result = dict(callback(attempt, provider_result))
+        if self.require_real_execution and str(
+            result.get("status") or ""
+        ).strip().lower() not in {"applied", "succeeded"}:
+            raise DatabaseImplementationAuthorityError(
+                "production database effect lacks applied-effect evidence"
+            )
         connection = self._require_connection()
         connection.execute(
             """
@@ -57030,17 +57135,26 @@ class DatabaseImplementationDaemon:
         """Record validation evidence and complete the task in the database."""
 
         current = self.get_attempt(attempt.attempt_id) or attempt
+        validation_payload = dict(validation_result or {})
+        if self.require_real_execution and (
+            str(validation_payload.get("outcome") or "").strip().lower()
+            != "passed"
+            or not str(validation_payload.get("evidence_digest") or "").strip()
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "production database completion requires passing validation evidence"
+            )
         digest = str(
             evidence_digest
-            or (validation_result or {}).get("evidence_digest")
+            or validation_payload.get("evidence_digest")
             or f"sha256:{secrets.token_hex(32)}"
         )
         self.task_source.record_validation_result(
             task_cid=current.task_cid,
-            outcome=str((validation_result or {}).get("outcome") or "passed"),
+            outcome=str(validation_payload.get("outcome") or "passed"),
             evidence_digest=digest,
-            argv=list((validation_result or {}).get("argv") or ["database-validation"]),
-            body=dict(validation_result or {}),
+            argv=list(validation_payload.get("argv") or ["database-validation"]),
+            body=validation_payload,
         )
         task = self.task_source.get(current.task_cid)
         if task is None:
@@ -57060,7 +57174,7 @@ class DatabaseImplementationDaemon:
                     "attempt_id": current.attempt_id,
                     "claim_id": current.claim_id,
                     "owner_session_id": self.owner_session_id,
-                    "validation": dict(validation_result or {}),
+                    "validation": validation_payload,
                 },
                 evidence_digests=[digest],
             )
@@ -57171,6 +57285,11 @@ class DatabaseImplementationDaemon:
         if not current.phase_committed(ATTEMPT_PHASE_VALIDATION):
             callback = validation_fn or self._validation_fn
             if callback is None:
+                if self.require_real_execution:
+                    raise DatabaseImplementationAuthorityError(
+                        "production database task has no validation executor; "
+                        "refusing fabricated passing validation"
+                    )
                 validation_result: Mapping[str, Any] = {
                     "outcome": "passed",
                     "evidence_digest": f"sha256:{secrets.token_hex(32)}",
@@ -57178,13 +57297,42 @@ class DatabaseImplementationDaemon:
                 }
             else:
                 validation_result = dict(callback(current, effect_result))
+            if self.require_real_execution and (
+                str(validation_result.get("outcome") or "").strip().lower()
+                != "passed"
+                or not str(validation_result.get("evidence_digest") or "").strip()
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "production database validation did not provide passing evidence"
+                )
             current = self.commit_phase(
                 current,
                 ATTEMPT_PHASE_VALIDATION,
                 body=dict(validation_result),
             )
         else:
-            validation_result = {"outcome": "passed", "replayed": True}
+            validation_history = [
+                item
+                for item in self.phase_history(current.attempt_id)
+                if item.get("phase") == ATTEMPT_PHASE_VALIDATION
+            ]
+            validation_body = (
+                dict(validation_history[-1].get("body") or {})
+                if validation_history
+                else {}
+            )
+            if self.require_real_execution and (
+                str(validation_body.get("outcome") or "").strip().lower()
+                != "passed"
+                or not str(validation_body.get("evidence_digest") or "").strip()
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "production validation phase has no replayable passing evidence"
+                )
+            validation_result = {
+                **validation_body,
+                "replayed": True,
+            }
 
         if not current.phase_committed(ATTEMPT_PHASE_COMPLETE):
             current = self.complete_attempt(
@@ -57920,15 +58068,21 @@ def main(argv: list[str] | None = None) -> None:
             owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
             authority_mode=authority_mode or "embedded",
             task_source_kind=task_source_kind or "duckdb",
-            markdown_path=args.todo_path
-            if str(args.todo_path).endswith(".md")
-            else None,
+            # Database authority never receives the canonical Markdown board.
+            markdown_path=None,
             # JSON projections optional under database authority.
             state_path=None,
             strategy_path=None,
             events_path=None,
             pid_path=None,
             queue_path=None,
+            require_real_execution=bool(args.implement),
+        )
+        bind_database_portal_execution_from_args(
+            daemon,
+            args,
+            repo_root=REPO_ROOT,
+            portal_daemon_class=PortalImplementationDaemon,
         )
     else:
         daemon = PortalImplementationDaemon(

@@ -1,0 +1,294 @@
+"""Focused safety tests for database-authoritative Portal execution."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
+    duckdb_available,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
+    DatabasePortalBridgeError,
+    DatabasePortalExecutionBridge,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DatabaseImplementationAuthorityError,
+    DatabaseImplementationDaemon,
+    DatabaseTaskAttempt,
+    parse_args,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
+    build_portal_implementation_daemon_from_args,
+)
+
+
+def _attempt() -> DatabaseTaskAttempt:
+    return DatabaseTaskAttempt(
+        attempt_id="attempt:001",
+        claim_id="claim:001",
+        task_cid="task:cid:004",
+        task_alias="LGSWF-004",
+        attempt_number=1,
+        owner_session_id="session:bridge",
+        fencing_token=7,
+        fence_epoch=3,
+        lease_id="lease:001",
+        committed_phase="claimed",
+        status="running",
+        started_at_ms=1,
+    )
+
+
+def _record() -> SimpleNamespace:
+    return SimpleNamespace(
+        task_cid="task:cid:004",
+        task_alias="LGSWF-004",
+        goal_cid="goal:inventory",
+        plan_cid="plan:lgswf:1",
+        revision=11,
+        priority="P0",
+        dependencies=("task:cid:003",),
+        outputs=({"path": "inventory/result.json"},),
+        validations=({"argv": ["python3", "-m", "pytest", "focused.py"]},),
+        acceptance=({"criterion": "Focused validation passes"},),
+        body={
+            "objective": "Produce the current authority inventory",
+            "completion": "auto",
+            "track": "analysis",
+            "read_scope": ["ipfs_accelerate_py/agent_supervisor"],
+            "write_scope": ["inventory/result.json"],
+            "completion_contract": "Focused validation passes",
+        },
+    )
+
+
+class _TaskSource:
+    def __init__(self, record: object) -> None:
+        self.record = record
+
+    def get_task(self, task_cid: str) -> object | None:
+        return self.record if task_cid == "task:cid:004" else None
+
+
+class _CompletingPortal:
+    def __init__(self, paths: object, task_alias: str) -> None:
+        self.paths = paths
+        self.task_alias = task_alias
+        self.closed = False
+
+    def run_once(self) -> dict[str, object]:
+        text = self.paths.task_projection.read_text(encoding="utf-8")
+        self.paths.task_projection.write_text(
+            text.replace("- Status: ready", "- Status: completed"),
+            encoding="utf-8",
+        )
+        self.paths.state.write_text(
+            json.dumps(
+                {
+                    "last_implementation_commit": "a" * 40,
+                    "last_merge_returncode": 0,
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.paths.events.write_text(
+            json.dumps(
+                {
+                    "type": "task_completed",
+                    "task_id": self.task_alias,
+                    "event_id": "event:complete",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return {
+            "task_count": 1,
+            "completed_count": 1,
+            "active_task_id": self.task_alias,
+            "implementation_result": {
+                "task_id": self.task_alias,
+                "returncode": 0,
+                "implementation_commit": "a" * 40,
+                # Raw model output must not enter the database receipt.
+                "model_response": "private provider payload",
+            },
+            "merge_reconciliation": [
+                {
+                    "task_id": self.task_alias,
+                    "returncode": 0,
+                    "merge_commit": "b" * 40,
+                    "provider_payload": "private",
+                }
+            ],
+        }
+
+    def close_event_runtime(self) -> None:
+        self.closed = True
+
+
+def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
+    tmp_path: Path,
+) -> None:
+    canonical_board = tmp_path / "canonical-board.md"
+    canonical_board.write_text(
+        "# Canonical\n\n## LGSWF-004 Authority\n\n- Status: ready\n",
+        encoding="utf-8",
+    )
+    original = canonical_board.read_bytes()
+    portals: list[_CompletingPortal] = []
+
+    def factory(paths: object, alias: str) -> _CompletingPortal:
+        portal = _CompletingPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+    )
+    provider = bridge.run_provider(_attempt())
+    effect = bridge.apply_effect(_attempt(), provider)
+    validation = bridge.validate_effect(_attempt(), effect)
+
+    assert provider["schema"] == DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA
+    assert provider["accepted"] is True
+    assert provider["provider"] == "PortalImplementationDaemon"
+    assert provider["completion_authority"] == "DatabaseImplementationDaemon"
+    assert provider["evidence_digest"].startswith("sha256:")
+    assert "private provider payload" not in json.dumps(provider)
+    assert "provider_payload" not in json.dumps(provider)
+    assert effect["status"] == "applied"
+    assert validation["outcome"] == "passed"
+    assert validation["evidence_digest"] == provider["evidence_digest"]
+    assert canonical_board.read_bytes() == original
+    assert portals and portals[0].closed is True
+    attempt_boards = list((tmp_path / "attempts").glob("*/task-projection.md"))
+    assert len(attempt_boards) == 1
+    assert "Projection authority: false" in attempt_boards[0].read_text(encoding="utf-8")
+
+
+def test_bridge_rejects_projection_contract_tampering(tmp_path: Path) -> None:
+    class TamperingPortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            text = self.paths.task_projection.read_text(encoding="utf-8")
+            self.paths.task_projection.write_text(
+                text.replace(
+                    "- Acceptance: Focused validation passes",
+                    "- Acceptance: no validation required",
+                ),
+                encoding="utf-8",
+            )
+            return {"implementation_result": {"returncode": 0}}
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: TamperingPortal(paths, alias),
+    )
+    with pytest.raises(DatabasePortalBridgeError, match="outside its mutable status"):
+        bridge.run_provider(_attempt())
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_production_database_daemon_cannot_complete_with_default_noops(
+    tmp_path: Path,
+) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:fail-closed",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    try:
+        daemon.materialize_population(
+            {
+                "repository_tree_id": "tree:bridge",
+                "tasks": [
+                    {
+                        "task_cid": "task:cid:004",
+                        "task_id": "LGSWF-004",
+                        "goal_cid": "goal:inventory",
+                        "status": "ready",
+                        "priority": "P0",
+                        "ordinal": 4,
+                        "title": "Inventory",
+                    }
+                ],
+            }
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="no provider executor",
+        ):
+            daemon.run_once()
+        task = daemon.task_source.get_task("task:cid:004")
+        assert task is not None
+        assert task.status != "completed"
+        assert (
+            daemon.provider_invocation_recorded(
+                daemon.list_running_attempts()[0].attempt_id,
+                idempotency_key=f"provider:{daemon.list_running_attempts()[0].attempt_id}",
+            )
+            is None
+        )
+    finally:
+        daemon.close()
+
+
+def test_quack_mode_refuses_direct_duckdb_execution(tmp_path: Path) -> None:
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="QuackStateClient-backed",
+    ):
+        DatabaseImplementationDaemon(
+            database_path=tmp_path / "control.duckdb",
+            authority_mode="quack",
+            task_source_kind="duckdb",
+        )
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_configured_production_runner_binds_real_portal_bridge(
+    tmp_path: Path,
+) -> None:
+    args = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded_exclusive",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--todo-path",
+            str(tmp_path / "canonical-board.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "lgswf",
+            "--worktree-root",
+            ".worktrees",
+            "--implement",
+            "--once",
+        ]
+    )
+    daemon, _context = build_portal_implementation_daemon_from_args(
+        args,
+        repo_root=tmp_path,
+    )
+    try:
+        assert isinstance(daemon, DatabaseImplementationDaemon)
+        assert daemon.require_real_execution is True
+        assert daemon.execution_callbacks_bound is True
+        assert daemon.markdown_path is None
+        assert daemon.markdown_status_write_count == 0
+    finally:
+        daemon.close()

@@ -1,7 +1,7 @@
 # Logic-Governed Semantic Work Fabric objective heap
 
 Machine-ingestible objective state for board namespace
-`logic-governed-semantic-work-fabric-v1`. The executable projection is
+`logic-governed-semantic-work-fabric-actual-v1`. The executable projection is
 `docs/architecture/logic_governed_semantic_work_fabric.todo.md`.
 
 ## Goal tree

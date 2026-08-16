@@ -352,6 +352,23 @@ def test_dependency_readiness_blocks_claims(tmp_path: Path) -> None:
         coordinator.close()
 
 
+def test_logically_completed_task_cannot_be_claimed_again(tmp_path: Path) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:complete", task_id="COMPLETE")
+        coordinator.mark_task_complete("task:complete", status="succeeded")
+
+        assert coordinator.claim_ready_task(owner_session_id="session:next") is None
+        with pytest.raises(DatabaseCoordinationNotReadyError) as excinfo:
+            coordinator.claim_task(
+                task_cid="task:complete",
+                owner_session_id="session:direct",
+            )
+        assert excinfo.value.evidence["reason"] == "already_completed"
+    finally:
+        coordinator.close()
+
+
 def test_fair_claim_ready_selects_oldest_registered_task(tmp_path: Path) -> None:
     coordinator, clock = _open(tmp_path)
     try:

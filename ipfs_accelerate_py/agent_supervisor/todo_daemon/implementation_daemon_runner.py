@@ -1164,6 +1164,123 @@ def resolve_database_implementation_paths(
     }
 
 
+def bind_database_portal_execution_from_args(
+    daemon: object,
+    parsed: argparse.Namespace,
+    *,
+    repo_root: Path,
+    portal_daemon_class: type,
+    default_worktree_submodule_paths: Sequence[str] | None = None,
+    default_implementation_protected_paths: Sequence[str] | None = None,
+    default_objective_path: Path | None = None,
+    default_objective_bundle_dir: Path | None = None,
+) -> object | None:
+    """Bind real Portal execution to a database daemon in production mode.
+
+    DuckDB remains the task/claim/completion authority.  The Portal daemon is
+    given only a private one-task projection beneath this lane's state
+    directory, never the configured canonical Markdown board.
+    """
+
+    if not bool(getattr(parsed, "implement", False)):
+        return None
+    from .database_portal_bridge import DatabasePortalExecutionBridge
+
+    binder = getattr(daemon, "bind_execution_callbacks", None)
+    task_source = getattr(daemon, "task_source", None)
+    if not callable(binder) or task_source is None:
+        raise RuntimeError(
+            "production database daemon does not expose execution callback binding"
+        )
+
+    state_dir = Path(parsed.state_dir).absolute()
+    state_prefix = str(parsed.state_prefix or "database")
+    attempt_root = state_dir / f"{state_prefix}_database_portal_attempts"
+    worktree_submodule_paths = (
+        getattr(parsed, "worktree_submodule_path", None)
+        or default_worktree_submodule_paths
+        or None
+    )
+    implementation_protected_paths = (
+        getattr(parsed, "implementation_protected_path", None)
+        or default_implementation_protected_paths
+        or None
+    )
+
+    def portal_factory(paths: Any, task_alias: str) -> object:
+        return portal_daemon_class(
+            todo_path=paths.task_projection,
+            state_path=paths.state,
+            strategy_path=paths.strategy,
+            events_path=paths.events,
+            repo_root=repo_root,
+            task_header_prefix=parsed.task_prefix,
+            implement=True,
+            implementation_command=parsed.implementation_command or None,
+            implementation_timeout=parsed.implementation_timeout,
+            max_task_attempts=parsed.max_task_attempts,
+            implementation_log_dir=paths.implementation_logs,
+            use_ephemeral_worktree=not parsed.no_ephemeral_worktree,
+            worktree_root=parsed.worktree_root,
+            merge_target_branch=getattr(parsed, "merge_target_branch", "") or None,
+            merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
+            worktree_submodule_paths=worktree_submodule_paths,
+            implementation_protected_paths=implementation_protected_paths,
+            manual_completion_authority_task_ids=getattr(
+                parsed, "manual_completion_authority_task_id", ()
+            ),
+            manual_completion_authority_required_task_ids=getattr(
+                parsed, "manual_completion_authority_required_task_id", ()
+            ),
+            manual_completion_authority_epoch_id=getattr(
+                parsed, "manual_completion_authority_epoch_id", ""
+            ),
+            manual_completion_authority_revalidation_only=bool(
+                getattr(parsed, "manual_completion_authority_revalidation_only", False)
+            ),
+            objective_path=parsed.objective_path or default_objective_path,
+            objective_bundle_dir=(
+                parsed.objective_bundle_dir or default_objective_bundle_dir
+            ),
+            # The database claim already chose the exact task.  Do not expose
+            # canonical status projections or a second scheduler population.
+            generated_status_paths=(),
+            external_reservation_manifest_paths=(),
+            assumed_completed_task_ids=(),
+            execution_slice_task_ids=(task_alias,),
+            execution_slice_task_cids=(),
+            llm_merge_resolver_command=parsed.llm_merge_resolver_command or None,
+            llm_merge_resolver_timeout_seconds=(
+                parsed.llm_merge_resolver_timeout_seconds
+            ),
+            merge_reconciliation_max_merges=parsed.merge_reconciliation_max_merges,
+            merged_worktree_cleanup_max=parsed.merged_worktree_cleanup_max,
+            task_shard_count=1,
+            task_shard_index=0,
+            strict_task_sharding=False,
+            validation_max_workers=getattr(parsed, "validation_max_workers", None),
+            validation_resource_budget=getattr(
+                parsed, "validation_resource_budget", None
+            ),
+            maintenance_interval_seconds=getattr(
+                parsed, "maintenance_interval_seconds", None
+            ),
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=attempt_root,
+        portal_factory=portal_factory,
+        task_header_prefix=parsed.task_prefix,
+    )
+    binder(
+        provider_fn=bridge.run_provider,
+        effect_fn=bridge.apply_effect,
+        validation_fn=bridge.validate_effect,
+    )
+    return bridge
+
+
 def build_portal_implementation_daemon_from_args(
     parsed: argparse.Namespace,
     *,
@@ -1222,16 +1339,27 @@ def build_portal_implementation_daemon_from_args(
             owner_session_id=str(getattr(parsed, "owner_session_id", "") or ""),
             authority_mode=authority_mode or "embedded",
             task_source_kind=task_source_kind or "duckdb",
-            markdown_path=(
-                parsed.todo_path
-                if str(getattr(parsed, "todo_path", "") or "").endswith(".md")
-                else None
-            ),
+            # The canonical Markdown board, when configured for export or
+            # operator visibility, is never handed to the execution daemon.
+            markdown_path=None,
             state_path=optional_state if use_projections else None,
             strategy_path=optional_strategy if use_projections else None,
             events_path=optional_events if use_projections else None,
             pid_path=None,
             queue_path=None,
+            require_real_execution=bool(getattr(parsed, "implement", False)),
+        )
+        bind_database_portal_execution_from_args(
+            daemon,
+            parsed,
+            repo_root=repo_root,
+            portal_daemon_class=PortalImplementationDaemon,
+            default_worktree_submodule_paths=default_worktree_submodule_paths,
+            default_implementation_protected_paths=(
+                default_implementation_protected_paths
+            ),
+            default_objective_path=default_objective_path,
+            default_objective_bundle_dir=default_objective_bundle_dir,
         )
         return daemon, ImplementationDaemonRunContext(
             parsed=parsed,
@@ -1358,6 +1486,7 @@ def build_database_implementation_daemon_from_args(
         provider_fn=provider_fn,
         effect_fn=effect_fn,
         validation_fn=validation_fn,
+        require_real_execution=bool(getattr(parsed, "implement", False)),
         state_path=None,
         strategy_path=None,
         events_path=None,
