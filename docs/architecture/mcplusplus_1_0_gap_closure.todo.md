@@ -2199,7 +2199,7 @@ overlays. Never force-push.
 
 ## MCPP-070 Separate Profile H payment success from execution authorization
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
