@@ -12,13 +12,14 @@ catalog; this module never invents runtime ad-hoc tables.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Final
 
 from .control_plane_migrations import (
+    ControlPlaneMigration,
     ControlPlaneMigrationRunner,
     MigrationCatalog,
     MigrationRunReport,
@@ -41,6 +42,21 @@ CONTROL_PLANE_SCHEMA_REVISION: Final[int] = 1
 CONTROL_PLANE_MIGRATION_ID: Final = "0001_control_plane"
 CONTROL_PLANE_MIGRATION_VERSION: Final[int] = 1
 CONTROL_PLANE_SQL_FILENAME: Final = "0001_control_plane.sql"
+
+# A constrained schema profile for deployments where ipfs_datasets_py is the
+# sole semantic-truth authority.  This is deliberately a profile of the
+# existing control-plane schema and migration machinery, not a second task or
+# plan store.
+DATASETS_AUTHORITATIVE_OPERATIONAL_PROFILE_ID: Final = (
+    "datasets-authoritative-operational-control-plane@1"
+)
+DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/datasets-authoritative-operational-control-plane@1"
+)
+DATASETS_AUTHORITATIVE_OPERATIONAL_MIGRATION_ID: Final = (
+    "0001_datasets_authoritative_operational_control_plane"
+)
+DATASETS_AUTHORITATIVE_OPERATIONAL_MIGRATION_VERSION: Final[int] = 1
 
 # Optional supervisor service dependency profile (pyproject extra).
 SUPERVISOR_OPTIONAL_EXTRA: Final = "agent-supervisor"
@@ -208,6 +224,57 @@ _DOMAIN_TABLES: Final[dict[str, tuple[str, ...]]] = {
 
 DOMAIN_TABLES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
     {key: tuple(value) for key, value in _DOMAIN_TABLES.items()}
+)
+
+# These relations are owned by ipfs_datasets_py semantic truth and must never
+# be created in a datasets-authoritative accelerator control plane.  Keeping a
+# closed, exported deny-list makes both installation and external audit fail
+# closed if a full ControlPlaneSchema@1 database is supplied accidentally.
+DATASETS_SEMANTIC_TRUTH_RELATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "source_snapshots",
+        "source_files",
+        "file_versions",
+        "parse_runs",
+        "symbols",
+        "symbol_versions",
+        "ast_nodes",
+        "ast_edges",
+        "imports",
+        "calls",
+        "references",
+        "definitions",
+        "type_relations",
+        "mutations",
+        "mutation_files",
+        "mutation_hunks",
+        "ast_mutations",
+        "impact_edges",
+        "impact_closures",
+        "repair_candidates",
+        "repair_applications",
+        "proof_obligations",
+        "proof_attempts",
+        "counterexamples",
+    }
+)
+
+DATASETS_AUTHORITATIVE_OPERATIONAL_DOMAINS: Final[tuple[str, ...]] = tuple(
+    domain for domain in SCHEMA_DOMAINS if domain not in {"code", "evidence"}
+)
+
+# ``evidence_nodes`` is retained solely as the existing IntentRepository's
+# content-addressed operational completion/result-receipt projection.  It does
+# not store or assert semantic proof authority.
+DATASETS_AUTHORITATIVE_OPERATIONAL_EVIDENCE_TABLES: Final[tuple[str, ...]] = ("evidence_nodes",)
+
+DATASETS_AUTHORITATIVE_OPERATIONAL_TABLES: Final[tuple[str, ...]] = (
+    tuple(
+        table
+        for domain in DATASETS_AUTHORITATIVE_OPERATIONAL_DOMAINS
+        for table in DOMAIN_TABLES[domain]
+    )
+    + DATASETS_AUTHORITATIVE_OPERATIONAL_EVIDENCE_TABLES
 )
 
 DIAGNOSTIC_VIEWS: Final[tuple[str, ...]] = (
@@ -440,6 +507,267 @@ def load_control_plane_catalog(
     return load_default_catalog(sql_directory or package_sql_directory())
 
 
+_PROFILE_SECTION_MARKERS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "meta": "-- meta: schema contracts and store generation surface",
+        "code": "-- code: snapshots, AST, mutations, impact",
+        "cache": "-- cache: context, prompts, provider calls, decision cache",
+        "seed": "-- Seed schema_contracts for domain inventory (deterministic)",
+        "views": "-- Constrained diagnostic / context views (read-only projections)",
+    }
+)
+
+_PROFILE_CONTRACT_ROWS: Final[tuple[tuple[str, ...], ...]] = (
+    (
+        "contract:DatasetsAuthoritativeOperationalControlPlane@1",
+        "DatasetsAuthoritativeOperationalControlPlane@1",
+        "meta",
+        DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA,
+        "Accelerator operational coordination only; semantic and proof truth "
+        "remains authoritative in ipfs_datasets_py",
+    ),
+    (
+        "contract:meta@1",
+        "ControlPlaneOperationalDomain@1",
+        "meta",
+        "ipfs_accelerate_py/agent-supervisor/domain-meta@1",
+        "Operational schema contracts and store generations",
+    ),
+    (
+        "contract:intent@1",
+        "ControlPlaneOperationalDomain@1",
+        "intent",
+        "ipfs_accelerate_py/agent-supervisor/domain-intent@1",
+        "Objectives, goals, plans, and tasks",
+    ),
+    (
+        "contract:schedule@1",
+        "ControlPlaneOperationalDomain@1",
+        "schedule",
+        "ipfs_accelerate_py/agent-supervisor/domain-schedule@1",
+        "Assignments, blocks, refill, and findings",
+    ),
+    (
+        "contract:runtime@1",
+        "ControlPlaneOperationalDomain@1",
+        "runtime",
+        "ipfs_accelerate_py/agent-supervisor/domain-runtime@1",
+        "Daemons, attempts, claims, validation, and merge",
+    ),
+    (
+        "contract:git@1",
+        "ControlPlaneOperationalDomain@1",
+        "git",
+        "ipfs_accelerate_py/agent-supervisor/domain-git@1",
+        "Repositories, worktrees, leases, and path claims",
+    ),
+    (
+        "contract:cache@1",
+        "ControlPlaneOperationalDomain@1",
+        "cache",
+        "ipfs_accelerate_py/agent-supervisor/domain-cache@1",
+        "Operational context references, prompts, and decision cache",
+    ),
+    (
+        "contract:control@1",
+        "ControlPlaneOperationalDomain@1",
+        "control",
+        "ipfs_accelerate_py/agent-supervisor/domain-control@1",
+        "Servers, sessions, authorization, maintenance, and events",
+    ),
+    (
+        "contract:improve@1",
+        "ControlPlaneOperationalDomain@1",
+        "improve",
+        "ipfs_accelerate_py/agent-supervisor/domain-improve@1",
+        "Operational metrics, budgets, and churn telemetry",
+    ),
+    (
+        "contract:intent-completion-evidence-projection@1",
+        "IntentRepository@1",
+        "runtime",
+        "ipfs_accelerate_py/agent-supervisor/intent-completion-evidence@1",
+        "Opaque content-addressed operational completion receipts only; "
+        "semantic proof authority remains in ipfs_datasets_py",
+    ),
+)
+
+
+def _unique_marker_offset(sql_text: str, marker: str) -> int:
+    count = sql_text.count(marker)
+    if count != 1:
+        raise ControlPlaneSchemaInstallError(
+            "canonical control-plane SQL profile marker must occur exactly "
+            f"once: {marker!r}; found {count}"
+        )
+    return sql_text.index(marker)
+
+
+def _section_start(sql_text: str, marker: str) -> int:
+    marker_offset = _unique_marker_offset(sql_text, marker)
+    divider = "-- ---------------------------------------------------------------------------"
+    start = sql_text.rfind(divider, 0, marker_offset)
+    if start < 0:
+        raise ControlPlaneSchemaInstallError(
+            f"canonical control-plane SQL section divider missing for {marker!r}"
+        )
+    return start
+
+
+def _profile_contract_seed_sql() -> str:
+    rows: list[str] = []
+    for (
+        contract_id,
+        interface_name,
+        domain_name,
+        payload_schema,
+        description,
+    ) in _PROFILE_CONTRACT_ROWS:
+        values = (
+            contract_id,
+            interface_name,
+            domain_name,
+            payload_schema,
+            description,
+        )
+        if any("'" in value for value in values):
+            raise ControlPlaneSchemaInstallError(
+                "profile schema-contract literals must not contain SQL quotes"
+            )
+        rows.append(
+            "    ("
+            f"'{contract_id}', '{interface_name}', '{domain_name}', 1, "
+            f"'{payload_schema}', '{description}', "
+            "'1970-01-01T00:00:00Z')"
+        )
+    return (
+        "-- Profile-specific operational authority contracts.\n"
+        "INSERT INTO schema_contracts (\n"
+        "    contract_id, interface_name, domain_name, schema_revision,\n"
+        "    payload_schema, description, created_at\n"
+        ") VALUES\n" + ",\n".join(rows) + ";\n"
+    )
+
+
+def _created_relation_names(sql_text: str, relation_kind: str) -> frozenset[str]:
+    pattern = re.compile(
+        rf"(?im)^\s*CREATE\s+{relation_kind}\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+        r'"?([a-z][a-z0-9_]*)"?\s*(?:\(|AS\b)'
+    )
+    return frozenset(match.group(1).lower() for match in pattern.finditer(sql_text))
+
+
+def datasets_authoritative_operational_schema_sql() -> str:
+    """Derive the constrained profile SQL from canonical 0001 SQL.
+
+    The extraction is marker- and inventory-checked.  A change to the canonical
+    section layout, an unexpected relation, or loss of a required operational
+    relation therefore refuses installation instead of silently expanding or
+    narrowing accelerator authority.
+    """
+
+    canonical = default_control_plane_schema().sql_text()
+    starts = {
+        name: _section_start(canonical, marker) for name, marker in _PROFILE_SECTION_MARKERS.items()
+    }
+    ordered = [starts[name] for name in ("meta", "code", "cache", "seed", "views")]
+    if ordered != sorted(ordered) or len(set(ordered)) != len(ordered):
+        raise ControlPlaneSchemaInstallError(
+            "canonical control-plane SQL sections are missing or out of order"
+        )
+
+    evidence_start_marker = "CREATE TABLE evidence_nodes ("
+    evidence_start = _unique_marker_offset(canonical, evidence_start_marker)
+    if not starts["code"] < evidence_start < starts["cache"]:
+        raise ControlPlaneSchemaInstallError(
+            "evidence_nodes is no longer isolated between code and cache sections"
+        )
+
+    sql_text = (
+        "\n".join(
+            (
+                "-- Derived datasets-authoritative operational profile.\n"
+                "-- ipfs_datasets_py owns semantic state, AST, proof obligations,\n"
+                "-- proof attempts, and counterexamples; this migration contains\n"
+                "-- operational coordination projections and opaque references only.",
+                canonical[starts["meta"] : starts["code"]].strip(),
+                "-- ---------------------------------------------------------------------------\n"
+                "-- runtime: opaque operational completion-evidence receipt projection\n"
+                "-- ---------------------------------------------------------------------------\n"
+                + canonical[evidence_start : starts["cache"]].strip(),
+                canonical[starts["cache"] : starts["seed"]].strip(),
+                _profile_contract_seed_sql().strip(),
+                canonical[starts["views"] :].strip(),
+            )
+        )
+        + "\n"
+    )
+
+    created_tables = _created_relation_names(sql_text, "TABLE")
+    expected_tables = frozenset(DATASETS_AUTHORITATIVE_OPERATIONAL_TABLES)
+    if created_tables != expected_tables:
+        raise ControlPlaneSchemaInstallError(
+            "derived operational table inventory drifted: "
+            f"missing={sorted(expected_tables - created_tables)}, "
+            f"unexpected={sorted(created_tables - expected_tables)}"
+        )
+    created_views = _created_relation_names(sql_text, "VIEW")
+    expected_views = frozenset(DIAGNOSTIC_VIEWS)
+    if created_views != expected_views:
+        raise ControlPlaneSchemaInstallError(
+            "derived operational view inventory drifted: "
+            f"missing={sorted(expected_views - created_views)}, "
+            f"unexpected={sorted(created_views - expected_views)}"
+        )
+    forbidden = created_tables & DATASETS_SEMANTIC_TRUTH_RELATIONS
+    if forbidden:
+        raise ControlPlaneSchemaInstallError(
+            f"derived operational profile contains datasets-owned relations: {sorted(forbidden)}"
+        )
+    return sql_text
+
+
+def load_datasets_authoritative_operational_catalog() -> MigrationCatalog:
+    """Return the checksum-bound one-migration operational profile catalog."""
+
+    sql_text = datasets_authoritative_operational_schema_sql()
+    required_relation_names = tuple(
+        sorted(set(DATASETS_AUTHORITATIVE_OPERATIONAL_TABLES).union(DIAGNOSTIC_VIEWS))
+    )
+    relation_literals = ", ".join(f"'{name}'" for name in required_relation_names)
+    forbidden_literals = ", ".join(
+        f"'{name}'" for name in sorted(DATASETS_SEMANTIC_TRUTH_RELATIONS)
+    )
+    migration = ControlPlaneMigration.from_sql(
+        version=DATASETS_AUTHORITATIVE_OPERATIONAL_MIGRATION_VERSION,
+        migration_id=DATASETS_AUTHORITATIVE_OPERATIONAL_MIGRATION_ID,
+        sql_text=sql_text,
+        description=("datasets-authoritative accelerator operational control-plane profile"),
+        preconditions=(
+            "SELECT COUNT(*) = 0 FROM information_schema.tables "
+            "WHERE table_schema = 'main' AND table_name IN "
+            f"({forbidden_literals})",
+        ),
+        postconditions=(
+            "SELECT COUNT(*) = "
+            f"{len(required_relation_names)} FROM information_schema.tables "
+            "WHERE table_schema = 'main' AND table_name IN "
+            f"({relation_literals})",
+            "SELECT COUNT(*) = 0 FROM information_schema.tables "
+            "WHERE table_schema = 'main' AND table_name IN "
+            f"({forbidden_literals})",
+            "SELECT COUNT(*) = 1 FROM schema_contracts WHERE contract_id = "
+            "'contract:DatasetsAuthoritativeOperationalControlPlane@1'",
+            "SELECT COUNT(*) = 0 FROM schema_contracts WHERE domain_name IN ('code', 'evidence')",
+        ),
+        source_path=(
+            f"{default_control_plane_schema().sql_path()}"
+            f"#{DATASETS_AUTHORITATIVE_OPERATIONAL_PROFILE_ID}"
+        ),
+    )
+    return MigrationCatalog.from_migrations((migration,))
+
+
 def install_control_plane_schema(
     database_path: Path | str,
     *,
@@ -535,6 +863,278 @@ def _relation_exists(
         params.append(table_type)
     sql += " LIMIT 1"
     return connection.execute(sql, params).fetchone() is not None
+
+
+def _main_relation_names(connection: Any) -> frozenset[str]:
+    rows = connection.execute(
+        """
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'main'
+        ORDER BY table_name
+        """
+    ).fetchall()
+    return frozenset(
+        str(row["table_name"] if isinstance(row, Mapping) else row[0]).lower() for row in rows
+    )
+
+
+def _forbidden_schema_contracts(connection: Any) -> tuple[str, ...]:
+    if not _relation_exists(connection, "schema_contracts"):
+        return ()
+    rows = connection.execute(
+        """
+        SELECT contract_id, interface_name, domain_name
+        FROM schema_contracts
+        WHERE domain_name IN ('code', 'evidence')
+           OR contract_id = 'contract:ControlPlaneSchema@1'
+           OR interface_name = 'ControlPlaneSchema@1'
+        ORDER BY contract_id, interface_name, domain_name
+        """
+    ).fetchall()
+    return tuple(
+        "/".join(
+            str(value)
+            for value in (
+                (row["contract_id"], row["interface_name"], row["domain_name"])
+                if isinstance(row, Mapping)
+                else (row[0], row[1], row[2])
+            )
+        )
+        for row in rows
+    )
+
+
+def _assert_datasets_authoritative_database(
+    connection: Any,
+    *,
+    operation: str,
+) -> tuple[frozenset[str], tuple[str, ...]]:
+    relations = _main_relation_names(connection)
+    forbidden_relations = relations & DATASETS_SEMANTIC_TRUTH_RELATIONS
+    forbidden_contracts = _forbidden_schema_contracts(connection)
+    if forbidden_relations or forbidden_contracts:
+        raise ControlPlaneSchemaInstallError(
+            f"refusing {operation}: database is not a datasets-authoritative "
+            "operational control plane; "
+            f"forbidden_relations={sorted(forbidden_relations)}, "
+            f"forbidden_contracts={list(forbidden_contracts)}"
+        )
+    return relations, forbidden_contracts
+
+
+def install_datasets_authoritative_operational_schema(
+    database_path: Path | str,
+    *,
+    application_version: str | None = None,
+    tool_version: str | None = None,
+    owner_id: str | None = None,
+) -> MigrationRunReport:
+    """Install the accelerator-only operational profile using the core runner.
+
+    Existing full-control-plane databases fail closed.  The profile catalog is
+    checksum-bound to deterministic sections of canonical ``0001`` SQL, so the
+    same migration receipts, ownership lease, drift detection, and transaction
+    behavior are reused rather than introducing another plan/task store.
+    """
+
+    if not duckdb_available():
+        raise ControlPlaneSchemaInstallError(
+            "DuckDB is required to install the datasets-authoritative "
+            "operational control-plane schema"
+        )
+    path = Path(database_path)
+    if path.exists():
+        try:
+            with open_duckdb_connection(path) as connection:
+                _assert_datasets_authoritative_database(
+                    connection,
+                    operation="operational-profile installation",
+                )
+        except ControlPlaneSchemaError:
+            raise
+        except Exception as exc:
+            raise ControlPlaneSchemaInstallError(
+                f"unable to inspect existing control-plane database {path}: {exc}"
+            ) from exc
+
+    catalog = load_datasets_authoritative_operational_catalog()
+    runner = ControlPlaneMigrationRunner.for_database(
+        path,
+        catalog=catalog,
+        application_version=application_version,
+        tool_version=tool_version,
+        owner_id=owner_id,
+    )
+    report = runner.apply()
+    verified = verify_datasets_authoritative_operational_schema(path)
+    if not bool(verified.get("valid")):
+        raise ControlPlaneSchemaInstallError(
+            "operational-profile verification did not return valid=true"
+        )
+    if verified["schema_fingerprint"] != report.schema_fingerprint:
+        raise ControlPlaneSchemaInstallError(
+            "installed operational-profile fingerprint differs from migration receipt fingerprint"
+        )
+    return report
+
+
+def verify_datasets_authoritative_operational_schema(
+    database_path: Path | str,
+) -> dict[str, Any]:
+    """Verify profile identity, operational surfaces, and semantic exclusions."""
+
+    if not duckdb_available():
+        raise ControlPlaneSchemaInstallError(
+            "DuckDB is required to verify the datasets-authoritative "
+            "operational control-plane schema"
+        )
+    catalog = load_datasets_authoritative_operational_catalog()
+    expected_migration = catalog.get(DATASETS_AUTHORITATIVE_OPERATIONAL_MIGRATION_VERSION)
+    report: dict[str, Any] = {
+        "valid": False,
+        "database_path": str(database_path),
+        "profile_id": DATASETS_AUTHORITATIVE_OPERATIONAL_PROFILE_ID,
+        "profile_schema": DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA,
+        "migration_id": DATASETS_AUTHORITATIVE_OPERATIONAL_MIGRATION_ID,
+        "migration_checksum": expected_migration.checksum,
+        "catalog_fingerprint": catalog.fingerprint(),
+        "required_tables_ok": [],
+        "views_ok": [],
+        "join_critical_ok": [],
+        "task_columns_ok": [],
+        "lease_columns_ok": [],
+        "forbidden_relations": [],
+        "forbidden_contracts": [],
+        "operational_evidence": {
+            "relation": "evidence_nodes",
+            "purpose": "content-addressed operational completion/result receipts",
+            "semantic_and_proof_authority": "ipfs_datasets_py",
+        },
+        "authority_contract": {},
+    }
+    with open_duckdb_connection(database_path) as connection:
+        relations, forbidden_contracts = _assert_datasets_authoritative_database(
+            connection,
+            operation="operational-profile verification",
+        )
+        report["forbidden_relations"] = sorted(relations & DATASETS_SEMANTIC_TRUTH_RELATIONS)
+        report["forbidden_contracts"] = list(forbidden_contracts)
+
+        for table in BOOKKEEPING_TABLES:
+            if table not in relations:
+                raise ControlPlaneSchemaInstallError(
+                    f"operational-profile bookkeeping table missing: {table}"
+                )
+        for table in DATASETS_AUTHORITATIVE_OPERATIONAL_TABLES:
+            if table not in relations:
+                raise ControlPlaneSchemaInstallError(f"operational-profile table missing: {table}")
+            report["required_tables_ok"].append(table)
+        for view in DIAGNOSTIC_VIEWS:
+            if view not in relations:
+                raise ControlPlaneSchemaInstallError(
+                    f"operational-profile diagnostic view missing: {view}"
+                )
+            report["views_ok"].append(view)
+
+        migration_row = connection.execute(
+            """
+            SELECT migration_id, checksum
+            FROM schema_migrations
+            WHERE version = ?
+            """,
+            [DATASETS_AUTHORITATIVE_OPERATIONAL_MIGRATION_VERSION],
+        ).fetchone()
+        if migration_row is None:
+            raise ControlPlaneSchemaInstallError("operational-profile migration receipt is missing")
+        applied_id = str(
+            migration_row["migration_id"]
+            if isinstance(migration_row, Mapping)
+            else migration_row[0]
+        )
+        applied_checksum = str(
+            migration_row["checksum"] if isinstance(migration_row, Mapping) else migration_row[1]
+        )
+        if (
+            applied_id != expected_migration.migration_id
+            or applied_checksum != expected_migration.checksum
+        ):
+            raise ControlPlaneSchemaInstallError(
+                "operational-profile migration identity/checksum mismatch: "
+                f"applied={applied_id}/{applied_checksum}, "
+                f"expected={expected_migration.migration_id}/"
+                f"{expected_migration.checksum}"
+            )
+
+        root_contract = connection.execute(
+            """
+            SELECT payload_schema, description
+            FROM schema_contracts
+            WHERE contract_id =
+                'contract:DatasetsAuthoritativeOperationalControlPlane@1'
+            """
+        ).fetchone()
+        if root_contract is None:
+            raise ControlPlaneSchemaInstallError(
+                "datasets-authoritative operational profile contract is missing"
+            )
+        payload_schema = str(
+            root_contract["payload_schema"]
+            if isinstance(root_contract, Mapping)
+            else root_contract[0]
+        )
+        description = str(
+            root_contract["description"]
+            if isinstance(root_contract, Mapping)
+            else root_contract[1]
+        )
+        if payload_schema != DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA:
+            raise ControlPlaneSchemaInstallError(
+                "datasets-authoritative operational profile contract drifted"
+            )
+        if "operational" not in description.lower() or "ipfs_datasets_py" not in description:
+            raise ControlPlaneSchemaInstallError(
+                "operational profile contract does not preserve the datasets "
+                "semantic/proof authority boundary"
+            )
+        report["authority_contract"] = {
+            "contract_id": (
+                "contract:DatasetsAuthoritativeOperationalControlPlane@1"
+            ),
+            "payload_schema": payload_schema,
+            "operational_authority": "ipfs_accelerate_py",
+            "semantic_and_proof_authority": "ipfs_datasets_py",
+        }
+
+        profile_join_identities = tuple(
+            (table, column)
+            for table, column in JOIN_CRITICAL_IDENTITIES
+            if table in DATASETS_AUTHORITATIVE_OPERATIONAL_TABLES
+        )
+        for table, column in profile_join_identities:
+            columns = _table_columns(connection, table)
+            if column not in columns or _OPAQUE_JSON_COLUMN_RE.search(column):
+                raise ControlPlaneSchemaIdentityError(
+                    f"operational join-critical identity missing or opaque: {table}.{column}"
+                )
+            report["join_critical_ok"].append(f"{table}.{column}")
+        task_columns = _table_columns(connection, "tasks")
+        for column in TASK_IDENTITY_COLUMNS:
+            if column not in task_columns:
+                raise ControlPlaneSchemaCompatibilityError(
+                    f"operational profile is missing tasks.{column}"
+                )
+            report["task_columns_ok"].append(column)
+        lease_columns = _table_columns(connection, "leases")
+        for column in LEASE_IDENTITY_COLUMNS:
+            if column not in lease_columns:
+                raise ControlPlaneSchemaCompatibilityError(
+                    f"operational profile is missing leases.{column}"
+                )
+            report["lease_columns_ok"].append(column)
+        report["schema_fingerprint"] = compute_schema_fingerprint(connection)
+        report["valid"] = True
+    return report
 
 
 def verify_installed_schema(
@@ -680,6 +1280,14 @@ __all__ = [
     "ControlPlaneSchemaIdentityError",
     "ControlPlaneSchemaInstallError",
     "DIAGNOSTIC_VIEWS",
+    "DATASETS_AUTHORITATIVE_OPERATIONAL_DOMAINS",
+    "DATASETS_AUTHORITATIVE_OPERATIONAL_EVIDENCE_TABLES",
+    "DATASETS_AUTHORITATIVE_OPERATIONAL_MIGRATION_ID",
+    "DATASETS_AUTHORITATIVE_OPERATIONAL_MIGRATION_VERSION",
+    "DATASETS_AUTHORITATIVE_OPERATIONAL_PROFILE_ID",
+    "DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA",
+    "DATASETS_AUTHORITATIVE_OPERATIONAL_TABLES",
+    "DATASETS_SEMANTIC_TRUTH_RELATIONS",
     "DOMAIN_TABLES",
     "DuckDBQuackDependencyProfile",
     "JOIN_CRITICAL_IDENTITIES",
@@ -697,10 +1305,14 @@ __all__ = [
     "assert_dependency_profile_pinned",
     "default_control_plane_schema",
     "default_dependency_profile",
+    "datasets_authoritative_operational_schema_sql",
+    "install_datasets_authoritative_operational_schema",
     "install_control_plane_schema",
+    "load_datasets_authoritative_operational_catalog",
     "load_control_plane_catalog",
     "package_sql_directory",
     "prove_fresh_and_upgraded_equivalence",
     "read_pyproject_text",
+    "verify_datasets_authoritative_operational_schema",
     "verify_installed_schema",
 ]
