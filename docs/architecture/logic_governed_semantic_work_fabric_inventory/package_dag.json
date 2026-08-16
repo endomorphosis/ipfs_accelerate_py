@@ -1,0 +1,97 @@
+{
+  "direction": "datasets semantic authority before accelerator operational consumers",
+  "edges": [
+    {
+      "from": "ipfs_accelerate_py.agent_supervisor.runtime",
+      "to": "ipfs_accelerate_py.agent_supervisor.task_sources"
+    },
+    {
+      "from": "ipfs_accelerate_py.agent_supervisor.todo_daemon",
+      "to": "ipfs_accelerate_py.agent_supervisor.task_sources"
+    },
+    {
+      "from": "ipfs_accelerate_py.agent_supervisor.todo_daemon",
+      "to": "ipfs_accelerate_py.agent_supervisor.runtime"
+    },
+    {
+      "from": "ipfs_accelerate_py.agent_supervisor.proof",
+      "to": "ipfs_accelerate_py.agent_supervisor.task_sources"
+    },
+    {
+      "from": "ipfs_accelerate_py.agent_supervisor.analysis",
+      "to": "ipfs_accelerate_py.agent_supervisor.task_sources"
+    },
+    {
+      "from": "ipfs_accelerate_py.agent_supervisor.runtime",
+      "to": "ipfs_datasets_py.duckdb_control"
+    },
+    {
+      "from": "ipfs_datasets_py.ducklake",
+      "to": "ipfs_datasets_py.duckdb_control"
+    }
+  ],
+  "nodes": [
+    {
+      "authority": "canonical semantic/proof authority",
+      "exists": true,
+      "id": "ipfs_datasets_py.logic",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic"
+    },
+    {
+      "authority": "optional non-authoritative projection",
+      "exists": true,
+      "id": "ipfs_datasets_py.ducklake",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/ducklake"
+    },
+    {
+      "authority": "canonical datasets Quack/security authority",
+      "exists": true,
+      "id": "ipfs_datasets_py.duckdb_control",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/duckdb_control"
+    },
+    {
+      "authority": "canonical operational repository authority",
+      "exists": true,
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources"
+    },
+    {
+      "authority": "canonical operational coordination authority",
+      "exists": true,
+      "id": "ipfs_accelerate_py.agent_supervisor.runtime",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime"
+    },
+    {
+      "authority": "canonical implementation-daemon authority",
+      "exists": true,
+      "id": "ipfs_accelerate_py.agent_supervisor.todo_daemon",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon"
+    },
+    {
+      "authority": "canonical operational evidence consumer",
+      "exists": true,
+      "id": "ipfs_accelerate_py.agent_supervisor.proof",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof"
+    },
+    {
+      "authority": "canonical operational analysis consumer",
+      "exists": true,
+      "id": "ipfs_accelerate_py.agent_supervisor.analysis",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis"
+    }
+  ],
+  "remediation_map": [],
+  "sccs": [],
+  "schema": "lgswf/package-dag@1",
+  "source_head": "2db766a50b63d0fcaeea24604415a347d23a1a69",
+  "source_tree": "e1411b3a27eb67d0b2ae59c7d1af79230a41c977",
+  "upward_imports": []
+}

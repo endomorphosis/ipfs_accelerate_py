@@ -1,0 +1,122 @@
+{
+  "control_plane_split": {
+    "direct_shared_duckdb_file_access": false,
+    "duckdb": "authoritative transactional records, schema, CAS, fencing",
+    "ducklake": "optional non-authoritative projection/query consumer via public typed APIs only",
+    "embedded_one_writer_bootstrap": true,
+    "quack": "mandatory multi-reader/multi-writer transport and exclusive state-owner"
+  },
+  "forbidden": [
+    "accelerator DuckLake ATTACH",
+    "accelerator raw DuckLake SQL",
+    "accelerator catalog-file or credential access",
+    "opening incompatible DatabaseArtifactStore DDL against operational-v1",
+    "duplicate semantic, lake, store, or operational authority"
+  ],
+  "interfaces": [
+    {
+      "canonical": true,
+      "defined": true,
+      "duplicate": false,
+      "exists": true,
+      "name": "StateRepository",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
+      "role": "protocol",
+      "source_sha256": "sha256:2fe5d3fa13c21556795fe71b1e234971c45a81c21c070ab0542bb1ac4d24a808"
+    },
+    {
+      "canonical": true,
+      "defined": true,
+      "duplicate": false,
+      "exists": true,
+      "name": "QuackStateRepository",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
+      "role": "implementation",
+      "source_sha256": "sha256:2fe5d3fa13c21556795fe71b1e234971c45a81c21c070ab0542bb1ac4d24a808"
+    },
+    {
+      "canonical": true,
+      "defined": true,
+      "duplicate": false,
+      "exists": true,
+      "name": "QuackStateClient",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
+      "role": "client",
+      "source_sha256": "sha256:40208ae8b67eb67c62d0de71bb9146d6ccc2d3efcb28d0532c839011fbd7454b"
+    },
+    {
+      "canonical": true,
+      "defined": true,
+      "duplicate": false,
+      "exists": true,
+      "name": "QuackStateServer",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "role": "server",
+      "source_sha256": "sha256:ae761ced4bce3fbae3163c861b819c42dcb1d064e60c48f18144bd763ee80602"
+    },
+    {
+      "canonical": true,
+      "defined": true,
+      "duplicate": false,
+      "exists": true,
+      "name": "StateServerIdentity",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "role": "identity",
+      "source_sha256": "sha256:ae761ced4bce3fbae3163c861b819c42dcb1d064e60c48f18144bd763ee80602"
+    },
+    {
+      "canonical": true,
+      "defined": true,
+      "duplicate": false,
+      "exists": true,
+      "name": "ControlPlaneStoreIdentity",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+      "role": "identity",
+      "source_sha256": "sha256:85cbcf37d61e373eabfbdd4a291b85f4e5f2a275c6587b45fa1dc26a5d9803bd"
+    },
+    {
+      "canonical": true,
+      "defined": true,
+      "duplicate": false,
+      "exists": true,
+      "name": "StateCommand",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+      "role": "command",
+      "source_sha256": "sha256:85cbcf37d61e373eabfbdd4a291b85f4e5f2a275c6587b45fa1dc26a5d9803bd"
+    },
+    {
+      "canonical": true,
+      "defined": true,
+      "duplicate": false,
+      "exists": true,
+      "name": "DatabaseProgramConfig",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "role": "config",
+      "source_sha256": "sha256:24f8fe256fe54a5d5f318b0f520551c2c8373a82ec20882024b7426f98a79310"
+    },
+    {
+      "canonical": true,
+      "defined": true,
+      "duplicate": false,
+      "exists": true,
+      "name": "ipfs_datasets_py.duckdb_control.quack_security scoped server authorization",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/duckdb_control/quack_security.py",
+      "role": "authorization",
+      "source_sha256": "sha256:ff68e4a3a2ac3ea338e4e7fa5a57c8ea32b486bf0b90baae46d087efe5a9f044"
+    }
+  ],
+  "required_gateway": "StateRepository/QuackStateRepository",
+  "schema": "lgswf/interface-freeze@1",
+  "source_head": "2db766a50b63d0fcaeea24604415a347d23a1a69",
+  "source_tree": "e1411b3a27eb67d0b2ae59c7d1af79230a41c977",
+  "undefined_count": 0
+}

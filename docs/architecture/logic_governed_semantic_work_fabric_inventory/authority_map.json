@@ -1,0 +1,159 @@
+{
+  "ducklake_authority": false,
+  "inventory_classifications": {
+    "adversarial_assurance": {
+      "classification": "absent",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/adversarial_assurance"
+    },
+    "artifact_store_export": {
+      "classification": "projection",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/database_evidence_store.py"
+    },
+    "duckdb_control": {
+      "classification": "canonical authority",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py"
+    },
+    "ducklake": {
+      "classification": "canonical authority",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/ducklake"
+    },
+    "formalization": {
+      "classification": "canonical authority",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/formalization"
+    },
+    "logic_backends": {
+      "classification": "canonical authority",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/backends"
+    },
+    "logic_families": {
+      "classification": "canonical authority",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/families"
+    },
+    "quack_transport": {
+      "classification": "canonical authority",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py"
+    },
+    "semantic_governor": {
+      "classification": "canonical authority",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_governor"
+    },
+    "semantic_index": {
+      "classification": "canonical authority",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index"
+    },
+    "semantic_state": {
+      "classification": "canonical authority",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state"
+    },
+    "software_verification": {
+      "classification": "canonical authority",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification"
+    },
+    "supervisor_analysis": {
+      "classification": "canonical consumer",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis"
+    },
+    "supervisor_context": {
+      "classification": "canonical consumer",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/context"
+    },
+    "supervisor_entrypoints": {
+      "classification": "canonical authority",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints"
+    },
+    "supervisor_integrations": {
+      "classification": "canonical consumer",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/integrations"
+    },
+    "supervisor_merge": {
+      "classification": "canonical authority",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/merge"
+    },
+    "supervisor_objectives": {
+      "classification": "canonical authority",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/objectives"
+    },
+    "supervisor_planning": {
+      "classification": "canonical authority",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning"
+    },
+    "supervisor_proof": {
+      "classification": "canonical consumer",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof"
+    },
+    "supervisor_rescue": {
+      "classification": "canonical authority",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/rescue"
+    },
+    "supervisor_runtime": {
+      "classification": "canonical authority",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime"
+    },
+    "supervisor_self_improvement": {
+      "classification": "canonical consumer",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/self_improvement"
+    },
+    "supervisor_semantic_state": {
+      "classification": "absent",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state"
+    },
+    "supervisor_task_sources": {
+      "classification": "canonical authority",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources"
+    },
+    "supervisor_todo_daemon": {
+      "classification": "canonical authority",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon"
+    },
+    "supervisor_validation": {
+      "classification": "canonical authority",
+      "owner": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/validation"
+    },
+    "verification_api": {
+      "classification": "canonical authority",
+      "owner": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py"
+    }
+  },
+  "operational_authority": "ipfs_accelerate_py",
+  "packages": {
+    "ipfs_accelerate_py.agent_supervisor.analysis": "canonical operational analysis consumer",
+    "ipfs_accelerate_py.agent_supervisor.proof": "canonical operational evidence consumer",
+    "ipfs_accelerate_py.agent_supervisor.runtime": "canonical operational coordination authority",
+    "ipfs_accelerate_py.agent_supervisor.task_sources": "canonical operational repository authority",
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon": "canonical implementation-daemon authority",
+    "ipfs_datasets_py.duckdb_control": "canonical datasets Quack/security authority",
+    "ipfs_datasets_py.ducklake": "optional non-authoritative projection",
+    "ipfs_datasets_py.logic": "canonical semantic/proof authority"
+  },
+  "schema": "lgswf/authority-map@1",
+  "semantic_authority": "ipfs_datasets_py",
+  "source_head": "2db766a50b63d0fcaeea24604415a347d23a1a69"
+}
