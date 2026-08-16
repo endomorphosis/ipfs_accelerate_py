@@ -2136,7 +2136,7 @@ overlays. Never force-push.
 
 ## MCPP-068 Expand the three-peer Profile G harness
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
