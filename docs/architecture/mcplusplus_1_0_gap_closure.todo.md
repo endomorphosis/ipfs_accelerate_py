@@ -2751,3 +2751,15 @@ overlays. Never force-push.
 - Validation: test -f /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-16-mcpp-092-mcpp-025-retry-budget.md
 
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in MCPP-025. Use evidence in /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-16-mcpp-092-mcpp-025-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release MCPP-025 from strategy blocked_tasks.
+
+## MCPP-093 Resolve validation retry-budget failure for MCPP-026
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: MCPP-025
+- Outputs: ipfs_accelerate_py/mcplusplus/tests-py/validators/canonical_jcs.py, ipfs_accelerate_py/mcplusplus/tests-ts/src/validators/canonicalJcs.ts, data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery
+- Validation: test -f /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-16-mcpp-093-mcpp-026-retry-budget.md
+
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in MCPP-026. Use evidence in /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/state/discovery/2026-08-16-mcpp-093-mcpp-026-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release MCPP-026 from strategy blocked_tasks.
