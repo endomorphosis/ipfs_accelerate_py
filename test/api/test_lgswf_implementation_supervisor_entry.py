@@ -58,3 +58,11 @@ def test_unrelated_direct_supervisor_args_are_unchanged() -> None:
     module = _module()
     argv = ["--todo-path", "board.md", "--implement"]
     assert module.normalize_configured_task_source_args(argv) == argv
+
+
+def test_child_pythonpath_is_replaced_with_the_exact_checkout() -> None:
+    module = _module()
+    environment = {"PYTHONPATH": "/untrusted/ambient/path"}
+    value = module.seal_child_pythonpath(environment)
+    assert value == str(ROOT)
+    assert environment == {"PYTHONPATH": str(ROOT)}

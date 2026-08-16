@@ -9,6 +9,7 @@ to ``legacy-markdown`` at this revision; no option is silently generalized.
 """
 
 from pathlib import Path
+import os
 import sys
 
 
@@ -92,10 +93,20 @@ def normalize_configured_task_source_args(argv: list[str]) -> list[str]:
     return filtered
 
 
+def seal_child_pythonpath(environment: dict[str, str] | None = None) -> str:
+    """Bind ``python -P`` managed children to this exact checked-out package."""
+
+    target = os.environ if environment is None else environment
+    value = str(REPO_ROOT)
+    target["PYTHONPATH"] = value
+    return value
+
+
 if __name__ == "__main__":
     try:
         normalized_argv = normalize_configured_task_source_args(sys.argv[1:])
     except ValueError as exc:
         print(f"implementation_supervisor_entry.py: error: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
+    seal_child_pythonpath()
     raise SystemExit(main(normalized_argv))

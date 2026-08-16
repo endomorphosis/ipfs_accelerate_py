@@ -158,7 +158,10 @@ managed daemon at this revision defaults to that exact source kind. The sealed
 bootstrap adds a narrow entry-boundary validator that consumes only
 `legacy-markdown` / `legacy_markdown` / `fail_closed` plus the explicit-legacy
 flag; incomplete or broader tuples fail closed. It does not add a task source
-or change daemon semantics.
+or change daemon semantics. The same boundary replaces ambient `PYTHONPATH`
+with the exact selected checkout before the supervisor spawns its `python -P`
+managed daemon; this preserves safe-path mode while making the non-installed
+checked-out package importable.
 
 ## 5. Target architecture
 
