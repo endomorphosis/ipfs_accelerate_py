@@ -8,13 +8,21 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+    DatabaseCoordinator,
+    open_database_coordinator,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    open_duckdb_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DatabaseImplementationDaemon,
@@ -26,6 +34,7 @@ requires_duckdb = pytest.mark.skipif(
     not duckdb_available(),
     reason="DuckDB is required for the temporary LGSWF control-plane fixture",
 )
+RECEIPT_RESULT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/content-addressed-receipt-result@1"
 
 
 def _load_materializer() -> ModuleType:
@@ -118,6 +127,35 @@ def _materialize_temporary_plane(
     return module, config, population, receipt
 
 
+def _canonical_receipt(
+    module: ModuleType,
+    result: dict[str, Any],
+    *,
+    operation: str,
+) -> dict[str, Any]:
+    assert set(result) == {
+        "schema",
+        "operation",
+        "canonical_receipt",
+        "canonical_receipt_path",
+        "operation_replayed",
+    }
+    assert result["schema"] == RECEIPT_RESULT_SCHEMA
+    assert result["operation"] == operation
+    assert isinstance(result["operation_replayed"], bool)
+    assert "receipt_cid" not in result
+    receipt = result["canonical_receipt"]
+    assert isinstance(receipt, dict)
+    claimed_cid = receipt.get("receipt_cid")
+    assert isinstance(claimed_cid, str) and claimed_cid.startswith("sha256:")
+    unsigned = dict(receipt)
+    unsigned.pop("receipt_cid")
+    assert module._identity(unsigned) == claimed_cid
+    persisted_path = module.ROOT / result["canonical_receipt_path"]
+    assert json.loads(persisted_path.read_text(encoding="utf-8")) == receipt
+    return receipt
+
+
 def _stub_launch_evidence() -> dict[str, Any]:
     return {
         "launch_plan_cid": "sha256:" + "1" * 64,
@@ -135,6 +173,43 @@ def _stub_launch_evidence() -> dict[str, Any]:
         "implement": True,
         "process_started": False,
     }
+
+
+def _stub_seal_evidence(
+    module: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    config: dict[str, Any],
+    population: dict[str, Any],
+) -> None:
+    monkeypatch.setattr(
+        module, "_render_launch_plan_evidence", lambda _config: _stub_launch_evidence()
+    )
+    monkeypatch.setattr(module, "_sha256_file", lambda _path: "sha256:" + "2" * 64)
+    commands = [list(argv) for _label, argv in module._qualification_commands()]
+    receipt = {
+        "schema": module.QUALIFICATION_SCHEMA,
+        "source_head": population["source_head"],
+        "repository_tree_id": population["repository_tree_id"],
+        "plan_root_cid": population["plan_root_cid"],
+        "population_cid": module._identity(population),
+        "command_argv": commands,
+        "qualified": True,
+        "results": [
+            {
+                "label": label,
+                "argv": list(argv),
+                "returncode": 0,
+                "stdout_sha256": "sha256:" + "a" * 64,
+                "stderr_sha256": "sha256:" + "b" * 64,
+            }
+            for label, argv in module._qualification_commands()
+        ],
+    }
+    receipt["receipt_cid"] = module._identity(receipt)
+    module._write_receipt(
+        module._bootstrap_receipt_path(config, "qualification.json"),
+        receipt,
+    )
 
 
 def test_dirty_worktree_fails_closed_before_population_reads(
@@ -179,7 +254,9 @@ def test_actual_launch_evidence_reports_bounded_legacy_dispatch_truthfully() -> 
 def test_unsealed_plane_exposes_only_manual_seal_and_daemon_skips_it(
     tmp_path: Path,
 ) -> None:
-    module, config, population, receipt = _materialize_temporary_plane(tmp_path)
+    module, config, population, result = _materialize_temporary_plane(tmp_path)
+    assert result["operation_replayed"] is False
+    receipt = _canonical_receipt(module, result, operation="materialize")
 
     verification = receipt["verification"]
     assert verification["bootstrap_stage"] == "unsealed"
@@ -208,17 +285,160 @@ def test_unsealed_plane_exposes_only_manual_seal_and_daemon_skips_it(
 
 
 @requires_duckdb
+def test_restart_resumes_exact_live_claim_before_preparation_without_expiry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
+    captured: dict[str, Any] = {}
+
+    def crash_before_preparation(
+        _coordinator: DatabaseCoordinator,
+        claim: Any,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        captured["claim"] = claim.to_dict()
+        raise RuntimeError("injected crash before PREPARED")
+
+    with monkeypatch.context() as injected:
+        injected.setattr(
+            DatabaseCoordinator,
+            "prepare_task_completion",
+            crash_before_preparation,
+        )
+        with pytest.raises(RuntimeError, match="injected crash before PREPARED"):
+            module.seal(config, population)
+
+    paths = module._paths(config)
+    coordinator = open_database_coordinator(paths["coordination"])
+    try:
+        active = coordinator.list_active_leases()
+        assert len(active) == 1
+        assert active[0].claim_id == captured["claim"]["claim_id"]
+        assert active[0].expires_at_ms > time.time_ns() // 1_000_000
+        assert coordinator.list_unsettled_task_completions(limit=100) == []
+    finally:
+        coordinator.close()
+
+    resumed = _canonical_receipt(
+        module,
+        module.seal(config, population),
+        operation="seal",
+    )
+    assert resumed["claim"]["claim_id"] == captured["claim"]["claim_id"]
+    assert resumed["claim"]["lease_id"] == captured["claim"]["lease_id"]
+    assert resumed["preparation"]["claim_id"] == captured["claim"]["claim_id"]
+    assert resumed["settled_lease"]["state"] == "released"
+
+
+@requires_duckdb
+def test_restart_resumes_exact_live_prepared_todo_without_expiry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
+    captured: dict[str, Any] = {}
+
+    def crash_after_preparation(
+        _coordinator: DatabaseCoordinator,
+        claim: Any,
+        **_kwargs: Any,
+    ) -> Any:
+        captured["claim"] = claim.to_dict()
+        raise RuntimeError("injected crash after PREPARED")
+
+    with monkeypatch.context() as injected:
+        injected.setattr(
+            DatabaseCoordinator,
+            "protect_task_claim",
+            crash_after_preparation,
+        )
+        with pytest.raises(RuntimeError, match="injected crash after PREPARED"):
+            module.seal(config, population)
+
+    paths = module._paths(config)
+    task_cid = population["task_cids_by_alias"]["LGSWF-006"]
+    coordinator = open_database_coordinator(paths["coordination"])
+    try:
+        prepared = coordinator.get_prepared_task_completion(task_cid)
+        assert prepared is not None
+        assert prepared["status"] == "prepared"
+        assert prepared["claim_id"] == captured["claim"]["claim_id"]
+        active = coordinator.list_active_leases()
+        assert len(active) == 1
+        assert active[0].claim_id == captured["claim"]["claim_id"]
+        assert active[0].expires_at_ms > time.time_ns() // 1_000_000
+    finally:
+        coordinator.close()
+
+    resumed = _canonical_receipt(
+        module,
+        module.seal(config, population),
+        operation="seal",
+    )
+    assert resumed["claim"]["claim_id"] == captured["claim"]["claim_id"]
+    assert resumed["preparation"]["preparation_digest"] == prepared["preparation_digest"]
+    assert resumed["control_cas"]["task"]["status"] == "completed"
+    assert resumed["settled_lease"]["state"] == "released"
+
+
+@requires_duckdb
+def test_foreign_resource_lease_blocks_unsealed_verification_and_seal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
+    paths = module._paths(config)
+    coordinator = open_database_coordinator(paths["coordination"])
+    try:
+        resource = coordinator.claim_resource(
+            resource_kind="gpu",
+            resource_id="gpu:foreign",
+            owner_session_id="foreign-supervisor",
+            lease_ms=300_000,
+        )
+        assert resource.state.value == "accepted"
+    finally:
+        coordinator.close()
+
+    try:
+        with pytest.raises(module.MaterializationError) as unsealed_error:
+            module._verify_store(config, population, expected_stage="unsealed")
+        assert "active" in str(unsealed_error.value).lower()
+        assert "lease" in str(unsealed_error.value).lower()
+
+        with pytest.raises(module.MaterializationError) as seal_error:
+            module.seal(config, population)
+        assert "active" in str(seal_error.value).lower()
+        assert "lease" in str(seal_error.value).lower()
+    finally:
+        coordinator = open_database_coordinator(paths["coordination"])
+        try:
+            lease = coordinator.get_lease(resource.lease_id)
+            assert lease is not None
+            coordinator.release(lease, reason="test cleanup")
+        finally:
+            coordinator.close()
+
+
+@requires_duckdb
 def test_trusted_seal_prepares_cas_promotes_settles_and_replays_immutably(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module, config, population, _receipt = _materialize_temporary_plane(tmp_path)
-    monkeypatch.setattr(
-        module, "_render_launch_plan_evidence", lambda _config: _stub_launch_evidence()
-    )
-    monkeypatch.setattr(module, "_sha256_file", lambda _path: "sha256:" + "2" * 64)
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
 
-    sealed = module.seal(config, population)
+    sealed_result = module.seal(config, population)
+    assert sealed_result["operation_replayed"] is False
+    sealed = _canonical_receipt(module, sealed_result, operation="seal")
     accepted_result_cid = sealed["accepted_result_cid"]
     assert sealed["preparation"]["status"] == "prepared"
     assert sealed["preparation"]["evidence_digest"] == accepted_result_cid
@@ -243,11 +463,63 @@ def test_trusted_seal_prepares_cas_promotes_settles_and_replays_immutably(
     claimed_receipt_cid = persisted.pop("receipt_cid")
     assert module._identity(persisted) == claimed_receipt_cid
 
-    replay = module.seal(config, population)
-    assert replay["replayed"] is True
+    replay_result = module.seal(config, population)
+    assert replay_result["operation_replayed"] is True
+    replay = _canonical_receipt(module, replay_result, operation="seal")
     assert replay["receipt_cid"] == sealed["receipt_cid"]
     assert replay["accepted_result_cid"] == accepted_result_cid
     assert receipt_path.read_bytes() == stored_before
+
+
+@requires_duckdb
+def test_forged_control_result_identity_fails_sealed_cross_authority_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
+    sealed = _canonical_receipt(
+        module,
+        module.seal(config, population),
+        operation="seal",
+    )
+    accepted_result_cid = sealed["accepted_result_cid"]
+    task_cid = population["task_cids_by_alias"]["LGSWF-006"]
+    paths = module._paths(config)
+
+    coordinator = open_database_coordinator(paths["coordination"])
+    try:
+        promoted = coordinator.get_prepared_task_completion(task_cid)
+        assert promoted is not None
+        assert promoted["status"] == "succeeded"
+        assert promoted["evidence_digest"] == accepted_result_cid
+        assert module._identity(promoted["body"]["seal_basis"]) == accepted_result_cid
+    finally:
+        coordinator.close()
+
+    connection = open_duckdb_connection(paths["control"])
+    try:
+        row = connection.execute(
+            "SELECT body_json FROM tasks WHERE task_cid = ?",
+            [task_cid],
+        ).fetchone()
+        assert row is not None
+        body = json.loads(row[0])
+        forged_result_cid = "sha256:" + "e" * 64
+        assert forged_result_cid != accepted_result_cid
+        body["completion_receipt"]["accepted_result_cid"] = forged_result_cid
+        connection.execute(
+            "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+            [json.dumps(body, sort_keys=True, separators=(",", ":")), task_cid],
+        )
+    finally:
+        connection.close()
+
+    with pytest.raises(module.MaterializationError) as error:
+        module._verify_store(config, population, expected_stage="sealed")
+    assert "accepted result" in str(error.value).lower()
+    assert "coordination" in str(error.value).lower()
 
 
 @requires_duckdb
@@ -256,13 +528,15 @@ def test_post_settlement_reconstruction_writes_identity_default_verify_accepts(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    module, config, population, _receipt = _materialize_temporary_plane(tmp_path)
-    monkeypatch.setattr(
-        module, "_render_launch_plan_evidence", lambda _config: _stub_launch_evidence()
-    )
-    monkeypatch.setattr(module, "_sha256_file", lambda _path: "sha256:" + "2" * 64)
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
 
-    sealed = module.seal(config, population)
+    sealed = _canonical_receipt(
+        module,
+        module.seal(config, population),
+        operation="seal",
+    )
     accepted_result_cid = sealed["accepted_result_cid"]
     assert sealed["coordination_promotion"]["status"] == "succeeded"
     assert sealed["settled_lease"]["state"] == "released"
@@ -275,7 +549,13 @@ def test_post_settlement_reconstruction_writes_identity_default_verify_accepts(
     receipt_path.unlink()
     assert not receipt_path.exists()
 
-    reconstructed = module.seal(config, population)
+    reconstructed_result = module.seal(config, population)
+    assert reconstructed_result["operation_replayed"] is False
+    reconstructed = _canonical_receipt(
+        module,
+        reconstructed_result,
+        operation="seal",
+    )
     assert reconstructed["accepted_result_cid"] == accepted_result_cid
     assert reconstructed["post_verification"]["accepted_result_cid"] == (accepted_result_cid)
     persisted = json.loads(receipt_path.read_text(encoding="utf-8"))
@@ -296,13 +576,15 @@ def test_self_consistent_receipt_with_wrong_result_identity_fails_seal_replay(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module, config, population, _receipt = _materialize_temporary_plane(tmp_path)
-    monkeypatch.setattr(
-        module, "_render_launch_plan_evidence", lambda _config: _stub_launch_evidence()
-    )
-    monkeypatch.setattr(module, "_sha256_file", lambda _path: "sha256:" + "2" * 64)
+    module, config, population, materialized = _materialize_temporary_plane(tmp_path)
+    _canonical_receipt(module, materialized, operation="materialize")
+    _stub_seal_evidence(module, monkeypatch, config, population)
 
-    sealed = module.seal(config, population)
+    sealed = _canonical_receipt(
+        module,
+        module.seal(config, population),
+        operation="seal",
+    )
     receipt_path = module._bootstrap_receipt_path(config, "duckdb-seal.json")
     tampered = json.loads(receipt_path.read_text(encoding="utf-8"))
     tampered.pop("receipt_cid")
