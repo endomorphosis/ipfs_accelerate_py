@@ -1920,7 +1920,7 @@ overlays. Never force-push.
 
 ## MCPP-061 Test registration expiry, withdrawal, duplicates, compromise, and selection
 
-- Status: todo
+- Status: completed
 - Completion: authoritative
 - Is schedulable: true
 - Review only: false
