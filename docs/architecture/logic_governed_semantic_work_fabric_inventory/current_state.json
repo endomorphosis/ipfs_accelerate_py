@@ -1,0 +1,28 @@
+{
+  "absent_count": 2,
+  "accelerator_head": "521bbc494a6e00280e1e376c23adbdc7a9e8b643",
+  "accelerator_tree": "f58de82f07b573eae48265648159d34a32eb5351",
+  "concern_count": 28,
+  "datasets_head": "0691203550c0f316852c74d293d8fc3c4ce130a6",
+  "datasets_tree": "35252228f51c1247a8f99939b36e74f0af36e411",
+  "duckdb_quack": {
+    "current_probe": {
+      "available": false,
+      "duckdb_version": "1.5.2",
+      "quack_status": "install-required",
+      "reason": "import_only_insufficient",
+      "unsafe_to_call_multi_writer": true
+    },
+    "duckdb_role": "authoritative transactional records, schema, CAS, fencing",
+    "ducklake": {
+      "authority": false,
+      "classification": "optional non-authoritative projection/query storage",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/ducklake",
+      "present": true
+    },
+    "operational_control_plane": "DuckDB + Quack",
+    "quack_role": "mandatory multi-reader/multi-writer transport and exclusive state-owner"
+  },
+  "schema": "lgswf/current-state@1",
+  "unresolved_count": 0
+}
