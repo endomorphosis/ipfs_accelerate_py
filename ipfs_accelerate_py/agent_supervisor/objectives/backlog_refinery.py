@@ -5013,18 +5013,23 @@ def resolved_reconciliation_guardrail_keys(
 ) -> set[str]:
     """Return guardrail identities backed by a conclusive clean rescan.
 
-    A missing/disabled scan, unavailable checkout status, any effective dirty
-    status (including staged or unknown status), and all cleanup/preflight
-    guardrails currently fail closed.  A main-checkout guardrail can also
+    A missing/disabled scan, unavailable checkout status, or any effective
+    dirty main status fails closed.  A main-checkout guardrail can also
     retire when an exact rescan proves that its blocked candidate population
     reached zero and the replay and cleanup passes completed without residual
     work.  That second proof deliberately permits unrelated parent-checkout
     dirt because there is no longer a candidate for it to block.
+
+    Preflight-conflict and dirty-backlogged cards retire only after a
+    completed rescan proves that specific blocker is gone.  A locked or
+    skipped cleanup scan does not retire dirty-worktree cards.
     """
 
     reconciliation = (
         dict(reconciliation_result) if isinstance(reconciliation_result, Mapping) else {}
     )
+    cleanup = dict(cleanup_result) if isinstance(cleanup_result, Mapping) else {}
+    resolved: set[str] = set()
     if (
         reconciliation.get("attempted") is True
         and reconciliation.get("main_checkout_status_available") is True
@@ -5032,14 +5037,75 @@ def resolved_reconciliation_guardrail_keys(
         and isinstance(reconciliation.get("main_status_short"), list)
         and not reconciliation.get("main_status_short")
     ):
-        return {"reconciliation_guardrail:main_checkout_dirty"}
+        resolved.add("reconciliation_guardrail:main_checkout_dirty")
     if (
         _zero_candidate_reconciliation_is_conclusive(reconciliation)
         and _reconciliation_replay_is_conclusive(replay_result)
         and _worktree_cleanup_is_conclusive(cleanup_result)
     ):
-        return {"reconciliation_guardrail:main_checkout_dirty"}
-    return set()
+        resolved.add("reconciliation_guardrail:main_checkout_dirty")
+    if (
+        reconciliation.get("attempted") is True
+        and _explicit_nonnegative_int(reconciliation, "preflight_blocked_count") == 0
+        and isinstance(reconciliation.get("processed"), list)
+        and not any(
+            isinstance(item, Mapping)
+            and isinstance(item.get("preflight_result"), Mapping)
+            and item["preflight_result"].get("mergeable") is False
+            and not item.get("merged", False)
+            for item in reconciliation.get("processed") or []
+        )
+    ):
+        resolved.add("reconciliation_guardrail:preflight_merge_conflict")
+    resolved.update(_resolved_dirty_backlogged_worktree_keys(cleanup))
+    return resolved
+
+
+_KNOWN_DIRTY_BACKLOGGED_REASONS = frozenset(
+    {
+        "unsupported_status",
+        "content_not_in_target",
+        "dirty_worktree",
+        "empty_status_path",
+        "submodule_gitlink_diverged",
+    }
+)
+_CLEANUP_SCAN_SKIP_REASONS = frozenset(
+    {
+        "checkout_mutation_lock_exists",
+        "worktree_root_not_configured",
+        "worktree_cleanup_disabled",
+    }
+)
+
+
+def _resolved_dirty_backlogged_worktree_keys(cleanup: Mapping[str, Any]) -> set[str]:
+    """Return dirty-worktree guardrails absent from a completed cleanup scan."""
+
+    if (
+        cleanup.get("attempted") is not True
+        or str(cleanup.get("reason") or "") in _CLEANUP_SCAN_SKIP_REASONS
+        or not isinstance(cleanup.get("dirty_worktree_groups"), Mapping)
+        or not isinstance(cleanup.get("skipped"), list)
+    ):
+        return set()
+    present_reasons: set[str] = set()
+    for reason, payload in cleanup["dirty_worktree_groups"].items():
+        if isinstance(payload, Mapping) and int(payload.get("count") or 0) > 0:
+            present_reasons.add(str(reason))
+    for item in cleanup.get("skipped") or []:
+        if not isinstance(item, Mapping) or str(item.get("reason") or "") != "dirty_worktree":
+            continue
+        dirty_redundancy = item.get("dirty_redundancy") or {}
+        if isinstance(dirty_redundancy, Mapping):
+            present_reasons.add(str(dirty_redundancy.get("reason") or "dirty_worktree"))
+        else:
+            present_reasons.add("dirty_worktree")
+    return {
+        f"reconciliation_guardrail:dirty_backlogged_worktree:{reason}"
+        for reason in _KNOWN_DIRTY_BACKLOGGED_REASONS
+        if reason not in present_reasons
+    }
 
 
 def _explicit_nonnegative_int(

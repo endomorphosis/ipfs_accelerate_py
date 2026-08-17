@@ -6,6 +6,7 @@ from pathlib import Path
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
     TodoImplementationDaemon,
+    task_declared_output_paths,
 )
 
 
@@ -518,3 +519,24 @@ def test_formal_verification_json_deliverables_are_not_ignored() -> None:
             check=False,
         )
         assert result.returncode == 1, f"{deliverable} is still ignored"
+
+
+def test_task_declared_output_paths_skips_absolute_host_outputs() -> None:
+    task = PortalTask(
+        task_id="PGIR-115",
+        title="Retry-budget card with host discovery evidence",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=[
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "/home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/note.md",
+            "C:/Windows/Temp/host.md",
+            "../escape.md",
+        ],
+    )
+
+    assert task_declared_output_paths(task) == (
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    )
