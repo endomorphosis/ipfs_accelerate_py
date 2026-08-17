@@ -460,6 +460,8 @@ class ProviderBatchSchedulerConfig:
     admission_retry_ms: int = 10
     receipt_history: int = 256
     fallback_on_dispatch_error: bool = True
+    network_allowlist: tuple[str, ...] = ()
+    require_sealed_inputs: bool = False
 
     def __post_init__(self) -> None:
         for name in (
@@ -482,6 +484,18 @@ class ProviderBatchSchedulerConfig:
                 raise ValueError("provider limit id must not be empty")
             normalized[provider] = _positive_integer(raw_limit, "provider limit")
         object.__setattr__(self, "provider_limits", normalized)
+        object.__setattr__(
+            self,
+            "network_allowlist",
+            tuple(
+                dict.fromkeys(
+                    str(item).strip()
+                    for item in (self.network_allowlist or ())
+                    if str(item).strip()
+                )
+            ),
+        )
+        object.__setattr__(self, "require_sealed_inputs", bool(self.require_sealed_inputs))
 
 
 @dataclass(frozen=True)
@@ -758,6 +772,7 @@ class ProviderBatchMetrics:
     admission_deferrals: int
     capacity_errors: int
     admission_errors: int
+    overlap_rejections: int
     max_queue_depth: int
     max_observed_batch_size: int
     peak_active_batches: int
@@ -809,6 +824,7 @@ class ProviderBatchMetrics:
                 "admission_deferrals",
                 "capacity_errors",
                 "admission_errors",
+                "overlap_rejections",
                 "max_queue_depth",
                 "max_observed_batch_size",
                 "peak_active_batches",
@@ -863,6 +879,36 @@ ProviderAdmission = Callable[
 ]
 
 
+@dataclass(frozen=True)
+class ProviderBatchOverlapReceipt:
+    """Observable overlap/hazard projection for one physical provider batch."""
+
+    batch_id: str
+    provider_id: str
+    admitted: bool
+    reason: str = ""
+    resource_kinds: tuple[str, ...] = ("provider", "token")
+    hazards: tuple[str, ...] = ()
+    cancelled_request_ids: tuple[str, ...] = ()
+    timed_out_request_ids: tuple[str, ...] = ()
+    member_count: int = 0
+    observed_at_ms: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "batch_id": self.batch_id,
+            "provider_id": self.provider_id,
+            "admitted": self.admitted,
+            "reason": self.reason,
+            "resource_kinds": list(self.resource_kinds),
+            "hazards": list(self.hazards),
+            "cancelled_request_ids": list(self.cancelled_request_ids),
+            "timed_out_request_ids": list(self.timed_out_request_ids),
+            "member_count": self.member_count,
+            "observed_at_ms": self.observed_at_ms,
+        }
+
+
 class ResourceSchedulerBatchAdmission:
     """Adapt the supervisor resource scheduler to physical provider batches.
 
@@ -884,6 +930,8 @@ class ResourceSchedulerBatchAdmission:
         memory_bytes: int = 0,
         gpu_memory_bytes: int = 0,
         required_capabilities: Sequence[str] = (),
+        network_allowlist: Sequence[str] = (),
+        requires_network: bool = False,
     ) -> None:
         acquire = getattr(scheduler, "acquire", None)
         release = getattr(scheduler, "release", None)
@@ -902,6 +950,10 @@ class ResourceSchedulerBatchAdmission:
         self.required_capabilities = tuple(
             str(item).strip() for item in required_capabilities if str(item).strip()
         )
+        self.network_allowlist = tuple(
+            str(item).strip() for item in network_allowlist if str(item).strip()
+        )
+        self.requires_network = bool(requires_network)
 
     @staticmethod
     def _sample(source: Any, provider_id: str = "") -> Any:
@@ -920,9 +972,13 @@ class ResourceSchedulerBatchAdmission:
     ) -> ProviderBatchAdmissionGrant:
         from .resource_scheduler import LaneResourceRequirements
 
+        provenance: dict[str, Any] = {}
+        for request in requests:
+            if isinstance(request.provenance, Mapping):
+                provenance.update(dict(request.provenance))
         requirement = LaneResourceRequirements(
             lane_id=f"provider-batch:{uuid.uuid4().hex}",
-            stage="inference",
+            stage=str(provenance.get("stage") or "inference"),
             resource_class=self.resource_class,
             required_capabilities=self.required_capabilities,
             provider_id=key.provider_id,
@@ -934,6 +990,23 @@ class ResourceSchedulerBatchAdmission:
             gpu_memory_bytes=self.gpu_memory_bytes,
             process_slots=1,
             fairness_key=key.provider_id,
+            input_sealed=bool(provenance.get("input_sealed", True)),
+            trace_identity=str(provenance.get("trace_identity") or ""),
+            expected_trace_identity=str(provenance.get("expected_trace_identity") or ""),
+            checkpoint_key=str(provenance.get("checkpoint_key") or ""),
+            tokenizer_identity=str(provenance.get("tokenizer_identity") or ""),
+            expected_tokenizer_identity=str(
+                provenance.get("expected_tokenizer_identity") or ""
+            ),
+            exclusive_authorities=tuple(provenance.get("exclusive_authorities") or ()),
+            network_allowlist=self.network_allowlist
+            or tuple(provenance.get("network_allowlist") or ()),
+            requires_network=self.requires_network
+            or bool(provenance.get("requires_network", False)),
+            requires_gpu=bool(provenance.get("requires_gpu", False)),
+            mutates_tokenizer=bool(provenance.get("mutates_tokenizer", False)),
+            mutates_checkpoint=bool(provenance.get("mutates_checkpoint", False)),
+            claimed_resource_kinds=("provider", "token"),
         )
         decision, lease = self.scheduler.acquire(
             requirement,
@@ -990,6 +1063,9 @@ class ProviderBatchScheduler:
         self._receipts: deque[ProviderBatchEvidenceReceipt] = deque(
             maxlen=self.config.receipt_history
         )
+        self._overlap_receipts: deque[ProviderBatchOverlapReceipt] = deque(
+            maxlen=self.config.receipt_history
+        )
         self._adaptive_sizes: dict[str, int] = {}
         self._provider_calls_by_id: dict[str, int] = {}
         self._counters: dict[str, int] = {
@@ -1010,6 +1086,7 @@ class ProviderBatchScheduler:
             "admission_deferrals": 0,
             "capacity_errors": 0,
             "admission_errors": 0,
+            "overlap_rejections": 0,
             "max_queue_depth": 0,
             "max_observed_batch_size": 0,
             "peak_active_batches": 0,
@@ -1171,6 +1248,7 @@ class ProviderBatchScheduler:
                 admission_deferrals=counters["admission_deferrals"],
                 capacity_errors=counters["capacity_errors"],
                 admission_errors=counters["admission_errors"],
+                overlap_rejections=counters.get("overlap_rejections", 0),
                 max_queue_depth=counters["max_queue_depth"],
                 max_observed_batch_size=counters["max_observed_batch_size"],
                 peak_active_batches=counters["peak_active_batches"],
@@ -1196,6 +1274,38 @@ class ProviderBatchScheduler:
             for receipt in self.evidence_receipts()
             if receipt.proved_requirement_ids == (PARTIAL_CANCELLATION_REQUIREMENT_ID,)
         )
+
+    def overlap_receipts(self) -> tuple[ProviderBatchOverlapReceipt, ...]:
+        with self._condition:
+            return tuple(self._overlap_receipts)
+
+    def _record_overlap_receipt(
+        self,
+        *,
+        batch_id: str,
+        provider_id: str,
+        admitted: bool,
+        reason: str = "",
+        hazards: Sequence[str] = (),
+        cancelled_request_ids: Sequence[str] = (),
+        timed_out_request_ids: Sequence[str] = (),
+        member_count: int = 0,
+    ) -> ProviderBatchOverlapReceipt:
+        receipt = ProviderBatchOverlapReceipt(
+            batch_id=batch_id,
+            provider_id=provider_id,
+            admitted=admitted,
+            reason=reason,
+            hazards=tuple(dict.fromkeys(str(item) for item in hazards if str(item))),
+            cancelled_request_ids=tuple(cancelled_request_ids),
+            timed_out_request_ids=tuple(timed_out_request_ids),
+            member_count=member_count,
+            observed_at_ms=self._clock_ms(),
+        )
+        self._overlap_receipts.append(receipt)
+        if not admitted:
+            self._counters["overlap_rejections"] += 1
+        return receipt
 
     def _capacity(self, provider_id: str) -> ProviderBatchCapacity:
         if self._capacity_supplier is None:
@@ -1350,6 +1460,35 @@ class ProviderBatchScheduler:
             if not groups:
                 self._counters["admission_deferrals"] += 1
                 continue
+            if self.config.require_sealed_inputs:
+                sealed_groups: list[_ExecutionGroup] = []
+                unsealed_groups: list[_ExecutionGroup] = []
+                for group in groups:
+                    provenance = group.representative.provenance
+                    if (
+                        isinstance(provenance, Mapping)
+                        and provenance.get("input_sealed") is False
+                    ):
+                        unsealed_groups.append(group)
+                    else:
+                        sealed_groups.append(group)
+                if unsealed_groups:
+                    self._record_overlap_receipt(
+                        batch_id=f"provider-batch-reject:{uuid.uuid4().hex}",
+                        provider_id=key.provider_id,
+                        admitted=False,
+                        reason="unsealed_data",
+                        hazards=("unsealed_data",),
+                        member_count=sum(
+                            len(group.subscribers) for group in unsealed_groups
+                        ),
+                    )
+                    for group in reversed(unsealed_groups):
+                        queue.appendleft(group)
+                    self._counters["admission_deferrals"] += 1
+                groups = sealed_groups
+                if not groups:
+                    continue
             requests = tuple(group.representative.dispatch_copy() for group in groups)
             admission_grant = ProviderBatchAdmissionGrant(admitted=True)
             if self._admission is not None:
@@ -1364,6 +1503,27 @@ class ProviderBatchScheduler:
                         reason="admission_error",
                     )
                 if not admission_grant.admitted:
+                    reason = str(admission_grant.reason or "admission_rejected")
+                    hazards = tuple(
+                        item
+                        for item in (
+                            "unsealed_data",
+                            "stale_trace",
+                            "checkpoint_collision",
+                            "incompatible_tokenizer_mutation",
+                            "network_denied",
+                            "gpu_telemetry_missing",
+                        )
+                        if item in reason
+                    )
+                    self._record_overlap_receipt(
+                        batch_id=f"provider-batch-reject:{uuid.uuid4().hex}",
+                        provider_id=key.provider_id,
+                        admitted=False,
+                        reason=reason,
+                        hazards=hazards or ((reason,) if reason else ()),
+                        member_count=len(requests),
+                    )
                     self._release_admission(admission_grant)
                     for group in reversed(groups):
                         queue.appendleft(group)
@@ -1611,6 +1771,22 @@ class ProviderBatchScheduler:
                 self._running_fingerprints.discard(group.fingerprint)
                 group.completed = True
             self._receipts.append(receipt)
+            self._record_overlap_receipt(
+                batch_id=batch_id,
+                provider_id=key.provider_id,
+                admitted=True,
+                cancelled_request_ids=tuple(
+                    result.request_id
+                    for _subscriber, result in result_entries
+                    if result.status is ProviderBatchStatus.CANCELLED
+                ),
+                timed_out_request_ids=tuple(
+                    result.request_id
+                    for _subscriber, result in result_entries
+                    if result.status is ProviderBatchStatus.TIMED_OUT
+                ),
+                member_count=len(result_entries),
+            )
             self._active_batches -= 1
             self._active_by_provider[key.provider_id] -= 1
             self._counters["completed_batches"] += 1
