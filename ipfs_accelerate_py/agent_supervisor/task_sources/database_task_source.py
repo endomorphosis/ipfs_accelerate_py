@@ -29,6 +29,7 @@ from typing import Any, ClassVar, Final
 
 from .control_plane_contracts import content_identity
 from .control_plane_migrations import duckdb_available
+from .duckdb_state import is_quack_transport_target, quack_transport_uri
 from .intent_repository import (
     DEFAULT_PAGE_LIMIT,
     MAX_PAGE_LIMIT,
@@ -346,9 +347,14 @@ class DatabaseTaskSource:
                 raise ValueError(
                     "DatabaseTaskSource requires database_path or intent"
                 )
-            self.database_path = Path(database_path).absolute()
+            if is_quack_transport_target(database_path):
+                store = quack_transport_uri(database_path)
+                self.database_path = store
+            else:
+                store = Path(database_path).absolute()
+                self.database_path = store
             self._intent = open_intent_repository(
-                self.database_path,
+                store,
                 owner_id=owner_id,
                 install_schema=install_schema,
                 evidence_freshness_seconds=evidence_freshness_seconds,

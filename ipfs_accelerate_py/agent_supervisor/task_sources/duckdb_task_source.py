@@ -34,7 +34,11 @@ from ..planning.formal_plan_compiler import (
     prompt_goal_graph_to_formal_input,
 )
 from ..proof.formal_verification_contracts import canonical_json, content_identity
-from .duckdb_state import connect_duckdb_with_policy, exclusive_file_lock
+from .duckdb_state import (
+    connect_duckdb_with_policy,
+    exclusive_file_lock,
+    is_quack_transport_target,
+)
 
 DUCKDB_TASK_SOURCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/duckdb-task-source@1"
@@ -1453,6 +1457,11 @@ class DuckDBTaskSource:
         fencing_token: int = 1,
         lock_timeout_seconds: float = 30.0,
     ) -> None:
+        if is_quack_transport_target(database_path):
+            raise ValueError(
+                "DuckDBTaskSource is the embedded one-writer adapter; "
+                "use DatabaseTaskSource for quack transport"
+            )
         self.database_path = Path(database_path).absolute()
         self.path = self.database_path
         self.expected_plan_root_cid = (

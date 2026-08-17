@@ -377,6 +377,11 @@ class DuckDBConnection:
         threads: int = 1,
         transaction_on_context: bool = False,
     ) -> None:
+        if is_quack_transport_target(path):
+            raise DuckDBConnectionPolicyError(
+                "quack transport URIs cannot be opened as DuckDB files; "
+                "use open_quack_transport_connection"
+            )
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if is_sqlite_database(self.path):
@@ -387,6 +392,7 @@ class DuckDBConnection:
         self._transaction_on_context = bool(transaction_on_context)
         self._context_depth = 0
         self._closed = False
+        self._default_catalog = None
         self._lock_context = exclusive_file_lock(
             self.path.with_name(f".{self.path.name}.lock"),
             timeout_seconds=timeout_seconds,
@@ -424,6 +430,7 @@ class DuckDBConnection:
         instance._context_depth = 0
         instance._closed = False
         instance._lock_context = None
+        instance._default_catalog = None
         return instance
 
     @property
@@ -444,6 +451,10 @@ class DuckDBConnection:
             return DuckDBCursor(self._connection)
         if normalized in {"PRAGMA FOREIGN_KEYS=ON", "PRAGMA JOURNAL_MODE=WAL"}:
             return DuckDBCursor(self._connection)
+        catalog = getattr(self, "_default_catalog", None)
+        if catalog and not normalized.startswith("USE "):
+            self._connection.execute(f"USE {catalog}")
+            _consume_duckdb_result(self._connection)
         if parameters is None:
             self._connection.execute(statement)
         else:
@@ -513,14 +524,49 @@ class DuckDBConnection:
                 self.close()
 
 
+def quack_transport_uri(target: object) -> str:
+    """Return a loopback ``quack:`` URI, recovering Path.absolute() prefixes.
+
+    ``Path('quack:127.0.0.1:41307').absolute()`` becomes
+    ``<cwd>/quack:127.0.0.1:41307``. ``Path('quack://host:port')`` also
+    collapses the double slash. Those are still transport URIs, never files.
+    """
+
+    text = str(target or "").strip()
+    if not text:
+        return ""
+    if _QUACK_TRANSPORT_URI_RE.fullmatch(text):
+        return text
+    name = Path(text).name
+    if _QUACK_TRANSPORT_URI_RE.fullmatch(name):
+        return name
+    collapsed = re.search(
+        r"(?i)(?:^|/)(quack:/+(?:127\.0\.0\.1|localhost|::1):\d{1,5})$",
+        text.replace("\\", "/"),
+    )
+    if collapsed is None:
+        return ""
+    recovered = re.sub(r"(?i)^quack:/+", "quack://", collapsed.group(1))
+    if _QUACK_TRANSPORT_URI_RE.fullmatch(recovered):
+        return recovered
+    return ""
+
+
 def is_quack_transport_target(target: object) -> bool:
     """Return whether ``target`` is a loopback ``quack:`` control-plane URI."""
 
-    text = str(target or "").strip()
-    return bool(_QUACK_TRANSPORT_URI_RE.fullmatch(text))
+    return bool(quack_transport_uri(target))
 
 
 _QUACK_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,}$")
+_QUACK_CONTROL_CATALOG = "control_plane"
+
+
+def _consume_duckdb_result(connection: Any) -> None:
+    try:
+        connection.fetchall()
+    except Exception:
+        pass
 
 
 def open_quack_transport_connection(
@@ -535,8 +581,8 @@ def open_quack_transport_connection(
     that can reach the loopback state-owner.
     """
 
-    text = str(uri or "").strip()
-    if not is_quack_transport_target(text):
+    text = quack_transport_uri(uri)
+    if not text:
         raise DuckDBConnectionPolicyError(
             f"invalid or non-loopback quack URI: {uri!r}"
         )
@@ -551,7 +597,7 @@ def open_quack_transport_connection(
     connection = duckdb.connect(":memory:")
     try:
         connection.execute("LOAD quack")
-        attach = f"ATTACH '{text}' AS control_plane (READ_WRITE"
+        attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_WRITE"
         secret = str(
             token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or ""
         ).strip()
@@ -563,20 +609,23 @@ def open_quack_transport_connection(
             attach += f", TOKEN '{secret}'"
         attach += ")"
         attached = connection.execute(attach)
-        try:
-            attached.fetchall()
-        except Exception:
-            pass
-        connection.execute("USE control_plane")
+        _consume_duckdb_result(attached)
+        used = connection.execute(f"USE {_QUACK_CONTROL_CATALOG}")
+        _consume_duckdb_result(used)
         # Prove the attached control catalog is visible on this connection.
-        connection.execute("SELECT count(*) FROM control_plane.tasks")
+        probed = connection.execute(
+            f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks"
+        )
+        _consume_duckdb_result(probed)
     except Exception:
         try:
             connection.close()
         except Exception:
             pass
         raise
-    return DuckDBConnection.wrap(connection)
+    wrapped = DuckDBConnection.wrap(connection)
+    wrapped._default_catalog = _QUACK_CONTROL_CATALOG
+    return wrapped
 
 
 def open_duckdb_connection(
@@ -587,7 +636,7 @@ def open_duckdb_connection(
     threads: int = 1,
 ) -> DuckDBConnection:
     if is_quack_transport_target(path):
-        return open_quack_transport_connection(str(path).strip())
+        return open_quack_transport_connection(path)
     return DuckDBConnection(
         path,
         timeout_seconds=timeout_seconds,

@@ -48,6 +48,7 @@ from .control_plane_schema import install_control_plane_schema
 from .duckdb_state import (
     exclusive_file_lock,
     is_quack_transport_target,
+    quack_transport_uri,
     open_duckdb_connection,
 )
 
@@ -528,7 +529,7 @@ class IntentRepository:
     ) -> None:
         _require_duckdb()
         if is_quack_transport_target(database_path):
-            self._open_target = str(database_path).strip()
+            self._open_target = quack_transport_uri(database_path)
             self._quack_transport = True
             # Path identity is unused for file locks; keep a stable placeholder.
             self.database_path = Path(self._open_target)
