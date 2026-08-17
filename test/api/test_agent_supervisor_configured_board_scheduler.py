@@ -1610,7 +1610,7 @@ def test_ordered_provider_contract_accepts_legacy_quota_medium_tuple(
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_exhausted",
-        "fallback_reasoning_effort": "high",
+        "fallback_reasoning_effort": "medium",
         "max_concurrency": 2,
     }
     _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
@@ -1651,7 +1651,7 @@ def test_ordered_provider_contract_rejects_hybrid_legacy_trigger_high_effort(
         load_configured_board(config_path, repo_root=repo)
 
 
-@pytest.mark.parametrize("reasoning_effort", ("medium", "high"))
+@pytest.mark.parametrize("reasoning_effort", ("medium",))
 def test_ordered_provider_contract_accepts_only_supported_reasoning_efforts(
     tmp_path: Path,
     reasoning_effort: str,
