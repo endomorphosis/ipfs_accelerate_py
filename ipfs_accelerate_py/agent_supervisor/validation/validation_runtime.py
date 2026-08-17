@@ -1716,7 +1716,14 @@ def preflight_validation_python_modules(
 def validation_shell_command(command: str) -> list[str]:
     """Return a non-login, non-interactive Bash invocation for reviewed text."""
 
-    text = str(command)
+    text = str(command).strip()
+    if (
+        len(text) >= 2
+        and text[0] == text[-1]
+        and text[0] in {"'", '"'}
+        and text.count(text[0]) == 2
+    ):
+        text = text[1:-1].strip()
     if not text.strip():
         raise ValidationRuntimeError("validation command must not be empty")
     if "`" in text or "$(" in text:
@@ -1732,6 +1739,35 @@ def validation_shell_command(command: str) -> list[str]:
         lexer.whitespace_split = True
         lexer.commenters = ""
         leading = list(lexer)
+        # Todo lines often quote the entire argv after an env assignment:
+        # ``PYTHONPATH=src:. 'python3 -m pytest -q test/foo.py'``.  shlex
+        # keeps that as one token, and Bash then treats the whole string as
+        # a missing executable.  Flatten those nested command tokens.
+        flattened: list[str] = []
+        for token in leading:
+            if any(character.isspace() for character in token):
+                try:
+                    nested = shlex.split(token, posix=True)
+                except ValueError:
+                    nested = [token]
+                if len(nested) > 1:
+                    flattened.extend(nested)
+                    continue
+            flattened.append(token)
+        if flattened != leading:
+            rebuilt: list[str] = []
+            for token in flattened:
+                name, separator, _value = token.partition("=")
+                if (
+                    separator
+                    and name.isidentifier()
+                    and not token.startswith("-")
+                ):
+                    rebuilt.append(token)
+                else:
+                    rebuilt.append(shlex.quote(token))
+            text = " ".join(rebuilt)
+            leading = flattened
     except ValueError as exc:
         raise ValidationRuntimeError(
             "validation command has invalid shell quoting"

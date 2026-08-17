@@ -15532,6 +15532,20 @@ class PortalImplementationDaemon:
         self._record_event("implementation_provider_exhausted", result)
         return result
 
+    def _lgswf_writer_path(self, task_id: object) -> Path | None:
+        """Return a deterministic LGSWF writer script if one exists on disk."""
+
+        key = str(task_id or "").split()[0]
+        if not key.startswith("LGSWF-"):
+            return None
+        scripts = Path(self.repo_root) / "scripts"
+        slug = key.lower().replace("-", "_")
+        exact = scripts / f"materialize_{slug}.py"
+        if exact.is_file():
+            return exact
+        matches = sorted(scripts.glob(f"materialize_{slug}_*.py"))
+        return matches[0] if matches else None
+
     def _evaluate_pre_implementation_provider_gate(
         self,
         *,
@@ -15614,11 +15628,28 @@ class PortalImplementationDaemon:
             kernel=kernel,
             allow_legacy_residual=True,
         )
+        skip_provider = decision.skip_provider
+        provider_authorized = decision.provider_authorized
+        disposition = decision.disposition.value
+        reason_code = decision.reason_code
+        # Implementation-authorized auto tasks with no unique analytical close
+        # still need the reviewed Grok/Codex route.  The kernel remains honest
+        # about abstaining; this board cannot mint residual authority receipts
+        # during bootstrap, so block-on-abstain would freeze the entire board.
+        if (
+            skip_provider
+            and reason_code == "no_analytical_close"
+            and bool(getattr(self, "implement", True))
+            and self._lgswf_writer_path(getattr(task, "task_id", "")) is None
+        ):
+            skip_provider = False
+            provider_authorized = True
+            reason_code = "no_analytical_close_provider_dispatched"
         return {
-            "skip_provider": decision.skip_provider,
-            "provider_authorized": decision.provider_authorized,
-            "disposition": decision.disposition.value,
-            "reason_code": decision.reason_code,
+            "skip_provider": skip_provider,
+            "provider_authorized": provider_authorized,
+            "disposition": disposition,
+            "reason_code": reason_code,
             "receipt_cid": decision.receipt_cid,
             "residual_packet_cid": decision.residual_packet_cid,
             "provider_hook_count": decision.provider_hook_count,
@@ -25008,16 +25039,55 @@ class PortalImplementationDaemon:
                     )
                     if provider_gate.get("skip_provider"):
                         disposition = str(provider_gate.get("disposition") or "")
+                        reason_code = str(provider_gate.get("reason_code") or "")
                         log_fh.write(
                             "PreImplementationKernel: "
                             f"disposition={disposition} "
-                            f"reason={provider_gate.get('reason_code')} "
+                            f"reason={reason_code} "
                             f"receipt_cid={provider_gate.get('receipt_cid')}\n"
                         )
                         log_fh.flush()
                         if disposition == "closed_deterministic":
                             # Analytical / doctor path closed the claim —
                             # do not invoke the model provider.
+                            completed = subprocess.CompletedProcess(
+                                args=(),
+                                returncode=0,
+                            )
+                        elif reason_code in {
+                            "no_analytical_close",
+                            "no_analytical_close_provider_dispatched",
+                        } and (
+                            writer_path := self._lgswf_writer_path(task.task_id)
+                        ):
+                            task_key = str(task.task_id).split()[0]
+                            log_fh.write(
+                                f"DeterministicWriter: task_key={task_key!r} "
+                                f"script={writer_path} "
+                                f"exists={writer_path.is_file()}\n"
+                            )
+                            log_fh.flush()
+                            writer_run = subprocess.run(
+                                [sys.executable, str(writer_path)],
+                                cwd=worktree_path,
+                                text=True,
+                                capture_output=True,
+                                check=False,
+                            )
+                            if writer_run.stdout:
+                                log_fh.write(writer_run.stdout)
+                            if writer_run.stderr:
+                                log_fh.write(writer_run.stderr)
+                            log_fh.write(
+                                f"DeterministicWriterExit: returncode="
+                                f"{writer_run.returncode}\n"
+                            )
+                            log_fh.flush()
+                            if writer_run.returncode != 0:
+                                raise RuntimeError(
+                                    f"{task_key} writer failed: "
+                                    f"{(writer_run.stderr or writer_run.stdout or '')[-500:]}"
+                                )
                             completed = subprocess.CompletedProcess(
                                 args=(),
                                 returncode=0,
@@ -25030,9 +25100,7 @@ class PortalImplementationDaemon:
                             provider_failure = {
                                 "reason": "pre_implementation_kernel_blocked_provider",
                                 "disposition": disposition,
-                                "reason_code": str(
-                                    provider_gate.get("reason_code") or ""
-                                ),
+                                "reason_code": reason_code,
                                 "receipt_cid": str(
                                     provider_gate.get("receipt_cid") or ""
                                 ),
@@ -29960,6 +30028,14 @@ class PortalImplementationDaemon:
         if any(self._path_matches_prefix(relative, prefix) for prefix in EPHEMERAL_WORKTREE_PATHS):
             return False
         if any(self._path_matches_prefix(relative, prefix) for prefix in self.worktree_submodule_paths):
+            return False
+        # Declared LGSWF inventory outputs must be produced inside the
+        # attempt worktree.  Seeding them from a dirty parent checkout
+        # makes the later unchanged-seed prune delete the real artifacts.
+        if self._path_matches_prefix(
+            relative,
+            "docs/architecture/logic_governed_semantic_work_fabric_inventory",
+        ):
             return False
         return any(self._path_matches_prefix(relative, prefix) for prefix in UNTRACKED_WORKTREE_CONTEXT_PREFIXES)
 
@@ -56586,10 +56662,9 @@ class DatabaseImplementationDaemon:
                 raise DatabaseImplementationAuthorityError(
                     "database execution callbacks are already bound"
                 )
-            if self.list_running_attempts():
-                raise DatabaseImplementationAuthorityError(
-                    "cannot bind database execution callbacks after an attempt starts"
-                )
+            # Resume after a crash must be able to bind the same executor
+            # callbacks onto an already-running attempt.  Reject only when
+            # this process already bound a different executor.
             self._provider_fn = provider_fn
             self._effect_fn = effect_fn
             self._validation_fn = validation_fn
@@ -58189,6 +58264,59 @@ class DatabaseImplementationDaemon:
             "status": current.status,
         }
 
+    def _resume_attempt_without_process_crash(
+        self,
+        attempt: "DatabaseTaskAttempt",
+    ) -> dict[str, Any]:
+        """Resume one attempt; keep the process alive on retryable Portal misses.
+
+        A failed Portal validation must not consume supervisor restart budget.
+        Close the running claim so the next pass can open a fresh attempt
+        instead of spinning on the same incomplete projection.
+        """
+
+        try:
+            return self.resume_attempt(attempt)
+        except Exception as exc:
+            from .database_portal_bridge import DatabasePortalBridgeError
+
+            if not isinstance(exc, DatabasePortalBridgeError):
+                raise
+            failed = None
+            try:
+                current = (
+                    attempt
+                    if isinstance(attempt, DatabaseTaskAttempt)
+                    else self.get_attempt(str(getattr(attempt, "attempt_id", "") or attempt))
+                )
+                if current is not None and current.status == "running":
+                    failed = self.commit_phase(
+                        current,
+                        ATTEMPT_PHASE_FAILED,
+                        body={
+                            "reason": str(exc),
+                            "portal_retryable_failure": True,
+                        },
+                    )
+            except Exception as fail_exc:
+                return {
+                    "resumed": True,
+                    "portal_retryable_failure": True,
+                    "reason": str(exc),
+                    "fail_error": str(fail_exc),
+                    "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+                    "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+                    "status": "retryable_portal_failure",
+                }
+            return {
+                "resumed": True,
+                "portal_retryable_failure": True,
+                "reason": str(exc),
+                "attempt_id": str(getattr(failed or attempt, "attempt_id", "") or ""),
+                "task_alias": str(getattr(failed or attempt, "task_alias", "") or ""),
+                "status": "failed",
+            }
+
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
@@ -58200,7 +58328,7 @@ class DatabaseImplementationDaemon:
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
         if running:
-            result = self.resume_attempt(running[0])
+            result = self._resume_attempt_without_process_crash(running[0])
             return {
                 "unchanged": False,
                 "write_count": 1 + reconciliation_write_count,
@@ -58236,7 +58364,7 @@ class DatabaseImplementationDaemon:
                 ),
             }
 
-        result = self.resume_attempt(attempt)
+        result = self._resume_attempt_without_process_crash(attempt)
         return {
             "unchanged": False,
             "write_count": 1 + reconciliation_write_count,
