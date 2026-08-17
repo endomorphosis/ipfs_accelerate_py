@@ -646,7 +646,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-032 Implement versioned composite loss and sampling contracts
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
