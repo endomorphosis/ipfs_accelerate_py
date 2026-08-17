@@ -48,6 +48,7 @@ OBJECTIVES_OWNED_MODULES: Final[tuple[str, ...]] = (
     "goal_development_contracts",
     "goal_quality",
     "goal_refinement_verification",
+    "expert_iteration_campaign",
     "ir_learning_campaign",
     "ir_learning_campaign_contracts",
     "objective_daemon",
