@@ -720,3 +720,90 @@ def test_snapshot_reader_accepts_v1_and_adds_diagnostics_without_rewriting_schem
     current = build_scheduler_snapshot([])
     assert current["schema"] == SCHEDULER_SNAPSHOT_SCHEMA
     assert current["schema_version"] == SCHEDULER_SNAPSHOT_SCHEMA_VERSION
+
+
+def test_resource_admission_projection_preserves_overlap_receipts_and_timeouts() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
+        ResourcePolicy,
+        ResourceScheduler,
+        lane_requirements_for_resource_profile,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.scheduler_metrics import (
+        RESOURCE_ADMISSION_METRICS_SCHEMA,
+        build_scheduler_snapshot,
+        project_resource_admission_metrics,
+    )
+
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=2))
+    host = {
+        "observed_at_ms": 9_000,
+        "cpu_percent": 10,
+        "memory_percent": 10,
+        "disk_percent": 10,
+        "memory_available_bytes": 48 * 1024 * 1024 * 1024,
+        "disk_available_bytes": 100 * 1024 * 1024 * 1024,
+        "gpu_memory_total_bytes": 24 * 1024 * 1024 * 1024,
+        "gpu_memory_available_bytes": 20 * 1024 * 1024 * 1024,
+        "active_workers": 0,
+        "worker_limit": 4,
+        "available_worker_capacity": 4,
+        "capabilities": ("cpu", "gpu", "prover"),
+        "resource_classes": (
+            "cpu-medium",
+            "cpu-proof-solver",
+            "llm-proof-draft",
+            "io-artifact",
+        ),
+    }
+    schedule = scheduler.schedule(
+        [
+            lane_requirements_for_resource_profile(
+                "safe-cpu",
+                "RP-CPU-M",
+                stage="analysis",
+                memory_bytes=0,
+                disk_bytes=0,
+            ),
+            lane_requirements_for_resource_profile(
+                "late-eval",
+                "RP-CPU-M",
+                stage="evaluation",
+                memory_bytes=0,
+                disk_bytes=0,
+                timeout_ms=10,
+                queue_age_ms=100,
+            ),
+            lane_requirements_for_resource_profile(
+                "unsealed-train",
+                "RP-GPU",
+                stage="training",
+                memory_bytes=0,
+                disk_bytes=0,
+                gpu_memory_bytes=1024,
+                input_sealed=False,
+            ),
+        ],
+        host=host,
+    )
+    projected = project_resource_admission_metrics(schedule.to_dict())
+    assert projected is not None
+    assert projected["schema"] == RESOURCE_ADMISSION_METRICS_SCHEMA
+    assert projected["timed_out_count"] >= 1
+    assert projected["hazard_counts"]["unsealed_data"] >= 1
+    assert projected["hazard_counts"]["timed_out"] >= 1
+    assert any(row["stage"] == "evaluation" for row in projected["overlap_receipts"])
+    assert any(row["stage"] == "training" for row in projected["stage_admission_profiles"])
+
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "resource_schedule_observed",
+                "timestamp": "2026-01-01T00:02:00Z",
+                "resource_schedule": schedule.to_dict(),
+            }
+        ]
+    )
+    admission = snapshot["resource_admission"]
+    assert admission["timed_out_count"] >= 1
+    assert "unsealed_data" in admission["hazard_counts"]
+    assert admission["fairness_order"]

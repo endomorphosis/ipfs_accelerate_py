@@ -896,3 +896,104 @@ def test_asi167_usage_aware_batch_scheduler_enforce_capacity_supplier() -> None:
         results = [future.result(timeout=3) for future in futures]
     assert all(result.status is ProviderBatchStatus.SUCCEEDED for result in results)
     assert calls  # at least one physical dispatch
+
+
+def test_provider_batch_rejects_unsealed_work_and_exposes_timeouts() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
+        HostResourceSnapshot,
+        ResourcePolicy,
+        ResourceScheduler,
+    )
+
+    host = HostResourceSnapshot(
+        observed_at_ms=1_000,
+        cpu_percent=10,
+        memory_percent=10,
+        disk_percent=10,
+        memory_available_bytes=8_000_000,
+        worker_limit=4,
+        available_worker_capacity=4,
+        capabilities=("cpu",),
+        resource_classes=("cpu-small", "llm-proof-draft"),
+    )
+    resource = ResourceScheduler(ResourcePolicy(max_lanes=2, require_provider_telemetry=False))
+    admission = ResourceSchedulerBatchAdmission(
+        resource,
+        host_supplier=lambda: host,
+    )
+
+    def dispatch(requests):
+        return ["ok" for _ in requests]
+
+    with ProviderBatchScheduler(
+        dispatch,
+        config=ProviderBatchSchedulerConfig(
+            batch_window_ms=0,
+            max_batch_size=2,
+            require_sealed_inputs=True,
+        ),
+        admission=admission,
+    ) as scheduler:
+        sealed = scheduler.submit(
+            _request("sealed", "same", provenance={"input_sealed": True})
+        )
+        unsealed = scheduler.submit(
+            _request("unsealed", "other-unsealed", provenance={"input_sealed": False})
+        )
+        timed = scheduler.submit(
+            _request("late", "other-timeout", timeout_ms=1)
+        )
+        time.sleep(0.05)
+        assert sealed.result(timeout=3).status is ProviderBatchStatus.SUCCEEDED
+        # Unsealed members stay queued under fail-closed sealed admission.
+        assert unsealed.done() is False
+        timed_result = timed.result(timeout=3)
+        assert timed_result.status is ProviderBatchStatus.TIMED_OUT
+        metrics = scheduler.metrics()
+        assert metrics.timed_out_requests >= 1
+        receipts = scheduler.overlap_receipts()
+        assert any(not item.admitted and "unsealed_data" in item.hazards for item in receipts)
+        scheduler.shutdown(cancel_pending=True)
+
+
+def test_provider_batch_adapter_propagates_tokenizer_and_network_claims() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.provider_batch_scheduler import (
+        ProviderBatchCapacity,
+        ResourceSchedulerBatchAdmission,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
+        HostResourceSnapshot,
+        ResourcePolicy,
+        ResourceScheduler,
+    )
+
+    host = HostResourceSnapshot(
+        observed_at_ms=1_000,
+        cpu_percent=10,
+        memory_percent=10,
+        disk_percent=10,
+        memory_available_bytes=8_000_000,
+        worker_limit=2,
+        available_worker_capacity=2,
+        capabilities=("cpu",),
+        resource_classes=("llm-proof-draft",),
+    )
+    resource = ResourceScheduler(ResourcePolicy(max_lanes=2, require_provider_telemetry=False))
+    admission = ResourceSchedulerBatchAdmission(resource, host_supplier=lambda: host)
+    request = _request(
+        "tok",
+        "body",
+        provenance={
+            "stage": "training",
+            "input_sealed": False,
+            "expected_tokenizer_identity": "tok:v1",
+            "tokenizer_identity": "tok:v0",
+        },
+    )
+    grant = admission(
+        request.batch_key,
+        (request,),
+        ProviderBatchCapacity(provider_id=request.provider_id),
+    )
+    assert grant.admitted is False
+    assert "unsealed_data" in grant.reason or "incompatible_tokenizer_mutation" in grant.reason
