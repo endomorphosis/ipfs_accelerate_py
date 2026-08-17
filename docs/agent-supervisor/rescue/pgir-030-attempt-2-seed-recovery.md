@@ -1,0 +1,1 @@
+Prior attempt seed apply failed (prior_seed_accepted_proposal_missing). Continue from the clean merge-target baseline, then recover preserved work from commit 959861e424f2a55b2a881540a8d706280cfa2eda  or rewrite compactly inside declared Outputs; do not re-dump oversized fixtures.
