@@ -322,7 +322,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-012 Implement lineage-safe multidimensional splits
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
