@@ -214,7 +214,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-006 Build the compiler/decompiler gap matrix
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
