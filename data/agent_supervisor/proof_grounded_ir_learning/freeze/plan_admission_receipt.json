@@ -1,0 +1,138 @@
+{
+  "admitted": false,
+  "authorizes_execution": false,
+  "candidate_graph_id": "baguqeeram57rzyq3womfl7fyplj3zxnykn3q2cnxbjyfq35beohcotqs7kwa",
+  "candidate_plan_id": "baguqeerakogtsnyz26ycza6qhzh5uysuyg6xffsfskvsumnwpeqvtzs57hga",
+  "checked_assumption_ids": [
+    "assumption:all-required-identities-resolved",
+    "assumption:training-corpus-admitted"
+  ],
+  "checked_dependency_ids": [
+    "dependency:PGIR-020",
+    "dependency:PGIR-021",
+    "dependency:PGIR-022",
+    "dependency:PGIR-023",
+    "dependency:PGIR-030",
+    "dependency:PGIR-031",
+    "dependency:PGIR-032",
+    "dependency:PGIR-033",
+    "dependency:PGIR-040",
+    "dependency:PGIR-041",
+    "dependency:PGIR-050",
+    "dependency:PGIR-051",
+    "dependency:PGIR-052",
+    "dependency:PGIR-053",
+    "dependency:PGIR-060",
+    "dependency:PGIR-061",
+    "dependency:PGIR-062",
+    "dependency:PGIR-070",
+    "dependency:PGIR-071",
+    "dependency:PGIR-072",
+    "dependency:PGIR-080",
+    "dependency:PGIR-081",
+    "dependency:PGIR-090",
+    "dependency:PGIR-100",
+    "dependency:PGIR-110",
+    "dependency:PGIR-111"
+  ],
+  "checked_validation_ids": [
+    "validation:lineage-leakage",
+    "validation:referential-integrity",
+    "validation:rights-admission"
+  ],
+  "closure_id": "",
+  "compiler_version": 1,
+  "counterexamples": [],
+  "cve_security_evidence_ids": [],
+  "generated_formula_ids": [],
+  "generated_formulas_are_proofs": false,
+  "intent_result_id": "",
+  "legal_permission_ids": [],
+  "legal_result_ids": [],
+  "local_replan_action_ids": [
+    "replan:admit-rights-qualified-corpus",
+    "replan:complete-required-holdouts",
+    "replan:rerun-current-semantic-baseline",
+    "replan:supersede-campaign-freeze-root"
+  ],
+  "permissions_are_grants": false,
+  "proof_result_ids": [],
+  "reason_codes": [
+    "assumption_unresolved",
+    "validation_failed"
+  ],
+  "receipt_id": "baguqeera2nvxj5chnrbyu2yzpbyny6gmccqegjg6ydpfzaulav65lbcelcgq",
+  "rejection_reasons": [
+    {
+      "action_id": "",
+      "code": "assumption_unresolved",
+      "dependency_id": "",
+      "details": {
+        "quarantined_source_count": 7173,
+        "training_admitted_rows": 0
+      },
+      "domain": "assumption",
+      "effect_id": "",
+      "message": "No source row has rights authority for learned training under this freeze.",
+      "obligation_id": "",
+      "rejection_id": "baguqeerabnaj5zmvza2fa5n6hbilzqplm7tqeknpxnf5jz2n6xgelm2exggq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/plan-admission-rejection@1",
+      "source_ids": [
+        "baguqeeradwaifkogmvvmxqffnnp2sbdemf3g4fd7zirgo55vfnebalicc5uq",
+        "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      ]
+    },
+    {
+      "action_id": "",
+      "code": "validation_failed",
+      "dependency_id": "",
+      "details": {
+        "insufficient_holdouts": [
+          "compiler",
+          "cross_reference",
+          "domain",
+          "exception",
+          "length",
+          "lineage",
+          "notation",
+          "premise",
+          "proof_library",
+          "publication",
+          "rare_operator",
+          "time",
+          "type"
+        ],
+        "semantic_baseline_currently_qualified": false
+      },
+      "domain": "validation",
+      "effect_id": "",
+      "message": "Required holdout and current semantic-baseline qualification gates are incomplete.",
+      "obligation_id": "",
+      "rejection_id": "baguqeeraybspqzlcgkipn5yawm3w46x3tn4oajhehexmhinxu2xw676td2ia",
+      "schema": "ipfs_accelerate_py/agent-supervisor/plan-admission-rejection@1",
+      "source_ids": [
+        "baguqeerajllfwoyk3ztsigcstzdnslee6qg22rndwprupylolfn6iv5lifya",
+        "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      ]
+    }
+  ],
+  "repository_tree_id": "04fbb09b4a8b34e77d11bd8da6642e0978baa02c",
+  "request_id": "baguqeera53bkmtw5yzznyzekkn4tip6zsx37fhjjdloeeeaiqs4vcb57cfxq",
+  "requirement_id": "287667496524558776121661391058779883318",
+  "schema": "ipfs_accelerate_py/agent-supervisor/plan-admission-receipt@1",
+  "security_decision_ids": [],
+  "security_grant_ids": [],
+  "semantic_roots": {
+    "campaign": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+    "compiler": "baguqeerarxul7wfpbcka6lzwbe6afembjteohwfdps6mjh7pntg7xlz7ywta",
+    "corpus": "baguqeera4ezrwsq2kupnh4l52z2jfglbzalr6flzjw3xsyefnu5luv6v2hta",
+    "decompiler": "baguqeeracirjnyp5plk7uobfwoj2bol3hgqhnr6a4k7geipnex3drntqrnxq",
+    "examples": "baguqeerapld5wgxakz4mnw4fd237durw4mice7rtmieqkqqzsxbqunlermrq",
+    "policy": "baguqeerar7fn7elcpmd4q7lm3kjyezxkrocnucx7m2pxmgysji3x73rx5zdq",
+    "schema": "baguqeeraj2jmxcqbtesbxxjcbbg2ced2o46woub6wsanfbdccelyjmzc6nra",
+    "source": "baguqeerambigsx5yot5dasfs2rqwj2vu7vnkqlg2jbd2evn6f6b5vkfwuv4q",
+    "split": "baguqeerajllfwoyk3ztsigcstzdnslee6qg22rndwprupylolfn6iv5lifya",
+    "tokenizer_policy": "baguqeera3ibkwsynieevjkxqzzcuhjc6sovxzqdqrflnt7rrb3m5dsypdfta"
+  },
+  "verdict": "rejected"
+}

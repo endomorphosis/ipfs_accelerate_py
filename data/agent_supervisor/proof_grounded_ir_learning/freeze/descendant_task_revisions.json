@@ -1,0 +1,657 @@
+{
+  "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+  "candidate_graph_cid": "baguqeeram57rzyq3womfl7fyplj3zxnykn3q2cnxbjyfq35beohcotqs7kwa",
+  "descendant_task_count": 26,
+  "lease_eligible_count": 0,
+  "revision_patch": {
+    "application_policy": "supervisor_compare_and_swap_after_superseding_admission",
+    "metadata_field": "Semantic key",
+    "metadata_value": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+    "protected_board_mutated": false
+  },
+  "revision_set_cid": "baguqeerakogtsnyz26ycza6qhzh5uysuyg6xffsfskvsumnwpeqvtzs57hga",
+  "revision_set_sha256": "sha256:538d393719d7b02c83d03e4fda6254c1bd72964592ab2a31b6792159e65df9cc",
+  "revisions": [
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeraqmjexogb3tci24z7tn5zm4qoubkzgqdv56jxpx3hc3sl2tduo54q",
+      "depends_on": [
+        "PGIR-014"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeera42w2g7uwczbivls5olwztxxyrtztvonakmnmwaishqicx5fmvfra",
+      "revised_task_key": "task/v1/e6ada37e9616428aae5d72ed99def88cf33ab9a0531acb01123c102bf4aca962",
+      "semantic_fingerprint": "e6ada37e9616428aae5d72ed99def88cf33ab9a0531acb01123c102bf4aca962",
+      "task_id": "PGIR-020",
+      "title": "Consolidate the canonical typed bridge"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeera27c5rpxnrkdkiyw5m5coy6gk7dtvjngotzk6jab7f4qkjeydxf6a",
+      "depends_on": [
+        "PGIR-020"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeerahfrfc5zducgvwolksrecer6ruzmshbckabo4zwdjis3wpbt4ctxq",
+      "revised_task_key": "task/v1/3962517723a08d5b396a94482247d1a65923844a005dccd86944b767867c14ef",
+      "semantic_fingerprint": "3962517723a08d5b396a94482247d1a65923844a005dccd86944b767867c14ef",
+      "task_id": "PGIR-021",
+      "title": "Consolidate deterministic compiler pipeline"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeravizixmcgul5k6k5ah3a7sc2dw64e7c6nkz6d5lhsor2jpqjblcda",
+      "depends_on": [
+        "PGIR-020",
+        "PGIR-021"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeerapvxwmgyzgdkeprezjcnydfv3lomkrk3zpub3inpqsun6c27lbuyq",
+      "revised_task_key": "task/v1/7d6f661b1930d447c499489b8196bb5b98a8ab797d03b435f0951be16beb0d31",
+      "semantic_fingerprint": "7d6f661b1930d447c499489b8196bb5b98a8ab797d03b435f0951be16beb0d31",
+      "task_id": "PGIR-022",
+      "title": "Consolidate decompiler and translation preservation"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeerarimshymyl3k3m3uwxw4yfnuwma5hlssaw3ggs24svelzgt5fkhpa",
+      "depends_on": [
+        "PGIR-022"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeeranmkgdbnaateawtk4dcwkozl537jtckywfibuw3mpv2nu4ibxob3a",
+      "revised_task_key": "task/v1/6b146185a004c80b4d5c18aca7657ddfd3312b162a034b6d8fae9b4e20377076",
+      "semantic_fingerprint": "6b146185a004c80b4d5c18aca7657ddfd3312b162a034b6d8fae9b4e20377076",
+      "task_id": "PGIR-023",
+      "title": "Measure deterministic compiler/decompiler baseline"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeerahdsbqllayvf2eguhnokgojpptmebh6yh6yev3aa36twk2rruo4zq",
+      "depends_on": [
+        "PGIR-023"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeera4o7sehaokuri2x323b2wd6f4a22gdblze2npa3evb3btxmpoj3ba",
+      "revised_task_key": "task/v1/e3bf221c0e55228d5f7ad87561f8bc06b4618579269af06c950ec33bb1ee4ec2",
+      "semantic_fingerprint": "e3bf221c0e55228d5f7ad87561f8bc06b4618579269af06c950ec33bb1ee4ec2",
+      "task_id": "PGIR-030",
+      "title": "Implement compatible learned architectures and frozen tokenizer"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeraaq5twsby4c4o2clrxo5gxstqvg2mg3eed2blposahv4wjpcbpl4a",
+      "depends_on": [
+        "PGIR-030"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeerak736uxbqxwdcg2ly2brdyc257ldnjrwxn6hkl25abd3fvev25yia",
+      "revised_task_key": "task/v1/57f7ea5c30bd86236978d0623c0b5dfac6d4c6d76f8ea5eba008f65a92baee10",
+      "semantic_fingerprint": "57f7ea5c30bd86236978d0623c0b5dfac6d4c6d76f8ea5eba008f65a92baee10",
+      "task_id": "PGIR-031",
+      "title": "Add grammar, binder, type, and proof-state constrained decoding"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeerayhdmcycsl6dk3acl5vqz2aoe7fp5z6vjfsg2xwmesrdo3jkiwc2q",
+      "depends_on": [
+        "PGIR-030",
+        "PGIR-031"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeerabmdqurzpfw7mfvotfdiuyclbsvu5gapnuzgo7w7zwjfhnwnfs3iq",
+      "revised_task_key": "task/v1/0b070a472f2dbec2d5d328d14c09619569d301eda64cefdbf9b24a76d9a596d1",
+      "semantic_fingerprint": "0b070a472f2dbec2d5d328d14c09619569d301eda64cefdbf9b24a76d9a596d1",
+      "task_id": "PGIR-032",
+      "title": "Implement versioned composite loss and sampling contracts"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeraec4hazq72xwydpro254qhwmkbku4ltt4zztufxisilmypnfy3j4q",
+      "depends_on": [
+        "PGIR-030"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeeramsx3rrtonez4lbnun52kpvjwkpofbga2ht2a3gmhtuxujmzls4ba",
+      "revised_task_key": "task/v1/64afb8c66e6933c585b46f74a7d53653dc50981a3cf40d99879d2f44b32b9702",
+      "semantic_fingerprint": "64afb8c66e6933c585b46f74a7d53653dc50981a3cf40d99879d2f44b32b9702",
+      "task_id": "PGIR-033",
+      "title": "Implement latent diagnostics and calibration instrumentation"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeratn4vb7qfscshojhrfn65ggo7u4zvdfqzaudnizgdrjwgdgbhisda",
+      "depends_on": [
+        "PGIR-032",
+        "PGIR-020"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeera2j7iak3bdsefutkuctsmavicssjwjwmw76jayju2teyvzpjdrsia",
+      "revised_task_key": "task/v1/d27e802b611c885a4d5414e4c05502949364d996ff920c269a99315cbd238c90",
+      "semantic_fingerprint": "d27e802b611c885a4d5414e4c05502949364d996ff920c269a99315cbd238c90",
+      "task_id": "PGIR-040",
+      "title": "Mine typed proof-aware positive pairs"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeraaqbbaijc5io2yhzzg3yalmk4omyeihzz6k232a5tv4agtmwjzfaq",
+      "depends_on": [
+        "PGIR-032",
+        "PGIR-040"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeeracaieqgz5ctvqfx6ezsh6hndlonnpk5ez3mcpyetwcwelpsn66cea",
+      "revised_task_key": "task/v1/1010481b3d14eb02dfc4cc8fe3b46b735af57499db04fc12761588b7c9bef088",
+      "semantic_fingerprint": "1010481b3d14eb02dfc4cc8fe3b46b735af57499db04fc12761588b7c9bef088",
+      "task_id": "PGIR-041",
+      "title": "Mine and validate hard semantic negatives"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeradktwdh3hndpuvyqu22kyx2l2ys4uodcqfm5clhtc242ayl72yqsq",
+      "depends_on": [
+        "PGIR-014",
+        "PGIR-020"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeeranycwki5ipjcdtzv56o6gtwju62dspz6vhdzpp7tmozyfrbezk5xq",
+      "revised_task_key": "task/v1/6e056523a87a4439e6bdf3bc69d934f68727e7d538f2f7fe6c7670588499576f",
+      "semantic_fingerprint": "6e056523a87a4439e6bdf3bc69d934f68727e7d538f2f7fe6c7670588499576f",
+      "task_id": "PGIR-050",
+      "title": "Capture Lean-capable proposal and proof-attempt traces"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeras6fqlvoj7iuesdw7jwjdufjappwcvtgegml4f3ebi4uc6gqcfoma",
+      "depends_on": [
+        "PGIR-050"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeerat2u34dvk3oj6mxrxcxlmfzvigd5pob6ys26mnvoa2ji4hba75kfa",
+      "revised_task_key": "task/v1/9ea9be0eaadb93e65e3715d6c2e6a830faf707d896bcc6d5c0d251c3841fea8a",
+      "semantic_fingerprint": "9ea9be0eaadb93e65e3715d6c2e6a830faf707d896bcc6d5c0d251c3841fea8a",
+      "task_id": "PGIR-051",
+      "title": "Extend proof-state tactician and curriculum projection"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeracfbpkhgaqqb4dsotaf5lrqw2ubhvdbv7glp6t5vo2tid22ygzvcq",
+      "depends_on": [
+        "PGIR-050"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeeracnygoktk3bb5ka62edaxmpbyiece76argcpy4mqbimhpmo3eot6q",
+      "revised_task_key": "task/v1/1370672a6ad843d503da20c1763c3841044ff811309f8e3201430ef63b6474fd",
+      "semantic_fingerprint": "1370672a6ad843d503da20c1763c3841044ff811309f8e3201430ef63b6474fd",
+      "task_id": "PGIR-052",
+      "title": "Integrate hammer portfolio with independent checker authority"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeerawj24izvekc2cafc7a4uxdxwvij6apmowrozz4usshrml44jymnba",
+      "depends_on": [
+        "PGIR-040",
+        "PGIR-041",
+        "PGIR-051",
+        "PGIR-052",
+        "PGIR-062"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeerah5yfxgggl3fbvhysucewfjfdx7eq5yivcc4ng2s2m5zgopptjxbq",
+      "revised_task_key": "task/v1/3f705b98c65eca1a9f12a08962a4a3bfc90ee11510b8d36a5a6772673df34dc3",
+      "semantic_fingerprint": "3f705b98c65eca1a9f12a08962a4a3bfc90ee11510b8d36a5a6772673df34dc3",
+      "task_id": "PGIR-053",
+      "title": "Implement bounded expert iteration"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeera2ldlohqbcardjwhpyczk7ztvsabwkfspgwohxfzpintpre2h6t3a",
+      "depends_on": [
+        "PGIR-014"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeeranfi6ppfe24eb5hiqs3kjzxtpwk2s46ge2jseoqae5pshfgqopcqq",
+      "revised_task_key": "task/v1/6951e7bca4d7081e9d1096d49cde6fb2b52e78c4d264474004ebe4729a0e78a1",
+      "semantic_fingerprint": "6951e7bca4d7081e9d1096d49cde6fb2b52e78c4d264474004ebe4729a0e78a1",
+      "task_id": "PGIR-060",
+      "title": "Implement IR learning campaign contracts and APIs"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeragv5zsidweldoiqcmhmejlpbvhhq2eaohirdd7z6kfgapuxcrwmxa",
+      "depends_on": [
+        "PGIR-060"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeeraqomhuwjqso3pmj7pqotdms6f6r5tkaehzprnieubjrquvvkr4tuq",
+      "revised_task_key": "task/v1/83987a593093b6f627ef83a6364bc5f47b350087cbe2d412814c614ad551e4e9",
+      "semantic_fingerprint": "83987a593093b6f627ef83a6364bc5f47b350087cbe2d412814c614ad551e4e9",
+      "task_id": "PGIR-061",
+      "title": "Extend resource admission and safe pipeline overlap"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeerads3akcfu5xrj756eye3f4kltzdonl73adn7tkfpmcj6nqfvap34a",
+      "depends_on": [
+        "PGIR-060",
+        "PGIR-061"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeerae6x6hezlk2iigjzbq7554yhwfanwcajr7vdekh7zmooehzlio22a",
+      "revised_task_key": "task/v1/27afe3932b569083272187fbde60f6281b610131fd46451ff9639c43e56876b4",
+      "semantic_fingerprint": "27afe3932b569083272187fbde60f6281b610131fd46451ff9639c43e56876b4",
+      "task_id": "PGIR-062",
+      "title": "Add checkpoint, resume, leases, fencing, and refill policy"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeraxgbyiiumdh6jldicx2kdq223zzihbjfmmfijsoxs67e5jwmksfkq",
+      "depends_on": [
+        "PGIR-032",
+        "PGIR-062"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeerahnaquzkjdbeqjf23qbetm7tnqfwwxh3qfe5r642rqatkl75w6voa",
+      "revised_task_key": "task/v1/3b410a6549184904975b8049367e6d816d6b9f70293b1f73518026a5ffb6f55c",
+      "semantic_fingerprint": "3b410a6549184904975b8049367e6d816d6b9f70293b1f73518026a5ffb6f55c",
+      "task_id": "PGIR-070",
+      "title": "Implement checkpoint lifecycle and promotion manifest"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeerafzx2mkqlntkaw7ublebojigyh2ibjzcm2dgqvzhopxtqx7624rjq",
+      "depends_on": [
+        "PGIR-023",
+        "PGIR-033",
+        "PGIR-040",
+        "PGIR-041",
+        "PGIR-052",
+        "PGIR-070"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeeralbchf2fw5upbmfoff2e765mxydzidngpav56jpuowlcvcakn5sqq",
+      "revised_task_key": "task/v1/584472e8b6ed1e1615c52e89ff7597c0f281b4cf057be4be8eb2c551014deca1",
+      "semantic_fingerprint": "584472e8b6ed1e1615c52e89ff7597c0f281b4cf057be4be8eb2c551014deca1",
+      "task_id": "PGIR-071",
+      "title": "Implement comprehensive evaluation and statistical gates"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeraarlt745ftpwax4tdovajsxrgp5r72fkudlbs5kmg3q2cbqow6mpq",
+      "depends_on": [
+        "PGIR-060",
+        "PGIR-062",
+        "PGIR-070",
+        "PGIR-071"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeerambcbbciqamwschmmtxy3m7pymac6hc7pmg3u4ewnzgfujw3qt5dq",
+      "revised_task_key": "task/v1/6044108910032d211d8c9df1b67df86005e38bef61b74e12cdc98b44db709f47",
+      "semantic_fingerprint": "6044108910032d211d8c9df1b67df86005e38bef61b74e12cdc98b44db709f47",
+      "task_id": "PGIR-072",
+      "title": "Implement deterministic promotion comparison and policy admission"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeerazgwoahtrkkqkise3x6o4wpo2nbzs3yi5a672xq7zsbfmbp3arqcq",
+      "depends_on": [
+        "PGIR-020",
+        "PGIR-021",
+        "PGIR-022",
+        "PGIR-041",
+        "PGIR-070",
+        "PGIR-071"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeerasz6q4u2ljriehqmqxu64fihyb36jeq5bhvzs2zi2izavlp2zljua",
+      "revised_task_key": "task/v1/967d0e534b4c5043c190bd3dc2a0f80efc9243a13d732d651a464155bf595a68",
+      "semantic_fingerprint": "967d0e534b4c5043c190bd3dc2a0f80efc9243a13d732d651a464155bf595a68",
+      "task_id": "PGIR-080",
+      "title": "Publish stable semantic APIs"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeran4usi4fm4b5tzu72kzcb5cpe5aljp6iwdlpg33ph2kzftyfnkdoa",
+      "depends_on": [
+        "PGIR-060",
+        "PGIR-062",
+        "PGIR-072",
+        "PGIR-080"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeera4djaxdw63isrmlcnsyircel6kkvvb25ghcele7lwrtksj4dbb3ma",
+      "revised_task_key": "task/v1/e0d20b8ededa25162c4d961111117e52ab50eba63888b27d768cd524f0610ed8",
+      "semantic_fingerprint": "e0d20b8ededa25162c4d961111117e52ab50eba63888b27d768cd524f0610ed8",
+      "task_id": "PGIR-081",
+      "title": "Publish stable operational campaign APIs and prompt handoff"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeragt5xhqov2e5vna6pp2zmghhrqhq2v4qzl36a3aucytrcom2erkta",
+      "depends_on": [
+        "PGIR-072",
+        "PGIR-080"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeerayq75xxxe42xvmc4iepb6aogolpux6cnyel7l26goppkkj5onvdqq",
+      "revised_task_key": "task/v1/c43fdbdee4e6af560b8823c3e038ce5be97f09b822febd78ce7bd4a4f5cda8e1",
+      "semantic_fingerprint": "c43fdbdee4e6af560b8823c3e038ce5be97f09b822febd78ce7bd4a4f5cda8e1",
+      "task_id": "PGIR-090",
+      "title": "Implement append-only IR release packaging"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeerainaqx5w72m2epc7wsolk3elqihpcganr6d3lrsuzseldzkqngija",
+      "depends_on": [
+        "PGIR-062",
+        "PGIR-070",
+        "PGIR-081",
+        "PGIR-090"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeera6c2uosl3cfgo5phhyszq3522lviahse2wlpj25fpfgczs7uztkka",
+      "revised_task_key": "task/v1/f0b547497b114ceebce7c4b30df75a5d5003c89ab2de9d74af2985997e999a94",
+      "semantic_fingerprint": "f0b547497b114ceebce7c4b30df75a5d5003c89ab2de9d74af2985997e999a94",
+      "task_id": "PGIR-100",
+      "title": "Add integrated dataset, proof, training, and recovery security"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeeragjtn4knjvdexk4ya373ljydixx5r6c4moxr3sj6apuf2slfutexq",
+      "depends_on": [
+        "PGIR-033",
+        "PGIR-041",
+        "PGIR-053",
+        "PGIR-062",
+        "PGIR-071",
+        "PGIR-081",
+        "PGIR-100"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeeranjhprx27smrkacgi7t5wuwu5kogvlishd77wwddi3dgzsxcijeba",
+      "revised_task_key": "task/v1/6a4ef8df5f9322a008c8fcfb6a5a9d538d55a2471fff6b0c68d8cd995c484902",
+      "semantic_fingerprint": "6a4ef8df5f9322a008c8fcfb6a5a9d538d55a2471fff6b0c68d8cd995c484902",
+      "task_id": "PGIR-110",
+      "title": "Run R1-R6 controlled campaign"
+    },
+    {
+      "block_reason_codes": [
+        "corpus_not_materialized",
+        "historical_semantic_baseline_not_currently_qualified",
+        "no_rights_admitted_training_rows",
+        "required_holdouts_insufficient"
+      ],
+      "current_task_cid": "baguqeerad2idzhwzfqlyxjh7u34bczkyutsvq7oxcmuaglupr436gqfo6kga",
+      "depends_on": [
+        "PGIR-072",
+        "PGIR-090",
+        "PGIR-100",
+        "PGIR-110"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@1:baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeeraul4he57yu5qevrsxek3h4qxcic5romuut3vis4y4xjgwimg67m5a",
+      "revised_task_key": "task/v1/a2f87277f8a7604ac65722b67e42e240bb1732949eea89731cba4d6430defb3a",
+      "semantic_fingerprint": "a2f87277f8a7604ac65722b67e42e240bb1732949eea89731cba4d6430defb3a",
+      "task_id": "PGIR-111",
+      "title": "Qualify, publish or reject, and issue the next board"
+    }
+  ],
+  "schema": "PGIRDescendantTaskRevisionSet@1",
+  "source_plan_task_cid": "baguqeeralbl2yjo6l5gazcmslpzqtu67un4txk3wwpjr45thh5sckwq67yhq",
+  "task_id": "PGIR-014"
+}
