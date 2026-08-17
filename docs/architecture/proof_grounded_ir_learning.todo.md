@@ -1407,3 +1407,19 @@ authority roots into a revised task input binding.
 - Validation: test -f /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-17-pgir-114-pgir-030-retry-budget.md
 
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in PGIR-030. Use evidence in /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-17-pgir-114-pgir-030-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release PGIR-030 from strategy blocked_tasks.
+
+## PGIR-115 Resolve dirty main checkout blocking 1 worktree merges
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: e2940f4df61491aed9a68997a1292c79799d36ea
+- Dedupe key: reconciliation_guardrail:main_checkout_dirty
+- Depends on:
+- Outputs: docs/architecture/proof_grounded_ir_learning.todo.md
+- Validation: test -f /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-17-pgir-115-reconciliation-e2940f4df614.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-17-pgir-115-reconciliation-e2940f4df614.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
