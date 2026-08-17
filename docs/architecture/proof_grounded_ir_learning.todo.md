@@ -754,7 +754,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-041 Mine and validate hard semantic negatives
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
