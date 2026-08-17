@@ -51627,10 +51627,10 @@ class PortalImplementationDaemon:
                     )
                 ),
                 max_items=256,
-                max_item_bytes=16_384,
+                max_item_bytes=65_536,
                 max_serialized_bytes=ABSOLUTE_MAX_CONTEXT_BYTES,
                 max_depth=12,
-                max_text_bytes=8_192,
+                max_text_bytes=32_768,
             )
         if isinstance(configured, ContextBudget):
             return configured
@@ -54811,10 +54811,12 @@ class PortalImplementationDaemon:
         except ContextBoundsError as exc:
             # CIG-031 and large-companion tasks can overflow authority item
             # bounds when generic_prompt_policy + edit_policy grow. Park the
-            # task instead of crashing the managed daemon process.
+            # task instead of crashing the managed daemon process. Writer-backed
+            # LGSWF tasks should retry quickly after a budget bump.
+            writer = self._lgswf_writer_path(getattr(task, "task_id", ""))
             raise ImplementationRetryDeferred(
                 f"implementation context bounds exceeded: {exc}",
-                backoff_seconds=600,
+                backoff_seconds=15 if writer else 600,
             ) from exc
         self._last_implementation_context = result
         self._last_implementation_retry = None
