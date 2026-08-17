@@ -20,6 +20,14 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
+from ipfs_accelerate_py.agent_supervisor.proof.goal_directed_tactician import (
+    CurriculumAuthority,
+    CurriculumClass,
+    CurriculumProjection,
+    ProofStateClass,
+    ProofStateClassification,
+    project_curriculum,
+)
 from ipfs_accelerate_py.agent_supervisor.proof.goal_tactician_lifecycle import (
     GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_INTERFACE,
     GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_SCHEMA,
@@ -535,5 +543,146 @@ def test_authority_claims_without_receipt_rejected(
         lifecycle.record_transition(
             LifecycleTransitionKind.CANDIDATE,
             {"candidate_id": "cand:1", "complete": True},
+            lease,
+        )
+
+
+def _high_curriculum() -> CurriculumProjection:
+    classification = ProofStateClassification(
+        state_class=ProofStateClass.CLOSED,
+        curriculum_class=CurriculumClass.VERIFIED_SUCCESS,
+        independently_validated=True,
+        kernel_verified=True,
+        reason_code="independently_validated_kernel_success",
+    )
+    return project_curriculum(classification, independently_validated=True)
+
+
+def test_curriculum_projection_requires_lease(
+    lifecycle: GoalTacticianSupervisorLifecycle,
+) -> None:
+    _open_plan(lifecycle)
+    with pytest.raises((GoalTacticianLifecycleError, StaleWorkerError)):
+        lifecycle.record_curriculum_projection(_high_curriculum(), {"worker_id": "none"})
+
+
+def test_only_validated_traces_upgrade_curriculum_authority(
+    lifecycle: GoalTacticianSupervisorLifecycle,
+) -> None:
+    _open_plan(lifecycle)
+    lease = lifecycle.acquire_lease("worker-1")
+    candidate = project_curriculum(
+        ProofStateClassification(
+            state_class=ProofStateClass.COUNTEREXAMPLE,
+            curriculum_class=CurriculumClass.COUNTEREXAMPLE,
+            independently_validated=False,
+            reason_code="candidate_counterexample",
+        ),
+        independently_validated=False,
+    )
+    state = lifecycle.record_curriculum_projection(candidate, lease)
+    assert state.curriculum_projections
+    assert state.curriculum_projections[-1]["authority"] == CurriculumAuthority.CANDIDATE.value
+    assert state.curriculum_projections[-1]["upgrades_curriculum_authority"] is False
+
+    high = _high_curriculum()
+    assert high.authority is CurriculumAuthority.HIGH
+    upgraded = lifecycle.record_curriculum_projection(high, lease)
+    assert upgraded.curriculum_projections[-1]["authority"] == CurriculumAuthority.HIGH.value
+    assert any(item.kind is LifecycleTransitionKind.CURRICULUM for item in upgraded.transitions)
+
+
+def test_timeout_and_parse_type_cannot_gain_high_authority(
+    lifecycle: GoalTacticianSupervisorLifecycle,
+) -> None:
+    _open_plan(lifecycle)
+    lease = lifecycle.acquire_lease("worker-1")
+    timeout = project_curriculum(
+        ProofStateClassification(
+            state_class=ProofStateClass.TIMEOUT,
+            curriculum_class=CurriculumClass.TIMEOUT,
+            independently_validated=True,
+            reason_code="timeout_is_not_falsehood",
+        ),
+        independently_validated=True,
+    )
+    assert timeout.authority is CurriculumAuthority.CANDIDATE
+    recorded = lifecycle.record_curriculum_projection(timeout, lease)
+    assert recorded.curriculum_projections[-1]["timeout_is_falsehood"] is False
+    with pytest.raises(GoalTacticianLifecycleError, match="cannot upgrade"):
+        lifecycle.record_curriculum_projection(
+            {
+                "curriculum_class": CurriculumClass.TIMEOUT.value,
+                "authority": CurriculumAuthority.HIGH.value,
+                "independently_validated": True,
+            },
+            lease,
+        )
+
+
+def test_ranked_candidates_are_immutable(
+    lifecycle: GoalTacticianSupervisorLifecycle,
+) -> None:
+    _open_plan(lifecycle)
+    lease = lifecycle.acquire_lease("worker-1")
+    first = {
+        "candidate_id": "cand:rank-1",
+        "kind": "tactic",
+        "score_millionths": 900_000,
+        "statement": "intro",
+    }
+    lifecycle.record_curriculum_projection(
+        project_curriculum(
+            ProofStateClassification(
+                state_class=ProofStateClass.OPEN,
+                curriculum_class=CurriculumClass.PARSE_TYPE,
+                independently_validated=False,
+            ),
+            independently_validated=False,
+        ),
+        lease,
+        ranked_candidates=(first,),
+    )
+    with pytest.raises(GoalTacticianLifecycleError, match="immutable"):
+        lifecycle.record_curriculum_projection(
+            project_curriculum(
+                ProofStateClassification(
+                    state_class=ProofStateClass.OPEN,
+                    curriculum_class=CurriculumClass.PARSE_TYPE,
+                    independently_validated=False,
+                ),
+                independently_validated=False,
+            ),
+            lease,
+            ranked_candidates=(
+                {
+                    "candidate_id": "cand:rank-1",
+                    "kind": "tactic",
+                    "score_millionths": 100_000,
+                    "statement": "intro",
+                },
+            ),
+        )
+
+
+def test_stale_worker_cannot_upgrade_curriculum(
+    lifecycle: GoalTacticianSupervisorLifecycle,
+) -> None:
+    _open_plan(lifecycle)
+    stale = lifecycle.acquire_lease("worker-stale")
+    lifecycle.acquire_lease("worker-fresh")
+    with pytest.raises(StaleWorkerError):
+        lifecycle.record_curriculum_projection(_high_curriculum(), stale)
+
+
+def test_curriculum_transition_requires_dedicated_api(
+    lifecycle: GoalTacticianSupervisorLifecycle,
+) -> None:
+    _open_plan(lifecycle)
+    lease = lifecycle.acquire_lease("worker-1")
+    with pytest.raises(GoalTacticianLifecycleError, match="dedicated API"):
+        lifecycle.record_transition(
+            LifecycleTransitionKind.CURRICULUM,
+            {"curriculum_class": "verified_success"},
             lease,
         )
