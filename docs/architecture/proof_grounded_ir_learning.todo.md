@@ -358,7 +358,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-013 Implement training-example and trace contracts
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
