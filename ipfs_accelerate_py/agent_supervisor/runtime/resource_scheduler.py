@@ -74,6 +74,24 @@ def normalize_adaptive_stage(value: Any) -> str:
         "artifact": "persistence",
         "storage": "persistence",
         "scheduler": "execution",
+        "train": "training",
+        "gpu_train": "training",
+        "gpu_training": "training",
+        "eval": "evaluation",
+        "ckpt": "checkpoint",
+        "checkpoints": "checkpoint",
+        "vocab": "tokenizer",
+        "vocabulary": "tokenizer",
+        "promote": "promotion",
+        "publish": "publication",
+        "pin": "network",
+        "pinset": "network",
+        "hub": "network",
+        "prove": "prover",
+        "atp": "prover",
+        "smt": "prover",
+        "examples": "corpus",
+        "holdout": "split",
     }
     return aliases.get(raw, raw) if raw else "execution"
 
@@ -146,6 +164,75 @@ ADAPTIVE_STAGE_PROFILES = (
 )
 _ADAPTIVE_STAGE_PROFILE_BY_NAME = {item.stage: item for item in ADAPTIVE_STAGE_PROFILES}
 
+PIPELINE_OVERLAP_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.pipeline-overlap-receipt@1"
+)
+BACKPRESSURE_FAIRNESS_OVERLAP_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.backpressure-fairness-overlap-receipt@1"
+)
+STAGE_ADMISSION_PROFILE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.stage-admission-profile@1"
+)
+CAMPAIGN_RESOURCE_PROFILE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.campaign-resource-profile@1"
+)
+GIB = 1024 * 1024 * 1024
+CAMPAIGN_PIPELINE_STAGES = (
+    "tokenizer",
+    "training",
+    "evaluation",
+    "checkpoint",
+    "corpus",
+    "split",
+    "promotion",
+    "publication",
+    "network",
+    "prover",
+)
+_CAMPAIGN_STAGE_ADAPTIVE_HINTS = {
+    "tokenizer": AdaptiveStageProfile("analysis", "tokenizer", "cpu-medium"),
+    "training": AdaptiveStageProfile(
+        "inference",
+        "training",
+        "gpu",
+        requires_provider=True,
+        gpu_memory_sensitive=True,
+    ),
+    "evaluation": AdaptiveStageProfile("validation", "evaluation", "cpu-validation"),
+    "checkpoint": AdaptiveStageProfile(
+        "persistence",
+        "checkpoint",
+        "io-artifact",
+        disk_sensitive=True,
+    ),
+    "corpus": AdaptiveStageProfile(
+        "persistence",
+        "corpus",
+        "io-artifact",
+        disk_sensitive=True,
+    ),
+    "split": AdaptiveStageProfile("analysis", "split", "cpu-medium"),
+    "promotion": AdaptiveStageProfile(
+        "merge",
+        "promotion",
+        "git-merge",
+        disk_sensitive=True,
+    ),
+    "publication": AdaptiveStageProfile(
+        "persistence",
+        "publication",
+        "io-artifact",
+        disk_sensitive=True,
+    ),
+    "network": AdaptiveStageProfile(
+        "persistence",
+        "network",
+        "network",
+        disk_sensitive=True,
+    ),
+    "prover": AdaptiveStageProfile("proof", "prover", "cpu-proof-solver"),
+}
+
 
 def adaptive_stage_profile(stage: Any) -> AdaptiveStageProfile:
     """Return the explicit canonical profile for ``stage``.
@@ -165,6 +252,9 @@ def adaptive_stage_profile(stage: Any) -> AdaptiveStageProfile:
     profile = _ADAPTIVE_STAGE_PROFILE_BY_NAME.get(name)
     if profile is not None:
         return profile
+    campaign = _CAMPAIGN_STAGE_ADAPTIVE_HINTS.get(name)
+    if campaign is not None:
+        return campaign
     # Extensions remain schedulable but cannot silently acquire provider/GPU
     # capacity or bypass host CPU and memory pressure.
     return AdaptiveStageProfile("analysis", name, name)
@@ -173,6 +263,739 @@ def adaptive_stage_profile(stage: Any) -> AdaptiveStageProfile:
 # Compatibility-friendly singular/plural names used by integrations.
 StageResourceProfile = AdaptiveStageProfile
 STAGE_RESOURCE_PROFILES = ADAPTIVE_STAGE_PROFILES
+
+
+class CampaignResourceKind(str, Enum):
+    """Independently accounted campaign resource kinds for PGIR admission."""
+
+    CPU = "cpu"
+    GPU = "gpu"
+    PROVER = "prover"
+    IO = "io"
+    TOKEN = "token"
+    PROVIDER = "provider"
+    NETWORK = "network"
+
+
+CAMPAIGN_RESOURCE_KINDS = tuple(item.value for item in CampaignResourceKind)
+
+
+class ExclusiveAuthority(str, Enum):
+    """Shared mutable authorities that must be serialized by lease key."""
+
+    TOKENIZER = "tokenizer"
+    CHECKPOINT = "checkpoint"
+    CORPUS = "corpus"
+    SPLIT = "split"
+    COMPILER_CONTRACT = "compiler-contract"
+    LOSS_CONFIG = "loss-config"
+    PROOF_SHARD = "proof-shard"
+    EVALUATION_SHARD = "evaluation-shard"
+    PROMOTION_POINTER = "promotion-pointer"
+    PUBLICATION = "publication"
+
+
+EXCLUSIVE_AUTHORITIES = tuple(item.value for item in ExclusiveAuthority)
+
+
+class PipelineHazard(str, Enum):
+    """Fail-closed overlap and admission hazards for campaign pipelines."""
+
+    UNSEALED_DATA = "unsealed_data"
+    STALE_TRACE = "stale_trace"
+    CHECKPOINT_COLLISION = "checkpoint_collision"
+    INCOMPATIBLE_TOKENIZER_MUTATION = "incompatible_tokenizer_mutation"
+    EXCLUSIVE_AUTHORITY_COLLISION = "exclusive_authority_collision"
+    PROHIBITED_STAGE_OVERLAP = "prohibited_stage_overlap"
+    NETWORK_DENIED = "network_denied"
+    NETWORK_NOT_ALLOWLISTED = "network_not_allowlisted"
+    GPU_TELEMETRY_MISSING = "gpu_telemetry_missing"
+    PROVER_NOT_ADMITTED = "prover_not_admitted"
+    TIMED_OUT = "timed_out"
+
+
+PIPELINE_HAZARDS = tuple(item.value for item in PipelineHazard)
+
+_TOKENIZER_CONSUMER_STAGES = frozenset(
+    {
+        "tokenizer",
+        "training",
+        "evaluation",
+        "inference",
+        "validation",
+    }
+)
+_SEALED_INPUT_STAGES = frozenset(
+    {
+        "training",
+        "evaluation",
+        "proof",
+        "prover",
+        "tokenizer",
+        "checkpoint",
+        "publication",
+        "promotion",
+        "inference",
+    }
+)
+_SAFE_STAGE_OVERLAPS = frozenset(
+    {
+        frozenset(("analysis", "inference")),
+        frozenset(("analysis", "proof")),
+        frozenset(("analysis", "validation")),
+        frozenset(("analysis", "persistence")),
+        frozenset(("analysis", "training")),
+        frozenset(("analysis", "evaluation")),
+        frozenset(("analysis", "network")),
+        frozenset(("analysis", "prover")),
+        frozenset(("analysis", "split")),
+        frozenset(("inference", "proof")),
+        frozenset(("inference", "persistence")),
+        frozenset(("inference", "validation")),
+        frozenset(("inference", "prover")),
+        frozenset(("inference", "network")),
+        frozenset(("proof", "persistence")),
+        frozenset(("proof", "validation")),
+        frozenset(("proof", "training")),
+        frozenset(("proof", "network")),
+        frozenset(("proof", "evaluation")),
+        frozenset(("proof", "prover")),
+        frozenset(("validation", "persistence")),
+        frozenset(("validation", "network")),
+        frozenset(("validation", "training")),
+        frozenset(("validation", "prover")),
+        frozenset(("persistence", "training")),
+        frozenset(("persistence", "evaluation")),
+        frozenset(("persistence", "prover")),
+        frozenset(("persistence", "network")),
+        frozenset(("persistence", "inference")),
+        frozenset(("training", "prover")),
+        frozenset(("training", "network")),
+        frozenset(("evaluation", "prover")),
+        frozenset(("evaluation", "network")),
+        frozenset(("evaluation", "analysis")),
+        frozenset(("network", "prover")),
+        frozenset(("network", "split")),
+        frozenset(("split", "proof")),
+        frozenset(("split", "prover")),
+        frozenset(("split", "evaluation")),
+        frozenset(("corpus", "analysis")),
+        frozenset(("corpus", "proof")),
+        frozenset(("execution", "analysis")),
+        frozenset(("execution", "persistence")),
+        frozenset(("execution", "network")),
+    }
+)
+_SERIAL_STAGES = frozenset(
+    {
+        "tokenizer",
+        "checkpoint",
+        "promotion",
+        "publication",
+        "corpus",
+        "split",
+    }
+)
+_STAGE_EXCLUSIVE_AUTHORITIES = {
+    "tokenizer": (ExclusiveAuthority.TOKENIZER.value,),
+    "checkpoint": (ExclusiveAuthority.CHECKPOINT.value,),
+    "corpus": (ExclusiveAuthority.CORPUS.value,),
+    "split": (ExclusiveAuthority.SPLIT.value,),
+    "promotion": (ExclusiveAuthority.PROMOTION_POINTER.value,),
+    "publication": (ExclusiveAuthority.PUBLICATION.value,),
+}
+_STAGE_RESOURCE_KINDS = {
+    "analysis": (CampaignResourceKind.CPU.value,),
+    "inference": (
+        CampaignResourceKind.PROVIDER.value,
+        CampaignResourceKind.TOKEN.value,
+        CampaignResourceKind.CPU.value,
+    ),
+    "proof": (CampaignResourceKind.PROVER.value, CampaignResourceKind.CPU.value),
+    "prover": (CampaignResourceKind.PROVER.value, CampaignResourceKind.CPU.value),
+    "validation": (CampaignResourceKind.CPU.value,),
+    "merge": (CampaignResourceKind.CPU.value, CampaignResourceKind.IO.value),
+    "persistence": (CampaignResourceKind.IO.value,),
+    "execution": (CampaignResourceKind.CPU.value, CampaignResourceKind.IO.value),
+    "tokenizer": (CampaignResourceKind.CPU.value,),
+    "training": (
+        CampaignResourceKind.GPU.value,
+        CampaignResourceKind.TOKEN.value,
+        CampaignResourceKind.PROVIDER.value,
+        CampaignResourceKind.CPU.value,
+    ),
+    "evaluation": (
+        CampaignResourceKind.CPU.value,
+        CampaignResourceKind.TOKEN.value,
+    ),
+    "checkpoint": (CampaignResourceKind.IO.value, CampaignResourceKind.CPU.value),
+    "corpus": (CampaignResourceKind.IO.value,),
+    "split": (CampaignResourceKind.CPU.value, CampaignResourceKind.IO.value),
+    "promotion": (CampaignResourceKind.CPU.value, CampaignResourceKind.IO.value),
+    "publication": (CampaignResourceKind.IO.value, CampaignResourceKind.NETWORK.value),
+    "network": (CampaignResourceKind.NETWORK.value, CampaignResourceKind.IO.value),
+}
+
+
+def normalize_campaign_resource_kind(value: Any) -> str:
+    """Return one of the seven campaign resource kinds, or an empty string."""
+
+    raw = str(getattr(value, "value", value) or "").strip().lower()
+    raw = raw.replace(" ", "_").replace("-", "_")
+    aliases = {
+        "cpu": CampaignResourceKind.CPU.value,
+        "host_cpu": CampaignResourceKind.CPU.value,
+        "gpu": CampaignResourceKind.GPU.value,
+        "vram": CampaignResourceKind.GPU.value,
+        "gpu_memory": CampaignResourceKind.GPU.value,
+        "accelerator": CampaignResourceKind.GPU.value,
+        "prover": CampaignResourceKind.PROVER.value,
+        "solver": CampaignResourceKind.PROVER.value,
+        "atp": CampaignResourceKind.PROVER.value,
+        "smt": CampaignResourceKind.PROVER.value,
+        "io": CampaignResourceKind.IO.value,
+        "disk": CampaignResourceKind.IO.value,
+        "artifact": CampaignResourceKind.IO.value,
+        "token": CampaignResourceKind.TOKEN.value,
+        "tokens": CampaignResourceKind.TOKEN.value,
+        "token_budget": CampaignResourceKind.TOKEN.value,
+        "provider": CampaignResourceKind.PROVIDER.value,
+        "llm": CampaignResourceKind.PROVIDER.value,
+        "model": CampaignResourceKind.PROVIDER.value,
+        "network": CampaignResourceKind.NETWORK.value,
+        "https": CampaignResourceKind.NETWORK.value,
+        "hub": CampaignResourceKind.NETWORK.value,
+    }
+    if raw in aliases:
+        return aliases[raw]
+    if raw.startswith("cpu"):
+        return CampaignResourceKind.CPU.value
+    if raw.startswith("gpu"):
+        return CampaignResourceKind.GPU.value
+    if raw.startswith("io") or raw.startswith("disk"):
+        return CampaignResourceKind.IO.value
+    if raw.startswith("llm") or raw.startswith("provider"):
+        return CampaignResourceKind.PROVIDER.value
+    if raw.startswith("token"):
+        return CampaignResourceKind.TOKEN.value
+    if raw.startswith("network") or raw.startswith("https"):
+        return CampaignResourceKind.NETWORK.value
+    if "prover" in raw or "solver" in raw or raw.startswith("cpu_proof"):
+        return CampaignResourceKind.PROVER.value
+    return ""
+
+
+def normalize_exclusive_authority(value: Any) -> str:
+    raw = str(getattr(value, "value", value) or "").strip().lower()
+    raw = raw.replace(" ", "_").replace("/", "-")
+    aliases = {
+        "tokenizer": ExclusiveAuthority.TOKENIZER.value,
+        "vocab": ExclusiveAuthority.TOKENIZER.value,
+        "vocabulary": ExclusiveAuthority.TOKENIZER.value,
+        "checkpoint": ExclusiveAuthority.CHECKPOINT.value,
+        "ckpt": ExclusiveAuthority.CHECKPOINT.value,
+        "corpus": ExclusiveAuthority.CORPUS.value,
+        "split": ExclusiveAuthority.SPLIT.value,
+        "compiler": ExclusiveAuthority.COMPILER_CONTRACT.value,
+        "compiler_contract": ExclusiveAuthority.COMPILER_CONTRACT.value,
+        "compiler-contract": ExclusiveAuthority.COMPILER_CONTRACT.value,
+        "loss": ExclusiveAuthority.LOSS_CONFIG.value,
+        "loss_config": ExclusiveAuthority.LOSS_CONFIG.value,
+        "loss-config": ExclusiveAuthority.LOSS_CONFIG.value,
+        "proof": ExclusiveAuthority.PROOF_SHARD.value,
+        "proof_shard": ExclusiveAuthority.PROOF_SHARD.value,
+        "proof-shard": ExclusiveAuthority.PROOF_SHARD.value,
+        "evaluation": ExclusiveAuthority.EVALUATION_SHARD.value,
+        "evaluation_shard": ExclusiveAuthority.EVALUATION_SHARD.value,
+        "evaluation-shard": ExclusiveAuthority.EVALUATION_SHARD.value,
+        "promotion": ExclusiveAuthority.PROMOTION_POINTER.value,
+        "promotion_pointer": ExclusiveAuthority.PROMOTION_POINTER.value,
+        "promotion-pointer": ExclusiveAuthority.PROMOTION_POINTER.value,
+        "publication": ExclusiveAuthority.PUBLICATION.value,
+    }
+    compact = raw.replace("_", "-")
+    return aliases.get(raw) or aliases.get(compact) or compact
+
+
+def campaign_stages_may_overlap(left: Any, right: Any) -> bool:
+    """Return whether two pipeline stages may share a host when otherwise safe."""
+
+    first = normalize_adaptive_stage(left)
+    second = normalize_adaptive_stage(right)
+    if first == second:
+        return first not in _SERIAL_STAGES
+    pair = frozenset((first, second))
+    if pair in _SAFE_STAGE_OVERLAPS:
+        return True
+    if first in _SERIAL_STAGES or second in _SERIAL_STAGES:
+        return False
+    left_kinds = set(_STAGE_RESOURCE_KINDS.get(first, (CampaignResourceKind.CPU.value,)))
+    right_kinds = set(_STAGE_RESOURCE_KINDS.get(second, (CampaignResourceKind.CPU.value,)))
+    contended = left_kinds.intersection(right_kinds)
+    contended.discard(CampaignResourceKind.CPU.value)
+    return not contended
+
+
+@dataclass(frozen=True)
+class StageAdmissionProfile:
+    """Explainable admission profile for one campaign or supervisor stage."""
+
+    stage: str
+    resource_kinds: tuple[str, ...]
+    exclusive_authorities: tuple[str, ...] = ()
+    overlap_safe_stages: tuple[str, ...] = ()
+    requires_sealed_inputs: bool = False
+    mutates_tokenizer: bool = False
+    mutates_checkpoint: bool = False
+    requires_network: bool = False
+    requires_gpu: bool = False
+    requires_prover: bool = False
+    requires_provider: bool = False
+    resource_class: str = "cpu-medium"
+    pool: str = "cpu-proof"
+    schema: str = STAGE_ADMISSION_PROFILE_SCHEMA
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "stage", normalize_adaptive_stage(self.stage))
+        kinds = tuple(
+            dict.fromkeys(
+                kind
+                for kind in (
+                    normalize_campaign_resource_kind(item) for item in self.resource_kinds
+                )
+                if kind
+            )
+        )
+        if not kinds:
+            raise ValueError("stage admission profile must declare resource kinds")
+        object.__setattr__(self, "resource_kinds", kinds)
+        authorities = tuple(
+            dict.fromkeys(
+                normalize_exclusive_authority(item)
+                for item in self.exclusive_authorities
+                if str(item).strip()
+            )
+        )
+        object.__setattr__(self, "exclusive_authorities", authorities)
+        object.__setattr__(
+            self,
+            "overlap_safe_stages",
+            tuple(
+                dict.fromkeys(
+                    normalize_adaptive_stage(item) for item in self.overlap_safe_stages
+                )
+            ),
+        )
+        if not str(self.resource_class).strip():
+            raise ValueError("resource_class must be non-empty")
+        if not str(self.pool).strip():
+            raise ValueError("pool must be non-empty")
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["resource_kinds"] = list(self.resource_kinds)
+        payload["exclusive_authorities"] = list(self.exclusive_authorities)
+        payload["overlap_safe_stages"] = list(self.overlap_safe_stages)
+        return payload
+
+
+def stage_admission_profile(stage: Any) -> StageAdmissionProfile:
+    """Return the campaign admission profile for ``stage``."""
+
+    name = normalize_adaptive_stage(stage)
+    adaptive = adaptive_stage_profile(name)
+    authorities = _STAGE_EXCLUSIVE_AUTHORITIES.get(name, ())
+    kinds = _STAGE_RESOURCE_KINDS.get(
+        name,
+        (CampaignResourceKind.CPU.value,),
+    )
+    companions = tuple(
+        other
+        for other in (*CANONICAL_ADAPTIVE_STAGES, *CAMPAIGN_PIPELINE_STAGES)
+        if other != name and campaign_stages_may_overlap(name, other)
+    )
+    return StageAdmissionProfile(
+        stage=name,
+        resource_kinds=kinds,
+        exclusive_authorities=authorities,
+        overlap_safe_stages=companions,
+        requires_sealed_inputs=name in _SEALED_INPUT_STAGES,
+        mutates_tokenizer=name == "tokenizer",
+        mutates_checkpoint=name == "checkpoint",
+        requires_network=CampaignResourceKind.NETWORK.value in kinds,
+        requires_gpu=CampaignResourceKind.GPU.value in kinds,
+        requires_prover=CampaignResourceKind.PROVER.value in kinds,
+        requires_provider=bool(adaptive.requires_provider),
+        resource_class=adaptive.resource_class,
+        pool=adaptive.pool,
+    )
+
+
+@dataclass(frozen=True)
+class CampaignResourceProfileSpec:
+    """Integer ceilings for one board resource profile."""
+
+    profile: str
+    cpu_count: int
+    memory_bytes: int
+    disk_bytes: int
+    gpu_memory_bytes: int = 0
+    wall_time_ms: int = 0
+    allows_gpu: bool = False
+    allows_provider: bool = False
+    allows_prover: bool = False
+    allows_network: bool = False
+    deny_missing_gpu_telemetry: bool = False
+    network_allowlist: tuple[str, ...] = ()
+    resource_kinds: tuple[str, ...] = (CampaignResourceKind.CPU.value,)
+    resource_class: str = "cpu-medium"
+    process_slots: int = 1
+    schema: str = CAMPAIGN_RESOURCE_PROFILE_SCHEMA
+
+    def __post_init__(self) -> None:
+        if not str(self.profile).strip():
+            raise ValueError("resource profile must be non-empty")
+        object.__setattr__(self, "profile", str(self.profile).strip().upper())
+        for name in (
+            "cpu_count",
+            "memory_bytes",
+            "disk_bytes",
+            "gpu_memory_bytes",
+            "wall_time_ms",
+            "process_slots",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        if self.process_slots <= 0:
+            raise ValueError("process_slots must be a positive integer")
+        object.__setattr__(
+            self,
+            "resource_kinds",
+            tuple(
+                dict.fromkeys(
+                    kind
+                    for kind in (
+                        normalize_campaign_resource_kind(item)
+                        for item in self.resource_kinds
+                    )
+                    if kind
+                )
+            )
+            or (CampaignResourceKind.CPU.value,),
+        )
+        object.__setattr__(
+            self,
+            "network_allowlist",
+            tuple(
+                dict.fromkeys(
+                    str(item).strip() for item in self.network_allowlist if str(item).strip()
+                )
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["resource_kinds"] = list(self.resource_kinds)
+        payload["network_allowlist"] = list(self.network_allowlist)
+        return payload
+
+    def to_requirement(
+        self,
+        lane_id: str,
+        *,
+        stage: Any = "execution",
+        **overrides: Any,
+    ) -> "LaneResourceRequirements":
+        """Materialize a lane claim that cannot exceed this profile's ceiling."""
+
+        values: dict[str, Any] = {
+            "lane_id": lane_id,
+            "stage": stage,
+            "resource_class": self.resource_class,
+            "memory_bytes": self.memory_bytes,
+            "disk_bytes": self.disk_bytes,
+            "gpu_memory_bytes": self.gpu_memory_bytes,
+            "process_slots": self.process_slots,
+            "timeout_ms": self.wall_time_ms,
+            "resource_profile": self.profile,
+            "requires_gpu": self.allows_gpu and self.deny_missing_gpu_telemetry,
+            "requires_prover": self.allows_prover,
+            "requires_network": self.allows_network,
+            "requires_provider": self.allows_provider,
+            "network_allowlist": self.network_allowlist,
+            "claimed_resource_kinds": self.resource_kinds,
+        }
+        values.update(overrides)
+        return LaneResourceRequirements.from_mapping(values)
+
+
+_PINNED_HUB_ALLOWLIST = (
+    "https://huggingface.co",
+    "https://huggingface.co/justicedao",
+)
+
+CAMPAIGN_RESOURCE_PROFILE_SPECS = {
+    "RP-CPU-S": CampaignResourceProfileSpec(
+        profile="RP-CPU-S",
+        cpu_count=2,
+        memory_bytes=4 * GIB,
+        disk_bytes=4 * GIB,
+        wall_time_ms=30 * 60 * 1000,
+        resource_class="cpu-small",
+        resource_kinds=(CampaignResourceKind.CPU.value,),
+    ),
+    "RP-CPU-M": CampaignResourceProfileSpec(
+        profile="RP-CPU-M",
+        cpu_count=4,
+        memory_bytes=12 * GIB,
+        disk_bytes=20 * GIB,
+        wall_time_ms=90 * 60 * 1000,
+        resource_class="cpu-medium",
+        resource_kinds=(CampaignResourceKind.CPU.value,),
+    ),
+    "RP-IO-PINNED": CampaignResourceProfileSpec(
+        profile="RP-IO-PINNED",
+        cpu_count=4,
+        memory_bytes=12 * GIB,
+        disk_bytes=100 * GIB,
+        wall_time_ms=4 * 60 * 60 * 1000,
+        allows_network=True,
+        network_allowlist=_PINNED_HUB_ALLOWLIST,
+        resource_class="io-artifact",
+        resource_kinds=(
+            CampaignResourceKind.CPU.value,
+            CampaignResourceKind.IO.value,
+            CampaignResourceKind.NETWORK.value,
+        ),
+    ),
+    "RP-PROVER": CampaignResourceProfileSpec(
+        profile="RP-PROVER",
+        cpu_count=6,
+        memory_bytes=16 * GIB,
+        disk_bytes=40 * GIB,
+        wall_time_ms=2 * 60 * 60 * 1000,
+        allows_prover=True,
+        resource_class="cpu-proof-solver",
+        resource_kinds=(
+            CampaignResourceKind.CPU.value,
+            CampaignResourceKind.PROVER.value,
+        ),
+    ),
+    "RP-GPU": CampaignResourceProfileSpec(
+        profile="RP-GPU",
+        cpu_count=8,
+        memory_bytes=32 * GIB,
+        disk_bytes=250 * GIB,
+        gpu_memory_bytes=16 * GIB,
+        wall_time_ms=8 * 60 * 60 * 1000,
+        allows_gpu=True,
+        allows_provider=True,
+        deny_missing_gpu_telemetry=True,
+        resource_class="llm-proof-draft",
+        resource_kinds=(
+            CampaignResourceKind.CPU.value,
+            CampaignResourceKind.GPU.value,
+            CampaignResourceKind.TOKEN.value,
+            CampaignResourceKind.PROVIDER.value,
+        ),
+    ),
+    "RP-MIXED": CampaignResourceProfileSpec(
+        profile="RP-MIXED",
+        cpu_count=8,
+        memory_bytes=32 * GIB,
+        disk_bytes=250 * GIB,
+        gpu_memory_bytes=16 * GIB,
+        wall_time_ms=8 * 60 * 60 * 1000,
+        allows_gpu=True,
+        allows_provider=True,
+        allows_prover=True,
+        allows_network=True,
+        network_allowlist=_PINNED_HUB_ALLOWLIST,
+        resource_class="cpu-medium",
+        resource_kinds=CAMPAIGN_RESOURCE_KINDS,
+    ),
+}
+
+
+def campaign_resource_profile_spec(profile: Any) -> CampaignResourceProfileSpec:
+    """Return the closed board profile for ``profile``."""
+
+    raw = str(getattr(profile, "value", profile) or "").strip().upper()
+    spec = CAMPAIGN_RESOURCE_PROFILE_SPECS.get(raw)
+    if spec is None:
+        raise ValueError(f"unsupported campaign resource profile: {profile!r}")
+    return spec
+
+
+def lane_requirements_for_resource_profile(
+    lane_id: str,
+    profile: Any,
+    *,
+    stage: Any = "execution",
+    **overrides: Any,
+) -> "LaneResourceRequirements":
+    """Build a lane claim from a board resource profile."""
+
+    return campaign_resource_profile_spec(profile).to_requirement(
+        lane_id,
+        stage=stage,
+        **overrides,
+    )
+
+
+@dataclass(frozen=True)
+class PipelineOverlapReceipt:
+    """Content-addressed decision for one lane against live overlapping work."""
+
+    lane_id: str
+    stage: str
+    admitted: bool
+    resource_kinds: tuple[str, ...]
+    overlapping_lane_ids: tuple[str, ...] = ()
+    overlapping_stages: tuple[str, ...] = ()
+    exclusive_authorities: tuple[str, ...] = ()
+    hazards: tuple[str, ...] = ()
+    reasons: tuple[str, ...] = ()
+    fairness_key: str = ""
+    observed_at_ms: int = 0
+    schema: str = PIPELINE_OVERLAP_RECEIPT_SCHEMA
+    content_digest: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "stage", normalize_adaptive_stage(self.stage))
+        object.__setattr__(
+            self,
+            "resource_kinds",
+            tuple(
+                dict.fromkeys(
+                    kind
+                    for kind in (
+                        normalize_campaign_resource_kind(item)
+                        for item in self.resource_kinds
+                    )
+                    if kind
+                )
+            ),
+        )
+        for name in (
+            "overlapping_lane_ids",
+            "overlapping_stages",
+            "exclusive_authorities",
+            "hazards",
+            "reasons",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                tuple(dict.fromkeys(str(item) for item in getattr(self, name) if str(item))),
+            )
+        expected = _canonical_digest(self._unsigned_dict())
+        if self.content_digest and self.content_digest != expected:
+            raise ValueError("pipeline overlap receipt content digest mismatch")
+        object.__setattr__(self, "content_digest", expected)
+
+    def _unsigned_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "lane_id": self.lane_id,
+            "stage": self.stage,
+            "admitted": self.admitted,
+            "resource_kinds": list(self.resource_kinds),
+            "overlapping_lane_ids": list(self.overlapping_lane_ids),
+            "overlapping_stages": list(self.overlapping_stages),
+            "exclusive_authorities": list(self.exclusive_authorities),
+            "hazards": list(self.hazards),
+            "reasons": list(self.reasons),
+            "fairness_key": self.fairness_key,
+            "observed_at_ms": self.observed_at_ms,
+        }
+
+    @property
+    def allowed(self) -> bool:
+        return self.admitted
+
+    @property
+    def reason(self) -> str:
+        return self.reasons[0] if self.reasons else ""
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = self._unsigned_dict()
+        payload["content_digest"] = self.content_digest
+        payload["allowed"] = self.allowed
+        payload["reason"] = self.reason
+        return payload
+
+
+@dataclass(frozen=True)
+class BackpressureFairnessOverlapReceipt:
+    """Batch receipt covering fairness order, hazards, and overlap outcomes."""
+
+    observed_at_ms: int
+    fairness_order: tuple[str, ...]
+    admitted_lane_ids: tuple[str, ...]
+    backpressured_lane_ids: tuple[str, ...]
+    cancelled_lane_ids: tuple[str, ...] = ()
+    timed_out_lane_ids: tuple[str, ...] = ()
+    hazard_counts: Mapping[str, int] = field(default_factory=dict)
+    backpressure_counts: Mapping[str, int] = field(default_factory=dict)
+    overlap_receipts: tuple[PipelineOverlapReceipt, ...] = ()
+    stage_admission_profiles: tuple[StageAdmissionProfile, ...] = ()
+    schema: str = BACKPRESSURE_FAIRNESS_OVERLAP_RECEIPT_SCHEMA
+    content_digest: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "fairness_order", tuple(self.fairness_order))
+        object.__setattr__(self, "admitted_lane_ids", tuple(self.admitted_lane_ids))
+        object.__setattr__(
+            self, "backpressured_lane_ids", tuple(self.backpressured_lane_ids)
+        )
+        object.__setattr__(self, "cancelled_lane_ids", tuple(self.cancelled_lane_ids))
+        object.__setattr__(self, "timed_out_lane_ids", tuple(self.timed_out_lane_ids))
+        object.__setattr__(
+            self,
+            "hazard_counts",
+            {
+                str(name): int(value)
+                for name, value in sorted(self.hazard_counts.items())
+                if int(value) > 0
+            },
+        )
+        object.__setattr__(
+            self,
+            "backpressure_counts",
+            {
+                str(name): int(value)
+                for name, value in sorted(self.backpressure_counts.items())
+                if int(value) > 0
+            },
+        )
+        expected = _canonical_digest(self._unsigned_dict())
+        if self.content_digest and self.content_digest != expected:
+            raise ValueError("fairness overlap receipt content digest mismatch")
+        object.__setattr__(self, "content_digest", expected)
+
+    def _unsigned_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "observed_at_ms": self.observed_at_ms,
+            "fairness_order": list(self.fairness_order),
+            "admitted_lane_ids": list(self.admitted_lane_ids),
+            "backpressured_lane_ids": list(self.backpressured_lane_ids),
+            "cancelled_lane_ids": list(self.cancelled_lane_ids),
+            "timed_out_lane_ids": list(self.timed_out_lane_ids),
+            "hazard_counts": dict(self.hazard_counts),
+            "backpressure_counts": dict(self.backpressure_counts),
+            "overlap_receipts": [item.to_dict() for item in self.overlap_receipts],
+            "stage_admission_profiles": [
+                item.to_dict() for item in self.stage_admission_profiles
+            ],
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = self._unsigned_dict()
+        payload["content_digest"] = self.content_digest
+        return payload
 
 
 class ProofResourceClass(str, Enum):
@@ -235,6 +1058,20 @@ _RESOURCE_CLASS_ALIASES = {
     "persist": ProofResourceClass.ARTIFACT.value,
     "artifact": ProofResourceClass.ARTIFACT.value,
     "attest": ProofResourceClass.ARTIFACT.value,
+    "gpu": "gpu",
+    "vram": "gpu",
+    "gpu-memory": "gpu",
+    "gpu_memory": "gpu",
+    "network": "network",
+    "https": "network",
+    "hub": "network",
+    "hub-pin": "network",
+    "token": "token",
+    "tokens": "token",
+    "token-budget": "token",
+    "token_budget": "token",
+    "prover": "prover",
+    "cpu-prover": "prover",
 }
 
 
@@ -323,6 +1160,14 @@ def resource_pool(resource_class: Any) -> str:
         return "model"
     if normalized == ProofResourceClass.ARTIFACT.value:
         return "artifact"
+    if normalized in {"gpu", "gpu-training", "gpu-memory"}:
+        return "gpu"
+    if normalized in {"network", "https", "hub-pin"}:
+        return "network"
+    if normalized in {"token", "token-budget"}:
+        return "token"
+    if normalized in {"prover", "cpu-prover"}:
+        return "prover"
     return "cpu-proof"
 
 
@@ -945,6 +1790,22 @@ class LaneResourceRequirements:
     downstream_unlock_value: int = 0
     enqueue_sequence: int = 0
     fairness_key: str = ""
+    timeout_ms: int = 0
+    input_sealed: bool = True
+    trace_identity: str = ""
+    expected_trace_identity: str = ""
+    checkpoint_key: str = ""
+    tokenizer_identity: str = ""
+    expected_tokenizer_identity: str = ""
+    exclusive_authorities: tuple[str, ...] = ()
+    resource_profile: str = ""
+    network_allowlist: tuple[str, ...] = ()
+    requires_network: bool = False
+    requires_gpu: bool = False
+    requires_prover: bool = False
+    mutates_tokenizer: bool = False
+    mutates_checkpoint: bool = False
+    claimed_resource_kinds: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         for name in (
@@ -960,6 +1821,7 @@ class LaneResourceRequirements:
             "critical_path_length",
             "downstream_unlock_value",
             "enqueue_sequence",
+            "timeout_ms",
         ):
             if int(getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be non-negative")
@@ -986,6 +1848,76 @@ class LaneResourceRequirements:
             "fairness_key",
             str(self.fairness_key or self.stage).strip().lower(),
         )
+        object.__setattr__(self, "input_sealed", _boolean(self.input_sealed, True))
+        object.__setattr__(
+            self,
+            "trace_identity",
+            str(self.trace_identity or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "expected_trace_identity",
+            str(self.expected_trace_identity or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "checkpoint_key",
+            str(self.checkpoint_key or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "tokenizer_identity",
+            str(self.tokenizer_identity or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "expected_tokenizer_identity",
+            str(self.expected_tokenizer_identity or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "resource_profile",
+            str(self.resource_profile or "").strip().upper(),
+        )
+        object.__setattr__(
+            self,
+            "exclusive_authorities",
+            tuple(
+                dict.fromkeys(
+                    normalize_exclusive_authority(item)
+                    for item in self.exclusive_authorities
+                    if str(item).strip()
+                )
+            ),
+        )
+        object.__setattr__(
+            self,
+            "network_allowlist",
+            tuple(
+                dict.fromkeys(
+                    str(item).strip() for item in self.network_allowlist if str(item).strip()
+                )
+            ),
+        )
+        object.__setattr__(self, "requires_network", bool(self.requires_network))
+        object.__setattr__(self, "requires_gpu", bool(self.requires_gpu))
+        object.__setattr__(self, "requires_prover", bool(self.requires_prover))
+        object.__setattr__(self, "mutates_tokenizer", bool(self.mutates_tokenizer))
+        object.__setattr__(self, "mutates_checkpoint", bool(self.mutates_checkpoint))
+        object.__setattr__(
+            self,
+            "claimed_resource_kinds",
+            tuple(
+                dict.fromkeys(
+                    kind
+                    for kind in (
+                        normalize_campaign_resource_kind(item)
+                        for item in self.claimed_resource_kinds
+                    )
+                    if kind
+                )
+            ),
+        )
 
     @property
     def provider_required(self) -> bool:
@@ -1001,10 +1933,63 @@ class LaneResourceRequirements:
     def resource_pool(self) -> str:
         return resource_pool(self.resource_class)
 
+    @property
+    def resource_kinds(self) -> tuple[str, ...]:
+        profile = stage_admission_profile(self.stage)
+        kinds = [
+            *self.claimed_resource_kinds,
+            *profile.resource_kinds,
+        ]
+        derived = normalize_campaign_resource_kind(self.resource_class)
+        if derived:
+            kinds.append(derived)
+        if self.requires_gpu or self.gpu_memory_bytes:
+            kinds.append(CampaignResourceKind.GPU.value)
+        if self.requires_prover:
+            kinds.append(CampaignResourceKind.PROVER.value)
+        if self.requires_network or self.network_allowlist:
+            kinds.append(CampaignResourceKind.NETWORK.value)
+        if self.provider_required:
+            kinds.append(CampaignResourceKind.PROVIDER.value)
+            kinds.append(CampaignResourceKind.TOKEN.value)
+        if self.disk_bytes or profile.resource_class == "io-artifact":
+            kinds.append(CampaignResourceKind.IO.value)
+        return tuple(dict.fromkeys(kind for kind in kinds if kind))
+
+    @property
+    def exclusive_authority_keys(self) -> tuple[str, ...]:
+        profile = stage_admission_profile(self.stage)
+        authorities = [
+            *self.exclusive_authorities,
+            *profile.exclusive_authorities,
+        ]
+        if self.mutates_tokenizer or profile.mutates_tokenizer:
+            authorities.append(ExclusiveAuthority.TOKENIZER.value)
+        if self.mutates_checkpoint or profile.mutates_checkpoint:
+            authorities.append(ExclusiveAuthority.CHECKPOINT.value)
+        return tuple(dict.fromkeys(authorities))
+
+    @property
+    def tokenizer_mutating(self) -> bool:
+        return bool(
+            self.mutates_tokenizer or stage_admission_profile(self.stage).mutates_tokenizer
+        )
+
+    @property
+    def checkpoint_mutating(self) -> bool:
+        return bool(
+            self.mutates_checkpoint or stage_admission_profile(self.stage).mutates_checkpoint
+        )
+
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["required_capabilities"] = list(self.required_capabilities)
+        payload["exclusive_authorities"] = list(self.exclusive_authorities)
+        payload["network_allowlist"] = list(self.network_allowlist)
+        payload["claimed_resource_kinds"] = list(self.claimed_resource_kinds)
         payload["provider_required"] = self.provider_required
+        payload["resource_kinds"] = list(self.resource_kinds)
+        payload["exclusive_authority_keys"] = list(self.exclusive_authority_keys)
         return payload
 
     @classmethod
@@ -1150,6 +2135,76 @@ class LaneResourceRequirements:
                 )
                 or ""
             ),
+            timeout_ms=_integer(
+                first("timeout_ms", "deadline_ms", "wall_time_ms", default=0),
+                0,
+                minimum=0,
+            ),
+            input_sealed=_boolean(first("input_sealed", "sealed", default=True), True),
+            trace_identity=str(
+                first("trace_identity", "trace_cid", "proof_trace_identity", default="")
+                or ""
+            ),
+            expected_trace_identity=str(
+                first(
+                    "expected_trace_identity",
+                    "required_trace_identity",
+                    "current_trace_identity",
+                    default="",
+                )
+                or ""
+            ),
+            checkpoint_key=str(
+                first("checkpoint_key", "checkpoint_id", "checkpoint_lease_key", default="")
+                or ""
+            ),
+            tokenizer_identity=str(
+                first(
+                    "tokenizer_identity",
+                    "tokenizer_cid",
+                    "vocabulary_cid",
+                    default="",
+                )
+                or ""
+            ),
+            expected_tokenizer_identity=str(
+                first(
+                    "expected_tokenizer_identity",
+                    "required_tokenizer_identity",
+                    "frozen_tokenizer_identity",
+                    default="",
+                )
+                or ""
+            ),
+            exclusive_authorities=_strings(
+                first("exclusive_authorities", "authorities", default=())
+            ),
+            resource_profile=str(
+                first("resource_profile", "campaign_resource_profile", default="") or ""
+            ),
+            network_allowlist=_strings(
+                first("network_allowlist", "allowed_network", default=())
+            ),
+            requires_network=_boolean(
+                first("requires_network", "needs_network", default=False),
+                False,
+            ),
+            requires_gpu=_boolean(first("requires_gpu", "needs_gpu", default=False), False),
+            requires_prover=_boolean(
+                first("requires_prover", "needs_prover", default=False),
+                False,
+            ),
+            mutates_tokenizer=_boolean(
+                first("mutates_tokenizer", "tokenizer_mutation", default=False),
+                False,
+            ),
+            mutates_checkpoint=_boolean(
+                first("mutates_checkpoint", "checkpoint_mutation", default=False),
+                False,
+            ),
+            claimed_resource_kinds=_strings(
+                first("claimed_resource_kinds", "resource_kinds", default=())
+            ),
         )
 
 
@@ -1207,6 +2262,10 @@ class ResourceLeaseBudget:
     max_model_concurrency: int = 1
     max_artifact_concurrency: int = 1
     max_processes: int = 1
+    max_gpu_concurrency: int = 0
+    max_network_concurrency: int = 0
+    max_prover_concurrency: int = 0
+    max_token_concurrency: int = 0
     wall_time_ms: int = 0
     cpu_time_ms: int = 0
     memory_bytes: int = 0
@@ -1229,6 +2288,10 @@ class ResourceLeaseBudget:
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
         for name in (
+            "max_gpu_concurrency",
+            "max_network_concurrency",
+            "max_prover_concurrency",
+            "max_token_concurrency",
             "wall_time_ms",
             "cpu_time_ms",
             "memory_bytes",
@@ -1409,6 +2472,11 @@ class ResourcePolicy:
     adaptive_max_duplicate_compute_percent: int = 5
     stage_concurrency_limits: Mapping[str, int] = field(default_factory=dict)
     stage_min_concurrency: Mapping[str, int] = field(default_factory=dict)
+    max_gpu_concurrency: int = 1
+    max_network_concurrency: int = 1
+    max_prover_concurrency: int = 0
+    network_allowlist: tuple[str, ...] = ()
+    allow_unsealed_inputs: bool = False
 
     def __post_init__(self) -> None:
         if self.max_lanes < 0:
@@ -1437,6 +2505,9 @@ class ResourcePolicy:
             "adaptive_max_merge_debt",
             "adaptive_minimum_throughput_multiplier",
             "adaptive_max_duplicate_compute_percent",
+            "max_gpu_concurrency",
+            "max_network_concurrency",
+            "max_prover_concurrency",
         ):
             if int(getattr(self, name)) < 0:
                 raise ValueError(f"{name} must be non-negative")
@@ -1498,6 +2569,16 @@ class ResourcePolicy:
             stage_minimums[name] = raw_limit
         object.__setattr__(self, "stage_concurrency_limits", stage_limits)
         object.__setattr__(self, "stage_min_concurrency", stage_minimums)
+        object.__setattr__(
+            self,
+            "network_allowlist",
+            tuple(
+                dict.fromkeys(
+                    str(item).strip() for item in (self.network_allowlist or ()) if str(item).strip()
+                )
+            ),
+        )
+        object.__setattr__(self, "allow_unsealed_inputs", bool(self.allow_unsealed_inputs))
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -1761,6 +2842,28 @@ class ResourcePolicy:
             stage_min_concurrency=_mapping(
                 _first(value, ("stage_min_concurrency", "stage_minimums"), {})
             ),
+            max_gpu_concurrency=_integer(
+                _first(value, ("max_gpu_concurrency", "gpu_concurrency"), 1),
+                1,
+                minimum=0,
+            ),
+            max_network_concurrency=_integer(
+                _first(value, ("max_network_concurrency", "network_concurrency"), 1),
+                1,
+                minimum=0,
+            ),
+            max_prover_concurrency=_integer(
+                _first(value, ("max_prover_concurrency", "prover_concurrency"), 0),
+                0,
+                minimum=0,
+            ),
+            network_allowlist=_strings(
+                _first(value, ("network_allowlist", "allowed_network"), ())
+            ),
+            allow_unsealed_inputs=_boolean(
+                _first(value, ("allow_unsealed_inputs", "permit_unsealed"), False),
+                False,
+            ),
         )
 
 
@@ -1869,6 +2972,7 @@ class AdaptiveStageMetrics:
     completed: int = 0
     accepted: int = 0
     cancelled: int = 0
+    timed_out: int = 0
     leases_acquired: int = 0
     leases_released: int = 0
     lease_transitions: int = 0
@@ -1928,6 +3032,7 @@ class _MutableStageMetrics:
     completed: int = 0
     accepted: int = 0
     cancelled: int = 0
+    timed_out: int = 0
     leases_acquired: int = 0
     leases_released: int = 0
     lease_transitions: int = 0
@@ -2068,6 +3173,9 @@ class ResourceScheduleSnapshot:
     signals: Mapping[str, Any] = field(default_factory=dict)
     pool_admissions: tuple[ResourcePoolAdmissionSnapshot, ...] = ()
     task_generation: TaskGenerationAdmission | None = None
+    overlap_receipts: tuple[PipelineOverlapReceipt, ...] = ()
+    stage_admission_profiles: tuple[StageAdmissionProfile, ...] = ()
+    fairness_overlap_receipt: BackpressureFairnessOverlapReceipt | None = None
 
     @property
     def admitted_lane_ids(self) -> tuple[str, ...]:
@@ -2106,6 +3214,15 @@ class ResourceScheduleSnapshot:
             "pool_admissions": [item.to_dict() for item in self.pool_admissions],
             "task_generation": (
                 self.task_generation.to_dict() if self.task_generation is not None else None
+            ),
+            "overlap_receipts": [item.to_dict() for item in self.overlap_receipts],
+            "stage_admission_profiles": [
+                item.to_dict() for item in self.stage_admission_profiles
+            ],
+            "fairness_overlap_receipt": (
+                self.fairness_overlap_receipt.to_dict()
+                if self.fairness_overlap_receipt is not None
+                else None
             ),
             "signals": json.loads(json.dumps(dict(self.signals), sort_keys=True)),
         }
@@ -2433,6 +3550,7 @@ class ResourceScheduler:
         duration_ms: int,
         accepted: bool,
         cancelled: bool = False,
+        timed_out: bool = False,
     ) -> AdaptiveStageMetrics:
         """Record one terminal result and return that stage's new metrics."""
 
@@ -2446,6 +3564,8 @@ class ResourceScheduler:
                 mutable.accepted += 1
             if cancelled:
                 mutable.cancelled += 1
+            if timed_out:
+                mutable.timed_out += 1
             return self._stage_metric(name, mutable)
 
     def _stage_metric(
@@ -2740,13 +3860,6 @@ class ResourceScheduler:
                     ordered.append(grouped[stage].popleft())
         return tuple(ordered)
 
-    def _pool_limit(self, pool: str) -> int:
-        if pool == "model":
-            return self.policy.max_model_concurrency or self.policy.max_lanes
-        if pool == "artifact":
-            return self.policy.max_artifact_concurrency or self.policy.max_lanes
-        return self.policy.max_cpu_proof_concurrency or self.policy.max_lanes
-
     def _host_reasons(
         self, host: HostResourceSnapshot, requirement: LaneResourceRequirements
     ) -> list[str]:
@@ -2815,7 +3928,43 @@ class ResourceScheduler:
                 requirement.resource_class in PROOF_RESOURCE_CLASSES
                 and bool(set(host.resource_classes).intersection(LEGACY_RESOURCE_CLASSES))
             )
-            if not (cpu_extension_compatible or legacy_compatible):
+            gpu_compatible = requirement.resource_class in {
+                "gpu",
+                "gpu-training",
+                "gpu-memory",
+            } and (
+                "gpu" in host.capabilities
+                or host.gpu_memory_total_bytes > 0
+                or requirement.resource_class in host.resource_classes
+                or "gpu" in host.resource_classes
+            )
+            network_compatible = requirement.resource_class in {
+                "network",
+                "https",
+                "hub-pin",
+            } and (
+                "network" in host.capabilities
+                or "https" in host.capabilities
+                or requirement.resource_class in host.resource_classes
+                or bool(requirement.network_allowlist or self.policy.network_allowlist)
+            )
+            prover_compatible = requirement.resource_class in {
+                "prover",
+                "cpu-prover",
+            } and (
+                "prover" in host.capabilities
+                or any(
+                    item.startswith("cpu-proof") or item == "prover"
+                    for item in host.resource_classes
+                )
+            )
+            if not (
+                cpu_extension_compatible
+                or legacy_compatible
+                or gpu_compatible
+                or network_compatible
+                or prover_compatible
+            ):
                 reasons.append("resource_class_mismatch")
         if requirement.provider_required:
             host_required = {
@@ -2881,6 +4030,199 @@ class ResourceScheduler:
         # A measured zero is valid and sorts ahead of higher latency. Provider
         # identity makes otherwise equal selection deterministic.
         return (provider.latency_ms, provider.provider_id)
+
+    def _lease_pool_limit(self, pool: str, budget: ResourceLeaseBudget) -> int:
+        mapping = {
+            "cpu-proof": budget.max_cpu_proof_concurrency,
+            "model": budget.max_model_concurrency,
+            "artifact": budget.max_artifact_concurrency,
+            "gpu": budget.max_gpu_concurrency or budget.max_parallel,
+            "network": budget.max_network_concurrency or budget.max_parallel,
+            "prover": budget.max_prover_concurrency or budget.max_cpu_proof_concurrency,
+            "token": budget.max_token_concurrency or budget.max_model_concurrency,
+        }
+        return mapping.get(pool, budget.max_parallel)
+
+    def _pool_limit(self, pool: str) -> int:
+        if pool == "model":
+            return self.policy.max_model_concurrency or self.policy.max_lanes
+        if pool == "artifact":
+            return self.policy.max_artifact_concurrency or self.policy.max_lanes
+        if pool == "gpu":
+            return self.policy.max_gpu_concurrency or 1
+        if pool == "network":
+            return self.policy.max_network_concurrency or 1
+        if pool == "prover":
+            return self.policy.max_prover_concurrency or (
+                self.policy.max_cpu_proof_concurrency or self.policy.max_lanes
+            )
+        if pool == "token":
+            return self.policy.max_model_concurrency or self.policy.max_lanes
+        return self.policy.max_cpu_proof_concurrency or self.policy.max_lanes
+
+    @staticmethod
+    def _checkpoint_identity(requirement: LaneResourceRequirements) -> str:
+        if requirement.checkpoint_key:
+            return requirement.checkpoint_key
+        if requirement.checkpoint_mutating:
+            return ExclusiveAuthority.CHECKPOINT.value
+        return ""
+
+    def _effective_network_allowlist(
+        self,
+        requirement: LaneResourceRequirements,
+    ) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys((*self.policy.network_allowlist, *requirement.network_allowlist))
+        )
+
+    def overlap_reasons(
+        self,
+        requirement: LaneResourceRequirements,
+        *,
+        host: HostResourceSnapshot,
+        active_requirements: Iterable[LaneResourceRequirements] = (),
+    ) -> list[str]:
+        """Return fail-closed pipeline-overlap and hazard reasons."""
+
+        return self._overlap_reasons(
+            requirement,
+            host=host,
+            active_items=tuple(active_requirements),
+        )
+
+    def _overlap_reasons(
+        self,
+        requirement: LaneResourceRequirements,
+        *,
+        host: HostResourceSnapshot,
+        active_items: Sequence[LaneResourceRequirements],
+    ) -> list[str]:
+        reasons: list[str] = []
+        profile = stage_admission_profile(requirement.stage)
+        if requirement.timeout_ms and requirement.queue_age_ms >= requirement.timeout_ms:
+            reasons.append(PipelineHazard.TIMED_OUT.value)
+        if (
+            profile.requires_sealed_inputs
+            and not requirement.input_sealed
+            and not self.policy.allow_unsealed_inputs
+        ):
+            reasons.append(PipelineHazard.UNSEALED_DATA.value)
+        if (
+            requirement.expected_trace_identity
+            and requirement.trace_identity != requirement.expected_trace_identity
+        ):
+            reasons.append(PipelineHazard.STALE_TRACE.value)
+        if (
+            requirement.expected_tokenizer_identity
+            and requirement.tokenizer_identity != requirement.expected_tokenizer_identity
+        ):
+            reasons.append(PipelineHazard.INCOMPATIBLE_TOKENIZER_MUTATION.value)
+        needs_gpu = requirement.requires_gpu or (
+            CampaignResourceKind.GPU.value in requirement.resource_kinds
+            and requirement.gpu_memory_bytes
+        )
+        if needs_gpu and host.gpu_memory_total_bytes <= 0 and host.gpu_memory_available_bytes <= 0:
+            reasons.append(PipelineHazard.GPU_TELEMETRY_MISSING.value)
+        if requirement.requires_prover:
+            prover_ready = (
+                "prover" in host.capabilities
+                or any(
+                    item.startswith("cpu-proof") or item == "prover"
+                    for item in host.resource_classes
+                )
+            )
+            if not prover_ready:
+                reasons.append(PipelineHazard.PROVER_NOT_ADMITTED.value)
+        needs_network = requirement.requires_network or (
+            CampaignResourceKind.NETWORK.value in requirement.resource_kinds
+            and requirement.stage in {"network", "publication"}
+        )
+        if requirement.requires_network or needs_network and requirement.stage == "network":
+            allowlist = self._effective_network_allowlist(requirement)
+            if not allowlist:
+                reasons.append(PipelineHazard.NETWORK_DENIED.value)
+            elif requirement.network_allowlist and not self._effective_network_allowlist(
+                requirement
+            ):
+                reasons.append(PipelineHazard.NETWORK_NOT_ALLOWLISTED.value)
+        if requirement.requires_network and not self._effective_network_allowlist(requirement):
+            if PipelineHazard.NETWORK_DENIED.value not in reasons:
+                reasons.append(PipelineHazard.NETWORK_DENIED.value)
+        candidate_authorities = set(requirement.exclusive_authority_keys)
+        candidate_checkpoint = self._checkpoint_identity(requirement)
+        for active in active_items:
+            if active.lane_id and active.lane_id == requirement.lane_id:
+                continue
+            shared_authorities = candidate_authorities.intersection(
+                active.exclusive_authority_keys
+            )
+            if shared_authorities:
+                if ExclusiveAuthority.CHECKPOINT.value in shared_authorities:
+                    reasons.append(PipelineHazard.CHECKPOINT_COLLISION.value)
+                if ExclusiveAuthority.TOKENIZER.value in shared_authorities:
+                    reasons.append(PipelineHazard.INCOMPATIBLE_TOKENIZER_MUTATION.value)
+                reasons.append(PipelineHazard.EXCLUSIVE_AUTHORITY_COLLISION.value)
+            active_checkpoint = self._checkpoint_identity(active)
+            if (
+                candidate_checkpoint
+                and active_checkpoint
+                and candidate_checkpoint == active_checkpoint
+            ):
+                reasons.append(PipelineHazard.CHECKPOINT_COLLISION.value)
+            if requirement.tokenizer_mutating and (
+                active.stage in _TOKENIZER_CONSUMER_STAGES or active.tokenizer_mutating
+            ):
+                reasons.append(PipelineHazard.INCOMPATIBLE_TOKENIZER_MUTATION.value)
+            if active.tokenizer_mutating and (
+                requirement.stage in _TOKENIZER_CONSUMER_STAGES
+                or requirement.tokenizer_mutating
+            ):
+                reasons.append(PipelineHazard.INCOMPATIBLE_TOKENIZER_MUTATION.value)
+            campaign_overlap = (
+                requirement.stage in CAMPAIGN_PIPELINE_STAGES
+                or active.stage in CAMPAIGN_PIPELINE_STAGES
+                or requirement.exclusive_authority_keys
+                or active.exclusive_authority_keys
+                or requirement.tokenizer_mutating
+                or active.tokenizer_mutating
+                or requirement.checkpoint_mutating
+                or active.checkpoint_mutating
+            )
+            if campaign_overlap and not campaign_stages_may_overlap(
+                requirement.stage, active.stage
+            ):
+                reasons.append(PipelineHazard.PROHIBITED_STAGE_OVERLAP.value)
+        return list(dict.fromkeys(reasons))
+
+    def _overlap_receipt(
+        self,
+        requirement: LaneResourceRequirements,
+        *,
+        admitted: bool,
+        reasons: Sequence[str],
+        active_items: Sequence[LaneResourceRequirements],
+        observed_at_ms: int,
+    ) -> PipelineOverlapReceipt:
+        hazards = tuple(reason for reason in reasons if reason in PIPELINE_HAZARDS)
+        overlapping = tuple(
+            item
+            for item in active_items
+            if not (item.lane_id and item.lane_id == requirement.lane_id)
+        )
+        return PipelineOverlapReceipt(
+            lane_id=requirement.lane_id,
+            stage=requirement.stage,
+            admitted=admitted,
+            resource_kinds=requirement.resource_kinds,
+            overlapping_lane_ids=tuple(item.lane_id for item in overlapping if item.lane_id),
+            overlapping_stages=tuple(dict.fromkeys(item.stage for item in overlapping)),
+            exclusive_authorities=requirement.exclusive_authority_keys,
+            hazards=hazards,
+            reasons=tuple(reasons),
+            fairness_key=requirement.fairness_key,
+            observed_at_ms=observed_at_ms,
+        )
 
     def evaluate(
         self,
@@ -2948,6 +4290,13 @@ class ResourceScheduler:
             - occupied_processes,
         )
         host_reasons = self._host_reasons(host_snapshot, req)
+        host_reasons.extend(
+            self._overlap_reasons(
+                req,
+                host=host_snapshot,
+                active_items=active_items,
+            )
+        )
         reserved_memory = sum(item.memory_bytes for item in active_items)
         reserved_gpu_memory = sum(item.gpu_memory_bytes for item in active_items)
         reserved_disk = sum(item.disk_bytes for item in active_items)
@@ -3003,6 +4352,25 @@ class ResourceScheduler:
         )
         if class_limit is not None and class_occupied + req.process_slots > class_limit:
             host_reasons.append("resource_class_concurrency")
+        if CampaignResourceKind.GPU.value in req.resource_kinds:
+            gpu_occupied = sum(
+                item.process_slots
+                for item in active_items
+                if CampaignResourceKind.GPU.value in item.resource_kinds
+            )
+            if gpu_occupied + req.process_slots > (self.policy.max_gpu_concurrency or 1):
+                host_reasons.append("gpu_concurrency")
+        if CampaignResourceKind.NETWORK.value in req.resource_kinds and (
+            req.requires_network or req.stage in {"network", "publication"}
+        ):
+            network_occupied = sum(
+                item.process_slots
+                for item in active_items
+                if CampaignResourceKind.NETWORK.value in item.resource_kinds
+                and (item.requires_network or item.stage in {"network", "publication"})
+            )
+            if network_occupied + req.process_slots > (self.policy.max_network_concurrency or 1):
+                host_reasons.append("network_concurrency")
         stage_occupied = sum(item.process_slots for item in active_items if item.stage == req.stage)
         if self.policy.adaptive_enabled or req.stage in self.policy.stage_concurrency_limits:
             memory_slots = (
@@ -3268,11 +4636,7 @@ class ResourceScheduler:
                 active_requirements=active,
             )
             if decision.admitted:
-                pool_limit = {
-                    "cpu-proof": lease_budget.max_cpu_proof_concurrency,
-                    "model": lease_budget.max_model_concurrency,
-                    "artifact": lease_budget.max_artifact_concurrency,
-                }[req.resource_pool]
+                pool_limit = self._lease_pool_limit(req.resource_pool, lease_budget)
                 pool_used = sum(
                     item.process_slots for item in active if item.resource_pool == req.resource_pool
                 )
@@ -3786,6 +5150,8 @@ class ResourceScheduler:
                         metric.admitted += 1
                     else:
                         metric.backpressured += 1
+                        if PipelineHazard.TIMED_OUT.value in decision.reasons:
+                            metric.timed_out += 1
                         for reason in decision.reasons:
                             metric.backpressure_reasons[reason] = (
                                 metric.backpressure_reasons.get(reason, 0) + 1
@@ -4011,6 +5377,65 @@ class ResourceScheduler:
         )
         signal_payload["pending_tasks"] = pending_tasks
         signal_payload["task_generation_admitted"] = generation.admitted
+        observed_at_ms = host_snapshot.observed_at_ms or int(time.time() * 1000)
+        overlap_receipts = tuple(
+            self._overlap_receipt(
+                requirement,
+                admitted=decision.admitted,
+                reasons=decision.reasons,
+                active_items=tuple(
+                    item
+                    for item in (*baseline_active, *requirements)
+                    if item.lane_id != requirement.lane_id
+                    and (
+                        item.lane_id in {entry.lane_id for entry in baseline_active}
+                        or any(
+                            other.admitted and other.lane_id == item.lane_id
+                            for other in decisions
+                        )
+                    )
+                ),
+                observed_at_ms=observed_at_ms,
+            )
+            for requirement, decision in zip(requirements, decisions)
+        )
+        used_stages = tuple(
+            dict.fromkeys(
+                item.stage for item in (*baseline_active, *requirements)
+            )
+        )
+        stage_profiles = tuple(stage_admission_profile(stage) for stage in used_stages)
+        cancelled_lane_ids = tuple(
+            decision.lane_id
+            for decision in decisions
+            if "cancelled" in decision.reasons
+        )
+        timed_out_lane_ids = tuple(
+            decision.lane_id
+            for decision in decisions
+            if PipelineHazard.TIMED_OUT.value in decision.reasons
+        )
+        hazard_counts: dict[str, int] = {}
+        for decision in decisions:
+            for reason in decision.reasons:
+                if reason in PIPELINE_HAZARDS:
+                    hazard_counts[reason] = hazard_counts.get(reason, 0) + 1
+        fairness_overlap = BackpressureFairnessOverlapReceipt(
+            observed_at_ms=observed_at_ms,
+            fairness_order=tuple(decision.lane_id for decision in decisions),
+            admitted_lane_ids=tuple(
+                decision.lane_id for decision in decisions if decision.admitted
+            ),
+            backpressured_lane_ids=tuple(
+                decision.lane_id for decision in decisions if not decision.admitted
+            ),
+            cancelled_lane_ids=cancelled_lane_ids,
+            timed_out_lane_ids=timed_out_lane_ids,
+            hazard_counts=hazard_counts,
+            backpressure_counts=backpressure_counts,
+            overlap_receipts=overlap_receipts,
+            stage_admission_profiles=stage_profiles,
+        )
         return ResourceScheduleSnapshot(
             observed_at_ms=host_snapshot.observed_at_ms or int(time.time() * 1000),
             host=host_snapshot,
@@ -4029,11 +5454,15 @@ class ResourceScheduler:
             signals=signal_payload,
             pool_admissions=tuple(pool_admissions),
             task_generation=generation,
+            overlap_receipts=overlap_receipts,
+            stage_admission_profiles=stage_profiles,
+            fairness_overlap_receipt=fairness_overlap,
         )
 
     # Descriptive aliases used by scheduler integrations and callers.
     evaluate_lane = evaluate
     schedule_lanes = schedule
+    simulate_pipeline = schedule
 
 
 @dataclass(frozen=True)

@@ -48,6 +48,9 @@ RESOURCE_ADMISSION_EVENT_TYPES = frozenset(
         "resource_schedule_observed",
         "resource_schedule_snapshot",
         "scheduler_resource_snapshot",
+        "pipeline_overlap_receipt",
+        "pipeline_overlap_observed",
+        "backpressure_fairness_overlap",
     }
 )
 RESOURCE_ADMISSION_STAGES = (
@@ -58,6 +61,24 @@ RESOURCE_ADMISSION_STAGES = (
     "merge",
     "persistence",
     "execution",
+    "tokenizer",
+    "training",
+    "evaluation",
+    "checkpoint",
+    "corpus",
+    "split",
+    "promotion",
+    "publication",
+    "network",
+    "prover",
+)
+PIPELINE_OVERLAP_EVENT_TYPES = frozenset(
+    {
+        "pipeline_overlap_receipt",
+        "pipeline_overlap_observed",
+        "backpressure_fairness_overlap",
+        "stage_admission_profile",
+    }
 )
 MAX_PROOF_ROLLOUT_QUERY_ROWS = 128
 SCHEDULER_PHASES = (
@@ -198,6 +219,7 @@ _RESOURCE_METRIC_INTEGER_FIELDS = (
     "completed",
     "accepted",
     "cancelled",
+    "timed_out",
     "leases_acquired",
     "leases_released",
     "lease_transitions",
@@ -229,6 +251,13 @@ def _resource_stage(value: Any) -> str:
         "persist": "persistence",
         "artifact": "persistence",
         "scheduler": "execution",
+        "train": "training",
+        "eval": "evaluation",
+        "ckpt": "checkpoint",
+        "vocab": "tokenizer",
+        "promote": "promotion",
+        "publish": "publication",
+        "prove": "prover",
     }
     return aliases.get(raw, raw) if raw else "execution"
 
@@ -377,6 +406,10 @@ def _resource_admission_projection(
         "signals",
         "backpressure_reasons",
         "backpressure_reason_counts",
+        "overlap_receipts",
+        "fairness_overlap_receipt",
+        "stage_admission_profiles",
+        "hazard_counts",
     }
     if not meaningful.intersection(payload):
         return None
@@ -676,6 +709,94 @@ def _resource_admission_projection(
         capacities_by_stage[stage] for stage in all_stages if stage in capacities_by_stage
     ]
     stage_metrics = [metrics_by_stage[stage] for stage in all_stages if stage in metrics_by_stage]
+    overlap_payload = payload.get("fairness_overlap_receipt")
+    if not isinstance(overlap_payload, Mapping):
+        overlap_payload = _resource_mapping(payload.get("overlap"))
+    overlap_rows = _resource_rows(
+        payload.get("overlap_receipts")
+        or _resource_mapping(overlap_payload).get("overlap_receipts")
+    )
+    overlap_receipts = []
+    for row in overlap_rows:
+        hazards = _resource_reasons(row.get("hazards") or row.get("reasons"))
+        overlap_receipts.append(
+            {
+                "lane_id": str(row.get("lane_id") or ""),
+                "stage": _resource_stage(row.get("stage")),
+                "admitted": bool(row.get("admitted") or row.get("allowed")),
+                "resource_kinds": [
+                    str(item) for item in (row.get("resource_kinds") or ()) if str(item)
+                ],
+                "overlapping_lane_ids": [
+                    str(item) for item in (row.get("overlapping_lane_ids") or ()) if str(item)
+                ],
+                "hazards": list(hazards),
+                "reasons": list(_resource_reasons(row.get("reasons"))),
+            }
+        )
+    profile_rows = _resource_rows(
+        payload.get("stage_admission_profiles")
+        or _resource_mapping(overlap_payload).get("stage_admission_profiles")
+    )
+    stage_admission_profiles = []
+    for row in profile_rows:
+        stage_admission_profiles.append(
+            {
+                "stage": _resource_stage(row.get("stage")),
+                "resource_kinds": [
+                    str(item) for item in (row.get("resource_kinds") or ()) if str(item)
+                ],
+                "exclusive_authorities": [
+                    str(item)
+                    for item in (row.get("exclusive_authorities") or ())
+                    if str(item)
+                ],
+                "requires_sealed_inputs": bool(row.get("requires_sealed_inputs")),
+                "mutates_tokenizer": bool(row.get("mutates_tokenizer")),
+                "mutates_checkpoint": bool(row.get("mutates_checkpoint")),
+            }
+        )
+    if "hazard_counts" in payload:
+        hazard_counts = _resource_reason_counts(payload.get("hazard_counts"))
+    elif isinstance(overlap_payload, Mapping) and "hazard_counts" in overlap_payload:
+        hazard_counts = _resource_reason_counts(overlap_payload.get("hazard_counts"))
+    else:
+        hazard_counts = {}
+        for row in overlap_receipts:
+            for hazard in row.get("hazards") or ():
+                hazard_counts[str(hazard)] = hazard_counts.get(str(hazard), 0) + 1
+        hazard_counts = {
+            name: count for name, count in sorted(hazard_counts.items()) if count
+        }
+    cancelled_count = _resource_integer(
+        payload.get("cancelled_count"),
+        _resource_integer(_resource_mapping(overlap_payload).get("cancelled_count")),
+    )
+    if not cancelled_count:
+        cancelled_count = len(_resource_mapping(overlap_payload).get("cancelled_lane_ids") or ())
+    if not cancelled_count:
+        cancelled_count = sum(
+            _resource_integer(row.get("cancelled")) for row in metrics_by_stage.values()
+        )
+    timed_out_count = _resource_integer(
+        payload.get("timed_out_count"),
+        _resource_integer(_resource_mapping(overlap_payload).get("timed_out_count")),
+    )
+    if not timed_out_count:
+        timed_out_count = len(_resource_mapping(overlap_payload).get("timed_out_lane_ids") or ())
+    if not timed_out_count:
+        timed_out_count = sum(
+            _resource_integer(row.get("timed_out")) for row in metrics_by_stage.values()
+        )
+    fairness_order = [
+        str(item)
+        for item in (
+            payload.get("fairness_order")
+            or _resource_mapping(overlap_payload).get("fairness_order")
+            or ()
+        )
+        if str(item)
+    ]
     return {
         "schema": RESOURCE_ADMISSION_METRICS_SCHEMA,
         "schema_version": RESOURCE_ADMISSION_METRICS_SCHEMA_VERSION,
@@ -695,6 +816,12 @@ def _resource_admission_projection(
         "stage_capacities": stage_capacities,
         "stage_metrics": stage_metrics,
         "by_stage": by_stage,
+        "overlap_receipts": overlap_receipts,
+        "stage_admission_profiles": stage_admission_profiles,
+        "hazard_counts": hazard_counts,
+        "cancelled_count": cancelled_count,
+        "timed_out_count": timed_out_count,
+        "fairness_order": fairness_order,
     }
 
 
@@ -3379,6 +3506,7 @@ __all__ = [
     "RESOURCE_ADMISSION_METRICS_SCHEMA",
     "RESOURCE_ADMISSION_METRICS_SCHEMA_VERSION",
     "RESOURCE_ADMISSION_STAGES",
+    "PIPELINE_OVERLAP_EVENT_TYPES",
     "SCHEDULER_PHASES",
     "SCHEDULER_SNAPSHOT_SCHEMA",
     "SCHEDULER_SNAPSHOT_SCHEMA_VERSION",
