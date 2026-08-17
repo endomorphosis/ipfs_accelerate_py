@@ -56601,12 +56601,22 @@ class DatabaseImplementationDaemon:
                         ),
                     )
                 if self._coordinator is None:
+                    if self.authority_mode == "quack":
+                        # Lease/completion bookkeeping stays on the local
+                        # sidecar. The Quack-owned control file is the task
+                        # board, not the coordinator DDL surface.
+                        coord_target = (
+                            self.database_path.with_name(
+                                f"{self.database_path.stem}.coordination.duckdb"
+                            )
+                            if self.database_path.suffix.lower()
+                            in {".duckdb", ".ddb"}
+                            else Path("control.coordination.duckdb")
+                        )
+                    else:
+                        coord_target = self.coordination_path
                     self._coordinator = open_database_coordinator(
-                        (
-                            self._quack_uri
-                            if self.authority_mode == "quack"
-                            else self.coordination_path
-                        ),
+                        coord_target,
                         clock_ms=self._clock_ms,
                         default_lease_ms=self.lease_ms,
                     )
