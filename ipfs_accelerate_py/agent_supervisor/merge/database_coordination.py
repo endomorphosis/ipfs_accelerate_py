@@ -1672,22 +1672,24 @@ class DatabaseCoordinator:
                 self._path.parent.mkdir(parents=True, exist_ok=True)
             connection = open_duckdb_connection(self._open_target)
             try:
-                for statement in _split_sql_statements(_BOOKKEEPING_SQL):
-                    connection.execute(statement)
-                for key, value in (
-                    ("interface", DATABASE_COORDINATOR_INTERFACE),
-                    ("schema", DATABASE_COORDINATION_SCHEMA),
-                ):
-                    connection.execute(
-                        """
-                        INSERT OR REPLACE INTO coordination_metadata(key, value)
-                        VALUES (?, ?)
-                        """,
-                        [key, value],
-                    )
+                if not self._quack_transport:
+                    for statement in _split_sql_statements(_BOOKKEEPING_SQL):
+                        connection.execute(statement)
+                    for key, value in (
+                        ("interface", DATABASE_COORDINATOR_INTERFACE),
+                        ("schema", DATABASE_COORDINATION_SCHEMA),
+                    ):
+                        connection.execute(
+                            """
+                            INSERT OR REPLACE INTO coordination_metadata(key, value)
+                            VALUES (?, ?)
+                            """,
+                            [key, value],
+                        )
                 self._connection = connection
                 self._closed = False
-                self._commit_if_idle(connection)
+                if not self._quack_transport:
+                    self._commit_if_idle(connection)
                 return self
             except Exception:
                 try:
