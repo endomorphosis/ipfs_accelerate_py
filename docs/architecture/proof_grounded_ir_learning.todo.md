@@ -1398,7 +1398,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-114 Resolve validation retry-budget failure for PGIR-030
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
