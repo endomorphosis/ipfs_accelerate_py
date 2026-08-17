@@ -122,6 +122,7 @@ class PlanCheckKind(str, Enum):
     PARENT_REFINEMENT = "parent_refinement"
     EVIDENCE_FRESHNESS = "evidence_freshness"
     CIRCULAR_EVIDENCE = "circular_evidence"
+    CAMPAIGN_LEASE_BINDING = "campaign_lease_binding"
 
 
 class FindingDisposition(str, Enum):
@@ -168,6 +169,9 @@ class PlanFindingCode(str, Enum):
     EQUIVALENT_REFINEMENT_VIOLATED = "equivalent_refinement_violated"
     STALE_EVIDENCE = "stale_evidence"
     CIRCULAR_EVIDENCE = "circular_evidence"
+    UNRESOLVED_DEPENDENCY_OUTPUT = "unresolved_dependency_output"
+    CAMPAIGN_LEASE_BLOCKED = "campaign_lease_blocked"
+    CAMPAIGN_ROLE_MISSING = "campaign_role_missing"
 
 
 @dataclass(frozen=True)
@@ -1123,6 +1127,8 @@ class FormalPlanValidator:
                     PlanCheckKind.ACTOR_AUTHORITY,
                 }
             )
+            if isinstance(plan.metadata.get("ir_learning_campaign_binding"), Mapping):
+                checks.add(PlanCheckKind.CAMPAIGN_LEASE_BINDING)
             if static_findings:
                 findings.extend(static_findings)
                 return self._result(
@@ -1491,6 +1497,7 @@ class FormalPlanValidator:
     ) -> list[PlanValidationFinding]:
         findings: list[PlanValidationFinding] = []
         tasks = {item.task_id: item for item in plan.tasks}
+        findings.extend(self._campaign_checks(plan, tasks, guard))
 
         grouped_norms: dict[tuple[str, str], list[Any]] = defaultdict(list)
         for norm in plan.norms:
@@ -1643,6 +1650,104 @@ class FormalPlanValidator:
                             {"prior_token": prior, "observed_token": token},
                         )
                     )
+        return findings
+
+    def _campaign_checks(
+        self,
+        plan: FormalWorkPlan,
+        tasks: Mapping[str, Any],
+        guard: _BudgetGuard,
+    ) -> list[PlanValidationFinding]:
+        """Fail closed when a campaign revision still has unresolved RESULT outputs."""
+
+        binding = plan.metadata.get("ir_learning_campaign_binding")
+        if not isinstance(binding, Mapping) or not binding:
+            return []
+        findings: list[PlanValidationFinding] = []
+        guard.checkpoint()
+        declared_roles = {
+            str(item).strip()
+            for item in (binding.get("roles") or ())
+            if str(item).strip()
+        }
+        required_roles = {
+            "inventory",
+            "corpus",
+            "split",
+            "lineage",
+            "compiler",
+            "decompiler",
+            "tokenizer",
+            "curriculum",
+            "training_run",
+            "proof",
+            "evaluation",
+            "checkpoint",
+            "promotion",
+            "publication",
+            "resource",
+            "campaign_control",
+        }
+        missing = sorted(required_roles.difference(declared_roles))
+        if missing:
+            findings.append(
+                PlanValidationFinding(
+                    PlanFindingCode.CAMPAIGN_ROLE_MISSING,
+                    FindingDisposition.CONTRADICTION,
+                    PlanCheckKind.CAMPAIGN_LEASE_BINDING,
+                    "campaign is missing required work-graph roles",
+                    tuple(missing),
+                    details={"missing_roles": missing},
+                )
+            )
+        blocked = {
+            str(item).strip()
+            for item in (binding.get("blocked_task_ids") or ())
+            if str(item).strip()
+        }
+        unresolved = tuple(
+            sorted(
+                {
+                    str(item).strip()
+                    for item in (binding.get("unresolved_result_ids") or ())
+                    if str(item).strip()
+                }
+            )
+        )
+        claimed_eligible = {
+            str(item).strip()
+            for item in (binding.get("lease_eligible_task_ids") or ())
+            if str(item).strip()
+        }
+        illegally_leased = sorted(blocked.intersection(claimed_eligible))
+        for task_id, task in sorted(tasks.items()):
+            guard.checkpoint()
+            metadata = task.metadata if isinstance(task.metadata, Mapping) else {}
+            claims_lease = metadata.get("lease_eligible") is True
+            if task_id in blocked and claims_lease:
+                illegally_leased.append(task_id)
+        illegally_leased = sorted(set(illegally_leased))
+        if illegally_leased:
+            findings.append(
+                PlanValidationFinding(
+                    PlanFindingCode.CAMPAIGN_LEASE_BLOCKED,
+                    FindingDisposition.CONTRADICTION,
+                    PlanCheckKind.CAMPAIGN_LEASE_BINDING,
+                    "campaign lease is blocked while RESULT identities remain unresolved",
+                    tuple(illegally_leased),
+                    details={"unresolved_result_ids": list(unresolved)},
+                )
+            )
+            findings.append(
+                PlanValidationFinding(
+                    PlanFindingCode.UNRESOLVED_DEPENDENCY_OUTPUT,
+                    FindingDisposition.CONTRADICTION,
+                    PlanCheckKind.CAMPAIGN_LEASE_BINDING,
+                    "task revision binds unresolved dependency outputs before lease",
+                    unresolved,
+                    details={"blocked_task_ids": illegally_leased},
+                )
+            )
         return findings
 
     def _build_and_check_trace(

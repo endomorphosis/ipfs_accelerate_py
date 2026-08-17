@@ -26,6 +26,8 @@ Durable intent lifecycle: objective heap parse, daemons, trackers, backlog refin
 | `goal_development_contracts` | `objectives/goal_development_contracts.py` |
 | `goal_quality` | `objectives/goal_quality.py` |
 | `goal_refinement_verification` | `objectives/goal_refinement_verification.py` |
+| `ir_learning_campaign` | `objectives/ir_learning_campaign.py` |
+| `ir_learning_campaign_contracts` | `objectives/ir_learning_campaign_contracts.py` |
 | `objective_daemon` | `objectives/objective_daemon.py` |
 | `objective_graph` | `objectives/objective_graph.py` |
 | `objective_task_janitor` | `objectives/objective_task_janitor.py` |
