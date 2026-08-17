@@ -1,0 +1,674 @@
+{
+  "bindings": {
+    "compiler": {
+      "binding_cid": "baguqeerarxul7wfpbcka6lzwbe6afembjteohwfdps6mjh7pntg7xlz7ywta",
+      "configuration_cid": "baguqeera7dlkg3mkupddznjq3ehefgfy3uwcarhir2yfgukpgjmo4spmroea",
+      "entrypoint": "ipfs_datasets_py.logic.legal_ir.canonical_compiler.TypedDeonticCanonicalCompiler",
+      "files": [
+        {
+          "git_blob": "e4271aef7274c54716bedc84594caf15c5175b02",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py",
+          "raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:ea23d878c00337e8b1e42c6c06faa976a61c3ef6b446b63c5a04327a34678b12",
+          "size_bytes": 33859
+        },
+        {
+          "git_blob": "5d6a86a68e274927d1862fc6c733d813d1a82d61",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_contracts.py",
+          "raw_cid": "bafkreibqolrsqu3hnujpfwyyj5dvf6smijs4ri2matp6zfj2gk756bdwdu",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:3072e32853676d12f2db184f4752fa4c4265c8a34c04dfec953a32bfdf04761d",
+          "size_bytes": 58045
+        }
+      ],
+      "interface": "CanonicalStructuredTextCompiler@1",
+      "learned_stages": [],
+      "measured_adapter_raw_cid": "bafkreife5avbe5esju4frufsogvzlaew5x5qw5h4qlefvgx2qdbamqsyny",
+      "repository_commit": "b20bd9e3cfae79e8888929daf64f52b2f8a5689a",
+      "status": "resolved_exact",
+      "symbolic_alias": "COMPILER-CURRENT-1",
+      "task_id": "PGIR-014"
+    },
+    "corpus": {
+      "binding_cid": "baguqeera4ezrwsq2kupnh4l52z2jfglbzalr6flzjw3xsyefnu5luv6v2hta",
+      "derived_count": 38690,
+      "files": [
+        {
+          "git_blob": "e8c227b6cadd57e4dd788caeabea5e927fb4367d",
+          "path": "ipfs_datasets_py/data/ir_learning/corpora/corpus_manifest.json",
+          "raw_cid": "bafkreieas2xvjmtjdvt4x6zko6mac4zem72nbppyqmldrnneq257czxbpi",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:8096af54b2691d67cbfb2a779801732467f4d0bdf8831638b5a486bbf166e17a",
+          "size_bytes": 1212482
+        },
+        {
+          "git_blob": "4ed0d041d0bbd101abc0a7d53f1ec6e8aabe6df5",
+          "path": "ipfs_datasets_py/data/ir_learning/corpora/corpus_root.json",
+          "raw_cid": "bafkreigfium7io3zkcqew6iwpz5wdpti2nmlera3rpvycdcuwgyqvmwj3u",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:c54519f43b7950a04b79167e7b61be68d358b2441b8beb810c54b1b10ab2c9dd",
+          "size_bytes": 1763
+        },
+        {
+          "git_blob": "918a3d24eb3300c0d3ea156ab3c9a928942cee0d",
+          "path": "ipfs_datasets_py/data/ir_learning/corpora/lineage_graph.json",
+          "raw_cid": "bafkreih2zdy46aajsspmbswjgwleyy2pllom3wbwb5d356dxjwtqskys4q",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:fac8f1cf0009949ec0cac935964c634f5adccdd8360f47bef8774da7092b12e4",
+          "size_bytes": 792
+        },
+        {
+          "git_blob": "b0b19c5a7718acc2aa01da68cccd8e986a7eb046",
+          "path": "ipfs_datasets_py/data/ir_learning/corpora/quarantine_manifest.json",
+          "raw_cid": "bafkreien26e55pevmhn4shigdbn3ynzm3dgxwgxqasihm3fenjrepajr24",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:8dd789debc9561dbc91d06185bbc372cd8cd7b1af00490766ca46a62478131d7",
+          "size_bytes": 145216
+        },
+        {
+          "git_blob": "d0e32de04196cf56bd160b2b3766987749d602d7",
+          "path": "ipfs_datasets_py/data/ir_learning/corpora/reconciliation_receipt.json",
+          "raw_cid": "bafkreiewyjx7fcj7dyoqioqpczwkd4gqzsinzsvoxvhh2nqjxiz3iqjfsm",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:96c26ff2893f1e1d043a0f166ca1f0d0cc90dccaaebd4e7d3609ba33b4412593",
+          "size_bytes": 243
+        },
+        {
+          "git_blob": "cdde4077349e98b0a2328877c092f270234f9f60",
+          "path": "ipfs_datasets_py/data/ir_learning/corpora/rights_manifest.json",
+          "raw_cid": "bafkreicqwape6yobtjizxtwvbfrmt5v3znp6culmaxpllwlyh4fibirpqu",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:50b01e4f61c19a519bced50962c9f6bbcb5fe1516c05deb5d9783f0a80a22f85",
+          "size_bytes": 144319
+        },
+        {
+          "git_blob": "90afa1d774d250d47d57b9822c78136cc4e195c4",
+          "path": "ipfs_datasets_py/data/ir_learning/corpora/source_releases.json",
+          "raw_cid": "bafkreiggayxxetz7v5jfu6l7iqhrmxbtgqayihbphxu7rnbzd4wezgzl2e",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:c6062f724f3faf525a797f440f165c333401841c2f3de9f8b4391f2c4c9b2bd1",
+          "size_bytes": 1354
+        }
+      ],
+      "implementation_commit": "978a4ef12d76860ca61feaecb8d9b5b2bf782d5d",
+      "manifest_cid": "bafkreiha35x7mcukzzb5x67hmykwsny5wipf5jb4do5gpsl24mxvix55n4",
+      "manifest_id": "corp:jdao-pinset-1",
+      "materialized": false,
+      "patent_source_groups": 2174,
+      "pinset_id": "JDAO-PINSET-1",
+      "source_count": 7173,
+      "task_id": "PGIR-011",
+      "training_admitted_rows": 0
+    },
+    "decompiler": {
+      "binding_cid": "baguqeeracirjnyp5plk7uobfwoj2bol3hgqhnr6a4k7geipnex3drntqrnxq",
+      "configuration_cid": "baguqeeratlk326nodsva4rxwm65xgnpenhcovspm7crtyd4enaqhgjciqayq",
+      "entrypoint": "ipfs_datasets_py.logic.legal_ir.canonical_decompiler.SourceWithheldCanonicalDecompiler",
+      "files": [
+        {
+          "git_blob": "525cd32ebb2f832dc56a1cdaf15dfb915ac6bf0b",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py",
+          "raw_cid": "bafkreih2ju5hvcdwcni3wtxjy2dksmjp5qvo2ipofghkq73ygk2tnnkmke",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:fa4d3a7a88761351bb4ee9c686a9312fec2aed21ee298ea87f7832b536b54c51",
+          "size_bytes": 12386
+        },
+        {
+          "git_blob": "5d6a86a68e274927d1862fc6c733d813d1a82d61",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_contracts.py",
+          "raw_cid": "bafkreibqolrsqu3hnujpfwyyj5dvf6smijs4ri2matp6zfj2gk756bdwdu",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:3072e32853676d12f2db184f4752fa4c4265c8a34c04dfec953a32bfdf04761d",
+          "size_bytes": 58045
+        }
+      ],
+      "interface": "SourceWithheldCanonicalParaphraser@1",
+      "rendering_spec_cid": "baguqeera72pqowlkovfqvydbtk5lxc7g42o75xtfgmx7cm4vqdvnaimjpjvq",
+      "repository_commit": "b20bd9e3cfae79e8888929daf64f52b2f8a5689a",
+      "status": "resolved_exact",
+      "symbolic_alias": "DECOMPILER-CURRENT-1",
+      "task_id": "PGIR-014",
+      "uses_model": false
+    },
+    "example_contracts": {
+      "binding_cid": "baguqeerapld5wgxakz4mnw4fd237durw4mice7rtmieqkqqzsxbqunlermrq",
+      "closed_authority_vocabulary": true,
+      "files": [
+        {
+          "git_blob": "159f6c68ab5565fcaa851e95e96bd6dad8b8f07c",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/training_contracts.py",
+          "raw_cid": "bafkreiatzje7io2sgofgnwcrrxksfxjp3vzrkajacc7vop7kdk5yp3j7oe",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:13ca49f43b52338a66d8518dd522dd2fdd7315012010bf573fea1abb87ed3f71",
+          "size_bytes": 5109
+        },
+        {
+          "git_blob": "800c3e37a670c74f404ba607f27166417f2d79ea",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/training_examples.py",
+          "raw_cid": "bafkreidvhwbxxty2dgkpviezgkkiy3d7lc7bnnefttsr6rpalwahgscauy",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:753d837bcf1a1994faa09932948c6c7f58be16b4859ce51f45e05d80734840a6",
+          "size_bytes": 31590
+        },
+        {
+          "git_blob": "acca9dc2c45ca59682423dfa58546e49bb548599",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/training_proofs.py",
+          "raw_cid": "bafkreic2nnjrpkkl4b75w4qactg5lyi77gwuatnw2dctlhvggkdncpzlii",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:5a6b5317a94be07fdb720014cdd5e11ff9ad404db6d0c5359ea63286d13f2b42",
+          "size_bytes": 30224
+        },
+        {
+          "git_blob": "d62abad86107777d8b83f9e9e10987f7181f5eb1",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/training_shared.py",
+          "raw_cid": "bafkreif567elbdni4tzkc2yrruj6vmine76tfnjyyixrbustnn5gedo6xi",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:bdf7c8b08da8e4f2a16b118d13eab10d27fd32b538c22f10d2536b7a620ddeba",
+          "size_bytes": 49219
+        },
+        {
+          "git_blob": "3f294a3d28cf72cbf4e8cbc1802f8085f2ef3cff",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/training_transforms.py",
+          "raw_cid": "bafkreibu5qwxdhu542n6zy4pkfyhxjw2urewj5vt6wvksxtapoqgea7b2a",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:34ec2d719e9de69bece38f51707ba6daa44964f6b3f5aaa95e607ba06203e1d0",
+          "size_bytes": 30782
+        }
+      ],
+      "implementation_commit": "b20bd9e3cfae79e8888929daf64f52b2f8a5689a",
+      "repository_commit": "b20bd9e3cfae79e8888929daf64f52b2f8a5689a",
+      "schema_ids": [
+        "ir-compiler-trace/v1",
+        "ir-decompiler-trace/v1",
+        "ir-hard-negative/v1",
+        "ir-label-evidence/v1",
+        "ir-positive-pair/v1",
+        "ir-proof-trace/v1",
+        "ir-round-trip-trace/v1",
+        "ir-statement-binding/v1",
+        "ir-tactic-step/v1",
+        "ir-tactic-trace/v1",
+        "ir-tool-binding/v1",
+        "ir-trace-reference/v1",
+        "ir-training-example/v1",
+        "ir-training-lineage/v1",
+        "ir-translation-trace/v1"
+      ],
+      "task_id": "PGIR-013"
+    },
+    "gap_matrix": {
+      "binding_cid": "baguqeerahi22jwwwm7rhtsnwbvk5c62gm5bb3tluymd5znsbhbf7wod7ez7q",
+      "file": {
+        "git_blob": "c53ed664fe89bd0fe279b8a4dd09db0b7c9245c3",
+        "path": "ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/gap_matrix.json",
+        "raw_cid": "bafkreian3jjbgadrbf5cj7klentfdp7nu3pnudn424vkwuf7eypzfoenwe",
+        "repository": "ipfs_datasets_py",
+        "sha256": "sha256:0dda52130071097a24fd4b236651bfeda6deda0dbcd72aab50bf261f92b88db1",
+        "size_bytes": 90644
+      },
+      "implementation_commit": "21e1a2db5b5efe436ad450044fedffdc19b8a71f",
+      "matrix_cid": "baguqeeraspldjlypaoamdclucjsbktrmkramzhe3kra7tip5h3e5s5zkfnia",
+      "matrix_sha256": "sha256:93d634af0f0380c189741264154e2c5440cc9c9b5441f9a1fd3ec9d9772a2b50",
+      "task_id": "PGIR-006"
+    },
+    "lineage": {
+      "binding_cid": "baguqeerapzfkuux7xq5rcxkih2tr4q653yeffgu4js3qfof67axmvqmfz56q",
+      "derived_count": 38690,
+      "file": {
+        "git_blob": "918a3d24eb3300c0d3ea156ab3c9a928942cee0d",
+        "path": "ipfs_datasets_py/data/ir_learning/corpora/lineage_graph.json",
+        "raw_cid": "bafkreih2zdy46aajsspmbswjgwleyy2pllom3wbwb5d356dxjwtqskys4q",
+        "repository": "ipfs_datasets_py",
+        "sha256": "sha256:fac8f1cf0009949ec0cac935964c634f5adccdd8360f47bef8774da7092b12e4",
+        "size_bytes": 792
+      },
+      "lineage_graph_cid": "bafkreia5jirpcpummrddhczxebz554lkd7wrq4o5ynizjlgbczyzuwhakq",
+      "patent_source_groups": 2174,
+      "source_count": 7173,
+      "task_id": "PGIR-011"
+    },
+    "policy": {
+      "binding_cid": "baguqeerar7fn7elcpmd4q7lm3kjyezxkrocnucx7m2pxmgysji3x73rx5zdq",
+      "files": [
+        {
+          "git_blob": "adfd9c273ce0e715c981a69612a9b06d2b601ab4",
+          "path": "data/agent_supervisor/proof_grounded_ir_learning/justice_dao_pinset.yaml",
+          "raw_cid": "bafkreieohjfrxwawhe4t3xndlzo7wo4v7httecx2rgf54cz6xgqdc6tloy",
+          "repository": "ipfs_accelerate_py",
+          "sha256": "sha256:8e3a4b1bd81639393ddda35e5dfb3b95f9e7320afa898bde0b3eb9a0317a6b76",
+          "size_bytes": 6802
+        },
+        {
+          "git_blob": "1a9bbc1abfb2bc2652286a1bbd9242e6c4a04bf5",
+          "path": "docs/architecture/proof_grounded_ir_learning.objectives.md",
+          "raw_cid": "bafkreig3ndpgsxiq4tbvj7r2i4hpqx34hokssgk2ut26dmgd4lue5ku3qi",
+          "repository": "ipfs_accelerate_py",
+          "sha256": "sha256:db68de695d10e4c354fe3a470ef85f7c3b9529195aa4f5e1b0c3e2e84eaa9b82",
+          "size_bytes": 8506
+        }
+      ],
+      "objective_revision": "baguqeeralbl2yjo6l5gazcmslpzqtu67un4txk3wwpjr45thh5sckwq67yhq",
+      "policy_id": "policy:implementation-daemon",
+      "policy_revision": "sha256:27c8da23ef92ab263ac0c144f2414fd40bdb30aace98b88f7dd76d36db26e142",
+      "protected_paths": [
+        "data/agent_supervisor/proof_grounded_ir_learning/justice_dao_pinset.yaml",
+        "docs/architecture/proof_grounded_ir_learning.objectives.md",
+        "docs/architecture/proof_grounded_ir_learning.todo.md"
+      ],
+      "task_id": "PGIR-014"
+    },
+    "rights": {
+      "admitted_source_count": 0,
+      "binding_cid": "baguqeeradwaifkogmvvmxqffnnp2sbdemf3g4fd7zirgo55vfnebalicc5uq",
+      "file": {
+        "git_blob": "cdde4077349e98b0a2328877c092f270234f9f60",
+        "path": "ipfs_datasets_py/data/ir_learning/corpora/rights_manifest.json",
+        "raw_cid": "bafkreicqwape6yobtjizxtwvbfrmt5v3znp6culmaxpllwlyh4fibirpqu",
+        "repository": "ipfs_datasets_py",
+        "sha256": "sha256:50b01e4f61c19a519bced50962c9f6bbcb5fe1516c05deb5d9783f0a80a22f85",
+        "size_bytes": 144319
+      },
+      "pinset_id": "JDAO-PINSET-1",
+      "quarantined_source_count": 7173,
+      "source_count": 7173,
+      "task_id": "PGIR-011",
+      "training_admitted_rows": 0
+    },
+    "schema_registry": {
+      "binding_cid": "baguqeeraj2jmxcqbtesbxxjcbbg2ced2o46woub6wsanfbdccelyjmzc6nra",
+      "files": [
+        {
+          "git_blob": "71c13cae5d6ffc38d9b1ec4bee8ee90b255b3d0a",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/__init__.py",
+          "raw_cid": "bafkreicmabyeqlqatxl4xgdv5eisjvegqpndpvj7neomzmyg5ripepeunq",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:4c0070482e009dd7cb9875e91124d48683da37d53f691cccb306ec50f23c946c",
+          "size_bytes": 6942
+        },
+        {
+          "git_blob": "b52ee55d436de1a05c470ad602bcdd9470c81ab7",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/artifacts.py",
+          "raw_cid": "bafkreiddrfx3d62o6iv6kdlwtfwoibartjosbhib6bdknkccw64wqshlyy",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:63896fb1fb4ef22be50d76996ce404119a5d209d01f046a6a842b7b96848ebc6",
+          "size_bytes": 44109
+        },
+        {
+          "git_blob": "fa63fd302dad6340556a937b73883a25376f5f6b",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/canonical.py",
+          "raw_cid": "bafkreibttnlxqwa4dfjfu5uf5x2dfkxretgrfybng7gq5suizms2xbwa2a",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+          "size_bytes": 14098
+        },
+        {
+          "git_blob": "63af5a987404010aa0ec69fb827722afc9b53b81",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/claims.py",
+          "raw_cid": "bafkreibiftotu25brkiapgeggn6tmc5oitnboj2i7kr22jyv2idra4g6hm",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b",
+          "size_bytes": 16176
+        },
+        {
+          "git_blob": "4d3ab85d061a8d0d44e945af44dcf8ed23c9fcc9",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/diagnostics.py",
+          "raw_cid": "bafkreicqr7j4fxhjjipldyw76gpy6v4mz3bnd2kowhnsoqxxk6b6ep7rta",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:508fd3c2dce94a1eb1e2dff19f8f578ccec2d1e94eb1db2742f75783e23ff198",
+          "size_bytes": 20110
+        },
+        {
+          "git_blob": "fa2e4dadbd6e96e8502165f9c418fcc42c0ec484",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/evidence.py",
+          "raw_cid": "bafkreiecm5byfhjjms4x4e3sbnpkkkih3z37nmmorcdoli6a7nvjo76674",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:826743829d2964b97e13720b5ea52907de77f6b18e8886e5a3c0fb6a977fdeff",
+          "size_bytes": 12653
+        },
+        {
+          "git_blob": "69d77e91f4ec671c6355b0f035017b1fed2b38d0",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/identity.py",
+          "raw_cid": "bafkreidanp74d6jyywpuizi65ns4xhahhdqw4rs2vo5avwbo6bpdwwz3by",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e",
+          "size_bytes": 8911
+        },
+        {
+          "git_blob": "e0c645ccac9c3e89cc72e6a6c773a49528257946",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/protocols.py",
+          "raw_cid": "bafkreifukktqswrfetyoup2oj45dsvsd2msxzvxufy6hp6hbqf67ml3p5u",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:b452a7095a2524f0ea3f4e4f3a395643d3257cd6f42e3c77f8e1817df62f6fed",
+          "size_bytes": 57414
+        },
+        {
+          "git_blob": "9f2e8425894c8287ae0046153ac081734cb77d8d",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/provenance.py",
+          "raw_cid": "bafkreiaw5l34ewcvbzlclpaz43tundeucm5o3upilzsaoxyfpk2oklb67y",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe",
+          "size_bytes": 31891
+        },
+        {
+          "git_blob": "bd4c90c1b470c944b8953f64379232f8752f65e0",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/schema_registry.py",
+          "raw_cid": "bafkreia3efhkdefedrveke3xua54ohvij5tqgmkcspxxrrpsneec53spxy",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:1b214ea190a41c6a451377a03bc71ea84f6703314293ef78c5f269082eee4fbe",
+          "size_bytes": 31823
+        },
+        {
+          "git_blob": "7109b47372c94f3097c2712247b4863f4b0ad438",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/source_lineage.py",
+          "raw_cid": "bafkreiayt677jwhvlz3rxawpigqym25tuk53lsbn2pabmg3q65ymg7c6zu",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:189fbff4d8f55e771b82cf41a1866bb3a2bbb5c82dd3c0161b70f770c37c5ecd",
+          "size_bytes": 31626
+        }
+      ],
+      "implementation_commit": "1f1aa38bdc769f414cc86417625f41871c317617",
+      "repository_commit": "b20bd9e3cfae79e8888929daf64f52b2f8a5689a",
+      "schema_ids": [
+        "ir-corpus-manifest/v1",
+        "ir-derived-artifact/v1",
+        "ir-lineage-graph/v1",
+        "ir-source-record/v1",
+        "ir-source-record/v1.1",
+        "ir-source-release/v1"
+      ],
+      "strict_unknown_fields": true,
+      "task_id": "PGIR-010",
+      "tree_oid": "17458a86db7be9476c6404d881e1568178a8bc4f"
+    },
+    "source_snapshots": {
+      "authority_commits": {
+        "ipfs_accelerate_py": "8d46a6d25dd006c8cab3c9d9612707d2a014e79c",
+        "ipfs_datasets_py": "df93e91e6338c84a17c3208ef68b88de8566f78c"
+      },
+      "binding_cid": "baguqeerambigsx5yot5dasfs2rqwj2vu7vnkqlg2jbd2evn6f6b5vkfwuv4q",
+      "files": [
+        {
+          "git_blob": "34a293010fca8f7db43a79a41baa0d58561e13d4",
+          "path": "data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/manifest.json",
+          "raw_cid": "bafkreib5wamloc7elbykfrfsvvx3lvsslb2r2demhv6qrgxxjyve52pzfm",
+          "repository": "ipfs_accelerate_py",
+          "sha256": "sha256:3db018b70be45870a2c4b2ad6fb5d65258751d0c8c3d7d089af74e2a4ee9f92b",
+          "size_bytes": 571591
+        },
+        {
+          "git_blob": "d750aa09fa18dd9c002d9dfb8d25bb35d1e41fe5",
+          "path": "data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/result.json",
+          "raw_cid": "bafkreicwydedpvkkt767hwdbi4sotovf6gsxbki4e5dpuh3iznh5hy5dwy",
+          "repository": "ipfs_accelerate_py",
+          "sha256": "sha256:56c0c837d54a9ffdf3d8614724e9baa5f1a570a91c2746fa1f68cb4fd3e3a3b6",
+          "size_bytes": 2471
+        },
+        {
+          "git_blob": "367031c0275e6d7becc498abd6b71f2b1a2d127e",
+          "path": "docs/architecture/proof_grounded_ir_learning/inventory/supervisor.json",
+          "raw_cid": "bafkreib3suzbrghzdgsartkdosrhzd6elgitnj3l5p4gtu6zlfgaacx4oi",
+          "repository": "ipfs_accelerate_py",
+          "sha256": "sha256:3b95321898f919a408cd4374a27c8fc4599136a76bebf869d3d9594c000afc72",
+          "size_bytes": 103026
+        },
+        {
+          "git_blob": "ae013dacf1d8aaf14f5a1a6dd931715d384822c6",
+          "path": "ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/inventory/modules.json",
+          "raw_cid": "bafkreia2m6gmrutxospprnic7onsi54ngwffy4j5smbn5ykrtru3q2zn4u",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:1a678cc8d277749ef8b502fb9b24778d358a5c713d9302dee1519c69b86b2de5",
+          "size_bytes": 76464
+        },
+        {
+          "git_blob": "774ec487d5c55b58703c91960771d02134eabcad",
+          "path": "ipfs_datasets_py/data/ir_learning/source_inventory/release_inventory.json",
+          "raw_cid": "bafkreibj6hsux5lczreh4vyaxpsjjym5lpcd3dgsvrwdbgg74ne66ruijy",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:29f1e54bf562cc487e5700bbe494e19d5bc43d8cd2ac6c3098dfe349ef46884e",
+          "size_bytes": 76996
+        },
+        {
+          "git_blob": "4065ae6a68247f0a2e3fa50704f9d114fc6aab4e",
+          "path": "data/agent_supervisor/proof_grounded_ir_learning/baseline_tests/summary.json",
+          "raw_cid": "bafkreibsjcpdzeedpswqiieowkjn7ayqiap72ahbabwor4ih6hosunk4li",
+          "repository": "ipfs_accelerate_py",
+          "sha256": "sha256:32489e3c90837cad04208eb292df8310401ffd00e1006ce8f107f1dd2a355c5a",
+          "size_bytes": 85490
+        }
+      ],
+      "selected_datasets_commit": "b20bd9e3cfae79e8888929daf64f52b2f8a5689a",
+      "selected_repository_tree": "04fbb09b4a8b34e77d11bd8da6642e0978baa02c",
+      "source_manifest_cid": "baguqeerasownoxqyrppw3ft3us3yvd26ghvqnjl74nr2rw5o7sm3sjehip7a",
+      "source_result_identity": "sha256:86f7c07cf7b62847b81315b6529942da7647acf9922f32cf5ccef9d8bb221e9c",
+      "source_set_id": "SRCSET-1",
+      "task_ids": [
+        "PGIR-001",
+        "PGIR-002",
+        "PGIR-003",
+        "PGIR-004",
+        "PGIR-005"
+      ]
+    },
+    "split": {
+      "binding_cid": "baguqeerajllfwoyk3ztsigcstzdnslee6qg22rndwprupylolfn6iv5lifya",
+      "files": [
+        {
+          "git_blob": "2b4f8858f4b4d303798f553b66e91da4fbb349cc",
+          "path": "ipfs_datasets_py/data/ir_learning/splits/holdout_report.json",
+          "raw_cid": "bafkreib2puc43w7htk4vfiu4w7bl3wr5yf5ilnjkn5uw7imd57vokxprje",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:3a7d05cddbe79ab952a29cb7c2bdda3dc17a85b52a6f696fa183efeae55df149",
+          "size_bytes": 1170
+        },
+        {
+          "git_blob": "558c43b6f9359c135f0c06892e2bf7a4bd2a85f2",
+          "path": "ipfs_datasets_py/data/ir_learning/splits/ir_split_manifest.json",
+          "raw_cid": "bafkreie6kuvenupykd6qivosywy5q6aqa575gxvyr2uetzsn4jajbpawp4",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:9e552a46d1f850fd0455d2c5b1d87810077fd35eb88ea849e64de24090bc167f",
+          "size_bytes": 395278
+        },
+        {
+          "git_blob": "efe35292913e877c16b83b294cfa1d36609e8403",
+          "path": "ipfs_datasets_py/data/ir_learning/splits/leakage_report.json",
+          "raw_cid": "bafkreibxfihbpokyqjfvx226idhs32isjud3kgvl2trmtke67qw3dhgr4q",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:372a0e17b958824b5beb5e40cf2de9124d07b51aabd4e2c9a89efc2db19cd1e4",
+          "size_bytes": 56
+        },
+        {
+          "git_blob": "9e767ec3ecd0ba8b80a4408d8945767caf142c3d",
+          "path": "ipfs_datasets_py/data/ir_learning/splits/split_root.json",
+          "raw_cid": "bafkreifvelyv6jmx5veqf4nptn7tvlc3qvizhuujg2o7odgp3jooq6mptu",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:b522f15f2597ed4902f1af9b7f3aac5b855193d289369df70ccfda5ce8798f9d",
+          "size_bytes": 1398
+        },
+        {
+          "git_blob": "c705b31a7ee63cd39d3ffd05939e95fd53d366e7",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_eval_splits.py",
+          "raw_cid": "bafkreibmwkfmnzfal5cduiicxyuwvgskdlwpost44ssm2pk5wo7d3z2exe",
+          "repository": "ipfs_datasets_py",
+          "sha256": "sha256:2cb28ac6e4a05f443a2102be296a9a4a1aecf74a7ce4a4cd3d5db3be3de744b9",
+          "size_bytes": 57362
+        }
+      ],
+      "hidden_test_commitment": "sha256:6a801b51b980e666b4010da9a679ad8e11a233078f988165565481b98d4b9ded",
+      "holdouts": {
+        "compiler": {
+          "count": 0,
+          "split": "compiler",
+          "status": "insufficient"
+        },
+        "cross_reference": {
+          "count": 0,
+          "split": "cross_reference",
+          "status": "insufficient"
+        },
+        "domain": {
+          "count": 0,
+          "split": "domain",
+          "status": "insufficient"
+        },
+        "exception": {
+          "count": 0,
+          "split": "exception",
+          "status": "insufficient"
+        },
+        "family": {
+          "count": 4999,
+          "split": "statute_family",
+          "status": "populated"
+        },
+        "jurisdiction": {
+          "count": 74,
+          "split": "jurisdiction",
+          "status": "populated"
+        },
+        "length": {
+          "count": 0,
+          "split": "length",
+          "status": "insufficient"
+        },
+        "lineage": {
+          "count": 0,
+          "split": "lineage",
+          "status": "insufficient"
+        },
+        "notation": {
+          "count": 0,
+          "split": "notation",
+          "status": "insufficient"
+        },
+        "premise": {
+          "count": 0,
+          "split": "premise",
+          "status": "insufficient"
+        },
+        "proof_library": {
+          "count": 0,
+          "split": "proof_library",
+          "status": "insufficient"
+        },
+        "publication": {
+          "count": 0,
+          "split": "publication",
+          "status": "insufficient"
+        },
+        "rare_operator": {
+          "count": 0,
+          "split": "rare_operator",
+          "status": "insufficient"
+        },
+        "time": {
+          "count": 0,
+          "split": "temporal",
+          "status": "insufficient"
+        },
+        "type": {
+          "count": 0,
+          "split": "type",
+          "status": "insufficient"
+        }
+      },
+      "implementation_commit": "99717f2b7a7d2326064e3397d2442486778e13b1",
+      "leakage_passed": true,
+      "schema": "IRSplitManifest@1",
+      "split_manifest_digest": "sha256:047b263b85067aa3dad6760f623c2855fbaf776d565ec9c273c49425fcc14eb4",
+      "split_manifest_sha256": "sha256:9e552a46d1f850fd0455d2c5b1d87810077fd35eb88ea849e64de24090bc167f",
+      "task_id": "PGIR-012"
+    },
+    "tokenizer_policy": {
+      "binding_cid": "baguqeera3ibkwsynieevjkxqzzcuhjc6sovxzqdqrflnt7rrb3m5dsypdfta",
+      "file": {
+        "path": "data/agent_supervisor/proof_grounded_ir_learning/freeze/tokenizer_policy.json",
+        "raw_cid": "bafkreiher3joxlah7pnpfkv653fcfsdrnyoansmctogzzbfq2254e5xn3q",
+        "repository": "pgir-freeze",
+        "sha256": "sha256:e48ed2ebac07fbdaf2aabeeeca22c8716e1c06c9829b8d9c84b0d6bbc276eddc",
+        "size_bytes": 958
+      },
+      "policy_cid": "baguqeerahoedy5eyabjpcixpxwcjlbh54femnpb3krvirv3scto4nqfkplua",
+      "status": "no_learned_tokenizer_admitted",
+      "task_id": "PGIR-014"
+    }
+  },
+  "canonicalization": {
+    "cid": "CIDv1/base32/dag-json/sha2-256",
+    "identity_projection": "entire document excluding root_cid and root_sha256",
+    "json": "UTF-8; sorted keys; compact separators; ensure_ascii=false; no floats",
+    "rendering": "two-space indentation and one terminal LF"
+  },
+  "contract_version": 1,
+  "interface": "proof-grounded-ir-learning/campaign-input-root/v1",
+  "objective_id": "PGIR-014",
+  "objective_revision": "baguqeeralbl2yjo6l5gazcmslpzqtu67un4txk3wwpjr45thh5sckwq67yhq",
+  "qualification": {
+    "corpus_materialized": false,
+    "decision": "no_go",
+    "descendant_execution_authorized": false,
+    "insufficient_holdouts": [
+      "compiler",
+      "cross_reference",
+      "domain",
+      "exception",
+      "length",
+      "lineage",
+      "notation",
+      "premise",
+      "proof_library",
+      "publication",
+      "rare_operator",
+      "time",
+      "type"
+    ],
+    "leakage_passed": true,
+    "lease_barrier": "closed",
+    "reason_codes": [
+      "corpus_not_materialized",
+      "historical_semantic_baseline_not_currently_qualified",
+      "no_rights_admitted_training_rows",
+      "required_holdouts_insufficient"
+    ],
+    "rights_quarantined_rows": 7173,
+    "training_admitted_rows": 0,
+    "training_task_eligible_count": 0
+  },
+  "referential_integrity": {
+    "all_required_bindings_present": true,
+    "compiler_alias_resolved": true,
+    "decompiler_alias_resolved": true,
+    "hidden_labels_accessed": false,
+    "required_binding_names": [
+      "compiler",
+      "corpus",
+      "decompiler",
+      "example_contracts",
+      "gap_matrix",
+      "lineage",
+      "policy",
+      "rights",
+      "schema_registry",
+      "source_snapshots",
+      "split",
+      "tokenizer_policy"
+    ],
+    "source_or_split_mutated": false,
+    "unresolved_identities": []
+  },
+  "repository": {
+    "datasets_commit": "b20bd9e3cfae79e8888929daf64f52b2f8a5689a",
+    "repository_id": "repository:sha256:4d87e009c221f83df2c5846e6085d4917204de75df8dc438b045c3bbff059dbc",
+    "source_set_id": "SRCSET-1",
+    "source_tree_id": "04fbb09b4a8b34e77d11bd8da6642e0978baa02c"
+  },
+  "root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+  "root_sha256": "sha256:8a8cfcf2ebf7b735bcaf401299dd7806c3dff970c9bb81fdb199e0696a2cf575",
+  "schema": "IRCampaignInputRoot@1",
+  "supersession": {
+    "immutable": true,
+    "previous_root_cid": null,
+    "replacement_policy": "supersede_never_overwrite"
+  },
+  "task_id": "PGIR-014"
+}

@@ -1,0 +1,29 @@
+{
+  "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+  "completion_authoritative": false,
+  "decision": "no_go",
+  "descendant_execution_authorized": false,
+  "disposition": "frozen_no_go",
+  "manifest_cid": "baguqeeraiqnmkiyjxp5q3t76kjnojx2kmburqqsduye33k2ghx7iijxsgkxa",
+  "objective_revision": "baguqeeralbl2yjo6l5gazcmslpzqtu67un4txk3wwpjr45thh5sckwq67yhq",
+  "plan_admission_receipt_id": "baguqeera2nvxj5chnrbyu2yzpbyny6gmccqegjg6ydpfzaulav65lbcelcgq",
+  "reason_codes": [
+    "corpus_not_materialized",
+    "historical_semantic_baseline_not_currently_qualified",
+    "no_rights_admitted_training_rows",
+    "required_holdouts_insufficient"
+  ],
+  "repository_id": "repository:sha256:4d87e009c221f83df2c5846e6085d4917204de75df8dc438b045c3bbff059dbc",
+  "result_cid": "baguqeerai2ipwhyywztjob62ju5pokmm4o6unqqee3poyrabj37aby6fuoca",
+  "result_identity": "RESULT(PGIR-014)",
+  "result_sha256": "sha256:4690fb1f18b6669707da4d3af7298ce3bd46c20426deec44014efe00e3c5a384",
+  "revision_set_cid": "baguqeerakogtsnyz26ycza6qhzh5uysuyg6xffsfskvsumnwpeqvtzs57hga",
+  "rollback": "retain this immutable root and create a separately admitted superseding root",
+  "schema": "pgir-task-result@1",
+  "source_tree_id": "04fbb09b4a8b34e77d11bd8da6642e0978baa02c",
+  "supersedes_result_cid": "baguqeeravwtoxdkhmlg4khg7wg5vqtiv6vq5byd2ecy27bkcjyvkjjoo4q3q",
+  "task_id": "PGIR-014",
+  "training_task_eligible_count": 0,
+  "unresolved_identities": [],
+  "verification_receipt_cid": "baguqeerawwhkasyb5gqcjfh3jlhmrpyidv5ddsq66xln3ycxyityfgk7myya"
+}
