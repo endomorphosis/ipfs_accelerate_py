@@ -934,7 +934,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-060 Implement IR learning campaign contracts and APIs
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
