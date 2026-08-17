@@ -862,7 +862,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-052 Integrate hammer portfolio with independent checker authority
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
