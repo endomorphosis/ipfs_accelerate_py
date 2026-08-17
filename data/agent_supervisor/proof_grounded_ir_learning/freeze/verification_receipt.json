@@ -1,0 +1,59 @@
+{
+  "all_integrity_checks_passed": true,
+  "authorizes_execution": false,
+  "campaign_decision": "no_go",
+  "campaign_input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+  "checks": [
+    {
+      "check_id": "canonical-root-identity",
+      "evidence": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+      "status": "passed"
+    },
+    {
+      "check_id": "exact-file-bindings",
+      "evidence": "41 unique exact-byte bindings",
+      "status": "passed"
+    },
+    {
+      "check_id": "required-semantic-domains",
+      "evidence": "12 closed binding domains",
+      "status": "passed"
+    },
+    {
+      "check_id": "rights-count-reconciliation",
+      "evidence": "0 admitted plus 7173 quarantined equals 7173 sources",
+      "status": "passed"
+    },
+    {
+      "check_id": "lineage-and-split-leakage",
+      "evidence": "baguqeerajllfwoyk3ztsigcstzdnslee6qg22rndwprupylolfn6iv5lifya",
+      "status": "passed"
+    },
+    {
+      "check_id": "compiler-decompiler-resolution",
+      "evidence": "both CURRENT-1 aliases resolve to exact code/configuration bindings",
+      "status": "passed"
+    },
+    {
+      "check_id": "descendant-task-revisions",
+      "evidence": "baguqeerakogtsnyz26ycza6qhzh5uysuyg6xffsfskvsumnwpeqvtzs57hga",
+      "status": "passed"
+    },
+    {
+      "check_id": "supervisor-plan-admission",
+      "evidence": "baguqeera2nvxj5chnrbyu2yzpbyny6gmccqegjg6ydpfzaulav65lbcelcgq",
+      "status": "passed"
+    },
+    {
+      "check_id": "fail-closed-lease-barrier",
+      "evidence": "no-go root revises 26 descendants with zero lease-eligible tasks",
+      "status": "passed"
+    }
+  ],
+  "plan_admission_receipt_id": "baguqeera2nvxj5chnrbyu2yzpbyny6gmccqegjg6ydpfzaulav65lbcelcgq",
+  "receipt_cid": "baguqeerawwhkasyb5gqcjfh3jlhmrpyidv5ddsq66xln3ycxyityfgk7myya",
+  "revision_set_cid": "baguqeerakogtsnyz26ycza6qhzh5uysuyg6xffsfskvsumnwpeqvtzs57hga",
+  "schema": "PGIRFreezeVerificationReceipt@1",
+  "verification_verdict": "verified",
+  "verifier_interface": "pgir-freeze-independent-verifier/v1"
+}
