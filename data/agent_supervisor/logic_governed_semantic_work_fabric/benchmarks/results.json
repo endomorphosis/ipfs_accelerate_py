@@ -1,0 +1,77 @@
+{
+  "control_plane": {
+    "authority": "duckdb_quack",
+    "ducklake": "optional_non_authoritative"
+  },
+  "generated_at": "2026-08-17T04:40:03Z",
+  "honesty": "Raw full A-D sealed repetitions were not substituted with target values. Only the live Quack control probe is marked observed.",
+  "modes": [
+    {
+      "mode": "embedded_duckdb_one_writer",
+      "notes": "Direct multi-process file opens of control.duckdb are refused while the Quack state-owner holds the exclusive file. Execution and coordination stay on local sidecar files.",
+      "role": "bootstrap_or_sidecar_only",
+      "status": "not_live_control"
+    },
+    {
+      "endpoint": "quack:127.0.0.1:41307",
+      "mode": "duckdb_quack_control",
+      "notes": "Live Quack ATTACH + TOKEN saw the datasets-authoritative control catalog. This is the multi-reader/multi-writer control transport.",
+      "probe": "select_count_from_tasks",
+      "role": "authoritative_control_plane",
+      "status": "observed",
+      "task_count": 47
+    },
+    {
+      "mode": "optional_ducklake_history_projection",
+      "notes": "DuckLake was not started. It is optional history projection, not control. Unavailable is a no-go cell, not a simulated success.",
+      "reason": "typed_unavailable",
+      "role": "non_authoritative",
+      "status": "unavailable"
+    }
+  ],
+  "schema": "lgswf/benchmark-results@1",
+  "status": "reported",
+  "suite_cells": [
+    {
+      "ducklake": "typed_unavailable",
+      "embedded": "typed_unavailable_not_executed",
+      "quack_control": "smoke_observed",
+      "suite": "A"
+    },
+    {
+      "ducklake": "typed_unavailable",
+      "embedded": "typed_unavailable_not_executed",
+      "quack_control": "typed_unavailable_not_executed",
+      "suite": "B"
+    },
+    {
+      "ducklake": "typed_unavailable",
+      "embedded": "typed_unavailable_not_executed",
+      "quack_control": "typed_unavailable_not_executed",
+      "suite": "C"
+    },
+    {
+      "ducklake": "typed_unavailable",
+      "embedded": "typed_unavailable_not_executed",
+      "quack_control": "typed_unavailable_not_executed",
+      "suite": "D"
+    }
+  ],
+  "suites": [
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "targets_remain_targets": {
+    "backlog_drain_minutes": 30,
+    "commit_p95_regression_pct": 5,
+    "commit_p99_regression_pct": 10,
+    "duplicate_or_missing_rows": 0,
+    "heartbeat_p99_ms": 50,
+    "parity": "100%",
+    "projection_vs_peak": ">=2x",
+    "rpo_seconds": 0,
+    "rto_seconds": 300
+  }
+}

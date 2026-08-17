@@ -452,6 +452,12 @@ class DuckDBConnection:
         if normalized in {"PRAGMA FOREIGN_KEYS=ON", "PRAGMA JOURNAL_MODE=WAL"}:
             return DuckDBCursor(self._connection)
         catalog = getattr(self, "_default_catalog", None)
+        if catalog and _quack_owner_mutation_required(normalized):
+            return _execute_quack_owner_mutation(
+                statement,
+                parameters,
+                dml=True,
+            )
         if catalog and not normalized.startswith("USE "):
             self._connection.execute(f"USE {catalog}")
             _consume_duckdb_result(self._connection)
@@ -560,6 +566,103 @@ def is_quack_transport_target(target: object) -> bool:
 
 _QUACK_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,}$")
 _QUACK_CONTROL_CATALOG = "control_plane"
+_QUACK_OWNER_DML_PREFIXES = (
+    "UPDATE ",
+    "DELETE ",
+    "MERGE ",
+    "INSERT OR REPLACE",
+    "INSERT OR IGNORE",
+)
+
+
+def quack_owner_mutation_dir(store_id: object = "") -> Path | None:
+    """Return the exclusive owner's local mutation inbox, if configured."""
+
+    explicit = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", "") or ""
+    ).strip()
+    if explicit:
+        return Path(explicit)
+    store = str(
+        store_id
+        or os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "")
+        or ""
+    ).strip()
+    if not store:
+        return None
+    path = Path(store)
+    if path.suffix.lower() in {".duckdb", ".ddb"}:
+        return path.expanduser().resolve().parent / "quack-owner" / "mutations"
+    return None
+
+
+def _quack_owner_mutation_required(normalized: str) -> bool:
+    return normalized.startswith(_QUACK_OWNER_DML_PREFIXES)
+
+
+def _execute_quack_owner_mutation(
+    statement: str,
+    parameters: Iterable[Any] | Mapping[str, Any] | None,
+    *,
+    dml: bool,
+) -> DuckDBCursor:
+    """Apply UPDATE/DELETE on the exclusive owner connection.
+
+    This Quack ATTACH build can SELECT/INSERT new rows but cannot UPDATE or
+    DELETE attached base tables. Mutations stay on the state-owner that
+    already holds the exclusive file connection.
+    """
+
+    import json
+    import uuid
+
+    target = quack_owner_mutation_dir()
+    if target is None:
+        raise DuckDBConnectionPolicyError(
+            "quack ATTACH cannot UPDATE/DELETE remote base tables; set "
+            "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR or "
+            "IPFS_ACCELERATE_AGENT_STATE_STORE_ID so the state-owner can "
+            "apply the mutation"
+        )
+    target.mkdir(parents=True, exist_ok=True)
+    request_id = uuid.uuid4().hex
+    request_path = target / f"{request_id}.request.json"
+    done_path = target / f"{request_id}.done.json"
+    if parameters is None:
+        bound: Any = None
+    elif isinstance(parameters, Mapping):
+        bound = dict(parameters)
+    else:
+        bound = list(parameters)
+    request_path.write_text(
+        json.dumps({"sql": statement, "parameters": bound}, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+    deadline = time.monotonic() + 15.0
+    while time.monotonic() < deadline:
+        if done_path.is_file():
+            payload = json.loads(done_path.read_text(encoding="utf-8"))
+            try:
+                request_path.unlink(missing_ok=True)
+                done_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            if payload.get("ok") is not True:
+                raise DuckDBConnectionPolicyError(
+                    "quack owner mutation failed: "
+                    + str(payload.get("error") or "unknown")
+                )
+            cursor = DuckDBCursor.__new__(DuckDBCursor)
+            cursor._columns = ()
+            cursor._rows = []
+            cursor._offset = 0
+            cursor.rowcount = int(payload.get("rowcount") or -1)
+            return cursor
+        time.sleep(0.05)
+    raise DuckDBConnectionPolicyError(
+        "timed out waiting for quack state-owner to apply mutation"
+    )
 
 
 def _consume_duckdb_result(connection: Any) -> None:
