@@ -357,6 +357,33 @@ def test_kernel_unavailability_is_typed_and_never_verified() -> None:
     assert not _receipt(result).is_kernel_verified
 
 
+def test_wrong_kernel_version_and_stale_environment_fail_closed() -> None:
+    record, evidence, lock = _packet("lean")
+    version = verify_kernel_reconstruction(
+        record,
+        evidence,
+        lock,
+        bindings=_bindings("lean"),
+        expected_kernel_version="4.19.0",
+        independent=True,
+    )
+    stale = verify_kernel_reconstruction(
+        record,
+        evidence,
+        lock,
+        bindings=_bindings("lean"),
+        expected_environment_lock_id="lock:current-campaign",
+        independent=True,
+    )
+
+    assert version.failure_code is KernelFailureCode.VERSION_MISMATCH
+    assert not version.accepted
+    assert version.verdict is not ProofVerdict.PROVED
+    assert stale.failure_code is KernelFailureCode.ENVIRONMENT_MISMATCH
+    assert not stale.accepted
+    assert stale.verdict is not ProofVerdict.PROVED
+
+
 def test_authoritative_verdict_is_checked_during_receipt_round_trip() -> None:
     record, evidence, lock = _packet("lean")
     result = IndependentKernelVerifier().verify(

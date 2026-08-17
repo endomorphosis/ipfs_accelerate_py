@@ -37,7 +37,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Final, Protocol
 
 from ..runtime.resource_scheduler import HostResourceSnapshot, ProviderCapacity
 
@@ -107,10 +107,19 @@ _FAMILY_ALIASES: Mapping[str, MultiProverResourceClass] = {
     "protocol": MultiProverResourceClass.PROTOCOL_VERIFICATION,
     "tamarin": MultiProverResourceClass.PROTOCOL_VERIFICATION,
     "proverif": MultiProverResourceClass.PROTOCOL_VERIFICATION,
+    "vampire": MultiProverResourceClass.ATP,
+    "eprover": MultiProverResourceClass.ATP,
+    "dcec": MultiProverResourceClass.TRANSLATION,
+    "tdfol": MultiProverResourceClass.TRANSLATION,
+    "datalog_secpal": MultiProverResourceClass.JVM_MODEL_CHECKING,
+    "tla_tlc": MultiProverResourceClass.JVM_MODEL_CHECKING,
+    "tlc": MultiProverResourceClass.JVM_MODEL_CHECKING,
+    "hyperltl_autohyper_mchyper": MultiProverResourceClass.HYPERPROPERTY_CHECKING,
     "hyperproperty": MultiProverResourceClass.HYPERPROPERTY_CHECKING,
     "hyperltl": MultiProverResourceClass.HYPERPROPERTY_CHECKING,
     "autohyper": MultiProverResourceClass.HYPERPROPERTY_CHECKING,
     "runtime": MultiProverResourceClass.RUNTIME_MONITOR,
+    "runtime_mtl": MultiProverResourceClass.RUNTIME_MONITOR,
     "monitor": MultiProverResourceClass.RUNTIME_MONITOR,
     "mtl": MultiProverResourceClass.RUNTIME_MONITOR,
     "model": MultiProverResourceClass.LLM_INFERENCE,
@@ -137,6 +146,100 @@ def normalize_prover_resource_class(value: Any) -> MultiProverResourceClass:
     if alias is None:
         raise ValueError(f"unsupported prover resource class: {value!r}")
     return alias
+
+
+SOLVER_RESOURCE_SHARD: Final = "solver"
+CHECKER_RESOURCE_SHARD: Final = "checker"
+
+_CHECKER_RESOURCE_CLASSES: Final = frozenset(
+    {
+        MultiProverResourceClass.ITP_KERNEL,
+        MultiProverResourceClass.JVM_MODEL_CHECKING,
+        MultiProverResourceClass.PROTOCOL_VERIFICATION,
+        MultiProverResourceClass.HYPERPROPERTY_CHECKING,
+    }
+)
+_ROLE_RESOURCE_CLASSES: Final = {
+    "kernel": MultiProverResourceClass.ITP_KERNEL,
+    "model_checker": MultiProverResourceClass.JVM_MODEL_CHECKING,
+    "candidate": MultiProverResourceClass.ATP,
+    "orchestrator": MultiProverResourceClass.ATP,
+    "domain_reasoner": MultiProverResourceClass.TRANSLATION,
+    "model_assistant": MultiProverResourceClass.LLM_INFERENCE,
+}
+
+
+def resource_shard_for_class(value: Any) -> str:
+    """Separate solver work from independent checker work for lease fencing."""
+
+    family = normalize_prover_resource_class(value)
+    if family in _CHECKER_RESOURCE_CLASSES:
+        return CHECKER_RESOURCE_SHARD
+    return SOLVER_RESOURCE_SHARD
+
+
+def resource_class_for_prover(prover_id: Any, role: Any = None) -> MultiProverResourceClass:
+    """Map a reviewed portfolio lane onto the current resource taxonomy."""
+
+    try:
+        return normalize_prover_resource_class(prover_id)
+    except ValueError:
+        pass
+    role_value = str(getattr(role, "value", role) or "").strip().lower().replace("-", "_")
+    family = _ROLE_RESOURCE_CLASSES.get(role_value)
+    if family is not None:
+        return family
+    raise ValueError(f"unsupported prover resource class: {prover_id!r}")
+
+
+def portfolio_lane_resource_request(
+    *,
+    plan_id: str,
+    prover_id: str,
+    role: Any = None,
+    memory_bytes: int = 0,
+    process_slots: int = 1,
+    thread_slots: int = 1,
+) -> "ProverResourceRequest":
+    """Build the accounted child request for one ATP/SMT/hammer/checker lane."""
+
+    family = resource_class_for_prover(prover_id, role)
+    return ProverResourceRequest.for_family(
+        f"{plan_id}:{prover_id}:{resource_shard_for_class(family)}",
+        family,
+        memory_bytes=memory_bytes,
+        process_slots=process_slots,
+        thread_slots=thread_slots,
+    )
+
+
+def admit_portfolio_lane(
+    lease: "MultiProverResourceLease | None",
+    request: "ProverResourceRequest",
+) -> tuple["ResourceAdmission", "ChildResourceLease | None"]:
+    """Admit one portfolio lane against the current shared resource lease."""
+
+    if lease is None:
+        return ResourceAdmission(True, request.task_id), None
+    return lease.try_acquire(request)
+
+
+def admit_hammer_portfolio(
+    lease: "MultiProverResourceLease | None",
+    *,
+    request_id: str,
+    memory_bytes: int = 0,
+    process_slots: int = 1,
+) -> tuple["ResourceAdmission", "ChildResourceLease | None"]:
+    """Admit one datasets-hammer portfolio against the solver shard fence."""
+
+    request = ProverResourceRequest.for_family(
+        f"hammer:{request_id}:{SOLVER_RESOURCE_SHARD}",
+        MultiProverResourceClass.ATP,
+        memory_bytes=memory_bytes,
+        process_slots=max(1, process_slots),
+    )
+    return admit_portfolio_lane(lease, request)
 
 
 def _nonnegative(value: Any, name: str) -> int:
@@ -1833,6 +1936,8 @@ __all__ = [
     "MultiProverResourceManager",
     "MultiProverSerialSupervisor",
     "PROVER_RESOURCE_CLASSES",
+    "SOLVER_RESOURCE_SHARD",
+    "CHECKER_RESOURCE_SHARD",
     "ProverExecutionContext",
     "ProverExecutionReceipt",
     "ProverFamily",
@@ -1847,8 +1952,13 @@ __all__ = [
     "SharedProverBudget",
     "SharedResourceLease",
     "TopLevelResourceLease",
+    "admit_hammer_portfolio",
+    "admit_portfolio_lane",
+    "normalize_prover_resource_class",
+    "portfolio_lane_resource_request",
+    "resource_class_for_prover",
+    "resource_shard_for_class",
     "UnifiedProverBudget",
     "adaptive_portfolio_width",
     "dependency_closed_ready_slice",
-    "normalize_prover_resource_class",
 ]
