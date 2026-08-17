@@ -56372,17 +56372,24 @@ class DatabaseImplementationDaemon:
                 )
             self._quack_uri = resolved_quack_uri
             self._store_target = resolved_quack_uri
-            self.database_path = Path(str(database_path))
+            # Control and coordination go through the Quack state-owner.
+            # Execution metadata stays process-local; Quack ATTACH cannot
+            # create owner-only indexes on the remote base table.
+            control_path = Path(str(database_path))
+            self.database_path = control_path
             self.coordination_path = Path(
                 str(coordination_path)
                 if coordination_path is not None
                 else str(database_path)
             )
-            self.execution_path = Path(
-                str(execution_path)
-                if execution_path is not None
-                else str(database_path)
-            )
+            if execution_path is not None:
+                self.execution_path = Path(execution_path)
+            elif control_path.suffix.lower() in {".duckdb", ".ddb"}:
+                self.execution_path = control_path.with_name(
+                    f"{control_path.stem}.execution.duckdb"
+                ).absolute()
+            else:
+                self.execution_path = Path("control.execution.duckdb").absolute()
         else:
             self._quack_uri = ""
             self.database_path = Path(database_path).absolute()
@@ -56538,13 +56545,10 @@ class DatabaseImplementationDaemon:
             from ..task_sources.duckdb_state import open_duckdb_connection
 
             self._verify_control_schema_for_open()
-            if self.authority_mode != "quack":
-                self._acquire_embedded_writer_lock()
+            self._acquire_embedded_writer_lock()
             try:
-                if self.authority_mode != "quack":
-                    self.execution_path.parent.mkdir(parents=True, exist_ok=True)
-                store_target = getattr(self, "_store_target", self.execution_path)
-                self._connection = open_duckdb_connection(store_target)
+                self.execution_path.parent.mkdir(parents=True, exist_ok=True)
+                self._connection = open_duckdb_connection(self.execution_path)
                 for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
                     self._connection.execute(statement)
                 for key, value in (
