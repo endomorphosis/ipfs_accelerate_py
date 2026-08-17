@@ -562,8 +562,14 @@ def open_quack_transport_connection(
                 )
             attach += f", TOKEN '{secret}'"
         attach += ")"
-        connection.execute(attach)
+        attached = connection.execute(attach)
+        try:
+            attached.fetchall()
+        except Exception:
+            pass
         connection.execute("USE control_plane")
+        # Prove the attached control catalog is visible on this connection.
+        connection.execute("SELECT count(*) FROM control_plane.tasks")
     except Exception:
         try:
             connection.close()
