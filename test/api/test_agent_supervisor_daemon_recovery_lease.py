@@ -8,9 +8,25 @@ from types import SimpleNamespace
 import pytest
 
 import ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon as daemon_module
+from ipfs_accelerate_py.agent_supervisor.merge.campaign_leases import (
+    AttemptBoundError,
+    CampaignLeaseCoordinator,
+    DuplicateWriterError,
+    LeaseExpiredError,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_mutation_lock_path,
     update_checkout_mutation_lease,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.learning_checkpoint import (
+    LEASE_DEFAULT_DURATION_MS,
+    LEASE_DEFAULT_HEARTBEAT_MS,
+    LEASE_DEFAULT_MAX_ATTEMPTS,
+    L3ResourceKind,
+    NAMED_L3_RESOURCES,
+    StaleFenceError,
+    assert_distinct_l3_lease_keys,
+    exclusive_lease_key,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
     TaskSourceIntegrityError,
@@ -509,3 +525,73 @@ def test_same_process_consumer_recovers_foreign_state_and_todo_lease(
         json.loads(line) for line in primary.events_path.read_text(encoding="utf-8").splitlines()
     ]
     assert any(event["type"] == "checkout_mutation_recovery_attached" for event in events)
+
+
+class _LeaseClock:
+    def __init__(self, start: float = 1_000.0) -> None:
+        self.now = float(start)
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += float(seconds)
+
+
+def test_named_l3_lease_keys_are_distinct_and_default_policy() -> None:
+    keys = assert_distinct_l3_lease_keys()
+    assert len(keys) == len(NAMED_L3_RESOURCES)
+    assert LEASE_DEFAULT_DURATION_MS == 30 * 60 * 1000
+    assert LEASE_DEFAULT_HEARTBEAT_MS == 60 * 1000
+    assert LEASE_DEFAULT_MAX_ATTEMPTS == 3
+    assert exclusive_lease_key(L3ResourceKind.CHECKPOINT) != exclusive_lease_key(
+        L3ResourceKind.PROMOTION_POINTER
+    )
+    assert exclusive_lease_key(L3ResourceKind.TOKENIZER) == "l3:tokenizer"
+    assert exclusive_lease_key(L3ResourceKind.PROOF_SHARD, resource_id="shard-a") == (
+        "l3:proof-shard:shard-a"
+    )
+
+
+def test_duplicate_writer_is_denied_while_lease_live(tmp_path: Path) -> None:
+    clock = _LeaseClock()
+    coordinator = CampaignLeaseCoordinator(tmp_path, clock=clock)
+    first = coordinator.acquire(L3ResourceKind.CHECKPOINT, owner_id="writer-a")
+    with pytest.raises(DuplicateWriterError, match="duplicate writer"):
+        coordinator.acquire(L3ResourceKind.CHECKPOINT, owner_id="writer-b")
+    renewed = coordinator.acquire(L3ResourceKind.CHECKPOINT, owner_id="writer-a")
+    assert renewed.lease_id == first.lease_id
+    assert renewed.fence == first.fence + 1
+    tokenizer = coordinator.acquire(L3ResourceKind.TOKENIZER, owner_id="writer-b")
+    assert tokenizer.lease_key != first.lease_key
+
+
+def test_stale_fence_cannot_overwrite_or_heartbeat(tmp_path: Path) -> None:
+    clock = _LeaseClock()
+    coordinator = CampaignLeaseCoordinator(tmp_path, clock=clock)
+    lease = coordinator.acquire(L3ResourceKind.RUN, owner_id="trainer")
+    current = coordinator.heartbeat(lease, expected_fence=lease.fence)
+    with pytest.raises(StaleFenceError, match="stale fence"):
+        coordinator.assert_write_fence(lease, lease.fence)
+    with pytest.raises(StaleFenceError, match="stale fence"):
+        coordinator.heartbeat(lease, expected_fence=lease.fence)
+    guarded = coordinator.assert_write_fence(current, current.fence)
+    assert guarded.fence == current.fence
+
+
+def test_expired_lease_reclaim_advances_fence_and_bounds_attempts(tmp_path: Path) -> None:
+    clock = _LeaseClock()
+    coordinator = CampaignLeaseCoordinator(tmp_path, clock=clock)
+    first = coordinator.acquire(L3ResourceKind.CORPUS, owner_id="builder-a")
+    clock.advance((LEASE_DEFAULT_DURATION_MS / 1000.0) + 1.0)
+    with pytest.raises(LeaseExpiredError):
+        coordinator.heartbeat(first, expected_fence=first.fence)
+    second = coordinator.acquire(L3ResourceKind.CORPUS, owner_id="builder-b")
+    assert second.fence == first.fence + 1
+    assert second.attempt == 2
+    clock.advance((LEASE_DEFAULT_DURATION_MS / 1000.0) + 1.0)
+    third = coordinator.acquire(L3ResourceKind.CORPUS, owner_id="builder-c")
+    assert third.attempt == 3
+    clock.advance((LEASE_DEFAULT_DURATION_MS / 1000.0) + 1.0)
+    with pytest.raises(AttemptBoundError, match="3 attempts"):
+        coordinator.acquire(L3ResourceKind.CORPUS, owner_id="builder-d")
