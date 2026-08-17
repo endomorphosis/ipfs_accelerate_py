@@ -8220,6 +8220,7 @@ class PortalImplementationSupervisor:
             latest_log_path=self.config.state_dir / f"{prefix}_managed_daemon.latest.log",
             daemon_process_match_all=command,
             worktree_root=self.config.worktree_root,
+            launch_env=_managed_daemon_child_environment(),
         )
         return SupervisorLoopConfig(
             spec=spec,
@@ -17189,7 +17190,14 @@ class PortalImplementationSupervisor:
     def _start_daemon(self) -> subprocess.Popen[str]:
         self.ensure_managed_daemon_pid_file()
         command = self._build_daemon_command()
-        process = subprocess.Popen(command, cwd=self.config.repo_root, text=True)
+        env = os.environ.copy()
+        env.update(_managed_daemon_child_environment())
+        process = subprocess.Popen(
+            command,
+            cwd=self.config.repo_root,
+            text=True,
+            env=env,
+        )
         write_text_atomic(self._managed_daemon_pid_path(), f"{process.pid}\n")
         return process
 
@@ -18443,6 +18451,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--state-prefix",
         default="portal",
         help="State file prefix inside --state-dir",
+    )
+    parser.add_argument(
+        "--task-source-kind",
+        choices=("legacy-markdown", "markdown", "duckdb"),
+        default="legacy-markdown",
+        help="Storage contract forwarded from the multi-supervisor runner.",
+    )
+    parser.add_argument(
+        "--authority-mode",
+        default="legacy_markdown",
+        help="State authority mode forwarded from the multi-supervisor runner.",
+    )
+    parser.add_argument(
+        "--state-failover-policy",
+        default="fail_closed",
+        help="State failover policy forwarded from the multi-supervisor runner.",
+    )
+    parser.add_argument(
+        "--explicit-legacy-task-source",
+        action="store_true",
+        help="Acknowledge an explicit legacy markdown task source.",
     )
     implement_group = parser.add_mutually_exclusive_group()
     implement_group.add_argument(

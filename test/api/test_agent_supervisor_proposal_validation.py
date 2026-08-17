@@ -572,6 +572,48 @@ def test_declared_validation_config_authority_allows_additions_only() -> None:
     )
 
 
+def test_task_owned_workflow_add_is_admitted_without_global_config_flag() -> None:
+    path = ".github/workflows/mcplusplus-1.0-gap-closure.yml"
+    policy = _policy(
+        allowed_paths=(".github/workflows/",),
+        task_owned_paths=(".github/workflows/",),
+        allow_validation_config_changes=False,
+    )
+    added = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                path,
+                before=None,
+                after="name: MCP++ 1.0 Gap Closure\n",
+                change_kind=DiffChangeKind.ADD,
+                old_path="",
+            )
+        ),
+        policy=policy,
+    )
+    foreign = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                path,
+                before=None,
+                after="name: MCP++ 1.0 Gap Closure\n",
+                change_kind=DiffChangeKind.ADD,
+                old_path="",
+            )
+        ),
+        policy=_policy(
+            allowed_paths=(".github/workflows/",),
+            task_owned_paths=("ipfs_accelerate_py/agent_supervisor/",),
+            allow_validation_config_changes=False,
+        ),
+    )
+
+    assert added.accepted
+    assert ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN in _finding_codes(
+        foreign
+    )
+
+
 def test_lossy_unsafe_rename_path_cannot_disappear_during_normalization() -> None:
     entry = _entry(
         change_kind=DiffChangeKind.RENAME,

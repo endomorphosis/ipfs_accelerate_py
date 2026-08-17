@@ -14,7 +14,6 @@ import inspect
 import json
 import os
 import re
-import sqlite3
 import threading
 import time
 import uuid
@@ -26,6 +25,8 @@ from typing import Any
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
+
+from ipfs_accelerate_py.mcp_server.mcplusplus.storage.engine import connect_sql_engine
 
 from mcplusplus_profile_h import (
     CallbackFacilitator,
@@ -207,7 +208,6 @@ class AcceleratorExecutionStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         with self._connect() as db:
-            db.execute("PRAGMA journal_mode=WAL")
             db.execute(
                 "CREATE TABLE IF NOT EXISTS executions ("
                 "idempotency_key TEXT PRIMARY KEY,request_cid TEXT NOT NULL,operation TEXT NOT NULL,"
@@ -216,8 +216,8 @@ class AcceleratorExecutionStore:
                 "created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,detail TEXT)"
             )
 
-    def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.path, timeout=30, isolation_level=None)
+    def _connect(self):
+        return connect_sql_engine(self.path)
 
     def begin(self, *, context: RequestContext, operation: str, kind: str, tier_name: str,
               tier: ComputeTier, settlement_cid: str, subject: str, model: str,
@@ -392,7 +392,7 @@ class PaidAcceleratorService:
             DuckDBPaymentLedger(self.state_dir / "payments.duckdb"), facilitator, self.artifacts,
             seller_did=config.seller_did, descriptor_cid=config.descriptor_cid, clock_ms=self.clock_ms,
         )
-        self.executions = AcceleratorExecutionStore(self.state_dir / "executions.sqlite3", self.artifacts, self.clock_ms)
+        self.executions = AcceleratorExecutionStore(self.state_dir / "executions.duckdb", self.artifacts, self.clock_ms)
         self._catalog = self._build_catalog()
         mode = control_mode or ("local-test" if isinstance(facilitator, CallbackFacilitator) else "facilitator")
         self.control_plane = ProfileHControlPlane(

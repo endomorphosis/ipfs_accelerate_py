@@ -4007,7 +4007,24 @@ class ProposalValidator:
                 _path_matches(entry.path, config_path)
                 for config_path in _VALIDATION_CONFIG_PATHS
             ):
-                if not policy.allow_validation_config_changes:
+                # Board-declared outputs may introduce new validation-config
+                # files (e.g. CiWorkflow@1 under .github/workflows/). Updates to
+                # existing task-owned configs must stay non-weakening. Global
+                # allow_validation_config_changes remains additive-only.
+                task_owned_config = policy.path_is_task_owned(entry.path)
+                if task_owned_config:
+                    if (
+                        entry.before_source is not None
+                        and entry.after_source is not None
+                        and not _validation_config_change_is_additive(entry)
+                    ):
+                        add(
+                            ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN,
+                            ProposalGate.CONTENT,
+                            "task-owned validation configuration changes must be additive and non-weakening",
+                            entry.path,
+                        )
+                elif not policy.allow_validation_config_changes:
                     add(
                         ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN,
                         ProposalGate.CONTENT,
