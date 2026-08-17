@@ -898,7 +898,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-053 Implement bounded expert iteration
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
