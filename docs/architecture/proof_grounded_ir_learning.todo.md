@@ -1042,7 +1042,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-070 Implement checkpoint lifecycle and promotion manifest
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
