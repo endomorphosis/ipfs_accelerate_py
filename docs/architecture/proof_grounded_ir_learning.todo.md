@@ -178,7 +178,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-005 Seal focused pre-change test evidence and repair prerequisites
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
