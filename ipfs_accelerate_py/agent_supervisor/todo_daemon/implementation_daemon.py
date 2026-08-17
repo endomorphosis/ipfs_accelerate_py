@@ -1726,15 +1726,38 @@ def task_evidence_output_paths(task: PortalTask) -> tuple[str, ...]:
     return _task_evidence_output_paths_from_metadata(task.metadata)
 
 
+def _declared_output_path_is_repo_relative(path: str) -> bool:
+    """Return whether a declared output can be tracked inside a Git tree.
+
+    Retry-budget and reconciliation cards copy host discovery directories as
+    absolute Outputs so ``test -f`` evidence stays findable. Those paths are
+    not repository objects; treating them as declared outputs fails commit
+    handoff with ``declared_output_path_unsafe``.
+    """
+
+    text = str(path or "").strip().replace("\\", "/")
+    if not text or "\0" in text:
+        return False
+    candidate = PurePosixPath(text)
+    return not (
+        text.startswith("/")
+        or candidate.is_absolute()
+        or ".." in candidate.parts
+        or (candidate.parts and candidate.parts[0].endswith(":"))
+    )
+
+
 def task_declared_output_paths(task: PortalTask) -> tuple[str, ...]:
     """Return ordinary outputs plus validated typed evidence outputs."""
 
     return tuple(
         dict.fromkeys(
-            [
-                *(str(path).strip() for path in task.outputs if str(path).strip()),
+            path
+            for path in (
+                *(str(item).strip() for item in task.outputs if str(item).strip()),
                 *task_evidence_output_paths(task),
-            ]
+            )
+            if _declared_output_path_is_repo_relative(path)
         )
     )
 
