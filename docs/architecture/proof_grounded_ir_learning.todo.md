@@ -1395,3 +1395,15 @@ authority roots into a revised task input binding.
 - Outputs: docs/architecture/proof_grounded_ir_learning.todo.md
 - Validation: test -f /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-17-pgir-113-reconciliation-d68dc99c4973.md
 - Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by unsupported_status. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-17-pgir-113-reconciliation-d68dc99c4973.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## PGIR-114 Resolve validation retry-budget failure for PGIR-030
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: PGIR-023
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder.py, ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py, ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/, /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery
+- Validation: test -f /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-17-pgir-114-pgir-030-retry-budget.md
+
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in PGIR-030. Use evidence in /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-17-pgir-114-pgir-030-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release PGIR-030 from strategy blocked_tasks.
