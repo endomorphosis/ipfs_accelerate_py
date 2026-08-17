@@ -1,0 +1,48 @@
+{
+  "schema": "lgswf/qualification-decision@1",
+  "reviewed_at": "2026-08-17T05:47:00Z",
+  "reviewer": {
+    "kind": "independent_release_review",
+    "distinct_from_implementation_daemon": true,
+    "implementation_owner_session_id": "embedded-store:ba178964503a634ffa6321d59797a461"
+  },
+  "source_tree": {
+    "branch": "agent/logic-governed-semantic-work-fabric-actual-v1",
+    "head": "085bd3bb062fd0d7cd72a9b80fdcdc4f06c5beb0",
+    "tree": "25fa0305dc74514a77cfd1a3c75779e5b8c818a5"
+  },
+  "manifest": "data/agent_supervisor/logic_governed_semantic_work_fabric/release/qualification-release.json",
+  "report": "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md",
+  "level": "research_demo",
+  "continuous_operation": "NO-GO",
+  "gates": {
+    "embedded_one_writer": {
+      "decision": "GO",
+      "scope": "single-process research/demo",
+      "reason": "Embedded one-writer remains the legal bootstrap. Multi-process direct file opens are refused while the Quack owner holds control.duckdb."
+    },
+    "continuous_duckdb_quack": {
+      "decision": "NO-GO",
+      "scope": "multi-supervisor production mutation",
+      "observed": "loopback quack:127.0.0.1:41307 on DuckDB 1.5.2; catalog reads work; UPDATEs go through the exclusive owner inbox",
+      "reason": "Missing the plan 1.5.5 pin, canonical gateway, seven Quack-backed repositories, independent remote readiness, and ATTACH-native mutation."
+    },
+    "live_ducklake": {
+      "decision": "NO-GO",
+      "scope": "optional non-authoritative history projection",
+      "reason": "DuckLake was not started. Typed unavailable. Not inferred from Quack."
+    }
+  },
+  "board_at_review": {
+    "completed": 46,
+    "todo": ["LGSWF-141"],
+    "blocked": []
+  },
+  "limitations": [
+    "Host Quack is 1.5.2, not 1.5.5",
+    "Quack ATTACH cannot UPDATE/DELETE base tables",
+    "Coordination and execution stay on local sidecars",
+    "Full A-D benchmark repetitions were not executed",
+    "140 release manifest is a schema stub, not a transitive CID closure"
+  ]
+}
