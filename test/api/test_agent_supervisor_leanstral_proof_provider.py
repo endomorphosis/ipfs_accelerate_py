@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -16,8 +18,13 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
     ResourceBudget,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider import (
+    J2_PROOF_ATTEMPT_FIELDS,
+    AttemptTraceFailureKind,
+    ProofAttemptTraceAdmissionError,
+    ProofAttemptTraceStore,
     ProviderFailureCode,
     ProviderRequest,
+    admit_proof_attempt_trace,
     dispatch_provider_request,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider import (
@@ -301,3 +308,225 @@ def test_capability_request_does_not_call_model() -> None:
     assert result["proof_attempted"] is False
     assert result["proof_success"] is False
     assert calls == []
+
+
+def _admitted_trace(result: dict) -> dict:
+    trace = result["proof_attempt_trace"]
+    assert set(J2_PROOF_ATTEMPT_FIELDS) <= set(trace)
+    return admit_proof_attempt_trace(trace)
+
+
+def test_prove_binds_every_j2_field_and_keeps_candidate_authority_false() -> None:
+    provider = LeanstralProofProvider(llm_generate=lambda *_args, **_kwargs: "by exact premise_1")
+
+    result = dispatch_provider_request(provider, _prove_request()).require_result()
+    trace = _admitted_trace(result)
+
+    assert set(J2_PROOF_ATTEMPT_FIELDS) <= set(trace)
+    assert trace["obligation"]["obligation_id"] == "obligation-1"
+    assert trace["obligation"]["canonical_source_digest"] == "sha256:canonical"
+    assert trace["state"]["proof_state_digest"].startswith("sha256:")
+    assert "premise_ids" in trace["premises"]
+    assert trace["proposals"]["proposal_digest"]
+    assert trace["model_tool_versions"]["provider_id"] == LEANSTRAL_PROOF_PROVIDER_ID
+    assert trace["model_tool_versions"]["model"] == "Leanstral"
+    assert trace["parse_outcome"]["status"] == "parsed"
+    assert trace["elaboration_outcome"]["status"] == "not_attempted"
+    assert trace["prover_outcome"]["status"] == "not_attempted"
+    assert trace["kernel_outcome"]["status"] == "not_attempted"
+    assert isinstance(trace["errors"], list)
+    assert isinstance(trace["counterexamples"], list)
+    assert trace["timeout"]["timed_out"] is False
+    assert trace["timeout"]["is_falsehood"] is False
+    assert trace["timeout"]["budget_ms"] == 12_000
+    assert trace["resources"]["resource_class"] == LEANSTRAL_MODEL_RESOURCE_CLASS
+    assert trace["resources"]["token_budget"] == 384
+    assert trace["authoritative"] is False
+    assert trace["candidate_authority"] is False
+    assert trace["verified"] is False
+    assert trace["proof_success"] is False
+    assert result["authoritative"] is False
+
+
+def test_timeout_trace_is_not_recorded_as_falsehood() -> None:
+    def generate(*_args, **_kwargs):
+        raise TimeoutError("model wall clock exceeded")
+
+    provider = LeanstralProofProvider(llm_generate=generate)
+    response = dispatch_provider_request(provider, _prove_request())
+
+    assert response.ok is False
+    assert response.error.code is ProviderFailureCode.TIMED_OUT
+    trace = admit_proof_attempt_trace(response.error.details["proof_attempt_trace"])
+    assert trace["timeout"]["timed_out"] is True
+    assert trace["timeout"]["is_falsehood"] is False
+    assert trace["parse_outcome"]["status"] != "rejected"
+    assert trace["kernel_outcome"]["status"] != "rejected"
+    assert trace["candidate_authority"] is False
+    assert trace["proof_success"] is False
+
+
+def test_malformed_attempt_trace_fails_closed() -> None:
+    provider = LeanstralProofProvider(llm_generate=lambda *_args, **_kwargs: "by exact h")
+    result = provider.prove(_prove_request())
+    result["proof_attempt_trace"] = {
+        **result["proof_attempt_trace"],
+        "authoritative": True,
+        "candidate_authority": True,
+    }
+
+    response = dispatch_provider_request(provider, _prove_request())
+    # Fresh prove is well-formed; the tampered local copy is what must fail.
+    with pytest.raises(ProofAttemptTraceAdmissionError, match="cannot claim"):
+        admit_proof_attempt_trace(result["proof_attempt_trace"])
+    assert response.ok is True
+
+    missing = dict(result["proof_attempt_trace"])
+    del missing["obligation"]
+    with pytest.raises(ProofAttemptTraceAdmissionError) as exc:
+        admit_proof_attempt_trace(missing)
+    assert exc.value.kind is AttemptTraceFailureKind.MALFORMED
+
+    timeout_as_false = dict(response.require_result()["proof_attempt_trace"])
+    timeout_as_false["timeout"] = {
+        **timeout_as_false["timeout"],
+        "timed_out": True,
+    }
+    timeout_as_false["kernel_outcome"] = {"status": "rejected", "reason_codes": ["unsat"]}
+    timeout_as_false.pop("attempt_id", None)
+    timeout_as_false.pop("content_id", None)
+    with pytest.raises(ProofAttemptTraceAdmissionError, match="falsehood"):
+        admit_proof_attempt_trace(timeout_as_false)
+
+
+def test_stale_and_wrong_statement_attempts_fail() -> None:
+    provider = LeanstralProofProvider(llm_generate=lambda *_args, **_kwargs: "by exact h")
+    result = dispatch_provider_request(provider, _prove_request()).require_result()
+    trace = dict(result["proof_attempt_trace"])
+    trace.pop("attempt_id", None)
+    trace.pop("content_id", None)
+
+    stale = {
+        **trace,
+        "obligation": {
+            **trace["obligation"],
+            "canonical_source_digest": "sha256:" + ("ab" * 32),
+        },
+        "bindings": {
+            **trace.get("bindings", {}),
+            "freeze_root_cid": "baguqeerastale00000000000000000000000000000000000000000000000a",
+            "campaign_input_root_cid": "baguqeeracampaign0000000000000000000000000000000000000000000a",
+        },
+    }
+    with pytest.raises(ProofAttemptTraceAdmissionError) as stale_exc:
+        admit_proof_attempt_trace(
+            stale,
+            expected={
+                "canonical_source_digest": "sha256:canonical",
+                "freeze_root_cid": "baguqeeracurrent000000000000000000000000000000000000000000000a",
+            },
+        )
+    assert stale_exc.value.kind is AttemptTraceFailureKind.STALE
+
+    wrong = {
+        **trace,
+        "obligation": {
+            **trace["obligation"],
+            "obligation_id": "obligation-other",
+            "theorem_id": "Other.identity",
+        },
+    }
+    with pytest.raises(ProofAttemptTraceAdmissionError) as wrong_exc:
+        admit_proof_attempt_trace(
+            wrong,
+            expected={
+                "obligation_id": "obligation-1",
+                "theorem_id": "Fixed.identity",
+            },
+        )
+    assert wrong_exc.value.kind is AttemptTraceFailureKind.WRONG_STATEMENT
+
+
+def test_replayed_attempt_cannot_be_resealed() -> None:
+    store = ProofAttemptTraceStore()
+    provider = LeanstralProofProvider(llm_generate=lambda *_args, **_kwargs: "by exact h")
+    first = dispatch_provider_request(
+        provider, _prove_request(), attempt_trace_store=store
+    ).require_result()
+    replay = dispatch_provider_request(
+        provider,
+        ProviderRequest(
+            request_id="request-replay",
+            operation="prove",
+            payload=dict(_prove_request().payload),
+            resource_budget=_prove_request().resource_budget,
+        ),
+        attempt_trace_store=store,
+    )
+
+    assert first["proof_attempt_trace"]["attempt_id"]
+    assert replay.ok is False
+    assert replay.error.code is ProviderFailureCode.MALFORMED_RESPONSE
+    assert "replayed" in replay.error.message
+    with pytest.raises(ProofAttemptTraceAdmissionError) as exc:
+        admit_proof_attempt_trace(first["proof_attempt_trace"], store=store)
+    assert exc.value.kind is AttemptTraceFailureKind.REPLAYED
+
+
+def test_transport_rejects_attempt_bound_to_another_request() -> None:
+    provider = LeanstralProofProvider(llm_generate=lambda *_args, **_kwargs: "by exact h")
+    result = provider.prove(_prove_request())
+    tampered = dict(result)
+    tampered["proof_attempt_trace"] = {
+        **result["proof_attempt_trace"],
+        "request_id": "request-foreign",
+    }
+
+    class _Static:
+        provider_id = LEANSTRAL_PROOF_PROVIDER_ID
+        provider_version = "1.3.0"
+        protocol_version = 1
+
+        def prove(self, _request):
+            return tampered
+
+    response = dispatch_provider_request(_Static(), _prove_request())
+    assert response.ok is False
+    assert response.error.code is ProviderFailureCode.MALFORMED_RESPONSE
+    assert "replayed" in response.error.message
+
+
+def test_sealed_proof_traces_bind_j2_fields_and_remain_non_authoritative() -> None:
+    root = (
+        Path(__file__).resolve().parents[2]
+        / "data"
+        / "agent_supervisor"
+        / "proof_grounded_ir_learning"
+        / "proof_traces"
+    )
+    declared = json.loads((root / "j2_fields.json").read_text(encoding="utf-8"))
+    assert tuple(declared["fields"]) == J2_PROOF_ATTEMPT_FIELDS
+    assert declared["candidate_authority"] is False
+
+    for name in ("identity_candidate", "timeout", "kernel_rejected"):
+        payload = json.loads((root / "traces" / f"{name}.json").read_text(encoding="utf-8"))
+        trace = admit_proof_attempt_trace(payload)
+        assert set(J2_PROOF_ATTEMPT_FIELDS) <= set(trace)
+        assert trace["candidate_authority"] is False
+        assert trace["authoritative"] is False
+        assert trace["timeout"]["is_falsehood"] is False
+
+    timeout = json.loads((root / "traces" / "timeout.json").read_text(encoding="utf-8"))
+    assert timeout["timeout"]["timed_out"] is True
+    assert timeout["kernel_outcome"]["status"] != "rejected"
+
+    receipts = json.loads((root / "receipts" / "non_authority.json").read_text(encoding="utf-8"))
+    assert receipts["candidate_authority"] is False
+    assert receipts["authoritative"] is False
+    kinds = {item["failure_kind"] for item in receipts["admission_failures"]}
+    assert kinds == {
+        AttemptTraceFailureKind.MALFORMED.value,
+        AttemptTraceFailureKind.STALE.value,
+        AttemptTraceFailureKind.WRONG_STATEMENT.value,
+        AttemptTraceFailureKind.REPLAYED.value,
+    }

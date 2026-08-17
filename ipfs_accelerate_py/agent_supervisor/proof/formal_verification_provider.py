@@ -30,7 +30,7 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, IO, Protocol, runtime_checkable
+from typing import Any, Final, IO, Protocol, runtime_checkable
 
 from .formal_verification_capabilities import (
     ProofProviderCapability,
@@ -40,6 +40,7 @@ from .formal_verification_capabilities import (
 from .formal_verification_contracts import (
     ResourceBudget,
     canonical_json,
+    content_identity,
 )
 
 
@@ -255,6 +256,623 @@ def _resource_budget(value: ResourceBudget | Mapping[str, Any] | None) -> Resour
     if isinstance(value, Mapping):
         return ResourceBudget.from_dict(value)
     raise ValueError("resource_budget must be a ResourceBudget or object")
+
+
+PROOF_ATTEMPT_TRACE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-attempt-trace@1"
+LEANSTRAL_PROOF_ATTEMPT_TRACE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/leanstral-proof-attempt-trace@1"
+)
+PROOF_ATTEMPT_TRACE_CONTRACT_VERSION = 1
+J2_PROOF_ATTEMPT_FIELDS: Final = (
+    "obligation",
+    "state",
+    "premises",
+    "proposals",
+    "model_tool_versions",
+    "parse_outcome",
+    "elaboration_outcome",
+    "prover_outcome",
+    "kernel_outcome",
+    "errors",
+    "counterexamples",
+    "timeout",
+    "resources",
+)
+_PROOF_ATTEMPT_TRACE_SCHEMAS = frozenset(
+    {
+        PROOF_ATTEMPT_TRACE_SCHEMA,
+        LEANSTRAL_PROOF_ATTEMPT_TRACE_SCHEMA,
+    }
+)
+_STAGE_OUTCOME_STATUSES = frozenset(
+    {
+        "not_attempted",
+        "parsed",
+        "parse_failed",
+        "elaborated",
+        "elaboration_failed",
+        "rejected",
+        "timed_out",
+        "error",
+        "counterexample",
+        "accepted",
+    }
+)
+_DEFINITIVE_FALSEHOOD_STATUSES = frozenset({"rejected", "counterexample"})
+_IDENTITY_EXCLUDED_TRACE_KEYS = frozenset(
+    {
+        "attempt_id",
+        "content_id",
+        "request_id",
+        "captured_at_unix_ms",
+    }
+)
+
+
+class AttemptTraceFailureKind(str, Enum):
+    """Closed admission failures for content-addressed proof-attempt traces."""
+
+    MALFORMED = "malformed"
+    STALE = "stale"
+    WRONG_STATEMENT = "wrong_statement"
+    REPLAYED = "replayed"
+
+
+class ProofAttemptTraceAdmissionError(ValueError):
+    """Fail-closed rejection of a proof-attempt trace."""
+
+    def __init__(self, kind: AttemptTraceFailureKind | str, message: str) -> None:
+        try:
+            resolved = (
+                kind
+                if isinstance(kind, AttemptTraceFailureKind)
+                else AttemptTraceFailureKind(str(kind))
+            )
+        except ValueError as exc:
+            raise ValueError("unknown proof-attempt trace failure kind") from exc
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("proof-attempt trace failure message must not be empty")
+        self.kind = resolved
+        self.message = message.strip()
+        super().__init__(self.message)
+
+
+@dataclass(frozen=True)
+class ProofAttemptTraceExpectation:
+    """Current supervisor bindings a persisted attempt must still match."""
+
+    request_id: str = ""
+    obligation_id: str = ""
+    theorem_id: str = ""
+    statement_digest: str = ""
+    canonical_source_digest: str = ""
+    theorem_equivalence_key: str = ""
+    freeze_root_cid: str = ""
+    campaign_input_root_cid: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "request_id",
+            "obligation_id",
+            "theorem_id",
+            "statement_digest",
+            "canonical_source_digest",
+            "theorem_equivalence_key",
+            "freeze_root_cid",
+            "campaign_input_root_cid",
+        ):
+            value = getattr(self, name)
+            if value is None:
+                object.__setattr__(self, name, "")
+                continue
+            if not isinstance(value, str):
+                raise ValueError(f"proof-attempt expectation {name} must be a string")
+            object.__setattr__(self, name, value.strip())
+
+
+class ProofAttemptTraceStore:
+    """In-memory ledger that makes replay of a sealed attempt identity fail."""
+
+    def __init__(self) -> None:
+        self._attempt_ids: set[str] = set()
+
+    def seen(self, attempt_id: str) -> bool:
+        return str(attempt_id or "") in self._attempt_ids
+
+    def remember(self, attempt_id: str) -> None:
+        normalized = str(attempt_id or "").strip()
+        if normalized:
+            self._attempt_ids.add(normalized)
+
+    def __contains__(self, attempt_id: object) -> bool:
+        return self.seen(str(attempt_id or ""))
+
+
+def _trace_text(value: Any, *, field_name: str, required: bool = False) -> str:
+    if value is None:
+        if required:
+            raise ProofAttemptTraceAdmissionError(
+                AttemptTraceFailureKind.MALFORMED,
+                f"proof-attempt trace {field_name} is required",
+            )
+        return ""
+    if not isinstance(value, str):
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            f"proof-attempt trace {field_name} must be a string",
+        )
+    text = value.strip()
+    if required and not text:
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            f"proof-attempt trace {field_name} must not be empty",
+        )
+    return text
+
+
+def _trace_object(value: Any, *, field_name: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            f"proof-attempt trace {field_name} must be an object",
+        )
+    try:
+        return _json_object(value, field_name=f"proof-attempt trace {field_name}")
+    except ValueError as exc:
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            str(exc),
+        ) from exc
+
+
+def _trace_array(value: Any, *, field_name: str) -> list[Any]:
+    if value is None:
+        return []
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            f"proof-attempt trace {field_name} must be an array",
+        )
+    try:
+        return _json_value(list(value), field_name=f"proof-attempt trace {field_name}")
+    except ValueError as exc:
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            str(exc),
+        ) from exc
+
+
+def _stage_outcome(value: Any, *, field_name: str) -> dict[str, Any]:
+    payload = _trace_object(value, field_name=field_name)
+    status = _trace_text(payload.get("status"), field_name=f"{field_name}.status", required=True)
+    if status not in _STAGE_OUTCOME_STATUSES:
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            f"proof-attempt trace {field_name}.status is not an admitted outcome",
+        )
+    reason_codes = _trace_array(payload.get("reason_codes", ()), field_name=f"{field_name}.reason_codes")
+    if any(not isinstance(item, str) or not item.strip() for item in reason_codes):
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            f"proof-attempt trace {field_name}.reason_codes must be nonempty strings",
+        )
+    extra = sorted(set(payload) - {"status", "reason_codes"})
+    if extra:
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            f"proof-attempt trace {field_name} has unknown fields: {', '.join(extra)}",
+        )
+    return {
+        "status": status,
+        "reason_codes": [str(item).strip() for item in reason_codes],
+    }
+
+
+def proof_attempt_trace_identity_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Project the J2 identity surface; request correlation is excluded."""
+
+    identity = {
+        key: payload[key]
+        for key in J2_PROOF_ATTEMPT_FIELDS
+        if key in payload
+    }
+    timeout = identity.get("timeout")
+    if isinstance(timeout, Mapping):
+        # Elapsed wall time is observational and must not fork equivalent attempts.
+        identity["timeout"] = {
+            key: value for key, value in timeout.items() if key != "elapsed_ms"
+        }
+    identity["schema"] = payload.get("schema", PROOF_ATTEMPT_TRACE_SCHEMA)
+    identity["contract_version"] = payload.get(
+        "contract_version", PROOF_ATTEMPT_TRACE_CONTRACT_VERSION
+    )
+    identity["authoritative"] = False
+    identity["candidate_authority"] = False
+    identity["verified"] = False
+    identity["proof_success"] = False
+    return _json_object(identity, field_name="proof-attempt identity")
+
+
+def compute_proof_attempt_id(payload: Mapping[str, Any]) -> str:
+    """Content-address the J2 binding surface of one attempt."""
+
+    return "pgir-attempt-" + content_identity(proof_attempt_trace_identity_payload(payload))
+
+
+def expectation_from_provider_request(
+    request: "ProviderRequest",
+) -> ProofAttemptTraceExpectation:
+    """Derive current statement/freeze bindings from a provider request."""
+
+    payload = request.payload if isinstance(request.payload, Mapping) else {}
+    raw_theorem = payload.get("fixed_theorem")
+    if not isinstance(raw_theorem, Mapping):
+        raw_theorem = payload.get("theorem_identity")
+    if not isinstance(raw_theorem, Mapping):
+        raw_theorem = payload.get("theorem")
+    theorem = raw_theorem if isinstance(raw_theorem, Mapping) else {}
+    obligation_id = payload.get("obligation_id", theorem.get("obligation_id", ""))
+    if not obligation_id:
+        raw_ids = payload.get("obligation_ids")
+        if isinstance(raw_ids, Sequence) and not isinstance(raw_ids, (str, bytes, bytearray)):
+            if raw_ids:
+                obligation_id = raw_ids[0]
+        elif isinstance(raw_ids, str):
+            obligation_id = raw_ids
+    return ProofAttemptTraceExpectation(
+        request_id=request.request_id,
+        obligation_id=str(obligation_id or ""),
+        theorem_id=str(payload.get("theorem_id") or theorem.get("theorem_id") or ""),
+        statement_digest=str(
+            payload.get("statement_digest")
+            or theorem.get("identity_digest")
+            or theorem.get("statement_digest")
+            or ""
+        ),
+        canonical_source_digest=str(
+            payload.get("canonical_source_digest")
+            or payload.get("source_digest")
+            or theorem.get("canonical_source_digest")
+            or ""
+        ),
+        theorem_equivalence_key=str(
+            payload.get("theorem_equivalence_key")
+            or theorem.get("equivalence_key")
+            or ""
+        ),
+        freeze_root_cid=str(payload.get("freeze_root_cid") or ""),
+        campaign_input_root_cid=str(payload.get("campaign_input_root_cid") or ""),
+    )
+
+
+def build_proof_attempt_trace(
+    *,
+    obligation: Mapping[str, Any],
+    state: Mapping[str, Any],
+    premises: Mapping[str, Any],
+    proposals: Mapping[str, Any],
+    model_tool_versions: Mapping[str, Any],
+    parse_outcome: Mapping[str, Any],
+    elaboration_outcome: Mapping[str, Any],
+    prover_outcome: Mapping[str, Any],
+    kernel_outcome: Mapping[str, Any],
+    errors: Sequence[Any] = (),
+    counterexamples: Sequence[Any] = (),
+    timeout: Mapping[str, Any] | None = None,
+    resources: Mapping[str, Any] | None = None,
+    request_id: str = "",
+    schema: str = PROOF_ATTEMPT_TRACE_SCHEMA,
+    bindings: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a strict J2 proof-attempt trace with a content-addressed identity."""
+
+    payload = {
+        "schema": schema,
+        "contract_version": PROOF_ATTEMPT_TRACE_CONTRACT_VERSION,
+        "obligation": dict(obligation),
+        "state": dict(state),
+        "premises": dict(premises),
+        "proposals": dict(proposals),
+        "model_tool_versions": dict(model_tool_versions),
+        "parse_outcome": dict(parse_outcome),
+        "elaboration_outcome": dict(elaboration_outcome),
+        "prover_outcome": dict(prover_outcome),
+        "kernel_outcome": dict(kernel_outcome),
+        "errors": list(errors),
+        "counterexamples": list(counterexamples),
+        "timeout": dict(timeout or {}),
+        "resources": dict(resources or {}),
+        "request_id": request_id,
+        "authoritative": False,
+        "candidate_authority": False,
+        "verified": False,
+        "proof_success": False,
+        "timeout_is_falsehood": False,
+    }
+    if bindings:
+        payload["bindings"] = dict(bindings)
+    return admit_proof_attempt_trace(payload)
+
+
+def admit_proof_attempt_trace(
+    payload: Mapping[str, Any],
+    *,
+    expected: ProofAttemptTraceExpectation | Mapping[str, Any] | None = None,
+    store: ProofAttemptTraceStore | None = None,
+    remember: bool = True,
+) -> dict[str, Any]:
+    """Admit one content-addressed attempt. Candidate authority stays false."""
+
+    if not isinstance(payload, Mapping):
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            "proof-attempt trace must be an object",
+        )
+    try:
+        raw = _json_object(payload, field_name="proof-attempt trace")
+    except ValueError as exc:
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            str(exc),
+        ) from exc
+
+    schema = _trace_text(raw.get("schema"), field_name="schema", required=True)
+    if schema not in _PROOF_ATTEMPT_TRACE_SCHEMAS:
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            "unsupported proof-attempt trace schema",
+        )
+    contract_version = raw.get("contract_version", PROOF_ATTEMPT_TRACE_CONTRACT_VERSION)
+    if contract_version != PROOF_ATTEMPT_TRACE_CONTRACT_VERSION:
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            "unsupported proof-attempt trace contract version",
+        )
+
+    missing = [name for name in J2_PROOF_ATTEMPT_FIELDS if name not in raw]
+    if missing:
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            "proof-attempt trace is missing J2 fields: " + ", ".join(missing),
+        )
+
+    for name in (
+        "authoritative",
+        "candidate_authority",
+        "verified",
+        "proof_success",
+        "timeout_is_falsehood",
+    ):
+        if raw.get(name, False) is not False:
+            raise ProofAttemptTraceAdmissionError(
+                AttemptTraceFailureKind.MALFORMED,
+                f"proof-attempt trace cannot claim {name}",
+            )
+
+    obligation = _trace_object(raw.get("obligation"), field_name="obligation")
+    state = _trace_object(raw.get("state"), field_name="state")
+    premises = _trace_object(raw.get("premises"), field_name="premises")
+    proposals = _trace_object(raw.get("proposals"), field_name="proposals")
+    model_tool_versions = _trace_object(
+        raw.get("model_tool_versions"), field_name="model_tool_versions"
+    )
+    parse_outcome = _stage_outcome(raw.get("parse_outcome"), field_name="parse_outcome")
+    elaboration_outcome = _stage_outcome(
+        raw.get("elaboration_outcome"), field_name="elaboration_outcome"
+    )
+    prover_outcome = _stage_outcome(raw.get("prover_outcome"), field_name="prover_outcome")
+    kernel_outcome = _stage_outcome(raw.get("kernel_outcome"), field_name="kernel_outcome")
+    errors = _trace_array(raw.get("errors"), field_name="errors")
+    counterexamples = _trace_array(raw.get("counterexamples"), field_name="counterexamples")
+    timeout = _trace_object(raw.get("timeout"), field_name="timeout")
+    resources = _trace_object(raw.get("resources"), field_name="resources")
+    request_id = _trace_text(raw.get("request_id", ""), field_name="request_id")
+    bindings = raw.get("bindings", {})
+    if bindings in (None, ""):
+        bindings = {}
+    bindings = _trace_object(bindings, field_name="bindings")
+
+    if timeout.get("is_falsehood", False) is not False:
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            "timeout cannot be recorded as falsehood",
+        )
+    timed_out = timeout.get("timed_out", False)
+    if not isinstance(timed_out, bool):
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            "proof-attempt trace timeout.timed_out must be a boolean",
+        )
+    if timed_out:
+        for name, outcome in (
+            ("parse_outcome", parse_outcome),
+            ("elaboration_outcome", elaboration_outcome),
+            ("prover_outcome", prover_outcome),
+            ("kernel_outcome", kernel_outcome),
+        ):
+            if outcome["status"] in _DEFINITIVE_FALSEHOOD_STATUSES:
+                raise ProofAttemptTraceAdmissionError(
+                    AttemptTraceFailureKind.MALFORMED,
+                    f"timeout cannot be recorded as {name} falsehood",
+                )
+
+    obligation_id = _trace_text(
+        obligation.get("obligation_id"),
+        field_name="obligation.obligation_id",
+    )
+    theorem_id = _trace_text(obligation.get("theorem_id"), field_name="obligation.theorem_id")
+    statement_digest = _trace_text(
+        obligation.get("statement_digest"),
+        field_name="obligation.statement_digest",
+    )
+    source_digest = _trace_text(
+        obligation.get("canonical_source_digest"),
+        field_name="obligation.canonical_source_digest",
+    )
+    equivalence_key = _trace_text(
+        bindings.get("theorem_equivalence_key") or state.get("theorem_equivalence_key"),
+        field_name="bindings.theorem_equivalence_key",
+    )
+    freeze_root_cid = _trace_text(
+        bindings.get("freeze_root_cid"),
+        field_name="bindings.freeze_root_cid",
+    )
+    campaign_input_root_cid = _trace_text(
+        bindings.get("campaign_input_root_cid"),
+        field_name="bindings.campaign_input_root_cid",
+    )
+
+    admitted = {
+        "schema": schema,
+        "contract_version": PROOF_ATTEMPT_TRACE_CONTRACT_VERSION,
+        "obligation": obligation,
+        "state": state,
+        "premises": premises,
+        "proposals": proposals,
+        "model_tool_versions": model_tool_versions,
+        "parse_outcome": parse_outcome,
+        "elaboration_outcome": elaboration_outcome,
+        "prover_outcome": prover_outcome,
+        "kernel_outcome": kernel_outcome,
+        "errors": errors,
+        "counterexamples": counterexamples,
+        "timeout": {
+            **timeout,
+            "is_falsehood": False,
+            "timed_out": timed_out,
+        },
+        "resources": resources,
+        "bindings": bindings,
+        "request_id": request_id,
+        "authoritative": False,
+        "candidate_authority": False,
+        "verified": False,
+        "proof_success": False,
+        "timeout_is_falsehood": False,
+    }
+    extra = sorted(
+        set(raw)
+        - set(admitted)
+        - _IDENTITY_EXCLUDED_TRACE_KEYS
+        - {"timeout_is_falsehood"}
+    )
+    if extra:
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            "proof-attempt trace has unknown fields: " + ", ".join(extra),
+        )
+
+    attempt_id = compute_proof_attempt_id(admitted)
+    claimed_id = raw.get("attempt_id") or raw.get("content_id")
+    if claimed_id and _trace_text(claimed_id, field_name="attempt_id") != attempt_id:
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            "proof-attempt trace identity does not match J2 bindings",
+        )
+    admitted["attempt_id"] = attempt_id
+    admitted["content_id"] = attempt_id
+
+    expected_binding = expected
+    if isinstance(expected, Mapping):
+        expected_binding = ProofAttemptTraceExpectation(**dict(expected))
+    if expected_binding is not None and not isinstance(
+        expected_binding, ProofAttemptTraceExpectation
+    ):
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.MALFORMED,
+            "proof-attempt expectation is invalid",
+        )
+    if expected_binding is not None:
+        if expected_binding.request_id and request_id != expected_binding.request_id:
+            raise ProofAttemptTraceAdmissionError(
+                AttemptTraceFailureKind.REPLAYED,
+                "proof-attempt trace request_id does not match the current request",
+            )
+        if expected_binding.obligation_id and obligation_id != expected_binding.obligation_id:
+            raise ProofAttemptTraceAdmissionError(
+                AttemptTraceFailureKind.WRONG_STATEMENT,
+                "proof-attempt trace obligation does not match the current statement",
+            )
+        if expected_binding.theorem_id and theorem_id != expected_binding.theorem_id:
+            raise ProofAttemptTraceAdmissionError(
+                AttemptTraceFailureKind.WRONG_STATEMENT,
+                "proof-attempt trace theorem does not match the current statement",
+            )
+        if (
+            expected_binding.statement_digest
+            and statement_digest
+            and statement_digest != expected_binding.statement_digest
+        ):
+            raise ProofAttemptTraceAdmissionError(
+                AttemptTraceFailureKind.WRONG_STATEMENT,
+                "proof-attempt trace statement digest does not match the current statement",
+            )
+        if (
+            expected_binding.theorem_equivalence_key
+            and equivalence_key
+            and equivalence_key != expected_binding.theorem_equivalence_key
+        ):
+            raise ProofAttemptTraceAdmissionError(
+                AttemptTraceFailureKind.WRONG_STATEMENT,
+                "proof-attempt trace theorem equivalence key does not match",
+            )
+        if (
+            expected_binding.canonical_source_digest
+            and source_digest
+            and source_digest != expected_binding.canonical_source_digest
+        ):
+            raise ProofAttemptTraceAdmissionError(
+                AttemptTraceFailureKind.STALE,
+                "proof-attempt trace source digest is stale",
+            )
+        if (
+            expected_binding.freeze_root_cid
+            and freeze_root_cid
+            and freeze_root_cid != expected_binding.freeze_root_cid
+        ):
+            raise ProofAttemptTraceAdmissionError(
+                AttemptTraceFailureKind.STALE,
+                "proof-attempt trace freeze root is stale",
+            )
+        if (
+            expected_binding.campaign_input_root_cid
+            and campaign_input_root_cid
+            and campaign_input_root_cid != expected_binding.campaign_input_root_cid
+        ):
+            raise ProofAttemptTraceAdmissionError(
+                AttemptTraceFailureKind.STALE,
+                "proof-attempt trace campaign input root is stale",
+            )
+
+    if store is not None and store.seen(attempt_id):
+        raise ProofAttemptTraceAdmissionError(
+            AttemptTraceFailureKind.REPLAYED,
+            "proof-attempt trace has already been sealed",
+        )
+    if store is not None and remember:
+        store.remember(attempt_id)
+    return admitted
+
+
+def _admit_embedded_attempt_trace(
+    container: Mapping[str, Any],
+    *,
+    request: "ProviderRequest",
+    store: ProofAttemptTraceStore | None,
+) -> dict[str, Any] | None:
+    raw = container.get("proof_attempt_trace")
+    if raw is None:
+        return None
+    try:
+        return admit_proof_attempt_trace(
+            raw,
+            expected=expectation_from_provider_request(request),
+            store=store,
+        )
+    except ProofAttemptTraceAdmissionError as exc:
+        raise ValueError(
+            f"proof-attempt trace {exc.kind.value}: {exc.message}"
+        ) from exc
 
 
 @dataclass(frozen=True)
@@ -623,6 +1241,20 @@ def _exception_details(exc: BaseException) -> Mapping[str, Any]:
     return exc.failure.details if isinstance(exc, ProofProviderError) else {}
 
 
+def _with_admitted_attempt_trace(
+    request: ProviderRequest,
+    payload: Mapping[str, Any],
+    *,
+    store: ProofAttemptTraceStore | None,
+) -> dict[str, Any]:
+    admitted = _admit_embedded_attempt_trace(payload, request=request, store=store)
+    if admitted is None:
+        return dict(payload)
+    rewritten = dict(payload)
+    rewritten["proof_attempt_trace"] = admitted
+    return rewritten
+
+
 def _normalize_provider_result(
     request: ProviderRequest,
     raw_result: Any,
@@ -630,6 +1262,7 @@ def _normalize_provider_result(
     provider_id: str,
     provider_version: str,
     duration_ms: int,
+    attempt_trace_store: ProofAttemptTraceStore | None = None,
 ) -> ProviderResponse:
     if isinstance(raw_result, ProviderResponse):
         if (
@@ -637,12 +1270,31 @@ def _normalize_provider_result(
             or raw_result.operation is not request.operation
         ):
             raise ValueError("provider returned a response for another request")
+        result = raw_result.result
+        error = raw_result.error
+        if result is not None:
+            result = _with_admitted_attempt_trace(
+                request, result, store=attempt_trace_store
+            )
+        if error is not None:
+            details = dict(error.details)
+            admitted = _admit_embedded_attempt_trace(
+                details, request=request, store=attempt_trace_store
+            )
+            if admitted is not None:
+                details["proof_attempt_trace"] = admitted
+                error = ProviderFailure(
+                    code=error.code,
+                    message=error.message,
+                    retryable=error.retryable,
+                    details=details,
+                )
         return ProviderResponse(
             request_id=raw_result.request_id,
             operation=raw_result.operation,
             ok=raw_result.ok,
-            result=raw_result.result,
-            error=raw_result.error,
+            result=result,
+            error=error,
             provider_id=raw_result.provider_id or provider_id,
             provider_version=raw_result.provider_version or provider_version,
             duration_ms=duration_ms,
@@ -653,7 +1305,11 @@ def _normalize_provider_result(
         raise ValueError("provider operation must return an object or ProviderResponse")
     return ProviderResponse.success(
         request,
-        _json_object(raw_result, field_name="provider result"),
+        _with_admitted_attempt_trace(
+            request,
+            _json_object(raw_result, field_name="provider result"),
+            store=attempt_trace_store,
+        ),
         provider_id=provider_id,
         provider_version=provider_version,
         duration_ms=duration_ms,
@@ -663,6 +1319,8 @@ def _normalize_provider_result(
 def dispatch_provider_request(
     provider: Any,
     request: ProviderRequest,
+    *,
+    attempt_trace_store: ProofAttemptTraceStore | None = None,
 ) -> ProviderResponse:
     """Invoke one provider method synchronously and normalize all failures."""
 
@@ -702,12 +1360,28 @@ def dispatch_provider_request(
         raw_result = method(request)
     except BaseException as exc:
         code, message, retryable = _exception_failure(exc)
+        details = dict(_exception_details(exc))
+        try:
+            admitted = _admit_embedded_attempt_trace(
+                details, request=request, store=attempt_trace_store
+            )
+        except ValueError as admit_exc:
+            return ProviderResponse.failure(
+                request,
+                ProviderFailureCode.MALFORMED_RESPONSE,
+                f"provider returned a malformed response: {str(admit_exc)[:512]}",
+                provider_id=provider_id,
+                provider_version=provider_version,
+                duration_ms=_duration_ms(started),
+            )
+        if admitted is not None:
+            details["proof_attempt_trace"] = admitted
         return ProviderResponse.failure(
             request,
             code,
             message,
             retryable=retryable,
-            details=_exception_details(exc),
+            details=details,
             provider_id=provider_id,
             provider_version=provider_version,
             duration_ms=_duration_ms(started),
@@ -719,6 +1393,7 @@ def dispatch_provider_request(
             provider_id=provider_id,
             provider_version=provider_version,
             duration_ms=_duration_ms(started),
+            attempt_trace_store=attempt_trace_store,
         )
     except (TypeError, ValueError) as exc:
         return ProviderResponse.failure(
@@ -1551,7 +2226,19 @@ __all__ = [
     "PROOF_PROVIDER_REQUEST_SCHEMA",
     "PROOF_PROVIDER_RESPONSE_SCHEMA",
     "PROOF_PROVIDER_SUPPORTED_PROTOCOL_VERSIONS",
+    "J2_PROOF_ATTEMPT_FIELDS",
+    "LEANSTRAL_PROOF_ATTEMPT_TRACE_SCHEMA",
+    "PROOF_ATTEMPT_TRACE_CONTRACT_VERSION",
+    "PROOF_ATTEMPT_TRACE_SCHEMA",
+    "AttemptTraceFailureKind",
     "CancellationToken",
+    "ProofAttemptTraceAdmissionError",
+    "ProofAttemptTraceExpectation",
+    "ProofAttemptTraceStore",
+    "admit_proof_attempt_trace",
+    "build_proof_attempt_trace",
+    "compute_proof_attempt_id",
+    "expectation_from_provider_request",
     "InProcessProofProvider",
     "InProcessProvider",
     "NetworkAccessDenied",
