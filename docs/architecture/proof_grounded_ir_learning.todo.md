@@ -826,7 +826,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-051 Extend proof-state tactician and curriculum projection
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
