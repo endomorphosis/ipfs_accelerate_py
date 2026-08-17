@@ -1410,7 +1410,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-115 Resolve dirty main checkout blocking 1 worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
