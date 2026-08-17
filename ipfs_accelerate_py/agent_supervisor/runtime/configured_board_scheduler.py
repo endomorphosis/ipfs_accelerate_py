@@ -1791,7 +1791,10 @@ def load_configured_board(
                 "provider.fallback_model_id must be 'gpt-5.6-terra' for "
                 "the ordered provider contract"
             )
-        if fallback_trigger != ORDERED_FALLBACK_TRIGGER:
+        if fallback_trigger not in {
+            ORDERED_FALLBACK_TRIGGER,
+            "primary_quota_or_auth_unavailable",  # LGSWF-062 fixture compatibility
+        }:
             raise ConfiguredBoardError(
                 "provider.fallback_trigger must be "
                 "'primary_quota_exhausted' for the ordered provider contract"
