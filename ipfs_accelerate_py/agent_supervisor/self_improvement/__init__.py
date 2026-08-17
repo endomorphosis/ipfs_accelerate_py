@@ -24,6 +24,7 @@ SELF_IMPROVEMENT_PACKAGE_NAME: Final[str] = "ipfs_accelerate_py.agent_supervisor
 
 # Stems owned by asref/self-improvement in docs/architecture/asref/move_map.json.
 SELF_IMPROVEMENT_OWNED_MODULES: Final[tuple[str, ...]] = (
+    "campaign_refill_policy",
     "self_improvement",
     "self_improvement_completion",
     "self_improvement_rollout",
