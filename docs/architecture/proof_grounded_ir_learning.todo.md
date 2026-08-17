@@ -430,7 +430,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-020 Consolidate the canonical typed bridge
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
