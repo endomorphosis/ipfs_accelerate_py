@@ -1366,7 +1366,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-112 Resolve 1 preflight-conflicting backlogged worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
@@ -1382,7 +1382,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-113 Resolve 1 dirty backlogged worktrees blocked by unsupported_status
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
