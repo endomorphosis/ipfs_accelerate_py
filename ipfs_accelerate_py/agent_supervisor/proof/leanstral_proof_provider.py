@@ -39,12 +39,18 @@ from .formal_verification_capabilities import (
     ProofProviderIsolation,
     ProofProviderOperation,
 )
-from .formal_verification_contracts import AssuranceLevel, ProofStage
+from .formal_verification_contracts import (
+    AssuranceLevel,
+    ProofStage,
+    canonical_json,
+)
 from .formal_verification_provider import (
+    LEANSTRAL_PROOF_ATTEMPT_TRACE_SCHEMA,
     PROOF_PROVIDER_PROTOCOL_VERSION,
     ProofProviderError,
     ProviderFailureCode,
     ProviderRequest,
+    build_proof_attempt_trace,
 )
 from .kernel_verification import (
     DEFAULT_MAX_LEAN_PROOF_BYTES,
@@ -73,7 +79,7 @@ from ..validation.validation_runtime import (
 )
 
 LEANSTRAL_PROOF_PROVIDER_ID: Final = "leanstral"
-LEANSTRAL_PROOF_PROVIDER_VERSION: Final = "1.2.0"
+LEANSTRAL_PROOF_PROVIDER_VERSION: Final = "1.3.0"
 LEANSTRAL_DRAFT_SCHEMA_VERSION: Final = (
     "ipfs_accelerate_py/agent-supervisor/leanstral-proof-draft@1"
 )
@@ -484,6 +490,306 @@ class LeanstralProofDraft:
         )
 
 
+def _sha256_digest(value: str) -> str:
+    return "sha256:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _stage_outcome(status: str, *reason_codes: str) -> dict[str, Any]:
+    return {
+        "status": status,
+        "reason_codes": [code for code in reason_codes if code],
+    }
+
+
+_PARSE_FAILURE_CODES = frozenset(
+    {
+        "forbidden_import",
+        "forbidden_declaration",
+        "incomplete_proof",
+        "source_copy",
+        "malformed_reconstruction",
+        "corrupt_evidence",
+    }
+)
+_ELABORATION_FAILURE_CODES = frozenset(
+    {
+        "theorem_substitution",
+        "statement_mismatch",
+        "binding_mismatch",
+        "environment_mismatch",
+        "digest_mismatch",
+    }
+)
+
+
+def _gate_stage_outcomes(
+    gate: "LeanstralProofGateResult | None",
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], tuple[Any, ...]]:
+    if gate is None:
+        return (
+            _stage_outcome("not_attempted"),
+            _stage_outcome("not_attempted"),
+            _stage_outcome("not_attempted"),
+            _stage_outcome("not_attempted"),
+            (),
+        )
+    admission_code = gate.admission.failure_code.value
+    if not gate.admission.accepted:
+        parse_status = (
+            "parse_failed" if admission_code in _PARSE_FAILURE_CODES else "parsed"
+        )
+        elaboration_status = (
+            "elaboration_failed"
+            if admission_code in _ELABORATION_FAILURE_CODES or parse_status == "parsed"
+            else "not_attempted"
+        )
+        if parse_status == "parse_failed":
+            elaboration_status = "not_attempted"
+        return (
+            _stage_outcome(parse_status, admission_code),
+            _stage_outcome(elaboration_status, admission_code),
+            _stage_outcome("not_attempted"),
+            _stage_outcome("not_attempted"),
+            (),
+        )
+    kernel = gate.kernel_verification
+    kernel_status = "not_attempted"
+    kernel_reasons = tuple(kernel.reason_codes)
+    counterexamples: tuple[Any, ...] = ()
+    if kernel.status.value == "timed_out" or kernel.failure_code.value == "kernel_timed_out":
+        kernel_status = "timed_out"
+    elif kernel.status.value == "accepted" and gate.accepted:
+        kernel_status = "accepted"
+    elif kernel.failure_code.value:
+        kernel_status = "rejected"
+        kernel_reasons = tuple(dict.fromkeys((*kernel_reasons, kernel.failure_code.value)))
+        diagnostics = dict(kernel.diagnostics)
+        if diagnostics.get("counterexample") or diagnostics.get("counterexamples"):
+            kernel_status = "counterexample"
+            raw = diagnostics.get("counterexamples") or (diagnostics.get("counterexample"),)
+            if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray)):
+                counterexamples = tuple(item for item in raw if item is not None)
+            elif raw:
+                counterexamples = (raw,)
+    elif kernel.status.value == "error":
+        kernel_status = "error"
+    return (
+        _stage_outcome("parsed"),
+        _stage_outcome("elaborated"),
+        _stage_outcome("not_attempted"),
+        _stage_outcome(kernel_status, *kernel_reasons),
+        counterexamples,
+    )
+
+
+def capture_leanstral_proof_attempt_trace(
+    *,
+    request: ProviderRequest | None = None,
+    draft: LeanstralProofDraft | None = None,
+    context: LeanstralProofContext | None = None,
+    config: LeanstralProofProviderConfig | None = None,
+    gate: LeanstralProofGateResult | None = None,
+    timed_out: bool = False,
+    elapsed_ms: int = 0,
+    errors: Sequence[Any] = (),
+    parse_status: str | None = None,
+    extra_bindings: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Bind every J2 field for one Leanstral candidate attempt.
+
+    The resulting record is never proof authority.  Timeout is recorded as
+    timeout, not as a false statement.
+    """
+
+    payload = request.payload if request is not None else {}
+    if not isinstance(payload, Mapping):
+        payload = {}
+    theorem = context.theorem if context is not None else None
+    obligation_id = ""
+    if draft is not None and draft.obligation_ids:
+        obligation_id = draft.obligation_ids[0]
+    elif theorem is not None:
+        obligation_id = theorem.obligation_id
+    else:
+        raw_ids = payload.get("obligation_ids", payload.get("obligation_id"))
+        if isinstance(raw_ids, str):
+            obligation_id = raw_ids.strip()
+        elif isinstance(raw_ids, Sequence) and raw_ids:
+            obligation_id = str(raw_ids[0]).strip()
+    source_digest = ""
+    if draft is not None:
+        source_digest = draft.canonical_source_digest
+    elif theorem is not None:
+        source_digest = theorem.canonical_source_digest
+    else:
+        source_digest = str(
+            payload.get("canonical_source_digest", payload.get("source_digest", "")) or ""
+        ).strip()
+    theorem_id = (
+        (draft.theorem_id if draft is not None else "")
+        or (theorem.theorem_id if theorem is not None else "")
+        or str(payload.get("theorem_id") or "")
+    )
+    equivalence_key = (
+        (draft.theorem_equivalence_key if draft is not None else "")
+        or (theorem.equivalence_key if theorem is not None else "")
+        or str(payload.get("theorem_equivalence_key") or "")
+    )
+    statement_digest = (
+        theorem.identity_digest
+        if theorem is not None
+        else str(payload.get("statement_digest") or "")
+    )
+    assumptions = tuple(theorem.assumptions) if theorem is not None else ()
+    conclusion = theorem.conclusion if theorem is not None else ""
+    premise_ids = (
+        tuple(item.premise_id for item in context.allowed_premises)
+        if context is not None
+        else tuple(theorem.allowed_premise_ids)
+        if theorem is not None
+        else ()
+    )
+    premise_digests = (
+        tuple(_sha256_digest(item.premise_id) for item in context.allowed_premises)
+        if context is not None
+        else tuple(_sha256_digest(item) for item in premise_ids)
+    )
+    capsule_id = (
+        (draft.context_capsule_id if draft is not None else "")
+        or (context.capsule_id if context is not None else "")
+    )
+    goal = conclusion or (draft.draft_text if draft is not None else "")
+    state_digest_source = canonical_json(
+        {
+            "capsule_id": capsule_id,
+            "theorem_id": theorem_id,
+            "assumptions": list(assumptions),
+            "conclusion": conclusion,
+            "premise_ids": list(premise_ids),
+        }
+    )
+    proposal_kind = draft.proposal_kind if draft is not None else "raw"
+    proposal_text = draft.draft_text if draft is not None else ""
+    proposal_digest = (
+        "sha256:" + draft.output_sha256
+        if draft is not None and draft.output_sha256
+        else (_sha256_digest(proposal_text) if proposal_text else "")
+    )
+    artifact_id = draft.artifact_id if draft is not None else ""
+    configured = config or LeanstralProofProviderConfig()
+    llm_provider = (
+        draft.llm_provider if draft is not None else configured.llm_provider
+    )
+    model = draft.model if draft is not None else configured.model
+    kernel_id = ""
+    toolchain_id = ""
+    if gate is not None:
+        kernel_id = gate.kernel_verification.kernel_id
+        toolchain_id = gate.kernel_verification.toolchain_id
+    parse_outcome, elaboration_outcome, prover_outcome, kernel_outcome, counterexamples = (
+        _gate_stage_outcomes(gate)
+    )
+    if gate is None:
+        if timed_out:
+            parse_outcome = _stage_outcome("not_attempted", "timed_out")
+        elif parse_status:
+            parse_outcome = _stage_outcome(parse_status)
+        elif proposal_text:
+            parse_outcome = _stage_outcome("parsed")
+        else:
+            parse_outcome = _stage_outcome("not_attempted")
+    timeout_budget_ms = 0
+    if draft is not None:
+        timeout_budget_ms = draft.timeout_ms
+    elif request is not None and request.resource_budget.wall_time_ms:
+        timeout_budget_ms = request.resource_budget.wall_time_ms
+    else:
+        timeout_budget_ms = max(1, int(configured.timeout_seconds * 1000))
+    token_budget = draft.token_budget if draft is not None else configured.max_new_tokens
+    if request is not None and request.resource_budget.model_token_limit:
+        token_budget = (
+            min(token_budget, request.resource_budget.model_token_limit)
+            if token_budget
+            else request.resource_budget.model_token_limit
+        )
+    max_output_bytes = configured.max_output_bytes
+    if request is not None and request.resource_budget.max_output_bytes:
+        max_output_bytes = min(max_output_bytes, request.resource_budget.max_output_bytes)
+    freeze_root_cid = str(payload.get("freeze_root_cid") or "")
+    campaign_input_root_cid = str(payload.get("campaign_input_root_cid") or "")
+    repository_tree_id = theorem.repository_tree_id if theorem is not None else ""
+    request_id = (
+        (request.request_id if request is not None else "")
+        or (draft.request_id if draft is not None else "")
+    )
+    bindings = {
+        "theorem_equivalence_key": equivalence_key,
+        "freeze_root_cid": freeze_root_cid,
+        "campaign_input_root_cid": campaign_input_root_cid,
+        **dict(extra_bindings or {}),
+    }
+    return build_proof_attempt_trace(
+        schema=LEANSTRAL_PROOF_ATTEMPT_TRACE_SCHEMA,
+        request_id=request_id,
+        obligation={
+            "obligation_id": obligation_id,
+            "obligation_digest": _sha256_digest(obligation_id) if obligation_id else "",
+            "theorem_id": theorem_id,
+            "statement_digest": statement_digest,
+            "canonical_source_digest": source_digest,
+        },
+        state={
+            "context_capsule_id": capsule_id,
+            "proof_state_digest": _sha256_digest(state_digest_source),
+            "goal": goal,
+            "assumptions": list(assumptions),
+            "repository_tree_id": repository_tree_id,
+            "theorem_equivalence_key": equivalence_key,
+        },
+        premises={
+            "premise_ids": list(premise_ids),
+            "premise_digests": list(premise_digests),
+            "allowed_premise_ids": list(premise_ids),
+        },
+        proposals={
+            "proposal_kind": proposal_kind,
+            "proposal_digest": proposal_digest,
+            "artifact_id": artifact_id,
+            "draft_digest": proposal_digest,
+        },
+        model_tool_versions={
+            "provider_id": LEANSTRAL_PROOF_PROVIDER_ID,
+            "provider_version": LEANSTRAL_PROOF_PROVIDER_VERSION,
+            "llm_provider": llm_provider,
+            "model": model,
+            "kernel_id": kernel_id,
+            "toolchain_id": toolchain_id,
+        },
+        parse_outcome=parse_outcome,
+        elaboration_outcome=elaboration_outcome,
+        prover_outcome=prover_outcome,
+        kernel_outcome=kernel_outcome,
+        errors=tuple(errors),
+        counterexamples=counterexamples,
+        timeout={
+            "timed_out": timed_out,
+            "budget_ms": timeout_budget_ms,
+            "elapsed_ms": max(0, int(elapsed_ms)),
+            "is_falsehood": False,
+        },
+        resources={
+            "resource_class": (
+                draft.resource_class if draft is not None else LEANSTRAL_MODEL_RESOURCE_CLASS
+            ),
+            "token_budget": token_budget,
+            "prompt_tokens": draft.prompt_tokens if draft is not None else 0,
+            "response_tokens": draft.response_tokens if draft is not None else 0,
+            "max_output_bytes": max_output_bytes,
+        },
+        bindings=bindings,
+    )
+
+
 class LeanstralGateStatus(str, Enum):
     """Stable proof/patch proposal gate outcomes."""
 
@@ -501,6 +807,7 @@ class LeanstralProofGateResult:
     model_artifact: LeanstralProofDraft
     admission: LeanProofAdmission
     kernel_verification: KernelVerificationResult
+    proof_attempt_trace: Mapping[str, Any] = field(default_factory=dict)
     schema: str = LEANSTRAL_PROOF_GATE_SCHEMA
 
     def __post_init__(self) -> None:
@@ -524,6 +831,12 @@ class LeanstralProofGateResult:
             self.admission.accepted and self.kernel_verification.accepted
         ):
             raise ValueError("proof gate status disagrees with kernel evidence")
+        if self.proof_attempt_trace:
+            object.__setattr__(
+                self,
+                "proof_attempt_trace",
+                _json_mapping(self.proof_attempt_trace, field_name="proof_attempt_trace"),
+            )
 
     @property
     def accepted(self) -> bool:
@@ -578,6 +891,7 @@ class LeanstralProofGateResult:
             },
             "authoritative_assurance": self.assurance.value,
             "authoritative": self.authoritative,
+            "proof_attempt_trace": dict(self.proof_attempt_trace),
         }
 
 
@@ -954,12 +1268,19 @@ def verify_leanstral_draft(
         )
     )
     reason_codes = tuple(item for item in reason_codes if item)
-    return LeanstralProofGateResult(
+    result = LeanstralProofGateResult(
         status=(LeanstralGateStatus.ACCEPTED if accepted else LeanstralGateStatus.REJECTED),
         reason_codes=reason_codes,
         model_artifact=model_artifact,
         admission=admission,
         kernel_verification=verification,
+    )
+    return replace(
+        result,
+        proof_attempt_trace=capture_leanstral_proof_attempt_trace(
+            draft=model_artifact,
+            gate=result,
+        ),
     )
 
 
@@ -1820,6 +2141,18 @@ class LeanstralProofProvider:
         timeout = self._effective_timeout(request)
         token_budget = self._effective_token_budget(request)
         generate = self._llm_generate or _default_llm_generate
+        started = time.monotonic()
+
+        def _timeout_trace() -> dict[str, Any]:
+            return capture_leanstral_proof_attempt_trace(
+                request=request,
+                context=invocation.context,
+                config=self.config,
+                timed_out=True,
+                elapsed_ms=max(0, int((time.monotonic() - started) * 1000)),
+                errors=("timed_out",),
+            )
+
         try:
             output = generate(
                 prompt,
@@ -1832,13 +2165,24 @@ class LeanstralProofProvider:
                 temperature=self.config.temperature,
                 mistral_vibe_agent=self.config.vibe_agent,
             )
-        except ProofProviderError:
+        except ProofProviderError as exc:
+            if (
+                exc.failure.code is ProviderFailureCode.TIMED_OUT
+                and "proof_attempt_trace" not in exc.failure.details
+            ):
+                raise ProofProviderError(
+                    ProviderFailureCode.TIMED_OUT,
+                    exc.failure.message,
+                    retryable=exc.failure.retryable,
+                    details={**exc.failure.details, "proof_attempt_trace": _timeout_trace()},
+                ) from exc
             raise
         except TimeoutError as exc:
             raise ProofProviderError(
                 ProviderFailureCode.TIMED_OUT,
                 "Leanstral model inference exceeded its timeout",
                 retryable=True,
+                details={"proof_attempt_trace": _timeout_trace()},
             ) from exc
         except (ImportError, ModuleNotFoundError) as exc:
             raise ProofProviderError(
@@ -1952,6 +2296,13 @@ class LeanstralProofProvider:
             metadata=metadata,
         )
         result = draft.to_dict()
+        result["proof_attempt_trace"] = capture_leanstral_proof_attempt_trace(
+            request=request,
+            draft=draft,
+            context=invocation.context,
+            config=self.config,
+            elapsed_ms=max(0, int((time.monotonic() - started) * 1000)),
+        )
         if invocation.context is not None:
             reusable = {
                 **result,
@@ -2004,8 +2355,10 @@ __all__ = [
     "LEANSTRAL_PROOF_PROVIDER_VERSION",
     "LEANSTRAL_PROOF_GATE_SCHEMA",
     "LEANSTRAL_PATCH_GATE_SCHEMA",
+    "LEANSTRAL_PROOF_ATTEMPT_TRACE_SCHEMA",
     "LEAN_KERNEL_RESOURCE_CLASS",
     "LLMGenerate",
+    "capture_leanstral_proof_attempt_trace",
     "LeanstralProofDraft",
     "LeanstralGateStatus",
     "LeanstralPatchGatePolicy",
