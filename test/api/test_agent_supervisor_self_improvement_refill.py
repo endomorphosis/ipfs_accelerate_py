@@ -1950,3 +1950,234 @@ def test_g080_parent_rejects_unverified_stale_or_wrong_child_population(
     else:
         children[0]["proof_requirements"] = []
     _assert_parent_completion_rejected(packet)
+
+
+# ---------------------------------------------------------------------------
+# PGIR-053: expert-iteration refill, no-progress, repetition, exhaustion
+# ---------------------------------------------------------------------------
+
+from ipfs_accelerate_py.agent_supervisor.objectives.expert_iteration_campaign import (
+    refill_candidates_from_result,
+    refill_history_from_result,
+    run_expert_iteration_campaign,
+)
+from ipfs_accelerate_py.agent_supervisor.objectives.ir_learning_campaign_contracts import (
+    IRLearningCampaign,
+    default_campaign_roles,
+)
+from ipfs_accelerate_py.agent_supervisor.proof.bounded_expert_iteration import (
+    ExpertIterationBounds,
+    ExpertIterationStopReason,
+    expert_iteration_fixture_example,
+    run_bounded_expert_iteration,
+)
+from ipfs_accelerate_py.agent_supervisor.self_improvement.campaign_refill_policy import (
+    CampaignRefillController,
+    CampaignRefillHistory,
+    RefillDisposition,
+)
+
+
+def _expert_refill_port(controller: CampaignRefillController):
+    def decide(candidates, *, history, cursor_advanced, progress_identity):
+        observed = history
+        if isinstance(history, dict):
+            observed = CampaignRefillHistory(
+                refill_rounds=int(history.get("refill_rounds") or 0),
+                open_work=int(history.get("open_work") or 0),
+                no_progress_streak=int(history.get("no_progress_streak") or 0),
+                last_progress_identity=str(history.get("last_progress_identity") or ""),
+                curriculum_repetitions=history.get("curriculum_repetitions") or {},
+            )
+        return controller.decide(
+            candidates,
+            history=observed,
+            cursor_advanced=cursor_advanced,
+            progress_identity=progress_identity,
+        )
+
+    return decide
+
+
+def _expert_iteration_campaign_payload() -> dict[str, object]:
+    return {
+        "schema": "IRLearningCampaign@1",
+        "campaign_id": "campaign:pgir-053-refill",
+        "input_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+        "repository_tree_id": "tree:expert-iteration-refill",
+        "owner_actor_id": "supervisor",
+        "roles": [item.to_dict() for item in default_campaign_roles()],
+        "tasks": [
+            {
+                "schema": "IRLearningCampaignTask@1",
+                "task_id": "PGIR-053",
+                "title": "Implement bounded expert iteration",
+                "status": "todo",
+                "completion": "validated-implementation",
+                "is_schedulable": True,
+                "priority": "P0",
+                "track": "curriculum",
+                "parent_goal": "PGIR-G070",
+                "subgoal": "expert-iteration",
+                "owning_repository": "ipfs_accelerate_py",
+                "owned_paths": ["ipfs_accelerate_py/agent_supervisor/proof/"],
+                "base_source_revisions": "SRCSET-1",
+                "source_dataset_revisions": "RESULT(PGIR-011)",
+                "data_split_identity": "RESULT(PGIR-012)",
+                "compiler_identity": "RESULT(PGIR-021)",
+                "decompiler_identity": "RESULT(PGIR-022)",
+                "model_checkpoint_identity": "checkpoint:current",
+                "objective": "bounded expert iteration",
+                "depends_on": ["PGIR-062"],
+                "resource_profile": "RP-MIXED",
+                "expected_inputs": "checked pair/negative roots",
+                "expected_outputs": "curriculum revisions and round receipts",
+                "allowed_effects": "existing proof/objective/refill control surfaces",
+                "prohibited_effects": "hidden-test feedback, unbounded loop, checkpoint self-promotion",
+                "acceptance_criteria": "no-progress/repetition bounds deterministic",
+                "required_proof_or_evaluation_evidence": "authority and exhaustion tests",
+                "lease_and_checkpoint_policy": "LEASE-DEFAULT",
+                "rollback_procedure": "ROLLBACK-DEFAULT",
+                "result_identity": "RESULT(PGIR-053)",
+                "outputs": ["ipfs_accelerate_py/agent_supervisor/proof/"],
+                "validation": "python -m pytest -q test/api/test_agent_supervisor_self_improvement_refill.py",
+                "bundle": "pgir/proof/expert-iteration",
+                "parallel_lane": "expert-iteration",
+                "predicted_files": ["ipfs_accelerate_py/agent_supervisor/proof/"],
+                "conflict_policy": "round coordinator exclusive",
+                "work_graph_role": "curriculum",
+            }
+        ],
+        "operations": [
+            "create",
+            "plan",
+            "status",
+            "steer",
+            "refill",
+            "proof-replay",
+            "compare",
+            "promote",
+            "reject",
+            "report",
+        ],
+        "dependency_results": {
+            "PGIR-011": "baguqeeraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "PGIR-012": "baguqeerabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "PGIR-062": "baguqeeraggggggggggggggggggggggggggggggggggggggggggggggggggg",
+        },
+    }
+
+
+def test_expert_iteration_no_progress_bound_is_deterministic() -> None:
+    result = run_bounded_expert_iteration(
+        (expert_iteration_fixture_example("timeout", example_id="ex:stall"),),
+        campaign_id="campaign:pgir-053-no-progress",
+        bounds=ExpertIterationBounds(max_rounds=4, max_no_progress_rounds=2),
+    )
+    assert result.stop_reason is ExpertIterationStopReason.NO_PROGRESS
+    assert result.no_progress_streak >= 2
+    assert result.retained_attempts == ()
+    assert all(receipt.promotion_authority is False for receipt in result.receipts)
+    assert result.latest_curriculum_revision is not None
+    first = result.receipts[0]
+    replay = run_bounded_expert_iteration(
+        (expert_iteration_fixture_example("timeout", example_id="ex:stall"),),
+        campaign_id="campaign:pgir-053-no-progress",
+        bounds=ExpertIterationBounds(max_rounds=4, max_no_progress_rounds=2),
+    )
+    assert replay.stop_reason is result.stop_reason
+    assert replay.receipts[0].receipt_id == first.receipt_id
+    assert replay.latest_curriculum_revision.revision_id == (
+        result.latest_curriculum_revision.revision_id
+    )
+
+
+def test_expert_iteration_repetition_bound_is_deterministic() -> None:
+    result = run_bounded_expert_iteration(
+        (expert_iteration_fixture_example("unverified_success", example_id="ex:repeat"),),
+        campaign_id="campaign:pgir-053-repeat",
+        bounds=ExpertIterationBounds(
+            max_rounds=8,
+            max_no_progress_rounds=3,
+            max_repeated_examples=2,
+        ),
+    )
+    assert result.stop_reason is ExpertIterationStopReason.REPETITION_BOUNDED
+    processed = [item for item in result.attempts if item.example_id == "ex:repeat"]
+    assert 1 <= len(processed) <= 2
+    assert all(not item.retained for item in processed)
+
+
+def test_expert_iteration_round_and_call_bounds_exhaust_the_loop() -> None:
+    rounds = run_bounded_expert_iteration(
+        (expert_iteration_fixture_example("inconclusive", example_id="ex:round"),),
+        campaign_id="campaign:pgir-053-rounds",
+        bounds=ExpertIterationBounds(
+            max_rounds=1,
+            max_no_progress_rounds=3,
+            max_repeated_examples=2,
+        ),
+    )
+    assert rounds.stop_reason in {
+        ExpertIterationStopReason.ROUND_BOUNDED,
+        ExpertIterationStopReason.EXHAUSTED,
+        ExpertIterationStopReason.NO_PROGRESS,
+    }
+    assert len(rounds.receipts) <= 1
+    calls = run_bounded_expert_iteration(
+        (expert_iteration_fixture_example("verified_success", example_id="ex:calls"),),
+        campaign_id="campaign:pgir-053-calls",
+        bounds=ExpertIterationBounds(max_rounds=2, max_calls=1),
+    )
+    assert calls.stop_reason is ExpertIterationStopReason.CALL_BOUNDED
+    assert calls.call_count >= 1
+
+
+def test_expert_iteration_residuals_feed_campaign_refill_controller() -> None:
+    result = run_bounded_expert_iteration(
+        (expert_iteration_fixture_example("timeout", example_id="ex:residual"),),
+        campaign_id="campaign:pgir-053-residual",
+        bounds=ExpertIterationBounds(max_rounds=1, max_no_progress_rounds=3),
+    )
+    candidates = refill_candidates_from_result(result)
+    assert candidates
+    assert candidates[0]["trigger"] == "proof_residual"
+    assert candidates[0]["candidate_id"] == "ex:residual"
+    history = refill_history_from_result(result)
+    decision = CampaignRefillController().decide(
+        candidates,
+        history=CampaignRefillHistory(
+            refill_rounds=int(history["refill_rounds"]),
+            open_work=int(history["open_work"]),
+            no_progress_streak=2,
+            last_progress_identity="ex:residual",
+            curriculum_repetitions={"ex:residual": 2},
+        ),
+        cursor_advanced=False,
+        progress_identity="ex:residual",
+    )
+    assert decision.disposition is RefillDisposition.NO_PROGRESS_BOUNDED
+    assert decision.admitted == ()
+
+
+def test_expert_iteration_campaign_wires_existing_refill_surface(tmp_path: Path) -> None:
+    campaign = IRLearningCampaign.from_dict(_expert_iteration_campaign_payload())
+    controller = CampaignRefillController()
+    receipt = run_expert_iteration_campaign(
+        campaign,
+        (expert_iteration_fixture_example("timeout", example_id="ex:wired"),),
+        bounds=ExpertIterationBounds(max_rounds=3, max_no_progress_rounds=2),
+        state_path=tmp_path / "wired-expert",
+        refill_decide=_expert_refill_port(controller),
+    )
+    assert receipt.refill_operation is not None
+    assert receipt.promotion_authority is False
+    assert receipt.result.stop_reason in {
+        ExpertIterationStopReason.NO_PROGRESS,
+        ExpertIterationStopReason.REPETITION_BOUNDED,
+        ExpertIterationStopReason.EXHAUSTED,
+        ExpertIterationStopReason.ROUND_BOUNDED,
+    }
+    assert receipt.result.retained_attempts == ()
+    candidates = refill_candidates_from_result(receipt.result)
+    assert all(item["trigger"] == "proof_residual" for item in candidates)

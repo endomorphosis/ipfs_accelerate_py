@@ -48,6 +48,7 @@ Formal verification and attestation: prover contracts, caches, capabilities, and
 | `logic_translation_validation` | `proof/logic_translation_validation.py` |
 | `multi_prover_resources` | `proof/multi_prover_resources.py` |
 | `multi_prover_router` | `proof/multi_prover_router.py` |
+| `bounded_expert_iteration` | `proof/bounded_expert_iteration.py` |
 | `proof_attestation` | `proof/proof_attestation.py` |
 | `proof_context` | `proof/proof_context.py` |
 | `proof_directed_retrieval` | `proof/proof_directed_retrieval.py` |
