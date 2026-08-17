@@ -296,6 +296,493 @@ class RefillController:
         return RefillDecision(RefillDisposition.REFILLED, triggers, epoch, identities, len(candidates), cas=cas)
 
 
+
+# ---------------------------------------------------------------------------
+# ASE3-021 production durable refill runtime (dormant until ASE3-026).
+# ---------------------------------------------------------------------------
+
+# ASE3-021 modules are imported lazily inside ProductionRefillRuntime to
+# avoid import cycles with refill_adapters.
+
+
+@dataclass(frozen=True)
+class ProductionRefillRuntimeReceipt:
+    disposition: str
+    phase: str
+    logical_attempt_id: str
+    epoch: int
+    dormant: bool
+    triggers: tuple[str, ...] = ()
+    gap_identities: tuple[str, ...] = ()
+    cursor_cid: str = ""
+    append_receipt_cid: str = ""
+    plan_invalidation_cid: str = ""
+    recompile_cid: str = ""
+    dispatch_cid: str = ""
+    reason: str = ""
+    winner: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "disposition": self.disposition,
+            "phase": self.phase,
+            "logical_attempt_id": self.logical_attempt_id,
+            "epoch": self.epoch,
+            "dormant": self.dormant,
+            "triggers": list(self.triggers),
+            "gap_identities": list(self.gap_identities),
+            "cursor_cid": self.cursor_cid,
+            "append_receipt_cid": self.append_receipt_cid,
+            "plan_invalidation_cid": self.plan_invalidation_cid,
+            "recompile_cid": self.recompile_cid,
+            "dispatch_cid": self.dispatch_cid,
+            "reason": self.reason,
+            "winner": self.winner,
+        }
+
+
+class ProductionRefillRuntime:
+    """Drive the durable refill saga against production adapters.
+
+    The path remains dormant unless ``policy.activation_authorized`` is true
+    (ASE3-026). When dormant, evaluation still records that no effect ran.
+    """
+
+    def __init__(
+        self,
+        *,
+        store: RefillStore,
+        policy: SignedRefillPolicy,
+        evaluator: ResidualEvidenceEvaluator,
+        event_adapter: Any = None,
+        controller_policy: RefillPolicy | None = None,
+    ) -> None:
+        from .refill_event_adapter import ProductionRefillEventAdapter
+        from .refill_store import RefillStore, SignedRefillPolicy
+
+        if not isinstance(store, RefillStore):
+            raise TypeError("store must be a RefillStore")
+        if not isinstance(policy, SignedRefillPolicy):
+            raise TypeError("policy must be a SignedRefillPolicy")
+        self.store = store
+        self.policy = policy
+        self.evaluator = evaluator
+        self.event_adapter = event_adapter or ProductionRefillEventAdapter()
+        self.controller_policy = controller_policy or RefillPolicy(
+            max_epochs=policy.max_epochs,
+            max_new_work_per_epoch=policy.max_new_work_per_epoch,
+            max_unchanged_epochs=policy.max_unchanged_epochs,
+        )
+
+    def run_once(
+        self,
+        observation: RefillObservation,
+        *,
+        tree_id: str,
+        logical_attempt_id: str | None = None,
+        now_ms: int | None = None,
+        phase_budget_ms: int = 60_000,
+    ) -> ProductionRefillRuntimeReceipt:
+        """Execute or adopt one durable refill saga attempt."""
+
+        import time as _time
+
+        from .refill_adapters import (
+            dispatch_identity,
+            invalidate_active_plan,
+            recompile_plan_identity,
+        )
+        from .refill_store import (
+            REFILL_APPEND_RECEIPT_SCHEMA,
+            DurableRefillState,
+            RefillAppendReceipt,
+            RefillSagaPhase,
+        )
+
+        clock = int(now_ms if now_ms is not None else int(_time.time() * 1000))
+        triggers = refill_triggers(observation, self.controller_policy)
+        attempt_id = logical_attempt_id or (
+            f"refill:{observation.plan_root_cid}:r{observation.revision}:e"
+            f"{self.store.load_state(observation.plan_root_cid).epoch + 1 if self.store.load_state(observation.plan_root_cid) else 1}"
+        )
+
+        if not self.policy.activation_authorized:
+            return ProductionRefillRuntimeReceipt(
+                disposition="dormant",
+                phase="",
+                logical_attempt_id=attempt_id,
+                epoch=0,
+                dormant=True,
+                triggers=tuple(item.value for item in triggers),
+                reason="awaiting_ase3_026_activation_authorization",
+            )
+
+        # Exact attempt adoption/resume is authoritative over residual re-eval.
+        if logical_attempt_id is not None:
+            existing_cursor = self.store.load_cursor(logical_attempt_id)
+            if existing_cursor is not None:
+                return self._resume(
+                    existing_cursor,
+                    tree_id=tree_id,
+                    now_ms=clock,
+                    phase_budget_ms=phase_budget_ms,
+                )
+
+        state = self.store.load_state(observation.plan_root_cid)
+        if state is None:
+            state = DurableRefillState(
+                schema="ipfs_accelerate_py/agent-supervisor/durable-refill-state@1",
+                plan_root_cid=observation.plan_root_cid,
+                tree_id=tree_id,
+                activation_authorized=True,
+            )
+        if state.tree_id and state.tree_id != tree_id:
+            return ProductionRefillRuntimeReceipt(
+                disposition="blocked",
+                phase="",
+                logical_attempt_id=attempt_id,
+                epoch=state.epoch,
+                dormant=False,
+                reason="tree_id_mismatch",
+            )
+
+        # Adopt incomplete cursor if present.
+        if state.active_cursor is not None:
+            cursor = self.store.load_cursor(state.active_cursor.logical_attempt_id)
+            if cursor is not None and cursor.phase not in {
+                RefillSagaPhase.ADOPTED.value,
+                RefillSagaPhase.EXHAUSTED.value,
+            }:
+                return self._resume(cursor, tree_id=tree_id, now_ms=clock, phase_budget_ms=phase_budget_ms)
+
+        if not triggers:
+            return ProductionRefillRuntimeReceipt(
+                disposition="no_refill",
+                phase="",
+                logical_attempt_id=attempt_id,
+                epoch=state.epoch,
+                dormant=False,
+                reason="no_refill_trigger",
+            )
+
+        epoch = state.epoch + 1
+        if epoch > self.policy.max_epochs:
+            return ProductionRefillRuntimeReceipt(
+                disposition="blocked",
+                phase="",
+                logical_attempt_id=attempt_id,
+                epoch=state.epoch,
+                dormant=False,
+                triggers=tuple(item.value for item in triggers),
+                reason="epoch_budget_exhausted",
+            )
+
+        evidence = self.evaluator(observation, force_final_scan=True)
+        if evidence.repository_tree_id != tree_id:
+            return ProductionRefillRuntimeReceipt(
+                disposition="blocked",
+                phase="",
+                logical_attempt_id=attempt_id,
+                epoch=state.epoch,
+                dormant=False,
+                reason="missing_or_mismatched_current_tree_evidence",
+            )
+
+        candidates: list[ResidualGap] = []
+        selected: set[str] = set()
+        seen = set(state.seen_gap_ids)
+        for gap in sorted(evidence.gaps, key=lambda item: item.identity)[
+            : self.controller_policy.max_findings_per_scan
+        ]:
+            gap.validate()
+            if gap.identity in seen or gap.identity in selected:
+                continue
+            if gap.depth >= self.controller_policy.max_refinement_depth:
+                continue
+            candidates.append(gap)
+            selected.add(gap.identity)
+            if len(candidates) >= self.policy.max_new_work_per_epoch:
+                break
+        identities = tuple(gap.identity for gap in candidates)
+        if not candidates:
+            if evidence.completion.authorized:
+                return ProductionRefillRuntimeReceipt(
+                    disposition="no_refill",
+                    phase="",
+                    logical_attempt_id=attempt_id,
+                    epoch=state.epoch,
+                    dormant=False,
+                    triggers=tuple(item.value for item in triggers),
+                    reason="final_scan_evidence_complete",
+                )
+            # Exhaust unchanged residuals
+            if identities == state.last_gap_set:
+                state.unchanged_epochs += 1
+            if state.unchanged_epochs >= self.policy.max_unchanged_epochs:
+                cursor, created, _ = self.store.begin_or_adopt(
+                    logical_attempt_id=attempt_id,
+                    plan_root_cid=observation.plan_root_cid,
+                    tree_id=tree_id,
+                    epoch=epoch,
+                    gap_identities=(),
+                    phase_budget_ms=phase_budget_ms,
+                    now_ms=clock,
+                    activation_authorized=True,
+                )
+                cursor = self.store.advance(
+                    attempt_id,
+                    fence_token=cursor.fence_token,
+                    next_phase=RefillSagaPhase.EXHAUSTED.value,
+                    tree_id=tree_id,
+                    now_ms=clock,
+                    phase_budget_ms=phase_budget_ms,
+                )
+                state.epoch = epoch
+                state.active_cursor = cursor
+                self.store.save_state(state)
+                return ProductionRefillRuntimeReceipt(
+                    disposition="exhausted",
+                    phase=cursor.phase,
+                    logical_attempt_id=attempt_id,
+                    epoch=epoch,
+                    dormant=False,
+                    triggers=tuple(item.value for item in triggers),
+                    cursor_cid=cursor.phase_cid,
+                    reason="unchanged_residual_circuit_breaker",
+                )
+            return ProductionRefillRuntimeReceipt(
+                disposition="blocked",
+                phase="",
+                logical_attempt_id=attempt_id,
+                epoch=state.epoch,
+                dormant=False,
+                reason="no_novel_actionable_residual",
+            )
+
+        # Full saga path.
+        cursor, created, adoption = self.store.begin_or_adopt(
+            logical_attempt_id=attempt_id,
+            plan_root_cid=observation.plan_root_cid,
+            tree_id=tree_id,
+            epoch=epoch,
+            gap_identities=identities,
+            phase_budget_ms=phase_budget_ms,
+            now_ms=clock,
+            activation_authorized=True,
+        )
+        if not created and adoption is not None:
+            return ProductionRefillRuntimeReceipt(
+                disposition="adopted",
+                phase=adoption.phase,
+                logical_attempt_id=attempt_id,
+                epoch=adoption.epoch,
+                dormant=False,
+                winner=False,
+                append_receipt_cid=adoption.append_receipt_cid,
+                dispatch_cid=adoption.dispatch_cid,
+                reason="adopted_existing_terminal",
+            )
+        if not created:
+            return self._resume(cursor, tree_id=tree_id, now_ms=clock, phase_budget_ms=phase_budget_ms)
+
+        fence = cursor.fence_token
+        # APPEND_RESERVED
+        reservation_id = "sha256:" + hashlib.sha256(
+            f"reserve:{attempt_id}:{epoch}".encode()
+        ).hexdigest()
+        cursor = self.store.advance(
+            attempt_id,
+            fence_token=fence,
+            next_phase=RefillSagaPhase.APPEND_RESERVED.value,
+            tree_id=tree_id,
+            now_ms=clock,
+            phase_budget_ms=phase_budget_ms,
+            reservation_id=reservation_id,
+            gap_identities=identities,
+        )
+        # APPENDED
+        append_receipt = RefillAppendReceipt(
+            schema=REFILL_APPEND_RECEIPT_SCHEMA,
+            logical_attempt_id=attempt_id,
+            plan_root_cid=observation.plan_root_cid,
+            tree_id=tree_id,
+            epoch=epoch,
+            gap_identities=identities,
+            expected_revision=observation.revision,
+            append_cid="sha256:" + hashlib.sha256(
+                json.dumps(list(identities), separators=(",", ":")).encode()
+            ).hexdigest(),
+            created_at_ms=clock,
+        )
+        cursor = self.store.advance(
+            attempt_id,
+            fence_token=fence,
+            next_phase=RefillSagaPhase.APPENDED.value,
+            tree_id=tree_id,
+            now_ms=clock,
+            phase_budget_ms=phase_budget_ms,
+            append_receipt_cid=append_receipt.content_id,
+        )
+        # PLAN_INVALIDATED
+        invalidation = invalidate_active_plan(
+            logical_attempt_id=attempt_id,
+            plan_root_cid=observation.plan_root_cid,
+            previous_revision=observation.revision,
+            now_ms=clock,
+        )
+        cursor = self.store.advance(
+            attempt_id,
+            fence_token=fence,
+            next_phase=RefillSagaPhase.PLAN_INVALIDATED.value,
+            tree_id=tree_id,
+            now_ms=clock,
+            phase_budget_ms=phase_budget_ms,
+            plan_invalidation_cid=invalidation.content_id,
+        )
+        # RECOMPILED
+        recompile_cid = recompile_plan_identity(
+            plan_root_cid=observation.plan_root_cid,
+            tree_id=tree_id,
+            epoch=epoch,
+            gap_identities=identities,
+        )
+        cursor = self.store.advance(
+            attempt_id,
+            fence_token=fence,
+            next_phase=RefillSagaPhase.RECOMPILED.value,
+            tree_id=tree_id,
+            now_ms=clock,
+            phase_budget_ms=phase_budget_ms,
+            recompile_cid=recompile_cid,
+        )
+        # DISPATCHED
+        dispatch_cid = dispatch_identity(
+            recompile_cid=recompile_cid,
+            plan_root_cid=observation.plan_root_cid,
+            epoch=epoch,
+        )
+        cursor = self.store.advance(
+            attempt_id,
+            fence_token=fence,
+            next_phase=RefillSagaPhase.DISPATCHED.value,
+            tree_id=tree_id,
+            now_ms=clock,
+            phase_budget_ms=phase_budget_ms,
+            dispatch_cid=dispatch_cid,
+        )
+        adoption = self.store.adopt_terminal(attempt_id, now_ms=clock)
+
+        state.epoch = epoch
+        state.tree_id = tree_id
+        state.last_gap_set = identities
+        state.seen_gap_ids = tuple(sorted(set(state.seen_gap_ids) | set(identities)))
+        state.unchanged_epochs = 0
+        state.activation_authorized = True
+        state.active_cursor = self.store.load_cursor(attempt_id)
+        history = list(state.history)
+        history.append(
+            {
+                "epoch": epoch,
+                "attempt_id": attempt_id,
+                "append_receipt_cid": append_receipt.content_id,
+                "dispatch_cid": dispatch_cid,
+            }
+        )
+        state.history = tuple(history[-32:])
+        self.store.save_state(state)
+
+        return ProductionRefillRuntimeReceipt(
+            disposition="refilled",
+            phase=adoption.phase,
+            logical_attempt_id=attempt_id,
+            epoch=epoch,
+            dormant=False,
+            triggers=tuple(item.value for item in triggers),
+            gap_identities=identities,
+            cursor_cid=cursor.phase_cid,
+            append_receipt_cid=append_receipt.content_id,
+            plan_invalidation_cid=invalidation.content_id,
+            recompile_cid=recompile_cid,
+            dispatch_cid=dispatch_cid,
+            reason="durable_saga_completed",
+            winner=adoption.winner,
+        )
+
+    def _resume(
+        self,
+        cursor,
+        *,
+        tree_id: str,
+        now_ms: int,
+        phase_budget_ms: int,
+    ) -> ProductionRefillRuntimeReceipt:
+        """Resume from the first incomplete phase without replaying effects."""
+
+        from .refill_store import RefillSagaPhase
+
+        phase = RefillSagaPhase(cursor.phase)
+        if phase is RefillSagaPhase.DISPATCHED:
+            adoption = self.store.adopt_terminal(
+                cursor.logical_attempt_id, now_ms=now_ms
+            )
+            return ProductionRefillRuntimeReceipt(
+                disposition="adopted",
+                phase=adoption.phase,
+                logical_attempt_id=cursor.logical_attempt_id,
+                epoch=cursor.epoch,
+                dormant=False,
+                winner=adoption.winner,
+                append_receipt_cid=cursor.append_receipt_cid,
+                dispatch_cid=cursor.dispatch_cid,
+                reason="resumed_dispatch_to_adopted",
+            )
+        if phase is RefillSagaPhase.ADOPTED:
+            return ProductionRefillRuntimeReceipt(
+                disposition="adopted",
+                phase=cursor.phase,
+                logical_attempt_id=cursor.logical_attempt_id,
+                epoch=cursor.epoch,
+                dormant=False,
+                winner=False,
+                cursor_cid=cursor.phase_cid,
+                append_receipt_cid=cursor.append_receipt_cid,
+                plan_invalidation_cid=cursor.plan_invalidation_cid,
+                recompile_cid=cursor.recompile_cid,
+                dispatch_cid=cursor.dispatch_cid,
+                gap_identities=cursor.gap_identities,
+                reason="adopted_existing_terminal",
+            )
+        if phase is RefillSagaPhase.EXHAUSTED:
+            return ProductionRefillRuntimeReceipt(
+                disposition="exhausted",
+                phase=cursor.phase,
+                logical_attempt_id=cursor.logical_attempt_id,
+                epoch=cursor.epoch,
+                dormant=False,
+                winner=False,
+                cursor_cid=cursor.phase_cid,
+                reason="adopted_exhausted",
+            )
+        # For non-terminal incomplete phases, adopt the existing reservation
+        # without re-entering provider/append effects.
+        return ProductionRefillRuntimeReceipt(
+            disposition="adopted",
+            phase=cursor.phase,
+            logical_attempt_id=cursor.logical_attempt_id,
+            epoch=cursor.epoch,
+            dormant=False,
+            winner=False,
+            cursor_cid=cursor.phase_cid,
+            append_receipt_cid=cursor.append_receipt_cid,
+            plan_invalidation_cid=cursor.plan_invalidation_cid,
+            recompile_cid=cursor.recompile_cid,
+            dispatch_cid=cursor.dispatch_cid,
+            gap_identities=cursor.gap_identities,
+            reason=f"resumed_incomplete_phase_{cursor.phase}",
+        )
+
+
+
 __all__ = (
     "BOUNDED_RESIDUAL_REFILL_REQUIREMENT_ID", "REFILL_RECEIPT_SCHEMA", "AppendRefillWork",
     "CompletionAuthorityDecision", "ProductionSelfImprovementHook", "RefillController",

@@ -1,0 +1,1327 @@
+{
+  "schema": "logic-platform-canonicalization/datasets-public-api-inventory@1",
+  "task_id": "LPC-002",
+  "goal_id": "LPC-G010",
+  "title": "Inventory datasets public logic APIs and compatibility shims",
+  "generated_at": "2026-08-15",
+  "implementation_authority": {
+    "repository": "ipfs_datasets_py",
+    "reviewed_baseline": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "current_head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "intended_checkout": "/home/barberb/lift_coding/external/ipfs_datasets",
+    "nested_submodule_path": "ipfs_datasets_py",
+    "source_availability": {
+      "external_checkout_present": false,
+      "nested_submodule_populated": false,
+      "note": "This worktree's nested ipfs_datasets_py checkout is empty and the external datasets path is unavailable. Classifications are bound to the reviewed datasets revision through accelerate-side parity contracts, offline toolchain lock stable operation lists, LFV completion receipts, and documented public surfaces that require those exact exports."
+    }
+  },
+  "classification_vocabulary": [
+    "canonical",
+    "canonical_component",
+    "compatibility_facade",
+    "legacy",
+    "experimental",
+    "declaration_only",
+    "generated",
+    "duplicate",
+    "obsolete",
+    "unresolved"
+  ],
+  "inventory_categories": [
+    "public_logic_api",
+    "mcp_cli_python_exposure",
+    "compatibility_shim",
+    "deprecated_module"
+  ],
+  "surfaces_in_scope": [
+    "ipfs_datasets_py.logic.__init__",
+    "ipfs_datasets_py.logic.api",
+    "ipfs_datasets_py.logic.verification_api",
+    "ipfs_datasets_py.logic.cli",
+    "ipfs_datasets_py.mcp_server.tools.logic_verification",
+    "ipfs_datasets_py.mcp_server.tools.logic_tools"
+  ],
+  "interfaces": {
+    "LogicVerificationAPI@1": "Stable Python software-verification facade",
+    "LogicVerificationCLI@1": "CLI channel for LogicVerificationAPI@1",
+    "LogicVerificationMCP@1": "MCP channel for LogicVerificationAPI@1",
+    "GoalTacticianAPI@1": "Public goal-tactician Python operations",
+    "GoalTacticianCLIMCP@1": "CLI/MCP parity channel for goal tactician",
+    "LogicAPICompatibility@1": "Frozen legacy API/CLI/MCP compatibility surface",
+    "FormalVerificationMCPParity@1": "Python/datasets MCP/root MCP envelope parity",
+    "ExecutableProviderMatrix@1": "Declarative executable provider matrix identity",
+    "LogicVerificationLazyInstaller@1": "Explicit install_provider mutation boundary"
+  },
+  "stable_operations": [
+    "list_logic_families",
+    "list_providers",
+    "provider_capabilities",
+    "compile_verification_artifact",
+    "check",
+    "monitor",
+    "run_portfolio",
+    "explain_counterexample",
+    "verify_receipt",
+    "attest_receipt",
+    "advise",
+    "probe_provider",
+    "install_provider"
+  ],
+  "goal_tactician_operations": [
+    {
+      "python": "formalize_goal",
+      "cli": "goal-formalize",
+      "mcp": "goal_tactician_formalize_goal"
+    },
+    {
+      "python": "compare_interpretations",
+      "cli": "goal-compare-interpretations",
+      "mcp": "goal_tactician_compare_interpretations"
+    },
+    {
+      "python": "discover_missing_proofs",
+      "cli": "goal-discover-missing-proofs",
+      "mcp": "goal_tactician_discover_missing_proofs"
+    },
+    {
+      "python": "plan_proof",
+      "cli": "goal-plan-proof",
+      "mcp": "goal_tactician_plan_proof"
+    },
+    {
+      "python": "validate_proof_candidate",
+      "cli": "goal-validate-candidate",
+      "mcp": "goal_tactician_validate_proof_candidate"
+    },
+    {
+      "python": "execute_proof_plan",
+      "cli": "goal-execute-plan",
+      "mcp": "goal_tactician_execute_proof_plan"
+    },
+    {
+      "python": "proof_status",
+      "cli": "goal-proof-status",
+      "mcp": "goal_tactician_proof_status"
+    },
+    {
+      "python": "minimize_counterexample",
+      "cli": "goal-minimize-counterexample",
+      "mcp": "goal_tactician_minimize_counterexample"
+    },
+    {
+      "python": "explain_counterexample_causal",
+      "cli": "goal-explain-counterexample",
+      "mcp": "goal_tactician_explain_counterexample_causal"
+    },
+    {
+      "python": "replay_counterexample",
+      "cli": "goal-replay-counterexample",
+      "mcp": "goal_tactician_replay_counterexample"
+    },
+    {
+      "python": "list_goal_tactician_operations",
+      "cli": "goal-list-operations",
+      "mcp": "goal_tactician_list_operations"
+    }
+  ],
+  "source_evidence": [
+    "config/formal_verification_toolchains.lock.json#stable_python_operations",
+    "docs/formal_verification_tactician.md#public-api-surfaces",
+    "docs/architecture/logic_formal_verification_expansion.objectives.md#LFV-G070/G071",
+    "docs/architecture/logic_formal_verification_expansion_completion_receipt.json",
+    "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md",
+    "test/api/test_root_mcp_formal_verification_parity.py",
+    "test/api/test_goal_tactician_cli_mcp_parity.py",
+    "test/api/test_logic_verification_api_install_provider.py",
+    "test/packaging/test_logic_verification_clean_install.py",
+    "ipfs_accelerate_py/mcp_server/tools/logic_tools/native_logic_tools.py",
+    "ipfs_accelerate_py/mcp_server/tools/dataset_tools/native_dataset_tools.py",
+    "data/agent_supervisor/logic_formal_verification_expansion/bundles/todo_vector_index.json"
+  ],
+  "summary": {
+    "item_count": 59,
+    "by_classification": {
+      "canonical": 29,
+      "canonical_component": 9,
+      "compatibility_facade": 4,
+      "legacy": 11,
+      "declaration_only": 4,
+      "duplicate": 1,
+      "obsolete": 1
+    },
+    "by_surface": {
+      "logic.__init__": 3,
+      "logic.api": 3,
+      "logic.verification_api": 33,
+      "cli": 3,
+      "mcp": 17
+    },
+    "by_category": {
+      "public_logic_api": 34,
+      "mcp_cli_python_exposure": 10,
+      "compatibility_shim": 14,
+      "deprecated_module": 1
+    },
+    "acceptance": "Every public import from logic.__init__, logic.api, logic.verification_api, CLI, and MCP is classified."
+  },
+  "items": [
+    {
+      "id": "mod:logic.__init__",
+      "symbol": "ipfs_datasets_py.logic",
+      "import_path": "ipfs_datasets_py.logic",
+      "module_path": "ipfs_datasets_py/logic/__init__.py",
+      "surface": "logic.__init__",
+      "kind": "module",
+      "category": "public_logic_api",
+      "classification": "compatibility_facade",
+      "interface": null,
+      "role": "Package root. Lazy public re-export surface; pure-data import must remain side-effect free. Planned LPC-G060 keeps this as a thin adapter over platform services.",
+      "exposes": [
+        "lazy family/submodule access via submodule_registry",
+        "verification_api re-exports",
+        "legacy family entry points"
+      ],
+      "source_evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G060",
+        "docs/architecture/logic_formal_verification_expansion.objectives.md#LFV-G070",
+        "data/agent_supervisor/logic_formal_verification_expansion/bundles/todo_vector_index.json#LFV-G070"
+      ]
+    },
+    {
+      "id": "mod:logic.submodule_registry",
+      "symbol": "ipfs_datasets_py.logic.submodule_registry",
+      "import_path": "ipfs_datasets_py.logic.submodule_registry",
+      "module_path": "ipfs_datasets_py/logic/submodule_registry.py",
+      "surface": "logic.__init__",
+      "kind": "module",
+      "category": "public_logic_api",
+      "classification": "canonical_component",
+      "interface": null,
+      "role": "Declarative lazy submodule catalog for logic package imports. Records names/specs without eager optional provider imports.",
+      "public_symbols": [
+        "LogicSubmoduleSpec",
+        "logic_submodule_names",
+        "logic_submodule_spec",
+        "logic_submodule_specs",
+        "logic_submodule_import_report",
+        "logic_integration_manifest",
+        "logic_optimizer_scope_for_component",
+        "logic_optimizer_target_file_hints"
+      ],
+      "source_evidence": [
+        "data/agent_supervisor/logic_formal_verification_expansion/bundles/todo_vector_index.json#LFV-G070"
+      ]
+    },
+    {
+      "id": "mod:logic.api",
+      "symbol": "ipfs_datasets_py.logic.api",
+      "import_path": "ipfs_datasets_py.logic.api",
+      "module_path": "ipfs_datasets_py/logic/api.py",
+      "surface": "logic.api",
+      "kind": "module",
+      "category": "compatibility_shim",
+      "classification": "compatibility_facade",
+      "interface": "LogicAPICompatibility@1",
+      "role": "Legacy Python API facade frozen by LFV-G011. Must preserve reviewed FOL/deontic conversion behavior while new work uses verification_api.",
+      "source_evidence": [
+        "docs/architecture/logic_formal_verification_expansion.objectives.md#LFV-G011",
+        "docs/architecture/logic_platform_canonicalization.todo.md#LPC-062"
+      ]
+    },
+    {
+      "id": "py:logic.api.convert_text_to_fol",
+      "symbol": "convert_text_to_fol",
+      "import_path": "ipfs_datasets_py.logic.api.convert_text_to_fol",
+      "module_path": "ipfs_datasets_py/logic/api.py",
+      "surface": "logic.api",
+      "kind": "function",
+      "category": "compatibility_shim",
+      "classification": "legacy",
+      "interface": "LogicAPICompatibility@1",
+      "role": "Legacy natural-language to FOL conversion. Also exposed on MCP dataset tools as text_to_fol.",
+      "related_symbols": [
+        "ipfs_datasets_py.logic.fol.convert_text_to_fol",
+        "ipfs_datasets_py.logic.fol.FOLConverter"
+      ],
+      "source_evidence": [
+        "data/agent_supervisor/logic_formal_verification_expansion/bundles/todo_vector_index.json#LFV-G071",
+        "ipfs_accelerate_py/mcp_server/tools/dataset_tools/native_dataset_tools.py"
+      ]
+    },
+    {
+      "id": "py:logic.api.convert_legal_text_to_deontic",
+      "symbol": "convert_legal_text_to_deontic",
+      "import_path": "ipfs_datasets_py.logic.api.convert_legal_text_to_deontic",
+      "module_path": "ipfs_datasets_py/logic/api.py",
+      "surface": "logic.api",
+      "kind": "function",
+      "category": "compatibility_shim",
+      "classification": "legacy",
+      "interface": "LogicAPICompatibility@1",
+      "role": "Legacy legal-text to deontic conversion. Also exposed on MCP dataset tools as legal_text_to_deontic.",
+      "related_symbols": [
+        "ipfs_datasets_py.logic.deontic.convert_legal_text_to_deontic",
+        "ipfs_datasets_py.logic.deontic.DeonticConverter"
+      ],
+      "source_evidence": [
+        "data/agent_supervisor/logic_formal_verification_expansion/bundles/todo_vector_index.json#LFV-G071",
+        "ipfs_accelerate_py/mcp_server/tools/dataset_tools/native_dataset_tools.py"
+      ]
+    },
+    {
+      "id": "mod:logic.verification_api",
+      "symbol": "ipfs_datasets_py.logic.verification_api",
+      "import_path": "ipfs_datasets_py.logic.verification_api",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "module",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Canonical public Python software-verification facade. Import is side-effect free: no probe, install, network, or environment mutation. LPC-G060 will keep this as a thin facade over logic/platform/*.",
+      "public_constants": [
+        "LOGIC_VERIFICATION_API_INTERFACE",
+        "LOGIC_VERIFICATION_RESPONSE_SCHEMA",
+        "STABLE_OPERATIONS",
+        "EXECUTABLE_PROVIDER_MATRIX_INTERFACE",
+        "FORMAL_VERIFICATION_MCP_PARITY_INTERFACE",
+        "GOAL_TACTICIAN_API_INTERFACE",
+        "GOAL_TACTICIAN_CLI_MCP_INTERFACE",
+        "GOAL_TACTICIAN_OPERATIONS",
+        "GOAL_TACTICIAN_CLI_COMMANDS",
+        "GOAL_TACTICIAN_CLI_TO_OPERATION",
+        "GOAL_TACTICIAN_TOOL_NAMES",
+        "GOAL_TACTICIAN_TOOL_TO_OPERATION",
+        "GOAL_TACTICIAN_RESPONSE_SCHEMA",
+        "ATTESTATION_AUTHORITY_BOUNDARY_INTERFACE",
+        "VERIFIED_RECEIPT_DISPATCH_INTERFACE"
+      ],
+      "source_evidence": [
+        "config/formal_verification_toolchains.lock.json",
+        "test/api/test_root_mcp_formal_verification_parity.py",
+        "test/api/test_goal_tactician_cli_mcp_parity.py",
+        "docs/formal_verification_tactician.md"
+      ]
+    },
+    {
+      "id": "py:LogicVerificationAPI",
+      "symbol": "LogicVerificationAPI",
+      "import_path": "ipfs_datasets_py.logic.verification_api.LogicVerificationAPI",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "class",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Primary class facade for stable verification operations and goal-tactician entry points.",
+      "source_evidence": [
+        "test/api/test_logic_verification_api_install_provider.py",
+        "docs/operations/formal_verification_tactician_runbook.md"
+      ]
+    },
+    {
+      "id": "py:get_verification_api",
+      "symbol": "get_verification_api",
+      "import_path": "ipfs_datasets_py.logic.verification_api.get_verification_api",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical_component",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Factory/accessor for LogicVerificationAPI instances; supports reset for hermetic tests.",
+      "source_evidence": [
+        "test/api/test_root_mcp_formal_verification_parity.py",
+        "test/api/test_logic_receipt_authority_boundary.py"
+      ]
+    },
+    {
+      "id": "py:VerificationStatus",
+      "symbol": "VerificationStatus",
+      "import_path": "ipfs_datasets_py.logic.verification_api.VerificationStatus",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "enum",
+      "category": "public_logic_api",
+      "classification": "canonical_component",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Operation-status axis on public responses. Orthogonal to VerificationAuthority (LPC-G030 target).",
+      "source_evidence": [
+        "test/api/test_logic_verification_api_install_provider.py"
+      ]
+    },
+    {
+      "id": "py:VerificationAuthority",
+      "symbol": "VerificationAuthority",
+      "import_path": "ipfs_datasets_py.logic.verification_api.VerificationAuthority",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "enum",
+      "category": "public_logic_api",
+      "classification": "canonical_component",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Semantic authority ceiling on public responses. Provider success never implies theorem authority.",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md#proof-authority-interpretation",
+        "test/api/test_logic_verification_api_install_provider.py"
+      ]
+    },
+    {
+      "id": "py:op.list_logic_families",
+      "symbol": "list_logic_families",
+      "import_path": "ipfs_datasets_py.logic.verification_api.list_logic_families",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "declaration_only",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Declarative family catalog. No install/probe.",
+      "authority_ceiling": "declarative",
+      "stable_operation": true,
+      "source_evidence": [
+        "config/formal_verification_toolchains.lock.json#stable_python_operations",
+        "docs/formal_verification_tactician.md"
+      ]
+    },
+    {
+      "id": "py:op.list_providers",
+      "symbol": "list_providers",
+      "import_path": "ipfs_datasets_py.logic.verification_api.list_providers",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "declaration_only",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Declarative provider catalog including ExecutableProviderMatrix@1 identity.",
+      "authority_ceiling": "declarative",
+      "stable_operation": true,
+      "mcp_tool": "verification_list_providers",
+      "source_evidence": [
+        "test/api/test_root_mcp_formal_verification_parity.py",
+        "config/formal_verification_toolchains.lock.json"
+      ]
+    },
+    {
+      "id": "py:op.provider_capabilities",
+      "symbol": "provider_capabilities",
+      "import_path": "ipfs_datasets_py.logic.verification_api.provider_capabilities",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "declaration_only",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Declared provider capabilities. Missing provider returns unsupported.",
+      "authority_ceiling": "declarative",
+      "stable_operation": true,
+      "mcp_tool": "verification_provider_capabilities",
+      "source_evidence": [
+        "test/api/test_root_mcp_formal_verification_parity.py"
+      ]
+    },
+    {
+      "id": "py:op.list_features",
+      "symbol": "list_features",
+      "import_path": "ipfs_datasets_py.logic.verification_api.list_features",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "declaration_only",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Public feature/operation listing. Superset of STABLE_OPERATIONS. Present on class and MCP as verification_list_features; not listed in lock stable_python_operations.",
+      "authority_ceiling": "declarative",
+      "stable_operation": false,
+      "mcp_tool": "verification_list_features",
+      "source_evidence": [
+        "test/api/test_root_mcp_formal_verification_parity.py",
+        "test/packaging/test_logic_verification_clean_install.py"
+      ]
+    },
+    {
+      "id": "py:op.compile_verification_artifact",
+      "symbol": "compile_verification_artifact",
+      "import_path": "ipfs_datasets_py.logic.verification_api.compile_verification_artifact",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Source/IR compilation. Authority ceiling is source translation only.",
+      "authority_ceiling": "source_translation",
+      "stable_operation": true,
+      "mcp_tool": "verification_compile_verification_artifact",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "config/formal_verification_toolchains.lock.json"
+      ]
+    },
+    {
+      "id": "py:op.check",
+      "symbol": "check",
+      "import_path": "ipfs_datasets_py.logic.verification_api.check",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Bounded/kernel check. Succeeded status does not imply theorem authority.",
+      "authority_ceiling": "as_returned",
+      "stable_operation": true,
+      "mcp_tool": "verification_check",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_root_mcp_formal_verification_parity.py"
+      ]
+    },
+    {
+      "id": "py:op.monitor",
+      "symbol": "monitor",
+      "import_path": "ipfs_datasets_py.logic.verification_api.monitor",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Runtime monitoring over finite traces.",
+      "authority_ceiling": "monitor",
+      "stable_operation": true,
+      "mcp_tool": "verification_monitor",
+      "source_evidence": [
+        "docs/architecture/LOGIC_FORMAL_VERIFICATION_EXPANSION_PLAN.md",
+        "config/formal_verification_toolchains.lock.json"
+      ]
+    },
+    {
+      "id": "py:op.run_portfolio",
+      "symbol": "run_portfolio",
+      "import_path": "ipfs_datasets_py.logic.verification_api.run_portfolio",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Multi-provider portfolio execution under ExecutableProviderMatrix@1.",
+      "authority_ceiling": "per_provider",
+      "stable_operation": true,
+      "mcp_tool": "verification_portfolio",
+      "source_evidence": [
+        "test/api/test_root_mcp_formal_verification_parity.py"
+      ]
+    },
+    {
+      "id": "py:op.explain_counterexample",
+      "symbol": "explain_counterexample",
+      "import_path": "ipfs_datasets_py.logic.verification_api.explain_counterexample",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Public counterexample explanation. Never embeds private witnesses.",
+      "authority_ceiling": "none_or_bounded_witness",
+      "stable_operation": true,
+      "mcp_tool": "verification_explain_counterexample",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "config/formal_verification_toolchains.lock.json"
+      ]
+    },
+    {
+      "id": "py:op.verify_receipt",
+      "symbol": "verify_receipt",
+      "import_path": "ipfs_datasets_py.logic.verification_api.verify_receipt",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Fail-closed receipt validation. Rejects empty/forged/stale/mismatched receipts.",
+      "authority_ceiling": "structure_attestation",
+      "stable_operation": true,
+      "mcp_tool": "verification_verify_receipt",
+      "source_evidence": [
+        "test/api/test_logic_receipt_authority_boundary.py",
+        "docs/architecture/formal_verification_readiness_baseline.json"
+      ]
+    },
+    {
+      "id": "py:op.attest_receipt",
+      "symbol": "attest_receipt",
+      "import_path": "ipfs_datasets_py.logic.verification_api.attest_receipt",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Bind attestation to an existing trusted receipt. Does not raise proof authority.",
+      "authority_ceiling": "attestation",
+      "stable_operation": true,
+      "mcp_tool": "verification_attest_receipt",
+      "source_evidence": [
+        "test/api/test_logic_receipt_authority_boundary.py",
+        "config/formal_verification_toolchains.lock.json"
+      ]
+    },
+    {
+      "id": "py:op.advise",
+      "symbol": "advise",
+      "import_path": "ipfs_datasets_py.logic.verification_api.advise",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Advisor proposals only. Never marks goals proved.",
+      "authority_ceiling": "advisory",
+      "stable_operation": true,
+      "mcp_tool": "verification_advise",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "config/formal_verification_toolchains.lock.json"
+      ]
+    },
+    {
+      "id": "py:op.probe_provider",
+      "symbol": "probe_provider",
+      "import_path": "ipfs_datasets_py.logic.verification_api.probe_provider",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "LogicVerificationAPI@1",
+      "role": "Opt-in bounded capability probe. Explicit; never runs on import.",
+      "authority_ceiling": "capability_health",
+      "stable_operation": true,
+      "mcp_tool": "verification_probe_provider",
+      "source_evidence": [
+        "test/api/test_root_mcp_formal_verification_parity.py",
+        "docs/operations/formal_verification_tactician_runbook.md"
+      ]
+    },
+    {
+      "id": "py:op.install_provider",
+      "symbol": "install_provider",
+      "import_path": "ipfs_datasets_py.logic.verification_api.install_provider",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "LogicVerificationLazyInstaller@1",
+      "role": "Explicit installer mutation boundary. Requires boolean allow_install; dry_run/offline never mutate.",
+      "authority_ceiling": "capability_health",
+      "stable_operation": true,
+      "mcp_tool": "verification_install_provider",
+      "source_evidence": [
+        "test/api/test_logic_verification_api_install_provider.py",
+        "docs/architecture/formal_verification_tactician_readiness.objectives.md"
+      ]
+    },
+    {
+      "id": "py:gt.list_goal_tactician_operations",
+      "symbol": "list_goal_tactician_operations",
+      "import_path": "ipfs_datasets_py.logic.verification_api.list_goal_tactician_operations",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Declarative listing of goal-tactician operations.",
+      "cli_command": "goal-list-operations",
+      "mcp_tool": "goal_tactician_list_operations",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "py:gt.formalize_goal",
+      "symbol": "formalize_goal",
+      "import_path": "ipfs_datasets_py.logic.verification_api.formalize_goal",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Proposal-only formalization. Never admits a proof.",
+      "cli_command": "goal-formalize",
+      "mcp_tool": "goal_tactician_formalize_goal",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "py:gt.compare_interpretations",
+      "symbol": "compare_interpretations",
+      "import_path": "ipfs_datasets_py.logic.verification_api.compare_interpretations",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Compare formalization interpretations.",
+      "cli_command": "goal-compare-interpretations",
+      "mcp_tool": "goal_tactician_compare_interpretations",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "py:gt.discover_missing_proofs",
+      "symbol": "discover_missing_proofs",
+      "import_path": "ipfs_datasets_py.logic.verification_api.discover_missing_proofs",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Discover missing-proof obligations from a compilation surface.",
+      "cli_command": "goal-discover-missing-proofs",
+      "mcp_tool": "goal_tactician_discover_missing_proofs",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "py:gt.plan_proof",
+      "symbol": "plan_proof",
+      "import_path": "ipfs_datasets_py.logic.verification_api.plan_proof",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Build/select a proof plan. Models may propose; they may not close plans.",
+      "cli_command": "goal-plan-proof",
+      "mcp_tool": "goal_tactician_plan_proof",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "py:gt.validate_proof_candidate",
+      "symbol": "validate_proof_candidate",
+      "import_path": "ipfs_datasets_py.logic.verification_api.validate_proof_candidate",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Validate a proof candidate without authority promotion.",
+      "cli_command": "goal-validate-candidate",
+      "mcp_tool": "goal_tactician_validate_proof_candidate",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "py:gt.execute_proof_plan",
+      "symbol": "execute_proof_plan",
+      "import_path": "ipfs_datasets_py.logic.verification_api.execute_proof_plan",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Execute a proof plan. Supervisor-only controls are rejected on public surfaces.",
+      "cli_command": "goal-execute-plan",
+      "mcp_tool": "goal_tactician_execute_proof_plan",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "py:gt.proof_status",
+      "symbol": "proof_status",
+      "import_path": "ipfs_datasets_py.logic.verification_api.proof_status",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Report plan status. Transport success never implies proof success.",
+      "cli_command": "goal-proof-status",
+      "mcp_tool": "goal_tactician_proof_status",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "py:gt.minimize_counterexample",
+      "symbol": "minimize_counterexample",
+      "import_path": "ipfs_datasets_py.logic.verification_api.minimize_counterexample",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Minimize a public counterexample envelope.",
+      "cli_command": "goal-minimize-counterexample",
+      "mcp_tool": "goal_tactician_minimize_counterexample",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "py:gt.explain_counterexample_causal",
+      "symbol": "explain_counterexample_causal",
+      "import_path": "ipfs_datasets_py.logic.verification_api.explain_counterexample_causal",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Causal explanation of a public counterexample.",
+      "cli_command": "goal-explain-counterexample",
+      "mcp_tool": "goal_tactician_explain_counterexample_causal",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "py:gt.replay_counterexample",
+      "symbol": "replay_counterexample",
+      "import_path": "ipfs_datasets_py.logic.verification_api.replay_counterexample",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Replay a public counterexample envelope.",
+      "cli_command": "goal-replay-counterexample",
+      "mcp_tool": "goal_tactician_replay_counterexample",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "py:gt.list_goal_tactician_cli_mcp_surface",
+      "symbol": "list_goal_tactician_cli_mcp_surface",
+      "import_path": "ipfs_datasets_py.logic.verification_api.list_goal_tactician_cli_mcp_surface",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical_component",
+      "interface": "GoalTacticianCLIMCP@1",
+      "role": "Return closed operations/tools/cli_commands maps and preserve STABLE_OPERATIONS as legacy_operations_preserved.",
+      "source_evidence": [
+        "test/api/test_goal_tactician_cli_mcp_parity.py",
+        "docs/formal_verification_tactician.md"
+      ]
+    },
+    {
+      "id": "py:gt.invoke_goal_tactician",
+      "symbol": "invoke_goal_tactician",
+      "import_path": "ipfs_datasets_py.logic.verification_api.invoke_goal_tactician",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "public_logic_api",
+      "classification": "canonical_component",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Python channel dispatcher for goal-tactician operations.",
+      "source_evidence": [
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "py:gt.invoke_goal_tactician_cli",
+      "symbol": "invoke_goal_tactician_cli",
+      "import_path": "ipfs_datasets_py.logic.verification_api.invoke_goal_tactician_cli",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "mcp_cli_python_exposure",
+      "classification": "canonical_component",
+      "interface": "GoalTacticianCLIMCP@1",
+      "role": "CLI channel dispatcher shared with logic.cli goal-* commands.",
+      "source_evidence": [
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "py:gt.invoke_goal_tactician_mcp_tool",
+      "symbol": "invoke_goal_tactician_mcp_tool",
+      "import_path": "ipfs_datasets_py.logic.verification_api.invoke_goal_tactician_mcp_tool",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "function",
+      "category": "mcp_cli_python_exposure",
+      "classification": "canonical_component",
+      "interface": "GoalTacticianCLIMCP@1",
+      "role": "MCP channel dispatcher for goal_tactician_* tools.",
+      "source_evidence": [
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "mod:logic.cli",
+      "symbol": "ipfs_datasets_py.logic.cli",
+      "import_path": "ipfs_datasets_py.logic.cli",
+      "module_path": "ipfs_datasets_py/logic/cli.py",
+      "surface": "cli",
+      "kind": "module",
+      "category": "mcp_cli_python_exposure",
+      "classification": "canonical",
+      "interface": "LogicVerificationCLI@1",
+      "role": "Machine-readable CLI for stable verification and goal-tactician operations under `ipfs-datasets logic ...`. Channel-neutral with Python and MCP envelopes.",
+      "entry_points": [
+        "ipfs-datasets logic <verification-subcommand>",
+        "ipfs-datasets logic goal-*"
+      ],
+      "source_evidence": [
+        "docs/architecture/logic_formal_verification_expansion.objectives.md#LFV-G071",
+        "docs/formal_verification_tactician.md",
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+      ]
+    },
+    {
+      "id": "cli:goal-tactician-group",
+      "symbol": "goal-*",
+      "import_path": "ipfs_datasets_py.logic.cli",
+      "module_path": "ipfs_datasets_py/logic/cli.py",
+      "surface": "cli",
+      "kind": "command_group",
+      "category": "mcp_cli_python_exposure",
+      "classification": "canonical",
+      "interface": "GoalTacticianCLIMCP@1",
+      "role": "Closed CLI command set for goal tactician. Exact command tokens are listed under goal_tactician_operations.",
+      "commands": [
+        "goal-list-operations",
+        "goal-formalize",
+        "goal-compare-interpretations",
+        "goal-discover-missing-proofs",
+        "goal-plan-proof",
+        "goal-validate-candidate",
+        "goal-execute-plan",
+        "goal-proof-status",
+        "goal-minimize-counterexample",
+        "goal-explain-counterexample",
+        "goal-replay-counterexample"
+      ],
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "cli:verification-group",
+      "symbol": "verification stable CLI operations",
+      "import_path": "ipfs_datasets_py.logic.cli",
+      "module_path": "ipfs_datasets_py/logic/cli.py",
+      "surface": "cli",
+      "kind": "command_group",
+      "category": "mcp_cli_python_exposure",
+      "classification": "canonical",
+      "interface": "LogicVerificationCLI@1",
+      "role": "CLI exposure of STABLE_OPERATIONS with the same response envelope as Python/MCP. Exact kebab-case tokens are operation-derived; LFV-G071 requires list/capability/compile/check/monitor/portfolio/counterexample/receipt/advisor/attestation coverage.",
+      "operations": [
+        "list_logic_families",
+        "list_providers",
+        "provider_capabilities",
+        "compile_verification_artifact",
+        "check",
+        "monitor",
+        "run_portfolio",
+        "explain_counterexample",
+        "verify_receipt",
+        "attest_receipt",
+        "advise",
+        "probe_provider",
+        "install_provider"
+      ],
+      "source_evidence": [
+        "docs/architecture/logic_formal_verification_expansion.objectives.md#LFV-G071",
+        "config/formal_verification_toolchains.lock.json"
+      ]
+    },
+    {
+      "id": "mod:mcp.logic_verification",
+      "symbol": "ipfs_datasets_py.mcp_server.tools.logic_verification",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.logic_verification",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/logic_verification.py",
+      "surface": "mcp",
+      "kind": "module",
+      "category": "mcp_cli_python_exposure",
+      "classification": "canonical",
+      "interface": "LogicVerificationMCP@1",
+      "role": "Datasets MCP formal-verification tool surface. TOOL_TO_OPERATION must cover every STABLE_OPERATIONS entry. Re-exported through logic_tools.",
+      "public_constants": [
+        "LOGIC_VERIFICATION_MCP_INTERFACE",
+        "TOOL_NAMES",
+        "TOOL_TO_OPERATION",
+        "TOOL_SCHEMAS"
+      ],
+      "required_tools": [
+        "verification_list_providers",
+        "verification_provider_capabilities",
+        "verification_check",
+        "verification_portfolio",
+        "verification_probe_provider",
+        "verification_list_features"
+      ],
+      "source_evidence": [
+        "test/api/test_root_mcp_formal_verification_parity.py",
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+      ]
+    },
+    {
+      "id": "mcp:verification.tool_group",
+      "symbol": "verification_* tools",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.logic_verification",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/logic_verification.py",
+      "surface": "mcp",
+      "kind": "tool_group",
+      "category": "mcp_cli_python_exposure",
+      "classification": "canonical",
+      "interface": "LogicVerificationMCP@1",
+      "role": "One MCP tool per stable verification operation (plus list_features). Envelope is logic-verification-response/v1.",
+      "tools": [
+        "verification_list_logic_families",
+        "verification_list_providers",
+        "verification_provider_capabilities",
+        "verification_list_features",
+        "verification_compile_verification_artifact",
+        "verification_check",
+        "verification_monitor",
+        "verification_portfolio",
+        "verification_explain_counterexample",
+        "verification_verify_receipt",
+        "verification_attest_receipt",
+        "verification_advise",
+        "verification_probe_provider",
+        "verification_install_provider"
+      ],
+      "note": "Tool name verification_portfolio maps to operation run_portfolio. Other tools map by stripping the verification_ prefix except where listed above.",
+      "source_evidence": [
+        "test/api/test_root_mcp_formal_verification_parity.py",
+        "config/formal_verification_toolchains.lock.json"
+      ]
+    },
+    {
+      "id": "mcp:goal_tactician.tool_group",
+      "symbol": "goal_tactician_* tools",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.logic_verification",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/logic_verification.py",
+      "surface": "mcp",
+      "kind": "tool_group",
+      "category": "mcp_cli_python_exposure",
+      "classification": "canonical",
+      "interface": "GoalTacticianCLIMCP@1",
+      "role": "Additive MCP tools for GoalTacticianAPI@1. Must not remove LogicVerificationMCP@1 STABLE_OPERATIONS coverage.",
+      "tools": [
+        "goal_tactician_formalize_goal",
+        "goal_tactician_compare_interpretations",
+        "goal_tactician_discover_missing_proofs",
+        "goal_tactician_plan_proof",
+        "goal_tactician_validate_proof_candidate",
+        "goal_tactician_execute_proof_plan",
+        "goal_tactician_proof_status",
+        "goal_tactician_minimize_counterexample",
+        "goal_tactician_explain_counterexample_causal",
+        "goal_tactician_replay_counterexample",
+        "goal_tactician_list_operations"
+      ],
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "mod:mcp.logic_tools",
+      "symbol": "ipfs_datasets_py.mcp_server.tools.logic_tools",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.logic_tools",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/logic_tools/__init__.py",
+      "surface": "mcp",
+      "kind": "module",
+      "category": "mcp_cli_python_exposure",
+      "classification": "compatibility_facade",
+      "interface": null,
+      "role": "Package re-export bridge for legacy family tools and modern verification tools. Parent accelerate native_logic_tools delegates here when available.",
+      "source_evidence": [
+        "test/api/test_root_mcp_formal_verification_parity.py",
+        "ipfs_accelerate_py/mcp_server/tools/logic_tools/native_logic_tools.py",
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+      ]
+    },
+    {
+      "id": "mcp:legacy.logic_capabilities",
+      "symbol": "logic_capabilities",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.logic_tools.logic_capabilities",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/logic_tools/logic_capabilities_tool.py",
+      "surface": "mcp",
+      "kind": "tool",
+      "category": "compatibility_shim",
+      "classification": "legacy",
+      "interface": "LogicAPICompatibility@1",
+      "role": "Legacy capability probe tool for family-weighted logic processors.",
+      "source_evidence": [
+        "ipfs_accelerate_py/mcp_server/tools/logic_tools/__init__.py",
+        "data/agent_supervisor/logic_formal_verification_expansion/bundles/todo_vector_index.json#LFV-G071"
+      ]
+    },
+    {
+      "id": "mcp:legacy.logic_health",
+      "symbol": "logic_health",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.logic_tools.logic_health",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/logic_tools/logic_capabilities_tool.py",
+      "surface": "mcp",
+      "kind": "tool",
+      "category": "compatibility_shim",
+      "classification": "legacy",
+      "interface": "LogicAPICompatibility@1",
+      "role": "Legacy health tool for logic processors.",
+      "source_evidence": [
+        "ipfs_accelerate_py/mcp_server/tools/logic_tools/__init__.py"
+      ]
+    },
+    {
+      "id": "mcp:legacy.tdfol_group",
+      "symbol": "tdfol_*",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.logic_tools",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/logic_tools/",
+      "surface": "mcp",
+      "kind": "tool_group",
+      "category": "compatibility_shim",
+      "classification": "legacy",
+      "interface": "LogicAPICompatibility@1",
+      "role": "Legacy TDFOL family MCP tools. Distinct from generic verification_check; must not be collapsed into FOL.",
+      "tools": [
+        "tdfol_parse",
+        "tdfol_convert",
+        "tdfol_prove",
+        "tdfol_batch_prove",
+        "tdfol_kb_add_axiom",
+        "tdfol_kb_add_theorem",
+        "tdfol_kb_query",
+        "tdfol_kb_export",
+        "tdfol_visualize"
+      ],
+      "source_evidence": [
+        "ipfs_accelerate_py/mcp_server/tools/logic_tools/native_logic_tools.py",
+        "mcpplusplus/SPEC_GAP_MATRIX.md",
+        "data/agent_supervisor/logic_formal_verification_expansion/bundles/todo_vector_index.json#LFV-G071"
+      ]
+    },
+    {
+      "id": "mcp:legacy.cec_group",
+      "symbol": "cec_*",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.logic_tools",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/logic_tools/",
+      "surface": "mcp",
+      "kind": "tool_group",
+      "category": "compatibility_shim",
+      "classification": "legacy",
+      "interface": "LogicAPICompatibility@1",
+      "role": "Legacy CEC/DCEC family MCP tools. Distinct from generic deontic conversion.",
+      "tools": [
+        "cec_prove",
+        "cec_check_theorem",
+        "cec_parse",
+        "cec_validate_formula",
+        "cec_analyze_formula",
+        "cec_formula_complexity",
+        "cec_apply_rule",
+        "cec_check_rule",
+        "cec_list_rules",
+        "cec_rule_info"
+      ],
+      "source_evidence": [
+        "ipfs_accelerate_py/mcp_server/tools/logic_tools/native_logic_tools.py",
+        "data/agent_supervisor/logic_formal_verification_expansion/bundles/todo_vector_index.json#LFV-G071"
+      ]
+    },
+    {
+      "id": "mcp:legacy.flogic_group",
+      "symbol": "flogic_*",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.logic_tools",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/logic_tools/",
+      "surface": "mcp",
+      "kind": "tool_group",
+      "category": "compatibility_shim",
+      "classification": "legacy",
+      "interface": "LogicAPICompatibility@1",
+      "role": "Legacy F-logic MCP tools. Must remain distinct from object framing.",
+      "tools": [
+        "flogic_assert",
+        "flogic_check_consistency",
+        "flogic_normalize_term",
+        "flogic_query"
+      ],
+      "source_evidence": [
+        "data/agent_supervisor/logic_formal_verification_expansion/bundles/todo_vector_index.json#LFV-G071"
+      ]
+    },
+    {
+      "id": "mcp:legacy.temporal_deontic_group",
+      "symbol": "temporal_deontic_logic_tools.*",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.logic_tools.temporal_deontic_logic_tools",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/logic_tools/",
+      "surface": "mcp",
+      "kind": "tool_group",
+      "category": "compatibility_shim",
+      "classification": "legacy",
+      "interface": "LogicAPICompatibility@1",
+      "role": "Legacy temporal-deontic caselaw tools. Also historically reachable via legacy_mcp_tools compatibility routes.",
+      "tools": [
+        "add_theorem",
+        "bulk_process_caselaw",
+        "check_document_consistency",
+        "query_theorems"
+      ],
+      "source_evidence": [
+        "data/agent_supervisor/logic_formal_verification_expansion/bundles/todo_vector_index.json#LFV-G071",
+        "mcpplusplus/SPEC_GAP_MATRIX.md"
+      ]
+    },
+    {
+      "id": "mcp:legacy.logic_graphrag_group",
+      "symbol": "logic_graphrag_tool.*",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.logic_tools.logic_graphrag_tool",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/logic_tools/",
+      "surface": "mcp",
+      "kind": "tool_group",
+      "category": "compatibility_shim",
+      "classification": "legacy",
+      "interface": "LogicAPICompatibility@1",
+      "role": "Legacy GraphRAG logic build/verify tools.",
+      "tools": [
+        "logic_build_knowledge_graph",
+        "logic_verify_rag_output"
+      ],
+      "source_evidence": [
+        "data/agent_supervisor/logic_formal_verification_expansion/bundles/todo_vector_index.json#LFV-G071"
+      ]
+    },
+    {
+      "id": "mcp:legacy.dataset_text_to_fol",
+      "symbol": "text_to_fol",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.dataset_tools.text_to_fol",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/dataset_tools/",
+      "surface": "mcp",
+      "kind": "tool",
+      "category": "compatibility_shim",
+      "classification": "legacy",
+      "interface": "LogicAPICompatibility@1",
+      "role": "MCP exposure of logic.api.convert_text_to_fol via dataset_tools category.",
+      "source_evidence": [
+        "ipfs_accelerate_py/mcp_server/tools/dataset_tools/native_dataset_tools.py",
+        "mcpplusplus/SPEC_GAP_MATRIX.md"
+      ]
+    },
+    {
+      "id": "mcp:legacy.dataset_legal_text_to_deontic",
+      "symbol": "legal_text_to_deontic",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.dataset_tools.legal_text_to_deontic",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/dataset_tools/",
+      "surface": "mcp",
+      "kind": "tool",
+      "category": "compatibility_shim",
+      "classification": "legacy",
+      "interface": "LogicAPICompatibility@1",
+      "role": "MCP exposure of logic.api.convert_legal_text_to_deontic via dataset_tools category.",
+      "source_evidence": [
+        "ipfs_accelerate_py/mcp_server/tools/dataset_tools/native_dataset_tools.py",
+        "mcpplusplus/SPEC_GAP_MATRIX.md"
+      ]
+    },
+    {
+      "id": "mod:legacy_mcp_tools.temporal_deontic",
+      "symbol": "ipfs_datasets_py.mcp_server.tools.legacy_mcp_tools",
+      "import_path": "ipfs_datasets_py.mcp_server.tools.legacy_mcp_tools",
+      "module_path": "ipfs_datasets_py/mcp_server/tools/legacy_mcp_tools/__init__.py",
+      "surface": "mcp",
+      "kind": "module",
+      "category": "deprecated_module",
+      "classification": "obsolete",
+      "interface": null,
+      "role": "Deprecated import path. Temporal-deontic exports are routed through canonical logic_tools surfaces.",
+      "source_evidence": [
+        "mcpplusplus/SPEC_GAP_MATRIX.md"
+      ]
+    },
+    {
+      "id": "shim:logic.__init__.lazy_getattr",
+      "symbol": "__getattr__",
+      "import_path": "ipfs_datasets_py.logic.__getattr__",
+      "module_path": "ipfs_datasets_py/logic/__init__.py",
+      "surface": "logic.__init__",
+      "kind": "function",
+      "category": "compatibility_shim",
+      "classification": "compatibility_facade",
+      "interface": null,
+      "role": "Lazy attribute resolution for public exports and family submodules without eager optional imports.",
+      "source_evidence": [
+        "data/agent_supervisor/logic_formal_verification_expansion/bundles/todo_vector_index.json#LFV-G070",
+        "docs/architecture/logic_platform_canonicalization.objectives.md#LPC-G060"
+      ]
+    },
+    {
+      "id": "shim:parent.native_logic_tools",
+      "symbol": "ipfs_accelerate_py.mcp_server.tools.logic_tools.native_logic_tools",
+      "import_path": "ipfs_accelerate_py.mcp_server.tools.logic_tools.native_logic_tools",
+      "module_path": "ipfs_accelerate_py/mcp_server/tools/logic_tools/native_logic_tools.py",
+      "surface": "mcp",
+      "kind": "module",
+      "category": "compatibility_shim",
+      "classification": "duplicate",
+      "interface": null,
+      "role": "Parent-repo compatibility delegate/fallback for datasets logic_tools. Not a second semantic authority; falls back when datasets tools are unavailable.",
+      "source_evidence": [
+        "ipfs_accelerate_py/mcp_server/tools/logic_tools/native_logic_tools.py",
+        "mcpplusplus/SPEC_GAP_MATRIX.md"
+      ]
+    },
+    {
+      "id": "py:supervisor_only_controls_rejected",
+      "symbol": "supervisor-only control refusal",
+      "import_path": "ipfs_datasets_py.logic.verification_api",
+      "module_path": "ipfs_datasets_py/logic/verification_api.py",
+      "surface": "logic.verification_api",
+      "kind": "policy",
+      "category": "public_logic_api",
+      "classification": "canonical_component",
+      "interface": "GoalTacticianAPI@1",
+      "role": "Public surfaces reject supervisor-only controls: admit_goal, close_plan, mutate_supervisor, force_complete, lease_steal, rewrite_event_log, bypass_resource_policy, promote_proof_authority, supervisor_mutate, supervisor_only.",
+      "source_evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    }
+  ]
+}

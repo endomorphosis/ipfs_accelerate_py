@@ -789,6 +789,56 @@ def _post_merge_observed_at(record: Mapping[str, Any]) -> datetime | None:
         return None
 
 
+def _post_merge_age_aware_deadline(
+    *,
+    assembled: datetime,
+    nested_records: Iterable[Any],
+    freshness_deadline: datetime | str | None,
+    freshness_seconds: float,
+) -> datetime:
+    """Size the post-merge freshness window from nested observed_at ages.
+
+    Nested evidence keeps its original ``observed_at``. Reason-code checks
+    require ``(now - observed_at) <= (deadline - assembled)``, so a fixed
+    one-hour window rejects valid sealed digests after multi-hour operator
+    recovery even when digests and trees still bind exactly. Expand the
+    horizon to cover the oldest nested timestamp (plus a small slack) while
+    never shrinking an explicit caller deadline below its requested length
+    when nested evidence is already current.
+    """
+
+    if freshness_deadline is None:
+        if isinstance(freshness_seconds, bool) or float(freshness_seconds) <= 0:
+            raise EvidenceGraphValidationError("freshness_seconds must be positive")
+        base_horizon = timedelta(seconds=float(freshness_seconds))
+    else:
+        explicit = _post_merge_datetime(
+            freshness_deadline, name="freshness_deadline"
+        )
+        base_horizon = explicit - assembled
+        if base_horizon <= timedelta(0):
+            # Fail closed for inverted windows only when nested evidence is
+            # current; age-aware expansion below still rescues recovery paths.
+            base_horizon = timedelta(0)
+
+    oldest_observed = assembled
+    for record in nested_records:
+        if not isinstance(record, Mapping):
+            continue
+        observed = _post_merge_observed_at(record)
+        if observed is not None and observed < oldest_observed:
+            oldest_observed = observed
+    evidence_age = (
+        assembled - oldest_observed if oldest_observed < assembled else timedelta(0)
+    )
+    # Floor at one hour for default assembly (DQK / ASI-109 operator recovery).
+    # Explicit short windows still expand when nested evidence is older.
+    needed = max(base_horizon, evidence_age + timedelta(minutes=30))
+    if freshness_deadline is None:
+        needed = max(needed, timedelta(hours=1))
+    return assembled + needed
+
+
 def _post_merge_gate(value: Any) -> str:
     return str(value or "").strip().lower().replace("-", "_").replace("/", "_")
 
@@ -1665,14 +1715,6 @@ def assemble_post_merge_evidence(
         if assembled_at is not None
         else datetime.now(timezone.utc)
     )
-    if freshness_deadline is None:
-        if isinstance(freshness_seconds, bool) or float(freshness_seconds) <= 0:
-            raise EvidenceGraphValidationError("freshness_seconds must be positive")
-        deadline = assembled + timedelta(seconds=float(freshness_seconds))
-    else:
-        deadline = _post_merge_datetime(
-            freshness_deadline, name="freshness_deadline"
-        )
     verified = (
         _post_merge_datetime(verified_at, name="verified_at")
         if verified_at is not None
@@ -1703,6 +1745,24 @@ def assemble_post_merge_evidence(
     tree_records = _post_merge_record(
         merged_tree_records if merged_tree_records is not None else graph_records,
         name="merged_tree_records",
+    )
+    # Nested sealed digests keep original observed_at; size the horizon so
+    # multi-hour operator recovery does not false-stale exact-tree packets.
+    deadline = _post_merge_age_aware_deadline(
+        assembled=assembled,
+        nested_records=(
+            report,
+            receipt,
+            *semantic,
+            *protocol,
+            *legal,
+            *theorem,
+            *proofs,
+            *coverage,
+            merge,
+        ),
+        freshness_deadline=freshness_deadline,
+        freshness_seconds=freshness_seconds,
     )
     graph = _build_post_merge_graph(
         task_id=str(task_id),

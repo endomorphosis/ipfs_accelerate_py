@@ -158,6 +158,7 @@ def inventory_artifact_versions(artifacts_root: Path | str | None) -> dict[str, 
         "artifacts_root": str(root),
         "versions": versions,
         "v4_complete": bool((versions.get("v4") or {}).get("complete")),
+        "v5_complete": bool((versions.get("v5") or {}).get("complete")),
         "any_complete": any(
             bool(item.get("complete")) for item in versions.values()
         ),
@@ -186,18 +187,18 @@ def discover_real_groth16_fixture() -> FixtureDiscoveryResult:
             artifacts_root=artifacts_root,
             proving_key_path=str(getattr(fixture, "proving_key_path", "") or ""),
             verifying_key_path=str(getattr(fixture, "verifying_key_path", "") or ""),
-            circuit_version=int(getattr(fixture, "circuit_version", 4) or 4),
+            circuit_version=int(getattr(fixture, "circuit_version", 5) or 5),
             detail=json_dumps_compact(
                 {
                     "discover": "ok",
                     "artifact_inventory": inventory,
                     "operator_setup_hint": (
                         "cd external/ipfs_datasets/ipfs_datasets_py/processors/"
-                        "groth16_backend && ./build.sh --setup-only"
-                        "  # creates local operational v4 keys (NOT production ceremony)"
+                        "groth16_backend && groth16 setup --version 5"
+                        "  # creates local operational v5 keys (NOT production ceremony)"
                     ),
                     "production_key_policy": (
-                        "v4 keys must come from an operator-reviewed ceremony "
+                        "v5 keys must come from an operator-reviewed ceremony "
                         "before production warm-skip authority"
                     ),
                 }
@@ -225,7 +226,7 @@ def materialize_local_nonproduction_e2e_manifest(
     artifacts_root: Path | str | None = None,
     binary_path: Path | str | None = None,
 ) -> dict[str, Any]:
-    """Write approved-format manifest for local operational v4 keys (dev e2e).
+    """Write approved-format manifest for local operational v5 keys (dev e2e).
 
     Uses existing key bytes + the reviewed bundled native binary digests so
     certificate-authority probes can pass on a development branch when the
@@ -249,7 +250,12 @@ def materialize_local_nonproduction_e2e_manifest(
         GROTH16_TEST_PASS_ARTIFACT_MANIFEST_INTERFACE,
         TEST_PASS_GROTH16_CIRCUIT_CID,
         TEST_PASS_GROTH16_CIRCUIT_IDENTITY_SHA256,
+        TEST_PASS_GROTH16_CIRCUIT_VERSION,
         TEST_PASS_GROTH16_PROVIDER_SOURCE_SHA256,
+        TEST_PASS_GROTH16_RULESET_ID,
+        TEST_PASS_GROTH16_STATEMENT_INTERFACE,
+        TEST_PASS_GROTH16_STATEMENT_VERSION,
+        TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS,
     )
 
     _prefer_external_datasets_on_sys_path()
@@ -262,12 +268,13 @@ def materialize_local_nonproduction_e2e_manifest(
         bundled = backend / "bin" / "linux-aarch64" / "groth16"
         if bundled.is_file():
             binary = bundled
-    pk = root / "v4" / "proving_key.bin"
-    vk = root / "v4" / "verifying_key.bin"
+    version_dir = f"v{TEST_PASS_GROTH16_CIRCUIT_VERSION}"
+    pk = root / version_dir / "proving_key.bin"
+    vk = root / version_dir / "verifying_key.bin"
     if not root.is_dir() or not pk.is_file() or not vk.is_file():
         return {
             "ok": False,
-            "reason": "v4_keys_missing",
+            "reason": f"{version_dir}_keys_missing",
             "artifacts_root": str(root),
         }
     if not binary.is_file():
@@ -297,22 +304,22 @@ def materialize_local_nonproduction_e2e_manifest(
         "reviewed_source_fingerprint": DATASETS_GROTH16_REVIEWED_SOURCE_FINGERPRINT,
         "provider_source_sha256": TEST_PASS_GROTH16_PROVIDER_SOURCE_SHA256,
         "circuit": {
-            "version": 4,
+            "version": TEST_PASS_GROTH16_CIRCUIT_VERSION,
             "identity_sha256": TEST_PASS_GROTH16_CIRCUIT_IDENTITY_SHA256,
             "circuit_cid": TEST_PASS_GROTH16_CIRCUIT_CID,
             "proof_system": "groth16",
-            "ruleset_id": "test_pass_v2",
-            "statement_interface": "TestPassStatementV2",
-            "statement_version": 2,
+            "ruleset_id": TEST_PASS_GROTH16_RULESET_ID,
+            "statement_interface": TEST_PASS_GROTH16_STATEMENT_INTERFACE,
+            "statement_version": TEST_PASS_GROTH16_STATEMENT_VERSION,
         },
         "artifacts": {
             "proving_key": {
-                "relative_path": "v4/proving_key.bin",
+                "relative_path": f"{version_dir}/proving_key.bin",
                 "sha256": hashlib.sha256(pk_bytes).hexdigest(),
                 "size": len(pk_bytes),
             },
             "verifying_key": {
-                "relative_path": "v4/verifying_key.bin",
+                "relative_path": f"{version_dir}/verifying_key.bin",
                 "sha256": hashlib.sha256(vk_bytes).hexdigest(),
                 "size": len(vk_bytes),
             },
@@ -321,7 +328,7 @@ def materialize_local_nonproduction_e2e_manifest(
             "provenance": "reviewed_bundled_release",
             "binary_sha256": native_digest,
             "binary_size": len(native_bytes),
-            "supported_circuit_versions": [1, 2, 3, 4],
+            "supported_circuit_versions": list(TEST_PASS_GROTH16_SUPPORTED_SOURCE_VERSIONS),
             "release_manifest_sha256": DATASETS_GROTH16_RELEASE_MANIFESTS_SHA256[
                 platform
             ],
@@ -332,7 +339,7 @@ def materialize_local_nonproduction_e2e_manifest(
         },
     }
     body = json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
-    manifest_path = root / "v4" / "LOCAL_NONPRODUCTION_APPROVED_FORMAT_MANIFEST.json"
+    manifest_path = root / version_dir / "LOCAL_NONPRODUCTION_APPROVED_FORMAT_MANIFEST.json"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(body, encoding="utf-8")
     digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
@@ -437,16 +444,23 @@ def attempt_local_nonproduction_v4_setup(
     *,
     use_seed: int | None = None,
 ) -> MeasurementAttempt:
-    """Optionally create local operational v4 keys (NOT a production ceremony).
+    """Optionally create local operational v5 keys (NOT a production ceremony).
 
-    Only runs when ``PTR_CLOSEOUT_LOCAL_SETUP=1``. Uses the already-built
-    ``groth16 setup --version 4`` path. Deterministic ``--seed`` is test-only
-    and is never labeled as production trust.
+    Only runs when ``PTR_CLOSEOUT_LOCAL_SETUP=1``. Uses
+    ``groth16 setup --version 5`` (exact-byte test-pass). Deterministic
+    ``--seed`` is test-only and is never labeled as production trust.
+
+    Name retains ``v4`` for call-site stability; circuit version is v5.
     """
 
     import os
     import subprocess
 
+    from ipfs_accelerate_py.testing.proof_reuse.services import (
+        TEST_PASS_GROTH16_CIRCUIT_VERSION,
+    )
+
+    version = int(TEST_PASS_GROTH16_CIRCUIT_VERSION)
     if str(os.environ.get("PTR_CLOSEOUT_LOCAL_SETUP", "")).strip().lower() not in {
         "1",
         "true",
@@ -458,7 +472,10 @@ def attempt_local_nonproduction_v4_setup(
             attempted=False,
             succeeded=False,
             skipped=True,
-            detail="skipped:set PTR_CLOSEOUT_LOCAL_SETUP=1 to create local operational v4 keys",
+            detail=(
+                "skipped:set PTR_CLOSEOUT_LOCAL_SETUP=1 to create local "
+                f"operational v{version} keys"
+            ),
         )
 
     discovery = discover_real_groth16_fixture()
@@ -473,9 +490,9 @@ def attempt_local_nonproduction_v4_setup(
             succeeded=bool(manifest.get("ok")),
             skipped=False,
             detail=(
-                "v4_keys_present_manifest_ready"
+                f"v{version}_keys_present_manifest_ready"
                 if manifest.get("ok")
-                else f"v4_keys_present_manifest_failed:{manifest.get('reason')}"
+                else f"v{version}_keys_present_manifest_failed:{manifest.get('reason')}"
             ),
             metrics={
                 **discovery.to_dict(),
@@ -504,7 +521,7 @@ def attempt_local_nonproduction_v4_setup(
             detail="skipped:artifacts_root_missing",
         )
     artifacts.mkdir(parents=True, exist_ok=True)
-    cmd = [str(binary), "setup", "--version", "4", "--quiet"]
+    cmd = [str(binary), "setup", "--version", str(version), "--quiet"]
     if use_seed is not None:
         cmd.extend(["--seed", str(int(use_seed))])
     # Prefer explicit seed from env for reproducibility of local ops only.
@@ -523,18 +540,18 @@ def attempt_local_nonproduction_v4_setup(
             check=False,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=600,
             env=env,
         )
         # Re-discover after setup.
         after = discover_real_groth16_fixture()
         ok = after.available
-        marker = artifacts / "v4" / "LOCAL_NONPRODUCTION_SETUP.txt"
+        marker = artifacts / f"v{version}" / "LOCAL_NONPRODUCTION_SETUP.txt"
         try:
             marker.parent.mkdir(parents=True, exist_ok=True)
             marker.write_text(
                 "LOCAL OPERATIONAL SETUP ONLY — NOT A PRODUCTION CEREMONY\n"
-                "These v4 keys must not be promoted as production trust roots.\n"
+                f"These v{version} keys must not be promoted as production trust roots.\n"
                 f"created_by=proof_test_reuse_closeout_activation_measurements\n"
                 f"command={' '.join(cmd)}\n"
                 f"returncode={result.returncode}\n",
@@ -555,9 +572,9 @@ def attempt_local_nonproduction_v4_setup(
             succeeded=ok,
             skipped=False,
             detail=(
-                "local_v4_ready_nonproduction"
+                f"local_v{version}_ready_nonproduction"
                 if ok
-                else f"setup_failed:rc={result.returncode}:{result.stderr[:160]}"
+                else f"setup_failed:rc={result.returncode}:{(result.stderr or '')[:160]}"
             ),
             metrics={
                 "returncode": result.returncode,

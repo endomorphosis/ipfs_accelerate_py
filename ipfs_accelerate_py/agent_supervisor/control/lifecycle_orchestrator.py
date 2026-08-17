@@ -75,6 +75,9 @@ _MARKER_NAMES = (
     CONFIGURATION_ROOT_ENV,
 )
 
+_LAUNCH_IDENTITY_TIMEOUT_SECONDS = 2.0
+_LAUNCH_IDENTITY_POLL_SECONDS = 0.01
+
 
 def _canonical_id(payload: Mapping[str, Any]) -> str:
     encoded = json.dumps(
@@ -637,11 +640,42 @@ class LinuxProcessAdapter:
             start_new_session=True,
         )
         try:
-            return self._identity(process.pid, profile)
+            _parent, _group, _session, launched_start = self._stat(process.pid)
+            # ``/proc/<pid>/environ`` can briefly expose the pre-exec image
+            # even after ``Popen`` returns.  Admit only the exact marker-bound
+            # identity, but give this newly created PID a short bounded window
+            # to finish the fork/exec transition.  Arbitrary adopted PIDs and
+            # ordinary snapshot lookups remain single-shot and fail closed.
+            deadline = time.monotonic() + _LAUNCH_IDENTITY_TIMEOUT_SECONDS
+            while True:
+                try:
+                    identity = self._identity(process.pid, profile)
+                except ProcessIdentityMismatch:
+                    if (
+                        process.poll() is not None
+                        or time.monotonic() >= deadline
+                    ):
+                        raise
+                    time.sleep(_LAUNCH_IDENTITY_POLL_SECONDS)
+                    continue
+                if identity.start_time_ticks != launched_start:
+                    raise ProcessIdentityMismatch(
+                        "launched process identity changed during admission"
+                    )
+                if identity.fencing_epoch != fencing_epoch:
+                    raise ProcessIdentityMismatch(
+                        "launched process has an unexpected lifecycle fence"
+                    )
+                return identity
         except Exception:
+            if process.poll() is None:
+                try:
+                    process.kill()
+                except OSError:
+                    pass
             try:
-                process.kill()
-            except OSError:
+                process.wait(timeout=1.0)
+            except (OSError, subprocess.TimeoutExpired):
                 pass
             raise
 

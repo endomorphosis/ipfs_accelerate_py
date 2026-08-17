@@ -1,0 +1,59 @@
+{
+  "authorization_effect_observed": false,
+  "authorization_id": "sha256:1b8ab3afd7800396bfd7f8ad2c99105876a6bcb116d932e890b4505cdbf822e5",
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "bounded_flags": {
+    "already_active": false,
+    "codebase_refill_enabled": false,
+    "legacy_hash_sharding_for_active_slices": false,
+    "monitor_enabled_after_activation": true,
+    "objective_refill_enabled_after_activation": true,
+    "prompt_program_refill_enabled_after_activation": true
+  },
+  "cas_lease": {
+    "cas_token": "ase3-026-cas-token-v1",
+    "lease_id": "ase3-026-gen1-lease",
+    "one_generation_winner_required": true,
+    "tree_id": "f4483cbbc6209eb26864adc2c5df83d118ba1e34"
+  },
+  "created_at": "2026-08-10T19:21:56Z",
+  "denials": {
+    "authorization_alone_proves_effect_ran": false,
+    "authorization_may_claim_activation_effect": false,
+    "broad_legacy_codebase_refill_allowed": false,
+    "client_owned_monitor_allowed": false,
+    "public_facade_selectable_from_authorization": false,
+    "self_attested_guardian_allowed": false
+  },
+  "expiry_at": "2026-08-17T19:21:56Z",
+  "guardian": {
+    "guardian_identity": "host-guardian",
+    "host_namespace": "host.ns.v3",
+    "review_cid": "bafyreviewaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "review_required": true,
+    "type": "ReviewedHostNamespaceReconciler"
+  },
+  "inactive_tree": {
+    "active_owned_effects": 0,
+    "branch": "main",
+    "head": "905bf17b2ad6aceee1896430d557dfa141db4e38",
+    "quiescent": true,
+    "tree": "f4483cbbc6209eb26864adc2c5df83d118ba1e34"
+  },
+  "old_generation": 0,
+  "operator_review": {
+    "generator": "ipfs_accelerate_py.agent_supervisor.protected-runtime-activation-gate@1",
+    "required": true,
+    "reviewer_identity": "operator-reviewer-ase3-026",
+    "self_review_allowed": false
+  },
+  "quiescence": {
+    "refill_and_monitor_dormant": true,
+    "zero_old_generation_descendants": true,
+    "zero_owned_worker_provider_merge_effects": true
+  },
+  "receipt_phase": "pre_effect_authorization",
+  "schema": "ipfs_accelerate_py.agent_supervisor.protected-runtime-activation-authorization@1",
+  "target_generation": 1,
+  "task_id": "ASE3-026"
+}

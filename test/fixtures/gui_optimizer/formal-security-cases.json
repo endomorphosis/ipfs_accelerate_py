@@ -1,0 +1,1057 @@
+{
+  "application_id": "app:agent-supervisor",
+  "cases": [
+    {
+      "authorizes": false,
+      "case_id": "case:unlabeled-input",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "rejected",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [
+        "input:goal"
+      ],
+      "expected_verdict": "fail",
+      "family": "form_integrity",
+      "kind": "invariant_failure",
+      "machine_only": false,
+      "property_kind": "form_accessible_names",
+      "required_failure": "unlabeled_input",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:input:goal",
+          "evidence": "Required goal input has no accessible name",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "input:goal"
+        }
+      ],
+      "title": "Required goal input has no accessible name",
+      "world_overrides": {
+        "form_inputs": [
+          {
+            "accessible_name": "",
+            "associated_error_ids": [
+              "error:goal-empty"
+            ],
+            "exposes_required_state": true,
+            "input_id": "input:goal",
+            "required": true
+          }
+        ]
+      }
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:missing-error-association",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "rejected",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [
+        "error:goal-empty",
+        "input:goal"
+      ],
+      "expected_verdict": "fail",
+      "family": "form_integrity",
+      "kind": "invariant_failure",
+      "machine_only": false,
+      "property_kind": "form_error_association",
+      "required_failure": "missing_error_association",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:error:goal-empty",
+          "evidence": "Validation error is not associated with the field",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "error:goal-empty"
+        }
+      ],
+      "title": "Validation error is not associated with the field",
+      "world_overrides": {
+        "form_inputs": [
+          {
+            "accessible_name": "Goal",
+            "associated_error_ids": [],
+            "exposes_required_state": true,
+            "input_id": "input:goal",
+            "required": true
+          }
+        ],
+        "validation_errors": [
+          {
+            "error_id": "error:goal-empty",
+            "field_id": "input:goal",
+            "message": "Goal is required"
+          }
+        ]
+      }
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:inaccessible-custom-control",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "rejected",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [
+        "node:toggle"
+      ],
+      "expected_verdict": "fail",
+      "family": "structure_accessibility",
+      "kind": "invariant_failure",
+      "machine_only": false,
+      "property_kind": "keyboard_activation",
+      "required_failure": "inaccessible_custom_control",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:node:toggle",
+          "evidence": "Custom switch has no keyboard activation",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "node:toggle"
+        }
+      ],
+      "title": "Custom switch has no keyboard activation",
+      "world_overrides": {
+        "dom_nodes": [
+          {
+            "accessible_name": "Agent Supervisor",
+            "decorative_hidden": null,
+            "dom_id": "heading-main",
+            "has_keyboard_activation": null,
+            "has_text_alternative": null,
+            "heading_level": 1,
+            "image_kind": "none",
+            "interactive": false,
+            "native_control": false,
+            "node_id": "node:heading",
+            "role": "heading"
+          },
+          {
+            "accessible_name": "Compact layout",
+            "decorative_hidden": null,
+            "dom_id": "custom-toggle",
+            "has_keyboard_activation": false,
+            "has_text_alternative": null,
+            "heading_level": null,
+            "image_kind": "none",
+            "interactive": true,
+            "native_control": false,
+            "node_id": "node:toggle",
+            "role": "switch"
+          }
+        ]
+      }
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:broken-modal-focus",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "rejected",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [
+        "modal:confirm",
+        "tab_contained"
+      ],
+      "expected_verdict": "fail",
+      "family": "structure_accessibility",
+      "kind": "invariant_failure",
+      "machine_only": false,
+      "property_kind": "modal_focus_lifecycle",
+      "required_failure": "broken_modal_focus",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:modal:confirm",
+          "evidence": "Confirm modal does not trap focus",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "modal:confirm"
+        }
+      ],
+      "title": "Confirm modal does not trap focus",
+      "world_overrides": {
+        "modal_focus": [
+          {
+            "close_restores_focus": true,
+            "escape_or_cancel_defined": true,
+            "hidden_not_focusable": true,
+            "modal_id": "modal:confirm",
+            "opens_moves_focus_inside": true,
+            "tab_contained": false
+          }
+        ]
+      }
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:duplicate-ids",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "rejected",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [
+        "node:dup-b",
+        "node:dup-a"
+      ],
+      "expected_verdict": "fail",
+      "family": "structure_accessibility",
+      "kind": "invariant_failure",
+      "machine_only": false,
+      "property_kind": "unique_dom_ids",
+      "required_failure": "duplicate_ids",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:node:dup-a",
+          "evidence": "Two nodes share a DOM id",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "node:dup-a"
+        }
+      ],
+      "title": "Two nodes share a DOM id",
+      "world_overrides": {
+        "dom_nodes": [
+          {
+            "accessible_name": "A",
+            "decorative_hidden": null,
+            "dom_id": "shared-id",
+            "has_keyboard_activation": true,
+            "has_text_alternative": null,
+            "heading_level": null,
+            "image_kind": "none",
+            "interactive": true,
+            "native_control": true,
+            "node_id": "node:dup-a",
+            "role": "button"
+          },
+          {
+            "accessible_name": "B",
+            "decorative_hidden": null,
+            "dom_id": "shared-id",
+            "has_keyboard_activation": true,
+            "has_text_alternative": null,
+            "heading_level": null,
+            "image_kind": "none",
+            "interactive": true,
+            "native_control": true,
+            "node_id": "node:dup-b",
+            "role": "button"
+          }
+        ]
+      }
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:missing-async-failure",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "rejected",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [
+        "effect:load"
+      ],
+      "expected_verdict": "fail",
+      "family": "state_completeness",
+      "kind": "invariant_failure",
+      "machine_only": false,
+      "property_kind": "async_effect_completeness",
+      "required_failure": "missing_async_failure",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:effect:load",
+          "evidence": "Async load effect has no failure path",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "effect:load"
+        }
+      ],
+      "title": "Async load effect has no failure path",
+      "world_overrides": {
+        "async_effects": [
+          {
+            "effect_id": "effect:load",
+            "has_failure": false,
+            "has_loading": true,
+            "has_success": true
+          }
+        ]
+      }
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:unconfirmed-destruction",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "rejected",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [
+        "action:delete"
+      ],
+      "expected_verdict": "fail",
+      "family": "action_integrity",
+      "kind": "invariant_failure",
+      "machine_only": false,
+      "property_kind": "confirmation_bound_action",
+      "required_failure": "unconfirmed_destruction",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:action:delete",
+          "evidence": "Destructive delete has no confirmation binding",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "action:delete"
+        }
+      ],
+      "title": "Destructive delete has no confirmation binding",
+      "world_overrides": {
+        "action_bindings": [
+          {
+            "action_id": "action:dispatch",
+            "component_id": "comp:goal-form",
+            "confirmation_id": "",
+            "depends_on_schema": true,
+            "interface": "UiActionBinding@1",
+            "is_destructive": false,
+            "method": "method:dispatch",
+            "policy_id": "policy:host",
+            "requires_confirmation": false,
+            "schema_id": "schema:dispatch",
+            "schema_version": "ui-action-binding/v1"
+          },
+          {
+            "action_id": "action:delete",
+            "component_id": "comp:goal-form",
+            "confirmation_id": "",
+            "depends_on_schema": true,
+            "interface": "UiActionBinding@1",
+            "is_destructive": true,
+            "method": "method:delete",
+            "policy_id": "policy:host",
+            "requires_confirmation": false,
+            "schema_id": "schema:delete",
+            "schema_version": "ui-action-binding/v1"
+          }
+        ],
+        "confirmations": []
+      }
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:disabled-dispatch",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "rejected",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [
+        "action:dispatch"
+      ],
+      "expected_verdict": "fail",
+      "family": "action_integrity",
+      "kind": "invariant_failure",
+      "machine_only": false,
+      "property_kind": "no_hidden_dispatch",
+      "required_failure": "disabled_dispatch",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:action:dispatch",
+          "evidence": "Disabled dispatch remains executable",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "action:dispatch"
+        }
+      ],
+      "title": "Disabled dispatch remains executable",
+      "world_overrides": {
+        "runtime_observations": [
+          {
+            "action_id": "action:dispatch",
+            "browser_policy_authoritative_claim": false,
+            "current_argument_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "current_method": "method:dispatch",
+            "current_schema_id": "schema:dispatch",
+            "deontic_status": "prohibited",
+            "has_hidden_dispatch_path": true,
+            "is_dispatchable": true,
+            "policy_fresh": true,
+            "presentation_visibility": "disabled",
+            "resolution": "exact",
+            "runtime_reevaluated": true,
+            "target_count": 1
+          },
+          {
+            "action_id": "action:delete",
+            "browser_policy_authoritative_claim": false,
+            "current_argument_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "current_method": "method:delete",
+            "current_schema_id": "schema:delete",
+            "deontic_status": "permitted",
+            "has_hidden_dispatch_path": false,
+            "is_dispatchable": true,
+            "policy_fresh": true,
+            "presentation_visibility": "enabled",
+            "resolution": "exact",
+            "runtime_reevaluated": true,
+            "target_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:stale-policy",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "rejected",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [
+        "action:dispatch"
+      ],
+      "expected_verdict": "fail",
+      "family": "action_integrity",
+      "kind": "invariant_failure",
+      "machine_only": false,
+      "property_kind": "stale_policy_cannot_authorize",
+      "required_failure": "stale_policy",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:action:dispatch",
+          "evidence": "Stale policy decision cannot authorize dispatch",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "action:dispatch"
+        }
+      ],
+      "title": "Stale policy decision cannot authorize dispatch",
+      "world_overrides": {
+        "runtime_observations": [
+          {
+            "action_id": "action:dispatch",
+            "browser_policy_authoritative_claim": false,
+            "current_argument_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "current_method": "method:dispatch",
+            "current_schema_id": "schema:dispatch",
+            "deontic_status": "permitted",
+            "has_hidden_dispatch_path": false,
+            "is_dispatchable": true,
+            "policy_fresh": false,
+            "presentation_visibility": "enabled",
+            "resolution": "exact",
+            "runtime_reevaluated": true,
+            "target_count": 1
+          },
+          {
+            "action_id": "action:delete",
+            "browser_policy_authoritative_claim": false,
+            "current_argument_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "current_method": "method:delete",
+            "current_schema_id": "schema:delete",
+            "deontic_status": "permitted",
+            "has_hidden_dispatch_path": false,
+            "is_dispatchable": true,
+            "policy_fresh": true,
+            "presentation_visibility": "enabled",
+            "resolution": "exact",
+            "runtime_reevaluated": true,
+            "target_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:confirmation-mismatch",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "rejected",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [
+        "action:delete",
+        "confirm:delete"
+      ],
+      "expected_verdict": "fail",
+      "family": "action_integrity",
+      "kind": "invariant_failure",
+      "machine_only": false,
+      "property_kind": "confirmation_bound_action",
+      "required_failure": "confirmation_mismatch",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:action:delete",
+          "evidence": "Confirmation is bound to the wrong action",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "action:delete"
+        }
+      ],
+      "title": "Confirmation is bound to the wrong action",
+      "world_overrides": {
+        "action_bindings": [
+          {
+            "action_id": "action:dispatch",
+            "component_id": "comp:goal-form",
+            "confirmation_id": "",
+            "depends_on_schema": true,
+            "interface": "UiActionBinding@1",
+            "is_destructive": false,
+            "method": "method:dispatch",
+            "policy_id": "policy:host",
+            "requires_confirmation": false,
+            "schema_id": "schema:dispatch",
+            "schema_version": "ui-action-binding/v1"
+          },
+          {
+            "action_id": "action:delete",
+            "component_id": "comp:goal-form",
+            "confirmation_id": "confirm:delete",
+            "depends_on_schema": true,
+            "interface": "UiActionBinding@1",
+            "is_destructive": true,
+            "method": "method:delete",
+            "policy_id": "policy:host",
+            "requires_confirmation": true,
+            "schema_id": "schema:delete",
+            "schema_version": "ui-action-binding/v1"
+          }
+        ],
+        "confirmations": [
+          {
+            "action_id": "action:dispatch",
+            "argument_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "confirmation_id": "confirm:delete",
+            "granted": false,
+            "notes": "",
+            "policy_decision_id": "policy-decision:1"
+          }
+        ]
+      }
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:visibility-enabled-never-authorizes",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "rejected",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [
+        "action:dispatch"
+      ],
+      "expected_verdict": "fail",
+      "family": "action_integrity",
+      "kind": "invariant_failure",
+      "machine_only": false,
+      "property_kind": "stale_policy_cannot_authorize",
+      "required_failure": "",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:action:dispatch",
+          "evidence": "enabled visibility",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "action:dispatch"
+        }
+      ],
+      "title": "Enabled visible dispatch still does not authorize",
+      "world_overrides": {
+        "runtime_observations": [
+          {
+            "action_id": "action:dispatch",
+            "browser_policy_authoritative_claim": false,
+            "current_argument_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "current_method": "method:dispatch",
+            "current_schema_id": "schema:dispatch",
+            "deontic_status": "permitted",
+            "has_hidden_dispatch_path": false,
+            "is_dispatchable": true,
+            "policy_fresh": false,
+            "presentation_visibility": "enabled",
+            "resolution": "exact",
+            "runtime_reevaluated": true,
+            "target_count": 1
+          },
+          {
+            "action_id": "action:delete",
+            "browser_policy_authoritative_claim": false,
+            "current_argument_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "current_method": "method:delete",
+            "current_schema_id": "schema:delete",
+            "deontic_status": "permitted",
+            "has_hidden_dispatch_path": false,
+            "is_dispatchable": true,
+            "policy_fresh": true,
+            "presentation_visibility": "enabled",
+            "resolution": "exact",
+            "runtime_reevaluated": true,
+            "target_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:healthy-baseline",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "allow_automatic",
+      "expected_decision": "accepted",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [],
+      "expected_verdict": "pass",
+      "family": "state_completeness",
+      "kind": "invariant_pass",
+      "machine_only": false,
+      "property_kind": "",
+      "required_failure": "",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:machine",
+          "evidence": "healthy baseline",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "machine:agent-supervisor"
+        }
+      ],
+      "title": "Healthy baseline can auto-accept but does not authorize",
+      "world_overrides": {}
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:unsupported-proof-claims",
+      "claimed_proof_kinds": [
+        "aesthetic_optimality",
+        "beauty",
+        "complete_accessibility",
+        "complete_security",
+        "unbounded_correctness"
+      ],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "review_required",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [],
+      "expected_verdict": "unknown",
+      "family": "state_completeness",
+      "kind": "invariant_unknown",
+      "machine_only": true,
+      "property_kind": "",
+      "required_failure": "",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:machine",
+          "evidence": "unsupported claims",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "machine:agent-supervisor"
+        }
+      ],
+      "title": "Forbidden proof claims stay unknown or review-required",
+      "world_overrides": {}
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:heuristic-analysis-blocks-accept",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "review_required",
+      "expected_reason_codes": [],
+      "expected_subject_ids": [],
+      "expected_verdict": "unknown",
+      "family": "state_completeness",
+      "kind": "invariant_unknown",
+      "machine_only": false,
+      "property_kind": "",
+      "required_failure": "",
+      "scope_request": null,
+      "source_bindings": [
+        {
+          "binding_id": "binding:machine",
+          "evidence": "heuristic analysis",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "machine:agent-supervisor"
+        }
+      ],
+      "title": "Heuristic analysis cannot auto-accept",
+      "world_overrides": {
+        "analysis_classification": "heuristic"
+      }
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:modeled-attack-undeclared-path",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "rejected",
+      "expected_reason_codes": [
+        "undeclared_file",
+        "undeclared_path"
+      ],
+      "expected_subject_ids": [],
+      "expected_verdict": "fail",
+      "family": "action_integrity",
+      "kind": "patch_scope",
+      "machine_only": false,
+      "property_kind": "",
+      "required_failure": "",
+      "scope_request": {
+        "invalidation": {
+          "affected_check_ids": [
+            "check:direct-tests"
+          ],
+          "affected_component_ids": [
+            "comp:goal-form"
+          ],
+          "affected_scenario_ids": [],
+          "change_set_id": "changeset:modeled-attack",
+          "confidence": "exact",
+          "fallback_explanation": "",
+          "fallback_triggered": false,
+          "interface": "UiInvalidationPlan@1",
+          "plan_id": "invalidate:modeled-attack",
+          "reasons": [
+            "component_changed"
+          ],
+          "schema_version": "ui-invalidation-plan/v1"
+        },
+        "observation": {
+          "action_binding_ids": [],
+          "action_contract_evidence": [],
+          "application_ids": [
+            "app:agent-supervisor"
+          ],
+          "hunks": [
+            {
+              "added_lines": 1,
+              "change_kinds": [],
+              "content_markers": [],
+              "deleted_lines": 0,
+              "diff_text": "+ modeled-attack label",
+              "operation": "modify",
+              "path": "swissknife/web/js/apps/legal-assistant.js"
+            }
+          ],
+          "touched_component_ids": [
+            "comp:goal-form"
+          ],
+          "touched_screenshot_ids": [],
+          "touched_state_effect_ids": [
+            "state:ready"
+          ],
+          "touched_test_ids": [],
+          "unresolved_paths": [],
+          "visual_effect_observed": true
+        },
+        "proposal": {
+          "acceptance_criteria": [
+            "Modeled attack is rejected."
+          ],
+          "analysis_classification": "exact",
+          "application_id": "app:agent-supervisor",
+          "context_pack_id": "pack:modeled-attack",
+          "decision": "pending",
+          "expected_screenshot_ids": [],
+          "expected_test_ids": [],
+          "intended_component_ids": [
+            "comp:goal-form"
+          ],
+          "intended_file_paths": [
+            "swissknife/web/js/apps/agent-supervisor.js"
+          ],
+          "interface": "GuiImprovementProposal@1",
+          "objective": "modeled-attack: undeclared path must not execute",
+          "proposal_id": "proposal:modeled-attack",
+          "route_kind": "deterministic_transform",
+          "schema_version": "gui-improvement-proposal/v1",
+          "screen_id": "screen:agent-supervisor",
+          "state_effect_ids": [
+            "state:ready"
+          ],
+          "verification_status": "unverified",
+          "visual_effect_summary": "modeled-attack: no execution"
+        }
+      },
+      "source_bindings": [
+        {
+          "binding_id": "binding:machine",
+          "evidence": "modeled attack",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "machine:agent-supervisor"
+        }
+      ],
+      "title": "Modeled undeclared-path attack is rejected without execution",
+      "world_overrides": {}
+    },
+    {
+      "authorizes": false,
+      "case_id": "case:modeled-attack-generated-path",
+      "claimed_proof_kinds": [],
+      "expected_acceptance_outcome": "block_automatic",
+      "expected_decision": "rejected",
+      "expected_reason_codes": [
+        "generated_path",
+        "path_forbidden_segment"
+      ],
+      "expected_subject_ids": [],
+      "expected_verdict": "fail",
+      "family": "action_integrity",
+      "kind": "patch_scope",
+      "machine_only": false,
+      "property_kind": "",
+      "required_failure": "",
+      "scope_request": {
+        "invalidation": {
+          "affected_check_ids": [
+            "check:direct-tests"
+          ],
+          "affected_component_ids": [
+            "comp:goal-form"
+          ],
+          "affected_scenario_ids": [],
+          "change_set_id": "changeset:modeled-attack",
+          "confidence": "exact",
+          "fallback_explanation": "",
+          "fallback_triggered": false,
+          "interface": "UiInvalidationPlan@1",
+          "plan_id": "invalidate:modeled-attack",
+          "reasons": [
+            "component_changed"
+          ],
+          "schema_version": "ui-invalidation-plan/v1"
+        },
+        "observation": {
+          "action_binding_ids": [],
+          "action_contract_evidence": [],
+          "application_ids": [
+            "app:agent-supervisor"
+          ],
+          "hunks": [
+            {
+              "added_lines": 1,
+              "change_kinds": [],
+              "content_markers": [],
+              "deleted_lines": 0,
+              "diff_text": "+ modeled-attack label",
+              "operation": "modify",
+              "path": "swissknife/web/js/apps/node_modules/evil/index.js"
+            }
+          ],
+          "touched_component_ids": [
+            "comp:goal-form"
+          ],
+          "touched_screenshot_ids": [],
+          "touched_state_effect_ids": [
+            "state:ready"
+          ],
+          "touched_test_ids": [],
+          "unresolved_paths": [],
+          "visual_effect_observed": true
+        },
+        "proposal": {
+          "acceptance_criteria": [
+            "Modeled attack is rejected."
+          ],
+          "analysis_classification": "exact",
+          "application_id": "app:agent-supervisor",
+          "context_pack_id": "pack:modeled-attack",
+          "decision": "pending",
+          "expected_screenshot_ids": [],
+          "expected_test_ids": [],
+          "intended_component_ids": [
+            "comp:goal-form"
+          ],
+          "intended_file_paths": [
+            "swissknife/web/js/apps/agent-supervisor.js"
+          ],
+          "interface": "GuiImprovementProposal@1",
+          "objective": "modeled-attack: generated path must not execute",
+          "proposal_id": "proposal:modeled-attack",
+          "route_kind": "deterministic_transform",
+          "schema_version": "gui-improvement-proposal/v1",
+          "screen_id": "screen:agent-supervisor",
+          "state_effect_ids": [
+            "state:ready"
+          ],
+          "verification_status": "unverified",
+          "visual_effect_summary": "modeled-attack: no execution"
+        }
+      },
+      "source_bindings": [
+        {
+          "binding_id": "binding:machine",
+          "evidence": "modeled generated",
+          "schema_version": "ui-constraint-source-binding/v1",
+          "source_span": {
+            "end_column": 1,
+            "end_line": 10,
+            "interface": "SourceSpan@1",
+            "path": "swissknife/web/js/apps/agent-supervisor.js",
+            "schema_version": "gui-source-span/v1",
+            "start_column": 0,
+            "start_line": 1
+          },
+          "subject_id": "machine:agent-supervisor"
+        }
+      ],
+      "title": "Modeled generated-path attack is rejected without execution",
+      "world_overrides": {}
+    }
+  ],
+  "conflict_policy": "Fixtures may model attacks but never execute production tools, credentials, remote scripts, arbitrary HTML, paths or commands.",
+  "forbidden_claim_kinds": [
+    "aesthetic_optimality",
+    "beauty",
+    "complete_accessibility",
+    "complete_security",
+    "unbounded_correctness"
+  ],
+  "interface": "GuiFormalSecurityFixtureSuite@1",
+  "required_failure_ids": [
+    "unlabeled_input",
+    "missing_error_association",
+    "inaccessible_custom_control",
+    "broken_modal_focus",
+    "duplicate_ids",
+    "missing_async_failure",
+    "unconfirmed_destruction",
+    "disabled_dispatch",
+    "stale_policy",
+    "confirmation_mismatch"
+  ],
+  "schema_version": "gui-formal-security-fixture-suite/v1",
+  "screen_id": "screen:agent-supervisor",
+  "suite_id": "suite:vgo-071-formal-security",
+  "task_id": "VGO-071"
+}

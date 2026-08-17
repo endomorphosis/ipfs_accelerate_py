@@ -1,0 +1,331 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.adversarial_assurance_engine.scheduler_config@1",
+  "taskboard_path": "docs/architecture/adversarial_assurance_engine.todo.md",
+  "objectives_path": "docs/architecture/adversarial_assurance_engine.objectives.md",
+  "plan_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md",
+  "validator_path": "scripts/validate_adversarial_assurance_engine_board.py",
+  "task_prefix": "AAE-",
+  "goal_prefix": "AAE-G",
+  "board_namespace": "adversarial-assurance-engine-v1",
+  "merge_target_branch": "agent/adversarial-assurance-engine-v1",
+  "source_binding": {
+    "pin_state": "operator_released",
+    "pin_generation": 1,
+    "accelerator_required_ancestor": "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda",
+    "accelerator_required_branch": "agent/adversarial-assurance-engine-v1",
+    "bootstrap_task_source": "legacy-markdown",
+    "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+    "ipfs_datasets_planning_revision": "38cfb624e617fc878e627c3ef66d92a4d8817e59",
+    "ipfs_kit_submodule_path": "ipfs_kit_py",
+    "ipfs_kit_planning_revision": "2066e6fe671e89be4ae5e5172d055c937ad02135",
+    "mcp_plus_plus_submodule_path": "ipfs_accelerate_py/mcplusplus",
+    "mcp_plus_plus_planning_revision": "96238cc9a86e69d224ab7b52d211a79ecf27b382",
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "bootstrap_source_binding": {
+    "pin_state": "bootstrap_blocked",
+    "pin_generation": 0,
+    "accelerator_required_ancestor": "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda",
+    "accelerator_required_branch": "agent/adversarial-assurance-engine-v1",
+    "bootstrap_task_source": "legacy-markdown",
+    "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+    "ipfs_datasets_planning_revision": "38cfb624e617fc878e627c3ef66d92a4d8817e59",
+    "ipfs_kit_submodule_path": "ipfs_kit_py",
+    "ipfs_kit_planning_revision": "2066e6fe671e89be4ae5e5172d055c937ad02135",
+    "mcp_plus_plus_submodule_path": "ipfs_accelerate_py/mcplusplus",
+    "mcp_plus_plus_planning_revision": "96238cc9a86e69d224ab7b52d211a79ecf27b382",
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "prerequisite_gate": {
+    "task_id": "AAE-006",
+    "initial_status": "blocked",
+    "operator_only": true,
+    "operator_authority_did": "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
+    "runtime_tasks": [
+      "AAE-039",
+      "AAE-043",
+      "AAE-053",
+      "AAE-062"
+    ],
+    "required_evidence": [
+      "genuine terminal SemanticCompressionGovernor receipt and final commit",
+      "released full-checkpoint and delta IncrementalProofSealer APIs",
+      "clean exact recursive repository forest",
+      "fresh focused baselines at the released pins",
+      "recomputed canonical identities for copied upstream and baseline evidence",
+      "verified operator did:key signature over the release receipt identity",
+      "single-use signed exact-HEAD launch admission after gate completion"
+    ],
+    "missing_capability_disposition": "typed_unavailable",
+    "worker_may_complete": false
+  },
+  "launch_admission_policy": {
+    "required_after_prerequisite_completion": true,
+    "admission_schema": "ipfs_accelerate_py/agent-supervisor/adversarial-assurance-launch-admission@1",
+    "external_path_environment": "IPFS_ACCELERATE_AAE_LAUNCH_ADMISSION_PATH",
+    "must_be_outside_repository": true,
+    "bind_exact_controller_head": true,
+    "bind_prerequisite_receipt_and_gitlinks": true,
+    "strictly_increasing_single_use_generation": true,
+    "chained_ledger_scope": "git-common-dir/agent-supervisor/adversarial-assurance-engine-v1",
+    "consume_under_lifecycle_lock_before_spawn": true,
+    "dry_run_consumes": false
+  },
+  "initial_projection": {
+    "task_count": 64,
+    "completed_task_ids": [
+      "AAE-000"
+    ],
+    "ready_task_ids": [
+      "AAE-001",
+      "AAE-002",
+      "AAE-003",
+      "AAE-004"
+    ],
+    "blocked_task_ids": [
+      "AAE-006"
+    ],
+    "terminal_task_id": "AAE-063",
+    "goal_count": 10,
+    "root_goal_id": "AAE-G000"
+  },
+  "max_lanes": 2,
+  "strict_task_sharding": true,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 45,
+  "check_interval_seconds": 20,
+  "stale_seconds": 1200,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 8,
+  "max_task_attempts": 4,
+  "implementation_retry_budget": 4,
+  "validation_retry_budget": 4,
+  "merge_retry_budget": 4,
+  "implementation_timeout_seconds": 14400,
+  "implementation_max_timeout_seconds": 21600,
+  "implementation_log_stall_seconds": 900,
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py",
+    "ipfs_kit_py",
+    "ipfs_accelerate_py/mcplusplus"
+  ],
+  "protected_paths": [
+    ".gitignore",
+    "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md",
+    "docs/architecture/adversarial_assurance_engine.objectives.md",
+    "docs/architecture/adversarial_assurance_engine.todo.md",
+    "config/adversarial_assurance_engine_scheduler.json",
+    "config/adversarial_assurance_prerequisites.json",
+    "scripts/validate_adversarial_assurance_engine_board.py",
+    "scripts/ops/agent_supervisor/adversarial_assurance_engine_scheduler.py",
+    "scripts/ops/agent_supervisor/incremental_verification_planner_scheduler.py",
+    "test/api/test_adversarial_assurance_engine_board.py",
+    "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py",
+    "ipfs_accelerate_py/agent_supervisor/provider_fallback_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/adversarial_assurance_engine/run-aae-v1",
+    "state": "data/agent_supervisor/adversarial_assurance_engine/run-aae-v1/state",
+    "worktrees": "data/agent_supervisor/adversarial_assurance_engine/run-aae-v1/worktrees",
+    "merge_queue": "data/agent_supervisor/adversarial_assurance_engine/run-aae-v1/merge-queue",
+    "logs": "data/agent_supervisor/adversarial_assurance_engine/run-aae-v1/logs",
+    "evidence": "data/agent_supervisor/adversarial_assurance_engine/run-aae-v1/evidence",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "aae-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [
+        "AAE-002",
+        "AAE-004"
+      ],
+      "initial_focus": "even-shard datasets, conformance, persistence, campaigns, and qualification"
+    },
+    {
+      "index": 1,
+      "name": "aae-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_task_ids": [
+        "AAE-001",
+        "AAE-003"
+      ],
+      "initial_focus": "odd-shard accelerate, analysis, persistence, campaigns, and qualification"
+    }
+  ],
+  "task_groups": {
+    "AAE-G000": [
+      "AAE-000"
+    ],
+    "AAE-G010": [
+      "AAE-001",
+      "AAE-002",
+      "AAE-003",
+      "AAE-004",
+      "AAE-005"
+    ],
+    "AAE-G020": [
+      "AAE-007",
+      "AAE-008",
+      "AAE-009",
+      "AAE-010",
+      "AAE-011",
+      "AAE-012",
+      "AAE-013"
+    ],
+    "AAE-G030": [
+      "AAE-014",
+      "AAE-015",
+      "AAE-016",
+      "AAE-017",
+      "AAE-018",
+      "AAE-019",
+      "AAE-020",
+      "AAE-021",
+      "AAE-022",
+      "AAE-023",
+      "AAE-024"
+    ],
+    "AAE-G040": [
+      "AAE-025",
+      "AAE-026",
+      "AAE-027",
+      "AAE-028",
+      "AAE-029",
+      "AAE-030",
+      "AAE-031",
+      "AAE-032",
+      "AAE-033"
+    ],
+    "AAE-G050": [
+      "AAE-034",
+      "AAE-035",
+      "AAE-036",
+      "AAE-037",
+      "AAE-038"
+    ],
+    "AAE-G060": [
+      "AAE-006",
+      "AAE-039",
+      "AAE-040",
+      "AAE-041",
+      "AAE-042",
+      "AAE-043",
+      "AAE-044",
+      "AAE-045",
+      "AAE-046",
+      "AAE-047",
+      "AAE-048"
+    ],
+    "AAE-G070": [
+      "AAE-049",
+      "AAE-050",
+      "AAE-051",
+      "AAE-052",
+      "AAE-053",
+      "AAE-054",
+      "AAE-055"
+    ],
+    "AAE-G080": [
+      "AAE-056",
+      "AAE-057",
+      "AAE-058",
+      "AAE-059",
+      "AAE-060",
+      "AAE-061",
+      "AAE-062"
+    ],
+    "AAE-G090": [
+      "AAE-063"
+    ]
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "high",
+    "max_concurrency": 2,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "authority_policy": {
+    "canonical_identity_authority": "ipfs_datasets_py.logic.software_contracts.content",
+    "canonical_semantic_authority": "IncrementalSemanticIndex and SemanticCapsuleCompiler@1",
+    "canonical_context_authority": "ipfs_accelerate_py.agent_supervisor.semantic_state.context_pack.ContextPacker",
+    "canonical_verification_authority": "ipfs_accelerate_py.agent_supervisor.verification",
+    "canonical_storage_authority": "ipfs_kit_py DurableCoordinationStore and DurableStateRootAdapter",
+    "canonical_sealing_authority": "released IncrementalProofSealer only",
+    "exact_receipt_identity_required": true,
+    "provider_claim_is_verification_authority": false,
+    "test_or_proof_presence_is_verification_authority": false,
+    "verification_pass_alone_proves_sufficiency": false,
+    "mutation_score_proves_correctness": false,
+    "receipt_inclusion_proves_execution": false,
+    "semantic_uncertainty_requires_broader_execution": true,
+    "timeout_unavailable_unknown_stale_invalid_cancelled_or_simulated_can_pass": false,
+    "nonreproducible_environment_requires_human_review": true
+  },
+  "capability_policy": {
+    "automatic_dependency_installation_allowed": false,
+    "production_credentials_available_to_mutants": false,
+    "mutant_network_access_default": false,
+    "mock_external_effects_required": true,
+    "new_content_identity_allowed": false,
+    "new_receipt_format_allowed": false,
+    "new_scheduler_allowed": false,
+    "new_context_packer_allowed": false,
+    "new_mcplusplus_profile_allowed": false,
+    "new_proof_or_zk_system_allowed": false,
+    "missing_incremental_proof_sealer_disposition": "typed_unavailable",
+    "shell_string_execution_allowed": false,
+    "process_tree_termination_required": true,
+    "bounded_stdout_and_stderr_required": true,
+    "isolated_disposable_worktree_required": true,
+    "arbitrary_external_repository_mutation_allowed": false,
+    "production_policy_change_during_fixture_campaign_allowed": false,
+    "production_deployment_allowed": false,
+    "general_autonomous_repair_allowed": false,
+    "gui_implementation_allowed": false,
+    "legal_advice_allowed": false,
+    "payment_processing_allowed": false,
+    "automatic_assurance_lowering_allowed": false
+  },
+  "completion_policy": {
+    "terminal_task_id": "AAE-063",
+    "all_task_dependencies_terminal_required": true,
+    "prerequisite_gate_must_be_completed_by_operator": true,
+    "current_tree_evidence_required": true,
+    "held_out_evaluation_required_for_promotion": true,
+    "separate_authorization_required_for_promotion": true,
+    "policy_compare_and_swap_required": true,
+    "new_incremental_seal_required_for_promotion": true,
+    "critical_assurance_reduction_without_authorization_allowed": false,
+    "stale_partial_simulated_skipped_or_print_only_evidence_satisfies_release": false,
+    "zero_controlled_critical_security_survivors_is_target_not_assumed": true,
+    "high_risk_detection_target_percent": 90,
+    "incremental_savings_target_percent": 50,
+    "honest_unmet_target_reporting_required": true,
+    "proof_scope_must_be_bounded": true,
+    "final_report_required": true
+  }
+}

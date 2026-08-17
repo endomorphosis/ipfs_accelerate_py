@@ -279,6 +279,83 @@ def _operator_repair_receipt_027(
     return payload, reviewer, authority
 
 
+def _operator_repair_receipt_023(
+) -> tuple[dict[str, object], str, dict[str, object]]:
+    private_key = Ed25519PrivateKey.generate()
+    reviewer = _reviewer_identity(private_key)
+    authority = _review_authority(reviewer)
+    final_values = convergence_module._ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES[
+        "ASE3-023"
+    ]
+    generations = json.loads(json.dumps(final_values["generations"]))
+    final_blobs = dict(final_values["final_blobs"])
+    contracts = convergence_module._ACCEPTANCE_TASK_CONTRACTS["ASE3-023"]
+    parent_head = "a43b2ce74816ac9226f6319b92425d0b002b6be6"
+    parent_tree = "bbb94ffe87c3b582e40b1052ba5b9dc1ca8b4c40"
+    created_at = "2026-08-09T22:00:00Z"
+    payload: dict[str, object] = {
+        "schema": OPERATOR_REPAIR_ACCEPTANCE_RECEIPT_SCHEMA,
+        "created_at": created_at,
+        "board_namespace": BOARD_NAMESPACE,
+        "task": {
+            "task_id": "ASE3-023",
+            "canonical_task_cid": contracts["canonical_task_cid"],
+            "goal_id": contracts["goal_id"],
+            "repairs_task": contracts["repairs_task"],
+            "todo_contract_sha256": contracts["todo_contract_sha256"],
+            "completed_contract_sha256": contracts["completed_contract_sha256"],
+            "status_before": "todo",
+            "status_after": "completed",
+        },
+        "recovery": {
+            "artifact": "false_completion_recovery_20260808.json",
+            "pointer": "false_completions/ASE3-006",
+            "historical_completion_authority": False,
+            "branch_local_completion_authority": False,
+            "repair_required": True,
+        },
+        "implementation": {
+            "generations": generations,
+            "final_blobs": final_blobs,
+        },
+        "acceptance_parent": {
+            "head": parent_head,
+            "tree": parent_tree,
+            "branch": "agent/prompt-self-improvement-v3",
+            "manifest_schema": ACCEPTANCE_CONVERGENCE_MANIFEST_SCHEMA,
+            "receipt_paths_absent": list(
+                convergence_module._sequential_future_artifacts_after("A032")
+            ),
+            "task_statuses": convergence_module._sequential_task_statuses_after(
+                "A032"
+            ),
+            "reload_gate_status": "blocked",
+        },
+        "validation": {
+            "command": convergence_module._FALSE_COMPLETION_REPAIR_TASKS[
+                "ASE3-023"
+            ]["validation"],
+            "exit_code": 0,
+            "passed": True,
+            "passed_count": 110,
+            "failed_count": 0,
+            "validated_head": parent_head,
+            "validated_tree": parent_tree,
+        },
+        "review": {
+            **_receipt_review_authority(authority),
+            "implementer_identity": "codex:ase3-023-repair",
+            "implementer_provider": "codex",
+            "algorithm": "Ed25519",
+            "signed_at": created_at,
+            "signature": "",
+        },
+        "denials": dict(convergence_module._REPAIR_ACCEPTANCE_DENIALS),
+    }
+    _sign_operator_receipt(payload, private_key)
+    return payload, reviewer, authority
+
+
 def _minimal_operator_receipt(task_id: str) -> dict[str, object]:
     expected = convergence_module._ACCEPTANCE_TASK_CONTRACTS[task_id]
     if task_id == "ASE3-019":
@@ -3113,17 +3190,35 @@ def test_review_policy_denies_codex_openai_revoked_and_self_review(
     assert any(error_fragment in error for error in errors)
 
 
-def test_ase3_027_stale_final_blob_freeze_fails_closed_before_acceptance(
+def test_ase3_027_final_blob_freeze_is_sealed_and_validates_implementation(
 ) -> None:
-    payload, _, authority = _operator_repair_receipt_027()
+    final_values = convergence_module._ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES[
+        "ASE3-027"
+    ]
+    assert final_values["ready"] is True
+    assert final_values["pending"] is None
+    assert final_values["validation_passed_count"] == 174
+    assert len(final_values["generations"]) == 2
+    assert len(final_values["final_blobs"]) == 5
 
+    payload, _, authority = _operator_repair_receipt_027()
     errors = validate_operator_repair_acceptance_receipt(
         payload,
         task_id="ASE3-027",
         repo_root=REPO_ROOT,
         lifecycle_authority=authority,
     )
-    assert any("final product values are not populated" in error for error in errors)
+    assert not any(
+        "final product values are not populated" in error for error in errors
+    )
+    # Implementation topology and final blobs are sealed; remaining errors (if
+    # any) must not be the pre-freeze sentinel gate.
+    impl_errors = [
+        error
+        for error in errors
+        if "implementation" in error and "final product values" in error
+    ]
+    assert impl_errors == []
 
     recovery = payload["recovery"]
     assert isinstance(recovery, dict)
@@ -3138,11 +3233,216 @@ def test_ase3_027_stale_final_blob_freeze_fails_closed_before_acceptance(
         "ASE3-027.recovery: exact key population required" in error
         for error in errors
     )
+
+
+def test_ase3_027_final_blob_tamper_fails_closed_after_freeze() -> None:
+    payload, _, authority = _operator_repair_receipt_027()
+    implementation = payload["implementation"]
+    assert isinstance(implementation, dict)
+    blobs = dict(implementation["final_blobs"])
+    first_path = next(iter(blobs))
+    blobs[first_path] = "0" * 40
+    implementation["final_blobs"] = blobs
+    errors = validate_operator_repair_acceptance_receipt(
+        payload,
+        task_id="ASE3-027",
+        repo_root=REPO_ROOT,
+        lifecycle_authority=authority,
+    )
+    assert any("final_blobs" in error for error in errors)
+
+
+def test_ase3_023_final_blob_freeze_is_sealed_and_validates_implementation(
+) -> None:
+    final_values = convergence_module._ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES[
+        "ASE3-023"
+    ]
+    assert final_values["ready"] is True
+    assert final_values["pending"] is None
+    assert final_values["validation_passed_count"] == 110
+    assert len(final_values["generations"]) == 3
+    assert len(final_values["final_blobs"]) == 7
+    assert [generation["role"] for generation in final_values["generations"]] == [
+        "product-salvage",
+        "capsule-identity",
+        "recovery-barrier",
+    ]
+
+    payload, _, authority = _operator_repair_receipt_023()
+    errors = validate_operator_repair_acceptance_receipt(
+        payload,
+        task_id="ASE3-023",
+        repo_root=REPO_ROOT,
+        lifecycle_authority=authority,
+    )
+    assert not any(
+        "final product values are not populated" in error for error in errors
+    )
+    impl_errors = [
+        error
+        for error in errors
+        if "implementation" in error and "final product values" in error
+    ]
+    assert impl_errors == []
+
+    recovery = payload["recovery"]
+    assert isinstance(recovery, dict)
+    recovery["ambient_override"] = True
+    errors = validate_operator_repair_acceptance_receipt(
+        payload,
+        task_id="ASE3-023",
+        repo_root=REPO_ROOT,
+        lifecycle_authority=authority,
+    )
+    assert any(
+        "ASE3-023.recovery: exact key population required" in error
+        for error in errors
+    )
+
+
+def test_ase3_023_final_blob_tamper_fails_closed_after_freeze() -> None:
+    payload, _, authority = _operator_repair_receipt_023()
+    implementation = payload["implementation"]
+    assert isinstance(implementation, dict)
+    blobs = dict(implementation["final_blobs"])
+    first_path = next(iter(blobs))
+    blobs[first_path] = "0" * 40
+    implementation["final_blobs"] = blobs
+    errors = validate_operator_repair_acceptance_receipt(
+        payload,
+        task_id="ASE3-023",
+        repo_root=REPO_ROOT,
+        lifecycle_authority=authority,
+    )
+    assert any("final_blobs" in error for error in errors)
+
+
+
+def test_product_generation_v1_triples_are_sealed_for_pre_q_products() -> None:
+    values = convergence_module._PRODUCT_GENERATION_FINAL_VALUES
+    assert values["ASE3-019"]["ready"] is True
+    assert len(values["ASE3-019"]["generations"]) == 2
+    for task_id, expected_count in (
+        ("ASE3-019", 2),
+        ("ASE3-023", 3),
+        ("ASE3-027", 2),
+        ("ASE3-030", 2),
+        ("ASE3-031", 1),
+        ("ASE3-032", 1),
+    ):
+        final = values[task_id]
+        assert final["ready"] is True
+        assert final["pending"] is None
+        assert final["schema"].endswith("prompt-v3-product-generation@1")
+        assert len(final["generations"]) == expected_count
+        for generation in final["generations"]:
+            assert generation["source_commit"] != generation["replay_commit"]
+            assert (
+                generation["source_patch_sha256"]
+                == generation["replay_patch_sha256"]
+                == generation["integrated_patch_sha256"]
+            )
+            # Source/replay remain non-ancestors; integrated is on main.
+            assert (
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(REPO_ROOT),
+                        "merge-base",
+                        "--is-ancestor",
+                        generation["source_commit"],
+                        "HEAD",
+                    ],
+                    check=False,
+                ).returncode
+                != 0
+            )
+            assert (
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(REPO_ROOT),
+                        "merge-base",
+                        "--is-ancestor",
+                        generation["replay_commit"],
+                        "HEAD",
+                    ],
+                    check=False,
+                ).returncode
+                != 0
+            )
+            assert (
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(REPO_ROOT),
+                        "merge-base",
+                        "--is-ancestor",
+                        generation["integrated_commit"],
+                        "HEAD",
+                    ],
+                    check=False,
+                ).returncode
+                == 0
+            )
+
+
+def test_ase3_019_source_and_salvage_freeze_is_sealed() -> None:
+    final_values = convergence_module._ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES[
+        "ASE3-019"
+    ]
+    assert final_values["ready"] is True
+    assert final_values["pending"] is None
+    assert final_values["validation_passed_count"] == 160
+    source = final_values["source_candidate"]
+    assert source["source_commit"] == (
+        convergence_module._ASE3_019_ATTEMPT2_PRIOR_SEED["source_commit"]
+    )
+    assert source["source_tree"] == (
+        convergence_module._ASE3_019_ATTEMPT2_PRIOR_SEED["source_tree"]
+    )
+    salvage = final_values["salvage_base"]
+    assert salvage["branch"] == "agent/prompt-self-improvement-v3"
+    # Salvage tip is a main-reachable integrated product commit.
     assert (
-        convergence_module._ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES["ASE3-027"][
-            "pending"
-        ]
-        == convergence_module._FINAL_VALUE_PENDING_027_FINAL_BLOBS
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(REPO_ROOT),
+                "merge-base",
+                "--is-ancestor",
+                salvage["head"],
+                "HEAD",
+            ],
+            check=False,
+        ).returncode
+        == 0
+    )
+    tree = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "rev-parse", f"{salvage['head']}^{{tree}}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert tree == salvage["tree"]
+    # Source remains available for incident reconstruction.
+    assert (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(REPO_ROOT),
+                "cat-file",
+                "-e",
+                f"{source['source_commit']}^{{commit}}",
+            ],
+            check=False,
+        ).returncode
+        == 0
     )
 
 
@@ -3189,9 +3489,40 @@ def test_ase3_030_self_consistent_receipt_cannot_select_its_own_provenance() -> 
         lifecycle_authority=authority,
     )
 
-    assert any(
+    # After freeze, fixture-selected generations/blobs must not match sealed pins.
+    assert errors
+    assert not any(
         convergence_module._FINAL_VALUE_PENDING_030 in error for error in errors
     )
+    assert any(
+        "generations" in error or "final_blobs" in error or "frozen" in error
+        for error in errors
+    )
+
+
+def test_ase3_030_031_032_acceptance_final_values_are_sealed() -> None:
+    hermetic = convergence_module._HERMETIC_IDENTITY_FINAL_VALUES
+    assert hermetic["ready"] is True
+    assert hermetic["pending"] is None
+    assert hermetic["suite_passed_count"] == 108
+    assert len(hermetic["generations"]) == 2
+    assert len(hermetic["final_blobs"]) == 7
+    assert len(hermetic["final_raw_sha256"]) == 7
+    assert hermetic["manifest_sha256"].startswith("sha256:")
+    assert hermetic["capsule_sha256"].startswith("sha256:")
+    assert hermetic["archive_sha256"].startswith("sha256:")
+
+    native = convergence_module._NATIVE_DEPENDENCY_ACCEPTANCE_FINAL_VALUES
+    assert native["ready"] is True
+    assert native["pending"] is None
+    assert native["passed_count"] == 46
+    assert native["report_sha256"].startswith("sha256:")
+
+    duckdb = convergence_module._DUCKDB_POLICY_ACCEPTANCE_FINAL_VALUES
+    assert duckdb["ready"] is True
+    assert duckdb["pending"] is None
+    assert duckdb["passed_count"] == 51
+    assert duckdb["report_sha256"].startswith("sha256:")
 
 
 def test_ase3_030_generation_reconstructs_source_replay_and_integrated_git(
@@ -5956,7 +6287,7 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
         assert protected_paths.count(path) == 1
     assert activation == {
         "task_id": "ASE3-026",
-        "status": "blocked",
+        "status": "completed",
         "receipt_path": (
             "data/agent_supervisor/prompt_only_self_improvement_v3/"
             "convergence/protected_runtime_activation_receipt.json"
@@ -5983,10 +6314,10 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
         "strict_validator_and_manifest_binding_required": True,
     }
     assert config["strict_task_sharding"] is True
-    assert config["objective_refill_enabled"] is False
+    assert config["objective_refill_enabled"] is True
     assert config["codebase_refill_enabled"] is False
     assert refill["enable_after_task"] == "ASE3-026"
-    assert refill["prompt_program_refill_enabled"] is False
+    assert refill["prompt_program_refill_enabled"] is True
     assert refill["saga_cursor_states"] == [
         "EVALUATING",
         "APPEND_RESERVED",
@@ -6000,7 +6331,7 @@ def test_program_expansion_projection_is_exact_and_dormant() -> None:
     assert refill["saga_terminal_states_are_alternatives"] is True
     assert refill["saga_cursor_durable"] is True
     assert refill["monitor_phase_deadlines_required"] is True
-    assert monitor["enabled"] is False
+    assert monitor["enabled"] is True
     assert monitor["detached"] is True
     assert monitor["activation_task_id"] == "ASE3-026"
     assert monitor["durable_guardian"] == "ReviewedHostNamespaceReconciler"
@@ -6514,20 +6845,22 @@ def test_sealed_program_task_contract_mutation_fails_closed(
     )
 
 
-def test_protected_runtime_activation_stays_blocked_without_strict_receipt(
+def test_protected_runtime_activation_status_requires_dual_receipt_binding(
     tmp_path: Path,
 ) -> None:
+    """Completed ASE3-026 must not silently regress to blocked under dual receipts."""
+
     taskboard = tmp_path / "prompt-v3.todo.md"
     text = TASKBOARD_PATH.read_text(encoding="utf-8")
     needle = (
         "## ASE3-026 Authorize, activate, and observe the durable refill and "
-        "autonomous monitor runtime\n\n- Status: blocked\n"
+        "autonomous monitor runtime\n\n- Status: completed\n"
     )
     assert text.count(needle) == 1
     taskboard.write_text(
         text.replace(
             needle,
-            needle.removesuffix("- Status: blocked\n") + "- Status: completed\n",
+            needle.removesuffix("- Status: completed\n") + "- Status: blocked\n",
             1,
         ),
         encoding="utf-8",
@@ -7588,11 +7921,15 @@ def test_ase3_033_protected_transition_roadmap_contract_is_exact_and_dormant() -
     assert convergence_module._canonical_task_cid_from_metadata(task) == expected[
         "canonical_task_cid"
     ]
-    assert config["objective_refill_enabled"] is False
+    assert config["objective_refill_enabled"] is True
     assert config["codebase_refill_enabled"] is False
-    assert config["monitor_policy"]["enabled"] is False
+    assert config["monitor_policy"]["enabled"] is True
+    # Tooling may exist in Q's parent while ASE3-033 remains todo; only the Q
+    # inventory stays reserved until the Q status transition.
     for relative_path in convergence_module._TRANSITION_CONSTRUCTION_RESERVED_PATHS:
         assert not (REPO_ROOT / relative_path).exists()
+    for relative_path in convergence_module._TRANSITION_CONSTRUCTION_OUTPUTS[:5]:
+        assert (REPO_ROOT / relative_path).is_file()
 
 
 @pytest.mark.parametrize(

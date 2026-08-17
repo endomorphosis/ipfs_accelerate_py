@@ -246,7 +246,7 @@ def test_immutable_session_revalidates_and_detects_replacement(
     try:
         assert session.revalidate() is True
         assert session.binary_path.is_file()
-        assert (session.artifacts_root / "v4" / "proving_key.bin").read_bytes() == pk
+        assert (session.artifacts_root / "v5" / "proving_key.bin").read_bytes() == pk
         child = session.child_environment(
             {
                 "PATH": "/bin",
@@ -345,10 +345,10 @@ def test_issue_material_defers_on_post_binding_binary_replacement(
     binary.write_bytes(b"\x7fELF-reviewed-v4-binary")
     os.chmod(binary, 0o700)
     artifacts = tmp_path / "artifacts"
-    v4 = artifacts / "v4"
-    v4.mkdir(parents=True)
-    pk = v4 / "proving_key.bin"
-    vk = v4 / "verifying_key.bin"
+    v5 = artifacts / "v5"
+    v5.mkdir(parents=True)
+    pk = v5 / "proving_key.bin"
+    vk = v5 / "verifying_key.bin"
     pk.write_bytes(b"pk-" + b"\x11" * 64)
     vk.write_bytes(b"vk-" + b"\x22" * 64)
 
@@ -360,7 +360,7 @@ def test_issue_material_defers_on_post_binding_binary_replacement(
         artifacts_root=str(artifacts),
         proving_key_sha256=_sha(pk.read_bytes()),
         verifying_key_sha256=_sha(vk.read_bytes()),
-        backend_circuit_version=4,
+        backend_circuit_version=5,
         to_dict=lambda: {
             "provenance_ready": True,
             "circuit_cid": "cid:circuit",
@@ -426,12 +426,12 @@ def test_issue_material_hardens_provider_child_env(
     binary.write_bytes(b"\x7fELF-reviewed")
     os.chmod(binary, stat.S_IRUSR | stat.S_IXUSR)
     artifacts = tmp_path / "artifacts"
-    v4 = artifacts / "v4"
-    v4.mkdir(parents=True)
+    v5 = artifacts / "v5"
+    v5.mkdir(parents=True)
     pk_bytes = b"pk-" + b"\x33" * 32
     vk_bytes = b"vk-" + b"\x44" * 32
-    (v4 / "proving_key.bin").write_bytes(pk_bytes)
-    (v4 / "verifying_key.bin").write_bytes(vk_bytes)
+    (v5 / "proving_key.bin").write_bytes(pk_bytes)
+    (v5 / "verifying_key.bin").write_bytes(vk_bytes)
 
     ready_bindings = SimpleNamespace(
         provenance_ready=True,
@@ -441,7 +441,7 @@ def test_issue_material_hardens_provider_child_env(
         artifacts_root=str(artifacts),
         proving_key_sha256=_sha(pk_bytes),
         verifying_key_sha256=_sha(vk_bytes),
-        backend_circuit_version=4,
+        backend_circuit_version=5,
         to_dict=lambda: {
             "provenance_ready": True,
             "circuit_cid": "cid:circuit",
@@ -581,12 +581,12 @@ def test_issue_material_rejects_malformed_provider_output(
     binary.write_bytes(b"\x7fELF-ok")
     os.chmod(binary, 0o700)
     artifacts = tmp_path / "artifacts"
-    v4 = artifacts / "v4"
-    v4.mkdir(parents=True)
+    v5 = artifacts / "v5"
+    v5.mkdir(parents=True)
     pk = b"pk-ok"
     vk = b"vk-ok"
-    (v4 / "proving_key.bin").write_bytes(pk)
-    (v4 / "verifying_key.bin").write_bytes(vk)
+    (v5 / "proving_key.bin").write_bytes(pk)
+    (v5 / "verifying_key.bin").write_bytes(vk)
     ready_bindings = SimpleNamespace(
         provenance_ready=True,
         reason_code="ready",
@@ -595,7 +595,7 @@ def test_issue_material_rejects_malformed_provider_output(
         artifacts_root=str(artifacts),
         proving_key_sha256=_sha(pk),
         verifying_key_sha256=_sha(vk),
-        backend_circuit_version=4,
+        backend_circuit_version=5,
         to_dict=lambda: {"provenance_ready": True, "circuit_cid": "cid:circuit"},
     )
 

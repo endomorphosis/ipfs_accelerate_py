@@ -460,6 +460,8 @@ MAX_NATIVE_DEPENDENCY_ACCEPTANCE_RECEIPT_BYTES: Final[int] = 256 * 1024
 MAX_DUCKDB_CONNECTION_POLICY_ACCEPTANCE_RECEIPT_BYTES: Final[int] = 256 * 1024
 MAX_PROVIDER_ATTEMPT_RELOAD_RECEIPT_BYTES: Final[int] = 128 * 1024
 MAX_PROVIDER_ATTEMPT_GENERATION_BIRTH_RECEIPT_BYTES: Final[int] = 128 * 1024
+MAX_PROTECTED_RUNTIME_ACTIVATION_RECEIPT_BYTES: Final[int] = 128 * 1024
+MAX_PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_BYTES: Final[int] = 256 * 1024
 MAX_PROVIDER_FALLBACK_AUTHORIZATION_BYTES: Final[int] = 128 * 1024
 MAX_LOCAL_PROFILE_LIFECYCLE_ROOT_PIN_BYTES: Final[int] = 32 * 1024
 MAX_LOCAL_OPERATOR_LIFECYCLE_WITNESS_BYTES: Final[int] = 128 * 1024
@@ -562,7 +564,8 @@ _TRANSITION_Q_CHANGED_PATHS: Final = (
     PROMPT_V3_TASKBOARD_RELATIVE_PATH.as_posix(),
 )
 _TRANSITION_CONSTRUCTION_RESERVED_PATHS: Final = (
-    *_TRANSITION_CONSTRUCTION_OUTPUTS[:5],
+    # Tooling must already be integrated in Q's parent while ASE3-033 remains
+    # todo. Only the Q inventory is reserved until the Q status transition.
     _TRANSITION_Q_INVENTORY_RELATIVE_PATH,
 )
 _TRANSITION_CONSTRUCTION_PUBLIC_APIS: Final = (
@@ -1493,8 +1496,15 @@ _PROTECTED_RUNTIME_ACTIVATION_TASK_TITLE: Final = (
 _PROTECTED_RUNTIME_ACTIVATION_BLOCKED_REASON: Final = (
     "protected runtime activation receipt not yet accepted"
 )
-_PROTECTED_RUNTIME_ACTIVATION_CONTRACT_SHA256: Final = (
+_PROTECTED_RUNTIME_ACTIVATION_BLOCKED_CONTRACT_SHA256: Final = (
     "sha256:84d70803f2e42a6e96725b0a01db05a2673e63a68bac218d43bac09e835bde6d"
+)
+_PROTECTED_RUNTIME_ACTIVATION_COMPLETED_CONTRACT_SHA256: Final = (
+    "sha256:83ef3ae4595998c4db06550a3278398680fdab3e3ff546a7062864e3700cd6fb"
+)
+# After dual receipts land, the sealed board expects the completed contract.
+_PROTECTED_RUNTIME_ACTIVATION_CONTRACT_SHA256: Final = (
+    _PROTECTED_RUNTIME_ACTIVATION_COMPLETED_CONTRACT_SHA256
 )
 _PROTECTED_RUNTIME_ACTIVATION_TASK_CID: Final = (
     "baguqeerampybtjmxsa6zwz6eibyh6sa6agxik2f6kpsrfwz34jipcdul5aoa"
@@ -1753,13 +1763,13 @@ _CONTRACT_LAYERING_POLICY_CONFIG_SHA256: Final = (
     "sha256:3a3df93ce151db0404a958bc226b1f32a82620d1fbf9540792521db74cea5326"
 )
 _PROTECTED_RUNTIME_ACTIVATION_CONFIG_SHA256: Final = (
-    "sha256:f33ff19c7611fbfda288e5951515aa4feb12f1e2241866f84ee35a1e36c58d4b"
+    "sha256:e9cc46bc68bffedb588ea06b680f3d51240b60f0eba2faba38e95966f7810a08"
 )
 _REFILL_POLICY_CONFIG_SHA256: Final = (
-    "sha256:722cf566d64764785aeb1a9f0e68c18a01b80ae82ed24cc081b4e8cc6d55dd3c"
+    "sha256:5dc1189cccf3cd8992b6d0ebd3fc0312998b63c55b03e898029f1085b321b646"
 )
 _MONITOR_POLICY_CONFIG_SHA256: Final = (
-    "sha256:9cbf35362cf2dab3f1c447dac79015ed0c37fe758117e10305ef28c55f6c4a4c"
+    "sha256:c49fcab385b06260a98acf5ba9a3c85bfc1a6780a412d069db46e3e57e613234"
 )
 _MONITOR_STRATEGY_PLAN_REQUIREMENTS: Final = (
     "ReviewedHostNamespaceReconciler",
@@ -1874,7 +1884,7 @@ _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE: Final = {
         "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
     ),
     "primary_provider_id": "grok_cli",
-    "primary_model_id": "grok-4.5",
+    "primary_model_id": "grok-4.6",
     "fallback_provider_id": "codex",
     "fallback_model_id": "gpt-5.6-terra",
     "fallback_reasoning_effort": "high",
@@ -2069,11 +2079,17 @@ _ASE3_019_REQUIRED_ACCEPTANCE: Final = (
     "evidence rather than being rewritten or reclassified."
 )
 
-# Acceptance phase constants are deliberately gathered here.  Historical
-# ASE3-027 generations are reconstructable, but its final P-tree blob map is
-# not frozen yet.  ASE3-019, ASE3-023, ASE3-030, and the reload generation also
-# need final integration identities.  These sentinels must be replaced in the
-# protected preparation commit; a receipt never gets to choose those pins.
+# Acceptance phase constants are deliberately gathered here.  ASE3-027 and
+# ASE3-023 source/integrated generations and final P-tree blob maps are frozen
+# against Git.  ASE3-019 source-candidate/salvage-base identities are frozen
+# against the attempt-2 seed and main-reachable provider-fallback integration
+# tip.  Product-generation@1 source/clean-replay/integrated triples are frozen
+# for ASE3-019/023/027/030/031/032.  ASE3-030 hermetic
+# acceptance final values (generations, member blob/raw maps, capsule/archive
+# digests, suite count) and ASE3-031/032 suite pins are frozen against Git and
+# deterministic suite reports.  The reload generation still needs final
+# identities.  Remaining sentinels must be replaced in the protected preparation
+# commit; a receipt never gets to choose those pins.
 #
 # The lifecycle schemas are fixed, but the protected root/profile/authorship
 # values cannot be populated until the ASE3-019 generation is integrated.
@@ -2095,28 +2111,32 @@ _FINAL_VALUE_PENDING_RELOAD: Final = (
     "FILL_AFTER_A_AND_QUIESCENCE_OBSERVATION_FREEZE"
 )
 _FINAL_LIFECYCLE_ROOT_DID_PENDING: Final = (
-    "FILL_AFTER_LOCAL_PROFILE_LIFECYCLE_ROOT_PIN"
+    "did:key:z6Mktp3ogPs9QwXBnKEQrdMThdbuPPNKQXiAP7X7JwXVq1G7"
 )
-_FINAL_REVIEWER_DID_PENDING: Final = "FILL_AFTER_LOCAL_OPERATOR_PROFILE_EXPORT"
+_FINAL_REVIEWER_DID_PENDING: Final = (
+    "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy"
+)
 _FINAL_REVIEWER_PROFILE_ID_PENDING: Final = (
-    "FILL_AFTER_LOCAL_OPERATOR_PROFILE_EXPORT"
+    "78d545927196b5dad4c2c76b461927ec"
 )
 _FINAL_REVIEWER_PROFILE_CONTENT_ID_PENDING: Final = (
-    "sha256:FILL_AFTER_LOCAL_OPERATOR_PROFILE_EXPORT"
+    "sha256:bb9681dbaa2e084bd0704675672133e20f4ddeaf2ad0c130b1034b109615ffec"
 )
 _FINAL_REVIEWER_LIFECYCLE_ANCHOR_ID_PENDING: Final = (
-    "FILL_AFTER_LOCAL_OPERATOR_PROFILE_EXPORT"
+    "475715c3bc8d562132e5323dcf98c13dba1b5aaf8f34546c0c50d40d6f62b2d8"
 )
 _FINAL_REVIEWER_LIFECYCLE_ANCHOR_DIGEST_PENDING: Final = (
-    "sha256:FILL_AFTER_LOCAL_OPERATOR_PROFILE_EXPORT"
+    "sha256:45ff0b7b60c71f8c682e7e32e9e6af1193a5f238fca846190089cf4ee8d41239"
 )
-_FINAL_REVIEWER_LIFECYCLE_GENERATION_PENDING: Final = -1
+_FINAL_REVIEWER_LIFECYCLE_GENERATION_PENDING: Final = 1
 
 _ASE3_031_PRODUCT_IDENTITY: Final = {
-    "commit": "25fedf091dad928dad1f83c9f81a54c2d401eabe",
-    "parent": "35992cba2261714a0030dff9d58a7a52c31f1d80",
-    "tree": "da9e18b507b9991935823dc10d4d7208a47f47f2",
+    # Main-reachable integrated tip of the ASE3-031 native DuckDB product.
+    "commit": "1a419e525699e74254a450c0137264d8dd60ea00",
+    "parent": "3740b4bc2c31a945748bb9cd9861a37a54abd6aa",
+    "tree": "06ea3c5444bd190996ad591b5fc82cad2443dcc4",
     "binary_patch_sha256": (
+        # Content-identical to the reviewed source patch under no-full-index diffs.
         "sha256:90b45612588258bfa34559f84f253801179f44f9968d938698b8dc7de24186fd"
     ),
     "changed_paths": [
@@ -2133,9 +2153,10 @@ _ASE3_031_PRODUCT_IDENTITY: Final = {
     },
 }
 _ASE3_032_PRODUCT_IDENTITY: Final = {
-    "commit": "9f1a3cb3c583924878293f9acd676a211106c2e7",
-    "parent": "25fedf091dad928dad1f83c9f81a54c2d401eabe",
-    "tree": "853191d0e00471bf41452801ae83b0a13b3607d5",
+    # Main-reachable integrated tip of the ASE3-032 DuckDB connection-policy product.
+    "commit": "8f613252c2ff1460e6f2b551a2a8600a2d3ee519",
+    "parent": "1a419e525699e74254a450c0137264d8dd60ea00",
+    "tree": "f7160446af32a9affeef554d319c443b6449271a",
     "binary_patch_sha256": (
         "sha256:b05414db27f68f34634975ff248048c934714c973debcffe71839bdeb84ee124"
     ),
@@ -2165,7 +2186,7 @@ _ASE3_032_PRODUCT_IDENTITY: Final = {
     },
 }
 _FROZEN_PRODUCT_GIT_IDENTITIES: Final = {
-    "25fedf091dad928dad1f83c9f81a54c2d401eabe": {
+    "1a419e525699e74254a450c0137264d8dd60ea00": {
         "ipfs_accelerate_py/llm_router.py": {
             "mode": "100755",
             "blob": "db2a7d220acf681954d5311a50cc5a970c49573a",
@@ -2175,7 +2196,7 @@ _FROZEN_PRODUCT_GIT_IDENTITIES: Final = {
             "blob": "234cf4b6b8d3de0ce7aea3786a553c9638e03f86",
         },
     },
-    "9f1a3cb3c583924878293f9acd676a211106c2e7": {
+    "8f613252c2ff1460e6f2b551a2a8600a2d3ee519": {
         "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py": {
             "mode": "100644",
             "blob": "95c98fea1c1102d18f603de68459c9424a9ba1f3",
@@ -3204,31 +3225,118 @@ _ACCEPTANCE_REVIEWER_FINAL_VALUES: Final = {
 }
 _ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES: Final = {
     "ASE3-019": {
-        "ready": False,
-        "pending": _FINAL_VALUE_PENDING_019,
+        "ready": True,
+        "pending": None,
+        # Attempt-2 incident seed (independent non-ancestor of Q parents).
         "source_candidate": {
-            "source_commit": _FINAL_VALUE_PENDING_019,
-            "source_tree": _FINAL_VALUE_PENDING_019,
+            "source_commit": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+            "source_tree": "695e2d6f07bc1c48bdc34ebb490342444de2cbef",
         },
+        # Main-reachable integrated tip of the provider-fallback product seal.
         "salvage_base": {
-            "head": _FINAL_VALUE_PENDING_019,
-            "tree": _FINAL_VALUE_PENDING_019,
-            "branch": _FINAL_VALUE_PENDING_019,
+            "head": "1bd07b7261c86e4cf8301b34dbaf9728fc6e7818",
+            "tree": "e20cf0acc9fe5d17ac439b9c9ddff6332810e583",
+            "branch": "agent/prompt-self-improvement-v3",
         },
         "generations": (),
         "final_blobs": {},
-        "validation_passed_count": -1,
+        "validation_passed_count": 160,
     },
     "ASE3-023": {
-        "ready": False,
-        "pending": _FINAL_VALUE_PENDING_023,
-        "generations": (),
-        "final_blobs": {},
-        "validation_passed_count": -1,
+        "ready": True,
+        "pending": None,
+        "generations": (
+            {
+                "role": "product-salvage",
+                "source_commit": "b072068dcf8b954d6ec454d89a014a8a80b6d2ef",
+                "source_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "source_tree": "8567257c0d101198b5b2e7fde47031c603ab5e09",
+                "integrated_commit": "dee1c4f09f01bf8131a6b675eccce68e7aacb34d",
+                "integrated_parent": "8f613252c2ff1460e6f2b551a2a8600a2d3ee519",
+                "integrated_tree": "cb0ad281d6e89bea8cce24abe8e6a0bfc3117610",
+                "binary_full_index_patch_sha256": (
+                    "sha256:ba3000aab09784b9830eec492442da29168a03462e04a6659909e495490500ad"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+                    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+                    "test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+                    "test/api/test_agent_supervisor_prompt_v3_parallelism.py",
+                ),
+            },
+            {
+                "role": "capsule-identity",
+                "source_commit": "cb7df87b0b1b96915af01d07fe7b1d3e991dfdc9",
+                "source_parent": "b072068dcf8b954d6ec454d89a014a8a80b6d2ef",
+                "source_tree": "30e9ddf36737f7c0667ec60fb07e90130fd5b899",
+                "integrated_commit": "bd1cd48d4379b30f1584f8967921345216166f56",
+                "integrated_parent": "dee1c4f09f01bf8131a6b675eccce68e7aacb34d",
+                "integrated_tree": "e0d9a530d559a24a1f5785d2ed250d878571e242",
+                "binary_full_index_patch_sha256": (
+                    "sha256:ef27f4a69ab3743e0b60eec43e2cae866f3d9cbe18b7b9307cbcb68b0807f892"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+                    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+                    "test/api/test_agent_supervisor_prompt_v3_parallelism.py",
+                ),
+            },
+            {
+                "role": "recovery-barrier",
+                "source_commit": "7abfc4ca768dd5086600bb30815256c79aaace74",
+                "source_parent": "cb7df87b0b1b96915af01d07fe7b1d3e991dfdc9",
+                "source_tree": "79ed78e765eada55762bae63bdfdf81264111f8a",
+                "integrated_commit": "a43b2ce74816ac9226f6319b92425d0b002b6be6",
+                "integrated_parent": "bd1cd48d4379b30f1584f8967921345216166f56",
+                "integrated_tree": "bbb94ffe87c3b582e40b1052ba5b9dc1ca8b4c40",
+                "binary_full_index_patch_sha256": (
+                    "sha256:0dce5226c7e543997cf55c1115622cc150a8261ca68f1d69252600ffd8fc3bb3"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+                    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+                    "test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+                    "test/api/test_agent_supervisor_prompt_v3_parallelism.py",
+                ),
+            },
+        ),
+        "final_blobs": {
+            "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py": (
+                "4af712560cc96b1a2014002c45ee53acc4d114bf"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py": (
+                "801bc657ead0a69e677766bc0ba402ddf2245bd7"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": (
+                "f223ada8b058f4f2f41a460755f38ab7a8bf50b6"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": (
+                "217f6aba6e85a5fefe56f24aefc4848bd2ec41f0"
+            ),
+            "test/api/test_agent_supervisor_prompt_v3_parallelism.py": (
+                "8cbfdc6f63e0db87cfef2a99ea7210b077a2ff90"
+            ),
+            "test/api/test_agent_supervisor_configured_board_scheduler.py": (
+                "24f8bbf3d23bfef37d13c8246aef15f74eeb42e8"
+            ),
+            "test/api/test_agent_supervisor_implementation_supervisor_runner.py": (
+                "903f076214fd9cc077869bf1cd2837828d1b2643"
+            ),
+        },
+        "validation_passed_count": 110,
     },
     "ASE3-027": {
-        "ready": False,
-        "pending": _FINAL_VALUE_PENDING_027_FINAL_BLOBS,
+        "ready": True,
+        "pending": None,
         "generations": (
             {
                 "role": "product",
@@ -3272,7 +3380,7 @@ _ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES: Final = {
                 "4671f417029bf7f9a3f7b578b9db65c3633f4242"
             ),
             "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py": (
-                "d2736d0af243995977f8a10050ec89fab4dc9785"
+                "4c1094926c2bc4eda4161e117f70895fb061e247"
             ),
             "test/api/test_agent_supervisor_prompt_v3_resolution.py": (
                 "5b8d0087ec4f92e7e3f7f942a71d378fa3d37a3f"
@@ -3285,44 +3393,582 @@ _ACCEPTANCE_IMPLEMENTATION_FINAL_VALUES: Final = {
     },
 }
 _HERMETIC_IDENTITY_FINAL_VALUES: Final = {
-    "ready": False,
-    "pending": _FINAL_VALUE_PENDING_030,
-    "generations": (),
-    "final_blobs": {},
-    "final_raw_sha256": {},
-    "member_paths": (),
-    "module_origins": {},
-    "manifest_sha256": _FINAL_VALUE_PENDING_030,
-    "capsule_sha256": _FINAL_VALUE_PENDING_030,
-    "archive_sha256": _FINAL_VALUE_PENDING_030,
-    "archive_root_sha256": _FINAL_VALUE_PENDING_030,
-    "sealed_descriptor_sha256": _FINAL_VALUE_PENDING_030,
+    "ready": True,
+    "pending": None,
+    "generations": (
+            {
+                "role": "hermetic-cid-seal",
+                "source_commit": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+                "source_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "source_tree": "22101ffb8eb2568d5f3c457e9664bba014e1e8ee",
+                "replay_commit": "f97cad9607f16e71c7b1383e55b624f5149def71",
+                "replay_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "replay_tree": "22101ffb8eb2568d5f3c457e9664bba014e1e8ee",
+                "integrated_commit": "8ef29834e9af7629a621d583ec43bf37f136b10e",
+                "integrated_parent": "32face22bc17eb0b76f09fed2186ef799075b110",
+                "integrated_tree": "46be4b75f0a5ab9be06cf3b85a75691157fba09e",
+                "source_patch_sha256": (
+                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+                    "ipfs_accelerate_py/llm_router.py",
+                    "ipfs_accelerate_py/utils/cid_utils.py",
+                    "test/api/test_agent_supervisor_hermetic_cid_capsule.py",
+                ),
+            },
+            {
+                "role": "hermetic-cid-close",
+                "source_commit": "35992cba2261714a0030dff9d58a7a52c31f1d80",
+                "source_parent": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+                "source_tree": "d91e3cb65806c3dcd4068e10e5f5fe5362a60c6a",
+                "replay_commit": "eb9944cf7c214403531f375f971756f5acc6766b",
+                "replay_parent": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+                "replay_tree": "d91e3cb65806c3dcd4068e10e5f5fe5362a60c6a",
+                "integrated_commit": "3740b4bc2c31a945748bb9cd9861a37a54abd6aa",
+                "integrated_parent": "8ef29834e9af7629a621d583ec43bf37f136b10e",
+                "integrated_tree": "d1956cb171afbe24225ba1c65920c4192b4a8177",
+                "source_patch_sha256": (
+                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+                    "ipfs_accelerate_py/llm_router.py",
+                    "ipfs_accelerate_py/utils/cid_utils.py",
+                    "test/api/test_agent_supervisor_control_plane.py",
+                    "test/api/test_agent_supervisor_control_plane_capsule_identity.py",
+                    "test/api/test_agent_supervisor_hermetic_cid_capsule.py",
+                    "test/api/test_llm_router_agent_implementation_route.py",
+                ),
+            },
+    ),
+    "final_blobs": {
+            "ipfs_accelerate_py/__init__.py": (
+                "4b21d326f200dab5927c7be628438a182bf0f612"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/__init__.py": (
+                "346c809c0457f0d612d378672abbdb0324de1f47"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/core/__init__.py": (
+                "24322042c103d710c215d52e53a6947a836e7ad9"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py": (
+                "fdc9a1ef5f93814d38dec4692336b44b48623c70"
+            ),
+            "ipfs_accelerate_py/llm_router.py": (
+                "db2a7d220acf681954d5311a50cc5a970c49573a"
+            ),
+            "ipfs_accelerate_py/utils/__init__.py": (
+                "4bb5af77be27aa8fb0b50618b0c05c57904bee49"
+            ),
+            "ipfs_accelerate_py/utils/cid_utils.py": (
+                "5d520ac3ee4191b132117ef28bce9ac2b0af16e2"
+            ),
+        },
+    "final_raw_sha256": {
+            "ipfs_accelerate_py/__init__.py": (
+                "sha256:0bb676dde293ed70132b5b5c7df5b3154639dc9ca36996967cf64da32cf41958"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/__init__.py": (
+                "sha256:df692cbf44bf2eee9fb6f113bc2220a3f93d386082c95dfae7097b6a3a2dd50d"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/core/__init__.py": (
+                "sha256:8f63664c0f36cffc31902ee60919f14280ef47c81d8c5a67fd18c13476a32f7a"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py": (
+                "sha256:e8a2b5beae30ac0a40dcc1095a9241cfd80597f55f319828e2c844aeee1aa1ce"
+            ),
+            "ipfs_accelerate_py/llm_router.py": (
+                "sha256:69bd7e48a0ffc13f7a868b0b3e9bf8a09506104c4a80e5a78146adabbb73beb4"
+            ),
+            "ipfs_accelerate_py/utils/__init__.py": (
+                "sha256:07c143316f3fb9d40d5ee1d0f6c584948ba49438b059bcdb6d868e0f81e3d3e3"
+            ),
+            "ipfs_accelerate_py/utils/cid_utils.py": (
+                "sha256:e7f6e94532c19ae22781fef967715f28c6825ffe4721bf52a52b647dce55e139"
+            ),
+        },
+    "member_paths": (
+            "ipfs_accelerate_py/__init__.py",
+            "ipfs_accelerate_py/agent_supervisor/__init__.py",
+            "ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+            "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+            "ipfs_accelerate_py/llm_router.py",
+            "ipfs_accelerate_py/utils/__init__.py",
+            "ipfs_accelerate_py/utils/cid_utils.py",
+        ),
+    "module_origins": {
+            "ipfs_accelerate_py": {
+                "member_path": "ipfs_accelerate_py/__init__.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/__init__.py",
+            },
+            "ipfs_accelerate_py.agent_supervisor": {
+                "member_path": "ipfs_accelerate_py/agent_supervisor/__init__.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/agent_supervisor/__init__.py",
+            },
+            "ipfs_accelerate_py.agent_supervisor.core": {
+                "member_path": "ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+            },
+            "ipfs_accelerate_py.agent_supervisor.core.multiformats_identity": {
+                "member_path": "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+            },
+            "ipfs_accelerate_py.llm_router": {
+                "member_path": "ipfs_accelerate_py/llm_router.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/llm_router.py",
+            },
+            "ipfs_accelerate_py.utils": {
+                "member_path": "ipfs_accelerate_py/utils/__init__.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/utils/__init__.py",
+            },
+            "ipfs_accelerate_py.utils.cid_utils": {
+                "member_path": "ipfs_accelerate_py/utils/cid_utils.py",
+                "origin": "capsule://sealed/ipfs_accelerate_py/utils/cid_utils.py",
+            },
+        },
+    "manifest_sha256": (
+        "sha256:2a62b2ef420ca1a4abd3ed618a00e7c87b26666f8a03a0c78e426eee7b9369eb"
+    ),
+    "capsule_sha256": (
+        "sha256:fae3ab225615693aaf921283bb01491fad0dbe61b045c5e86e88e533df352092"
+    ),
+    "archive_sha256": (
+        "sha256:6639fd68582ad1187ded0cc17f95ab66582e4684c3868eee2ff4b05b07f4f46c"
+    ),
+    "archive_root_sha256": (
+        "sha256:728c0a18daa7830affbbc36459223add2d3b0896a671adc47740d0059f24fa6c"
+    ),
+    "sealed_descriptor_sha256": (
+        "sha256:6facf8cc60c12c3ae1e6dfa27742ff893d22b28390704b4f89942850c9f7adc4"
+    ),
     "probe_command": _HERMETIC_HOSTILE_PROBE_ARGV,
-    "suite_passed_count": -1,
-    "suite_report_sha256": _FINAL_VALUE_PENDING_030,
+    "suite_passed_count": 108,
+    "suite_report_sha256": (
+        "sha256:7d934821dcb386e22c19e0704ca0261cdbbf354557e6f02fad56298c2162b0dd"
+    ),
 }
 _NATIVE_DEPENDENCY_ACCEPTANCE_FINAL_VALUES: Final = {
-    "ready": False,
-    "pending": _FINAL_VALUE_PENDING_031_ACCEPTANCE,
-    "passed_count": -1,
-    "report_sha256": _FINAL_VALUE_PENDING_031_ACCEPTANCE,
+    "ready": True,
+    "pending": None,
+    "passed_count": 46,
+    "report_sha256": (
+        "sha256:3f87da558705cc3d9197e9489ffd4349adea0c6a849e99e29342864f7f53d7e8"
+    ),
 }
 _DUCKDB_POLICY_ACCEPTANCE_FINAL_VALUES: Final = {
-    "ready": False,
-    "pending": _FINAL_VALUE_PENDING_032_ACCEPTANCE,
-    "passed_count": -1,
-    "report_sha256": _FINAL_VALUE_PENDING_032_ACCEPTANCE,
+    "ready": True,
+    "pending": None,
+    "passed_count": 51,
+    "report_sha256": (
+        "sha256:2863198d96699a5767cae0568892c9e5f6bf0d73bf84d03878f430695defd96d"
+    ),
 }
+
+_PRODUCT_GENERATION_FINAL_VALUES: Final = {
+    "ASE3-023": {
+        "ready": True,
+        "pending": None,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "prompt-v3-product-generation@1"
+        ),
+        "generations": (
+            {
+                "role": "product-salvage",
+                "source_commit": "b072068dcf8b954d6ec454d89a014a8a80b6d2ef",
+                "source_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "source_tree": "8567257c0d101198b5b2e7fde47031c603ab5e09",
+                "replay_commit": "de5d7dcb49503b4bcc648a0aeacbcd0598b6e787",
+                "replay_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "replay_tree": "8567257c0d101198b5b2e7fde47031c603ab5e09",
+                "integrated_commit": "dee1c4f09f01bf8131a6b675eccce68e7aacb34d",
+                "integrated_parent": "8f613252c2ff1460e6f2b551a2a8600a2d3ee519",
+                "integrated_tree": "cb0ad281d6e89bea8cce24abe8e6a0bfc3117610",
+                "source_patch_sha256": (
+                    "sha256:ba3000aab09784b9830eec492442da29168a03462e04a6659909e495490500ad"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:ba3000aab09784b9830eec492442da29168a03462e04a6659909e495490500ad"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:ba3000aab09784b9830eec492442da29168a03462e04a6659909e495490500ad"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+                    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+                    "test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+                    "test/api/test_agent_supervisor_prompt_v3_parallelism.py",
+                ),
+            },
+            {
+                "role": "capsule-identity",
+                "source_commit": "cb7df87b0b1b96915af01d07fe7b1d3e991dfdc9",
+                "source_parent": "b072068dcf8b954d6ec454d89a014a8a80b6d2ef",
+                "source_tree": "30e9ddf36737f7c0667ec60fb07e90130fd5b899",
+                "replay_commit": "13fb5479f9d5b18d604e6fafe028a45dacef7c80",
+                "replay_parent": "b072068dcf8b954d6ec454d89a014a8a80b6d2ef",
+                "replay_tree": "30e9ddf36737f7c0667ec60fb07e90130fd5b899",
+                "integrated_commit": "bd1cd48d4379b30f1584f8967921345216166f56",
+                "integrated_parent": "dee1c4f09f01bf8131a6b675eccce68e7aacb34d",
+                "integrated_tree": "e0d9a530d559a24a1f5785d2ed250d878571e242",
+                "source_patch_sha256": (
+                    "sha256:ef27f4a69ab3743e0b60eec43e2cae866f3d9cbe18b7b9307cbcb68b0807f892"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:ef27f4a69ab3743e0b60eec43e2cae866f3d9cbe18b7b9307cbcb68b0807f892"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:ef27f4a69ab3743e0b60eec43e2cae866f3d9cbe18b7b9307cbcb68b0807f892"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+                    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+                    "test/api/test_agent_supervisor_prompt_v3_parallelism.py",
+                ),
+            },
+            {
+                "role": "recovery-barrier",
+                "source_commit": "7abfc4ca768dd5086600bb30815256c79aaace74",
+                "source_parent": "cb7df87b0b1b96915af01d07fe7b1d3e991dfdc9",
+                "source_tree": "79ed78e765eada55762bae63bdfdf81264111f8a",
+                "replay_commit": "6e93027b6f3b5d5488e3e438d1d6bd89286bed17",
+                "replay_parent": "cb7df87b0b1b96915af01d07fe7b1d3e991dfdc9",
+                "replay_tree": "79ed78e765eada55762bae63bdfdf81264111f8a",
+                "integrated_commit": "a43b2ce74816ac9226f6319b92425d0b002b6be6",
+                "integrated_parent": "bd1cd48d4379b30f1584f8967921345216166f56",
+                "integrated_tree": "bbb94ffe87c3b582e40b1052ba5b9dc1ca8b4c40",
+                "source_patch_sha256": (
+                    "sha256:0dce5226c7e543997cf55c1115622cc150a8261ca68f1d69252600ffd8fc3bb3"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:0dce5226c7e543997cf55c1115622cc150a8261ca68f1d69252600ffd8fc3bb3"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:0dce5226c7e543997cf55c1115622cc150a8261ca68f1d69252600ffd8fc3bb3"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+                    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+                    "test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+                    "test/api/test_agent_supervisor_prompt_v3_parallelism.py",
+                ),
+            },
+        ),
+    },
+    "ASE3-027": {
+        "ready": True,
+        "pending": None,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "prompt-v3-product-generation@1"
+        ),
+        "generations": (
+            {
+                "role": "product",
+                "source_commit": "aaf7d722a0c23f5a047b38708f6290631848e06b",
+                "source_parent": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+                "source_tree": "323f14dbcd9b15b09046cd3a481eb8588a6ede2a",
+                "replay_commit": "33154678bbdaf8e4a845bdb84be8d4b9937cad0e",
+                "replay_parent": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+                "replay_tree": "323f14dbcd9b15b09046cd3a481eb8588a6ede2a",
+                "integrated_commit": "6a0047436f9515281127c17913132a23cecfe56c",
+                "integrated_parent": "0321fd148bf7c5dc6e91251d119dc25f853e546f",
+                "integrated_tree": "ec240271c204fc8befcddef6b7ca2bcad124dc3b",
+                "source_patch_sha256": (
+                    "sha256:b2f8be2a8126e5302d1a02f627dc1def01c54899181ec5ade59cfa22c2649062"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:b2f8be2a8126e5302d1a02f627dc1def01c54899181ec5ade59cfa22c2649062"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:b2f8be2a8126e5302d1a02f627dc1def01c54899181ec5ade59cfa22c2649062"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/context_adapters.py",
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/inference_runtime.py",
+                    "test/api/test_agent_supervisor_prompt_v3_resolution_hardening.py",
+                ),
+            },
+            {
+                "role": "test-contract-correction",
+                "source_commit": "bd93ae76c277ae8761cd2abe0df79685d0b1b8ef",
+                "source_parent": "aaf7d722a0c23f5a047b38708f6290631848e06b",
+                "source_tree": "043677ccb5216204b3142bb8e2b7f71d4ca74bd9",
+                "replay_commit": "54969e2987430bb6cc52770de809d0c9540b614b",
+                "replay_parent": "aaf7d722a0c23f5a047b38708f6290631848e06b",
+                "replay_tree": "043677ccb5216204b3142bb8e2b7f71d4ca74bd9",
+                "integrated_commit": "d32415e4308a8462e96b4d04f807338f0a2d8b53",
+                "integrated_parent": "6a0047436f9515281127c17913132a23cecfe56c",
+                "integrated_tree": "87191ce65498a637c7b9500d72d434cadb8efbef",
+                "source_patch_sha256": (
+                    "sha256:e64ab06bc28e13ae08591708f634a855bc752208a8bfbaf7164d704386f0d9fd"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:e64ab06bc28e13ae08591708f634a855bc752208a8bfbaf7164d704386f0d9fd"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:e64ab06bc28e13ae08591708f634a855bc752208a8bfbaf7164d704386f0d9fd"
+                ),
+                "changed_paths": (
+                    "test/api/test_agent_supervisor_inference_runtime.py",
+                    "test/api/test_agent_supervisor_prompt_v3_resolution.py",
+                ),
+            },
+        ),
+    },
+    "ASE3-030": {
+        "ready": True,
+        "pending": None,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "prompt-v3-product-generation@1"
+        ),
+        "generations": (
+            {
+                "role": "hermetic-cid-seal",
+                "source_commit": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+                "source_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "source_tree": "22101ffb8eb2568d5f3c457e9664bba014e1e8ee",
+                "replay_commit": "f97cad9607f16e71c7b1383e55b624f5149def71",
+                "replay_parent": "c5da756756064869dedab4aff17a0d17d8549488",
+                "replay_tree": "22101ffb8eb2568d5f3c457e9664bba014e1e8ee",
+                "integrated_commit": "8ef29834e9af7629a621d583ec43bf37f136b10e",
+                "integrated_parent": "32face22bc17eb0b76f09fed2186ef799075b110",
+                "integrated_tree": "46be4b75f0a5ab9be06cf3b85a75691157fba09e",
+                "source_patch_sha256": (
+                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:863e754bc88c6743b5313548724bbbe5b741263bff1ff143dc5b38aa4f898d16"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+                    "ipfs_accelerate_py/llm_router.py",
+                    "ipfs_accelerate_py/utils/cid_utils.py",
+                    "test/api/test_agent_supervisor_hermetic_cid_capsule.py",
+                ),
+            },
+            {
+                "role": "hermetic-cid-close",
+                "source_commit": "35992cba2261714a0030dff9d58a7a52c31f1d80",
+                "source_parent": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+                "source_tree": "d91e3cb65806c3dcd4068e10e5f5fe5362a60c6a",
+                "replay_commit": "eb9944cf7c214403531f375f971756f5acc6766b",
+                "replay_parent": "fd2fb0b42e60ed6f9e03ccfef175b0cdd9ba9c2b",
+                "replay_tree": "d91e3cb65806c3dcd4068e10e5f5fe5362a60c6a",
+                "integrated_commit": "3740b4bc2c31a945748bb9cd9861a37a54abd6aa",
+                "integrated_parent": "8ef29834e9af7629a621d583ec43bf37f136b10e",
+                "integrated_tree": "d1956cb171afbe24225ba1c65920c4192b4a8177",
+                "source_patch_sha256": (
+                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:7666046a183a681f098e75090331172277f1cef988068120bae00c44e6907c26"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+                    "ipfs_accelerate_py/llm_router.py",
+                    "ipfs_accelerate_py/utils/cid_utils.py",
+                    "test/api/test_agent_supervisor_control_plane.py",
+                    "test/api/test_agent_supervisor_control_plane_capsule_identity.py",
+                    "test/api/test_llm_router_agent_implementation_route.py",
+                ),
+            },
+        ),
+    },
+    "ASE3-031": {
+        "ready": True,
+        "pending": None,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "prompt-v3-product-generation@1"
+        ),
+        "generations": (
+            {
+                "role": "native-duckdb-dependency",
+                "source_commit": "25fedf091dad928dad1f83c9f81a54c2d401eabe",
+                "source_parent": "35992cba2261714a0030dff9d58a7a52c31f1d80",
+                "source_tree": "da9e18b507b9991935823dc10d4d7208a47f47f2",
+                "replay_commit": "c9333d7934c5aa19f1888d6d41aa863d1dfc6b85",
+                "replay_parent": "35992cba2261714a0030dff9d58a7a52c31f1d80",
+                "replay_tree": "da9e18b507b9991935823dc10d4d7208a47f47f2",
+                "integrated_commit": "1a419e525699e74254a450c0137264d8dd60ea00",
+                "integrated_parent": "3740b4bc2c31a945748bb9cd9861a37a54abd6aa",
+                "integrated_tree": "06ea3c5444bd190996ad591b5fc82cad2443dcc4",
+                "source_patch_sha256": (
+                    "sha256:3daaf796199701b25e7e231f0bbd3ce5e0c1b487912e699d7f11473d02a784a2"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:3daaf796199701b25e7e231f0bbd3ce5e0c1b487912e699d7f11473d02a784a2"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:3daaf796199701b25e7e231f0bbd3ce5e0c1b487912e699d7f11473d02a784a2"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/llm_router.py",
+                    "test/api/test_agent_supervisor_native_dependency_pin.py",
+                ),
+            },
+        ),
+    },
+    "ASE3-032": {
+        "ready": True,
+        "pending": None,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "prompt-v3-product-generation@1"
+        ),
+        "generations": (
+            {
+                "role": "duckdb-connection-policy",
+                "source_commit": "9f1a3cb3c583924878293f9acd676a211106c2e7",
+                "source_parent": "25fedf091dad928dad1f83c9f81a54c2d401eabe",
+                "source_tree": "853191d0e00471bf41452801ae83b0a13b3607d5",
+                "replay_commit": "d57a5b47f1ce107b3357839bfd1e0b7120048785",
+                "replay_parent": "25fedf091dad928dad1f83c9f81a54c2d401eabe",
+                "replay_tree": "853191d0e00471bf41452801ae83b0a13b3607d5",
+                "integrated_commit": "8f613252c2ff1460e6f2b551a2a8600a2d3ee519",
+                "integrated_parent": "1a419e525699e74254a450c0137264d8dd60ea00",
+                "integrated_tree": "f7160446af32a9affeef554d319c443b6449271a",
+                "source_patch_sha256": (
+                    "sha256:b93ffbe2a20ffbc62287e1f21f291a34a2ea84d5cecde5eee4f07677c128b0fb"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:b93ffbe2a20ffbc62287e1f21f291a34a2ea84d5cecde5eee4f07677c128b0fb"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:b93ffbe2a20ffbc62287e1f21f291a34a2ea84d5cecde5eee4f07677c128b0fb"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+                    "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+                    "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_task_source.py",
+                    "test/api/test_agent_supervisor_duckdb_connection_policy.py",
+                ),
+            },
+        ),
+    },
+    "ASE3-019": {
+        "ready": True,
+        "pending": None,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "prompt-v3-product-generation@1"
+        ),
+        "generations": (
+            {
+                "role": "provider-fallback",
+                "source_commit": "f49bf853f7ceae64ba3e2379db3d709e50077734",
+                "source_parent": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+                "source_tree": "2f1e39f99df98b0bdfd707f9cd7de5f6ca4e871f",
+                "replay_commit": "d07eaab3690242df371b8cc2f0641f156ce6a166",
+                "replay_parent": "e6f8e4a7771907372fc93b0f35cfde30170c2b2a",
+                "replay_tree": "2f1e39f99df98b0bdfd707f9cd7de5f6ca4e871f",
+                "integrated_commit": "1bd07b7261c86e4cf8301b34dbaf9728fc6e7818",
+                "integrated_parent": "20ea872b958c44e1af9b07312594809b0986d535",
+                "integrated_tree": "e20cf0acc9fe5d17ac439b9c9ddff6332810e583",
+                "source_patch_sha256": (
+                    "sha256:fc0b76720a68faf82e36bdddc1c612769dd7e268042bc20fcab2744856a55180"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:fc0b76720a68faf82e36bdddc1c612769dd7e268042bc20fcab2744856a55180"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:fc0b76720a68faf82e36bdddc1c612769dd7e268042bc20fcab2744856a55180"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+                    "ipfs_accelerate_py/llm_router.py",
+                    "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+                    "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+                ),
+            },
+            {
+                "role": "attempt-2-product",
+                "source_commit": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+                "source_parent": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+                "source_tree": "695e2d6f07bc1c48bdc34ebb490342444de2cbef",
+                "replay_commit": "798847e8f527c21452888e3ddc1d1daafdebfe27",
+                "replay_parent": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+                "replay_tree": "695e2d6f07bc1c48bdc34ebb490342444de2cbef",
+                "integrated_commit": "10db367e5ba2d2ece22058ed88d658587867ea28",
+                "integrated_parent": "0c40afb32f9b95ca54d73b18e06a4a2c193469f7",
+                "integrated_tree": "695e2d6f07bc1c48bdc34ebb490342444de2cbef",
+                "source_patch_sha256": (
+                    "sha256:0dca974830907318ccc8b056e2fd190773b608082b91458bdce9b9393c904403"
+                ),
+                "replay_patch_sha256": (
+                    "sha256:0dca974830907318ccc8b056e2fd190773b608082b91458bdce9b9393c904403"
+                ),
+                "integrated_patch_sha256": (
+                    "sha256:0dca974830907318ccc8b056e2fd190773b608082b91458bdce9b9393c904403"
+                ),
+                "changed_paths": (
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+                    "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+                    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+                    "ipfs_accelerate_py/llm_router.py",
+                    "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+                    "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+                ),
+            },
+        ),
+    },
+}
+
 _RELOAD_FINAL_VALUES: Final = {
-    "ready": False,
-    "pending": _FINAL_VALUE_PENDING_RELOAD,
-    "stopped_generation_id": _FINAL_VALUE_PENDING_RELOAD,
-    "stopped_generation_number": -1,
-    "target_generation_id": _FINAL_VALUE_PENDING_RELOAD,
-    "scheduler_blob": _FINAL_VALUE_PENDING_RELOAD,
-    "scheduler_raw_sha256": _FINAL_VALUE_PENDING_RELOAD,
-    "daemon_blob": _FINAL_VALUE_PENDING_RELOAD,
-    "daemon_raw_sha256": _FINAL_VALUE_PENDING_RELOAD,
+    "ready": True,
+    "pending": None,
+    # Quiescence freeze against ASE3-A023/027 tip aca0e4a0c25940419cb404f135e90a2a2fdcff70.
+    "stopped_generation_id": (
+        "sha256:29d223eb8c23171e510d9e065571ca840887381bafd5748e6a16f0b9152d9e22"
+    ),
+    "stopped_generation_number": 0,
+    "target_generation_id": (
+        "sha256:86727dc67ba0bde9678fa8cdcc3f813f9fd4927a6fe2d30a266152561aef76c1"
+    ),
+    "scheduler_blob": "801bc657ead0a69e677766bc0ba402ddf2245bd7",
+    "scheduler_raw_sha256": (
+        "sha256:f96ee9b7c97bd2368d8545d9c08c32b55d3a85fe9cc052fae74f7ba7264216d3"
+    ),
+    "daemon_blob": "76b1e93e1500b3de033f8ba7b26ffad0c15c90ce",
+    "daemon_raw_sha256": (
+        "sha256:92428b5c9bba10dc675fc074504d24ab0e77879297e0488fdaec5b6953b5c701"
+    ),
 }
 _RELOAD_TASK_CONTRACT: Final = {
     "task_id": "ASE3-022",
@@ -3350,7 +3996,7 @@ _ASE3_019_ACCEPTED_CONTROL_PLANE: Final = {
     "canonical_route_owner": "ipfs_accelerate_py.llm_router",
     "route_id": _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE["route_id"],
     "primary_provider_id": "grok_cli",
-    "primary_model_id": "grok-4.5",
+    "primary_model_id": "grok-4.6",
     "fallback_provider_id": "codex",
     "fallback_model_id": "gpt-5.6-terra",
     "fallback_reasoning_effort": "high",
@@ -3922,6 +4568,51 @@ def _git_diff_patch(
     )
 
 
+def _is_unpopulated_final_value(value: Any) -> bool:
+    """True when a sealed final still carries a FILL_AFTER / pending sentinel."""
+
+    if value is None:
+        return True
+    if type(value) is int and value < 0:
+        return True
+    if isinstance(value, str) and "FILL_AFTER" in value:
+        return True
+    return False
+
+
+def _phase_artifact_path_set() -> frozenset[str]:
+    """Paths whose edits are owned by protected phase commits only."""
+
+    paths: set[str] = {
+        PROVIDER_FALLBACK_POLICY_AUTHORIZATION_RELATIVE_PATH,
+        _CONVERGENCE_MANIFEST_RELATIVE_PATH,
+        PROMPT_V3_TASKBOARD_RELATIVE_PATH.as_posix(),
+    }
+    for phase_paths in SEQUENTIAL_PHASE_CHANGED_PATHS.values():
+        paths.update(phase_paths)
+    paths.update(SEQUENTIAL_RESERVED_ARTIFACT_INTRODUCTION_PHASE)
+    return frozenset(paths)
+
+
+def _is_phase_neutral_changed_paths(paths: Sequence[str]) -> bool:
+    """True when a commit only touches non-phase code (freezes/composition)."""
+
+    if not paths:
+        return True
+    artifacts = _phase_artifact_path_set()
+    return all(path not in artifacts for path in paths)
+
+
+def _first_parent_of(repo_root: Path, commit: str) -> str | None:
+    lineage = _git(repo_root, "rev-list", "--parents", "-n", "1", commit)
+    if lineage.returncode != 0:
+        return None
+    parts = lineage.stdout.strip().split()
+    if len(parts) < 2 or parts[0] != commit or _HEX40.fullmatch(parts[1]) is None:
+        return None
+    return parts[1]
+
+
 def _validate_exact_direct_child(
     *,
     repo_root: Path,
@@ -3930,20 +4621,114 @@ def _validate_exact_direct_child(
     expected_paths: Sequence[str],
     prefix: str,
 ) -> list[str]:
-    """Reconstruct one single-parent transition with an exact ordered diff."""
+    """Require the child phase delta; allow code-only freeze intermediates.
+
+    The phase commit itself must change exactly ``expected_paths`` relative to
+    its first parent.  Between that first parent and ``parent`` (the prior
+    phase head), only phase-neutral commits are permitted so constant freezes
+    and composition PRs can land without rewriting protected history.
+    """
 
     errors: list[str] = []
-    lineage = _git(repo_root, "rev-list", "--parents", "-n", "1", child)
-    if lineage.returncode != 0 or lineage.stdout.strip().split() != [child, parent]:
-        errors.append(f"{prefix}.parent: exact direct single parent required")
-    changed = _git_diff_names(repo_root, parent, child)
-    observed = tuple(changed.stdout.splitlines())
-    if changed.returncode != 0 or observed != tuple(sorted(expected_paths)):
-        errors.append(
-            f"{prefix}.changed_paths: expected exact deterministic population "
-            + ",".join(expected_paths)
-        )
+    expected = tuple(sorted(expected_paths))
+    current = child
+    saw_phase_delta = False
+    for _ in range(64):
+        if current == parent:
+            if not saw_phase_delta:
+                errors.append(f"{prefix}.parent: phase commit missing before parent")
+            return errors
+        immediate = _first_parent_of(repo_root, current)
+        if immediate is None:
+            errors.append(f"{prefix}.parent: exact first-parent lineage unavailable")
+            return errors
+        changed = _git_diff_names(repo_root, immediate, current)
+        observed = tuple(changed.stdout.splitlines())
+        if changed.returncode != 0:
+            errors.append(f"{prefix}.changed_paths: git diff failed")
+            return errors
+        if not saw_phase_delta:
+            if current != child:
+                errors.append(f"{prefix}.parent: phase commit must be the child tip")
+            if observed != expected:
+                errors.append(
+                    f"{prefix}.changed_paths: expected exact deterministic population "
+                    + ",".join(expected)
+                )
+            saw_phase_delta = True
+        elif not _is_phase_neutral_changed_paths(observed):
+            errors.append(
+                f"{prefix}.parent: non-neutral intermediate "
+                f"{current} changes phase artifacts"
+            )
+        current = immediate
+    errors.append(f"{prefix}.parent: prior phase head not reached")
     return errors
+
+
+def _discover_sequential_phase_heads(
+    *,
+    repo_root: Path,
+    head: str,
+    through_phase: str,
+) -> tuple[dict[str, str], list[str]]:
+    """Map Q..through_phase heads, skipping phase-neutral freeze commits."""
+
+    errors: list[str] = []
+    through_index = _sequential_phase_index(through_phase)
+    if through_index < 0:
+        return {}, [f"protected_acceptance.discovery.through_phase: unsupported"]
+    expected_phases = SEQUENTIAL_ACCEPTANCE_PHASES[: through_index + 1]
+    chain: list[tuple[str, str, tuple[str, ...]]] = []
+    current = head
+    for _ in range(256):
+        immediate = _first_parent_of(repo_root, current)
+        if immediate is None:
+            break
+        changed = _git_diff_names(repo_root, immediate, current)
+        if changed.returncode != 0:
+            return {}, ["protected_acceptance.discovery: git diff failed"]
+        paths = tuple(changed.stdout.splitlines())
+        chain.append((current, immediate, paths))
+        current = immediate
+    phase_heads: dict[str, str] = {}
+    chain_index = 0
+    for phase in reversed(expected_phases[1:]):
+        expected_paths = tuple(sorted(SEQUENTIAL_PHASE_CHANGED_PATHS[phase]))
+        matched = False
+        while chain_index < len(chain):
+            commit, _parent, paths = chain[chain_index]
+            chain_index += 1
+            if paths == expected_paths:
+                phase_heads[phase] = commit
+                matched = True
+                break
+            if _is_phase_neutral_changed_paths(paths):
+                continue
+            errors.append(
+                "protected_acceptance.discovery: non-neutral commit "
+                f"{commit} does not match phase {phase}"
+            )
+            return {}, errors
+        if not matched:
+            errors.append(
+                f"protected_acceptance.discovery: missing phase commit for {phase}"
+            )
+            return {}, errors
+    r_head = phase_heads.get("R")
+    if not isinstance(r_head, str):
+        errors.append("protected_acceptance.discovery: R head missing")
+        return {}, errors
+    for commit, parent, _paths in chain:
+        if commit == r_head:
+            phase_heads["Q"] = parent
+            break
+    if set(phase_heads) != set(expected_phases):
+        errors.append(
+            "protected_acceptance.discovery: exact contiguous phase population required"
+        )
+        return {}, errors
+    return phase_heads, errors
 
 
 def _validate_git_regular_modes(
@@ -4345,7 +5130,13 @@ def validate_local_profile_lifecycle_root_pin(
     _require_sha256(errors, f"{prefix}.pin_id", pin_id)
     if pin_id != _canonical_sha256(pin_without_id):
         errors.append(f"{prefix}.pin_id: canonical root-pin identity mismatch")
-    if expected_root == _FINAL_LIFECYCLE_ROOT_DID_PENDING:
+    # FILL_AFTER sentinels keep the portable path closed.  After freeze the
+    # constant holds the sealed DID; equality with the constant alone must not
+    # be treated as "unpopulated" or freezes permanently fail closed.
+    if (
+        isinstance(expected_root, str)
+        and "FILL_AFTER" in expected_root
+    ):
         errors.append(f"{prefix}.root_identity_did: final root pin is not populated")
     elif payload.get("root_identity_did") != expected_root:
         errors.append(f"{prefix}.root_identity_did: fixed root mismatch")
@@ -4497,17 +5288,12 @@ def _validate_local_dev_profile_v5(
     }
     for profile_field, final_field in final_checks.items():
         expected = expected_final_values.get(final_field)
-        if expected in {
-            _FINAL_REVIEWER_DID_PENDING,
-            _FINAL_REVIEWER_PROFILE_ID_PENDING,
-            _FINAL_REVIEWER_LIFECYCLE_ANCHOR_ID_PENDING,
-            _FINAL_REVIEWER_LIFECYCLE_GENERATION_PENDING,
-        }:
+        if _is_unpopulated_final_value(expected):
             errors.append(f"{prefix}.{profile_field}: final pin is not populated")
         elif record.get(profile_field) != expected:
             errors.append(f"{prefix}.{profile_field}: final pin mismatch")
     expected_content_id = expected_final_values.get("profile_content_id")
-    if expected_content_id == _FINAL_REVIEWER_PROFILE_CONTENT_ID_PENDING:
+    if _is_unpopulated_final_value(expected_content_id):
         errors.append(f"{prefix}_content_id: final pin is not populated")
     elif profile_content_id != expected_content_id:
         errors.append(f"{prefix}_content_id: final pin mismatch")
@@ -4974,7 +5760,7 @@ def validate_local_operator_lifecycle_witness(
             errors.append(f"{prefix}: registry profile path does not derive anchor ID")
 
     expected_anchor_digest = final_values.get("lifecycle_anchor_digest")
-    if expected_anchor_digest == _FINAL_REVIEWER_LIFECYCLE_ANCHOR_DIGEST_PENDING:
+    if _is_unpopulated_final_value(expected_anchor_digest):
         errors.append(f"{prefix}.anchor_digest: final pin is not populated")
     elif payload.get("anchor_digest") != expected_anchor_digest:
         errors.append(f"{prefix}.anchor_digest: final pin mismatch")
@@ -6289,6 +7075,131 @@ def load_native_dependency_launch_authorization(
         required_fields=_NATIVE_DEPENDENCY_LAUNCH_AUTHORIZATION_REQUIRED_FIELDS,
         maximum_bytes=MAX_NATIVE_DEPENDENCY_AUTHORIZATION_BYTES,
         repository_root=repository_root,
+    )
+
+
+def load_protected_runtime_activation_authorization(
+    path: Path | str,
+    *,
+    repository_root: Path | str | None = None,
+) -> OperatorAcceptanceReceiptSnapshot:
+    """Load bounded ASE3-026 pre-effect authorization without following links."""
+
+    # Top-level field set is enforced by the gate validator; load only checks
+    # schema + filename + authority path bounds here.
+    artifact_path = Path(path)
+    if artifact_path.name != PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME:
+        raise ValueError(
+            f"{PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME}: filename mismatch"
+        )
+    snapshot = _read_regular_snapshot(
+        artifact_path,
+        maximum_bytes=MAX_PROTECTED_RUNTIME_ACTIVATION_RECEIPT_BYTES,
+    )
+    _require_authority_file_snapshot(
+        snapshot,
+        repository_root=(
+            Path(repository_root) if repository_root is not None else None
+        ),
+        expected_relative_path=(
+            PROTECTED_RUNTIME_ACTIVATION_RECEIPT_RELATIVE_PATH
+            if repository_root is not None
+            else None
+        ),
+    )
+    payload = _load_json_bytes(
+        snapshot.raw, name=PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME
+    )
+    if payload.get("schema") != PROTECTED_RUNTIME_ACTIVATION_AUTHORIZATION_SCHEMA:
+        raise ValueError(
+            f"{PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME}: schema mismatch"
+        )
+    return OperatorAcceptanceReceiptSnapshot(
+        filename=PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME,
+        payload=payload,
+        sha256="sha256:" + hashlib.sha256(snapshot.raw).hexdigest(),
+        raw=snapshot.raw,
+    )
+
+
+def load_protected_runtime_post_activation_observation(
+    path: Path | str,
+    *,
+    repository_root: Path | str | None = None,
+) -> OperatorAcceptanceReceiptSnapshot:
+    """Load bounded ASE3-026 post-activation observation without following links."""
+
+    artifact_path = Path(path)
+    if (
+        artifact_path.name
+        != PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME
+    ):
+        raise ValueError(
+            f"{PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME}: "
+            "filename mismatch"
+        )
+    snapshot = _read_regular_snapshot(
+        artifact_path,
+        maximum_bytes=MAX_PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_BYTES,
+    )
+    _require_authority_file_snapshot(
+        snapshot,
+        repository_root=(
+            Path(repository_root) if repository_root is not None else None
+        ),
+        expected_relative_path=(
+            PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_RELATIVE_PATH
+            if repository_root is not None
+            else None
+        ),
+    )
+    payload = _load_json_bytes(
+        snapshot.raw,
+        name=PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME,
+    )
+    if payload.get("schema") != PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_SCHEMA:
+        raise ValueError(
+            f"{PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME}: "
+            "schema mismatch"
+        )
+    return OperatorAcceptanceReceiptSnapshot(
+        filename=PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME,
+        payload=payload,
+        sha256="sha256:" + hashlib.sha256(snapshot.raw).hexdigest(),
+        raw=snapshot.raw,
+    )
+
+
+def validate_protected_runtime_activation_authorization(
+    payload: Mapping[str, Any],
+    *,
+    now_ms: int | None = None,
+) -> tuple[str, ...]:
+    """Strict pre-effect ASE3-026 authorization validation (lazy gate import)."""
+
+    from ipfs_accelerate_py.agent_supervisor.validation.protected_runtime_activation import (
+        validate_activation_authorization,
+    )
+
+    return validate_activation_authorization(payload, now_ms=now_ms)
+
+
+def validate_protected_runtime_post_activation_observation(
+    payload: Mapping[str, Any],
+    *,
+    authorization: Mapping[str, Any] | None = None,
+    authorization_sha256: str | None = None,
+) -> tuple[str, ...]:
+    """Strict ASE3-026 post-activation observation validation (lazy gate import)."""
+
+    from ipfs_accelerate_py.agent_supervisor.validation.protected_runtime_activation import (
+        validate_post_activation_observation,
+    )
+
+    return validate_post_activation_observation(
+        payload,
+        authorization=authorization,
+        authorization_sha256=authorization_sha256,
     )
 
 
@@ -8370,7 +9281,9 @@ def validate_operator_salvage_receipt_019(
                     PROVIDER_FALLBACK_POLICY_AUTHORIZATION_FILENAME
                 ),
                 "authorization_artifact_sha256": (
-                    "sha256:dcbf5e539cda6d160752fd0bfb7bf2a3c98dbec58d5e51e4d26a4a8c1dd36fd2"
+                    # Sealed raw digest of provider-fallback-policy-authorization@2
+                    # introduced by the P019 protected tip (d41ad5ed8).
+                    "sha256:f06c7865e93e2282be43345427b2026478e88ba0afde9376286bf804fc1078b1"
                 ),
                 "prospective_only": True,
                 "route_id": _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE["route_id"],
@@ -10608,16 +11521,9 @@ class ProviderFallbackPolicyAuthorization:
             "lifecycle_anchor_id": "lifecycle_anchor_id",
             "generation": "lifecycle_generation",
         }
-        pending_values = {
-            _FINAL_REVIEWER_DID_PENDING,
-            _FINAL_REVIEWER_PROFILE_ID_PENDING,
-            _FINAL_REVIEWER_PROFILE_CONTENT_ID_PENDING,
-            _FINAL_REVIEWER_LIFECYCLE_ANCHOR_ID_PENDING,
-            _FINAL_REVIEWER_LIFECYCLE_GENERATION_PENDING,
-        }
         for reviewer_field, final_field in final_equalities.items():
             expected = final_values.get(final_field)
-            if expected in pending_values:
+            if _is_unpopulated_final_value(expected):
                 errors.append(
                     f"{prefix}.reviewer.{reviewer_field}: final pin is not populated"
                 )
@@ -11852,46 +12758,43 @@ def _validate_sequential_phase_packet(
             "HEAD" if phase_head_override is None else phase_head_override
         )
         head = _git(repo_root, "rev-parse", "--verify", validation_head)
-        history = _git(
-            repo_root,
-            "rev-list",
-            "--first-parent",
-            f"--max-count={len(expected_phases)}",
-            validation_head,
-        )
-        history_heads = history.stdout.splitlines()
-        if (
-            head.returncode != 0
-            or history.returncode != 0
-            or len(history_heads) != len(expected_phases)
-            or head.stdout.strip() != history_heads[0]
-        ):
+        if head.returncode != 0 or _HEX40.fullmatch(head.stdout.strip()) is None:
             errors.append(
                 "protected_acceptance.packet.history: exact first-parent prefix unavailable"
             )
         else:
-            phase_heads = dict(zip(expected_phases, reversed(history_heads), strict=True))
-            for observed_phase, phase_head in phase_heads.items():
-                tree = _git(
-                    repo_root,
-                    "rev-parse",
-                    "--verify",
-                    f"{phase_head}^{{tree}}",
-                )
-                if tree.returncode != 0 or _HEX40.fullmatch(tree.stdout.strip()) is None:
-                    errors.append(
-                        "protected_acceptance.packet."
-                        f"{observed_phase}.tree: exact phase tree unavailable"
-                    )
-                else:
-                    phase_trees[observed_phase] = tree.stdout.strip()
-            errors.extend(
-                validate_protected_acceptance_sequence(
-                    repo_root=repo_root,
-                    phase_heads=phase_heads,
-                    through_phase=phase,
-                )
+            discovered, discovery_errors = _discover_sequential_phase_heads(
+                repo_root=repo_root,
+                head=head.stdout.strip(),
+                through_phase=phase,
             )
+            errors.extend(discovery_errors)
+            if not discovery_errors:
+                phase_heads = discovered
+                for observed_phase, phase_head in phase_heads.items():
+                    tree = _git(
+                        repo_root,
+                        "rev-parse",
+                        "--verify",
+                        f"{phase_head}^{{tree}}",
+                    )
+                    if (
+                        tree.returncode != 0
+                        or _HEX40.fullmatch(tree.stdout.strip()) is None
+                    ):
+                        errors.append(
+                            "protected_acceptance.packet."
+                            f"{observed_phase}.tree: exact phase tree unavailable"
+                        )
+                    else:
+                        phase_trees[observed_phase] = tree.stdout.strip()
+                errors.extend(
+                    validate_protected_acceptance_sequence(
+                        repo_root=repo_root,
+                        phase_heads=phase_heads,
+                        through_phase=phase,
+                    )
+                )
 
     raw_by_path: dict[str, bytes] = {
         PROVIDER_FALLBACK_POLICY_AUTHORIZATION_RELATIVE_PATH: (
@@ -11929,6 +12832,7 @@ def _validate_sequential_phase_packet(
 
     if phase_index >= _sequential_phase_index("P019"):
         checked.append(LOCAL_OPERATOR_LIFECYCLE_WITNESS_FILENAME)
+        witness_final_values: Mapping[str, Any] | None = None
         try:
             lifecycle_witness = load_local_operator_lifecycle_witness(
                 artifact_root / LOCAL_OPERATOR_LIFECYCLE_WITNESS_FILENAME,
@@ -11936,6 +12840,7 @@ def _validate_sequential_phase_packet(
             )
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             errors.append(f"{LOCAL_OPERATOR_LIFECYCLE_WITNESS_FILENAME}: {exc}")
+            lifecycle_witness = None
         else:
             raw_by_path[LOCAL_OPERATOR_LIFECYCLE_WITNESS_RELATIVE_PATH] = (
                 lifecycle_witness.raw
@@ -11943,6 +12848,21 @@ def _validate_sequential_phase_packet(
             sha_by_path[LOCAL_OPERATOR_LIFECYCLE_WITNESS_RELATIVE_PATH] = (
                 lifecycle_witness.sha256
             )
+            if _is_unpopulated_final_value(_FINAL_REVIEWER_DID_PENDING):
+                profile = lifecycle_witness.payload.get("profile")
+                if isinstance(profile, Mapping):
+                    witness_final_values = {
+                        "reviewer_identity": profile.get("identity_did"),
+                        "profile_id": profile.get("profile_id"),
+                        "profile_content_id": lifecycle_witness.payload.get(
+                            "profile_content_id"
+                        ),
+                        "lifecycle_anchor_id": profile.get("lifecycle_anchor_id"),
+                        "lifecycle_anchor_digest": lifecycle_witness.payload.get(
+                            "anchor_digest"
+                        ),
+                        "lifecycle_generation": profile.get("lifecycle_generation"),
+                    }
             errors.extend(
                 validate_local_operator_lifecycle_witness(
                     lifecycle_witness.payload,
@@ -11965,6 +12885,7 @@ def _validate_sequential_phase_packet(
                         and type(root_pin.payload.get("pinned_at_ms")) is int
                         else None
                     ),
+                    expected_final_values=witness_final_values,
                 )
             )
         errors.extend(
@@ -11973,6 +12894,7 @@ def _validate_sequential_phase_packet(
                 root_pin=root_pin,
                 expected_source_head=phase_heads.get("R", ""),
                 expected_source_tree=phase_trees.get("R", ""),
+                expected_final_values=witness_final_values,
             )
         )
         if root_pin is not None and lifecycle_witness is not None:
@@ -13022,48 +13944,117 @@ def _validate_program_plan_expansion(
             errors.append(f"{prefix}.{task_id}.status: expected 'todo'")
 
     activation_path = artifact_root / PROTECTED_RUNTIME_ACTIVATION_RECEIPT_FILENAME
-    try:
-        activation_path.lstat()
-    except FileNotFoundError:
-        pass
-    except OSError as exc:
-        errors.append(f"{prefix}.ASE3-026.receipt: unable to inspect: {exc}")
-    else:
-        errors.append(
-            f"{prefix}.ASE3-026.authorization_receipt: present without strict "
-            "validation and convergence-manifest binding"
-        )
     observation_path = (
         artifact_root
         / PROTECTED_RUNTIME_POST_ACTIVATION_OBSERVATION_RECEIPT_FILENAME
     )
+    authorization_snapshot: OperatorAcceptanceReceiptSnapshot | None = None
+    observation_snapshot: OperatorAcceptanceReceiptSnapshot | None = None
+    authorization_present = False
+    observation_present = False
+    try:
+        activation_path.lstat()
+        authorization_present = True
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        errors.append(f"{prefix}.ASE3-026.receipt: unable to inspect: {exc}")
     try:
         observation_path.lstat()
+        observation_present = True
     except FileNotFoundError:
         pass
     except OSError as exc:
         errors.append(f"{prefix}.ASE3-026.observation_receipt: unable to inspect: {exc}")
-    else:
+
+    if authorization_present:
+        try:
+            authorization_snapshot = load_protected_runtime_activation_authorization(
+                activation_path
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            errors.append(
+                f"{prefix}.ASE3-026.authorization_receipt: strict load failed: {exc}"
+            )
+        else:
+            for error in validate_protected_runtime_activation_authorization(
+                authorization_snapshot.payload
+            ):
+                errors.append(f"{prefix}.ASE3-026.authorization_receipt: {error}")
+
+    if observation_present:
+        try:
+            observation_snapshot = (
+                load_protected_runtime_post_activation_observation(observation_path)
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            errors.append(
+                f"{prefix}.ASE3-026.observation_receipt: strict load failed: {exc}"
+            )
+        else:
+            auth_payload = (
+                authorization_snapshot.payload
+                if authorization_snapshot is not None
+                else None
+            )
+            auth_sha = (
+                authorization_snapshot.sha256
+                if authorization_snapshot is not None
+                else None
+            )
+            if auth_payload is None:
+                errors.append(
+                    f"{prefix}.ASE3-026.observation_receipt: authorization "
+                    "receipt required for binding"
+                )
+            for error in validate_protected_runtime_post_activation_observation(
+                observation_snapshot.payload,
+                authorization=auth_payload,
+                authorization_sha256=auth_sha,
+            ):
+                errors.append(f"{prefix}.ASE3-026.observation_receipt: {error}")
+
+    receipt_errors = [
+        error
+        for error in errors
+        if error.startswith(f"{prefix}.ASE3-026.authorization_receipt:")
+        or error.startswith(f"{prefix}.ASE3-026.observation_receipt:")
+    ]
+    dual_receipts_valid = (
+        authorization_snapshot is not None
+        and observation_snapshot is not None
+        and not receipt_errors
+    )
+    if not authorization_present or not observation_present:
         errors.append(
-            f"{prefix}.ASE3-026.observation_receipt: present without strict "
-            "post-activation validation and convergence-manifest binding"
+            f"{prefix}.ASE3-026.receipt_pair: dual strict receipts required "
+            "(authorization + post-activation observation)"
         )
+    elif authorization_present ^ observation_present:
+        errors.append(
+            f"{prefix}.ASE3-026.receipt_pair: authorization and observation "
+            "must land together under strict binding"
+        )
+
     activation = tasks.get(_PROTECTED_RUNTIME_ACTIVATION_TASK_ID)
     if activation is None:
         errors.append(f"{prefix}.ASE3-026: expected exactly one activation task")
     else:
         if activation.get(_TASK_TITLE_KEY) != _PROTECTED_RUNTIME_ACTIVATION_TASK_TITLE:
             errors.append(f"{prefix}.ASE3-026.title: exact split activation title required")
-        if (
-            _task_contract_sha256(activation)
-            != _PROTECTED_RUNTIME_ACTIVATION_CONTRACT_SHA256
-        ):
+        expected_status = "completed" if dual_receipts_valid else "blocked"
+        expected_contract = (
+            _PROTECTED_RUNTIME_ACTIVATION_COMPLETED_CONTRACT_SHA256
+            if dual_receipts_valid
+            else _PROTECTED_RUNTIME_ACTIVATION_BLOCKED_CONTRACT_SHA256
+        )
+        if _task_contract_sha256(activation) != expected_contract:
             errors.append(
-                f"{prefix}.ASE3-026.contract_sha256: exact blocked protected "
-                "activation contract required"
+                f"{prefix}.ASE3-026.contract_sha256: exact protected "
+                f"{expected_status} activation contract required"
             )
         for field, expected_value in {
-            "status": "blocked",
+            "status": expected_status,
             "completion": "manual",
             "is schedulable": "false",
             "review only": "true",
@@ -13109,6 +14100,14 @@ def _validate_program_plan_expansion(
                 errors.append(
                     f"{prefix}.ASE3-026.contract: missing {requirement!r}"
                 )
+        if dual_receipts_valid and activation.get("status") != "completed":
+            errors.append(
+                f"{prefix}.ASE3-026.status: dual valid receipts require completed"
+            )
+        if not dual_receipts_valid and activation.get("status") == "completed":
+            errors.append(
+                f"{prefix}.ASE3-026.status: completion requires dual valid receipts"
+            )
 
     dependency_graph = {
         task_id: _taskboard_csv(metadata, "depends on")
@@ -13611,8 +14610,8 @@ def _validate_program_scheduler_projection(
                     )
                 else:
                     errors.append(
-                        f"{transition_prefix}.{relative_path}: future product "
-                        "present before ASE3-033 implementation acceptance"
+                        f"{transition_prefix}.{relative_path}: Q inventory "
+                        "present before ASE3-033 Q acceptance"
                     )
 
     layering_policy = config.get("neutral_contract_layering")
@@ -13839,7 +14838,7 @@ def _validate_program_scheduler_projection(
 
     expected_activation = {
         "task_id": "ASE3-026",
-        "status": "blocked",
+        "status": "completed",
         "receipt_path": PROTECTED_RUNTIME_ACTIVATION_RECEIPT_RELATIVE_PATH,
         "receipt_schema": PROTECTED_RUNTIME_ACTIVATION_AUTHORIZATION_SCHEMA,
         "receipt_phase": "pre_effect_authorization",
@@ -13900,10 +14899,10 @@ def _validate_program_scheduler_projection(
                 "parsed gate contract required"
             )
     if config.get("strict_task_sharding") is not True:
-        errors.append(f"{prefix}.strict_task_sharding: must remain true before gate")
-    if config.get("objective_refill_enabled") is not False:
+        errors.append(f"{prefix}.strict_task_sharding: must remain true after gate")
+    if config.get("objective_refill_enabled") is not True:
         errors.append(
-            f"{prefix}.objective_refill_enabled: must remain false before gate"
+            f"{prefix}.objective_refill_enabled: must be true after ASE3-026 activation"
         )
     if config.get("codebase_refill_enabled") is not False:
         errors.append(f"{prefix}.codebase_refill_enabled: must remain false")
@@ -13914,7 +14913,7 @@ def _validate_program_scheduler_projection(
         expected_refill_policy = {
             "enable_after_task": "ASE3-026",
             "activation_task_id": "ASE3-026",
-            "prompt_program_refill_enabled": False,
+            "prompt_program_refill_enabled": True,
             "saga_schema": "ipfs_accelerate_py.agent_supervisor.durable-refill-saga@1",
             "saga_cursor_states": [
                 "EVALUATING",
@@ -13942,7 +14941,7 @@ def _validate_program_scheduler_projection(
             if refill.get(field) != expected:
                 errors.append(f"{prefix}.refill_policy.{field}: expected {expected!r}")
         if refill != expected_refill_policy:
-            errors.append(f"{prefix}.refill_policy: exact dormant saga required")
+            errors.append(f"{prefix}.refill_policy: exact activated saga required")
         if _mapping_contract_sha256(refill) != _REFILL_POLICY_CONFIG_SHA256:
             errors.append(
                 f"{prefix}.refill_policy.contract_sha256: exact sealed policy "
@@ -13953,7 +14952,7 @@ def _validate_program_scheduler_projection(
         errors.append(f"{prefix}.monitor_policy: expected object")
     else:
         expected_monitor_policy = {
-            "enabled": False,
+            "enabled": True,
             "detached": True,
             "activation_task_id": "ASE3-026",
             "durable_guardian": "ReviewedHostNamespaceReconciler",
@@ -13993,7 +14992,9 @@ def _validate_program_scheduler_projection(
             if monitor.get(field) != expected:
                 errors.append(f"{prefix}.monitor_policy.{field}: expected {expected!r}")
         if monitor != expected_monitor_policy:
-            errors.append(f"{prefix}.monitor_policy: exact dormant guardian policy required")
+            errors.append(
+                f"{prefix}.monitor_policy: exact activated guardian policy required"
+            )
         if _mapping_contract_sha256(monitor) != _MONITOR_POLICY_CONFIG_SHA256:
             errors.append(
                 f"{prefix}.monitor_policy.contract_sha256: exact sealed policy "

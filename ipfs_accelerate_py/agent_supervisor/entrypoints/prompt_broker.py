@@ -1307,6 +1307,14 @@ class PromptBodyBroker:
             )
 
 
+
+
+# ASE3-024 interface aliases: the existing hardened broker is the multiproc
+# durable encrypted store; capabilities are single-use continuation leases.
+MultiprocessPromptBrokerStore = PromptBodyBroker
+BrokerContinuationLease = PromptCapability
+
+
 __all__ = (
     "ARTIFACT_BLOB_DIR",
     "ARTIFACT_INDEX_NAME",
@@ -1330,4 +1338,6 @@ __all__ = (
     "PromptNotFoundError",
     "PromptReference",
     "PromptStorageKind",
+    "MultiprocessPromptBrokerStore",
+    "BrokerContinuationLease",
 )

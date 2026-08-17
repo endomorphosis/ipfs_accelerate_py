@@ -1,0 +1,157 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/logic-platform-canonicalization/inventory-revisions@1",
+  "interface": "LogicPlatformInventoryRevisions@1",
+  "task_id": "LPC-001",
+  "goal_id": "LPC-G010",
+  "program": "logic-platform-canonicalization",
+  "observed_at": "2026-08-15",
+  "observation_basis": [
+    "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md section 2 (Inspected revisions)",
+    "docs/architecture/logic_platform_canonicalization.objectives.md (reviewed baselines and campaign-start authority)",
+    "docs/architecture/logic_platform_canonicalization.todo.md (implementation authority block)",
+    "config/agent_supervisor_logic_platform_canonicalization_scheduler.json source_binding",
+    "data/agent_supervisor/logic_platform_canonicalization/notes/lpc000_seal_receipt.md",
+    "data/agent_supervisor/logic_platform_canonicalization/formal_work_plan.json metadata baselines"
+  ],
+  "implementation_authority_rule": {
+    "rule": "current_heads_are_implementation_authority",
+    "statement": "Use the current checked-out sources as implementation authority. Reviewed baselines are comparison pins only; they do not override current heads for production edits.",
+    "compare_then_authority": true,
+    "production_edit_gate": "Record intervening changes (this inventory) before any production edit."
+  },
+  "reviewed_baselines": {
+    "ipfs_datasets_py": {
+      "repository": "endomorphosis/ipfs_datasets_py",
+      "commit": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "role": "reviewed_baseline"
+    },
+    "ipfs_accelerate_py": {
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "commit": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+      "role": "reviewed_baseline"
+    }
+  },
+  "current_heads": {
+    "ipfs_datasets_py": {
+      "repository": "endomorphosis/ipfs_datasets_py",
+      "role": "implementation_authority",
+      "branch": "agent/logic-platform-canonicalization",
+      "commit": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "checkout_path": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "equals_reviewed_baseline": true,
+      "notes": "Campaign-start authority equals the reviewed baseline."
+    },
+    "ipfs_accelerate_py": {
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "role": "implementation_authority",
+      "branch": "agent/logic-platform-canonicalization",
+      "commit": "ea11293bb996f052d620eae989f5377a956764b1",
+      "checkout_path": "/home/barberb/lift_coding/external/ipfs_accelerate",
+      "campaign_worktree_path": "data/agent_supervisor/logic_platform_canonicalization/worktrees (supervisor worktrees of this repository)",
+      "equals_reviewed_baseline": false,
+      "scheduler_required_ancestor": "ea11293bb996f052d620eae989f5377a956764b1",
+      "notes": "Campaign-start authority is 1,245 commits behind the reviewed baseline; merge-base with the baseline is the current head."
+    }
+  },
+  "ahead_behind": {
+    "comparison_convention": "Counts are for current_head relative to reviewed_baseline (left=baseline, right=current_head). ahead = commits only on current_head; behind = commits only on reviewed_baseline.",
+    "ipfs_datasets_py": {
+      "baseline": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "current_head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "merge_base": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "ahead": 0,
+      "behind": 0,
+      "available": true,
+      "delta_summary": "Exact match; no intervening commits."
+    },
+    "ipfs_accelerate_py": {
+      "baseline": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+      "current_head": "ea11293bb996f052d620eae989f5377a956764b1",
+      "merge_base": "ea11293bb996f052d620eae989f5377a956764b1",
+      "ahead": 0,
+      "behind": 1245,
+      "available": true,
+      "delta_summary": "Current head is a pure ancestor of the reviewed baseline (1,245 commits behind; merge-base is current HEAD)."
+    }
+  },
+  "dirty_paths": {
+    "ipfs_datasets_py": {
+      "checkout_path": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "dirty": false,
+      "paths": [],
+      "observation": "Sealed campaign control documents and LPC-000 preflight required a clean checkout; no dirty production paths recorded for the datasets authority checkout."
+    },
+    "ipfs_accelerate_py": {
+      "checkout_path": "/home/barberb/lift_coding/external/ipfs_accelerate",
+      "dirty": false,
+      "paths": [],
+      "observation": "LPC-000 seal required control files tracked and checkout clean before launch. No production dirty paths recorded for the accelerate authority checkout at seal."
+    },
+    "aggregate_dirty_paths": [],
+    "inventory_outputs_are_not_source_dirty_paths": true
+  },
+  "intervening_changes": [
+    {
+      "id": "accelerate-baseline-ahead-of-authority",
+      "repository": "ipfs_accelerate_py",
+      "kind": "baseline_delta",
+      "summary": "Reviewed baseline 485edc0871c55b0e2ef21d83bece9fa12c2c8d84 is 1,245 commits ahead of implementation-authority head ea11293bb996f052d620eae989f5377a956764b1.",
+      "implication": "Do not treat the reviewed baseline tip as the edit base. Implementation authority remains the current head; baseline material is comparison-only until deliberately adopted."
+    },
+    {
+      "id": "datasets-exact-match",
+      "repository": "ipfs_datasets_py",
+      "kind": "baseline_delta",
+      "summary": "Reviewed baseline and current head are identical at ac82107e246b30e35a2bbdcf75e01370d22350c6.",
+      "implication": "No intervening datasets commits between baseline and authority."
+    },
+    {
+      "id": "lpc-000-control-seal",
+      "repository": "ipfs_accelerate_py",
+      "kind": "campaign_control_seal",
+      "branch": "agent/logic-platform-canonicalization",
+      "commit": "4672adcccf5c7f2106dcfd39489fd545396a2c78",
+      "summary": "LPC-000 sealed operator-protected control files (plan, objectives, todo, scheduler, validator, formal plan) on the campaign branch after the required ancestor ea11293bb996f052d620eae989f5377a956764b1.",
+      "implication": "Control-plane seal is not a production semantic rewrite. Protected paths remain operator-owned and must not be task Outputs."
+    },
+    {
+      "id": "host-campaigns-do-not-join",
+      "kind": "operational_boundary",
+      "summary": "Existing host campaigns incremental-proof-sealer-v1 and state-laws-reindex must not be joined or have their state stolen.",
+      "implication": "LPC inventory and later edits stay on logic-platform-canonicalization runtime paths only."
+    }
+  ],
+  "source_binding": {
+    "accelerator_required_branch": "agent/logic-platform-canonicalization",
+    "accelerator_required_ancestor": "ea11293bb996f052d620eae989f5377a956764b1",
+    "record_accelerator_and_datasets_revisions_at_launch": true,
+    "merge_target_branch": "agent/logic-platform-canonicalization"
+  },
+  "related_identities": {
+    "lpc000_seal_commit": "4672adcccf5c7f2106dcfd39489fd545396a2c78",
+    "formal_work_plan_repository_tree_id": "tree:lift-coding-current-heads",
+    "task_dispatch_tree_id": "f4cbfa023da5353143a05e6d3e209de58df8ff0b"
+  },
+  "repositories": [
+    {
+      "id": "ipfs_datasets_py",
+      "remote_name": "endomorphosis/ipfs_datasets_py",
+      "reviewed_baseline": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "current_head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "ahead": 0,
+      "behind": 0,
+      "dirty_paths": [],
+      "implementation_authority": true
+    },
+    {
+      "id": "ipfs_accelerate_py",
+      "remote_name": "endomorphosis/ipfs_accelerate_py",
+      "reviewed_baseline": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+      "current_head": "ea11293bb996f052d620eae989f5377a956764b1",
+      "ahead": 0,
+      "behind": 1245,
+      "dirty_paths": [],
+      "implementation_authority": true
+    }
+  ]
+}

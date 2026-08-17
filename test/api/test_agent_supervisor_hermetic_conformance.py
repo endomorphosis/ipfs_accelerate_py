@@ -1,133 +1,193 @@
-"""DCR-090 hermetic cross-root fixture validation tests."""
+"""DCR-090: hermetic cross-repository contract conformance fixtures.
+
+Acceptance:
+* Monorepo structural fixtures stay live_conformance=false without real servers.
+* Mocks cannot echo requested capabilities or expected detector values.
+* Incompatible implementations produce deterministic failing counterexamples.
+* Standalone-clone skips cannot flip monorepo green.
+* Runtime model calls remain 0.
+"""
 
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
-from types import ModuleType
 
 import pytest
+
 from ipfs_accelerate_py.agent_supervisor.analysis.hermetic_conformance import (
-    HermeticConformanceDisposition,
+    DEFAULT_HERMETIC_CONFORMANCE_PATH,
+    HERMETIC_CONFORMANCE_INTERFACE,
+    REQUIRED_MONOREPO_ROOTS,
+    ConformanceMode,
+    CounterexampleKind,
     HermeticConformanceError,
-    ImportedModuleOrigin,
-    IndependentExpectedFact,
-    McpProtocolObservation,
+    HermeticConformanceReport,
+    build_contract_graph_fixture,
+    materialize_hermetic_conformance,
     validate_hermetic_conformance,
 )
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+def _repo_root() -> Path:
+    here = Path(__file__).resolve()
+    for candidate in (here.parents[4], here.parents[3], Path.cwd()):
+        if (candidate / "external" / "ipfs_accelerate").is_dir() and (
+            candidate / "swissknife"
+        ).is_dir():
+            return candidate
+    return here.parents[4]
 
 
-def _module(root: Path, root_id: str) -> ModuleType:
-    source = root / f"{root_id}_connector.py"
-    source.write_text("IDENTITY = 'actual imported fixture'\n", encoding="utf-8")
-    spec = importlib.util.spec_from_file_location(f"dcr090_{root_id}", source)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def test_interface_constants() -> None:
+    assert HERMETIC_CONFORMANCE_INTERFACE == "HermeticConformance@1"
+    assert HermeticConformanceReport.INTERFACE == HERMETIC_CONFORMANCE_INTERFACE
+    assert "Mcp-Plus-Plus" in REQUIRED_MONOREPO_ROOTS
+    assert "swissknife" in REQUIRED_MONOREPO_ROOTS
 
 
-def _observation(root_id: str, *, fact_id: str = "catalog-stable") -> McpProtocolObservation:
-    requests = {
-        "initialize": _canonical({"method": "initialize", "params": {}}),
-        "tools/list": _canonical({"method": "tools/list", "params": {}}),
-        "tools/call": _canonical({"method": "tools/call", "params": {"name": "health"}}),
-    }
-    results = {step: _canonical({"result": {"step": step}}) for step in requests}
-    errors = {step: _canonical({"error": None}) for step in requests}
-    return McpProtocolObservation(
-        root_id=root_id,
-        schema_id="mcp/2025-03-26",
-        profile_id="dcr090-fixture-profile",
-        requests=requests,
-        results=results,
-        errors=errors,
-        expected_fact_id=fact_id,
-        observed_fact=_canonical({"tools": ["health"]}),
-    )
-
-
-def test_structural_imported_origins_are_not_projected_as_live_conformance(tmp_path: Path) -> None:
-    origins = []
-    observations = []
-    for root_id in ("accelerate", "swissknife", "mcpplusplus"):
-        root = tmp_path / root_id
-        root.mkdir()
-        origins.append(
-            ImportedModuleOrigin.from_module(
-                root_id=root_id, root=root, module=_module(root, root_id)
-            )
-        )
-        observations.append(_observation(root_id))
-    fact = IndependentExpectedFact.from_bytes(
-        fact_id="catalog-stable",
-        source=_canonical({"source": "reviewed-golden"}),
-        value=_canonical({"tools": ["health"]}),
-    )
-
+def test_monorepo_structural_ok_but_not_live() -> None:
     report = validate_hermetic_conformance(
-        origins=origins, observations=observations, expected_facts=(fact,)
+        repo_root=_repo_root(),
+        claim_live_conformance=False,
+        real_server_available=False,
     )
+    assert report.mode is ConformanceMode.MONOREPO
+    assert report.structural_ok is True
+    assert report.live_conformance is False
+    assert report.runtime_model_calls == 0
+    assert "live_conformance_false" in report.reason_codes
+    payload = report.to_dict()
+    assert payload["live_conformance"] is False
+    assert payload["runtime_model_calls"] == 0
+    assert payload["content_id"].startswith("sha256:")
 
-    assert report.disposition is HermeticConformanceDisposition.INTEGRATION_PENDING
-    assert report.reason_codes == ("structural_fixture_non_live",)
-    assert report.report_cid
-    assert report.to_dict()["model_call_count"] == 0
-    assert report.to_dict()["network_call_count"] == 0
-    assert report.to_dict()["structural_fixture"] is True
-    assert report.to_dict()["live_conformance"] is False
 
-
-def test_missing_real_swissknife_root_is_pending_not_green_skip(tmp_path: Path) -> None:
-    root = tmp_path / "accelerate"
-    root.mkdir()
-    origin = ImportedModuleOrigin.from_module(
-        root_id="accelerate", root=root, module=_module(root, "accelerate")
-    )
-    fact = IndependentExpectedFact.from_bytes(
-        fact_id="catalog-stable",
-        source=_canonical({"fixture": "golden"}),
-        value=_canonical({"tools": ["health"]}),
-    )
-
+def test_forged_live_green_without_server_is_rejected() -> None:
     report = validate_hermetic_conformance(
-        origins=(origin,), observations=(), expected_facts=(fact,)
+        repo_root=_repo_root(),
+        claim_live_conformance=True,
+        real_connector_available=True,
+        real_server_available=False,
+    )
+    assert report.live_conformance is False
+    kinds = {item["kind"] for item in report.counterexamples}
+    assert CounterexampleKind.FORGED_LIVE_GREEN.value in kinds
+
+
+def test_mock_echo_capabilities_produce_counterexample() -> None:
+    requested = ["tools/list", "tools/call", "initialize"]
+    report = validate_hermetic_conformance(
+        repo_root=_repo_root(),
+        requested_capabilities=requested,
+        observed_implementations=[
+            {
+                "implementation_id": "mock:echo-server",
+                "capabilities": list(requested),
+            }
+        ],
+        real_server_available=False,
+    )
+    assert report.live_conformance is False
+    echo = [
+        item
+        for item in report.counterexamples
+        if item.get("kind") == CounterexampleKind.MOCK_ECHO.value
+    ]
+    assert echo
+    assert any(item.get("reason") == "mock_echoed_requested_capabilities" for item in echo)
+
+
+def test_mock_echo_detector_value_rejected() -> None:
+    report = validate_hermetic_conformance(
+        repo_root=_repo_root(),
+        observed_implementations=[
+            {
+                "implementation_id": "mock:detector",
+                "expected_detector_value": "profile-e",
+                "detector_value": "profile-e",
+            }
+        ],
+        real_server_available=False,
+    )
+    assert any(
+        item.get("reason") == "mock_echoed_expected_detector_value"
+        for item in report.counterexamples
     )
 
-    assert report.disposition is HermeticConformanceDisposition.INTEGRATION_PENDING
-    assert "missing_real_root_swissknife" in report.reason_codes
-    assert "protocol_observations_required" in report.reason_codes
+
+def test_incompatible_profile_counterexample() -> None:
+    report = validate_hermetic_conformance(
+        repo_root=_repo_root(),
+        observed_implementations=[
+            {
+                "implementation_id": "impl:real-ish",
+                "profile": "mcp++/experimental",
+                "admitted_profiles": ["mcp++/default"],
+            }
+        ],
+        real_server_available=False,
+    )
+    assert any(
+        item.get("kind") == CounterexampleKind.INCOMPATIBLE_PROFILE.value
+        for item in report.counterexamples
+    )
 
 
-def test_origin_outside_declared_root_and_echoed_expected_fact_fail(tmp_path: Path) -> None:
-    inside = tmp_path / "accelerate"
-    outside = tmp_path / "outside"
-    inside.mkdir()
-    outside.mkdir()
-    module = _module(outside, "outside")
-    with pytest.raises(HermeticConformanceError, match="outside_declared_root"):
-        ImportedModuleOrigin.from_module(root_id="accelerate", root=inside, module=module)
-
-    requests = {
-        "initialize": _canonical({"method": "initialize", "params": {}}),
-        "tools/list": _canonical({"method": "tools/list", "params": {}}),
-        "tools/call": _canonical(
-            {"method": "tools/call", "params": {"detector": "catalog-stable"}}
-        ),
-    }
-    with pytest.raises(HermeticConformanceError, match="echoes_expected_fact"):
-        McpProtocolObservation(
-            root_id="accelerate",
-            schema_id="mcp/2025-03-26",
-            profile_id="fixture",
-            requests=requests,
-            results={step: _canonical({"result": {}}) for step in requests},
-            errors={step: _canonical({"error": None}) for step in requests},
-            expected_fact_id="catalog-stable",
-            observed_fact=_canonical({"tools": ["health"]}),
+def test_standalone_clone_cannot_claim_live() -> None:
+    with pytest.raises(HermeticConformanceError):
+        HermeticConformanceReport(
+            mode=ConformanceMode.STANDALONE_CLONE,
+            live_conformance=True,
+            structural_ok=False,
+            roots_present=(),
+            roots_missing=REQUIRED_MONOREPO_ROOTS,
+            module_origins={},
+            counterexamples=(),
+            reason_codes=("standalone",),
         )
+
+
+def test_missing_root_counterexample(tmp_path: Path) -> None:
+    # Empty tree → standalone, missing roots.
+    report = validate_hermetic_conformance(
+        repo_root=tmp_path,
+        claim_live_conformance=False,
+    )
+    assert report.mode is ConformanceMode.STANDALONE_CLONE
+    assert report.structural_ok is False
+    assert report.live_conformance is False
+    assert any(
+        item.get("kind") == CounterexampleKind.MISSING_ROOT.value
+        for item in report.counterexamples
+    )
+
+
+def test_contract_graph_fixture_is_hermetic() -> None:
+    graph = build_contract_graph_fixture(snapshot_id="snap:test")
+    assert graph["live_conformance"] is False
+    assert graph["runtime_model_calls"] == 0
+    assert graph["interface"] == "SwissKnifeMcpContractGraph@1"
+    assert len(graph["nodes"]) >= 4
+    assert len(graph["edges"]) >= 3
+    assert graph["graph_cid"].startswith("sha256:")
+
+
+def test_materialize_hermetic_conformance(tmp_path: Path) -> None:
+    dest = tmp_path / "hermetic-conformance.json"
+    payload = materialize_hermetic_conformance(
+        repo_root=_repo_root(),
+        destination=dest,
+    )
+    assert dest.is_file()
+    on_disk = json.loads(dest.read_text(encoding="utf-8"))
+    assert on_disk["interface"] == HERMETIC_CONFORMANCE_INTERFACE
+    assert on_disk["live_conformance"] is False
+    assert on_disk["runtime_model_calls"] == 0
+    assert on_disk["report"]["structural_ok"] is True
+    assert "contract_graph" in on_disk
+    assert payload["live_conformance"] is False
+
+
+def test_default_artifact_path_constant() -> None:
+    assert DEFAULT_HERMETIC_CONFORMANCE_PATH.endswith("hermetic-conformance.json")

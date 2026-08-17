@@ -7,7 +7,7 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.provider_route import (
 )
 
 def _evidence():
-    return QuotaExhaustionEvidence("grok", "grok-4.5", "usage:one", "cap:one", 1, task_revision_cid="task:one", worktree_cid="worktree:one", budget_cid="budget:one", scope_cid="scope:one")
+    return QuotaExhaustionEvidence("grok", "grok-4.6", "usage:one", "cap:one", 1, task_revision_cid="task:one", worktree_cid="worktree:one", budget_cid="budget:one", scope_cid="scope:one")
 
 def _attempt():
     return ProviderAttemptReceipt(default_provider_route_policy().content_id, "codex", FALLBACK_MODEL_ID, "attempt:one", "worktree:one", "task:one", "process:one", FALLBACK_REASONING_EFFORT, budget_cid="budget:one", scope_cid="scope:one")

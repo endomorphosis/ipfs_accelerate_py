@@ -1,0 +1,164 @@
+{
+  "accepted_control_plane": {
+    "allowed_trigger_classes": [
+      "grok_authentication_unavailable",
+      "grok_hard_quota_exhausted"
+    ],
+    "attempt_counter_mutation_authorized": false,
+    "canonical_route_owner": "ipfs_accelerate_py.llm_router",
+    "crash_adopts_winning_effect_receipt": true,
+    "current_profile_rechecked_at_effect": true,
+    "docker_image_id": "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6",
+    "docker_runtime": "runc",
+    "durable_cas_states": [
+      "reserved",
+      "effect_started",
+      "terminal"
+    ],
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_provider_id": "codex",
+    "fallback_reasoning_effort": "high",
+    "immutable_generation_capsule_required": true,
+    "native_signed_hard_quota_required": true,
+    "portable_acceptance_evidence": {
+      "candidate_workspace_identity_required": true,
+      "isolated_argv_origin_proof_required": true,
+      "machine_local_capsule_path_forbidden": true,
+      "machine_local_memfd_path_forbidden": true,
+      "package_module_blob_manifest_required": true,
+      "sealed_control_plane_digest_required": true,
+      "shadow_regression_receipt_required": true,
+      "source_head_required": true,
+      "source_tree_required": true
+    },
+    "primary_model_id": "grok-4.5",
+    "primary_provider_id": "grok_cli",
+    "provider_capacity_attempt_restoration_allowed": false,
+    "public_api": {
+      "build_pin_api": "build_agent_implementation_control_plane_pin",
+      "capacity_projection_api": "project_agent_implementation_route_capacity",
+      "control_plane_pin_type": "AgentImplementationControlPlanePin",
+      "fallback_decision_type": "AgentImplementationFallbackDecision",
+      "manifest_schema": "ipfs_accelerate_py.agent_supervisor.materialized-control-plane@1",
+      "materialize_api": "materialize_agent_implementation_control_plane_capsule",
+      "pin_schema": "ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2",
+      "route_plan_type": "AgentImplementationRoutePlan",
+      "seal_api": "seal_agent_implementation_control_plane_capsule",
+      "sealed_control_plane_type": "AgentImplementationSealedControlPlane",
+      "source_generation_api": "agent_implementation_control_plane_source_generation",
+      "terminal_outcome_field": "accepted_control_plane",
+      "verify_sealed_api": "verify_agent_implementation_sealed_control_plane"
+    },
+    "route_id": "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1",
+    "same_logical_attempt": true,
+    "schema": "ipfs_accelerate_py.agent_supervisor.operator-accepted-control-plane-contract@1"
+  },
+  "authority": {
+    "authorization_artifact": "provider_fallback_policy_authorization_20260808.json",
+    "authorization_artifact_sha256": "sha256:f06c7865e93e2282be43345427b2026478e88ba0afde9376286bf804fc1078b1",
+    "canonical_route_owner": "ipfs_accelerate_py.llm_router",
+    "prospective_only": true,
+    "route_id": "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
+  },
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "created_at": "2026-08-10T02:46:27Z",
+  "denials": {
+    "arbitrary_failure_fallback_allowed": false,
+    "attempt_counter_mutation_authorized": false,
+    "codebase_refill_authorized": false,
+    "codex_or_openai_reviewer_allowed": false,
+    "objective_refill_authorized": false,
+    "post_effect_fallback_allowed": false,
+    "provider_capacity_attempt_restoration_allowed": false,
+    "self_review_allowed": false
+  },
+  "implementation": {
+    "final_blobs": {},
+    "generations": []
+  },
+  "incident": {
+    "artifact": "self_host_seed_failure_ase3_019_attempt_2_20260808.json",
+    "artifact_sha256": "sha256:ae9e3e5349db4b0c21ac429259ee0c51ed95a4232825b933929d862080ce61b1",
+    "attempt": 2,
+    "attempt_counter_mutation_authorized": false,
+    "attempts_exhausted": true,
+    "event_snapshot": "failed_pre_dispatch_event_ase3_019_attempt_2_20260808.json",
+    "event_snapshot_sha256": "sha256:8dfe081d00135789e7c6b6969125f643a4913e3227b2ad3d6a6fa76747ad1d62"
+  },
+  "merge": {
+    "acceptance_parent_head": "d41ad5ed8d57fddfd2a68a4765d81c2f4db1c4b0",
+    "acceptance_parent_tree": "2f694f7eefe1ad17eb794c4e717c3f5d30005615",
+    "integrated_commits_are_acceptance_parent_ancestors": true,
+    "source_commits_are_acceptance_parent_ancestors": false
+  },
+  "review": {
+    "algorithm": "Ed25519",
+    "fallback_authorization_id": "sha256:dfbcb29e1b624b345b263857ba750404b8287f3a869b317efdadc363250a9301",
+    "fallback_authorization_sha256": "sha256:f06c7865e93e2282be43345427b2026478e88ba0afde9376286bf804fc1078b1",
+    "implementer_identity": "codex:ase3-019-product",
+    "implementer_provider": "codex",
+    "lifecycle_anchor_digest": "sha256:45ff0b7b60c71f8c682e7e32e9e6af1193a5f238fca846190089cf4ee8d41239",
+    "lifecycle_anchor_id": "475715c3bc8d562132e5323dcf98c13dba1b5aaf8f34546c0c50d40d6f62b2d8",
+    "lifecycle_generation": 1,
+    "lifecycle_root_identity_did": "did:key:z6Mktp3ogPs9QwXBnKEQrdMThdbuPPNKQXiAP7X7JwXVq1G7",
+    "lifecycle_root_pin_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_profile_lifecycle_root_pin_20260808.json",
+    "lifecycle_root_pin_sha256": "sha256:898b9ccbe61a3ea82ad2243498940cd70f06efa0838d34ee0ebc4c418e377ff2",
+    "lifecycle_witness_id": "sha256:c0ff822e398493bd35e054b8bdbe8ed3b6d94bcbb04521241e1b1a48bc3cd65b",
+    "lifecycle_witness_nonce": "z3Y5bP4zbgLAgGHWV0sKhzXCKJ8CAMNt",
+    "lifecycle_witness_path": "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/local_operator_lifecycle_witness.json",
+    "lifecycle_witness_sha256": "sha256:89084565ed3d636a5687188209a332eccda33a73968e157fc6e7f45448daf410",
+    "profile_content_id": "sha256:bb9681dbaa2e084bd0704675672133e20f4ddeaf2ad0c130b1034b109615ffec",
+    "profile_id": "78d545927196b5dad4c2c76b461927ec",
+    "reviewer_identity": "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
+    "reviewer_provider": "local_operator",
+    "signature": "ed25519:YSJMbPWczj3TE2tKxwVMWYqKD1D7y2AF7rtqMk4LE3B_SRXEVbzUo11KgNMZCQOBnfMJaIXwd0E6lSke4VO6Ag",
+    "signed_at": "2026-08-10T02:46:27Z"
+  },
+  "salvage_base": {
+    "branch": "agent/prompt-self-improvement-v3",
+    "head": "1bd07b7261c86e4cf8301b34dbaf9728fc6e7818",
+    "tree": "e20cf0acc9fe5d17ac439b9c9ddff6332810e583"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.ase3-019-operator-salvage@1",
+  "source_candidate": {
+    "branch": "implementation/ase3-019-b75326e8a50d-attempt-2-1786210208",
+    "candidate_blobs": {
+      "ipfs_accelerate_py/agent_supervisor/__init__.py": "346c809c0457f0d612d378672abbdb0324de1f47",
+      "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py": "06c6ef1eeca773efc6173130597d44d2664370b4",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "bb5e7c469a47d2fb2f2cab287a17d182dff95f63",
+      "ipfs_accelerate_py/llm_router.py": "f4c27ebe41c0968529ebb933a8d7a7bc8315b1f5"
+    },
+    "replayed_paths": [
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/local_profile.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "ipfs_accelerate_py/llm_router.py",
+      "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+      "test/api/test_llm_router_agent_supervisor_fallback_route.py"
+    ],
+    "source_attempt": 2,
+    "source_commit": "eb68ff2a20e0719388f60ffef1f5bfcb90b79263",
+    "source_tree": "695e2d6f07bc1c48bdc34ebb490342444de2cbef"
+  },
+  "task": {
+    "canonical_task_cid": "baguqeeraw5jsn2ffbxmdxjvktktdfdbkxu7didced4edylidsa4hj44qyz2a",
+    "completed_contract_sha256": "sha256:1be44352e66949dcf7789ea22e67c5d821e6d93b47177f81476bd318737e041c",
+    "goal_id": "ASE3-G020",
+    "repairs_task": "ASE3-019-attempt-2",
+    "status_after": "completed",
+    "status_before": "todo",
+    "task_id": "ASE3-019",
+    "todo_contract_sha256": "sha256:0b03746b83ab9a7316d6e8f5145fe092043819bf8ac2012ee8596277c44602a8"
+  },
+  "validation": {
+    "command": "python -m pytest test/api/test_llm_router_agent_supervisor_fallback_route.py test/api/test_agent_supervisor_prompt_v3_authority_hardening.py test/api/test_agent_supervisor_prompt_v3_authority.py test/api/test_agent_supervisor_prompt_v3_provider_route.py test/api/test_agent_supervisor_grok_quota_terra_gate.py test/api/test_agent_supervisor_implementation_provider_receipts.py -q",
+    "exit_code": 0,
+    "failed_count": 0,
+    "passed": true,
+    "passed_count": 160,
+    "validated_head": "d41ad5ed8d57fddfd2a68a4765d81c2f4db1c4b0",
+    "validated_tree": "2f694f7eefe1ad17eb794c4e717c3f5d30005615"
+  }
+}

@@ -210,7 +210,7 @@ MCPP-G000  MCP++ 1.0 release-candidate architecture
 - Goal: Specify StateRef@1 with explicit consistency modes and implement immutable CID, durable single-authority SQLite, Automerge CRDT, and an honestly labeled consensus plugin, plus tests that Event DAG branches do not silently merge mutable values.
 - Evidence: MCPP-035, MCPP-036, MCPP-037, MCPP-038, MCPP-039, MCPP-040
 - Evidence criteria: SQLite restart and CAS tests pass. Automerge concurrent offline, reorder, duplicate, partition-heal, and convergence tests pass. Consensus docs distinguish coordination, majority, crash, and BFT.
-- Evidence source policy: Mode is mandatory. Missing mode is invalid. Neighborhood majority is not BFT.
+- Evidence source policy: Mode is mandatory. Missing mode is invalid. Neighborhood majority is not BFT. Runtime persistence (2026-08-16): DuckDB/Quack/DuckLake is the default single-authority store; SQLite is fallback.
 - Outputs: ipfs_accelerate_py/mcplusplus/schemas/state, ipfs_accelerate_py/mcplusplus/docs/spec/state-ref.md, ipfs_accelerate_py/mcp_server/mcplusplus/state
 - Predicted files: ipfs_accelerate_py/mcplusplus/schemas/state, ipfs_accelerate_py/mcp_server/mcplusplus/state
 - Interfaces: StateRef@1, StateProvider@1, ImmutableCidState@1, SqliteAuthorityState@1, AutomergeCrdtState@1, ConsensusPlugin@1
@@ -288,7 +288,7 @@ MCPP-G000  MCP++ 1.0 release-candidate architecture
 - Goal: Define DurableExecutor and implement at least one production-capable local adapter that journals externally visible steps, uses idempotency keys, preserves cancellation and obligations, rejects stale fencing tokens, and resumes after process kill without repeating committed side effects.
 - Evidence: MCPP-050, MCPP-051, MCPP-052, MCPP-053
 - Evidence criteria: Crash-recovery test starts a multi-step task, commits one side effect, kills the process, restarts, resumes, does not repeat the effect, and emits one receipt.
-- Evidence source policy: Restate/Dapr may be a second adapter only with a repeatable local environment. The mandatory adapter is the SQLite journaled executor.
+- Evidence source policy: Restate/Dapr may be a second adapter only with a repeatable local environment. The primary adapter is the DuckDB/Quack journaled executor; SQLite is an explicit fallback (2026-08-16 correction).
 - Outputs: ipfs_accelerate_py/mcplusplus/docs/architecture/durable-execution.md, ipfs_accelerate_py/mcp_server/mcplusplus/durable
 - Predicted files: ipfs_accelerate_py/mcp_server/mcplusplus/durable, ipfs_accelerate_py/mcplusplus/docs/architecture/durable-execution.md
 - Interfaces: DurableExecutor@1, DurableJournalRecord@1, CrashRecoveryReceipt@1

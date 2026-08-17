@@ -1,0 +1,4130 @@
+{
+  "campaign_id": "aae-fixture-corpus-v1",
+  "campaign_membership": {
+    "distributed_storage_crash": [
+      "dist.ack_before_durable",
+      "dist.cas_ignore_expected_old",
+      "dist.crash_after_cas_before_cleanup",
+      "dist.crash_after_mutant_create",
+      "dist.crash_after_receipt_persist",
+      "dist.crash_before_policy_cas",
+      "dist.crash_during_worktree_setup",
+      "dist.drop_idempotency_key",
+      "dist.ignore_lease_expiry",
+      "dist.illegal_state_transition",
+      "dist.incomplete_compensation",
+      "dist.mutate_without_ownership",
+      "dist.skip_read_back",
+      "dist.stale_fencing"
+    ],
+    "security": [
+      "sec.accepted_expired_delegation",
+      "sec.accepted_revoked_capability",
+      "sec.authentication_bypass",
+      "sec.caller_selected_tenant",
+      "sec.cross_action_confirmation_replay",
+      "sec.invalid_signature",
+      "sec.missing_attenuation",
+      "sec.missing_confirmation",
+      "sec.omitted_proof_unit",
+      "sec.payment_as_authority",
+      "sec.policy_default_to_allow",
+      "sec.provider_ack_as_storage",
+      "sec.pseudo_cid",
+      "sec.receipt_before_observed_effect",
+      "sec.retry_double_execution",
+      "sec.simulated_production_evidence",
+      "sec.stale_fencing_token",
+      "sec.stale_proof_receipt",
+      "sec.uncompensated_partial_mutation",
+      "sec.unknown_prover_as_passed"
+    ],
+    "semantic_compression": [
+      "sc.expanded_beats_compressed",
+      "sc.heuristic_for_raw",
+      "sc.miss_selected_test",
+      "sc.omit_exception",
+      "sc.omit_required_side_effect",
+      "sc.omit_result_changing_fixture",
+      "sc.opaque_plugin_as_exact",
+      "sc.stale_capsule_schema"
+    ],
+    "vacuity_gui": [
+      "gui.break_dispatchability",
+      "gui.broken_recovery",
+      "gui.drop_keyboard_access",
+      "gui.omit_confirmation",
+      "gui.stale_action_policy",
+      "gui.wrong_handler",
+      "vac.formal_impossible_assumption",
+      "vac.policy_unreachable_mode",
+      "vac.test_permanent_skip",
+      "vac.zk_omitted_unit"
+    ],
+    "zk_incremental_seal": [
+      "zk.change_environment_cid",
+      "zk.change_parent_seal",
+      "zk.change_proof_forest_order",
+      "zk.change_source_root",
+      "zk.delete_test_unauthorized",
+      "zk.ignore_blocking_child",
+      "zk.proof_wrong_statement",
+      "zk.remove_receipt_leaf",
+      "zk.remove_required_unit",
+      "zk.replay_proof_across_branches",
+      "zk.simulated_for_direct",
+      "zk.use_old_key"
+    ]
+  },
+  "campaigns": [
+    "security",
+    "semantic_compression",
+    "zk_incremental_seal",
+    "distributed_storage_crash",
+    "vacuity_gui"
+  ],
+  "corpus_cid": "baguqeerafbcrt2kq6zvd7iamhwwqc6o6fdljqht4i72cfz6xu7oq6jmtv2lq",
+  "corpus_id": "adversarial-assurance-fixture-corpus-v1",
+  "evidence_id": "aae/fixture-partition@1",
+  "fixture_count": 64,
+  "fixtures": [
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "runtime.invariant",
+          "storage.ack.after_durable"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.ack_before_durable_commit"
+        ],
+        "oracle_cid": "baguqeerar5oxivqeono2c74xefuuapcq2ejb4zr2ltrlrbaib42st5j7bosa",
+        "oracle_id": "oracle.dist.ack_before_durable",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerasr5j3d674ryczxrsxzg4unf3qtssb73b2qsncav7hrk72tfb7u4a",
+        "detector_id": "storage.ack.after_durable",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Ack before durable commit must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "ack_after_durable"
+      },
+      "fixture_cid": "baguqeeravkwwb3op5xdecn5n2gmhlfwref2q6iwemm4xhypn37linqjovyrq",
+      "fixture_id": "dist.ack_before_durable",
+      "notes": null,
+      "operator": {
+        "operator_class": "storage_durability",
+        "operator_id": "st_ack_before_durable_commit",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeraagn35czhuiltq5g6dwoeo5on5woglnvkwpa4eslcylt44isnlfua",
+      "relatedness_key": "st_ack_before_durable_commit+ack_before_durable_commit",
+      "requirement_provenance": {
+        "intended_behavior": "Acknowledgements must wait for durable commit observation",
+        "notes": null,
+        "provenance_cid": "baguqeerajrce67wpljdpmg4g6vct2ckkxccm2uyfcng3t7dlikllijovmslq",
+        "requirement_cid": null,
+        "requirement_id": "req_storage_ack_after_durable",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "durability",
+      "scenario": "ack_before_durable_commit",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.ack_before_durable_commit",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "runtime.invariant",
+          "state.cas.expected_old"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.cas_ignore_expected_old"
+        ],
+        "oracle_cid": "baguqeeran4lvby4g3q4ujiobgdducyievvrpwubba4m74elp5qw5dr5knw2q",
+        "oracle_id": "oracle.dist.cas_ignore_expected_old",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeras6jshaudkss3f3iffwszrpkij5qcfye6xhudkfxmpd6qhgqg6dba",
+        "detector_id": "state.cas.expected_old",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "CAS ignoring expected-old must fail closed",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "cas_expected_old_enforced"
+      },
+      "fixture_cid": "baguqeeravqyfehlmnldkm5nkh4fteydcvxrxlth7ppcs3y7dzwuzkdy2rlua",
+      "fixture_id": "dist.cas_ignore_expected_old",
+      "notes": null,
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_cas_ignore_expected_old",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeera5m57hovh2vlvwdv73bb6bbtuohxuxd4twcvxpemevtapwf2gthta",
+      "relatedness_key": "sd_cas_ignore_expected_old+cas_ignore_expected_old",
+      "requirement_provenance": {
+        "intended_behavior": "CAS writes must enforce expected-old revision identity",
+        "notes": null,
+        "provenance_cid": "baguqeera6pwologcjpy7hukfprevrtpafp5r6d3tuokfi4aawbfwrjb3frdq",
+        "requirement_cid": null,
+        "requirement_id": "req_dist_cas_expected_old",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "distributed_transition",
+      "scenario": "cas_ignore_expected_old",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.cas_ignore_expected_old",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "crash.boundary.after_cas_before_cleanup",
+          "runtime.invariant"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.crash_after_cas_before_cleanup"
+        ],
+        "oracle_cid": "baguqeerafbt2dc2yq2lxgvbyl2xepmbqapouxkloypf5p7pkcfpj7sxq67ma",
+        "oracle_id": "oracle.dist.crash_after_cas_before_cleanup",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerah3v4ls2ktbocily5ggps4bznjvwegvyajnybxltabtmbogo37n5a",
+        "detector_id": "crash.boundary.after_cas_before_cleanup",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Injected crash after CAS before cleanup must be recoverable",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "cas_then_cleanup_recoverable"
+      },
+      "fixture_cid": "baguqeerah7l7mh6cnmnk5zgo5m2ad54osfhi4xrdnxsgrka6wlqujmduxpma",
+      "fixture_id": "dist.crash_after_cas_before_cleanup",
+      "notes": null,
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_cas_ignore_expected_old",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeera4fz2pejjzju7cqxlue6qdf4mijmt3dwgbo6hyhgf27onxsw42tla",
+      "relatedness_key": "sd_cas_ignore_expected_old+crash_after_cas_before_cleanup",
+      "requirement_provenance": {
+        "intended_behavior": "Crash after CAS before cleanup must preserve promotion and recover cleanup",
+        "notes": null,
+        "provenance_cid": "baguqeera2ncju56ds6pofrewqaanvaotvkebdk5mvim65nljy3xaz2knahlq",
+        "requirement_cid": null,
+        "requirement_id": "req_crash_cas_then_cleanup",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "distributed_transition",
+      "scenario": "crash_after_cas_before_cleanup",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.crash_after_cas_before_cleanup",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "crash.boundary.mutant_create",
+          "runtime.invariant"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.crash_after_mutant_create"
+        ],
+        "oracle_cid": "baguqeerasxpvtc226uwc72x4eg3kwbz5wlerq7r6gs3kxong5r3jkxbnj5cq",
+        "oracle_id": "oracle.dist.crash_after_mutant_create",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerag5yyllmltewje7uo2q6hmst2u5jpuuhoia6vhrk4jzk3azhpnrkq",
+        "detector_id": "crash.boundary.mutant_create",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Injected crash after mutant create must replay deterministically",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "recover_after_mutant_create"
+      },
+      "fixture_cid": "baguqeeraxgvg6jkumypnizdacfuy4igxweyx4ulfcazd26sjfmueeu2li27q",
+      "fixture_id": "dist.crash_after_mutant_create",
+      "notes": null,
+      "operator": {
+        "operator_class": "storage_durability",
+        "operator_id": "st_claim_commit_without_sync",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeera2qaodcjxlcvwmfquoqejmawtngif3c26tfrbh2xe7jgbufhrtbzq",
+      "relatedness_key": "st_claim_commit_without_sync+crash_after_mutant_create",
+      "requirement_provenance": {
+        "intended_behavior": "Crash after mutant creation must recover without partial promotion",
+        "notes": null,
+        "provenance_cid": "baguqeerat35mfdo3uiq3bwhthmr6obekxulff7cugy7ogf32zeo4ud2dksca",
+        "requirement_cid": null,
+        "requirement_id": "req_crash_recover_after_mutant_create",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "durability",
+      "scenario": "crash_after_mutant_create",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.crash_after_mutant_create",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "crash.boundary.receipt_persist",
+          "runtime.invariant"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.crash_after_receipt_persist"
+        ],
+        "oracle_cid": "baguqeerawxhmhwdqzgugdqfpvr4ctpjbvl4urdhhxhrmdutuvit3jewdyhmq",
+        "oracle_id": "oracle.dist.crash_after_receipt_persist",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerahlvkijonln7uxymbjwfwf55jxqazxhr5ffyma6qgwukayiqagq4q",
+        "detector_id": "crash.boundary.receipt_persist",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Injected crash after receipt persist must not claim ambiguous success",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "recover_after_receipt_persist"
+      },
+      "fixture_cid": "baguqeerabhk3w5cjd6j7awfd5an7rrsxjbnmawgkouyjpojl5adu5ukofi3a",
+      "fixture_id": "dist.crash_after_receipt_persist",
+      "notes": null,
+      "operator": {
+        "operator_class": "storage_durability",
+        "operator_id": "st_claim_commit_without_read_back",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeerairrqucl34k4koi7p7kp5ey6ksae63qc7ctk66rcth6tqtzdary4a",
+      "relatedness_key": "st_claim_commit_without_read_back+crash_after_receipt_persist",
+      "requirement_provenance": {
+        "intended_behavior": "Crash after receipt persistence must preserve immutable completed artifacts",
+        "notes": null,
+        "provenance_cid": "baguqeera5gz6tmcubup5rqqgb3nlwbxiizqmc6k5umadlz3wphkhjrgzswlq",
+        "requirement_cid": null,
+        "requirement_id": "req_crash_recover_after_receipt",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "crash_after_receipt_persist",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.crash_after_receipt_persist",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "crash.boundary.before_policy_cas",
+          "runtime.invariant"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.crash_before_policy_cas"
+        ],
+        "oracle_cid": "baguqeerazdvjawleywmucgoa7kuhlhfmts5te5bwqbthyvgorozqelsgybyq",
+        "oracle_id": "oracle.dist.crash_before_policy_cas",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerabu64grtrnl6x6gv7g7yq5fmmqu4cmy23obi6vt5rxaeyauouuhyq",
+        "detector_id": "crash.boundary.before_policy_cas",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Injected crash before policy CAS must leave policy unchanged",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "no_partial_promotion"
+      },
+      "fixture_cid": "baguqeerazg5ah6ezx7ehjjc6ujdcwybrf2fgly5qr5p2nrvpykinwv2hyfha",
+      "fixture_id": "dist.crash_before_policy_cas",
+      "notes": null,
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_cas_accept_stale_head",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeerajjntfpbz2sdul7sztquw64fa65dxwjn526bjqvzjr5omyjm4zuwa",
+      "relatedness_key": "sd_cas_accept_stale_head+crash_before_policy_cas",
+      "requirement_provenance": {
+        "intended_behavior": "Crash before policy CAS must not promote policy",
+        "notes": null,
+        "provenance_cid": "baguqeera54lya6527jss65jc7ku2istcqnhnrl5arsmxzkwxthcneldtvevq",
+        "requirement_cid": null,
+        "requirement_id": "req_crash_no_partial_promotion",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "distributed_transition",
+      "scenario": "crash_before_policy_cas",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.crash_before_policy_cas",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "crash.boundary.worktree_setup",
+          "runtime.invariant"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.crash_during_worktree_setup"
+        ],
+        "oracle_cid": "baguqeera7jscxpssq4qrq75ntcva3btcve5zhbgvfxztfmyo7wyz2i6qnwiq",
+        "oracle_id": "oracle.dist.crash_during_worktree_setup",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerabwkwzccwrkprnmwccqb6z47zw33ipzgb5rbr5i6odi5wwvhs7cda",
+        "detector_id": "crash.boundary.worktree_setup",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Injected crash during worktree setup must clean safely",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "recover_worktree_setup"
+      },
+      "fixture_cid": "baguqeeragn6yuxme3intnm32g7regdtbhb7y4a5cittqw65fbijl6gkxb56a",
+      "fixture_id": "dist.crash_during_worktree_setup",
+      "notes": null,
+      "operator": {
+        "operator_class": "storage_durability",
+        "operator_id": "st_claim_commit_without_sync",
+        "operator_version": "1"
+      },
+      "partition": "diagnosis",
+      "recipe_cid": "baguqeeravr6pcsojmqkauxe6h6qgjoz4mtnyme2svuvv742euxxhboclftxa",
+      "relatedness_key": "st_claim_commit_without_sync+crash_during_worktree_setup",
+      "requirement_provenance": {
+        "intended_behavior": "Crash during worktree setup must leave only owned disposable state",
+        "notes": null,
+        "provenance_cid": "baguqeeraoci4uwva6wtgpzzy6pqpamzfffidyfxkxltk6rhagjx3k53xhspa",
+        "requirement_cid": null,
+        "requirement_id": "req_crash_recover_worktree_setup",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "durability",
+      "scenario": "crash_during_worktree_setup",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.crash_during_worktree_setup",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "runtime.invariant",
+          "state.idempotency.key_present"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.drop_idempotency_key"
+        ],
+        "oracle_cid": "baguqeeralu2s47mo6wtg3p46oquja2mj3hkmuxu7c66jopwm35zz7wgesj4q",
+        "oracle_id": "oracle.dist.drop_idempotency_key",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerawbsdl4l6rgrxu566yzyz3tk6glqktufm2zi2ztvjp6lepyvdrnra",
+        "detector_id": "state.idempotency.key_present",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Dropped idempotency key must be detected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "idempotency_key_present"
+      },
+      "fixture_cid": "baguqeera6nzhvh3bt4heul3ax4fdv5qfpdrhmqlg2mckz4txnjf4zwg57anq",
+      "fixture_id": "dist.drop_idempotency_key",
+      "notes": null,
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_drop_idempotency_key",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeerappgmezbbjgyqugslb3x4c5gtk5gwq7kxmapqfch6pzjywavd7mna",
+      "relatedness_key": "sd_drop_idempotency_key+drop_idempotency_key",
+      "requirement_provenance": {
+        "intended_behavior": "Idempotency keys must be retained for safe retry",
+        "notes": null,
+        "provenance_cid": "baguqeeravimabrj2jxbu2y3l545jpvmzq3irezuo6nkulf3algqf5qciroza",
+        "requirement_cid": null,
+        "requirement_id": "req_dist_idempotency_key_present",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "durability",
+      "scenario": "drop_idempotency_key",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.drop_idempotency_key",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "runtime.invariant",
+          "state.lease.valid"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.ignore_lease_expiry"
+        ],
+        "oracle_cid": "baguqeerauojaft47xy2l7cypgm5stxl4mj5cmcjm3l2hbqqdzk6jqym4crvq",
+        "oracle_id": "oracle.dist.ignore_lease_expiry",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeraoumcq2vhlzld7iltvymahfgs4d2u3d7yr57fykk5hfgggjgln5na",
+        "detector_id": "state.lease.valid",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Ignoring lease expiry must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "lease_not_expired"
+      },
+      "fixture_cid": "baguqeeratblkkz4zkv5pdgfd32vpihqjjayo36rn4vzeqn5v6u2rlxb325xa",
+      "fixture_id": "dist.ignore_lease_expiry",
+      "notes": null,
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_ignore_lease_expiry",
+        "operator_version": "1"
+      },
+      "partition": "diagnosis",
+      "recipe_cid": "baguqeera7ewgrbf4ydgz2f5chdu3fl5lfo3twwf75evav3jkk4kmkqiwjp4q",
+      "relatedness_key": "sd_ignore_lease_expiry+ignore_lease_expiry",
+      "requirement_provenance": {
+        "intended_behavior": "Expired leases must not authorize continued exclusive mutation",
+        "notes": null,
+        "provenance_cid": "baguqeerasuixtlwdoc2uywtbhl367lp6jzm2lgbfyixlnp3vqyrawmttmwrq",
+        "requirement_cid": null,
+        "requirement_id": "req_dist_lease_valid",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "distributed_transition",
+      "scenario": "ignore_lease_expiry",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.ignore_lease_expiry",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "runtime.invariant",
+          "state.transition.legal"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.illegal_state_transition"
+        ],
+        "oracle_cid": "baguqeerapqigluwmyjje6hjl2qjqpu46eiarkvsguau5nnscyt5hr5jjzazq",
+        "oracle_id": "oracle.dist.illegal_state_transition",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeran7eutvk5mu2qpcqnlorvtf3jxiutagcdpke6xnclane3g4o2unrq",
+        "detector_id": "state.transition.legal",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Illegal state transition must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "transition_legal"
+      },
+      "fixture_cid": "baguqeeravxzlscpflhsyqsjwpfwzxz5ki4khtqal3juzizlk7ockcgydrc7q",
+      "fixture_id": "dist.illegal_state_transition",
+      "notes": null,
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_illegal_state_transition",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeera6qsax6yo6cnavipohzjvpnn43us6wbpcl4cxanb4burzy4aiwhca",
+      "relatedness_key": "sd_illegal_state_transition+illegal_state_transition",
+      "requirement_provenance": {
+        "intended_behavior": "Only declared legal state transitions may be committed",
+        "notes": null,
+        "provenance_cid": "baguqeeraln4gc7n3h7pypxf3c5fcdnzlccg6kkgpodn6njbjm2uajenjo5vq",
+        "requirement_cid": null,
+        "requirement_id": "req_dist_transition_legal",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "distributed_transition",
+      "scenario": "illegal_state_transition",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.illegal_state_transition",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "runtime.invariant",
+          "state.compensation.complete"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.incomplete_distributed_compensation"
+        ],
+        "oracle_cid": "baguqeeradufmtkzzp4c4imbcyipmbrwum6eumjos6wbzs5p6imughlaf4fla",
+        "oracle_id": "oracle.dist.incomplete_compensation",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeera6jmavrtvi72wf6epmhu6wf4g3hwwserfng6uvz3rfxek2of4v4ta",
+        "detector_id": "state.compensation.complete",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Incomplete compensation must fail closed",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "compensation_complete"
+      },
+      "fixture_cid": "baguqeerayxml2qzzibazt3pbf723k2k2wclxdaqky3knh3jpj4jw5ozgtqoa",
+      "fixture_id": "dist.incomplete_compensation",
+      "notes": null,
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_incomplete_distributed_compensation",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeragdb3reai5dhc2hbe7wc23cktgll7bjxslilcsfwifhynspstxmdq",
+      "relatedness_key": "sd_incomplete_distributed_compensation+incomplete_distributed_compensation",
+      "requirement_provenance": {
+        "intended_behavior": "Distributed partial failure requires complete compensation",
+        "notes": null,
+        "provenance_cid": "baguqeera57b636yflf2czw4ckappxutfqt4bk4frfvj7o75hznsmdoe2xfkq",
+        "requirement_cid": null,
+        "requirement_id": "req_dist_compensation_complete",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "durability",
+      "scenario": "incomplete_distributed_compensation",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.incomplete_distributed_compensation",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "runtime.invariant",
+          "state.ownership.required"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.mutate_without_ownership"
+        ],
+        "oracle_cid": "baguqeeranh7ezcmocibo22qdktvnhyynrqzggwcd5apcsbdseewps4lww3ma",
+        "oracle_id": "oracle.dist.mutate_without_ownership",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeera4iif57ljyhtk54wckf3akmectpld6pwm5zzitv7ydq42dhbdi5fa",
+        "detector_id": "state.ownership.required",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Mutation without ownership must fail closed",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "ownership_required"
+      },
+      "fixture_cid": "baguqeeradkzxxbjx7r4rcigbgr7bhcjmx5xt2bqz65ifrrooi563hqvfl7tq",
+      "fixture_id": "dist.mutate_without_ownership",
+      "notes": null,
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_mutate_without_ownership",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeraoevqwlgmonctwxwwsxdps35koyoznqkv2ixyemjbmmfkmovikaba",
+      "relatedness_key": "sd_mutate_without_ownership+mutate_without_ownership",
+      "requirement_provenance": {
+        "intended_behavior": "Mutations require current ownership authority",
+        "notes": null,
+        "provenance_cid": "baguqeerayml7zfl7h6hc6kl7a27quz7oadm2r6ngrme3e42452yhvhixenca",
+        "requirement_cid": null,
+        "requirement_id": "req_dist_owner_required",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "distributed_transition",
+      "scenario": "mutate_without_ownership",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.mutate_without_ownership",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "runtime.invariant",
+          "storage.read_back.verified"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.skip_read_back_verification"
+        ],
+        "oracle_cid": "baguqeeraa2cgqqs5ydsgft4swhqd7bpgqvsqzlm5mbpgfnpg5eg4qyzcxyvq",
+        "oracle_id": "oracle.dist.skip_read_back",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeraki7rcb4urvj23nxrdjbjvjhyqub265xcv5vc3zsosnlnft7cs64q",
+        "detector_id": "storage.read_back.verified",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Skipped read-back verification must fail closed",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "read_back_verified"
+      },
+      "fixture_cid": "baguqeeraslnfjzul5eet4uuhdpyjfj5uwt7zstvoic43bqxbypewqmfjfv2q",
+      "fixture_id": "dist.skip_read_back",
+      "notes": null,
+      "operator": {
+        "operator_class": "storage_durability",
+        "operator_id": "st_skip_read_back_verification",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeeranhshvqkuu6fkwhvukeee47og2xvligh4ypbqeuv3zo3hs2uks4sq",
+      "relatedness_key": "st_skip_read_back_verification+skip_read_back_verification",
+      "requirement_provenance": {
+        "intended_behavior": "Durable writes require read-back verification before success",
+        "notes": null,
+        "provenance_cid": "baguqeerajzjtfa4krx327zwv3odfku3rcxc2ackv3ren47vgocghzepsdxpa",
+        "requirement_cid": null,
+        "requirement_id": "req_storage_read_back_verify",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "durability",
+      "scenario": "skip_read_back_verification",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.skip_read_back_verification",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "runtime.invariant",
+          "state.fencing.current"
+        ],
+        "observation_points": [
+          "crash.injector",
+          "dist.accept_stale_fencing_token"
+        ],
+        "oracle_cid": "baguqeerax5b7xux3g4kxbetys5o5btfy6pu4b2p63axokz4qo5omc5bm3saq",
+        "oracle_id": "oracle.dist.stale_fencing",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "distributed_storage_crash",
+      "campaign_bundle": "distributed_storage_crash",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerabnjaqnj65harj2d47m67kpua7palddnkn3ihy5eqpyeef74auugq",
+        "detector_id": "state.fencing.current",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Stale fencing acceptance must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "fencing_token_current"
+      },
+      "fixture_cid": "baguqeerasr5kimruqeqlkgoqjaqkyptb3sibb7r4b5lhh7dkikv4ssxjvz4a",
+      "fixture_id": "dist.stale_fencing",
+      "notes": null,
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_accept_stale_fencing_token",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeeraenprtkf4sxm5zdzi2zr2uxqfiofsve7xh57exoxa5q5k62hob2ua",
+      "relatedness_key": "sd_accept_stale_fencing_token+accept_stale_fencing_token",
+      "requirement_provenance": {
+        "intended_behavior": "Stale fencing tokens must not authorize distributed mutations",
+        "notes": null,
+        "provenance_cid": "baguqeerarhrjw2amwz3mafy2p7vmtxhzofvmzhnfq73nwghnvasbjlf4u4na",
+        "requirement_cid": null,
+        "requirement_id": "req_dist_fencing_current",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.distributed_durability_crash",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "distributed_transition",
+      "scenario": "accept_stale_fencing_token",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.accept_stale_fencing_token",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "gui.action.dispatchable"
+        ],
+        "observation_points": [
+          "vacgui.gui_break_dispatchability"
+        ],
+        "oracle_cid": "baguqeeraxen3hka3l572kqljvqkxwqftbdvsyypaacwnjuphipkejjr5v36q",
+        "oracle_id": "oracle.gui.break_dispatchability",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "vacuity_gui",
+      "campaign_bundle": "vacuity_gui",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeera5yfzslehigsjoo35cue62pxhfamvlublkoqocmeue6pm6xoqajwq",
+        "detector_id": "gui.action.dispatchable",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Broken dispatchability must be detected; visual rendering is out of scope",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "action_dispatchable"
+      },
+      "fixture_cid": "baguqeeraphornk6nfefnnysoeydrqweyqgsdtrn4v4al25vy7p3noxpjuata",
+      "fixture_id": "gui.break_dispatchability",
+      "notes": "GUI scope excludes visual rendering mutations",
+      "operator": {
+        "operator_class": "gui_action_binding",
+        "operator_id": "gui_break_dispatchability",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeraxvykeq3r6bwipim5jq2qiw6vyay67vbkfhbqonqayszkrxworoda",
+      "relatedness_key": "gui_break_dispatchability+gui_break_dispatchability",
+      "requirement_provenance": {
+        "intended_behavior": "Canonical GUI actions must remain dispatchable when the surface is available",
+        "notes": "GUI scope excludes visual rendering mutations",
+        "provenance_cid": "baguqeeraaj3be7yo6bwv4d5ljhxuzss2zllnrudmgg3anpilnbl3dzrelorq",
+        "requirement_cid": null,
+        "requirement_id": "req_gui_action_dispatchable",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.vacuity_gui",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "high",
+      "scenario": "gui_break_dispatchability",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.gui_break_dispatchability",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "gui.action.recovery"
+        ],
+        "observation_points": [
+          "vacgui.gui_broken_recovery"
+        ],
+        "oracle_cid": "baguqeerap5ztidhqpmniltlanh5v6pr2lr3ueldkxwblc54wh453z2ilbmaq",
+        "oracle_id": "oracle.gui.broken_recovery",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "vacuity_gui",
+      "campaign_bundle": "vacuity_gui",
+      "critical": false,
+      "expected_detector": {
+        "detector_cid": "baguqeeradwcfyvcfn2x3fsxbteajstm6xt3mahyl7cocmlwjefd5xq67ezgq",
+        "detector_id": "gui.action.recovery",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Broken GUI recovery must be detected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "recovery_path_available"
+      },
+      "fixture_cid": "baguqeerakmucnmjrnvwpeqxw7ascg2hbgjuds4ed4xulnnionihvor2fvzma",
+      "fixture_id": "gui.broken_recovery",
+      "notes": "GUI scope excludes visual rendering mutations",
+      "operator": {
+        "operator_class": "gui_action_binding",
+        "operator_id": "gui_broken_recovery",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeerao6xeudvqqo7gpetma7cdjhmknw742mooeuji2bkysf7ojya5rgjq",
+      "relatedness_key": "gui_broken_recovery+gui_broken_recovery",
+      "requirement_provenance": {
+        "intended_behavior": "GUI recovery paths must remain available after failed actions",
+        "notes": "GUI scope excludes visual rendering mutations",
+        "provenance_cid": "baguqeerazh3hizysofjgrnd2qgfuqtlj6zmitpq43smznkvptwbngh3f6s6q",
+        "requirement_cid": null,
+        "requirement_id": "req_gui_recovery_path",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.vacuity_gui",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "medium",
+      "scenario": "gui_broken_recovery",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.gui_broken_recovery",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "gui.accessibility.keyboard"
+        ],
+        "observation_points": [
+          "vacgui.gui_drop_critical_keyboard_access"
+        ],
+        "oracle_cid": "baguqeeravqd47wc3bvqwmaq7jau3rvy2mn2oid344c5arzk6sti57gqtcauq",
+        "oracle_id": "oracle.gui.drop_keyboard_access",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "vacuity_gui",
+      "campaign_bundle": "vacuity_gui",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeramvhmtblfkofsnaeldwumvfzw2jyyyaxxagjsyknpjqcalptvgyoa",
+        "detector_id": "gui.accessibility.keyboard",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Dropped critical keyboard access must be detected; visual mutation excluded",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "keyboard_access_present"
+      },
+      "fixture_cid": "baguqeerahsdxxbslo4crj7w4nhr4o6mvv3535kjuehm3sotzdx4n55xblcoq",
+      "fixture_id": "gui.drop_keyboard_access",
+      "notes": "GUI scope excludes visual rendering mutations",
+      "operator": {
+        "operator_class": "gui_action_binding",
+        "operator_id": "gui_drop_critical_keyboard_access",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeerax5ghzc4kfam22vnkbupk3lhwojsnjuiwizo5zd62ivk3p2f3phpa",
+      "relatedness_key": "gui_drop_critical_keyboard_access+gui_drop_critical_keyboard_access",
+      "requirement_provenance": {
+        "intended_behavior": "Critical GUI actions must retain keyboard accessibility when surface available",
+        "notes": "GUI scope excludes visual rendering mutations",
+        "provenance_cid": "baguqeeragnpo2qotux7my2og7qjeum5zlivnuyitbeud2lwgtvjllufjbpkq",
+        "requirement_cid": null,
+        "requirement_id": "req_gui_accessibility_keyboard",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.vacuity_gui",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "high",
+      "scenario": "gui_drop_critical_keyboard_access",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.gui_drop_critical_keyboard_access",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "gui.action.confirmation"
+        ],
+        "observation_points": [
+          "vacgui.gui_omit_confirmation"
+        ],
+        "oracle_cid": "baguqeera7yeparona5divb5j3zzrrt4p6uknkwzrvqruo4ezchx6soayfl4q",
+        "oracle_id": "oracle.gui.omit_confirmation",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "vacuity_gui",
+      "campaign_bundle": "vacuity_gui",
+      "critical": false,
+      "expected_detector": {
+        "detector_cid": "baguqeera6lotampvttwekhlnv7o63ppf6wmcnsrmwkjeih7vgvoqhqq4esia",
+        "detector_id": "gui.action.confirmation",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Omitted GUI confirmation must fail closed",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "gui_confirmation_bound"
+      },
+      "fixture_cid": "baguqeeramnzexynbybm3xqhjsazm43a3tbyp7olhkizhevjt6s4j3etag3jq",
+      "fixture_id": "gui.omit_confirmation",
+      "notes": "GUI scope excludes visual rendering mutations",
+      "operator": {
+        "operator_class": "gui_action_binding",
+        "operator_id": "gui_omit_confirmation",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeerao3aekrovz7t7t2lcvs6f4tkoydcjou63m4lhjosg735774t76zqq",
+      "relatedness_key": "gui_omit_confirmation+gui_omit_confirmation",
+      "requirement_provenance": {
+        "intended_behavior": "GUI high-risk actions require confirmation binding when available",
+        "notes": "GUI scope excludes visual rendering mutations",
+        "provenance_cid": "baguqeeraa2hnorhxbwmdrx2mxmnnh5ao5iqaimffcw32gs4qus7k4rnxnbha",
+        "requirement_cid": null,
+        "requirement_id": "req_gui_confirmation_bound",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.vacuity_gui",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "authorization",
+      "scenario": "gui_omit_confirmation",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.gui_omit_confirmation",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "gui.action.policy_current"
+        ],
+        "observation_points": [
+          "vacgui.gui_stale_action_policy"
+        ],
+        "oracle_cid": "baguqeerae7w3zrgrayi2fjukgr7p2wwtllbsprguay7qedhevmvxz5vjccya",
+        "oracle_id": "oracle.gui.stale_action_policy",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "vacuity_gui",
+      "campaign_bundle": "vacuity_gui",
+      "critical": false,
+      "expected_detector": {
+        "detector_cid": "baguqeerauirqemm6rdkrbab6vgvcnqphjg4mngekdk7bd7t5bt7jmm5lwica",
+        "detector_id": "gui.action.policy_current",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Stale GUI action policy must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "action_policy_current"
+      },
+      "fixture_cid": "baguqeera62gsb44indfzl6oozvl6yhkgfzmywycvraqqkls2pqmq52xzltrq",
+      "fixture_id": "gui.stale_action_policy",
+      "notes": "GUI scope excludes visual rendering mutations",
+      "operator": {
+        "operator_class": "gui_action_binding",
+        "operator_id": "gui_stale_action_policy",
+        "operator_version": "1"
+      },
+      "partition": "diagnosis",
+      "recipe_cid": "baguqeerawfdq7kv2vqkcnapoz5x7ytlmpddzk2jyf5ykr6bwjawuhp22wayq",
+      "relatedness_key": "gui_stale_action_policy+gui_stale_action_policy",
+      "requirement_provenance": {
+        "intended_behavior": "GUI action policy bindings must be current",
+        "notes": "GUI scope excludes visual rendering mutations",
+        "provenance_cid": "baguqeera5kt6pzm53cma2e2xqrnma2abwq2nxtlzv7brs3kiztcqxid7zgna",
+        "requirement_cid": null,
+        "requirement_id": "req_gui_action_policy_current",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.vacuity_gui",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "authorization",
+      "scenario": "gui_stale_action_policy",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.gui_stale_action_policy",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "gui.action.handler_bound"
+        ],
+        "observation_points": [
+          "vacgui.gui_wrong_handler"
+        ],
+        "oracle_cid": "baguqeeram4mvdwmsml35dmvyaylhmvslqprc5l2llulloctwunl2jripyata",
+        "oracle_id": "oracle.gui.wrong_handler",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "vacuity_gui",
+      "campaign_bundle": "vacuity_gui",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerayaqklrsetsbgdmle5fzfxu5fkokce7qw53rpxohtzu3pmmoil44q",
+        "detector_id": "gui.action.handler_bound",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Wrong GUI handler binding must be detected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "handler_correctly_bound"
+      },
+      "fixture_cid": "baguqeerae6l34q5wxs6mhmugkpup2eu5txgozbmd3l6g2r7youdltydcjq4a",
+      "fixture_id": "gui.wrong_handler",
+      "notes": "GUI scope excludes visual rendering mutations",
+      "operator": {
+        "operator_class": "gui_action_binding",
+        "operator_id": "gui_wrong_handler",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeera75t5vsdqamsuumpftrbz6xwmljg56orb5ao3conccxhbndeormcq",
+      "relatedness_key": "gui_wrong_handler+gui_wrong_handler",
+      "requirement_provenance": {
+        "intended_behavior": "GUI actions must bind the correct handler identity",
+        "notes": "GUI scope excludes visual rendering mutations",
+        "provenance_cid": "baguqeeracl3ahin4izfmmk4w6k3oetqh3bim6bbpbdazz72sblb36s3v5xia",
+        "requirement_cid": null,
+        "requirement_id": "req_gui_handler_bound",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.vacuity_gui",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "high",
+      "scenario": "gui_wrong_handler",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.gui_wrong_handler",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "scg.calibration",
+          "scg.calibration.expanded_vs_compressed"
+        ],
+        "observation_points": [
+          "scg.expanded_context_succeeds_compressed_fails",
+          "scg.pack"
+        ],
+        "oracle_cid": "baguqeeraue54n6bvo7nzzs4hygiazmwcrj2as4vfjknzxgozpwy4s7fbv7ua",
+        "oracle_id": "oracle.sc.expanded_beats_compressed",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "semantic_compression",
+      "campaign_bundle": "semantic_compression",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerave3ddbecrn5hhggc2bpdkfl75wkhzjlic5qnv2d2ehyoxm2ib7pq",
+        "detector_id": "scg.calibration.expanded_vs_compressed",
+        "detector_kind": "integration_test",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Expanded-success/compressed-failure must produce calibration evidence without policy change",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "compressed_context_adequate"
+      },
+      "fixture_cid": "baguqeeralulxpwa4da65qwoecf7mgqh75qjyl34xma7mvmg2enti2osxwivq",
+      "fixture_id": "sc.expanded_beats_compressed",
+      "notes": "SCG calibration evidence only; never automatic production policy change",
+      "operator": {
+        "operator_class": "semantic_compression",
+        "operator_id": "sc_omit_dependency_edge",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeerae3qaoo233mauq25f5x5digalwcn5hcgrxh4tmojbzvgbsgjpdf7a",
+      "relatedness_key": "sc_omit_dependency_edge+expanded_context_succeeds_compressed_fails",
+      "requirement_provenance": {
+        "intended_behavior": "When compressed context fails and expanded succeeds the omission must be recorded",
+        "notes": "SCG calibration evidence only; never automatic production policy change",
+        "provenance_cid": "baguqeeraldjudbv2klvzwdqmsptgfkhdh4nhsxz3atqa4tln66rlreqwdzqa",
+        "requirement_cid": null,
+        "requirement_id": "req_sc_compressed_adequate_or_expand",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.semantic_compression",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "high",
+      "scenario": "expanded_context_succeeds_compressed_fails",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.expanded_context_succeeds_compressed_fails",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "scg.calibration",
+          "scg.confidence.exactness"
+        ],
+        "observation_points": [
+          "scg.heuristic_substituted_for_raw",
+          "scg.pack"
+        ],
+        "oracle_cid": "baguqeerahtuthjzorncpckaikusxpjd7yca2v5dhdikrttozaqygcbcbetsq",
+        "oracle_id": "oracle.sc.heuristic_for_raw",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "semantic_compression",
+      "campaign_bundle": "semantic_compression",
+      "critical": false,
+      "expected_detector": {
+        "detector_cid": "baguqeeran4zivvw47a7y5umpclkxrph2asabvmnt7kq7vzimrdj6u3unx6ga",
+        "detector_id": "scg.confidence.exactness",
+        "detector_kind": "static_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Heuristic-for-raw substitution must be detected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "heuristic_not_exact"
+      },
+      "fixture_cid": "baguqeeraszq75qcwa6sdg57dplnjqn7aolxumnqtuw5eedjxnhvwzytajxcq",
+      "fixture_id": "sc.heuristic_for_raw",
+      "notes": "SCG calibration evidence only; never automatic production policy change",
+      "operator": {
+        "operator_class": "semantic_compression",
+        "operator_id": "sc_heuristic_or_opaque_as_exact",
+        "operator_version": "1"
+      },
+      "partition": "diagnosis",
+      "recipe_cid": "baguqeerahcy2mkrptx6jx66qkfeptyerkuxlmkdybw3l6tpat5zv6cbzitkq",
+      "relatedness_key": "sc_heuristic_or_opaque_as_exact+heuristic_substituted_for_raw",
+      "requirement_provenance": {
+        "intended_behavior": "Heuristic analysis must not be labeled as exact raw-source confidence",
+        "notes": "SCG calibration evidence only; never automatic production policy change",
+        "provenance_cid": "baguqeeraj46elkhwzhiy7thwzxvsaoxsx2go5pu6cyrxqnb7sgy7ykybmzta",
+        "requirement_cid": null,
+        "requirement_id": "req_sc_raw_not_heuristic_as_exact",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.semantic_compression",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "medium",
+      "scenario": "heuristic_substituted_for_raw",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.heuristic_substituted_for_raw",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "scg.calibration",
+          "scg.selection.coverage"
+        ],
+        "observation_points": [
+          "scg.miss_relevant_selected_test",
+          "scg.pack"
+        ],
+        "oracle_cid": "baguqeeramr7l7hea7ikdewjoyafekvlluppfewzhdbe44m4akg7x3i7f7muq",
+        "oracle_id": "oracle.sc.miss_selected_test",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "semantic_compression",
+      "campaign_bundle": "semantic_compression",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeera2ztnrmap5dl4aaitaixrxbfxou6pklqp7tohm5bzaptfjeg2ddlq",
+        "detector_id": "scg.selection.coverage",
+        "detector_kind": "unit_test",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Missing relevant selected test must be detected by selection oracle",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "selected_test_covers_change"
+      },
+      "fixture_cid": "baguqeerabzd2ggstm5vo2ybytegijdvin2vfmqkastpdn6ybjqarmxtwk44a",
+      "fixture_id": "sc.miss_selected_test",
+      "notes": "SCG calibration evidence only; never automatic production policy change",
+      "operator": {
+        "operator_class": "semantic_compression",
+        "operator_id": "sc_selection_miss",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeratijalvnypb4xhdcbwpwrn3dgksofeqk5fixferzb555dv2jiufca",
+      "relatedness_key": "sc_selection_miss+miss_relevant_selected_test",
+      "requirement_provenance": {
+        "intended_behavior": "Selected tests must include tests that observe the mutated behavior",
+        "notes": "SCG calibration evidence only; never automatic production policy change",
+        "provenance_cid": "baguqeerackj5prpmz2cc2rio4rzkn2mw5v2jzefap3qr7jjgbvpfxxsqbyka",
+        "requirement_cid": null,
+        "requirement_id": "req_sc_selected_tests_cover_change",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.semantic_compression",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "high",
+      "scenario": "miss_relevant_selected_test",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.miss_relevant_selected_test",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "scg.calibration",
+          "scg.context.exception"
+        ],
+        "observation_points": [
+          "scg.omit_exception_path",
+          "scg.pack"
+        ],
+        "oracle_cid": "baguqeerauszlc6tgtlezv7ahdqs564z66tl6lu4x3xwymhgpnfgvshstsa7q",
+        "oracle_id": "oracle.sc.omit_exception",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "semantic_compression",
+      "campaign_bundle": "semantic_compression",
+      "critical": false,
+      "expected_detector": {
+        "detector_cid": "baguqeerauzakw3wbbpwlnzxcyvhvkb5bjrbfkkd3ekkpwqjie43cq4bqftdq",
+        "detector_id": "scg.context.exception",
+        "detector_kind": "static_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Omitted exception path must be detected by context completeness checks",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "exception_context_present"
+      },
+      "fixture_cid": "baguqeeraa3nnazvlidbxwheff7qsgimlqd4cx7cdkaxdlhon4xcpiifg75wa",
+      "fixture_id": "sc.omit_exception",
+      "notes": "SCG calibration evidence only; never automatic production policy change",
+      "operator": {
+        "operator_class": "semantic_compression",
+        "operator_id": "sc_omit_config_or_exception",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeerakkwlqiqy4juv5gxajtiimockbjczzjmyl4oaehmvab6s4wr24ckq",
+      "relatedness_key": "sc_omit_config_or_exception+omit_exception_path",
+      "requirement_provenance": {
+        "intended_behavior": "Compressed context must retain exception contracts that change control flow",
+        "notes": "SCG calibration evidence only; never automatic production policy change",
+        "provenance_cid": "baguqeerayev25ykauqvs24qsphe4hrhdrim5yudveo42xvmyqhwap3w34srq",
+        "requirement_cid": null,
+        "requirement_id": "req_sc_exception_in_context",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.semantic_compression",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "high",
+      "scenario": "omit_exception_path",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.omit_exception_path",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "scg.calibration",
+          "scg.context.side_effect"
+        ],
+        "observation_points": [
+          "scg.omit_required_side_effect",
+          "scg.pack"
+        ],
+        "oracle_cid": "baguqeeradtmqjhzpu5ebvkcsh6n37qrgs6jg7rahlvudbiizo4xhdqt627yq",
+        "oracle_id": "oracle.sc.omit_required_side_effect",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "semantic_compression",
+      "campaign_bundle": "semantic_compression",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeraeawqqu6ocyfrquw5tp4yykzbztes3tfsqpj67kszarp377hrmb5q",
+        "detector_id": "scg.context.side_effect",
+        "detector_kind": "static_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Omitted required side effect in compressed pack must be detected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "side_effect_context_present"
+      },
+      "fixture_cid": "baguqeeral47n6pzm454n2mbnsfcypueitirtl6xtegndgohormk7e2myirya",
+      "fixture_id": "sc.omit_required_side_effect",
+      "notes": "SCG calibration evidence only; never automatic production policy change",
+      "operator": {
+        "operator_class": "semantic_compression",
+        "operator_id": "sc_omit_fixture_or_effect_context",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeral3qsbjba5birih2tfw6jjwt3efpivaqlva2p37nsicyvo43spf2a",
+      "relatedness_key": "sc_omit_fixture_or_effect_context+omit_required_side_effect",
+      "requirement_provenance": {
+        "intended_behavior": "Compressed context must retain required side-effect obligations",
+        "notes": "SCG calibration evidence only; never automatic production policy change",
+        "provenance_cid": "baguqeerardzxaresxc2hls4wf4jifu5s5tcogcd3g4g2n2nybd7qohlo5hgq",
+        "requirement_cid": null,
+        "requirement_id": "req_sc_side_effect_in_context",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.semantic_compression",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "high",
+      "scenario": "omit_required_side_effect",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.omit_required_side_effect",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "scg.calibration",
+          "scg.context.fixture"
+        ],
+        "observation_points": [
+          "scg.omit_result_changing_fixture",
+          "scg.pack"
+        ],
+        "oracle_cid": "baguqeerakbd7gitf2sgzq5gqmok3qaa2ltrypiujjmwtit3yptpvgkc5ygda",
+        "oracle_id": "oracle.sc.omit_result_changing_fixture",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "semantic_compression",
+      "campaign_bundle": "semantic_compression",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeray6jhzzs5l32biwcuqozx2jgihguq5ln3umf6gqsjnqi2fwdgm6mq",
+        "detector_id": "scg.context.fixture",
+        "detector_kind": "static_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Omitted result-changing fixture must kill the compression candidate",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "result_changing_fixture_present"
+      },
+      "fixture_cid": "baguqeeraj6dkb2gwjje3kcwxmt7tewfh6ud2ozumljyrts6ntwmvgmxqzuaa",
+      "fixture_id": "sc.omit_result_changing_fixture",
+      "notes": "SCG calibration evidence only; never automatic production policy change",
+      "operator": {
+        "operator_class": "semantic_compression",
+        "operator_id": "sc_omit_fixture_or_effect_context",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeera44jcj3dazvhl4xf6cgkz7w2y7psludnf7xe2otpq4khpneqqsixa",
+      "relatedness_key": "sc_omit_fixture_or_effect_context+omit_result_changing_fixture",
+      "requirement_provenance": {
+        "intended_behavior": "Result-changing fixtures must remain in selected context",
+        "notes": "SCG calibration evidence only; never automatic production policy change",
+        "provenance_cid": "baguqeeraakje4cz6bcwzbe2ngxxr4otqbrln66bg4lcgxmrnnjl5gmhduysq",
+        "requirement_cid": null,
+        "requirement_id": "req_sc_fixture_in_context",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.semantic_compression",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "high",
+      "scenario": "omit_result_changing_fixture",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.omit_result_changing_fixture",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "scg.calibration",
+          "scg.confidence.opaque"
+        ],
+        "observation_points": [
+          "scg.opaque_plugin_as_exact",
+          "scg.pack"
+        ],
+        "oracle_cid": "baguqeera3tgps34schubb42c4s7tvk2vbmuq67vzt3qaajxkoj74ba423nya",
+        "oracle_id": "oracle.sc.opaque_plugin_as_exact",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "semantic_compression",
+      "campaign_bundle": "semantic_compression",
+      "critical": false,
+      "expected_detector": {
+        "detector_cid": "baguqeeralwvgsxbbolnss6nol77klijs7m4klyhqjwzfotivd2hjsqaiwu5q",
+        "detector_id": "scg.confidence.opaque",
+        "detector_kind": "static_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Opaque plugin treated as exact must fail confidence policy",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "opaque_not_exact"
+      },
+      "fixture_cid": "baguqeeraattx2btqhweq2k7in7vb7f27rtw2nouvkm6lfdrjqed7nvo24naa",
+      "fixture_id": "sc.opaque_plugin_as_exact",
+      "notes": "SCG calibration evidence only; never automatic production policy change",
+      "operator": {
+        "operator_class": "semantic_compression",
+        "operator_id": "sc_heuristic_or_opaque_as_exact",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeera3palgdhoo3vkx4vzbx2aj3y542ygczqhojc5fepz6sfvx42akena",
+      "relatedness_key": "sc_heuristic_or_opaque_as_exact+opaque_plugin_as_exact",
+      "requirement_provenance": {
+        "intended_behavior": "Opaque plugins must not be treated as exact dependency knowledge",
+        "notes": "SCG calibration evidence only; never automatic production policy change",
+        "provenance_cid": "baguqeerae2u6h6xl65wkyssi7mnr5tfzczsjkampibguykim2revlfoukwlq",
+        "requirement_cid": null,
+        "requirement_id": "req_sc_opaque_not_exact",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.semantic_compression",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "medium",
+      "scenario": "opaque_plugin_as_exact",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.opaque_plugin_as_exact",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "scg.calibration",
+          "scg.capsule.root_freshness"
+        ],
+        "observation_points": [
+          "scg.pack",
+          "scg.stale_capsule_conceals_schema"
+        ],
+        "oracle_cid": "baguqeeraimsujkueruukvg2tphoxilt6jmwuiyvgcekclgkgfaait7n2mbmq",
+        "oracle_id": "oracle.sc.stale_capsule_schema",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "semantic_compression",
+      "campaign_bundle": "semantic_compression",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerayqindfrfysbotwq2cewzzjwkmoarxuf4hbw52qwhcphp7umhckfq",
+        "detector_id": "scg.capsule.root_freshness",
+        "detector_kind": "static_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Stale capsule concealing schema mutation must fail closed",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "capsule_root_matches_source"
+      },
+      "fixture_cid": "baguqeeratolu2qdyae2wyusplpyrw74gbybzu37tkiiralu5e5mkpaon6nda",
+      "fixture_id": "sc.stale_capsule_schema",
+      "notes": "SCG calibration evidence only; never automatic production policy change",
+      "operator": {
+        "operator_class": "semantic_compression",
+        "operator_id": "sc_stale_or_wrong_root_capsule",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeerapj6mkzxxnamvbaogci6neph3pjbraboerskm27rdz5y7stb25ejq",
+      "relatedness_key": "sc_stale_or_wrong_root_capsule+stale_capsule_conceals_schema",
+      "requirement_provenance": {
+        "intended_behavior": "Stale capsules must not conceal schema mutations under a wrong root",
+        "notes": "SCG calibration evidence only; never automatic production policy change",
+        "provenance_cid": "baguqeerac2po3ryangoplhnjcgvajbsoy6r6tplc45wqdwdefq7j7romxcna",
+        "requirement_cid": null,
+        "requirement_id": "req_sc_capsule_root_fresh",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.semantic_compression",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "critical_invariant",
+      "scenario": "stale_capsule_conceals_schema",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.stale_capsule_conceals_schema",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "policy.auth.delegation_expiry",
+          "suite.full_suite"
+        ],
+        "observation_points": [
+          "auth.accepted_expired_delegation",
+          "policy.gate"
+        ],
+        "oracle_cid": "baguqeerayhawth5b3la3wovxy2dlhcavrmo42pqjjwouedm26auoocvicfya",
+        "oracle_id": "oracle.sec.accepted_expired_delegation",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_a",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerafz3l4uoox6iiq2bgemdyp42ytfnwlh6vqe3rwkkpl7l3w4hwmwjq",
+        "detector_id": "policy.auth.delegation_expiry",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Expired delegation acceptance must be rejected by policy detector",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "delegation_not_expired"
+      },
+      "fixture_cid": "baguqeerantar4whafrr5v43b53aclwdj7ixfmdujvd4i3xmdye3oggudnvwq",
+      "fixture_id": "sec.accepted_expired_delegation",
+      "notes": null,
+      "operator": {
+        "operator_class": "authorization_policy",
+        "operator_id": "auth_accept_expired_delegation",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeraekmrwepiuolv7jugc6k33hyadxoi3pucej7okl5m5zhf2wfy2vbq",
+      "relatedness_key": "auth_accept_expired_delegation+accepted_expired_delegation",
+      "requirement_provenance": {
+        "intended_behavior": "Expired delegations must not authorize actions",
+        "notes": null,
+        "provenance_cid": "baguqeerasmhfz66r4em65chzrd3jcapkize7zv66niosjl67cqjmbazartna",
+        "requirement_cid": null,
+        "requirement_id": "req_auth_delegation_expiry",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "authorization",
+      "scenario": "accepted_expired_delegation",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.accepted_expired_delegation",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "policy.auth.capability_revocation",
+          "suite.full_suite"
+        ],
+        "observation_points": [
+          "auth.accepted_revoked_capability",
+          "policy.gate"
+        ],
+        "oracle_cid": "baguqeeraw5ipkorqjijlee2aiimoseadjxdpnmmhddwtrb6yfxyfiq7qf3dq",
+        "oracle_id": "oracle.sec.accepted_revoked_capability",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_a",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeraqnxcb5wlkbbmh2a2cjgatnzbrckswfoojl2k6xdj3naht3yrdgta",
+        "detector_id": "policy.auth.capability_revocation",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Revoked capability acceptance must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "capability_not_revoked"
+      },
+      "fixture_cid": "baguqeeravbq2sgwk7q76wcsjob3zcbbpqiq3u6vts72a774ugw77igkp74zq",
+      "fixture_id": "sec.accepted_revoked_capability",
+      "notes": null,
+      "operator": {
+        "operator_class": "authorization_policy",
+        "operator_id": "auth_accept_revoked_capability",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeerapxvcy7qaiibu4jclvejpltzhvcv57cyutfeppgyircjkqdplijgq",
+      "relatedness_key": "auth_accept_revoked_capability+accepted_revoked_capability",
+      "requirement_provenance": {
+        "intended_behavior": "Revoked capabilities must not authorize actions",
+        "notes": null,
+        "provenance_cid": "baguqeerax2fbkclaplkfymm5yhnuulz7rnqcv7w4vdgt62sbe4pfr6vzemaq",
+        "requirement_cid": null,
+        "requirement_id": "req_auth_capability_revocation",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "authorization",
+      "scenario": "accepted_revoked_capability",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.accepted_revoked_capability",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "policy.auth.authentication_required",
+          "suite.full_suite"
+        ],
+        "observation_points": [
+          "auth.authentication_bypass",
+          "policy.gate"
+        ],
+        "oracle_cid": "baguqeeray4yxro4ajrozr44bsyre4xyoi6cf6g2hpnxnyr2zyeyoaoluvnia",
+        "oracle_id": "oracle.sec.authentication_bypass",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_a",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeera4dkc24p6mwio4662hscp3g7uz6zh3tevv3y4sqnsxw43nphxswqq",
+        "detector_id": "policy.auth.authentication_required",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Policy authentication gate must fail closed for unauthenticated subjects",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "authentication_required"
+      },
+      "fixture_cid": "baguqeeratb72flpsxpjttcnmfhawzwiy6wkvu7bdrhays5hzxrezjmezlmkq",
+      "fixture_id": "sec.authentication_bypass",
+      "notes": null,
+      "operator": {
+        "operator_class": "authorization_policy",
+        "operator_id": "auth_bypass_authentication",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeerap55x3wxd7bgpcfaseepxb3rqurxjo4gkynnmat2vs6smptsoh6oa",
+      "relatedness_key": "auth_bypass_authentication+authentication_bypass",
+      "requirement_provenance": {
+        "intended_behavior": "Unauthenticated callers must be rejected before any authorization decision",
+        "notes": null,
+        "provenance_cid": "baguqeeraqh2acp6plvmrmvjcq5x7gjv7nyoxndqkpc6gxdyiunjbpvia4pwa",
+        "requirement_cid": null,
+        "requirement_id": "req_auth_authentication_required",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "critical_security",
+      "scenario": "authentication_bypass",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.authentication_bypass",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "policy.auth.tenant_binding",
+          "suite.full_suite"
+        ],
+        "observation_points": [
+          "auth.caller_selected_tenant",
+          "policy.gate"
+        ],
+        "oracle_cid": "baguqeerapd3od5xn5gbwzeqrbkafqc7i3p5zxmubt5uhsxfbtfd2h46y2c3q",
+        "oracle_id": "oracle.sec.caller_selected_tenant",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_a",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeracdejjpkfb6w5vx5a5yhcbkl3xycw7do7apmyyhn62ssxwvqevz5q",
+        "detector_id": "policy.auth.tenant_binding",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Caller-selected tenant without membership binding must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "tenant_membership_bound"
+      },
+      "fixture_cid": "baguqeera3biz3ecrklheamwwkidrrbunymvv2dd2aplj6bxin6hrd4344smq",
+      "fixture_id": "sec.caller_selected_tenant",
+      "notes": null,
+      "operator": {
+        "operator_class": "authorization_policy",
+        "operator_id": "auth_caller_selected_tenant",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeratdss2uw65rkm2ci2ko4pzhcq7l5wysuiqbpig2b3dlyacoj6txja",
+      "relatedness_key": "auth_caller_selected_tenant+caller_selected_tenant",
+      "requirement_provenance": {
+        "intended_behavior": "Tenant membership must bind to authenticated subject not caller-supplied claims",
+        "notes": null,
+        "provenance_cid": "baguqeerao6i4l2miwygqhgj2qvmknu67r7wplry2mgsc7t5ndz3nauzm3g3q",
+        "requirement_cid": null,
+        "requirement_id": "req_auth_tenant_binding",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "critical_security",
+      "scenario": "caller_selected_tenant",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.caller_selected_tenant",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "policy.auth.confirmation_action_binding",
+          "suite.full_suite"
+        ],
+        "observation_points": [
+          "auth.cross_action_confirmation_replay",
+          "policy.gate"
+        ],
+        "oracle_cid": "baguqeeralxsggina7bxgr7wedgfjqkyqtx735ew5ycmjp3ey6p5fzohpxnfa",
+        "oracle_id": "oracle.sec.cross_action_confirmation_replay",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_a",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerafg4dyets4wl7tpueiqj2xlx3c2xsxj5szcszrnuraluxajx526uq",
+        "detector_id": "policy.auth.confirmation_action_binding",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Cross-action confirmation replay must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "confirmation_action_bound"
+      },
+      "fixture_cid": "baguqeeradppnhp7shmbivw2e7sjjhg65qwhh7iquwww2kadujcscschgt3ia",
+      "fixture_id": "sec.cross_action_confirmation_replay",
+      "notes": null,
+      "operator": {
+        "operator_class": "authorization_policy",
+        "operator_id": "auth_cross_action_confirmation_replay",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeraolni3vz2kkeoxq5v42yacyp5g5ch57bdzvbu46n4ekaxs6oniomq",
+      "relatedness_key": "auth_cross_action_confirmation_replay+cross_action_confirmation_replay",
+      "requirement_provenance": {
+        "intended_behavior": "Confirmation tokens must bind to a single action and reject replay across actions",
+        "notes": null,
+        "provenance_cid": "baguqeerarqwtrz6u67srhwqpoy25uqhnnpilcztmbqxpzirnvv6zwogxfr4a",
+        "requirement_cid": null,
+        "requirement_id": "req_auth_confirmation_action_binding",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "critical_security",
+      "scenario": "cross_action_confirmation_replay",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.cross_action_confirmation_replay",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "receipt.signature.verify",
+          "seal.incremental"
+        ],
+        "observation_points": [
+          "evidence.gate",
+          "sec.invalid_signature"
+        ],
+        "oracle_cid": "baguqeeramdgssd5v5lnmeqv2jpjedzlohb3hievr6d6utg7vqstx3fzw3mbq",
+        "oracle_id": "oracle.sec.invalid_signature",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_b",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeera25m3x6b5iggaheezff2zpg242ivscvmevethdp52ohvvfqokximq",
+        "detector_id": "receipt.signature.verify",
+        "detector_kind": "formal_obligation",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Invalid signature acceptance must be rejected by verifier",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "signature_valid"
+      },
+      "fixture_cid": "baguqeerafmdveyb3i4zutflgcrvvp5vv7re3yfydtgas4prp33xgxr44b62q",
+      "fixture_id": "sec.invalid_signature",
+      "notes": null,
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "proof_unchecked_signature",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeerao7ygelkp2anlfuzafv7jo76nta65w6msipdzc4ffxnmnaa6o2aeq",
+      "relatedness_key": "proof_unchecked_signature+invalid_signature",
+      "requirement_provenance": {
+        "intended_behavior": "Invalid signatures must fail verification before any durable write",
+        "notes": null,
+        "provenance_cid": "baguqeeras4e2akhaeaa2ayzhkmvg5lfv66amr6i23uaff5ph5utkfjbqphkq",
+        "requirement_cid": null,
+        "requirement_id": "req_receipt_signature_valid",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "invalid_signature",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.invalid_signature",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "policy.auth.attenuation",
+          "suite.full_suite"
+        ],
+        "observation_points": [
+          "auth.missing_attenuation",
+          "policy.gate"
+        ],
+        "oracle_cid": "baguqeerasq3pknc2t3x3edkx3iwfa2f5yxnyxmmnagliq5pgbm2autq7a7ya",
+        "oracle_id": "oracle.sec.missing_attenuation",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_a",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerav6rycummtj6pgmyhxtijxal6kgt4lld34lvfvc3wh6mlmzrbp57a",
+        "detector_id": "policy.auth.attenuation",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Missing attenuation must fail capability acceptance",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "capability_attenuation_preserved"
+      },
+      "fixture_cid": "baguqeeraqjopr3ekrg3uz7tx5k6zz6egs4se5jbtwv6omszyhohs5yb3lz3q",
+      "fixture_id": "sec.missing_attenuation",
+      "notes": null,
+      "operator": {
+        "operator_class": "authorization_policy",
+        "operator_id": "auth_missing_attenuation",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeerayyrhuyl6k73fs6jtzy72on7z5pydf7fy6jjefgaucm7eduwhfhia",
+      "relatedness_key": "auth_missing_attenuation+missing_attenuation",
+      "requirement_provenance": {
+        "intended_behavior": "Delegated capabilities must retain attenuation constraints",
+        "notes": null,
+        "provenance_cid": "baguqeeraqyt4jq63bms3au6waw3qtk4ceq2bawglalf6tcjymliq2iejdg4a",
+        "requirement_cid": null,
+        "requirement_id": "req_auth_capability_attenuation",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "authorization",
+      "scenario": "missing_attenuation",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.missing_attenuation",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "policy.auth.confirmation_required",
+          "suite.full_suite"
+        ],
+        "observation_points": [
+          "auth.missing_confirmation",
+          "policy.gate"
+        ],
+        "oracle_cid": "baguqeeraigafyabuzmh43igg52jkj74qfaenmmfgyt5tb5s64bwvyxowuz6a",
+        "oracle_id": "oracle.sec.missing_confirmation",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_a",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeralqf2r5mytwymge7qecaeqwqjkn4o3zq5b2dn7y3ezbcrba5qrywa",
+        "detector_id": "policy.auth.confirmation_required",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Missing confirmation must block the action",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "confirmation_present"
+      },
+      "fixture_cid": "baguqeerar7xbnol3i567yyjfk5epwpwbwyfj2u5wi5nc3qy53ed2bhy5h42q",
+      "fixture_id": "sec.missing_confirmation",
+      "notes": null,
+      "operator": {
+        "operator_class": "authorization_policy",
+        "operator_id": "auth_missing_confirmation",
+        "operator_version": "1"
+      },
+      "partition": "diagnosis",
+      "recipe_cid": "baguqeeracxpfrgje4w7qjjqiu454urfpaoojbprwu3ouio35zbd4oul4qcga",
+      "relatedness_key": "auth_missing_confirmation+missing_confirmation",
+      "requirement_provenance": {
+        "intended_behavior": "High-risk actions require explicit confirmation before execution",
+        "notes": null,
+        "provenance_cid": "baguqeeraplnyu6dhoeiti7piy2zjc6ukqm7dovl3oipfo4cfsxn2tus2xbcq",
+        "requirement_cid": null,
+        "requirement_id": "req_auth_confirmation_required",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "authorization",
+      "scenario": "missing_confirmation",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.missing_confirmation",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "proof.unit.completeness",
+          "seal.incremental"
+        ],
+        "observation_points": [
+          "evidence.gate",
+          "sec.omitted_proof_unit"
+        ],
+        "oracle_cid": "baguqeeraa3v547rqhsr7a5rv5aavwl7hyowrcbgpsf62uh2frov7r344urba",
+        "oracle_id": "oracle.sec.omitted_proof_unit",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_b",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeramlxyxp5ixvobfj3fo77krpw5mvgtxgmabqral6jx7546qe3udqca",
+        "detector_id": "proof.unit.completeness",
+        "detector_kind": "formal_obligation",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Omitted required proof unit must fail seal admission",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "proof_unit_present"
+      },
+      "fixture_cid": "baguqeera2brswg57ztw3sbsircsjsguquwqktr3tkzorced7o3rt25sslsdq",
+      "fixture_id": "sec.omitted_proof_unit",
+      "notes": null,
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "proof_omit_unit",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeerawoqh4siuh5ggdnzzlekfomu5ncmlrx6lzj7tzbxvyircmz6c4cfa",
+      "relatedness_key": "proof_omit_unit+omitted_proof_unit",
+      "requirement_provenance": {
+        "intended_behavior": "Required proof units must be present for seal eligibility",
+        "notes": null,
+        "provenance_cid": "baguqeerap77yachhjeuu7zaaqfpseoouqim5k3iygu3fqz5ttx4y7agtlgga",
+        "requirement_cid": null,
+        "requirement_id": "req_proof_unit_complete",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "omitted_proof_unit",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.omitted_proof_unit",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "policy.auth.payment_not_authority",
+          "suite.full_suite"
+        ],
+        "observation_points": [
+          "auth.payment_as_authority",
+          "policy.gate"
+        ],
+        "oracle_cid": "baguqeeraywlwaqdpvd4ebwqbfkd55tharndss3tl5mjhbcha6iw6tfbsnzrq",
+        "oracle_id": "oracle.sec.payment_as_authority",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_a",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeera72hazncvfri2wvp7ngej5ptheqnl5gk6jstowbrp4nez6ow2m3iq",
+        "detector_id": "policy.auth.payment_not_authority",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Treating payment as authority must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "payment_not_authorization"
+      },
+      "fixture_cid": "baguqeeraknmmqb4mccak5nrwcgqsznqwt3aasgiafbnwubvj5h4zo2wtkehq",
+      "fixture_id": "sec.payment_as_authority",
+      "notes": null,
+      "operator": {
+        "operator_class": "authorization_policy",
+        "operator_id": "auth_payment_as_authority",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeerai46latas56yi6f55w7xjcm2oogrilc4k32nxxwjeoh5l6yj7hyoq",
+      "relatedness_key": "auth_payment_as_authority+payment_as_authority",
+      "requirement_provenance": {
+        "intended_behavior": "Payment success must not substitute for authorization authority",
+        "notes": null,
+        "provenance_cid": "baguqeera5zsnznf6zannjn3sfqtzr3qdznizg3ory4sg5gwlgljfe7okrmwq",
+        "requirement_cid": null,
+        "requirement_id": "req_auth_payment_not_authority",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "financial_legal",
+      "scenario": "payment_as_authority",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.payment_as_authority",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "policy.auth.default_deny",
+          "suite.full_suite"
+        ],
+        "observation_points": [
+          "auth.policy_default_to_allow",
+          "policy.gate"
+        ],
+        "oracle_cid": "baguqeeraqc4kmxfy52odkzbd7vwxgnbfazkqtb6gpj3aufz6af4vxuzns75a",
+        "oracle_id": "oracle.sec.policy_default_to_allow",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_a",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeragnmliu25m76bg5hcqftmsearer2e6hyugisxy7fz54rd3vvj4yua",
+        "detector_id": "policy.auth.default_deny",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Default-to-allow on missing policy must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "default_deny"
+      },
+      "fixture_cid": "baguqeeraysdmrol4s356tsejtxnexu5wa6tultxhu26ntrj3wohyrczyk5cq",
+      "fixture_id": "sec.policy_default_to_allow",
+      "notes": null,
+      "operator": {
+        "operator_class": "authorization_policy",
+        "operator_id": "auth_policy_default_to_allow",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeraihi2w6cgjtvejx2fbnigqdlrrbpb6lqe7lzlaza2r2bzoo3ibbpa",
+      "relatedness_key": "auth_policy_default_to_allow+policy_default_to_allow",
+      "requirement_provenance": {
+        "intended_behavior": "Missing policy entries must default to deny not allow",
+        "notes": null,
+        "provenance_cid": "baguqeeradipwrd6apbdszoxtmbvcpmm3feoabkn3quk66jauxv6q6nj4u5va",
+        "requirement_cid": null,
+        "requirement_id": "req_auth_default_deny",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "critical_security",
+      "scenario": "policy_default_to_allow",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.policy_default_to_allow",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "seal.incremental",
+          "storage.durability.provider_ack"
+        ],
+        "observation_points": [
+          "evidence.gate",
+          "sec.provider_ack_as_verified_storage"
+        ],
+        "oracle_cid": "baguqeeradmgyub66eqmbcmdtdk6hmjv7gh6sstcz4hm77loys3tath6aaclq",
+        "oracle_id": "oracle.sec.provider_ack_as_storage",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_b",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeraw2fangb5pdjudehkfesqm6g4axktb2yzb742576xzopweuveqrda",
+        "detector_id": "storage.durability.provider_ack",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Treating provider ack as verified storage must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "provider_ack_not_durable"
+      },
+      "fixture_cid": "baguqeera3k6kgwfobdrnwbv6tyxndi5d5ok4ulh2vkzyypwtle6rxsugmnxa",
+      "fixture_id": "sec.provider_ack_as_storage",
+      "notes": null,
+      "operator": {
+        "operator_class": "storage_durability",
+        "operator_id": "st_trust_provider_ack_without_verify",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeera4grtiln3xczai6xb67xb6np2wpnjzffv7rixg7amwvusn7v6ktdq",
+      "relatedness_key": "st_trust_provider_ack_without_verify+provider_ack_as_verified_storage",
+      "requirement_provenance": {
+        "intended_behavior": "Provider acknowledgement alone is not verified durable storage",
+        "notes": null,
+        "provenance_cid": "baguqeeraeiozegaqxhuhwirwj72zgglre2sbj4l7orxlgbmpzquw5rjfolhq",
+        "requirement_cid": null,
+        "requirement_id": "req_storage_provider_ack_not_durable",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "durability",
+      "scenario": "provider_ack_as_verified_storage",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.provider_ack_as_verified_storage",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "content.cid.authentic",
+          "seal.incremental"
+        ],
+        "observation_points": [
+          "evidence.gate",
+          "sec.pseudo_cid"
+        ],
+        "oracle_cid": "baguqeerauabgrf2qmll444brooccxkfxnfkkb3mxrl6rtokmbvjgy2zk3sva",
+        "oracle_id": "oracle.sec.pseudo_cid",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_b",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeramrz6be2npzylqslcspd2onp2ozxhiavyua27ghaqwtaz7ajfzjsq",
+        "detector_id": "content.cid.authentic",
+        "detector_kind": "static_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Pseudo-CID as identity must fail closed",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "cid_content_addressed"
+      },
+      "fixture_cid": "baguqeera4gnew4dsio2a2bnztciv34zruzc7vjq6dwvfxzftsclyjinbm6ha",
+      "fixture_id": "sec.pseudo_cid",
+      "notes": null,
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "proof_stale_receipt",
+        "operator_version": "1"
+      },
+      "partition": "diagnosis",
+      "recipe_cid": "baguqeerasgnucyjedmhqk32nvxkpth4edu5enw5k67wskp4tlgbssn5ugnoq",
+      "relatedness_key": "proof_stale_receipt+pseudo_cid",
+      "requirement_provenance": {
+        "intended_behavior": "Pseudo-CIDs that are not content-addressed must not authenticate artifacts",
+        "notes": null,
+        "provenance_cid": "baguqeerajjm7litv637nmezeddri7v35da5mffhyxhzov2m77ub6c7vs24ua",
+        "requirement_cid": null,
+        "requirement_id": "req_content_address_authentic",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "pseudo_cid",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.pseudo_cid",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "receipt.effect.order",
+          "seal.incremental"
+        ],
+        "observation_points": [
+          "evidence.gate",
+          "sec.receipt_before_observed_effect"
+        ],
+        "oracle_cid": "baguqeeratstnamn3xcdevoddmobrlfnpjql6xnncxx2c73xyhyj62icxy4xq",
+        "oracle_id": "oracle.sec.receipt_before_observed_effect",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_b",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerajxk3whleaw7bmxcaf7yzgjwbdi3iqorr77gdoyqugmqge5qqnqdq",
+        "detector_id": "receipt.effect.order",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Early receipt before observed effect must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "receipt_after_effect"
+      },
+      "fixture_cid": "baguqeeravu7vfs44hgdcrrbd3pbtl5xbcqeqiwxsrjh5i5jg7g4ztiqx34pa",
+      "fixture_id": "sec.receipt_before_observed_effect",
+      "notes": null,
+      "operator": {
+        "operator_class": "side_effect",
+        "operator_id": "se_ack_before_effect_complete",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeragmczjqm3qcyn5n2cqzya5md7yf52fmzxxftj5fvfj2eo66ov7sma",
+      "relatedness_key": "se_ack_before_effect_complete+receipt_before_observed_effect",
+      "requirement_provenance": {
+        "intended_behavior": "Receipts must not be issued before the observed effect completes",
+        "notes": null,
+        "provenance_cid": "baguqeeranr6yb5iafic72ocnxw7ir7uyhcu2hlkjqiieboprhxcw3avqznqq",
+        "requirement_cid": null,
+        "requirement_id": "req_receipt_after_observed_effect",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "receipt_before_observed_effect",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.receipt_before_observed_effect",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "runtime.retry.idempotency",
+          "seal.incremental"
+        ],
+        "observation_points": [
+          "evidence.gate",
+          "sec.retry_double_execution"
+        ],
+        "oracle_cid": "baguqeerap6szppxxwvdobzhywqam5egflfynraxyut36uuf7rmyfwupyxsbq",
+        "oracle_id": "oracle.sec.retry_double_execution",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_b",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeera3dedpjdqnaqcxum2g4nt6tolj2bj7zlzmkznfainvus3ubhovjyq",
+        "detector_id": "runtime.retry.idempotency",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Double execution on retry must be killed by idempotency detector",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "retry_idempotent"
+      },
+      "fixture_cid": "baguqeeravzmanbbjhh4okhjdlcb2n36irjybak7ydxh6khl5nyq363dwh7ua",
+      "fixture_id": "sec.retry_double_execution",
+      "notes": null,
+      "operator": {
+        "operator_class": "error_retry",
+        "operator_id": "se_retry_without_dedup",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeraamk645hj4wdtezqxgdcjkq3ubmjn2ozg67ndxufsnywa3qabbb3q",
+      "relatedness_key": "se_retry_without_dedup+retry_double_execution",
+      "requirement_provenance": {
+        "intended_behavior": "Retries must not double-execute non-idempotent effects",
+        "notes": null,
+        "provenance_cid": "baguqeerablzh7vw6sm723e5nhjxmpkkprfbvsnjpg56agt5n25hejzrhosna",
+        "requirement_cid": null,
+        "requirement_id": "req_retry_idempotent_execution",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "durability",
+      "scenario": "retry_double_execution",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.retry_double_execution",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "evidence.mode.declared",
+          "seal.incremental"
+        ],
+        "observation_points": [
+          "evidence.gate",
+          "sec.simulated_production_evidence"
+        ],
+        "oracle_cid": "baguqeera6nxzsspikzhcde5rj7wfwh7nzndz4sgzmwdrei645j5abi6u2ppa",
+        "oracle_id": "oracle.sec.simulated_production_evidence",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_b",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerafwvpphqjz7t7c54g4gjhhyg3yd3k7npec7bjjxwegonliyiwqthq",
+        "detector_id": "evidence.mode.declared",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Simulated production evidence must fail closed for promotion",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "simulation_not_production"
+      },
+      "fixture_cid": "baguqeerafa3priob5wvei2ptofrjn34qcrxjlkmpky6wf6u6veborcmbhmmq",
+      "fixture_id": "sec.simulated_production_evidence",
+      "notes": null,
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "proof_unreachable_modeled_state",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeratm3su3tovmxynd6ftp3gsmoxejaphf7qchp6ucw7expfhwdrnrcq",
+      "relatedness_key": "proof_unreachable_modeled_state+simulated_production_evidence",
+      "requirement_provenance": {
+        "intended_behavior": "Simulated evidence must not be presented as production live evidence",
+        "notes": null,
+        "provenance_cid": "baguqeeraf54twijrj566dfyj3zmf4tpvykywzhrbu56iuwgrwpgnunghvqnq",
+        "requirement_cid": null,
+        "requirement_id": "req_evidence_mode_live_or_declared",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "simulated_production_evidence",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.simulated_production_evidence",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "policy.auth.fencing_token",
+          "suite.full_suite"
+        ],
+        "observation_points": [
+          "auth.stale_fencing_token",
+          "policy.gate"
+        ],
+        "oracle_cid": "baguqeera7ib7nevagxto7paerk42pchuqmdzkirmva7mr5aibjnn2nspvw2a",
+        "oracle_id": "oracle.sec.stale_fencing_token",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_a",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeera2fapp2sopbxdvfimft3mfhbq37qlj7eufvpvirdgqc2ovvs7xqya",
+        "detector_id": "policy.auth.fencing_token",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Stale fencing token [REDACTED] must fail closed",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "fencing_token_current"
+      },
+      "fixture_cid": "baguqeeran7utrrq6cnsssglkkhauledaxtnpiqeyguf2u4p3hmdhof5xl24a",
+      "fixture_id": "sec.stale_fencing_token",
+      "notes": null,
+      "operator": {
+        "operator_class": "authorization_policy",
+        "operator_id": "auth_stale_policy_or_fencing_token",
+        "operator_version": "1"
+      },
+      "partition": "diagnosis",
+      "recipe_cid": "baguqeerauvhu43qjfpimy75e67i7acaxd6h6evl6g73bls67lmc56pmvp4cq",
+      "relatedness_key": "auth_stale_policy_or_fencing_token+stale_fencing_token",
+      "requirement_provenance": {
+        "intended_behavior": "Stale fencing tokens must not authorize state mutation",
+        "notes": null,
+        "provenance_cid": "baguqeeradrwp6k2r4a6zllj22s5gjo7sg6oq3evsw7wymbidg5nznjlpz7wa",
+        "requirement_cid": null,
+        "requirement_id": "req_auth_fencing_token_current",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "distributed_transition",
+      "scenario": "stale_fencing_token",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.stale_fencing_token",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "proof.receipt.freshness",
+          "seal.incremental"
+        ],
+        "observation_points": [
+          "evidence.gate",
+          "sec.stale_proof_receipt"
+        ],
+        "oracle_cid": "baguqeerauicheu7hk4fvqrmtpvigkpbixm7shn7ka377kebhgct3zmgy4ruq",
+        "oracle_id": "oracle.sec.stale_proof_receipt",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_b",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerakxcaiwfyvo6i6fkaw7z74rk6vr2e3kervz4rfmmuecmjymtdenta",
+        "detector_id": "proof.receipt.freshness",
+        "detector_kind": "formal_obligation",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Stale proof receipt must be rejected before seal/promotion",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "proof_receipt_fresh"
+      },
+      "fixture_cid": "baguqeeraqveikm2f2zkmk57bvgzi4bks4tk56bks36gcnks4zcfhbry6ptra",
+      "fixture_id": "sec.stale_proof_receipt",
+      "notes": null,
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "proof_stale_receipt",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeera5ydhholgytyew6lhzuubqjd56lw2zlmoq7qm5o5mj2uso5cuttja",
+      "relatedness_key": "proof_stale_receipt+stale_proof_receipt",
+      "requirement_provenance": {
+        "intended_behavior": "Stale proof receipts must not qualify current repository state",
+        "notes": null,
+        "provenance_cid": "baguqeeraz76md3rviqwmvkvxuq56o3w3txptb4xhvczxm34mptsqajd6y2jq",
+        "requirement_cid": null,
+        "requirement_id": "req_proof_receipt_fresh",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "stale_proof_receipt",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.stale_proof_receipt",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "runtime.compensation.required",
+          "seal.incremental"
+        ],
+        "observation_points": [
+          "evidence.gate",
+          "sec.uncompensated_partial_mutation"
+        ],
+        "oracle_cid": "baguqeeraup54fjtlmf5s2coabwkeirkr46cdrdh4ynbjnv2mytuoorkvmuhq",
+        "oracle_id": "oracle.sec.uncompensated_partial_mutation",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_b",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerai2sswfroml22jiujysdpaxwj6xvgisthgujg2jgse5i4bqz6qioa",
+        "detector_id": "runtime.compensation.required",
+        "detector_kind": "runtime_invariant",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Uncompensated partial mutation must fail closed",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "compensation_on_partial_failure"
+      },
+      "fixture_cid": "baguqeeraftd4skvq7egnmr6qpafly7huzaozn4aimr5sqg52hxcfem26kkdq",
+      "fixture_id": "sec.uncompensated_partial_mutation",
+      "notes": null,
+      "operator": {
+        "operator_class": "side_effect",
+        "operator_id": "se_skip_compensation_on_partial_failure",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeradw3pnn7gl7temzlfksyzqgogrykw62azj75fg3wwd77bjrhmj4da",
+      "relatedness_key": "se_skip_compensation_on_partial_failure+uncompensated_partial_mutation",
+      "requirement_provenance": {
+        "intended_behavior": "Partial mutations must run compensation before success is claimed",
+        "notes": null,
+        "provenance_cid": "baguqeeraxk2sbdyrswhnhaedtuf3355st3laiilm7skdenlk2i2ydg6nfmfq",
+        "requirement_cid": null,
+        "requirement_id": "req_partial_failure_compensation",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "durability",
+      "scenario": "uncompensated_partial_mutation",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.uncompensated_partial_mutation",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "proof.prover.known",
+          "seal.incremental"
+        ],
+        "observation_points": [
+          "evidence.gate",
+          "sec.unknown_prover_as_passed"
+        ],
+        "oracle_cid": "baguqeera25kpkzsm7o4gxit2glddztyauj4nxnur4gnm46lr4miwbqtjxdnq",
+        "oracle_id": "oracle.sec.unknown_prover_as_passed",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "security",
+      "campaign_bundle": "security_b",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeram5pd2v2mldr5fgmz2xeuei36sjaagkxjugkwuc3xltbswwvto6ya",
+        "detector_id": "proof.prover.known",
+        "detector_kind": "formal_obligation",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Unknown prover as passed must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "prover_identity_known"
+      },
+      "fixture_cid": "baguqeeraw3dp3uz6tlnmvb53jurbtatgaaby72divel5qndnfmm5wst7co7q",
+      "fixture_id": "sec.unknown_prover_as_passed",
+      "notes": null,
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "proof_vacuous_impossible_assumption",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeeraay4zat6jlofl2pnyy2eaapeymqcruffoogiiuyp3qn74dxywmfvq",
+      "relatedness_key": "proof_vacuous_impossible_assumption+unknown_prover_as_passed",
+      "requirement_provenance": {
+        "intended_behavior": "Unknown provers must not be treated as passed verification",
+        "notes": null,
+        "provenance_cid": "baguqeera76qtqg4ulzljhkdgpbblkphgnwvb5acma25wlnj7shdwl6pdxema",
+        "requirement_cid": null,
+        "requirement_id": "req_prover_known_and_verified",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.security",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "unknown_prover_as_passed",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.unknown_prover_as_passed",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "vacuity.formal.residual"
+        ],
+        "observation_points": [
+          "vacgui.formal_vacuity_impossible_assumption"
+        ],
+        "oracle_cid": "baguqeerapi7lyyfd424q2ztenpe2wm6zxnaxbgd6s4vuoooint2cddaiyupq",
+        "oracle_id": "oracle.vac.formal_impossible_assumption",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "vacuity_gui",
+      "campaign_bundle": "vacuity_gui",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerautvl4ksqvtcctbsea4cxopj3tdj4n4xg33ah7qhokuchdt2vqzdq",
+        "detector_id": "vacuity.formal.residual",
+        "detector_kind": "formal_obligation",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Vacuous impossible assumption must report residual proof scope",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "formal_residual_stated"
+      },
+      "fixture_cid": "baguqeerakslt2jou75gapybk5ljet3tqxy6hsz2x27s235a4mk2vqxeayl5q",
+      "fixture_id": "vac.formal_impossible_assumption",
+      "notes": "GUI scope excludes visual rendering mutations",
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "proof_vacuous_impossible_assumption",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeraxysdwy57yjublewuogxg6evdtkcmw2uw6qmcml4yotiiahwal5pq",
+      "relatedness_key": "proof_vacuous_impossible_assumption+formal_vacuity_impossible_assumption",
+      "requirement_provenance": {
+        "intended_behavior": "Formal vacuity findings must state residual unproven obligations",
+        "notes": "GUI scope excludes visual rendering mutations",
+        "provenance_cid": "baguqeerazajj245jy4j4xhamhpbes7d7b73m7jldtuwjzfw7wip2vvtouw4q",
+        "requirement_cid": null,
+        "requirement_id": "req_vacuity_formal_residual",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.vacuity_gui",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "formal_vacuity_impossible_assumption",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.formal_vacuity_impossible_assumption",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "vacuity.policy.residual"
+        ],
+        "observation_points": [
+          "vacgui.policy_vacuity_unreachable_mode"
+        ],
+        "oracle_cid": "baguqeeraodxjflh5tds56f7iotdfjzhw4istk7ughvsh7c4z7mlqfw5ny2fa",
+        "oracle_id": "oracle.vac.policy_unreachable_mode",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "vacuity_gui",
+      "campaign_bundle": "vacuity_gui",
+      "critical": false,
+      "expected_detector": {
+        "detector_cid": "baguqeeraudkk2plegr6sf6y37wqfet4vlc72zzqcee567ckangtnzdrus52q",
+        "detector_id": "vacuity.policy.residual",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Unreachable policy mode must surface residual coverage",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "policy_residual_stated"
+      },
+      "fixture_cid": "baguqeera5zcuejkiio7ew56jnheimncwkbzqnmcz3z4quxc7xm7fiwwtb43a",
+      "fixture_id": "vac.policy_unreachable_mode",
+      "notes": "GUI scope excludes visual rendering mutations",
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "proof_unreachable_modeled_state",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeera7yh6s3bowntdthq6xwmwdibsaqqw3isumsgvnhp6wqsy3anhl74a",
+      "relatedness_key": "proof_unreachable_modeled_state+policy_vacuity_unreachable_mode",
+      "requirement_provenance": {
+        "intended_behavior": "Policy vacuity must state which modes remain unexercised",
+        "notes": "GUI scope excludes visual rendering mutations",
+        "provenance_cid": "baguqeeracbnw6lwgfaqbichlvkrykrvtbzzj2k44ckrglupc6nhyfhfmatpq",
+        "requirement_cid": null,
+        "requirement_id": "req_vacuity_policy_residual",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.vacuity_gui",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "authorization",
+      "scenario": "policy_vacuity_unreachable_mode",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.policy_vacuity_unreachable_mode",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "vacuity.test.residual"
+        ],
+        "observation_points": [
+          "vacgui.test_vacuity_permanent_skip"
+        ],
+        "oracle_cid": "baguqeeralh2b3r4y3ddhqjqr322tm3ezu45xjju5lms4eprbkkozrnxjnrla",
+        "oracle_id": "oracle.vac.test_permanent_skip",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "vacuity_gui",
+      "campaign_bundle": "vacuity_gui",
+      "critical": false,
+      "expected_detector": {
+        "detector_cid": "baguqeerapvuqoprmp7auvalqsahovnodpqumqvtdi3y3gsixxiakho6mdamq",
+        "detector_id": "vacuity.test.residual",
+        "detector_kind": "unit_test",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Permanent skip vacuity must state residual unobserved behavior",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "test_observation_residual"
+      },
+      "fixture_cid": "baguqeera2yplxc5trtt4va3caehay64kywtmihtdtosuam7xqcf2qr4trl6q",
+      "fixture_id": "vac.test_permanent_skip",
+      "notes": "GUI scope excludes visual rendering mutations",
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "test_permanent_skip",
+        "operator_version": "1"
+      },
+      "partition": "diagnosis",
+      "recipe_cid": "baguqeerau7gmbi6ilbawl6cobi4vkgq7fttta5rskm53gsvg373on4gf7mxq",
+      "relatedness_key": "test_permanent_skip+test_vacuity_permanent_skip",
+      "requirement_provenance": {
+        "intended_behavior": "Permanent skips that remove observation must be reported as test vacuity",
+        "notes": "GUI scope excludes visual rendering mutations",
+        "provenance_cid": "baguqeerao4hxyzp5iwixyi4wki3dif2x67sjntmjxapjueayhickr5wdnd7q",
+        "requirement_cid": null,
+        "requirement_id": "req_vacuity_test_residual",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.vacuity_gui",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "medium",
+      "scenario": "test_vacuity_permanent_skip",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.test_vacuity_permanent_skip",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "vacuity.zk.residual"
+        ],
+        "observation_points": [
+          "vacgui.zk_vacuity_omitted_unit"
+        ],
+        "oracle_cid": "baguqeerasgs424igqzxteahelvbcok3ce545e6ibzykhdif6b2z7h3eko7kq",
+        "oracle_id": "oracle.vac.zk_omitted_unit",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "vacuity_gui",
+      "campaign_bundle": "vacuity_gui",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeraz4qcp4psc7xleblbxoguasxbtnosbzhlgcf5nhksrva55d3eehya",
+        "detector_id": "vacuity.zk.residual",
+        "detector_kind": "formal_obligation",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Omitted ZK unit vacuity must fail closed with residual statement",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "zk_residual_stated"
+      },
+      "fixture_cid": "baguqeerapu73qcil4ssq6e3nofskxaaclxggxa2ydz2npbbi7qxmn54sjyjq",
+      "fixture_id": "vac.zk_omitted_unit",
+      "notes": "GUI scope excludes visual rendering mutations",
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "proof_omit_unit",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeras336pgag7nycspowxrgtoxhkdfju6haalmeaulnr7l7anveyhpga",
+      "relatedness_key": "proof_omit_unit+zk_vacuity_omitted_unit",
+      "requirement_provenance": {
+        "intended_behavior": "ZK vacuity from omitted units must state residual proof commitments",
+        "notes": "GUI scope excludes visual rendering mutations",
+        "provenance_cid": "baguqeeraw7sfbltx3ggihw4yriczgrlacuc3xkyvbosoxt6qhuuejffpu77a",
+        "requirement_cid": null,
+        "requirement_id": "req_vacuity_zk_residual",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.vacuity_gui",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "zk_vacuity_omitted_unit",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.zk_vacuity_omitted_unit",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "seal.environment.cid_bound",
+          "seal.incremental"
+        ],
+        "observation_points": [
+          "seal.admission",
+          "seal.change_environment_cid"
+        ],
+        "oracle_cid": "baguqeera3m3iq6ahi3ayxcfvsapzpwa3qrzckagb5vwukwivs4go4frrpg4a",
+        "oracle_id": "oracle.zk.change_environment_cid",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "zk_incremental_seal",
+      "campaign_bundle": "zk_incremental_seal",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeraogb2qwwvyzifxwnuyroiuayejmyp67vgxvaq3lj7vnuf6ccynztq",
+        "detector_id": "seal.environment.cid_bound",
+        "detector_kind": "incremental_seal",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Changed environment CID must fail closed",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "environment_cid_matches"
+      },
+      "fixture_cid": "baguqeeragswbk7ki5lnm5j7sux2l5v5lcjhwo5xh2tfyqo2m4izxif4q3sga",
+      "fixture_id": "zk.change_environment_cid",
+      "notes": "Critical seal fixture; released sealer must reject before qualification",
+      "operator": {
+        "operator_class": "semantic_compression",
+        "operator_id": "sc_omit_config_or_exception",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeeralp3jncemor724ddnxhtbl2fvszjo522p277ijqv4jni2mb7tnl7a",
+      "relatedness_key": "sc_omit_config_or_exception+change_environment_cid",
+      "requirement_provenance": {
+        "intended_behavior": "Seal must bind the exact environment CID",
+        "notes": "Critical seal fixture; released sealer must reject before qualification",
+        "provenance_cid": "baguqeerakrfgyh4hsrtcsigryrsvyk562nppks4bqyhotz63ozw7eaj66nsa",
+        "requirement_cid": null,
+        "requirement_id": "req_seal_environment_cid_bound",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.zk_incremental_seal",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "change_environment_cid",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.change_environment_cid",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "seal.incremental",
+          "seal.parent.link_correct"
+        ],
+        "observation_points": [
+          "seal.admission",
+          "seal.change_parent_seal"
+        ],
+        "oracle_cid": "baguqeeramu24jgvbvyk2zesvazdujaxnsechrdzrbrlzhg4gdg7sknf7jiyq",
+        "oracle_id": "oracle.zk.change_parent_seal",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "zk_incremental_seal",
+      "campaign_bundle": "zk_incremental_seal",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeraxsyfnk7eaoqwnvmlrickgxvt3hughljv5mmogwmoj3bwcbcuulea",
+        "detector_id": "seal.parent.link_correct",
+        "detector_kind": "incremental_seal",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Wrong parent seal binding must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "parent_seal_correct"
+      },
+      "fixture_cid": "baguqeera4d5fgsf4suz5qeqlwbwy54p36z7eao6cnhioofotpxg6hte6pnva",
+      "fixture_id": "zk.change_parent_seal",
+      "notes": "Critical seal fixture; released sealer must reject before qualification",
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_bind_wrong_parent_seal",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeraigil2cn5gy4szawinh2flrjgsw5pvidkftb5w44a6nj52ny7qruq",
+      "relatedness_key": "sd_bind_wrong_parent_seal+change_parent_seal",
+      "requirement_provenance": {
+        "intended_behavior": "Parent seal links must bind the correct prior seal identity",
+        "notes": "Critical seal fixture; released sealer must reject before qualification",
+        "provenance_cid": "baguqeerakyu3bfot2ovmbawv4fzqkturxybf7grjico6xtmlf6vagvreqkbq",
+        "requirement_cid": null,
+        "requirement_id": "req_seal_parent_link_correct",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.zk_incremental_seal",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "change_parent_seal",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.change_parent_seal",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "seal.incremental",
+          "seal.proof_forest.order"
+        ],
+        "observation_points": [
+          "seal.admission",
+          "seal.change_proof_forest_order"
+        ],
+        "oracle_cid": "baguqeerapwk4i6mzjxmxxpgsruk45edhru6bw73w3vm4xwab2kxmjlsjai6q",
+        "oracle_id": "oracle.zk.change_proof_forest_order",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "zk_incremental_seal",
+      "campaign_bundle": "zk_incremental_seal",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerakm2wcgoaflap37htskheia6giiidamnxjqw7nel5licgluzniexa",
+        "detector_id": "seal.proof_forest.order",
+        "detector_kind": "incremental_seal",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Reordered proof forest must fail seal verification",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "proof_forest_order_stable"
+      },
+      "fixture_cid": "baguqeera62mcjuf5tagvo4qe5ys2q4rzyc7qfqb77ar7mauy6ockg2yd5aoq",
+      "fixture_id": "zk.change_proof_forest_order",
+      "notes": "Critical seal fixture; released sealer must reject before qualification",
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_reuse_stale_proof_forest",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeraq7uxsllpgfjj5ip4udsr5nc45kxlkxunwhkeqvwcslwppt2pgcya",
+      "relatedness_key": "sd_reuse_stale_proof_forest+change_proof_forest_order",
+      "requirement_provenance": {
+        "intended_behavior": "Proof-forest order must match the committed forest identity",
+        "notes": "Critical seal fixture; released sealer must reject before qualification",
+        "provenance_cid": "baguqeerawvstdwbmppnnla4zvgez7lq4odm42tndawkzbiawl2eaqhe4tsoq",
+        "requirement_cid": null,
+        "requirement_id": "req_seal_proof_forest_order",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.zk_incremental_seal",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "change_proof_forest_order",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.change_proof_forest_order",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "seal.incremental",
+          "seal.source.root_bound"
+        ],
+        "observation_points": [
+          "seal.admission",
+          "seal.change_source_root"
+        ],
+        "oracle_cid": "baguqeera7mtpwse7j4qa7tvlhsajfgwfyiawuonunq6mphgcnuxkklmwz5wa",
+        "oracle_id": "oracle.zk.change_source_root",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "zk_incremental_seal",
+      "campaign_bundle": "zk_incremental_seal",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerauiduikimmf4uxzjmjvo3jl43y64jvyfbym2yrn65i2gzganqfcnq",
+        "detector_id": "seal.source.root_bound",
+        "detector_kind": "incremental_seal",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Changed source root must invalidate the seal input",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "source_root_matches"
+      },
+      "fixture_cid": "baguqeera4qzojidexpr3wcbddkjv6gex6ue7r5k73t6j2l7foatzwgodmlka",
+      "fixture_id": "zk.change_source_root",
+      "notes": "Critical seal fixture; released sealer must reject before qualification",
+      "operator": {
+        "operator_class": "semantic_compression",
+        "operator_id": "sc_stale_or_wrong_root_capsule",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeranhhlts3sc7dcstykabtppwmho63dsiops45cbelwcpmsvzfs42ma",
+      "relatedness_key": "sc_stale_or_wrong_root_capsule+change_source_root",
+      "requirement_provenance": {
+        "intended_behavior": "Seal must bind the exact source root CID of the campaign tree",
+        "notes": "Critical seal fixture; released sealer must reject before qualification",
+        "provenance_cid": "baguqeerajnxja4cwsvlrqbjqchhirw4n5nkwcg577rzlwncss7gpehky4rja",
+        "requirement_cid": null,
+        "requirement_id": "req_seal_source_root_bound",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.zk_incremental_seal",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "change_source_root",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.change_source_root",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "seal.incremental",
+          "seal.test.deletion_authorized"
+        ],
+        "observation_points": [
+          "seal.admission",
+          "seal.delete_test_without_authorization"
+        ],
+        "oracle_cid": "baguqeerafmpfefhokc7ntvmdppj4bw33exfvxucz3xycxfke2rqs6ljrqz2a",
+        "oracle_id": "oracle.zk.delete_test_unauthorized",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "zk_incremental_seal",
+      "campaign_bundle": "zk_incremental_seal",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeera4x6qxqtub5wt6knhirrr244fhgbw7hwaqide27tubxk4f5t6ijwa",
+        "detector_id": "seal.test.deletion_authorized",
+        "detector_kind": "policy_rule",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Unauthorized test deletion must fail closed",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "test_deletion_authorized"
+      },
+      "fixture_cid": "baguqeeraryj3r4h4xnqddmj7ic244xqld4cshxovhro63sinufoun773pmva",
+      "fixture_id": "zk.delete_test_unauthorized",
+      "notes": "Critical seal fixture; released sealer must reject before qualification",
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "test_delete_test_case",
+        "operator_version": "1"
+      },
+      "partition": "diagnosis",
+      "recipe_cid": "baguqeeramfoofq3nyfc5tjus7kwy35ctcqs3laeadpt7baa3hiyqa7fta5ba",
+      "relatedness_key": "test_delete_test_case+delete_test_without_authorization",
+      "requirement_provenance": {
+        "intended_behavior": "Test deletion requires authorization and must not silently drop obligations",
+        "notes": "Critical seal fixture; released sealer must reject before qualification",
+        "provenance_cid": "baguqeeraxjp3gnl3d5hzl4bkpfqfyhagzdllntsh6xhowr57mnyttu2mefsa",
+        "requirement_cid": null,
+        "requirement_id": "req_seal_test_deletion_authorized",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.zk_incremental_seal",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "delete_test_without_authorization",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.delete_test_without_authorization",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "seal.child.blocking_honored",
+          "seal.incremental"
+        ],
+        "observation_points": [
+          "seal.admission",
+          "seal.ignore_blocking_child"
+        ],
+        "oracle_cid": "baguqeerauxc3l2ivgg66js2sznh22fl3t54oldaoql45lojam3d7ikfm5rkq",
+        "oracle_id": "oracle.zk.ignore_blocking_child",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "zk_incremental_seal",
+      "campaign_bundle": "zk_incremental_seal",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeera6kwsdgvwtpagfhpcy3ro5aqjsoxmuank2br5gmi7zxk6zudgcana",
+        "detector_id": "seal.child.blocking_honored",
+        "detector_kind": "incremental_seal",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Ignoring blocking child must fail closed",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "blocking_child_honored"
+      },
+      "fixture_cid": "baguqeerapudvhxalkcjitwl3fyimelzse3uzes57lals3ow65snx75fgtiba",
+      "fixture_id": "zk.ignore_blocking_child",
+      "notes": "Critical seal fixture; released sealer must reject before qualification",
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_omit_parent_seal_link",
+        "operator_version": "1"
+      },
+      "partition": "development",
+      "recipe_cid": "baguqeeraoz2qghuwl5ifuqo76e3lq4tkkr67giiwgqkfd4xr5mx2etfrk3xa",
+      "relatedness_key": "sd_omit_parent_seal_link+ignore_blocking_child",
+      "requirement_provenance": {
+        "intended_behavior": "Blocking child seal failures must prevent parent seal qualification",
+        "notes": "Critical seal fixture; released sealer must reject before qualification",
+        "provenance_cid": "baguqeeraaqu4pl7dfrwvly3co6rkwqa5ybfjqpjcmakk3txf56jwxixdum6q",
+        "requirement_cid": null,
+        "requirement_id": "req_seal_blocking_child_honored",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.zk_incremental_seal",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "ignore_blocking_child",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.ignore_blocking_child",
+      "used_for_candidate_generation": true
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "seal.incremental",
+          "seal.proof.statement_bound"
+        ],
+        "observation_points": [
+          "seal.admission",
+          "seal.attach_proof_to_wrong_statement"
+        ],
+        "oracle_cid": "baguqeerasmpbhaq3vivxh3nvknqhusinpcsf32oilisy3tkzxi6nbjlidg2q",
+        "oracle_id": "oracle.zk.proof_wrong_statement",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "zk_incremental_seal",
+      "campaign_bundle": "zk_incremental_seal",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeera5626tzzmi5oflriin2d3eczpkr523qllce6f4i2e4amzvqrp6nba",
+        "detector_id": "seal.proof.statement_bound",
+        "detector_kind": "incremental_seal",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Proof attached to wrong statement must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "proof_statement_bound"
+      },
+      "fixture_cid": "baguqeerahko67sforduyyaqtgrdzduzgw32lz2f7n6er77mdgrrzmylgw3sq",
+      "fixture_id": "zk.proof_wrong_statement",
+      "notes": "Critical seal fixture; released sealer must reject before qualification",
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "proof_stale_receipt",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeravdkl6765dualpwzca2g4jxghkomn7tka37zctjohgxziockwcb2a",
+      "relatedness_key": "proof_stale_receipt+attach_proof_to_wrong_statement",
+      "requirement_provenance": {
+        "intended_behavior": "Proofs must bind to the exact statement under seal",
+        "notes": "Critical seal fixture; released sealer must reject before qualification",
+        "provenance_cid": "baguqeeraxw5hbltnyccejfzdmqdgwjya7ukeqbvp6dyej7nxy6usi4x2zdcq",
+        "requirement_cid": null,
+        "requirement_id": "req_seal_proof_statement_binding",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.zk_incremental_seal",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "attach_proof_to_wrong_statement",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.attach_proof_to_wrong_statement",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "seal.incremental",
+          "seal.receipt.leaf_present"
+        ],
+        "observation_points": [
+          "seal.admission",
+          "seal.remove_receipt_leaf"
+        ],
+        "oracle_cid": "baguqeera64gwfibtejd4rx45jjkyjqq3wsymjr4yyaqyk2vyhbdwwggyeoca",
+        "oracle_id": "oracle.zk.remove_receipt_leaf",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "zk_incremental_seal",
+      "campaign_bundle": "zk_incremental_seal",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeerawhj5d6to3zlo2j35u65ovps4m5ibt6jbaxedvuh2rxyzkmt4zmma",
+        "detector_id": "seal.receipt.leaf_present",
+        "detector_kind": "incremental_seal",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Removed receipt leaf must be rejected by released sealer",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "receipt_leaf_present"
+      },
+      "fixture_cid": "baguqeeralgqvdxcnphefcw4ic622u24cw6tm3w2rj24fwlgqij7fxylbjixq",
+      "fixture_id": "zk.remove_receipt_leaf",
+      "notes": "Critical seal fixture; released sealer must reject before qualification",
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_drop_proof_forest_node",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeraoefdp76qifdjxi2uh5oean5grhh5lwwq4nxqwe5eo5x7yguginja",
+      "relatedness_key": "sd_drop_proof_forest_node+remove_receipt_leaf",
+      "requirement_provenance": {
+        "intended_behavior": "Campaign seal requires every declared receipt leaf to be present",
+        "notes": "Critical seal fixture; released sealer must reject before qualification",
+        "provenance_cid": "baguqeerafwdeyz76nn4o6usq6m27dqgvzhfz3keonibpissy73g54upvcbba",
+        "requirement_cid": null,
+        "requirement_id": "req_seal_receipt_leaf_present",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.zk_incremental_seal",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "remove_receipt_leaf",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.remove_receipt_leaf",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "seal.incremental",
+          "seal.unit.required"
+        ],
+        "observation_points": [
+          "seal.admission",
+          "seal.remove_required_unit"
+        ],
+        "oracle_cid": "baguqeeram4bnyuoasqei3dxbazt3kdhrhffbo5th3ze5fhmpvidk3gjd42mq",
+        "oracle_id": "oracle.zk.remove_required_unit",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "zk_incremental_seal",
+      "campaign_bundle": "zk_incremental_seal",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeraeccbj5lfgcsig7hse44qtg6ctpxwgfgchh5fw22baeg7uvwdll3a",
+        "detector_id": "seal.unit.required",
+        "detector_kind": "incremental_seal",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Removed required unit must fail seal admission",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "required_unit_present"
+      },
+      "fixture_cid": "baguqeeraj4wpn4gpicubwvksgp3e3xn56hgzqninrqz7zj6zriflbtnsw62a",
+      "fixture_id": "zk.remove_required_unit",
+      "notes": "Critical seal fixture; released sealer must reject before qualification",
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "proof_omit_unit",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeravu4nv2ejkqfci4cmq3lpacxdeofdwwg655gaksslzvhiwcpzsenq",
+      "relatedness_key": "proof_omit_unit+remove_required_unit",
+      "requirement_provenance": {
+        "intended_behavior": "Required proof units must be present before seal qualification",
+        "notes": "Critical seal fixture; released sealer must reject before qualification",
+        "provenance_cid": "baguqeeraow6advncw36bgw2yyxa5lw3h52e2tornps7pfxnidd5pc2p352pa",
+        "requirement_cid": null,
+        "requirement_id": "req_seal_required_unit_present",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.zk_incremental_seal",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "remove_required_unit",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.remove_required_unit",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "seal.incremental",
+          "seal.proof.branch_bound"
+        ],
+        "observation_points": [
+          "seal.admission",
+          "seal.replay_proof_across_branches"
+        ],
+        "oracle_cid": "baguqeerafgdpxucnevrhvj3win3nuhabgf3aaugg522c2pecouk2f2tnwr7a",
+        "oracle_id": "oracle.zk.replay_proof_across_branches",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "zk_incremental_seal",
+      "campaign_bundle": "zk_incremental_seal",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeravsceuczuhab2zpggpq42gw3apn76a7xxxwj5qhvl6s6hsi35jolq",
+        "detector_id": "seal.proof.branch_bound",
+        "detector_kind": "incremental_seal",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Cross-branch proof replay must be rejected",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "proof_branch_bound"
+      },
+      "fixture_cid": "baguqeeraasb3g7bqhwdfssazb636dwsaxqlmh7ati553ejfhktpjfqy7tijq",
+      "fixture_id": "zk.replay_proof_across_branches",
+      "notes": "Critical seal fixture; released sealer must reject before qualification",
+      "operator": {
+        "operator_class": "state_distributed",
+        "operator_id": "sd_reuse_stale_proof_forest",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeeravizr76r6fs4zt6wcrmvdk3yzywoaky6mgydnepnhxf65ql7za7fq",
+      "relatedness_key": "sd_reuse_stale_proof_forest+replay_proof_across_branches",
+      "requirement_provenance": {
+        "intended_behavior": "Proofs must not replay across repository branches without re-verification",
+        "notes": "Critical seal fixture; released sealer must reject before qualification",
+        "provenance_cid": "baguqeera35bhcgvekypha6jquk2t364ezt5vnxlqbgzdpurpv4sjwjvszvba",
+        "requirement_cid": null,
+        "requirement_id": "req_seal_proof_branch_bound",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.zk_incremental_seal",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "replay_proof_across_branches",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.replay_proof_across_branches",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "seal.incremental",
+          "seal.proof.direct_required"
+        ],
+        "observation_points": [
+          "seal.admission",
+          "seal.substitute_simulated_for_direct_proof"
+        ],
+        "oracle_cid": "baguqeeraziekah62vqgrzj6jfbns7vgtksw27rwifrttp66lmcrvhv6guq5a",
+        "oracle_id": "oracle.zk.simulated_for_direct",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "zk_incremental_seal",
+      "campaign_bundle": "zk_incremental_seal",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeera64fcjwkskh3s3qdr3mmdfzkyihsl23bzhmfvihxntebohzloz37q",
+        "detector_id": "seal.proof.direct_required",
+        "detector_kind": "incremental_seal",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Simulated-for-direct substitution must be rejected by sealer",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "direct_proof_required"
+      },
+      "fixture_cid": "baguqeeraracuhxfr3rwtvqkmtvg3clzlol2jur6xllh3ytxefrvyqtfbyqfq",
+      "fixture_id": "zk.simulated_for_direct",
+      "notes": "Critical seal fixture; released sealer must reject before qualification",
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "proof_unreachable_modeled_state",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeera6asdjlrr7i2z6mr453tmgabx6zbnetb2bp4thc5d4dmu5u4hu36q",
+      "relatedness_key": "proof_unreachable_modeled_state+substitute_simulated_for_direct_proof",
+      "requirement_provenance": {
+        "intended_behavior": "Simulated proofs must not substitute for required direct proof evidence",
+        "notes": "Critical seal fixture; released sealer must reject before qualification",
+        "provenance_cid": "baguqeerarnwjiyjpcxpedtqg5pluahtppqt63qu32or47d74xgbwoj2kisjq",
+        "requirement_cid": null,
+        "requirement_id": "req_seal_direct_not_simulated",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.zk_incremental_seal",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "substitute_simulated_for_direct_proof",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.substitute_simulated_for_direct_proof",
+      "used_for_candidate_generation": false
+    },
+    {
+      "bounded_oracle": {
+        "bounds": {
+          "max_depth": 8,
+          "max_steps": 32,
+          "timeout_ms": 5000
+        },
+        "expected_outcome": "killed",
+        "fail_closed": true,
+        "kill_mechanisms": [
+          "seal.incremental",
+          "seal.key.current"
+        ],
+        "observation_points": [
+          "seal.admission",
+          "seal.use_old_key"
+        ],
+        "oracle_cid": "baguqeeradnamfgkviedque2ilgt2fx7hssmky6icmtbonhiafyfc2zqd2ywa",
+        "oracle_id": "oracle.zk.use_old_key",
+        "schema": "aae/bounded-oracle@1"
+      },
+      "campaign": "zk_incremental_seal",
+      "campaign_bundle": "zk_incremental_seal",
+      "critical": true,
+      "expected_detector": {
+        "detector_cid": "baguqeeragmfkjhxqmr2365uoo463z6n3s3v3rpk2y34vh27nek56jy4e6s4a",
+        "detector_id": "seal.key.current",
+        "detector_kind": "incremental_seal",
+        "detector_revision": "1",
+        "expected_terminal_status": "rejected",
+        "observation_rationale": "Old key usage must be rejected before seal eligibility",
+        "schema": "aae/expected-detector@1",
+        "strength": "required",
+        "violated_claim": "signing_key_current"
+      },
+      "fixture_cid": "baguqeera5nifvhl6wrlj25og6bhtdki4qzwkbpnizycl2pd7ygoe3uzfnsaa",
+      "fixture_id": "zk.use_old_key",
+      "notes": "Critical seal fixture; released sealer must reject before qualification",
+      "operator": {
+        "operator_class": "test_proof",
+        "operator_id": "proof_unchecked_signature",
+        "operator_version": "1"
+      },
+      "partition": "held_out",
+      "recipe_cid": "baguqeerapdtrcb37vaun2aah5cfu4lyqsn6hypvioxhmdpy37swcy6h5n5zq",
+      "relatedness_key": "proof_unchecked_signature+use_old_key",
+      "requirement_provenance": {
+        "intended_behavior": "Seals and receipts must use the current authorized key identity",
+        "notes": "Critical seal fixture; released sealer must reject before qualification",
+        "provenance_cid": "baguqeerabqfvxgs4if7dsuhpff6vkd2s3eddwgeo7tt6vmqmjw5xc66i4ekq",
+        "requirement_cid": null,
+        "requirement_id": "req_seal_key_current",
+        "schema": "ipfs-datasets.software-contracts.adversarial-assurance-requirement-provenance@1",
+        "source_id": "plan.section.11.zk_incremental_seal",
+        "source_path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+      },
+      "risk": "proof_receipt_trust",
+      "scenario": "use_old_key",
+      "schema": "aae/assurance-fixture@1",
+      "target_id": "target.use_old_key",
+      "used_for_candidate_generation": false
+    }
+  ],
+  "interface": "AssuranceFixtureCorpus@1",
+  "mandated_counts": {
+    "distributed_storage_crash": 14,
+    "security": 20,
+    "semantic_compression": 8,
+    "vacuity_gui": 10,
+    "zk_incremental_seal": 12
+  },
+  "notes": "Deterministic diagnosis/development/held-out fixture corpus authority. Campaign materialization is owned by AAE-050..AAE-055. Critical seal fixtures fail closed. No partition leakage.",
+  "partition_membership": {
+    "development": [
+      "dist.crash_after_cas_before_cleanup",
+      "dist.drop_idempotency_key",
+      "dist.skip_read_back",
+      "dist.stale_fencing",
+      "gui.broken_recovery",
+      "gui.omit_confirmation",
+      "sc.omit_exception",
+      "sc.opaque_plugin_as_exact",
+      "sec.missing_attenuation",
+      "sec.payment_as_authority",
+      "sec.provider_ack_as_storage",
+      "sec.unknown_prover_as_passed",
+      "vac.policy_unreachable_mode",
+      "zk.change_environment_cid",
+      "zk.ignore_blocking_child"
+    ],
+    "diagnosis": [
+      "dist.crash_during_worktree_setup",
+      "dist.ignore_lease_expiry",
+      "gui.stale_action_policy",
+      "sc.heuristic_for_raw",
+      "sec.missing_confirmation",
+      "sec.pseudo_cid",
+      "sec.stale_fencing_token",
+      "vac.test_permanent_skip",
+      "zk.delete_test_unauthorized"
+    ],
+    "held_out": [
+      "dist.ack_before_durable",
+      "dist.cas_ignore_expected_old",
+      "dist.crash_after_mutant_create",
+      "dist.crash_after_receipt_persist",
+      "dist.crash_before_policy_cas",
+      "dist.illegal_state_transition",
+      "dist.incomplete_compensation",
+      "dist.mutate_without_ownership",
+      "gui.break_dispatchability",
+      "gui.drop_keyboard_access",
+      "gui.wrong_handler",
+      "sc.expanded_beats_compressed",
+      "sc.miss_selected_test",
+      "sc.omit_required_side_effect",
+      "sc.omit_result_changing_fixture",
+      "sc.stale_capsule_schema",
+      "sec.accepted_expired_delegation",
+      "sec.accepted_revoked_capability",
+      "sec.authentication_bypass",
+      "sec.caller_selected_tenant",
+      "sec.cross_action_confirmation_replay",
+      "sec.invalid_signature",
+      "sec.omitted_proof_unit",
+      "sec.policy_default_to_allow",
+      "sec.receipt_before_observed_effect",
+      "sec.retry_double_execution",
+      "sec.simulated_production_evidence",
+      "sec.stale_proof_receipt",
+      "sec.uncompensated_partial_mutation",
+      "vac.formal_impossible_assumption",
+      "vac.zk_omitted_unit",
+      "zk.change_parent_seal",
+      "zk.change_proof_forest_order",
+      "zk.change_source_root",
+      "zk.proof_wrong_statement",
+      "zk.remove_receipt_leaf",
+      "zk.remove_required_unit",
+      "zk.replay_proof_across_branches",
+      "zk.simulated_for_direct",
+      "zk.use_old_key"
+    ]
+  },
+  "partition_seed": 49,
+  "partitions": [
+    "diagnosis",
+    "development",
+    "held_out"
+  ],
+  "production_policy_change_allowed": false,
+  "schema": "aae/fixture-partition@1",
+  "task_id": "AAE-049"
+}

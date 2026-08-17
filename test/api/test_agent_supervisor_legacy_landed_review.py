@@ -187,7 +187,7 @@ def test_exact_template_pins_all_eight_and_original_ase_023_interval() -> None:
 
     assert tuple(tasks) == legacy.EXACT_LEGACY_LANDED_TASK_IDS
     assert template["schema"].endswith("@2")
-    assert template["providers"]["grok"]["model"] == "grok-4.5"
+    assert template["providers"]["grok"]["model"] == "grok-4.6"
     assert template["providers"]["codex"]["model"] == "gpt-5.6-terra"
     assert template["providers"]["codex"]["reasoning_effort"] == "medium"
     assert tasks["ASE-023"]["baseline_commit"] == (

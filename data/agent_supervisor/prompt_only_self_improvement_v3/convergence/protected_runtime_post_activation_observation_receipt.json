@@ -1,0 +1,76 @@
+{
+  "authorization_binding": {
+    "authorization_alone_proves_effect": false,
+    "authorization_id": "sha256:1b8ab3afd7800396bfd7f8ad2c99105876a6bcb116d932e890b4505cdbf822e5",
+    "authorization_sha256": "sha256:5a61e4ecf8e9b92cfd53aff3d8b56cce34e502dba077bd1a7d9189b324cf84af"
+  },
+  "board_namespace": "agent-supervisor-prompt-only-self-improvement-v3",
+  "created_at": "2026-08-10T19:26:56Z",
+  "denials": {
+    "authorization_alone_sufficient": false,
+    "observation_retroactively_authorizes": false
+  },
+  "joined_running": {
+    "join_fields": [
+      "lifecycle_process_birth",
+      "lifecycle_lease",
+      "lifecycle_fence",
+      "lifecycle_heartbeat",
+      "lifecycle_event_cursor",
+      "monitor_process_birth",
+      "monitor_lease",
+      "monitor_fence",
+      "monitor_heartbeat",
+      "monitor_event_cursor"
+    ],
+    "joined": true,
+    "same_generation": true
+  },
+  "lifecycle": {
+    "event_cursor": "life-cursor:1",
+    "fencing_generation": 1,
+    "generation": 1,
+    "healthy": true,
+    "heartbeat_at_ms": 12000,
+    "lease_id": "life-lease-ase3-026",
+    "process_birth_identity": "life-birth-ase3-026",
+    "process_cid": "bafylifebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "role": "lifecycle"
+  },
+  "monitor": {
+    "event_cursor": "monitor-cursor:1:1",
+    "fencing_generation": 1,
+    "generation": 1,
+    "healthy": true,
+    "heartbeat_at_ms": 12000,
+    "lease_id": "monitor-lease:ase3-026-activation:g1",
+    "process_birth_identity": "monitor-birth:ase3-026-activation:g1:10000:1775155",
+    "process_cid": "baguqeerae3ryphfny7l4itkvjieleeeslbeantft74x5lyk22tl7zer6w4ia",
+    "role": "monitor"
+  },
+  "observation_id": "sha256:81878ac40e1851219649678e501a00222221a91bef68a89a463add6426dd9b03",
+  "operator_review": {
+    "generator": "ipfs_accelerate_py.agent_supervisor.protected-runtime-activation-gate@1",
+    "required": true,
+    "reviewer_identity": "operator-reviewer-ase3-026",
+    "self_review_allowed": false
+  },
+  "refill": {
+    "disposition": "dispatched",
+    "epoch": 1,
+    "generation": 1,
+    "logical_attempt_id": "attempt-ase3-026",
+    "phase": "ADOPTED",
+    "plan_root_cid": "plan-root-ase3-026"
+  },
+  "required_observations": [
+    "lifecycle_process_birth",
+    "lifecycle_lease_fence_heartbeat_and_cursor",
+    "monitor_process_birth",
+    "monitor_lease_fence_heartbeat_and_cursor",
+    "refill_append_recompile_dispatch_or_adoption"
+  ],
+  "schema": "ipfs_accelerate_py.agent_supervisor.protected-runtime-post-activation-observation@1",
+  "target_generation": 1,
+  "task_id": "ASE3-026"
+}

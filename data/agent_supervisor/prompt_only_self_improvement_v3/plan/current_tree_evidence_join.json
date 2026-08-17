@@ -1,0 +1,11 @@
+{
+  "canary_terminal_healthy": true,
+  "composition_cid": "baguqeerauqzq7qsd5l23zxfasd7it6rhxabq747agtnelhkmqnbcgfg5tm3a",
+  "head": "765dc0fd4a9fcca3b9e653d6ce5b23bd9ac151eb",
+  "join_cid": "baguqeeraqr7wvm64yzdr4kt2gj7pqwsyor5gcqi7yujpnaf54atf3q6cdjwq",
+  "missing": [],
+  "repository_root": "/tmp/ase3-014-closeout",
+  "schema": "ipfs_accelerate_py.agent_supervisor.current-tree-evidence-join@1",
+  "task_receipts_complete": true,
+  "tree": "13297d70c287bcc61a091dcd7fd2a434536bd44c"
+}

@@ -1,10 +1,10 @@
 """Hermetic objective closeout e2e and operator-handoff proof (PTR-130).
 
-Proves that a disposable exact sealed-task / 12-goal population reaches:
+Proves that a disposable exact sealed-task / 15-goal population reaches:
 
 1. provisional goals only (phase one),
 2. verified ``PTR-G010`` … ``PTR-G100`` (phase two),
-3. verified ``PTR-G110`` then ``PTR-G000`` (phase three),
+3. verified ``PTR-G110``…``PTR-G130`` then ``PTR-G140`` then ``PTR-G000`` (phase three),
 
 solely through the fenced three-stage reconciler.  Tamper, authority, and
 restart cases never verify.  No test-file registry or network service is
@@ -32,12 +32,14 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement.proof_reuse_benchmark 
     ProofReuseBenchmarkReceipt,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_current_tree_gate import (
+    AUTHENTICATED_CURRENT_TREE_REPAIR_EVIDENCE_REQUIREMENT,
+    AUTHENTICATED_CURRENT_TREE_REPAIR_ID,
+    AUTHENTICATED_CURRENT_TREE_REPAIR_PRODUCER_TASK_ID,
+    AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS,
     FINAL_GATE_ACCEPTANCE_CRITERION,
     FINAL_GATE_GOAL_ID,
-    PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT,
-    PRODUCTION_RUNTIME_ACTIVATION_ID,
-    PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID,
-    PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS,
+    FINAL_GATE_REVIEW_REVISION,
+    FINAL_GATE_TASK_ID,
     REQUIRED_ADVERSARIAL_POPULATIONS,
     REQUIRED_ANALYZERS,
     REQUIRED_CHILD_GOAL_IDS,
@@ -89,11 +91,11 @@ ALL_GOAL_IDS = (
 )
 CHILD_GOAL_IDS = tuple(sorted(REQUIRED_CHILD_GOAL_IDS))
 SEALED_TASK_IDS = tuple(sorted(REQUIRED_PTR_TASK_IDS))
-# Production sealed population is the live REQUIRED_PTR_TASK_IDS set (66 tasks
-# after the PTR-143…PTR-155 corrective wave).  Hermetic closeout e2e builds a
+# Production sealed population is the live REQUIRED_PTR_TASK_IDS set (78 tasks
+# after the PTR-160…PTR-171 authenticated wave).  Hermetic closeout e2e builds a
 # disposable board over that exact set rather than a stale intermediate count.
 assert len(SEALED_TASK_IDS) == len(REQUIRED_PTR_TASK_IDS)
-assert len(ALL_GOAL_IDS) == 12
+assert len(ALL_GOAL_IDS) == 15
 
 NOW_SECONDS = 1_800_000_000.0
 NOW_MS = int(NOW_SECONDS * 1000)
@@ -310,7 +312,9 @@ def _write_disposable_population(
                     ),
                     "passed": gate_passed,
                     "repository_tree": gate_tree,
-                    "producing_task_id": "PTR-122",
+                    "producing_task_id": "PTR-169",
+                    "task_count": SEALED_PRODUCTION_TASK_COUNT,
+                    "review_revision": FINAL_GATE_REVIEW_REVISION,
                     "captured_at_unix_ns": 1_700_000_000_000_000_000,
                     "final_gate_criterion": FINAL_GATE_ACCEPTANCE_CRITERION,
                     "root_criterion": ROOT_ACCEPTANCE_CRITERION,
@@ -686,13 +690,13 @@ def _valid_gate_packet(
                 for lane_id in sorted(REQUIRED_SUPERVISOR_LANE_IDS)
             ],
         ),
-        # Production 66-task population requires fresh PTR-149 repair evidence.
+        # 78-task authenticated population requires fresh PTR-169 repair evidence.
         "repair_evidence": _bound_record(
             policy_cid=gate.policy_cid,
             authority="authoritative",
-            repair_id=PRODUCTION_RUNTIME_ACTIVATION_ID,
-            producer_task_id=PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID,
-            repair_task_ids=sorted(PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS),
+            repair_id=AUTHENTICATED_CURRENT_TREE_REPAIR_ID,
+            producer_task_id=AUTHENTICATED_CURRENT_TREE_REPAIR_PRODUCER_TASK_ID,
+            repair_task_ids=sorted(AUTHENTICATED_CURRENT_TREE_REPAIR_TASK_IDS),
             passed=True,
             false_skips=0,
             zero_false_skip_assurance=True,
@@ -706,10 +710,17 @@ def _valid_gate_packet(
             retained_proof_bearing_issuance_material=True,
             exact_reviewed_source_binary_capability_circuit_key_identities=True,
             locally_verified_current_v4_certificate=True,
+            trusted_signed_receipts=True,
+            locally_verified_real_proofs=True,
+            genuine_three_repository_e2e=True,
+            forced_replay_agrees=True,
+            zero_false_skips=True,
+            benchmark_meets_threshold=True,
+            optional_capability_gaps_truthful=True,
             supervisor_healthy=True,
             sealed_task_count=SEALED_PRODUCTION_TASK_COUNT,
-            requirement_id=PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT,
-            evidence_cid="repair:production-runtime-activation",
+            requirement_id=AUTHENTICATED_CURRENT_TREE_REPAIR_EVIDENCE_REQUIREMENT,
+            evidence_cid="repair:authenticated-current-tree",
             injected=False,
             pseudo_certificate=False,
             synthetic_timing=False,
@@ -745,6 +756,18 @@ def test_sealed_population_is_exact_and_includes_closeout_tasks() -> None:
         "PTR-153",
         "PTR-154",
         "PTR-155",
+        "PTR-160",
+        "PTR-161",
+        "PTR-162",
+        "PTR-163",
+        "PTR-164",
+        "PTR-165",
+        "PTR-166",
+        "PTR-167",
+        "PTR-168",
+        "PTR-169",
+        "PTR-170",
+        "PTR-171",
     ):
         assert task_id in REQUIRED_PTR_TASK_IDS
     assert FINAL_GATE_GOAL_ID not in REQUIRED_CHILD_GOAL_IDS
@@ -835,8 +858,8 @@ def test_disposable_population_three_phase_closeout(
 
     phases = [item["phase"] for item in result["receipts"]]
     assert "phase_1_provisional" in phases
-    assert "phase_2_verify_g010_g100" in phases
-    assert "phase_3_verify_g110_g000" in phases
+    assert "phase_2_verify_g010_g130" in phases
+    assert "phase_3_verify_g140_g000" in phases
     assert "candidate_handoff" in phases
 
     phase1 = next(
@@ -852,7 +875,7 @@ def test_disposable_population_three_phase_closeout(
     phase2 = next(
         item
         for item in result["receipts"]
-        if item["phase"] == "phase_2_verify_g010_g100"
+        if item["phase"] == "phase_2_verify_g010_g130"
     )
     verified_children = set(phase2["details"]["verified_child_goal_ids"])
     assert set(CHILD_GOAL_IDS) <= verified_children
@@ -863,7 +886,7 @@ def test_disposable_population_three_phase_closeout(
     phase3 = next(
         item
         for item in result["receipts"]
-        if item["phase"] == "phase_3_verify_g110_g000"
+        if item["phase"] == "phase_3_verify_g140_g000"
     )
     order = [
         item["goal_id"]
@@ -925,8 +948,8 @@ def test_gate_emits_g110_then_g000_for_exact_population(
     assert g110.acceptance_criterion == FINAL_GATE_ACCEPTANCE_CRITERION
     assert g000.goal_id == ROOT_GOAL_ID
     assert g000.acceptance_criterion == ROOT_ACCEPTANCE_CRITERION
-    assert g110.producing_task_id == "PTR-122"
-    assert g000.producing_task_id == "PTR-122"
+    assert g110.producing_task_id == FINAL_GATE_TASK_ID
+    assert g000.producing_task_id == FINAL_GATE_TASK_ID
     # Separate exact claims — no implication across root requirements.
     assert g110.satisfied_requirements == (FINAL_GATE_ACCEPTANCE_CRITERION,)
     assert g000.satisfied_requirements == (ROOT_ACCEPTANCE_CRITERION,)

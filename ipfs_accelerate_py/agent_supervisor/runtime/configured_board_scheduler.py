@@ -41,8 +41,8 @@ from ...llm_router import (
     seal_agent_implementation_control_plane_capsule,
     verify_agent_implementation_sealed_control_plane,
 )
-from ..entrypoints.contracts import InvocationBudget
-from ..entrypoints.execution_plan import (
+from ..contracts.execution import InvocationBudget
+from ..control.plan_execution_store import (
     ConfiguredBoardExecutionSlices,
     ExecutionPlanError,
     ParallelismDecisionReceipt,
@@ -177,10 +177,16 @@ ORDERED_PROVIDER_FIELDS = (
     "fallback_reasoning_effort",
 )
 ORDERED_PRIMARY_PROVIDER_ID = "grok_cli"
-ORDERED_PRIMARY_MODEL_ID = "grok-4.5"
+ORDERED_PRIMARY_MODEL_ID = "grok-4.6"
 ORDERED_FALLBACK_PROVIDER_ID = "codex"
 ORDERED_FALLBACK_MODEL_ID = "gpt-5.6-terra"
 ORDERED_FALLBACK_TRIGGER = "primary_quota_exhausted"
+ORDERED_FALLBACK_TRIGGERS = frozenset(
+    {
+        "primary_quota_exhausted",
+        "primary_quota_or_auth_unavailable",
+    }
+)
 ORDERED_FALLBACK_REASONING_EFFORTS = frozenset({"medium", "high"})
 ROUTE_AUTHORIZATION_PATH_FIELD = "route_authorization_path"
 
@@ -583,7 +589,12 @@ def _configured_board_task_population(
         if task_state_snapshots is None
         else (dict(item) for item in task_state_snapshots)
     )
-    attempts_by_id: dict[str, int] = {}
+    current_cid_by_id = {
+        str(item["task_id"]): str(item["canonical_task_cid"])
+        for item in records
+    }
+    legacy_attempts_by_id: dict[str, int] = {}
+    attempts_by_task_revision: dict[tuple[str, str], int] = {}
     attempts_by_cid: dict[str, int] = {}
 
     def attempt_count(value: Any) -> int:
@@ -594,19 +605,78 @@ def _configured_board_task_population(
     for snapshot in snapshots:
         raw_by_id = snapshot.get("implementation_attempts")
         raw_by_cid = snapshot.get("implementation_attempts_by_cid")
+        raw_task_identities = snapshot.get("task_identities")
         if raw_by_id not in (None, {}) and not isinstance(raw_by_id, Mapping):
             raise ConfiguredBoardError("task-state implementation_attempts is invalid")
         if raw_by_cid not in (None, {}) and not isinstance(raw_by_cid, Mapping):
             raise ConfiguredBoardError(
                 "task-state implementation_attempts_by_cid is invalid"
             )
-        for key, value in dict(raw_by_id or {}).items():
-            attempts_by_id[str(key)] = max(
-                attempts_by_id.get(str(key), 0), attempt_count(value)
+        if raw_task_identities not in (None, {}) and not isinstance(
+            raw_task_identities, Mapping
+        ):
+            raise ConfiguredBoardError("task-state task_identities is invalid")
+
+        snapshot_attempts_by_cid = {
+            str(key): attempt_count(value)
+            for key, value in dict(raw_by_cid or {}).items()
+        }
+        for canonical_task_cid, count in snapshot_attempts_by_cid.items():
+            attempts_by_cid[canonical_task_cid] = max(
+                attempts_by_cid.get(canonical_task_cid, 0), count
             )
-        for key, value in dict(raw_by_cid or {}).items():
-            attempts_by_cid[str(key)] = max(
-                attempts_by_cid.get(str(key), 0), attempt_count(value)
+
+        identity_cid_by_id: dict[str, str] = {}
+        for key, value in dict(raw_task_identities or {}).items():
+            display_task_id = str(key)
+            if not isinstance(value, Mapping):
+                raise ConfiguredBoardError("task-state task identity is invalid")
+            identity_display_task_id = value.get("display_task_id")
+            if identity_display_task_id not in (None, "") and (
+                not isinstance(identity_display_task_id, str)
+                or identity_display_task_id.strip() != display_task_id
+            ):
+                raise ConfiguredBoardError(
+                    "task-state task identity display ID is invalid"
+                )
+            identity_cid = value.get("canonical_task_cid")
+            if identity_cid in (None, ""):
+                # Older projections carried provenance without a canonical
+                # identity.  Their display-ID counter remains a conservative
+                # retry limit for every later revision of the same task ID.
+                continue
+            if (
+                not isinstance(identity_cid, str)
+                or not identity_cid.strip()
+                or identity_cid != identity_cid.strip()
+            ):
+                raise ConfiguredBoardError(
+                    "task-state canonical task identity is invalid"
+                )
+            identity_cid_by_id[display_task_id] = identity_cid
+
+        for key, value in dict(raw_by_id or {}).items():
+            display_task_id = str(key)
+            count = attempt_count(value)
+            identity_cid = identity_cid_by_id.get(display_task_id)
+            if not identity_cid:
+                legacy_attempts_by_id[display_task_id] = max(
+                    legacy_attempts_by_id.get(display_task_id, 0), count
+                )
+                continue
+            current_cid = current_cid_by_id.get(display_task_id)
+            if (
+                current_cid
+                and identity_cid != current_cid
+                and snapshot_attempts_by_cid.get(identity_cid, 0) < count
+            ):
+                raise ConfiguredBoardError(
+                    "task-state mismatched task identity is not backed by "
+                    "its canonical attempt ledger"
+                )
+            revision_key = (display_task_id, identity_cid)
+            attempts_by_task_revision[revision_key] = max(
+                attempts_by_task_revision.get(revision_key, 0), count
             )
     max_attempts = int(board.payload["max_task_attempts"])
     attempt_limited: set[str] = set()
@@ -617,7 +687,8 @@ def _configured_board_task_population(
         if statuses.get(task_id) != "ready":
             continue
         attempt_count = max(
-            attempts_by_id.get(task_id, 0),
+            legacy_attempts_by_id.get(task_id, 0),
+            attempts_by_task_revision.get((task_id, task_cid), 0),
             attempts_by_cid.get(task_cid, 0),
         )
         if max_attempts > 0 and attempt_count >= max_attempts:
@@ -627,7 +698,17 @@ def _configured_board_task_population(
     state_snapshot_id = _identity(
         {
             "statuses": statuses,
-            "implementation_attempts": attempts_by_id,
+            "implementation_attempts": legacy_attempts_by_id,
+            "implementation_attempts_by_task_revision": [
+                {
+                    "task_id": task_id,
+                    "canonical_task_cid": canonical_task_cid,
+                    "attempts": count,
+                }
+                for (task_id, canonical_task_cid), count in sorted(
+                    attempts_by_task_revision.items()
+                )
+            ],
             "implementation_attempts_by_cid": attempts_by_cid,
         }
     )
@@ -1544,6 +1625,7 @@ class ConfiguredBoard:
     merge_target_branch: str
     max_lanes: int
     strict_task_sharding: bool
+    idle_lane_work_stealing: str
     worktree_submodule_paths: tuple[str, ...]
     protected_paths: tuple[str, ...]
     runtime_paths: Mapping[str, str]
@@ -1707,6 +1789,21 @@ def load_configured_board(
     strict_task_sharding = payload.get("strict_task_sharding")
     if not isinstance(strict_task_sharding, bool):
         raise ConfiguredBoardError("strict_task_sharding must be boolean")
+    idle_lane_work_stealing = str(
+        payload.get("idle_lane_work_stealing") or ""
+    ).strip().lower()
+    if idle_lane_work_stealing not in {"", "virgin-transfer"}:
+        raise ConfiguredBoardError(
+            "idle_lane_work_stealing must be empty or 'virgin-transfer'"
+        )
+    if idle_lane_work_stealing and not strict_task_sharding:
+        raise ConfiguredBoardError(
+            "idle_lane_work_stealing requires strict_task_sharding"
+        )
+    if idle_lane_work_stealing and max_lanes <= 1:
+        raise ConfiguredBoardError(
+            "idle_lane_work_stealing requires at least two lanes"
+        )
     submodules = _safe_relative_list(
         payload.get("worktree_submodule_paths"),
         field="worktree_submodule_paths",
@@ -1778,7 +1875,7 @@ def load_configured_board(
             )
         if primary_model_id != ORDERED_PRIMARY_MODEL_ID:
             raise ConfiguredBoardError(
-                "provider.primary_model_id must be 'grok-4.5' for "
+                "provider.primary_model_id must be 'grok-4.6' for "
                 "the ordered provider contract"
             )
         if fallback_provider_id != ORDERED_FALLBACK_PROVIDER_ID:
@@ -1791,13 +1888,12 @@ def load_configured_board(
                 "provider.fallback_model_id must be 'gpt-5.6-terra' for "
                 "the ordered provider contract"
             )
-        if fallback_trigger not in {
-            ORDERED_FALLBACK_TRIGGER,
-            "primary_quota_or_auth_unavailable",  # LGSWF-062 fixture compatibility
-        }:
+        if fallback_trigger not in ORDERED_FALLBACK_TRIGGERS:
             raise ConfiguredBoardError(
                 "provider.fallback_trigger must be "
-                "'primary_quota_exhausted' for the ordered provider contract"
+                "'primary_quota_exhausted' or "
+                "'primary_quota_or_auth_unavailable' for the ordered "
+                "provider contract"
             )
         if fallback_reasoning_effort not in ORDERED_FALLBACK_REASONING_EFFORTS:
             raise ConfiguredBoardError(
@@ -1844,6 +1940,13 @@ def load_configured_board(
     ):
         if not isinstance(payload.get(field), bool):
             raise ConfiguredBoardError(f"{field} must be boolean")
+    if (
+        "objective_goal_refinement_enabled" in payload
+        and not isinstance(payload.get("objective_goal_refinement_enabled"), bool)
+    ):
+        raise ConfiguredBoardError(
+            "objective_goal_refinement_enabled must be boolean"
+        )
 
     for field in (
         "poll_interval_seconds",
@@ -1897,6 +2000,7 @@ def load_configured_board(
         merge_target_branch=merge_target_branch,
         max_lanes=max_lanes,
         strict_task_sharding=strict_task_sharding,
+        idle_lane_work_stealing=idle_lane_work_stealing,
         worktree_submodule_paths=submodules,
         protected_paths=protected,
         runtime_paths=runtime_paths,
@@ -1966,6 +2070,60 @@ def _gitlink_commit(
         result.stdout,
     )
     return match.group(1) if match else ""
+
+
+def _control_file_is_tracked(
+    board: ConfiguredBoard,
+    relative: str,
+) -> bool:
+    """Recognize control files tracked by the outer or an owned submodule."""
+
+    if (
+        _git(
+            board,
+            "ls-files",
+            "--error-unmatch",
+            "--",
+            relative,
+        ).returncode
+        == 0
+    ):
+        return True
+    relative_path = PurePosixPath(relative)
+    for submodule in sorted(
+        board.worktree_submodule_paths,
+        key=lambda value: len(PurePosixPath(value).parts),
+        reverse=True,
+    ):
+        submodule_path = PurePosixPath(submodule)
+        prefix = submodule_path.parts
+        if (
+            relative_path.parts[: len(prefix)] != prefix
+            or len(relative_path.parts) == len(prefix)
+        ):
+            continue
+        if (
+            _git(
+                board,
+                "ls-files",
+                "--error-unmatch",
+                "--",
+                submodule,
+            ).returncode
+            != 0
+        ):
+            return False
+        nested_root = board.path(submodule)
+        inner = PurePosixPath(*relative_path.parts[len(prefix) :]).as_posix()
+        return (
+            _run(
+                ("git", "ls-files", "--error-unmatch", "--", inner),
+                cwd=nested_root,
+                timeout=60.0,
+            ).returncode
+            == 0
+        )
+    return False
 
 
 def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
@@ -2071,14 +2229,7 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
     tracked = [
         relative
         for relative in sorted(required_files)
-        if _git(
-            board,
-            "ls-files",
-            "--error-unmatch",
-            "--",
-            relative,
-        ).returncode
-        == 0
+        if _control_file_is_tracked(board, relative)
     ]
     untracked_control = sorted(required_files - set(tracked))
     _append_check(
@@ -2312,10 +2463,14 @@ def configured_board_common_args(
         "--log-level",
         "INFO",
     ]
-    # Always emit an explicit task-source/authority selection so the managed
-    # daemon never relies on its deprecated implicit legacy-Markdown default.
+    # Explicit database-program selections are supervisor inputs.  The
+    # fallback legacy-Markdown program, however, is a daemon-only compatibility
+    # projection: implementation_supervisor does not accept the database CLI
+    # flags and already launches the daemon with its closed legacy-Markdown
+    # default.  Passing those daemon-only flags through the supervisor creates
+    # an immediate argparse/restart loop before any task can run.
     program = board.resolved_database_program()
-    program_args = program.cli_args()
+    program_args = program.cli_args() if board.database_program is not None else []
     skip_next = False
     for item in program_args:
         if skip_next:
@@ -2335,6 +2490,10 @@ def configured_board_common_args(
     # strict fallback policy must both be disabled for that child.
     if board.strict_task_sharding and not _plan_bound_profile(board):
         args.append("--strict-task-sharding")
+    if board.idle_lane_work_stealing and not _plan_bound_profile(board):
+        args.extend(
+            ["--idle-lane-work-stealing", board.idle_lane_work_stealing]
+        )
     for relative in board.worktree_submodule_paths:
         args.extend(["--worktree-submodule-path", relative])
     for relative in board.protected_paths:
@@ -2356,8 +2515,16 @@ def configured_board_common_args(
                 str(cooldown_seconds),
             ]
         )
+        if payload.get("objective_goal_refinement_enabled") is False:
+            args.append("--no-objective-goal-refinement")
     if payload.get("codebase_refill_enabled") is True:
         args.append("--codebase-refill-scan")
+    if payload.get("retry_budget_guardrail_enabled") is False:
+        args.append("--no-retry-budget-guardrail")
+    if payload.get("dependency_guardrail_enabled") is False:
+        args.append("--no-dependency-guardrail")
+    if payload.get("reconciliation_guardrail_enabled") is False:
+        args.append("--no-reconciliation-guardrail")
     return tuple(args)
 
 
@@ -2505,6 +2672,13 @@ def configured_board_launch_plan(
         runner_args.append(
             "--implementation-supervisor-strict-task-sharding"
         )
+    if board.idle_lane_work_stealing and not plan_bound:
+        runner_args.extend(
+            [
+                "--implementation-supervisor-idle-lane-work-stealing",
+                board.idle_lane_work_stealing,
+            ]
+        )
     if plan_bound or board.payload.get("exit_when_all_tracks_terminal") is True:
         runner_args.append("--exit-when-all-tracks-terminal")
 
@@ -2541,8 +2715,12 @@ def configured_board_launch_plan(
         "lanes": board.max_lanes,
         "admitted_lanes": len(plan_bound_children) if plan_bound else board.max_lanes,
         "strict_task_sharding": board.strict_task_sharding,
+        "idle_lane_work_stealing": board.idle_lane_work_stealing,
         "effective_strict_task_sharding": (
             board.strict_task_sharding if not plan_bound else False
+        ),
+        "effective_idle_lane_work_stealing": (
+            board.idle_lane_work_stealing if not plan_bound else ""
         ),
         "plan_bound_dispatch": plan_bound,
         "active_plan_revision_cid": (

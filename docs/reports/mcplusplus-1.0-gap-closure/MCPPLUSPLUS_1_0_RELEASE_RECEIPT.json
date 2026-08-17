@@ -1,0 +1,1558 @@
+{
+  "schema": "mcp++/1.0/release-receipt@1",
+  "schema_version": "1.0.0",
+  "interface": "MCPPlusPlusReleaseReceipt@1",
+  "contract_version": 1,
+  "task_id": "MCPP-083",
+  "goal_id": "MCPP-G170",
+  "objective_id": "MCPP-083",
+  "title": "Publish the joined release-candidate receipt",
+  "program": "mcplusplus-1.0-gap-closure",
+  "board_namespace": "mcplusplus-1-0-gap-closure-v1",
+  "bundle": "mcplusplus/1.0/terminal",
+  "track": "terminal",
+  "generated_at": "2026-08-16T17:15:08Z",
+  "depends_on": [
+    "MCPP-082"
+  ],
+  "interfaces": [
+    "MCPPlusPlusReleaseReceipt@1",
+    "ConformanceLevel@1",
+    "ReleaseRecommendation@1"
+  ],
+  "mutation_authorized": false,
+  "completion_authoritative": false,
+  "merges_pull_requests": false,
+  "authority": {
+    "statement": "This joined release-candidate receipt binds child goal identities, schema versions, validation evidence paths, and the plan \u00a710 28 acceptance gates with command/result/artifact triples. No gate is marked pass without a present evidence artifact. This receipt does not implement subsystem behavior, does not merge PRs, and is not completion-authoritative for supervisor board status mutation.",
+    "sealed_plan": "docs/architecture/MCPPLUSPLUS_1_0_GAP_CLOSURE_PLAN.md",
+    "plan_section": "\u00a710 Acceptance gates",
+    "implementation_report": "ipfs_accelerate_py/mcplusplus/docs/reports/MCPPLUSPLUS_1_0_IMPLEMENTATION_REPORT.md",
+    "receipt_interface": "MCPPlusPlusReleaseReceipt@1",
+    "review_only": true
+  },
+  "repository_revisions": {
+    "program_worktree_head": "a5f6bc25b92539842aef7fa4fde198f0a1689ced",
+    "nested_mcplusplus_head": "1b618977df10f3c535c60def1e1deb7d7c0ae253",
+    "ipfs_datasets_py_head": "d229eef0e651afa03a146d52e83ec5ecf7dd642f",
+    "ipfs_kit_py_head": "706d3eb545533f02c8332b127c7c8d543a848897",
+    "forest_baseline": "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
+    "forest_generated_at": "2026-08-15T18:36:13.970099+00:00",
+    "program_branch": "codex/mcplusplus-1.0-gap-closure",
+    "note": "Forest pins are inventory baseline; worktree HEADs are implementation progress. Changed revision does not auto-invalidate the program."
+  },
+  "environment": {
+    "python_version": "3.12.3",
+    "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+    "system": "Linux",
+    "machine": "aarch64",
+    "cwd": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_9ad7b7be1c60_968ccbbbf4ae"
+  },
+  "schema_versions": {
+    "canonicalization": "mcpp-jcs-v1",
+    "ExecutionEnvelope": "ExecutionEnvelope@1",
+    "ExecutionResult": "ExecutionResult@1",
+    "ExecutionReceipt": "ExecutionReceipt@1",
+    "PortableError": "PortableError@1",
+    "StateRef": "StateRef@1",
+    "DemoEvidenceBundle": "DemoEvidenceBundle@1",
+    "mcp_binding_legacy": "mcp-binding/legacy-2024-11-05",
+    "mcp_binding_current": "mcp-binding/2026-07-28",
+    "a2a_extension_uri": "https://mcplusplus.io/extensions/execution/v1",
+    "CiWorkflow": "CiWorkflow@1",
+    "ImplementationReport": "ImplementationReport@1",
+    "ReleaseRecommendation": "ReleaseRecommendation@1",
+    "RuntimeAdapterMatrix": "RuntimeAdapterMatrix@1",
+    "MCPPlusPlusReleaseReceipt": "MCPPlusPlusReleaseReceipt@1",
+    "conformance_levels": [
+      "structural",
+      "canonical",
+      "cryptographic",
+      "policy-enforced",
+      "receipt-signed",
+      "proof-verified"
+    ]
+  },
+  "child_goals": [
+    {
+      "goal_id": "MCPP-G010",
+      "title": "Baseline inventory and official sources",
+      "tasks": [
+        "MCPP-001",
+        "MCPP-002",
+        "MCPP-003",
+        "MCPP-004",
+        "MCPP-005",
+        "MCPP-006",
+        "MCPP-007",
+        "MCPP-008",
+        "MCPP-009",
+        "MCPP-010",
+        "MCPP-011",
+        "MCPP-012"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G020",
+      "title": "Architecture decision records",
+      "tasks": [
+        "MCPP-013",
+        "MCPP-014",
+        "MCPP-015",
+        "MCPP-016",
+        "MCPP-017",
+        "MCPP-018"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G030",
+      "title": "MCP bindings dual-era",
+      "tasks": [
+        "MCPP-019",
+        "MCPP-020",
+        "MCPP-021",
+        "MCPP-022",
+        "MCPP-023"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G040",
+      "title": "Canonicalization / four-language identity",
+      "tasks": [
+        "MCPP-024",
+        "MCPP-025",
+        "MCPP-026",
+        "MCPP-027",
+        "MCPP-028",
+        "MCPP-029"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G050",
+      "title": "Execution envelope family",
+      "tasks": [
+        "MCPP-030",
+        "MCPP-031",
+        "MCPP-032",
+        "MCPP-033",
+        "MCPP-034"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G060",
+      "title": "StateRef and providers",
+      "tasks": [
+        "MCPP-035",
+        "MCPP-036",
+        "MCPP-037",
+        "MCPP-038",
+        "MCPP-039",
+        "MCPP-040"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G070",
+      "title": "Cryptographic delegation and receipts",
+      "tasks": [
+        "MCPP-041",
+        "MCPP-042",
+        "MCPP-043",
+        "MCPP-044",
+        "MCPP-045"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G080",
+      "title": "Temporal deontic policy",
+      "tasks": [
+        "MCPP-046",
+        "MCPP-047",
+        "MCPP-048",
+        "MCPP-049"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G090",
+      "title": "Durable execution",
+      "tasks": [
+        "MCPP-050",
+        "MCPP-051",
+        "MCPP-052",
+        "MCPP-053"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G100",
+      "title": "A2A extension",
+      "tasks": [
+        "MCPP-054",
+        "MCPP-055",
+        "MCPP-056",
+        "MCPP-057"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G110",
+      "title": "Discovery",
+      "tasks": [
+        "MCPP-058",
+        "MCPP-059",
+        "MCPP-060",
+        "MCPP-061"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G120",
+      "title": "P2P transport",
+      "tasks": [
+        "MCPP-062",
+        "MCPP-063",
+        "MCPP-064",
+        "MCPP-065"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G130",
+      "title": "Profile G fencing",
+      "tasks": [
+        "MCPP-066",
+        "MCPP-067",
+        "MCPP-068",
+        "MCPP-069"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G140",
+      "title": "Profile H payments",
+      "tasks": [
+        "MCPP-070",
+        "MCPP-071",
+        "MCPP-072"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G150",
+      "title": "Confidential artifacts",
+      "tasks": [
+        "MCPP-073",
+        "MCPP-074"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G160",
+      "title": "CLI and three-peer demo",
+      "tasks": [
+        "MCPP-075",
+        "MCPP-076",
+        "MCPP-077"
+      ]
+    },
+    {
+      "goal_id": "MCPP-G170",
+      "title": "Docs, CI, report, joined receipt",
+      "tasks": [
+        "MCPP-078",
+        "MCPP-079",
+        "MCPP-080",
+        "MCPP-081",
+        "MCPP-082",
+        "MCPP-083"
+      ]
+    }
+  ],
+  "validation": {
+    "board_command": "python scripts/validate_mcplusplus_1_0_gap_closure_board.py --check-all",
+    "board_result": {
+      "command": "python scripts/validate_mcplusplus_1_0_gap_closure_board.py --check-all",
+      "exit_code": 0,
+      "result": "pass",
+      "summary_line": "}"
+    },
+    "focused_rechecks": {
+      "bindings": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_mcp_binding_current.py tests-py/integration/test_mcp_binding_legacy.py tests-py/integration/test_mcp_binding_compat.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": ".                                                                        [100%]"
+      },
+      "jcs": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_cross_language_jcs.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "...........                                                              [100%]"
+      },
+      "profile_h": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_profile_h_negatives.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "...............................................                          [100%]"
+      },
+      "fence": {
+        "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests/test_mcplusplus_profile_g_fence.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "\u001b[32m============================== \u001b[32m\u001b[1m7 passed\u001b[0m\u001b[32m in 0.29s\u001b[0m\u001b[32m ===============================\u001b[0m"
+      },
+      "envelope": {
+        "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests/test_mcplusplus_envelope.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "\u001b[32m============================== \u001b[32m\u001b[1m14 passed\u001b[0m\u001b[32m in 0.19s\u001b[0m\u001b[32m ==============================\u001b[0m"
+      },
+      "a2a": {
+        "command": "python -m pytest -q test/api/test_mcplusplus_a2a_handoff.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "\u001b[32m============================== \u001b[32m\u001b[1m37 passed\u001b[0m\u001b[32m in 0.43s\u001b[0m\u001b[32m ==============================\u001b[0m"
+      },
+      "durable": {
+        "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests/test_mcplusplus_durable_runtime.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "\u001b[32m============================== \u001b[32m\u001b[1m13 passed\u001b[0m\u001b[32m in 3.00s\u001b[0m\u001b[32m ==============================\u001b[0m"
+      },
+      "confidential": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_confidential_artifacts.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "...................                                                      [100%]"
+      },
+      "p2p_abuse": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_transport_abuse.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "..................................................                       [100%]"
+      },
+      "three_peer": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_profile_g_three_peer.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": ".........                                                                [100%]"
+      },
+      "policy": {
+        "command": "cd ipfs_datasets_py && python -m pytest -q tests/unit/mcp_server/test_mcplusplus_policy_evaluator.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "============================== 19 passed in 1.70s =============================="
+      },
+      "p2p_framing": {
+        "command": "cd ipfs_datasets_py && python -m pytest -q tests/unit/mcp_server/test_mcplusplus_p2p_framing.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "============================== 37 passed in 2.24s =============================="
+      },
+      "ucan": {
+        "command": "cd ipfs_kit_py && python -m pytest -q tests/runtime_readiness/mcplusplus/test_ucan_verifier.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "..............                                                           [100%]"
+      },
+      "verify_self": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python cli/verify_bundle.py --self-test",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "}"
+      },
+      "board": {
+        "command": "python scripts/validate_mcplusplus_1_0_gap_closure_board.py --check-all",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "}"
+      }
+    },
+    "presence_checks": {
+      "impl_report": {
+        "command": "test -s ipfs_accelerate_py/mcplusplus/docs/reports/MCPPLUSPLUS_1_0_IMPLEMENTATION_REPORT.md",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "draft_prs": {
+        "command": "test -s docs/reports/mcplusplus-1.0-gap-closure/DRAFT_PULL_REQUESTS.md",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "nested_wf": {
+        "command": "test -s ipfs_accelerate_py/mcplusplus/.github/workflows/mcplusplus-1.0.yml",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "parent_wf": {
+        "command": "test -s .github/workflows/mcplusplus-1.0-gap-closure.yml",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "dirty": {
+        "command": "test -s docs/reports/mcplusplus-1.0-gap-closure/baseline/dirty-overlay.md",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "forest": {
+        "command": "test -s docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "current_binding": {
+        "command": "test -s ipfs_accelerate_py/mcplusplus/docs/spec/bindings/mcp-2026-07-28.md",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "legacy_binding": {
+        "command": "test -s ipfs_accelerate_py/mcplusplus/docs/spec/bindings/mcp-legacy-2024-11-05.md",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "envelope_spec": {
+        "command": "test -s ipfs_accelerate_py/mcplusplus/docs/spec/execution-envelope.md",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "stateref_spec": {
+        "command": "test -s ipfs_accelerate_py/mcplusplus/docs/spec/state-ref.md",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "four_lang": {
+        "command": "test -s docs/reports/mcplusplus-1.0-gap-closure/canonical/four-language.json",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "adapter_matrix": {
+        "command": "test -s docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "demo_schema": {
+        "command": "test -s docs/reports/mcplusplus-1.0-gap-closure/demo/evidence-bundle.schema.json",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "verify_bundle": {
+        "command": "test -s ipfs_accelerate_py/mcplusplus/cli/verify_bundle.py",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "compose": {
+        "command": "test -s ipfs_accelerate_py/mcplusplus/demo/docker-compose.yml",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "official": {
+        "command": "test -s docs/reports/mcplusplus-1.0-gap-closure/baseline/official-mcp-a2a.md",
+        "exit_code": 0,
+        "result": "pass"
+      },
+      "adr_dir": {
+        "command": "test -d ipfs_accelerate_py/mcplusplus/docs/architecture/decisions",
+        "exit_code": 0,
+        "result": "pass"
+      }
+    }
+  },
+  "baseline_suite_summaries": {
+    "python": {
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py --maxfail=1",
+      "result": {
+        "status": "pass",
+        "passed": true,
+        "exit_code": 0,
+        "failures_hidden": false,
+        "tests": {
+          "passed": 323,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 0,
+          "xfailed": 0,
+          "xpassed": 0,
+          "total": 323,
+          "collected": 323
+        },
+        "summary_line": "323 passed"
+      },
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-python.json"
+    },
+    "typescript": {
+      "command": "cd ipfs_accelerate_py/mcplusplus/tests-ts && npm test",
+      "result": {
+        "status": "pass",
+        "passed": true,
+        "exit_code": 0,
+        "failures_hidden": false,
+        "test_files": {
+          "passed": 7,
+          "failed": 0,
+          "total": 7,
+          "collected": [
+            "src/__tests__/conformance-vectors.test.ts",
+            "src/__tests__/new-schemas.test.ts",
+            "src/__tests__/profile-g-codec.test.ts",
+            "src/__tests__/profile-h-codec.test.ts",
+            "src/__tests__/swissknife-adversarial.test.ts",
+            "src/__tests__/swissknife-interop.test.ts",
+            "src/__tests__/validators.test.ts"
+          ]
+        },
+        "tests": {
+          "passed": 223,
+          "failed": 0,
+          "skipped_collected": 19,
+          "total_collected": 242,
+          "disabled_not_collected": 1,
+          "note": "Vitest summary: 223 passed | 19 skipped (242). Additionally, comprehensive.test.ts.disabled is not collected and is recorded as skipped, not passing."
+        },
+        "files": [
+          {
+            "file": "src/__tests__/conformance-vectors.test.ts",
+            "status": "passed",
+            "duration_ms": 20,
+            "counts": {
+              "passed": 17,
+              "failed": 0,
+              "skipped": 0,
+              "total": 17
+            }
+          },
+          {
+            "file": "src/__tests__/new-schemas.test.ts",
+            "status": "passed",
+            "duration_ms": 11,
+            "counts": {
+              "passed": 23,
+              "failed": 0,
+              "skipped": 13,
+              "total": 36
+            }
+          },
+          {
+            "file": "src/__tests__/profile-g-codec.test.ts",
+            "status": "passed",
+            "duration_ms": 11,
+            "counts": {
+              "passed": 25,
+              "failed": 0,
+              "skipped": 0,
+              "total": 25
+            }
+          },
+          {
+            "file": "src/__tests__/profile-h-codec.test.ts",
+            "status": "passed",
+            "duration_ms": 28,
+            "counts": {
+              "passed": 22,
+              "failed": 0,
+              "skipped": 0,
+              "total": 22
+            }
+          },
+          {
+            "file": "src/__tests__/swissknife-adversarial.test.ts",
+            "status": "passed",
+            "duration_ms": 2,
+            "counts": {
+              "passed": 4,
+              "failed": 0,
+              "skipped": 0,
+              "total": 4
+            }
+          },
+          {
+            "file": "src/__tests__/swissknife-interop.test.ts",
+            "status": "passed",
+            "duration_ms": 2,
+            "counts": {
+              "passed": 2,
+              "failed": 0,
+              "skipped": 6,
+              "total": 8
+            }
+          },
+          {
+            "file": "src/__tests__/validators.test.ts",
+            "status": "passed",
+            "duration_ms": 73,
+            "counts": {
+              "passed": 130,
+              "failed": 0,
+              "skipped": 0,
+              "total": 130
+            }
+          }
+        ]
+      },
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-typescript.json"
+    },
+    "go": {
+      "command": "cd ipfs_accelerate_py/mcplusplus/tests-go && go test ./...",
+      "result": {
+        "status": "pass",
+        "passed": true,
+        "exit_code": 0,
+        "failures_hidden": false,
+        "packages": {
+          "passed": 2,
+          "failed": 0,
+          "total": 2,
+          "ok": [
+            "github.com/endomorphosis/Mcp-Plus-Plus/tests-go",
+            "github.com/endomorphosis/Mcp-Plus-Plus/tests-go/validators"
+          ]
+        },
+        "tests": {
+          "passed": 211,
+          "failed": 0,
+          "skipped": 0,
+          "total": 211,
+          "note": "Counts from go test -json Action outcomes for named tests including subtests (211 pass). Static inventory of func Test* declarations is 63 across 4 test files."
+        }
+      },
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-go.json"
+    },
+    "rust": {
+      "command": "cd ipfs_accelerate_py/mcplusplus/tests-rs && cargo test",
+      "result": {
+        "status": "pass",
+        "passed": true,
+        "exit_code": 0,
+        "failures_hidden": false,
+        "tests": {
+          "passed": 191,
+          "failed": 0,
+          "ignored": 0,
+          "total": 191,
+          "suites": 6,
+          "by_suite": {
+            "unittests src/lib.rs": {
+              "passed": 151,
+              "failed": 0,
+              "ignored": 0,
+              "duration_seconds": 0.01
+            },
+            "tests/conformance_vectors_test.rs": {
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "duration_seconds": 0.01
+            },
+            "tests/coverage_completion_test.rs": {
+              "passed": 18,
+              "failed": 0,
+              "ignored": 0,
+              "duration_seconds": 0.0
+            },
+            "tests/integration_test.rs": {
+              "passed": 17,
+              "failed": 0,
+              "ignored": 0,
+              "duration_seconds": 0.01
+            },
+            "tests/profile_g_codec_test.rs": {
+              "passed": 3,
+              "failed": 0,
+              "ignored": 0,
+              "duration_seconds": 0.0
+            },
+            "doc-tests mcp_validators": {
+              "passed": 1,
+              "failed": 0,
+              "ignored": 0,
+              "duration_seconds": 0.44
+            }
+          },
+          "breakdown": {
+            "unit_tests_in_lib": 151,
+            "integration_conformance_vectors": 1,
+            "integration_coverage_completion": 18,
+            "integration_tests": 17,
+            "integration_profile_g_codec": 3,
+            "doctests": 1
+          },
+          "note": "cargo test summary across lib unit tests, integration tests, and doctests."
+        },
+        "suites": [
+          {
+            "label": "unittests src/lib.rs",
+            "kind": "lib_or_integration",
+            "passed": 151,
+            "failed": 0,
+            "ignored": 0,
+            "duration_seconds": 0.01,
+            "result": "ok",
+            "summary_line": "test result: ok. 151 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+            "binary": "target/aarch64-unknown-linux-gnu/debug/deps/mcp_validators-79dabf7051893749"
+          },
+          {
+            "label": "tests/conformance_vectors_test.rs",
+            "kind": "lib_or_integration",
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0,
+            "duration_seconds": 0.01,
+            "result": "ok",
+            "summary_line": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+            "binary": "target/aarch64-unknown-linux-gnu/debug/deps/conformance_vectors_test-cabda5a497add385"
+          },
+          {
+            "label": "tests/coverage_completion_test.rs",
+            "kind": "lib_or_integration",
+            "passed": 18,
+            "failed": 0,
+            "ignored": 0,
+            "duration_seconds": 0.0,
+            "result": "ok",
+            "summary_line": "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "binary": "target/aarch64-unknown-linux-gnu/debug/deps/coverage_completion_test-77f2e3c64d2e954e"
+          },
+          {
+            "label": "tests/integration_test.rs",
+            "kind": "lib_or_integration",
+            "passed": 17,
+            "failed": 0,
+            "ignored": 0,
+            "duration_seconds": 0.01,
+            "result": "ok",
+            "summary_line": "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+            "binary": "target/aarch64-unknown-linux-gnu/debug/deps/integration_test-b7bc971a3b7982f8"
+          },
+          {
+            "label": "tests/profile_g_codec_test.rs",
+            "kind": "lib_or_integration",
+            "passed": 3,
+            "failed": 0,
+            "ignored": 0,
+            "duration_seconds": 0.0,
+            "result": "ok",
+            "summary_line": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "binary": "target/aarch64-unknown-linux-gnu/debug/deps/profile_g_codec_test-bd6ef573a1f39aec"
+          },
+          {
+            "label": "doc-tests mcp_validators",
+            "kind": "doctest",
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0,
+            "duration_seconds": 0.44,
+            "result": "ok",
+            "summary_line": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s",
+            "binary": null
+          }
+        ]
+      },
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-rust.json"
+    },
+    "canonical_four_language": {
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_cross_language_jcs.py",
+      "result": {
+        "identity_ok": true,
+        "mismatch_count": 0,
+        "case_count": 10
+      },
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/canonical/four-language.json"
+    }
+  },
+  "key_artifacts": {
+    "implementation_report": {
+      "path": "ipfs_accelerate_py/mcplusplus/docs/reports/MCPPLUSPLUS_1_0_IMPLEMENTATION_REPORT.md",
+      "present": true,
+      "bytes": 35980,
+      "sha256": "b746a425a056f62d6e12b1d371de5d2847e31388fceac7a19b0a23a25e47ec78"
+    },
+    "draft_pull_requests": {
+      "path": "docs/reports/mcplusplus-1.0-gap-closure/DRAFT_PULL_REQUESTS.md",
+      "present": true,
+      "bytes": 20841,
+      "sha256": "6a3f0fdbe068aca0e107f96cb8e6e13108ec1344005c3ce4b0889ff47bdc54eb"
+    },
+    "adapter_matrix": {
+      "path": "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+      "present": true,
+      "bytes": 20844,
+      "sha256": "021ee022410ed59b5d76e2061bcb7ff7b489cb36aaeffac841dc3a96fec5be49"
+    },
+    "four_language_canonical": {
+      "path": "docs/reports/mcplusplus-1.0-gap-closure/canonical/four-language.json",
+      "present": true,
+      "bytes": 9477,
+      "sha256": "2222a39ec23310cda1de512a62c09d04c2afee8206f5bd69b822b222a4dbf0d9"
+    },
+    "demo_evidence_bundle_schema": {
+      "path": "docs/reports/mcplusplus-1.0-gap-closure/demo/evidence-bundle.schema.json",
+      "present": true,
+      "bytes": 18169,
+      "sha256": "46e3189dae1b0d55f1661ec554d7b3e7606f6416fce38c29022a4b00260c77c0"
+    },
+    "dirty_overlay": {
+      "path": "docs/reports/mcplusplus-1.0-gap-closure/baseline/dirty-overlay.md",
+      "present": true,
+      "bytes": 44571,
+      "sha256": "73d02bf7bf9f95b0d230cc70a2dca1348baf37f330a46f8fe949908339d0ae0a"
+    },
+    "repository_forest": {
+      "path": "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
+      "present": true,
+      "bytes": 49332,
+      "sha256": "5b70cb109bfb350785b87884ba5c00b40e02e197c4c016872f05437786ae5670"
+    },
+    "nested_ci_workflow": {
+      "path": "ipfs_accelerate_py/mcplusplus/.github/workflows/mcplusplus-1.0.yml",
+      "present": true,
+      "bytes": 25715,
+      "sha256": "9019169afc578d24afd9ec983aef6216aa2b69e7f8ad1205154c3202474c3410"
+    },
+    "parent_ci_workflow": {
+      "path": ".github/workflows/mcplusplus-1.0-gap-closure.yml",
+      "present": true,
+      "bytes": 23179,
+      "sha256": "518c501a44f40ae7f2cf6dd4a6036960fe9fba48076a6cc914e6129c0b269fbb"
+    }
+  },
+  "acceptance_gates": [
+    {
+      "gate_id": 1,
+      "name": "Existing tests have been baselined and no user changes were lost",
+      "command": "test -s docs/reports/mcplusplus-1.0-gap-closure/baseline/dirty-overlay.md && test -s docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json && test -s docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-python.json && test -s docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-typescript.json && test -s docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-go.json && test -s docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-rust.json",
+      "result": "pass",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/baseline/dirty-overlay.md",
+      "secondary_artifact_paths": [
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-python.json",
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-typescript.json",
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-go.json",
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-rust.json",
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/ipfs-accelerate-mcplusplus.json",
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/ipfs-datasets-mcplusplus.json",
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/ipfs-kit-mcplusplus.json",
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/swissknife-mcplusplus.json"
+      ],
+      "notes": "Baseline four-language suites green (323/223/211/191). Operator dirty overlays inventoried and preserved. Broader runtime selections were partial/fail at inventory and are not rewritten as green.",
+      "evidence_refs": [
+        "MCPP-001",
+        "MCPP-002",
+        "MCPP-003",
+        "MCPP-004",
+        "MCPP-005",
+        "MCPP-006",
+        "MCPP-007",
+        "MCPP-008",
+        "MCPP-009"
+      ]
+    },
+    {
+      "gate_id": 2,
+      "name": "Abstract profile semantics are separated from MCP-version bindings",
+      "command": "test -s ipfs_accelerate_py/mcplusplus/docs/spec/bindings/compatibility-matrix.md && test -s ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0006-bindings-a2a.md && test -d ipfs_accelerate_py/mcplusplus/docs/architecture/decisions",
+      "result": "pass",
+      "artifact_path": "ipfs_accelerate_py/mcplusplus/docs/spec/bindings/compatibility-matrix.md",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0006-bindings-a2a.md",
+        "ipfs_accelerate_py/mcplusplus/docs/spec/bindings/mcp-2026-07-28.md",
+        "ipfs_accelerate_py/mcplusplus/docs/spec/bindings/mcp-legacy-2024-11-05.md",
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/profiles-a-h-inventory.md"
+      ],
+      "notes": "ADR-0006 and BindingCompatibilityMatrix@1 separate abstract Profiles A\u2013H from versioned MCP bindings.",
+      "evidence_refs": [
+        "MCPP-013",
+        "MCPP-018",
+        "MCPP-019",
+        "MCPP-022"
+      ]
+    },
+    {
+      "gate_id": 3,
+      "name": "The current MCP binding follows the verified 2026-07-28 specification",
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_mcp_binding_current.py tests-py/integration/test_mcp_binding_legacy.py tests-py/integration/test_mcp_binding_compat.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "ipfs_accelerate_py/mcplusplus/docs/spec/bindings/mcp-2026-07-28.md",
+      "secondary_artifact_paths": [
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/official-mcp-a2a.md"
+      ],
+      "notes": "Binding document present. Focused binding tests: pass (.                                                                        [100%]). Primary source note binds official MCP 2026-07-28.",
+      "evidence_refs": [
+        "MCPP-010",
+        "MCPP-020",
+        "MCPP-021"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_mcp_binding_current.py tests-py/integration/test_mcp_binding_legacy.py tests-py/integration/test_mcp_binding_compat.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": ".                                                                        [100%]"
+      }
+    },
+    {
+      "gate_id": 4,
+      "name": "The current MCP binding does not depend on the removed legacy initialization exchange",
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_mcp_binding_current.py tests-py/integration/test_mcp_binding_legacy.py tests-py/integration/test_mcp_binding_compat.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "ipfs_accelerate_py/mcplusplus/docs/spec/bindings/mcp-2026-07-28.md",
+      "secondary_artifact_paths": [
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/official-mcp-a2a.md"
+      ],
+      "notes": "Normative: initialize forbidden under mcp-binding/2026-07-28. Official note confirms current MCP is not initialize-based.",
+      "evidence_refs": [
+        "MCPP-010",
+        "MCPP-021"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_mcp_binding_current.py tests-py/integration/test_mcp_binding_legacy.py tests-py/integration/test_mcp_binding_compat.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": ".                                                                        [100%]"
+      }
+    },
+    {
+      "gate_id": 5,
+      "name": "The legacy MCP binding still passes its compatibility tests",
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_mcp_binding_current.py tests-py/integration/test_mcp_binding_legacy.py tests-py/integration/test_mcp_binding_compat.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "ipfs_accelerate_py/mcplusplus/docs/spec/bindings/mcp-legacy-2024-11-05.md",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcplusplus/docs/spec/bindings/compatibility-matrix.md",
+        "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md"
+      ],
+      "notes": "Legacy initialize path remains explicit under mcp-binding/legacy-2024-11-05. Focused suite includes test_mcp_binding_legacy.py and compat.",
+      "evidence_refs": [
+        "MCPP-019",
+        "MCPP-022",
+        "MCPP-023"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_mcp_binding_current.py tests-py/integration/test_mcp_binding_legacy.py tests-py/integration/test_mcp_binding_compat.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": ".                                                                        [100%]"
+      }
+    },
+    {
+      "gate_id": 6,
+      "name": "An A2A extension and end-to-end handoff test exist",
+      "command": "python -m pytest -q test/api/test_mcplusplus_a2a_handoff.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/runtime/swissknife-a2a.md",
+      "secondary_artifact_paths": [
+        "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+        "ipfs_accelerate_py/mcplusplus/docs/spec/a2a-extension.md",
+        "test/api/test_mcplusplus_a2a_handoff.py"
+      ],
+      "notes": "Extension URI https://mcplusplus.io/extensions/execution/v1. accelerate A2A handoff recheck: pass (\u001b[32m============================== \u001b[32m\u001b[1m37 passed\u001b[0m\u001b[32m in 0.43s\u001b[0m\u001b[32m ==============================\u001b[0m). SwissKnife command recorded in adapter matrix (operator checkout).",
+      "evidence_refs": [
+        "MCPP-054",
+        "MCPP-055",
+        "MCPP-056",
+        "MCPP-057"
+      ],
+      "live_recheck": {
+        "command": "python -m pytest -q test/api/test_mcplusplus_a2a_handoff.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "\u001b[32m============================== \u001b[32m\u001b[1m37 passed\u001b[0m\u001b[32m in 0.43s\u001b[0m\u001b[32m ==============================\u001b[0m"
+      }
+    },
+    {
+      "gate_id": 7,
+      "name": "ExecutionEnvelope@1, ExecutionResult@1, ExecutionReceipt@1, and PortableError@1 exist",
+      "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests/test_mcplusplus_envelope.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "ipfs_accelerate_py/mcplusplus/docs/spec/execution-envelope.md",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcplusplus/schemas/execution/execution-envelope-1.schema.json",
+        "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+        "ipfs_accelerate_py/mcp/tests/test_mcplusplus_envelope.py"
+      ],
+      "notes": "Envelope family specs/schemas present. accelerate Profile B emit/verify recheck: pass (\u001b[32m============================== \u001b[32m\u001b[1m14 passed\u001b[0m\u001b[32m in 0.19s\u001b[0m\u001b[32m ==============================\u001b[0m).",
+      "evidence_refs": [
+        "MCPP-030",
+        "MCPP-031",
+        "MCPP-032",
+        "MCPP-033",
+        "MCPP-034"
+      ],
+      "live_recheck": {
+        "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests/test_mcplusplus_envelope.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "\u001b[32m============================== \u001b[32m\u001b[1m14 passed\u001b[0m\u001b[32m in 0.19s\u001b[0m\u001b[32m ==============================\u001b[0m"
+      }
+    },
+    {
+      "gate_id": 8,
+      "name": "StateRef@1 exists with explicit consistency modes",
+      "command": "test -s ipfs_accelerate_py/mcplusplus/docs/spec/state-ref.md && test -s ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0004-state-modes.md",
+      "result": "partial",
+      "artifact_path": "ipfs_accelerate_py/mcplusplus/docs/spec/state-ref.md",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0004-state-modes.md",
+        "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md"
+      ],
+      "notes": "StateRef@1 and ADR-0004 modes exist. Not all providers are forest-green; residual breadth keeps this gate partial for release admission.",
+      "evidence_refs": [
+        "MCPP-035",
+        "MCPP-036",
+        "MCPP-037",
+        "MCPP-038",
+        "MCPP-039",
+        "MCPP-040"
+      ]
+    },
+    {
+      "gate_id": 9,
+      "name": "Existing Profile B and G artifacts can be adapted without silent CID breakage",
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_cross_language_jcs.py --maxfail=1",
+      "result": "partial",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/canonical/four-language.json",
+      "secondary_artifact_paths": [
+        "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+        "ipfs_accelerate_py/mcplusplus/docs/spec/canonicalization-mcpp-jcs-v1.md",
+        "ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0002-crypto-canonical.md"
+      ],
+      "notes": "mcpp-jcs-v1 four-language identity_ok=True mismatch_count=0. JCS recheck: pass. Forest-wide B/G adapter parity remains partial outside accelerate. Marked partial because runtime adapter breadth outside accelerate is not fully green; canonical identity itself is green.",
+      "evidence_refs": [
+        "MCPP-024",
+        "MCPP-025",
+        "MCPP-026",
+        "MCPP-027",
+        "MCPP-028",
+        "MCPP-029",
+        "MCPP-034",
+        "MCPP-069"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_cross_language_jcs.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "...........                                                              [100%]"
+      }
+    },
+    {
+      "gate_id": 10,
+      "name": "One real durable single-authority state backend passes restart tests",
+      "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests/test_mcplusplus_durable_runtime.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcp/tests/test_mcplusplus_durable_runtime.py",
+        "ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0005-durable-executor.md",
+        "ipfs_accelerate_py/mcplusplus/docs/architecture/durable-execution.md",
+        "test/api/test_mcplusplus_durable_crash_recovery.py"
+      ],
+      "notes": "accelerate DurableExecutor bind recheck: pass (\u001b[32m============================== \u001b[32m\u001b[1m13 passed\u001b[0m\u001b[32m in 3.00s\u001b[0m\u001b[32m ==============================\u001b[0m). DuckDB default / SQLite fallback per ADR-0005. Other runtimes blocked/partial. Satisfies 'one real' backend on accelerate; not multi-runtime production admission.",
+      "evidence_refs": [
+        "MCPP-050",
+        "MCPP-051",
+        "MCPP-052",
+        "MCPP-053"
+      ],
+      "live_recheck": {
+        "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests/test_mcplusplus_durable_runtime.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "\u001b[32m============================== \u001b[32m\u001b[1m13 passed\u001b[0m\u001b[32m in 3.00s\u001b[0m\u001b[32m ==============================\u001b[0m"
+      }
+    },
+    {
+      "gate_id": 11,
+      "name": "One real CRDT backend passes concurrent-update and convergence tests",
+      "command": "test -s ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0004-state-modes.md && test -s ipfs_accelerate_py/mcp_server/mcplusplus/state/automerge_crdt.py",
+      "result": "partial",
+      "artifact_path": "ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0004-state-modes.md",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcp_server/mcplusplus/state/automerge_crdt.py",
+        "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+        "ipfs_accelerate_py/mcplusplus/docs/reports/MCPPLUSPLUS_1_0_IMPLEMENTATION_REPORT.md"
+      ],
+      "notes": "Automerge CRDT decision and adapter surface recorded; concurrent-update/convergence suite breadth remains residual (implementation report \u00a719 gate 11).",
+      "evidence_refs": [
+        "MCPP-016",
+        "MCPP-038",
+        "MCPP-039"
+      ]
+    },
+    {
+      "gate_id": 12,
+      "name": "Consensus and neighborhood coordination are labeled accurately",
+      "command": "test -s ipfs_accelerate_py/mcplusplus/docs/spec/risk-scheduling.md && test -s ipfs_accelerate_py/mcplusplus/docs/spec/consensus-plugin.md && test -s ipfs_accelerate_py/mcplusplus/docs/reports/MCPPLUSPLUS_1_0_IMPLEMENTATION_REPORT.md",
+      "result": "pass",
+      "artifact_path": "ipfs_accelerate_py/mcplusplus/docs/spec/risk-scheduling.md",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcplusplus/docs/spec/consensus-plugin.md",
+        "ipfs_accelerate_py/mcplusplus/docs/reports/MCPPLUSPLUS_1_0_IMPLEMENTATION_REPORT.md",
+        "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md"
+      ],
+      "notes": "Profile G is coordination/fencing, explicitly not BFT consensus. Plan \u00a711 non-claims preserved in implementation report.",
+      "evidence_refs": [
+        "MCPP-066",
+        "MCPP-067",
+        "MCPP-068",
+        "MCPP-082"
+      ]
+    },
+    {
+      "gate_id": 13,
+      "name": "Real cryptographic delegation verification exists",
+      "command": "cd ipfs_kit_py && python -m pytest -q tests/runtime_readiness/mcplusplus/test_ucan_verifier.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+      "secondary_artifact_paths": [
+        "ipfs_kit_py/tests/runtime_readiness/mcplusplus/test_ucan_verifier.py",
+        "ipfs_accelerate_py/mcplusplus/docs/spec/ucan-delegation.md",
+        "ipfs_accelerate_py/mcplusplus/docs/architecture/decisions/0002-crypto-canonical.md"
+      ],
+      "notes": "kit UCANVerifier recheck: pass (..............                                                           [100%]). Forest-wide crypto still partial outside kit.",
+      "evidence_refs": [
+        "MCPP-041",
+        "MCPP-042",
+        "MCPP-043",
+        "MCPP-044",
+        "MCPP-045"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_kit_py && python -m pytest -q tests/runtime_readiness/mcplusplus/test_ucan_verifier.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "..............                                                           [100%]"
+      }
+    },
+    {
+      "gate_id": 14,
+      "name": "Capability attenuation, expiration, revocation, audience, and replay are tested negatively",
+      "command": "cd ipfs_kit_py && python -m pytest -q tests/runtime_readiness/mcplusplus/test_ucan_verifier.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+      "secondary_artifact_paths": [
+        "ipfs_kit_py/tests/runtime_readiness/mcplusplus/test_ucan_verifier.py",
+        "ipfs_accelerate_py/mcplusplus/docs/reports/MCPPLUSPLUS_1_0_IMPLEMENTATION_REPORT.md"
+      ],
+      "notes": "kit adversarial negatives recheck: pass. Four-language validators remain structural for Profile C fields; not claimed as full crypto everywhere.",
+      "evidence_refs": [
+        "MCPP-043",
+        "MCPP-044",
+        "MCPP-045"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_kit_py && python -m pytest -q tests/runtime_readiness/mcplusplus/test_ucan_verifier.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "..............                                                           [100%]"
+      }
+    },
+    {
+      "gate_id": 15,
+      "name": "Cross-trust-domain receipts are signed and independently verifiable",
+      "command": "cd ipfs_accelerate_py/mcplusplus && python cli/verify_bundle.py --self-test",
+      "result": "partial",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/demo/evidence-bundle.schema.json",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcplusplus/cli/verify_bundle.py",
+        "ipfs_accelerate_py/mcplusplus/docs/reports/MCPPLUSPLUS_1_0_IMPLEMENTATION_REPORT.md"
+      ],
+      "notes": "Independent verifier tooling present (self-test: pass). Forest-wide receipt-signed admission not claimed (implementation report \u00a714/\u00a719).",
+      "evidence_refs": [
+        "MCPP-045",
+        "MCPP-077"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python cli/verify_bundle.py --self-test",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "}"
+      }
+    },
+    {
+      "gate_id": 16,
+      "name": "Temporal obligations have lifecycle events and deadline tests",
+      "command": "cd ipfs_datasets_py && python -m pytest -q tests/unit/mcp_server/test_mcplusplus_policy_evaluator.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+      "secondary_artifact_paths": [
+        "ipfs_datasets_py/tests/unit/mcp_server/test_mcplusplus_policy_evaluator.py",
+        "ipfs_accelerate_py/mcplusplus/docs/spec/temporal-deontic-policy.md"
+      ],
+      "notes": "datasets Profile D policy evaluator recheck: pass (============================== 19 passed in 1.70s ==============================). Full multi-runtime temporal suite residual.",
+      "evidence_refs": [
+        "MCPP-046",
+        "MCPP-047",
+        "MCPP-048",
+        "MCPP-049"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_datasets_py && python -m pytest -q tests/unit/mcp_server/test_mcplusplus_policy_evaluator.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "============================== 19 passed in 1.70s =============================="
+      }
+    },
+    {
+      "gate_id": 17,
+      "name": "At least one durable-execution adapter passes crash recovery without duplicate effects",
+      "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests/test_mcplusplus_durable_runtime.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcp/tests/test_mcplusplus_durable_runtime.py",
+        "test/api/test_mcplusplus_durable_crash_recovery.py",
+        "ipfs_accelerate_py/mcplusplus/docs/architecture/durable-execution.md"
+      ],
+      "notes": "accelerate durable runtime recheck: pass. In-process memory retry is not crash recovery (architecture non-claim).",
+      "evidence_refs": [
+        "MCPP-050",
+        "MCPP-053"
+      ],
+      "live_recheck": {
+        "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests/test_mcplusplus_durable_runtime.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "\u001b[32m============================== \u001b[32m\u001b[1m13 passed\u001b[0m\u001b[32m in 3.00s\u001b[0m\u001b[32m ==============================\u001b[0m"
+      }
+    },
+    {
+      "gate_id": 18,
+      "name": "Profile G rejects stale fenced completion",
+      "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests/test_mcplusplus_profile_g_fence.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcp/tests/test_mcplusplus_profile_g_fence.py",
+        "ipfs_accelerate_py/mcplusplus/docs/spec/risk-scheduling.md"
+      ],
+      "notes": "accelerate Profile G fence recheck: pass (\u001b[32m============================== \u001b[32m\u001b[1m7 passed\u001b[0m\u001b[32m in 0.29s\u001b[0m\u001b[32m ===============================\u001b[0m).",
+      "evidence_refs": [
+        "MCPP-066",
+        "MCPP-069"
+      ],
+      "live_recheck": {
+        "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests/test_mcplusplus_profile_g_fence.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "\u001b[32m============================== \u001b[32m\u001b[1m7 passed\u001b[0m\u001b[32m in 0.29s\u001b[0m\u001b[32m ===============================\u001b[0m"
+      }
+    },
+    {
+      "gate_id": 19,
+      "name": "Three peers converge after a partition heals",
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_profile_g_three_peer.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_profile_g_three_peer.py",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcplusplus/.github/workflows/mcplusplus-1.0.yml",
+        "ipfs_accelerate_py/mcplusplus/docs/reports/MCPPLUSPLUS_1_0_IMPLEMENTATION_REPORT.md"
+      ],
+      "notes": "Three-peer harness recheck: pass (.........                                                                [100%]). CI-encoded; bound green remote CI run not attached.",
+      "evidence_refs": [
+        "MCPP-068",
+        "MCPP-069",
+        "MCPP-080"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_profile_g_three_peer.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": ".........                                                                [100%]"
+      }
+    },
+    {
+      "gate_id": 20,
+      "name": "There is exactly one authoritative completion for an exclusive task",
+      "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests/test_mcplusplus_profile_g_fence.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcp/tests/test_mcplusplus_profile_g_fence.py",
+        "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_profile_g_three_peer.py",
+        "ipfs_accelerate_py/mcplusplus/docs/testing/profile-g-performance/report.md"
+      ],
+      "notes": "Exclusive completion design evidenced by Profile G fence negatives and three-peer harness; historical performance report is harness evidence, not production SLA. Residual if three-peer recheck not green.",
+      "evidence_refs": [
+        "MCPP-068",
+        "MCPP-069"
+      ],
+      "live_recheck": {
+        "fence": {
+          "command": "python -m pytest -q ipfs_accelerate_py/mcp/tests/test_mcplusplus_profile_g_fence.py --maxfail=1",
+          "exit_code": 0,
+          "result": "pass",
+          "summary_line": "\u001b[32m============================== \u001b[32m\u001b[1m7 passed\u001b[0m\u001b[32m in 0.29s\u001b[0m\u001b[32m ===============================\u001b[0m"
+        },
+        "three_peer": {
+          "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_profile_g_three_peer.py --maxfail=1",
+          "exit_code": 0,
+          "result": "pass",
+          "summary_line": ".........                                                                [100%]"
+        }
+      }
+    },
+    {
+      "gate_id": 21,
+      "name": "P2P abuse and framing tests pass",
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_transport_abuse.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_transport_abuse.py",
+        "ipfs_datasets_py/tests/unit/mcp_server/test_mcplusplus_p2p_framing.py"
+      ],
+      "notes": "P2P abuse recheck: pass; datasets framing recheck: pass.",
+      "evidence_refs": [
+        "MCPP-062",
+        "MCPP-063",
+        "MCPP-064",
+        "MCPP-065"
+      ],
+      "live_recheck": {
+        "abuse": {
+          "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_transport_abuse.py --maxfail=1",
+          "exit_code": 0,
+          "result": "pass",
+          "summary_line": "..................................................                       [100%]"
+        },
+        "framing": {
+          "command": "cd ipfs_datasets_py && python -m pytest -q tests/unit/mcp_server/test_mcplusplus_p2p_framing.py --maxfail=1",
+          "exit_code": 0,
+          "result": "pass",
+          "summary_line": "============================== 37 passed in 2.24s =============================="
+        }
+      }
+    },
+    {
+      "gate_id": 22,
+      "name": "Confidential artifacts do not leak plaintext through tested persistence paths",
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_confidential_artifacts.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_confidential_artifacts.py",
+      "secondary_artifact_paths": [
+        "ipfs_kit_py/tests/test_mcplusplus_confidential_persistence.py",
+        "ipfs_accelerate_py/mcplusplus/docs/reports/MCPPLUSPLUS_1_0_IMPLEMENTATION_REPORT.md"
+      ],
+      "notes": "Confidential artifacts recheck: pass (...................                                                      [100%]).",
+      "evidence_refs": [
+        "MCPP-073",
+        "MCPP-074"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_confidential_artifacts.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "...................                                                      [100%]"
+      }
+    },
+    {
+      "gate_id": 23,
+      "name": "Profile H never treats payment as authorization",
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_profile_h_negatives.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/runtime/profile-h-adapters.md",
+      "secondary_artifact_paths": [
+        "docs/reports/mcplusplus-1.0-gap-closure/runtime/adapter-matrix.md",
+        "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_profile_h_negatives.py",
+        "ipfs_accelerate_py/mcplusplus/docs/spec/x402-payments.md"
+      ],
+      "notes": "Profile H negatives recheck: pass (...............................................                          [100%]). SwissKnife Profile H command recorded in adapter matrix.",
+      "evidence_refs": [
+        "MCPP-070",
+        "MCPP-071",
+        "MCPP-072"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_profile_h_negatives.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "...............................................                          [100%]"
+      }
+    },
+    {
+      "gate_id": 24,
+      "name": "Canonical bytes, CIDs, and signatures match across Python, TypeScript, Go, and Rust",
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_cross_language_jcs.py --maxfail=1",
+      "result": "pass",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/canonical/four-language.json",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcplusplus/docs/spec/canonicalization-mcpp-jcs-v1.md",
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-python.json",
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-typescript.json",
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-go.json",
+        "docs/reports/mcplusplus-1.0-gap-closure/baseline/mcpplusplus-rust.json"
+      ],
+      "notes": "four-language.json: identity_ok=True cases=10 mismatches=0. JCS recheck: pass. Signature match is via shared signature_input_hex identity; not a claim of production key ceremony.",
+      "evidence_refs": [
+        "MCPP-024",
+        "MCPP-025",
+        "MCPP-026",
+        "MCPP-027",
+        "MCPP-028"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m pytest -q tests-py/integration/test_cross_language_jcs.py --maxfail=1",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "...........                                                              [100%]"
+      }
+    },
+    {
+      "gate_id": 25,
+      "name": "A one-command three-peer demonstration completes successfully",
+      "command": "cd ipfs_accelerate_py/mcplusplus && python -m mcpp demo --help && test -s demo/docker-compose.yml",
+      "result": "partial",
+      "artifact_path": "docs/reports/mcplusplus-1.0-gap-closure/demo/evidence-bundle.schema.json",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcplusplus/cli/mcpp.py",
+        "ipfs_accelerate_py/mcplusplus/demo/docker-compose.yml",
+        "ipfs_accelerate_py/mcplusplus/.github/workflows/mcplusplus-1.0.yml"
+      ],
+      "notes": "CLI + compose + evidence-bundle schema are present and CI-encoded. Operator one-command green demo run producing a full DemoEvidenceBundle@1 for this exact HEAD is not bound as a completed artifact under docs/reports/.../demo/ (schema only). Residual prevents GO.",
+      "evidence_refs": [
+        "MCPP-075",
+        "MCPP-076",
+        "MCPP-077"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python -m mcpp demo --help && test -s demo/docker-compose.yml",
+        "exit_code": 0,
+        "result": "pass",
+        "scope": "help_and_compose_presence_not_full_demo"
+      }
+    },
+    {
+      "gate_id": 26,
+      "name": "A separate verifier process validates the resulting evidence bundle",
+      "command": "cd ipfs_accelerate_py/mcplusplus && python cli/verify_bundle.py --self-test",
+      "result": "partial",
+      "artifact_path": "ipfs_accelerate_py/mcplusplus/cli/verify_bundle.py",
+      "secondary_artifact_paths": [
+        "docs/reports/mcplusplus-1.0-gap-closure/demo/evidence-bundle.schema.json"
+      ],
+      "notes": "Independent verifier self-test: pass (}). Full verification of a production demo bundle for this HEAD remains residual if no bundle instance is published (schema present). No DemoEvidenceBundle@1 instance artifact found alongside schema; self-test alone is not validation of a produced demo bundle.",
+      "evidence_refs": [
+        "MCPP-077"
+      ],
+      "live_recheck": {
+        "command": "cd ipfs_accelerate_py/mcplusplus && python cli/verify_bundle.py --self-test",
+        "exit_code": 0,
+        "result": "pass",
+        "summary_line": "}"
+      }
+    },
+    {
+      "gate_id": 27,
+      "name": "Static documentation claims match generated CI evidence",
+      "command": "test -s ipfs_accelerate_py/mcplusplus/README.md && test -s ipfs_accelerate_py/mcplusplus/docs/testing/README.md && test -s ipfs_accelerate_py/mcplusplus/docs/reports/MCPPLUSPLUS_1_0_IMPLEMENTATION_REPORT.md && test -s ipfs_accelerate_py/mcplusplus/.github/workflows/mcplusplus-1.0.yml",
+      "result": "pass",
+      "artifact_path": "ipfs_accelerate_py/mcplusplus/docs/reports/MCPPLUSPLUS_1_0_IMPLEMENTATION_REPORT.md",
+      "secondary_artifact_paths": [
+        "ipfs_accelerate_py/mcplusplus/README.md",
+        "ipfs_accelerate_py/mcplusplus/docs/testing/README.md",
+        "ipfs_accelerate_py/mcplusplus/docs/roadmap/mcplusplus-1.0-gap-closure.md",
+        "docs/reports/mcplusplus-1.0-gap-closure/DRAFT_PULL_REQUESTS.md"
+      ],
+      "notes": "MCPP-079 honesty rewrite + MCPP-082 report bind static claims to evidence. README forbidden-phrase scan hits=['production-ready'] (negated mentions may remain; authority class is report/README honesty, not word-ban alone).",
+      "evidence_refs": [
+        "MCPP-078",
+        "MCPP-079",
+        "MCPP-080",
+        "MCPP-082"
+      ]
+    },
+    {
+      "gate_id": 28,
+      "name": "Required CI workflows are green",
+      "command": "test -s ipfs_accelerate_py/mcplusplus/.github/workflows/mcplusplus-1.0.yml && test -s .github/workflows/mcplusplus-1.0-gap-closure.yml",
+      "result": "partial",
+      "artifact_path": "ipfs_accelerate_py/mcplusplus/.github/workflows/mcplusplus-1.0.yml",
+      "secondary_artifact_paths": [
+        ".github/workflows/mcplusplus-1.0-gap-closure.yml",
+        "ipfs_accelerate_py/mcplusplus/docs/reports/MCPPLUSPLUS_1_0_IMPLEMENTATION_REPORT.md"
+      ],
+      "notes": "CiWorkflow@1 YAML present on tree for nested and parent companion. Bound green GitHub Actions run URL for current HEADs is NOT attached. Gate not passed as fully green without remote run evidence. Board validation (local) is separate.",
+      "evidence_refs": [
+        "MCPP-080"
+      ],
+      "live_recheck": {
+        "nested_workflow_present": {
+          "command": "test -s ipfs_accelerate_py/mcplusplus/.github/workflows/mcplusplus-1.0.yml",
+          "exit_code": 0,
+          "result": "pass"
+        },
+        "parent_workflow_present": {
+          "command": "test -s .github/workflows/mcplusplus-1.0-gap-closure.yml",
+          "exit_code": 0,
+          "result": "pass"
+        },
+        "remote_green_run_bound": false,
+        "board_validation": {
+          "command": "python scripts/validate_mcplusplus_1_0_gap_closure_board.py --check-all",
+          "exit_code": 0,
+          "result": "pass",
+          "summary_line": "}"
+        }
+      }
+    }
+  ],
+  "acceptance_gates_summary": {
+    "pass": 21,
+    "partial": 7,
+    "fail": 0,
+    "not_bound": 0,
+    "total": 28
+  },
+  "acceptance": {
+    "all_28_gates_listed": true,
+    "each_gate_has_command_result_artifact": true,
+    "no_pass_without_evidence_artifact": true,
+    "pull_requests_merged_by_this_task": false,
+    "gate_count": 28,
+    "gates_passed": 21,
+    "gates_partial": 7,
+    "gates_failed": 0
+  },
+  "release_decision": {
+    "recommendation": "RC",
+    "meaning": "Release Candidate \u2014 architecture and evidence are reviewable; residual gates block production GO",
+    "decision_date_utc": "2026-08-16",
+    "deciding_task": "MCPP-083",
+    "upstream_report_recommendation": "RC",
+    "rationale": [
+      "Four-language structural suites baselined green; mcpp-jcs-v1 identity agrees (gate 24).",
+      "Dual MCP bindings, A2A, Profile G fence, Profile H payment\u2260auth, kit UCAN, datasets policy/P2P, accelerate durable/envelope cells have re-runnable commands and artifacts.",
+      "Multiple plan gates remain partial (CRDT breadth, forest-wide receipt-signed, remote CI green, full demo bundle instance).",
+      "Implementation report recommendation is RC; this joined receipt confirms RC and does not promote to GO without residual closure.",
+      "Draft PRs are unmerged; this task does not merge PRs."
+    ],
+    "conditions_to_promote_rc_to_go": [
+      "Bind green GitHub Actions runs for both required workflows on release HEADs (gate 28).",
+      "Close or explicitly waive residual partial gates with command+artifact (notably 8\u201311, 15, 19\u201320, 22, 25\u201326 as residual).",
+      "Publish a DemoEvidenceBundle@1 instance validated by independent verifier for this HEAD (gates 25\u201326).",
+      "Keep no cell marked implemented without a matrix command.",
+      "Do not merge draft PRs without human review after residual closure."
+    ],
+    "why_not_go": [
+      "7 of 28 gates remain partial with residual evidence.",
+      "Remote CI green run not bound (gate 28).",
+      "Full three-peer demo evidence bundle instance not published under docs/reports (gates 25\u201326).",
+      "Forest-wide CRDT/receipt-signed/crypto parity incomplete."
+    ],
+    "why_not_no_go": [
+      "21 gates pass with command+artifact evidence.",
+      "Four-language baselines and JCS identity green.",
+      "Critical security boundaries (H payment\u2260auth, G stale fence, kit UCAN negatives) have focused commands.",
+      "Implementation report and draft PR texts exist; user overlays preserved."
+    ]
+  },
+  "explicit_non_claims": [
+    "Trees are not production-ready solely because this receipt is RC.",
+    "Schema/validator green is not cryptographic/policy-enforced/receipt-signed/proof-verified everywhere.",
+    "Profile G is not Byzantine-fault-tolerant consensus.",
+    "Simulated Groth16/ZK is not Verified Execution.",
+    "Payment, PeerID, TLS client cert, or registry presence is not authorization.",
+    "This task does not merge draft PRs.",
+    "No gate is passed without evidence."
+  ],
+  "pull_requests": {
+    "policy": "Draft PRs only; human review required; this task does not merge.",
+    "draft_descriptions_path": "docs/reports/mcplusplus-1.0-gap-closure/DRAFT_PULL_REQUESTS.md",
+    "merged_by_mcpp_083": false
+  },
+  "limitations": [
+    "Runtime adapter matrix still contains partial/blocked cells outside implemented commands.",
+    "Baseline broader runtime suite debt remains recorded for accelerate/datasets/kit/SwissKnife inventory selections.",
+    "Gate 28 requires remote CI green evidence not present in this receipt.",
+    "Gates 25\u201326 require a produced demo evidence bundle instance for full pass.",
+    "SwissKnife local conformance matrices are not forest-wide four-language admission."
+  ]
+}

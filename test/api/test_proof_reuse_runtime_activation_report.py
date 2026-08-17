@@ -193,7 +193,7 @@ def test_knowledge_of_axioms_never_satisfies_certificate_even_with_keys(
     tmp_path: Path,
 ) -> None:
     # Co-located generic keys under knowledge_of_axioms still cannot be authority.
-    artifacts = tmp_path / "artifacts" / "v4"
+    artifacts = tmp_path / "artifacts" / "v5"
     artifacts.mkdir(parents=True)
     (artifacts / "proving_key.bin").write_bytes(b"pk-bytes")
     (artifacts / "verifying_key.bin").write_bytes(b"vk-bytes")
@@ -217,7 +217,7 @@ def test_knowledge_of_axioms_never_satisfies_certificate_even_with_keys(
 def test_hostile_self_pinned_v4_manifest_cannot_mark_certificate_ready(
     tmp_path: Path,
 ) -> None:
-    artifacts = tmp_path / "artifacts" / "v4"
+    artifacts = tmp_path / "artifacts" / "v5"
     artifacts.mkdir(parents=True)
     (artifacts / "proving_key.bin").write_bytes(b"real-pk-material")
     (artifacts / "verifying_key.bin").write_bytes(b"real-vk-material")

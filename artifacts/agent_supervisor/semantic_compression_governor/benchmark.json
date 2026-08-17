@@ -1,0 +1,5368 @@
+{
+  "authoritative": false,
+  "benchmark_duration_ms": 1223,
+  "cases": [
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": "behavior_only_dependency",
+      "case_id": "adv.behavior_only_dependency",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 178,
+        "baseline_model_spend_micros": 3352,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 117,
+        "model_spend_micros": 2856,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "omission",
+      "expected_outcome": "insufficient_omission",
+      "family": "refactor",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreihily6tyc2m2rn6udhb7gfcenostzbltkch34s2amzgvbbpqh3hpe",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 117,
+        "expanded": 179,
+        "raw": 179,
+        "reduction_bp": 3463,
+        "retrieval": 143,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": "both_context_model_failure",
+      "case_id": "adv.both_context_model_failure",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 180,
+        "baseline_model_spend_micros": 5376,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 288,
+        "model_spend_micros": 4224,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "model_insufficiency",
+      "expected_outcome": "insufficient_model",
+      "family": "local_bug",
+      "measured_outcome_label": "insufficient_model",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreidvfgrqn6y2wnepydei5icz2ydjvnehrsnl3qcwqy6237kqf3owru",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "frontier",
+      "routing": {
+        "escalated": true,
+        "retried": false,
+        "route_tier": "frontier"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 288,
+        "expanded": 288,
+        "raw": 432,
+        "reduction_bp": 3333,
+        "retrieval": 345,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": "caller_exception_contract",
+      "case_id": "adv.caller_exception_contract",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 179,
+        "baseline_model_spend_micros": 3824,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 52,
+        "model_spend_micros": 2336,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "omission",
+      "expected_outcome": "insufficient_omission",
+      "family": "exception",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreigv3icjtvdjaquvkxeqqeffbnbkuigsoki5oygsobi4pkipwcs2cm",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 52,
+        "expanded": 238,
+        "raw": 238,
+        "reduction_bp": 7815,
+        "retrieval": 190,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "human_review_required",
+      "adversarial_scenario": "confidence_misclassification",
+      "case_id": "adv.confidence_misclassification",
+      "cohort": "simulated",
+      "comparative_outcome": "human_review_required",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 182,
+        "baseline_model_spend_micros": 2952,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 52,
+        "model_spend_micros": 2336,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "confidence_error",
+      "expected_outcome": "human_review_required",
+      "family": "local_bug",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": true,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreibi6z5pqyappccegidcovytgxp2ahmuqiu2enhokrc3gnt6lgk6ge",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "human",
+      "routing": {
+        "escalated": true,
+        "retried": false,
+        "route_tier": "human"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 52,
+        "expanded": 129,
+        "raw": 129,
+        "reduction_bp": 5968,
+        "retrieval": 103,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": "config_flag",
+      "case_id": "adv.config_flag",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 165,
+        "baseline_model_spend_micros": 2568,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 52,
+        "model_spend_micros": 2336,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "omission",
+      "expected_outcome": "insufficient_omission",
+      "family": "configuration",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreihnc4gdvde2ne2kaydzzlm6fqhfd6aef3fvjftbvk5p5y3pwtkdr4",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 52,
+        "expanded": 81,
+        "raw": 81,
+        "reduction_bp": 3580,
+        "retrieval": 64,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": "generated_interface",
+      "case_id": "adv.generated_interface",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 173,
+        "baseline_model_spend_micros": 2688,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 52,
+        "model_spend_micros": 2336,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "omission",
+      "expected_outcome": "insufficient_omission",
+      "family": "generated",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreighmiae4aysx64sd2z2zotvqy4oiojsrdmbim4fvjz2obpjqslhya",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 52,
+        "expanded": 96,
+        "raw": 96,
+        "reduction_bp": 4583,
+        "retrieval": 76,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": "hidden_callee_side_effect",
+      "case_id": "adv.hidden_callee_side_effect",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 179,
+        "baseline_model_spend_micros": 3104,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 66,
+        "model_spend_micros": 2448,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "omission",
+      "expected_outcome": "insufficient_omission",
+      "family": "local_bug",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreih3s7fuac7idupkgtqhxcsbh6nptaxsnkey6asn4luqtgjcardsra",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 66,
+        "expanded": 148,
+        "raw": 148,
+        "reduction_bp": 5540,
+        "retrieval": 118,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": "migration_path",
+      "case_id": "adv.migration_path",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 168,
+        "baseline_model_spend_micros": 3952,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 52,
+        "model_spend_micros": 2336,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "omission",
+      "expected_outcome": "insufficient_omission",
+      "family": "schema_migration",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreiekjxzzcrcnlgq5xvovyyspzbnb23dszaxfzsei7yrvcvphqqciza",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 52,
+        "expanded": 254,
+        "raw": 254,
+        "reduction_bp": 7952,
+        "retrieval": 203,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": "misleading_comment",
+      "case_id": "adv.misleading_comment",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 172,
+        "baseline_model_spend_micros": 4272,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 147,
+        "model_spend_micros": 3096,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "documentation",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreiegscvpukg77hqqyh6idulo4vijqje4yz6fg4mvlzve3rfy5ld4ii",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 147,
+        "expanded": 147,
+        "raw": 294,
+        "reduction_bp": 5000,
+        "retrieval": 235,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": "opaque_dynamic_import",
+      "case_id": "adv.opaque_dynamic_import",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 175,
+        "baseline_model_spend_micros": 2960,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 52,
+        "model_spend_micros": 2336,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "dynamic_opacity",
+      "expected_outcome": "insufficient_omission",
+      "family": "dynamic_import",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreie5oema236medzffiswx5zjv4nppvrl5olpdpk5nwcxpne552gdyy",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 52,
+        "expanded": 130,
+        "raw": 130,
+        "reduction_bp": 6000,
+        "retrieval": 104,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "human_review_required",
+      "adversarial_scenario": "prompt_injection",
+      "case_id": "adv.prompt_injection",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 170,
+        "baseline_model_spend_micros": 2808,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 39,
+        "model_spend_micros": 2232,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "injection",
+      "expected_outcome": "reject_injection",
+      "family": "documentation",
+      "measured_outcome_label": "reject_injection",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreicydqqss7aj3tspf3n53cj5mre42moox52c4swdo7e5hzui5uvkde",
+      "rejections": {
+        "injection_rejected": true,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "frontier",
+      "routing": {
+        "escalated": true,
+        "retried": false,
+        "route_tier": "frontier"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 39,
+        "expanded": 105,
+        "raw": 111,
+        "reduction_bp": 6486,
+        "retrieval": 88,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": "pytest_fixture",
+      "case_id": "adv.pytest_fixture",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 168,
+        "baseline_model_spend_micros": 2984,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 70,
+        "model_spend_micros": 2480,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "omission",
+      "expected_outcome": "insufficient_omission",
+      "family": "fixture",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreid5yxtgwyqxdlhfjo7m7mnj6pl6u5qq73mpzobbx52653puh5ch7q",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 70,
+        "expanded": 133,
+        "raw": 133,
+        "reduction_bp": 4736,
+        "retrieval": 106,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": "raw_correct_compressed_wrong",
+      "case_id": "adv.raw_correct_compressed_wrong",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 182,
+        "baseline_model_spend_micros": 3328,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 116,
+        "model_spend_micros": 2848,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "omission",
+      "expected_outcome": "insufficient_omission",
+      "family": "local_bug",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreiahtazxbl3m3j3kgr7iuxly54afqsfp2dwtlag5qagud3h6cxiqjm",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 116,
+        "expanded": 176,
+        "raw": 176,
+        "reduction_bp": 3409,
+        "retrieval": 140,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "human_review_required",
+      "adversarial_scenario": "security_invariant",
+      "case_id": "adv.security_invariant",
+      "cohort": "simulated",
+      "comparative_outcome": "human_review_required",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 172,
+        "baseline_model_spend_micros": 2896,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 52,
+        "model_spend_micros": 2336,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "security",
+      "expected_outcome": "human_review_required",
+      "family": "local_bug",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": true,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreid6k3ql57rvz4rzqbec5j43uivyf7w3jzk72z3xz3kslx3mlbnd3a",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "human",
+      "routing": {
+        "escalated": true,
+        "retried": false,
+        "route_tier": "human"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 52,
+        "expanded": 122,
+        "raw": 122,
+        "reduction_bp": 5737,
+        "retrieval": 97,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "human_review_required",
+      "adversarial_scenario": "selected_pass_full_fail",
+      "case_id": "adv.selected_pass_full_fail",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 177,
+        "baseline_model_spend_micros": 4192,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 142,
+        "model_spend_micros": 3056,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "verification_conflict",
+      "expected_outcome": "verification_conflict",
+      "family": "local_bug",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": true
+      },
+      "receipt_cid": "bafkreif6h6dtuikqa5aotonll7aza5yb6kvzdlwruin2xxcbskipi5jnn4",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "frontier",
+      "routing": {
+        "escalated": true,
+        "retried": false,
+        "route_tier": "frontier"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 142,
+        "expanded": 284,
+        "raw": 284,
+        "reduction_bp": 5000,
+        "retrieval": 227,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": "serializer",
+      "case_id": "adv.serializer",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 164,
+        "baseline_model_spend_micros": 3520,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 100,
+        "model_spend_micros": 2720,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "omission",
+      "expected_outcome": "insufficient_omission",
+      "family": "schema_migration",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreich25qtg6o3dezliu2sgmivfwon6tsfp4urfekdzuzonxmzbak73a",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 100,
+        "expanded": 200,
+        "raw": 200,
+        "reduction_bp": 5000,
+        "retrieval": 160,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "human_review_required",
+      "adversarial_scenario": "stale_capsule",
+      "case_id": "adv.stale_capsule",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 167,
+        "baseline_model_spend_micros": 4192,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 142,
+        "model_spend_micros": 3056,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "stale_artifact",
+      "expected_outcome": "reject_stale",
+      "family": "local_bug",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreidor6zqt3vazu4m7crduceh36o33phdh2md5yez3xhj2m6ucg7wyq",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": true,
+        "stale_rejected": true
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 142,
+        "expanded": 142,
+        "raw": 284,
+        "reduction_bp": 5000,
+        "retrieval": 227,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "human_review_required",
+      "adversarial_scenario": "test_pass_formal_fail",
+      "case_id": "adv.test_pass_formal_fail",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 175,
+        "baseline_model_spend_micros": 2648,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 52,
+        "model_spend_micros": 2336,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "verification_conflict",
+      "expected_outcome": "verification_conflict",
+      "family": "proof",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": true,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreicolwjs2cptkispcox72fdodh5p4fzu5wjcpxmv3xos2q5sgd5y24",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "frontier",
+      "routing": {
+        "escalated": true,
+        "retried": false,
+        "route_tier": "frontier"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 52,
+        "expanded": 91,
+        "raw": 91,
+        "reduction_bp": 4285,
+        "retrieval": 72,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "api_migration.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 167,
+        "baseline_model_spend_micros": 4120,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 203,
+        "model_spend_micros": 3544,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "api_migration",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreigx4stuyvgvheel7mqvvlvzsvgurhkbyr6fjc3uxpjmdzplxtct4a",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 203,
+        "expanded": 203,
+        "raw": 275,
+        "reduction_bp": 2618,
+        "retrieval": 220,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "api_migration.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 167,
+        "baseline_model_spend_micros": 4120,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 203,
+        "model_spend_micros": 3544,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "api_migration",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreien5zvfc3gduf2w3tgi44q2gga3dwndr7pgdpwia27ew6irjtdg3e",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 203,
+        "expanded": 203,
+        "raw": 275,
+        "reduction_bp": 2618,
+        "retrieval": 220,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "api_migration.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 168,
+        "baseline_model_spend_micros": 4120,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 203,
+        "model_spend_micros": 3544,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "api_migration",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreifa3vhvomzqpadlmyxcoyxp5bn2lomn4m5p4rpxpb4p4xnplihlou",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 203,
+        "expanded": 203,
+        "raw": 275,
+        "reduction_bp": 2618,
+        "retrieval": 220,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "configuration.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 167,
+        "baseline_model_spend_micros": 2712,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 27,
+        "model_spend_micros": 2136,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "configuration",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreib6jnhcjaqlwb6fjamsqbtc6mlaovqp7e3rulohebafjdinouixuy",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 27,
+        "expanded": 27,
+        "raw": 99,
+        "reduction_bp": 7272,
+        "retrieval": 79,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "configuration.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 167,
+        "baseline_model_spend_micros": 2712,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 27,
+        "model_spend_micros": 2136,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "configuration",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreiffc6aymrwaeorqro36cxkwmm5lll2vrrmrmsdd3tyudomrohcm24",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 27,
+        "expanded": 27,
+        "raw": 99,
+        "reduction_bp": 7272,
+        "retrieval": 79,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "configuration.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 168,
+        "baseline_model_spend_micros": 2712,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 27,
+        "model_spend_micros": 2136,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "configuration",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreif7ic4e6ddxoqwpnkjwo5stdj7sbv7c35rxrhq6tnpgv5qexg3sxa",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 27,
+        "expanded": 27,
+        "raw": 99,
+        "reduction_bp": 7272,
+        "retrieval": 79,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "documentation.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 167,
+        "baseline_model_spend_micros": 2752,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 32,
+        "model_spend_micros": 2176,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "documentation",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreidv4fpd2vulpof5sa5i4izosvwadmgasmvkox3yocuszkzg6hiq6m",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 32,
+        "expanded": 98,
+        "raw": 104,
+        "reduction_bp": 6923,
+        "retrieval": 83,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "documentation.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 167,
+        "baseline_model_spend_micros": 2752,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 32,
+        "model_spend_micros": 2176,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "documentation",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreig2tmjt2xnuuijndlazzwdhvgi2fymndthrymiomk3gnoq6qg76nm",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 32,
+        "expanded": 98,
+        "raw": 104,
+        "reduction_bp": 6923,
+        "retrieval": 83,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "documentation.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 168,
+        "baseline_model_spend_micros": 2736,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 30,
+        "model_spend_micros": 2160,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "documentation",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreifdd4gczw2jvqkecphswn7wepfmyv5sbujxxiw7a5ltlohjlshwo4",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 30,
+        "expanded": 96,
+        "raw": 102,
+        "reduction_bp": 7058,
+        "retrieval": 81,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "dynamic_import.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 168,
+        "baseline_model_spend_micros": 2520,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 75,
+        "model_spend_micros": 2520,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "dynamic_import",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreibzlxxroylrxc4wg74qjbu6ns67f6xaazskukw64lqwhywg3jd47e",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 75,
+        "expanded": 75,
+        "raw": 75,
+        "reduction_bp": 0,
+        "retrieval": 75,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "dynamic_import.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 168,
+        "baseline_model_spend_micros": 2520,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 75,
+        "model_spend_micros": 2520,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "dynamic_import",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreieuzdb6kxdmz5zhsntdjsljb65i7red4etrj3pfzccbr3wnb3sjd4",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 75,
+        "expanded": 75,
+        "raw": 75,
+        "reduction_bp": 0,
+        "retrieval": 75,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "dynamic_import.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 169,
+        "baseline_model_spend_micros": 3120,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 75,
+        "model_spend_micros": 2520,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": true,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "dynamic_opacity",
+      "expected_outcome": "insufficient_omission",
+      "family": "dynamic_import",
+      "measured_outcome_label": "insufficient_omission",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": true,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": true,
+        "intentional_present": true
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreieahenun7z53w5gmjjzg6cni46o5mbd6cnaqdez3yudiothgl5exu",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 75,
+        "expanded": 75,
+        "raw": 150,
+        "reduction_bp": 5000,
+        "retrieval": 120,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "exception.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 163,
+        "baseline_model_spend_micros": 3488,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 124,
+        "model_spend_micros": 2912,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "exception",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreif2iqsarznuvgdatpqhntzf7sz4n3z365t3r2wy2o7x5imakdxmjm",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 124,
+        "expanded": 184,
+        "raw": 196,
+        "reduction_bp": 3673,
+        "retrieval": 156,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "exception.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 163,
+        "baseline_model_spend_micros": 3480,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 123,
+        "model_spend_micros": 2904,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "exception",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreiaaxmrn6x5r4z3snyj5ltmzyscpplnnfsshtt2wqgvb7w5wvrmccu",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 123,
+        "expanded": 183,
+        "raw": 195,
+        "reduction_bp": 3692,
+        "retrieval": 156,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "exception.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 164,
+        "baseline_model_spend_micros": 3488,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 124,
+        "model_spend_micros": 2912,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "exception",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreib7lynt2wm6dihlo5md7dbqal36vvsg2zjxo5rskfulkudjvkq7vy",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 124,
+        "expanded": 184,
+        "raw": 196,
+        "reduction_bp": 3673,
+        "retrieval": 156,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "fixture.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 161,
+        "baseline_model_spend_micros": 3552,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 132,
+        "model_spend_micros": 2976,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "fixture",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreiauzx7sm4mdipe3uk647epilb7sburzctolil63e7blbldng5szky",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 132,
+        "expanded": 132,
+        "raw": 204,
+        "reduction_bp": 3529,
+        "retrieval": 163,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "fixture.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 161,
+        "baseline_model_spend_micros": 3552,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 132,
+        "model_spend_micros": 2976,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "fixture",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreif3peygz6hydwybk7vl3b3v6c6dfeclueuwnxiqmbnj5z4uuvbiv4",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 132,
+        "expanded": 132,
+        "raw": 204,
+        "reduction_bp": 3529,
+        "retrieval": 163,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "fixture.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 162,
+        "baseline_model_spend_micros": 3552,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 132,
+        "model_spend_micros": 2976,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "fixture",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreiaykl7g7p66442wjb6gmfs3q3wofu7ond5dfy6jihvh2zpyurfhzu",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 132,
+        "expanded": 132,
+        "raw": 204,
+        "reduction_bp": 3529,
+        "retrieval": 163,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "generated.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 163,
+        "baseline_model_spend_micros": 2840,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 43,
+        "model_spend_micros": 2264,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "generated",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreib2peiekw53b5nj6uzxr67n3v67omkudosimiommczg77yzyeupcq",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 43,
+        "expanded": 43,
+        "raw": 115,
+        "reduction_bp": 6260,
+        "retrieval": 92,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "generated.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 163,
+        "baseline_model_spend_micros": 2840,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 43,
+        "model_spend_micros": 2264,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "generated",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreifhv36uaqqczxkryr3ogprxulanbu26gsmdnfruovvkkszn6hbtcq",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 43,
+        "expanded": 43,
+        "raw": 115,
+        "reduction_bp": 6260,
+        "retrieval": 92,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "generated.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 164,
+        "baseline_model_spend_micros": 2840,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 43,
+        "model_spend_micros": 2264,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "generated",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreicinkhv2vroea4woznci3augefvwenoqwkju6rbtuakhihbg4zpdi",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 43,
+        "expanded": 43,
+        "raw": 115,
+        "reduction_bp": 6260,
+        "retrieval": 92,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "local_bug.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 163,
+        "baseline_model_spend_micros": 4160,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 140,
+        "model_spend_micros": 3040,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "local_bug",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreif3kbemrn55x53pd6ve5mu5flq2m4gxcsudox4edl54ptfkx4b3qa",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 140,
+        "expanded": 280,
+        "raw": 280,
+        "reduction_bp": 5000,
+        "retrieval": 224,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "local_bug.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 163,
+        "baseline_model_spend_micros": 4160,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 140,
+        "model_spend_micros": 3040,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "local_bug",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreibnpjd5mljympqf3gf4itdmcyiyvk5ybdq5yb553da4yn37w7o6nq",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 140,
+        "expanded": 280,
+        "raw": 280,
+        "reduction_bp": 5000,
+        "retrieval": 224,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "local_bug.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 164,
+        "baseline_model_spend_micros": 4160,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 140,
+        "model_spend_micros": 3040,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "local_bug",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreifg4ttuztrixh2ij6g67ekgw4ioxhptplxcutondvohzbe2tjdetq",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 140,
+        "expanded": 280,
+        "raw": 280,
+        "reduction_bp": 5000,
+        "retrieval": 224,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "monkey_patch.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 166,
+        "baseline_model_spend_micros": 3088,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 74,
+        "model_spend_micros": 2512,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "monkey_patch",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreihoilraz5mbt7tpfwk2adqs5dbhuusc2xj5zrhobyef2rn54367em",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 74,
+        "expanded": 74,
+        "raw": 146,
+        "reduction_bp": 4931,
+        "retrieval": 116,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "monkey_patch.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 166,
+        "baseline_model_spend_micros": 3088,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 74,
+        "model_spend_micros": 2512,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "monkey_patch",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreihlasasz3syyoz2xbaturqi2tff4h3j66pcxtzsqkvwshpbsms4vm",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 74,
+        "expanded": 74,
+        "raw": 146,
+        "reduction_bp": 4931,
+        "retrieval": 116,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "monkey_patch.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 167,
+        "baseline_model_spend_micros": 3096,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 75,
+        "model_spend_micros": 2520,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "monkey_patch",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreibom2xs22jukcyczesyet4ewrctjtkd3axigju7assbft3xof2zhe",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 75,
+        "expanded": 75,
+        "raw": 147,
+        "reduction_bp": 4897,
+        "retrieval": 117,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "plugin.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 160,
+        "baseline_model_spend_micros": 3104,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 76,
+        "model_spend_micros": 2528,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "plugin",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreifjduyo2nqjhb2urf5lhx76tpwuvjshbp2ezamkwmjtqlxi5nl3o4",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 76,
+        "expanded": 76,
+        "raw": 148,
+        "reduction_bp": 4864,
+        "retrieval": 118,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "plugin.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 160,
+        "baseline_model_spend_micros": 3104,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 76,
+        "model_spend_micros": 2528,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "plugin",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreianliiaypmoaai6qds7jnrg2molgi4qso7mwenrprtwuuxi3syaaq",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 76,
+        "expanded": 76,
+        "raw": 148,
+        "reduction_bp": 4864,
+        "retrieval": 118,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "plugin.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 161,
+        "baseline_model_spend_micros": 3104,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 76,
+        "model_spend_micros": 2528,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "plugin",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreiex5k3h5ukocdxu4rc3y4n3ktyqtzpbsoiebxl4ceyi4wyvv7rruu",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "medium",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "medium"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 76,
+        "expanded": 76,
+        "raw": 148,
+        "reduction_bp": 4864,
+        "retrieval": 118,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "proof.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 159,
+        "baseline_model_spend_micros": 3160,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 83,
+        "model_spend_micros": 2584,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "proof",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreiedzp76xmegiddyemdjxvfwlb2wrrve2lxlmvgl6hvzscogznmnrq",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "frontier",
+      "routing": {
+        "escalated": true,
+        "retried": false,
+        "route_tier": "frontier"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 83,
+        "expanded": 83,
+        "raw": 155,
+        "reduction_bp": 4645,
+        "retrieval": 124,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "proof.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 159,
+        "baseline_model_spend_micros": 3160,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 83,
+        "model_spend_micros": 2584,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "proof",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreig524dknbjgfiihncyxds5fymh7c3bfj6ujmnmjjk2lzsbih7hiuy",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "frontier",
+      "routing": {
+        "escalated": true,
+        "retried": false,
+        "route_tier": "frontier"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 83,
+        "expanded": 83,
+        "raw": 155,
+        "reduction_bp": 4645,
+        "retrieval": 124,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "proof.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 160,
+        "baseline_model_spend_micros": 3168,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 84,
+        "model_spend_micros": 2592,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "proof",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreibytosdzhcxrb4gbpq7jhc5eyermwdgpuvvvv4t3hoq4ypegqn37i",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "frontier",
+      "routing": {
+        "escalated": true,
+        "retried": false,
+        "route_tier": "frontier"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 84,
+        "expanded": 84,
+        "raw": 156,
+        "reduction_bp": 4615,
+        "retrieval": 124,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "refactor.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 162,
+        "baseline_model_spend_micros": 3928,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 179,
+        "model_spend_micros": 3352,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "refactor",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreidhd2zguheo4zyxmlrlzw7h7vz7c6ce4qnbbho46tjttrt233wuei",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 179,
+        "expanded": 179,
+        "raw": 251,
+        "reduction_bp": 2868,
+        "retrieval": 200,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "refactor.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 162,
+        "baseline_model_spend_micros": 3928,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 179,
+        "model_spend_micros": 3352,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "refactor",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreigushk3rphh5pnlc4i2odq74cfm5aub7qwiymijqzkxuvbzaigque",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 179,
+        "expanded": 179,
+        "raw": 251,
+        "reduction_bp": 2868,
+        "retrieval": 200,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "refactor.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 163,
+        "baseline_model_spend_micros": 3928,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 179,
+        "model_spend_micros": 3352,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "refactor",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreiekglue73otgrswcmsjkyruqyyt4nverhnz4ztxnjwffypu7r2ski",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 179,
+        "expanded": 179,
+        "raw": 251,
+        "reduction_bp": 2868,
+        "retrieval": 200,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "schema_migration.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 170,
+        "baseline_model_spend_micros": 4112,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 202,
+        "model_spend_micros": 3536,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "schema_migration",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreicslswqe7kug7kwiuoh62it3kdfxz5ypajajimzigo4grxscquqii",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 202,
+        "expanded": 270,
+        "raw": 274,
+        "reduction_bp": 2627,
+        "retrieval": 219,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "schema_migration.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 170,
+        "baseline_model_spend_micros": 4112,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 202,
+        "model_spend_micros": 3536,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "schema_migration",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreia6ynqney7kthil7xz7esi4oauejyjacrmnzhfdtokh7bxq4oe3mu",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 202,
+        "expanded": 270,
+        "raw": 274,
+        "reduction_bp": 2627,
+        "retrieval": 219,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "schema_migration.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 171,
+        "baseline_model_spend_micros": 4112,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 202,
+        "model_spend_micros": 3536,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "schema_migration",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreicrdtbkw2hvektfz5hgkzu3fvajqqrdrruh4v5hhs6666ce2g5twu",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 202,
+        "expanded": 270,
+        "raw": 274,
+        "reduction_bp": 2627,
+        "retrieval": 219,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "state.cal",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 159,
+        "baseline_model_spend_micros": 3912,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 177,
+        "model_spend_micros": 3336,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "state",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "calibration",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreieqfnzs5hag4n7ugjxjwgqryiq6iafx7fshwjd67jbopccljki3by",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 177,
+        "expanded": 177,
+        "raw": 249,
+        "reduction_bp": 2891,
+        "retrieval": 199,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "state.dev",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 159,
+        "baseline_model_spend_micros": 3912,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 177,
+        "model_spend_micros": 3336,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "state",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "development",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreibucohfmf3yewko6ovsidlrphsldfrl4jcdoi36m75xfperjnd574",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 177,
+        "expanded": 177,
+        "raw": 249,
+        "reduction_bp": 2891,
+        "retrieval": 199,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    },
+    {
+      "acceptance_disposition": "not_accepted",
+      "adversarial_scenario": null,
+      "case_id": "state.hold",
+      "cohort": "simulated",
+      "comparative_outcome": "verification_inconclusive",
+      "compressed_action": "mark_inconclusive",
+      "compressed_state": "inconclusive",
+      "cost": {
+        "audit_overhead_micros": 160,
+        "baseline_model_spend_micros": 3920,
+        "cohort": "simulated",
+        "estimator_id": "scg-local-cost-estimator/v1",
+        "input_tokens": 178,
+        "model_spend_micros": 3344,
+        "output_tokens": 80,
+        "shadow_compute_micros": 250,
+        "verification_compute_micros": 400
+      },
+      "expanded_action": "mark_inconclusive",
+      "expanded_state": "inconclusive",
+      "expansion": {
+        "false_negative": false,
+        "false_positive": false,
+        "true_positive": false,
+        "used": false
+      },
+      "expected_diagnosis": "none",
+      "expected_outcome": "sufficient",
+      "family": "state",
+      "measured_outcome_label": "sufficient",
+      "measurement_status": "measured",
+      "notes": [
+        "cohort=simulated; controlled fixture corpus (not live model quality)",
+        "production_eligible=False"
+      ],
+      "omission": {
+        "critical": false,
+        "critical_accepted": false,
+        "detected_after_execution": false,
+        "detected_before_execution": false,
+        "intentional_present": false
+      },
+      "partition": "held_out",
+      "production_eligible": false,
+      "quality": {
+        "accepted_patch": false,
+        "proof_failure": false,
+        "regression": false,
+        "review_disagreement": false,
+        "selected_test_false_negative": false
+      },
+      "receipt_cid": "bafkreictuwk3rg3ldhuv5rzin774pulybpyqoa3s6wiygnmlqk5k4lu7a4",
+      "rejections": {
+        "injection_rejected": false,
+        "stale_present": false,
+        "stale_rejected": false
+      },
+      "route_tier": "small",
+      "routing": {
+        "escalated": false,
+        "retried": false,
+        "route_tier": "small"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-case@1",
+      "tokens": {
+        "compressed": 178,
+        "expanded": 178,
+        "raw": 250,
+        "reduction_bp": 2880,
+        "retrieval": 200,
+        "tokenizer_id": "scg-estimator/utf8-bytes-div4@1"
+      }
+    }
+  ],
+  "cohorts": {
+    "live": {
+      "label": "live",
+      "observation_count": 0,
+      "quality_claims": false,
+      "source": "unavailable"
+    },
+    "local": {
+      "cost_estimator_id": "scg-local-cost-estimator/v1",
+      "label": "local",
+      "notes": "Deterministic local cost estimator; not live provider billing"
+    },
+    "simulated": {
+      "label": "simulated",
+      "observation_count": 60,
+      "source": "controlled_fixture_corpus"
+    },
+    "unavailable": {
+      "items": [
+        "live_provider_receipts",
+        "live_model_quality_cohort",
+        "live_billing_cost_sensors",
+        "post_execution_omission_detection_sensors",
+        "zk_seal_scope",
+        "live_observation_count"
+      ],
+      "label": "unavailable"
+    }
+  },
+  "commands": {
+    "check": "PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 benchmarks/agent_supervisor/semantic_compression_governor.py --check",
+    "generate_artifact": "PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 benchmarks/agent_supervisor/semantic_compression_governor.py --write --benchmark-out artifacts/agent_supervisor/semantic_compression_governor/benchmark.json --summary-out artifacts/agent_supervisor/semantic_compression_governor/summary.json",
+    "validate": "PYTHONPATH=ipfs_kit_py:ipfs_datasets_py:. python3 -m pytest -q test/benchmarks/test_semantic_compression_governor_benchmark.py"
+  },
+  "commitments": {
+    "body": {
+      "case_count": 60,
+      "content_id": "sha256:d81682507918b1211c7652deb7be1facff14edb14f9b35a84f3b482a86cdabe5",
+      "status": "yellow"
+    },
+    "commitment_cid": "baguqeeralctvin5t55b5inojxzcbzfnsj47jsqkb7zbxhr2hd4l4f4yv62jq",
+    "deterministic": true
+  },
+  "content_id": "sha256:d81682507918b1211c7652deb7be1facff14edb14f9b35a84f3b482a86cdabe5",
+  "corpus": {
+    "corpus_cid": "baguqeerap4oqoz6ymvntiawim5wihcsic4yxp2xro2gmymxc2pnmyi4tspmq",
+    "corpus_id": "semantic-governor-partitioned-corpus-v1",
+    "evaluated_count": 60,
+    "interface": "SemanticGovernorFixtureCorpus@1",
+    "partition_counts": {
+      "calibration": 14,
+      "development": 14,
+      "held_out": 32
+    },
+    "path": "test/fixtures/semantic_governor",
+    "present": true,
+    "production_eligible_true_count": 0,
+    "schema": "scg/partitioned-corpus@1"
+  },
+  "effective_environment": {
+    "cost_cohort": "simulated",
+    "cost_estimator_id": "scg-local-cost-estimator/v1",
+    "cwd": ".",
+    "implementation": "CPython",
+    "machine": "aarch64",
+    "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+    "python_version": "3.12.3",
+    "schema": "ipfs_accelerate_py/agent-supervisor/effective-verification-environment@1",
+    "tokenizer_id": "scg-estimator/utf8-bytes-div4@1",
+    "tokenizer_version": "1.0.0"
+  },
+  "evidence": "scg/benchmark-results@1",
+  "generated_at_unix_ms": 1786647594522,
+  "goal_id": "SCG-G080",
+  "interface": "SemanticGovernorBenchmark@1",
+  "measurement_schema": {
+    "cost_estimator_id": "scg-local-cost-estimator/v1",
+    "fields": [
+      "outcome_distribution",
+      "detection",
+      "critical_acceptance",
+      "expansion",
+      "reduction",
+      "routes",
+      "quality",
+      "regressions",
+      "overhead",
+      "cost",
+      "proposals",
+      "rejections",
+      "missing_evidence"
+    ],
+    "tokenizer_id": "scg-estimator/utf8-bytes-div4@1",
+    "tokenizer_version": "1.0.0",
+    "version": "scg-benchmark-measurement/v1"
+  },
+  "metrics": {
+    "collector_report": {
+      "applied_count": 60,
+      "evidence": "scg/metrics@1",
+      "generator_id": "semantic_governor_metrics",
+      "generator_version": "1.0.0",
+      "interface_id": "GovernorMetricReport@1",
+      "live": {
+        "calibration": {
+          "calibration_use_count": 0,
+          "empirical_omission_rate": null,
+          "last_revision": null,
+          "observation_count": 0,
+          "partition_counts": {},
+          "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/calibration-metrics@1",
+          "task_class_counts": {},
+          "task_classes_observed": [],
+          "task_coverage_count": 0
+        },
+        "cohort": "live",
+        "compression": {
+          "compressed_tokens_percentiles": {
+            "max_value": null,
+            "min_value": null,
+            "p50": null,
+            "p90": null,
+            "p95": null,
+            "p99": null,
+            "sample_count": 0,
+            "sample_kind": "compressed_tokens",
+            "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/integer-percentile-summary@1",
+            "total": 0
+          },
+          "compressed_tokens_samples": 0,
+          "compressed_tokens_total": 0,
+          "expanded_tokens_percentiles": {
+            "max_value": null,
+            "min_value": null,
+            "p50": null,
+            "p90": null,
+            "p95": null,
+            "p99": null,
+            "sample_count": 0,
+            "sample_kind": "expanded_tokens",
+            "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/integer-percentile-summary@1",
+            "total": 0
+          },
+          "expanded_tokens_samples": 0,
+          "expanded_tokens_total": 0,
+          "expansion_count": 0,
+          "expansion_rate_bp": null,
+          "mean_context_reduction_bp": null,
+          "median_context_reduction_bp": null,
+          "observation_count": 0,
+          "raw_tokens_percentiles": {
+            "max_value": null,
+            "min_value": null,
+            "p50": null,
+            "p90": null,
+            "p95": null,
+            "p99": null,
+            "sample_count": 0,
+            "sample_kind": "raw_tokens",
+            "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/integer-percentile-summary@1",
+            "total": 0
+          },
+          "raw_tokens_samples": 0,
+          "raw_tokens_total": 0,
+          "retrieval_tokens_percentiles": {
+            "max_value": null,
+            "min_value": null,
+            "p50": null,
+            "p90": null,
+            "p95": null,
+            "p99": null,
+            "sample_count": 0,
+            "sample_kind": "retrieval_tokens",
+            "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/integer-percentile-summary@1",
+            "total": 0
+          },
+          "retrieval_tokens_samples": 0,
+          "retrieval_tokens_total": 0,
+          "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/compression-metrics@1",
+          "unavailable_token_fields": 0
+        },
+        "economic": {
+          "accepted_patch_count": 0,
+          "audit_overhead_micros_total": 0,
+          "baseline_model_spend_micros_total": 0,
+          "baseline_spend_samples": 0,
+          "cost_per_accepted_patch_micros": null,
+          "gross_savings_micros": null,
+          "input_tokens_samples": 0,
+          "input_tokens_total": 0,
+          "model_spend_micros_total": 0,
+          "model_spend_percentiles": {
+            "max_value": null,
+            "min_value": null,
+            "p50": null,
+            "p90": null,
+            "p95": null,
+            "p99": null,
+            "sample_count": 0,
+            "sample_kind": "model_spend_micros",
+            "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/integer-percentile-summary@1",
+            "total": 0
+          },
+          "model_spend_samples": 0,
+          "net_savings_micros": null,
+          "observation_count": 0,
+          "output_tokens_samples": 0,
+          "output_tokens_total": 0,
+          "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/economic-metrics@1",
+          "shadow_compute_micros_total": 0,
+          "total_audit_overhead_micros": 0,
+          "unavailable_cost_fields": 0,
+          "verification_compute_micros_total": 0
+        },
+        "observation_count": 0,
+        "omission": {
+          "critical_acceptance_rate_bp": null,
+          "critical_omission_count": 0,
+          "critical_omissions_accepted_count": 0,
+          "detected_after_execution_count": 0,
+          "detected_before_execution_count": 0,
+          "detection_after_rate_bp": null,
+          "detection_before_rate_bp": null,
+          "empirical_omission_rate": null,
+          "expansion_false_negative_count": 0,
+          "expansion_false_positive_count": 0,
+          "expansion_precision_bp": null,
+          "expansion_recall_bp": null,
+          "expansion_true_positive_count": 0,
+          "false_alarm_count": 0,
+          "intentional_omission_count": 0,
+          "observation_count": 0,
+          "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/omission-metrics@1"
+        },
+        "quality": {
+          "accepted_patch_count": 0,
+          "accepted_rate_bp": null,
+          "observation_count": 0,
+          "outcome_counts": {
+            "both_failed_different_reason": 0,
+            "both_failed_same_reason": 0,
+            "both_valid_different": 0,
+            "compressed_better": 0,
+            "compressed_failed_expanded_succeeded": 0,
+            "compressed_succeeded_expanded_failed": 0,
+            "equivalent_success": 0,
+            "expanded_better": 0,
+            "human_review_required": 0,
+            "verification_inconclusive": 0
+          },
+          "proof_failure_count": 0,
+          "proof_failure_rate_bp": null,
+          "regression_count": 0,
+          "regression_rate_bp": null,
+          "review_disagreement_count": 0,
+          "review_disagreement_rate_bp": null,
+          "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/quality-metrics@1",
+          "selected_test_false_negative_count": 0,
+          "selected_test_false_negative_rate_bp": null
+        },
+        "routing": {
+          "escalation_count": 0,
+          "escalation_rate_bp": null,
+          "observation_count": 0,
+          "retry_count": 0,
+          "retry_rate_bp": null,
+          "route_share_bp": {
+            "deterministic": null,
+            "frontier": null,
+            "human": null,
+            "medium": null,
+            "small": null
+          },
+          "route_share_counts": {
+            "deterministic": 0,
+            "frontier": 0,
+            "human": 0,
+            "medium": 0,
+            "small": 0
+          },
+          "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/routing-metrics@1"
+        },
+        "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/cohort-metrics@1",
+        "source_receipt_cids": []
+      },
+      "metadata": {
+        "benchmark_interface": "SemanticGovernorBenchmark@1",
+        "cohort_note": "fixture_measurements_are_simulated",
+        "evidence": "scg/metrics@1",
+        "goal_id": "SCG-G080",
+        "task_id": "SCG-045",
+        "track": "metrics"
+      },
+      "producer_id": "semantic_governor",
+      "producer_version": "1",
+      "report_cid": "baguqeeratlc2lkuj4ekqtd3kut52duhzbikifpa2zq3wbpxdk23dydadwuna",
+      "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/governor-metric-report@1",
+      "simulated": {
+        "calibration": {
+          "calibration_use_count": 14,
+          "empirical_omission_rate": {
+            "interval_lower_bp": 0,
+            "interval_method": "wilson_score_95",
+            "interval_upper_bp": 602,
+            "rate_bp": 0,
+            "schema": "ipfs-datasets.software-contracts.semantic-governor-empirical-rate@1",
+            "successes": 0,
+            "trials": 60
+          },
+          "last_revision": 1,
+          "observation_count": 60,
+          "partition_counts": {
+            "calibration": 14,
+            "development": 14,
+            "held_out": 32
+          },
+          "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/calibration-metrics@1",
+          "task_class_counts": {
+            "api_migration": 3,
+            "configuration": 4,
+            "documentation": 5,
+            "dynamic_import": 4,
+            "exception": 4,
+            "fixture": 4,
+            "generated": 4,
+            "local_bug": 10,
+            "monkey_patch": 3,
+            "plugin": 3,
+            "proof": 4,
+            "refactor": 4,
+            "schema_migration": 5,
+            "state": 3
+          },
+          "task_classes_observed": [
+            "api_migration",
+            "configuration",
+            "documentation",
+            "dynamic_import",
+            "exception",
+            "fixture",
+            "generated",
+            "local_bug",
+            "monkey_patch",
+            "plugin",
+            "proof",
+            "refactor",
+            "schema_migration",
+            "state"
+          ],
+          "task_coverage_count": 14
+        },
+        "cohort": "simulated",
+        "compression": {
+          "compressed_tokens_percentiles": {
+            "max_value": 288,
+            "min_value": 27,
+            "p50": 83,
+            "p90": 202,
+            "p95": 203,
+            "p99": 288,
+            "sample_count": 60,
+            "sample_kind": "compressed_tokens",
+            "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/integer-percentile-summary@1",
+            "total": 6344
+          },
+          "compressed_tokens_samples": 60,
+          "compressed_tokens_total": 6344,
+          "expanded_tokens_percentiles": {
+            "max_value": 288,
+            "min_value": 27,
+            "p50": 132,
+            "p90": 270,
+            "p95": 280,
+            "p99": 288,
+            "sample_count": 60,
+            "sample_kind": "expanded_tokens",
+            "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/integer-percentile-summary@1",
+            "total": 8646
+          },
+          "expanded_tokens_samples": 60,
+          "expanded_tokens_total": 8646,
+          "expansion_count": 0,
+          "expansion_rate_bp": 0,
+          "mean_context_reduction_bp": 4537,
+          "median_context_reduction_bp": 4736,
+          "observation_count": 60,
+          "raw_tokens_percentiles": {
+            "max_value": 432,
+            "min_value": 75,
+            "p50": 156,
+            "p90": 280,
+            "p95": 284,
+            "p99": 432,
+            "sample_count": 60,
+            "sample_kind": "raw_tokens",
+            "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/integer-percentile-summary@1",
+            "total": 11170
+          },
+          "raw_tokens_samples": 60,
+          "raw_tokens_total": 11170,
+          "retrieval_tokens_percentiles": {
+            "max_value": 345,
+            "min_value": 64,
+            "p50": 124,
+            "p90": 224,
+            "p95": 227,
+            "p99": 345,
+            "sample_count": 60,
+            "sample_kind": "retrieval_tokens",
+            "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/integer-percentile-summary@1",
+            "total": 8947
+          },
+          "retrieval_tokens_samples": 60,
+          "retrieval_tokens_total": 8947,
+          "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/compression-metrics@1",
+          "unavailable_token_fields": 0
+        },
+        "economic": {
+          "accepted_patch_count": 0,
+          "audit_overhead_micros_total": 10025,
+          "baseline_model_spend_micros_total": 204560,
+          "baseline_spend_samples": 60,
+          "cost_per_accepted_patch_micros": null,
+          "gross_savings_micros": 38608,
+          "input_tokens_samples": 60,
+          "input_tokens_total": 6344,
+          "model_spend_micros_total": 165952,
+          "model_spend_percentiles": {
+            "max_value": 4224,
+            "min_value": 2136,
+            "p50": 2584,
+            "p90": 3536,
+            "p95": 3544,
+            "p99": 4224,
+            "sample_count": 60,
+            "sample_kind": "model_spend_micros",
+            "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/integer-percentile-summary@1",
+            "total": 165952
+          },
+          "model_spend_samples": 60,
+          "net_savings_micros": -10417,
+          "observation_count": 60,
+          "output_tokens_samples": 60,
+          "output_tokens_total": 4800,
+          "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/economic-metrics@1",
+          "shadow_compute_micros_total": 15000,
+          "total_audit_overhead_micros": 49025,
+          "unavailable_cost_fields": 0,
+          "verification_compute_micros_total": 24000
+        },
+        "observation_count": 60,
+        "omission": {
+          "critical_acceptance_rate_bp": 0,
+          "critical_omission_count": 16,
+          "critical_omissions_accepted_count": 0,
+          "detected_after_execution_count": 0,
+          "detected_before_execution_count": 16,
+          "detection_after_rate_bp": 0,
+          "detection_before_rate_bp": 10000,
+          "empirical_omission_rate": {
+            "interval_lower_bp": 0,
+            "interval_method": "wilson_score_95",
+            "interval_upper_bp": 602,
+            "rate_bp": 0,
+            "schema": "ipfs-datasets.software-contracts.semantic-governor-empirical-rate@1",
+            "successes": 0,
+            "trials": 60
+          },
+          "expansion_false_negative_count": 16,
+          "expansion_false_positive_count": 0,
+          "expansion_precision_bp": null,
+          "expansion_recall_bp": 0,
+          "expansion_true_positive_count": 0,
+          "false_alarm_count": 0,
+          "intentional_omission_count": 16,
+          "observation_count": 60,
+          "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/omission-metrics@1"
+        },
+        "quality": {
+          "accepted_patch_count": 0,
+          "accepted_rate_bp": 0,
+          "observation_count": 60,
+          "outcome_counts": {
+            "both_failed_different_reason": 0,
+            "both_failed_same_reason": 0,
+            "both_valid_different": 0,
+            "compressed_better": 0,
+            "compressed_failed_expanded_succeeded": 0,
+            "compressed_succeeded_expanded_failed": 0,
+            "equivalent_success": 0,
+            "expanded_better": 0,
+            "human_review_required": 2,
+            "verification_inconclusive": 58
+          },
+          "proof_failure_count": 1,
+          "proof_failure_rate_bp": 166,
+          "regression_count": 0,
+          "regression_rate_bp": 0,
+          "review_disagreement_count": 2,
+          "review_disagreement_rate_bp": 333,
+          "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/quality-metrics@1",
+          "selected_test_false_negative_count": 1,
+          "selected_test_false_negative_rate_bp": 166
+        },
+        "routing": {
+          "escalation_count": 9,
+          "escalation_rate_bp": 1500,
+          "observation_count": 60,
+          "retry_count": 0,
+          "retry_rate_bp": 0,
+          "route_share_bp": {
+            "deterministic": 0,
+            "frontier": 1166,
+            "human": 333,
+            "medium": 3333,
+            "small": 5166
+          },
+          "route_share_counts": {
+            "deterministic": 0,
+            "frontier": 7,
+            "human": 2,
+            "medium": 20,
+            "small": 31
+          },
+          "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/routing-metrics@1"
+        },
+        "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor/cohort-metrics@1",
+        "source_receipt_cids": [
+          "bafkreia6ynqney7kthil7xz7esi4oauejyjacrmnzhfdtokh7bxq4oe3mu",
+          "bafkreiaaxmrn6x5r4z3snyj5ltmzyscpplnnfsshtt2wqgvb7w5wvrmccu",
+          "bafkreiahtazxbl3m3j3kgr7iuxly54afqsfp2dwtlag5qagud3h6cxiqjm",
+          "bafkreianliiaypmoaai6qds7jnrg2molgi4qso7mwenrprtwuuxi3syaaq",
+          "bafkreiauzx7sm4mdipe3uk647epilb7sburzctolil63e7blbldng5szky",
+          "bafkreiaykl7g7p66442wjb6gmfs3q3wofu7ond5dfy6jihvh2zpyurfhzu",
+          "bafkreib2peiekw53b5nj6uzxr67n3v67omkudosimiommczg77yzyeupcq",
+          "bafkreib6jnhcjaqlwb6fjamsqbtc6mlaovqp7e3rulohebafjdinouixuy",
+          "bafkreib7lynt2wm6dihlo5md7dbqal36vvsg2zjxo5rskfulkudjvkq7vy",
+          "bafkreibi6z5pqyappccegidcovytgxp2ahmuqiu2enhokrc3gnt6lgk6ge",
+          "bafkreibnpjd5mljympqf3gf4itdmcyiyvk5ybdq5yb553da4yn37w7o6nq",
+          "bafkreibom2xs22jukcyczesyet4ewrctjtkd3axigju7assbft3xof2zhe",
+          "bafkreibucohfmf3yewko6ovsidlrphsldfrl4jcdoi36m75xfperjnd574",
+          "bafkreibytosdzhcxrb4gbpq7jhc5eyermwdgpuvvvv4t3hoq4ypegqn37i",
+          "bafkreibzlxxroylrxc4wg74qjbu6ns67f6xaazskukw64lqwhywg3jd47e",
+          "bafkreich25qtg6o3dezliu2sgmivfwon6tsfp4urfekdzuzonxmzbak73a",
+          "bafkreicinkhv2vroea4woznci3augefvwenoqwkju6rbtuakhihbg4zpdi",
+          "bafkreicolwjs2cptkispcox72fdodh5p4fzu5wjcpxmv3xos2q5sgd5y24",
+          "bafkreicrdtbkw2hvektfz5hgkzu3fvajqqrdrruh4v5hhs6666ce2g5twu",
+          "bafkreicslswqe7kug7kwiuoh62it3kdfxz5ypajajimzigo4grxscquqii",
+          "bafkreictuwk3rg3ldhuv5rzin774pulybpyqoa3s6wiygnmlqk5k4lu7a4",
+          "bafkreicydqqss7aj3tspf3n53cj5mre42moox52c4swdo7e5hzui5uvkde",
+          "bafkreid5yxtgwyqxdlhfjo7m7mnj6pl6u5qq73mpzobbx52653puh5ch7q",
+          "bafkreid6k3ql57rvz4rzqbec5j43uivyf7w3jzk72z3xz3kslx3mlbnd3a",
+          "bafkreidhd2zguheo4zyxmlrlzw7h7vz7c6ce4qnbbho46tjttrt233wuei",
+          "bafkreidor6zqt3vazu4m7crduceh36o33phdh2md5yez3xhj2m6ucg7wyq",
+          "bafkreidv4fpd2vulpof5sa5i4izosvwadmgasmvkox3yocuszkzg6hiq6m",
+          "bafkreidvfgrqn6y2wnepydei5icz2ydjvnehrsnl3qcwqy6237kqf3owru",
+          "bafkreie5oema236medzffiswx5zjv4nppvrl5olpdpk5nwcxpne552gdyy",
+          "bafkreieahenun7z53w5gmjjzg6cni46o5mbd6cnaqdez3yudiothgl5exu",
+          "bafkreiedzp76xmegiddyemdjxvfwlb2wrrve2lxlmvgl6hvzscogznmnrq",
+          "bafkreiegscvpukg77hqqyh6idulo4vijqje4yz6fg4mvlzve3rfy5ld4ii",
+          "bafkreiekglue73otgrswcmsjkyruqyyt4nverhnz4ztxnjwffypu7r2ski",
+          "bafkreiekjxzzcrcnlgq5xvovyyspzbnb23dszaxfzsei7yrvcvphqqciza",
+          "bafkreien5zvfc3gduf2w3tgi44q2gga3dwndr7pgdpwia27ew6irjtdg3e",
+          "bafkreieqfnzs5hag4n7ugjxjwgqryiq6iafx7fshwjd67jbopccljki3by",
+          "bafkreieuzdb6kxdmz5zhsntdjsljb65i7red4etrj3pfzccbr3wnb3sjd4",
+          "bafkreiex5k3h5ukocdxu4rc3y4n3ktyqtzpbsoiebxl4ceyi4wyvv7rruu",
+          "bafkreif2iqsarznuvgdatpqhntzf7sz4n3z365t3r2wy2o7x5imakdxmjm",
+          "bafkreif3kbemrn55x53pd6ve5mu5flq2m4gxcsudox4edl54ptfkx4b3qa",
+          "bafkreif3peygz6hydwybk7vl3b3v6c6dfeclueuwnxiqmbnj5z4uuvbiv4",
+          "bafkreif6h6dtuikqa5aotonll7aza5yb6kvzdlwruin2xxcbskipi5jnn4",
+          "bafkreif7ic4e6ddxoqwpnkjwo5stdj7sbv7c35rxrhq6tnpgv5qexg3sxa",
+          "bafkreifa3vhvomzqpadlmyxcoyxp5bn2lomn4m5p4rpxpb4p4xnplihlou",
+          "bafkreifdd4gczw2jvqkecphswn7wepfmyv5sbujxxiw7a5ltlohjlshwo4",
+          "bafkreiffc6aymrwaeorqro36cxkwmm5lll2vrrmrmsdd3tyudomrohcm24",
+          "bafkreifg4ttuztrixh2ij6g67ekgw4ioxhptplxcutondvohzbe2tjdetq",
+          "bafkreifhv36uaqqczxkryr3ogprxulanbu26gsmdnfruovvkkszn6hbtcq",
+          "bafkreifjduyo2nqjhb2urf5lhx76tpwuvjshbp2ezamkwmjtqlxi5nl3o4",
+          "bafkreig2tmjt2xnuuijndlazzwdhvgi2fymndthrymiomk3gnoq6qg76nm",
+          "bafkreig524dknbjgfiihncyxds5fymh7c3bfj6ujmnmjjk2lzsbih7hiuy",
+          "bafkreighmiae4aysx64sd2z2zotvqy4oiojsrdmbim4fvjz2obpjqslhya",
+          "bafkreigushk3rphh5pnlc4i2odq74cfm5aub7qwiymijqzkxuvbzaigque",
+          "bafkreigv3icjtvdjaquvkxeqqeffbnbkuigsoki5oygsobi4pkipwcs2cm",
+          "bafkreigx4stuyvgvheel7mqvvlvzsvgurhkbyr6fjc3uxpjmdzplxtct4a",
+          "bafkreih3s7fuac7idupkgtqhxcsbh6nptaxsnkey6asn4luqtgjcardsra",
+          "bafkreihily6tyc2m2rn6udhb7gfcenostzbltkch34s2amzgvbbpqh3hpe",
+          "bafkreihlasasz3syyoz2xbaturqi2tff4h3j66pcxtzsqkvwshpbsms4vm",
+          "bafkreihnc4gdvde2ne2kaydzzlm6fqhfd6aef3fvjftbvk5p5y3pwtkdr4",
+          "bafkreihoilraz5mbt7tpfwk2adqs5dbhuusc2xj5zrhobyef2rn54367em"
+        ]
+      },
+      "skipped_idempotent_count": 0,
+      "source_receipt_cids": [
+        "bafkreia6ynqney7kthil7xz7esi4oauejyjacrmnzhfdtokh7bxq4oe3mu",
+        "bafkreiaaxmrn6x5r4z3snyj5ltmzyscpplnnfsshtt2wqgvb7w5wvrmccu",
+        "bafkreiahtazxbl3m3j3kgr7iuxly54afqsfp2dwtlag5qagud3h6cxiqjm",
+        "bafkreianliiaypmoaai6qds7jnrg2molgi4qso7mwenrprtwuuxi3syaaq",
+        "bafkreiauzx7sm4mdipe3uk647epilb7sburzctolil63e7blbldng5szky",
+        "bafkreiaykl7g7p66442wjb6gmfs3q3wofu7ond5dfy6jihvh2zpyurfhzu",
+        "bafkreib2peiekw53b5nj6uzxr67n3v67omkudosimiommczg77yzyeupcq",
+        "bafkreib6jnhcjaqlwb6fjamsqbtc6mlaovqp7e3rulohebafjdinouixuy",
+        "bafkreib7lynt2wm6dihlo5md7dbqal36vvsg2zjxo5rskfulkudjvkq7vy",
+        "bafkreibi6z5pqyappccegidcovytgxp2ahmuqiu2enhokrc3gnt6lgk6ge",
+        "bafkreibnpjd5mljympqf3gf4itdmcyiyvk5ybdq5yb553da4yn37w7o6nq",
+        "bafkreibom2xs22jukcyczesyet4ewrctjtkd3axigju7assbft3xof2zhe",
+        "bafkreibucohfmf3yewko6ovsidlrphsldfrl4jcdoi36m75xfperjnd574",
+        "bafkreibytosdzhcxrb4gbpq7jhc5eyermwdgpuvvvv4t3hoq4ypegqn37i",
+        "bafkreibzlxxroylrxc4wg74qjbu6ns67f6xaazskukw64lqwhywg3jd47e",
+        "bafkreich25qtg6o3dezliu2sgmivfwon6tsfp4urfekdzuzonxmzbak73a",
+        "bafkreicinkhv2vroea4woznci3augefvwenoqwkju6rbtuakhihbg4zpdi",
+        "bafkreicolwjs2cptkispcox72fdodh5p4fzu5wjcpxmv3xos2q5sgd5y24",
+        "bafkreicrdtbkw2hvektfz5hgkzu3fvajqqrdrruh4v5hhs6666ce2g5twu",
+        "bafkreicslswqe7kug7kwiuoh62it3kdfxz5ypajajimzigo4grxscquqii",
+        "bafkreictuwk3rg3ldhuv5rzin774pulybpyqoa3s6wiygnmlqk5k4lu7a4",
+        "bafkreicydqqss7aj3tspf3n53cj5mre42moox52c4swdo7e5hzui5uvkde",
+        "bafkreid5yxtgwyqxdlhfjo7m7mnj6pl6u5qq73mpzobbx52653puh5ch7q",
+        "bafkreid6k3ql57rvz4rzqbec5j43uivyf7w3jzk72z3xz3kslx3mlbnd3a",
+        "bafkreidhd2zguheo4zyxmlrlzw7h7vz7c6ce4qnbbho46tjttrt233wuei",
+        "bafkreidor6zqt3vazu4m7crduceh36o33phdh2md5yez3xhj2m6ucg7wyq",
+        "bafkreidv4fpd2vulpof5sa5i4izosvwadmgasmvkox3yocuszkzg6hiq6m",
+        "bafkreidvfgrqn6y2wnepydei5icz2ydjvnehrsnl3qcwqy6237kqf3owru",
+        "bafkreie5oema236medzffiswx5zjv4nppvrl5olpdpk5nwcxpne552gdyy",
+        "bafkreieahenun7z53w5gmjjzg6cni46o5mbd6cnaqdez3yudiothgl5exu",
+        "bafkreiedzp76xmegiddyemdjxvfwlb2wrrve2lxlmvgl6hvzscogznmnrq",
+        "bafkreiegscvpukg77hqqyh6idulo4vijqje4yz6fg4mvlzve3rfy5ld4ii",
+        "bafkreiekglue73otgrswcmsjkyruqyyt4nverhnz4ztxnjwffypu7r2ski",
+        "bafkreiekjxzzcrcnlgq5xvovyyspzbnb23dszaxfzsei7yrvcvphqqciza",
+        "bafkreien5zvfc3gduf2w3tgi44q2gga3dwndr7pgdpwia27ew6irjtdg3e",
+        "bafkreieqfnzs5hag4n7ugjxjwgqryiq6iafx7fshwjd67jbopccljki3by",
+        "bafkreieuzdb6kxdmz5zhsntdjsljb65i7red4etrj3pfzccbr3wnb3sjd4",
+        "bafkreiex5k3h5ukocdxu4rc3y4n3ktyqtzpbsoiebxl4ceyi4wyvv7rruu",
+        "bafkreif2iqsarznuvgdatpqhntzf7sz4n3z365t3r2wy2o7x5imakdxmjm",
+        "bafkreif3kbemrn55x53pd6ve5mu5flq2m4gxcsudox4edl54ptfkx4b3qa",
+        "bafkreif3peygz6hydwybk7vl3b3v6c6dfeclueuwnxiqmbnj5z4uuvbiv4",
+        "bafkreif6h6dtuikqa5aotonll7aza5yb6kvzdlwruin2xxcbskipi5jnn4",
+        "bafkreif7ic4e6ddxoqwpnkjwo5stdj7sbv7c35rxrhq6tnpgv5qexg3sxa",
+        "bafkreifa3vhvomzqpadlmyxcoyxp5bn2lomn4m5p4rpxpb4p4xnplihlou",
+        "bafkreifdd4gczw2jvqkecphswn7wepfmyv5sbujxxiw7a5ltlohjlshwo4",
+        "bafkreiffc6aymrwaeorqro36cxkwmm5lll2vrrmrmsdd3tyudomrohcm24",
+        "bafkreifg4ttuztrixh2ij6g67ekgw4ioxhptplxcutondvohzbe2tjdetq",
+        "bafkreifhv36uaqqczxkryr3ogprxulanbu26gsmdnfruovvkkszn6hbtcq",
+        "bafkreifjduyo2nqjhb2urf5lhx76tpwuvjshbp2ezamkwmjtqlxi5nl3o4",
+        "bafkreig2tmjt2xnuuijndlazzwdhvgi2fymndthrymiomk3gnoq6qg76nm",
+        "bafkreig524dknbjgfiihncyxds5fymh7c3bfj6ujmnmjjk2lzsbih7hiuy",
+        "bafkreighmiae4aysx64sd2z2zotvqy4oiojsrdmbim4fvjz2obpjqslhya",
+        "bafkreigushk3rphh5pnlc4i2odq74cfm5aub7qwiymijqzkxuvbzaigque",
+        "bafkreigv3icjtvdjaquvkxeqqeffbnbkuigsoki5oygsobi4pkipwcs2cm",
+        "bafkreigx4stuyvgvheel7mqvvlvzsvgurhkbyr6fjc3uxpjmdzplxtct4a",
+        "bafkreih3s7fuac7idupkgtqhxcsbh6nptaxsnkey6asn4luqtgjcardsra",
+        "bafkreihily6tyc2m2rn6udhb7gfcenostzbltkch34s2amzgvbbpqh3hpe",
+        "bafkreihlasasz3syyoz2xbaturqi2tff4h3j66pcxtzsqkvwshpbsms4vm",
+        "bafkreihnc4gdvde2ne2kaydzzlm6fqhfd6aef3fvjftbvk5p5y3pwtkdr4",
+        "bafkreihoilraz5mbt7tpfwk2adqs5dbhuusc2xj5zrhobyef2rn54367em"
+      ],
+      "tool_id": "metrics.v1",
+      "total_observations": 60
+    },
+    "cost": {
+      "baseline_model_spend_micros_total": 204560,
+      "cohort": "simulated",
+      "cost_per_accepted_patch_micros": null,
+      "estimator_id": "scg-local-cost-estimator/v1",
+      "gross_savings_micros": 38608,
+      "live_cost_evidence": "missing",
+      "model_spend_micros_total": 165952,
+      "net_savings_micros": -10417,
+      "unavailable_cost_fields": 0
+    },
+    "critical_acceptance": {
+      "critical_acceptance_rate_bp": 0,
+      "critical_omission_count": 16,
+      "critical_omissions_accepted_count": 0
+    },
+    "detection": {
+      "detected_after_execution_count": 0,
+      "detected_before_execution_count": 16,
+      "detection_after_rate_bp": 0,
+      "detection_before_rate_bp": 10000,
+      "false_alarm_count": 0,
+      "intentional_omission_count": 16
+    },
+    "expansion": {
+      "expansion_count": 0,
+      "expansion_false_negative_count": 16,
+      "expansion_false_positive_count": 0,
+      "expansion_precision_bp": null,
+      "expansion_rate_bp": 0,
+      "expansion_recall_bp": 0,
+      "expansion_true_positive_count": 0
+    },
+    "outcome_distribution": {
+      "acceptance_disposition_counts": {
+        "human_review_required": 6,
+        "not_accepted": 54
+      },
+      "comparative_outcome_counts": {
+        "human_review_required": 2,
+        "verification_inconclusive": 58
+      },
+      "expected_outcome_counts": {
+        "human_review_required": 2,
+        "insufficient_model": 1,
+        "insufficient_omission": 11,
+        "reject_injection": 1,
+        "reject_stale": 1,
+        "sufficient": 42,
+        "verification_conflict": 2
+      },
+      "measured_outcome_counts": {
+        "insufficient_model": 1,
+        "insufficient_omission": 16,
+        "reject_injection": 1,
+        "sufficient": 42
+      },
+      "total_cases": 60
+    },
+    "overhead": {
+      "audit_overhead_micros_total": 10025,
+      "cohort": "simulated",
+      "estimator_id": "scg-local-cost-estimator/v1",
+      "shadow_compute_micros_total": 15000,
+      "total_audit_overhead_micros": 49025,
+      "verification_compute_micros_total": 24000
+    },
+    "proposals": {
+      "accepted_count": 0,
+      "blocking_reasons": [
+        "median_context_reduction_below_threshold"
+      ],
+      "promotion_authorized": false,
+      "proposed_count": 1,
+      "rejected_count": 1,
+      "verdict": "fail"
+    },
+    "quality": {
+      "accepted_patch_count": 0,
+      "accepted_rate_bp": 0,
+      "outcome_counts": {
+        "both_failed_different_reason": 0,
+        "both_failed_same_reason": 0,
+        "both_valid_different": 0,
+        "compressed_better": 0,
+        "compressed_failed_expanded_succeeded": 0,
+        "compressed_succeeded_expanded_failed": 0,
+        "equivalent_success": 0,
+        "expanded_better": 0,
+        "human_review_required": 2,
+        "verification_inconclusive": 58
+      },
+      "proof_failure_count": 1,
+      "review_disagreement_count": 2,
+      "selected_test_false_negative_count": 1
+    },
+    "reduction": {
+      "compressed_tokens_total": 6344,
+      "expanded_tokens_total": 8646,
+      "mean_context_reduction_bp": 4537,
+      "median_context_reduction_bp": 4736,
+      "raw_tokens_total": 11170
+    },
+    "regressions": {
+      "regression_count": 0,
+      "regression_rate_bp": 0
+    },
+    "rejections": {
+      "critical_omission_detection_bp": 10000,
+      "injection_rejection_count": 1,
+      "policy_verdict": "fail",
+      "stale_present_count": 1,
+      "stale_rejected_count": 1,
+      "stale_rejection_rate_bp": 10000,
+      "stale_rejection_rate_bp_report": 10000
+    },
+    "routes": {
+      "escalation_count": 9,
+      "escalation_rate_bp": 1500,
+      "retry_count": 0,
+      "retry_rate_bp": 0,
+      "route_share_bp": {
+        "deterministic": 0,
+        "frontier": 1166,
+        "human": 333,
+        "medium": 3333,
+        "small": 5166
+      },
+      "route_share_counts": {
+        "deterministic": 0,
+        "frontier": 7,
+        "human": 2,
+        "medium": 20,
+        "small": 31
+      }
+    },
+    "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-metrics@1"
+  },
+  "missing_evidence": [
+    "live_provider_receipts",
+    "live_model_quality_cohort",
+    "live_billing_cost_sensors",
+    "post_execution_omission_detection_sensors",
+    "zk_seal_scope",
+    "live_observation_count"
+  ],
+  "notes": [
+    "Controlled fixture measurements only (production_eligible=false).",
+    "Live cohort is empty; missing live evidence is explicit.",
+    "Cost and overhead use the local simulated estimator, not live billing.",
+    "Targets are thresholds evaluated against measured values.",
+    "Promotion and rollout remain unauthorized in this benchmark."
+  ],
+  "observed_head": "40ebd4c550412a7a8c70241849a4c1423064ee62",
+  "pid": 283534,
+  "policy": {
+    "cohort_separation_required": true,
+    "live_model_quality_claimed": false,
+    "policy_id": "policy:scg-benchmark@1",
+    "targets_are_thresholds": true,
+    "zero_stale_simulated_acceptance_hard": true
+  },
+  "production_eligible": false,
+  "proposals_and_rejections": {
+    "benchmark_cid": "baguqeerakw3ikucapspar4bk5cw76lpww3xeklrdri2l3gkcaq6lo7ps4toq",
+    "candidate_cid": "baguqeerabab25eulxvnvyhnb7ko2u4pcnhbf3hkcypxsobngjqsg4gwdmuha",
+    "cohort": "simulated",
+    "evaluation_report_cid": "baguqeeraxkycu2vhctkx3sdudyopho32hypubztiqnb2odqgmpcovmhjymvq",
+    "held_out_case_count": 32,
+    "measurement_status": "measured",
+    "missing_evidence": [],
+    "proposals": {
+      "accepted_count": 0,
+      "blocking_reasons": [
+        "median_context_reduction_below_threshold"
+      ],
+      "promotion_authorized": false,
+      "proposed_count": 1,
+      "rejected_count": 1,
+      "verdict": "fail"
+    },
+    "rejections": {
+      "critical_omission_detection_bp": 10000,
+      "injection_rejection_count": 1,
+      "policy_verdict": "fail",
+      "stale_present_count": 1,
+      "stale_rejected_count": 1,
+      "stale_rejection_rate_bp": 10000,
+      "stale_rejection_rate_bp_report": 10000
+    },
+    "status": "measured"
+  },
+  "repository_root": ".",
+  "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark@1",
+  "status": "yellow",
+  "summary": {
+    "case_count": 60,
+    "content_id": "sha256:2f78a161e27b8457d84e08841a37dde47e405dd6d74aed11a86161456bea069b",
+    "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-summary@1",
+    "status": "yellow"
+  },
+  "target_misses": [
+    {
+      "status": "yellow",
+      "target": "median_context_reduction"
+    }
+  ],
+  "target_success_asserted": false,
+  "targets": {
+    "critical_omission_detection_before_acceptance": {
+      "comparator": ">=",
+      "hard": true,
+      "met": true,
+      "name": "critical_omission_detection_before_acceptance",
+      "status": "met",
+      "threshold": 9500,
+      "value": 10000
+    },
+    "median_context_reduction": {
+      "comparator": ">=",
+      "hard": false,
+      "met": false,
+      "name": "median_context_reduction",
+      "status": "yellow",
+      "threshold": 5000,
+      "value": 4864
+    },
+    "zero_accepted_regressions": {
+      "comparator": "<=",
+      "hard": true,
+      "met": true,
+      "name": "zero_accepted_regressions",
+      "status": "met",
+      "threshold": 0,
+      "value": 0
+    },
+    "zero_critical_controlled_omissions_accepted": {
+      "comparator": "<=",
+      "hard": true,
+      "met": true,
+      "name": "zero_critical_controlled_omissions_accepted",
+      "status": "met",
+      "threshold": 0,
+      "value": 0
+    },
+    "zero_production_eligible_true": {
+      "comparator": "==",
+      "hard": true,
+      "met": true,
+      "name": "zero_production_eligible_true",
+      "status": "met",
+      "threshold": 0,
+      "value": 0
+    },
+    "zero_stale_admissions": {
+      "comparator": "==",
+      "hard": true,
+      "met": true,
+      "name": "zero_stale_admissions",
+      "status": "met",
+      "threshold": 0,
+      "value": 0
+    }
+  },
+  "task_id": "SCG-045",
+  "zero_stale_simulated_accepted": true
+}

@@ -103,6 +103,12 @@ class StandardSupervisorRuntimeFactory:
         self.production = bool(production)
         if self.production:
             self.require_handlers(REQUIRED_RUNTIME_HANDLERS)
+            # Mapping receipts / placeholder callables are not production truth.
+            for name, handler in self.handlers.items():
+                if getattr(handler, "__name__", "") in {"fixture_handler", "noop"}:
+                    raise RuntimeConstructionError(
+                        f"handler {name!r} is a fixture/no-op and cannot authorize effects"
+                    )
 
     def require_handlers(self, names: tuple[str, ...] | list[str]) -> None:
         missing = tuple(sorted(name for name in names if not callable(self.handlers.get(name))))
@@ -122,6 +128,87 @@ class StandardSupervisorRuntimeFactory:
         from .intent_service import SupervisorIntentService
 
         return SupervisorIntentService(factory=self)
+
+
+
+
+@dataclass(frozen=True)
+class RequiredArgumentCoverageReceipt:
+    """Proof every parser argument has a resolver receipt or signed default."""
+
+    parser_identity: str
+    covered_arguments: tuple[str, ...]
+    signed_defaults: tuple[str, ...]
+    missing_arguments: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.missing_arguments:
+            raise RuntimeConstructionError(
+                "required parser arguments uncovered: "
+                + ", ".join(self.missing_arguments)
+            )
+        if not self.parser_identity:
+            raise RuntimeConstructionError("parser_identity is required")
+
+    @property
+    def content_id(self) -> str:
+        return cid_for_dag_json(
+            {
+                "schema": "ipfs_accelerate_py/agent-supervisor/required-argument-coverage@1",
+                "parser_identity": self.parser_identity,
+                "covered_arguments": list(self.covered_arguments),
+                "signed_defaults": list(self.signed_defaults),
+                "missing_arguments": list(self.missing_arguments),
+            }
+        )
+
+
+@dataclass(frozen=True)
+class PromptToRunSaga:
+    """Complete public operation saga binding for prompt-to-run."""
+
+    run_id: str
+    planning_attempt_id: str
+    program_revision_cid: str
+    launch_plan_cid: str
+    phases: tuple[str, ...] = (
+        "PLAN_ADMITTED",
+        "PROGRAM_REVISED",
+        "INTENT_RESERVED",
+        "EFFECT_STARTED",
+        "TERMINAL_OBSERVED",
+        "ADOPTED",
+    )
+
+    def __post_init__(self) -> None:
+        if not self.run_id or not self.launch_plan_cid:
+            raise RuntimeConstructionError("prompt-to-run saga requires run and plan")
+        if "fixture" in self.launch_plan_cid.lower():
+            raise RuntimeConstructionError("fixture CompleteLaunchPlan is not production truth")
+
+    @property
+    def content_id(self) -> str:
+        return cid_for_dag_json(
+            {
+                "schema": "ipfs_accelerate_py/agent-supervisor/prompt-to-run-saga@1",
+                "run_id": self.run_id,
+                "planning_attempt_id": self.planning_attempt_id,
+                "program_revision_cid": self.program_revision_cid,
+                "launch_plan_cid": self.launch_plan_cid,
+                "phases": list(self.phases),
+            }
+        )
+
+
+def reject_fixture_launch_plan(plan: CompleteLaunchPlan) -> CompleteLaunchPlan:
+    """Production construction rejects fixture / mapping-only launch plans."""
+    if not isinstance(plan, CompleteLaunchPlan):
+        raise RuntimeConstructionError("launch plan must be CompleteLaunchPlan")
+    if not plan.task_source_cid or not plan.task_source_revision_cid:
+        raise RuntimeConstructionError("launch plan missing task-source bindings")
+    if "fixture" in plan.launch_plan_cid.lower():
+        raise RuntimeConstructionError("fixture CompleteLaunchPlan values are forbidden")
+    return plan
 
 
 def lifecycle_start_handler(
@@ -158,7 +245,15 @@ def lifecycle_start_handler(
 
 
 __all__ = [
-    "CompleteLaunchPlan", "MissingRuntimeHandlerError", "REQUIRED_RUNTIME_HANDLERS",
-    "RuntimeConstructionError", "RuntimeEffectError", "RuntimeEffectReceipt",
-    "StandardSupervisorRuntimeFactory", "lifecycle_start_handler",
+    "CompleteLaunchPlan",
+    "MissingRuntimeHandlerError",
+    "PromptToRunSaga",
+    "REQUIRED_RUNTIME_HANDLERS",
+    "RequiredArgumentCoverageReceipt",
+    "RuntimeConstructionError",
+    "RuntimeEffectError",
+    "RuntimeEffectReceipt",
+    "StandardSupervisorRuntimeFactory",
+    "lifecycle_start_handler",
+    "reject_fixture_launch_plan",
 ]

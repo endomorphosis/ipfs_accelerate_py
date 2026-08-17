@@ -1057,6 +1057,7 @@ def run_process_group_stream(
     progress_timeout_seconds: float | None = None,
     max_timeout_seconds: float | None = None,
     progress_paths: Sequence[Path | str] = (),
+    on_started: Callable[[subprocess.Popen[Any]], None] | None = None,
     on_progress: Callable[[Mapping[str, Any]], None] | None = None,
     cancel_requested: Callable[[], bool | str] | None = None,
     cancellation_reason: str = "cancellation_requested",
@@ -1142,7 +1143,50 @@ def run_process_group_stream(
         text=text,
         pass_fds=pass_fds,
     )
+    callback_failure_cleaned = False
     try:
+        if on_started is not None:
+            try:
+                on_started(process)
+            except BaseException as callback_error:
+                # A caller that requires durable birth evidence must never
+                # leave an unaccounted child or daemonized group running when
+                # persistence fails.  Fence before poll/wait can reap the
+                # leader and make its dedicated group undiscoverable.
+                try:
+                    birth = read_process_birth(process.pid)
+                except OSError:
+                    birth = None
+                fenced = terminate_pid_tree(
+                    process.pid,
+                    grace_seconds=max(
+                        0.1,
+                        float(termination_grace_seconds),
+                    ),
+                    freeze_first=True,
+                    require_gone=True,
+                    owned_process_group_id=process.pid,
+                    expected_root_start_time_ticks=(
+                        birth.start_time_ticks if birth is not None else None
+                    ),
+                )
+                try:
+                    process.wait(
+                        timeout=max(0.1, float(termination_grace_seconds))
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    raise RuntimeError(
+                        "provider runner callback failure could not be reaped"
+                    ) from exc
+                # The leader is now reaped and its numeric PID may be reused.
+                # Prevent the generic exception cleanup below from acting on
+                # that unbound number a second time.
+                callback_failure_cleaned = True
+                if not fenced:
+                    raise RuntimeError(
+                        "provider runner callback failure could not be fenced"
+                    ) from callback_error
+                raise
         if not monitor_progress:
             process.communicate(
                 input=input_value,
@@ -1313,20 +1357,6 @@ def run_process_group_stream(
             if hasattr(exc, attribute):
                 setattr(timeout_exc, attribute, getattr(exc, attribute))
         raise timeout_exc from exc
-    except BaseException:
-        # The implementation daemon can be recycled while a provider runner
-        # owns a separate process session. Fence that complete tree before the
-        # daemon releases its canonical task claim.
-        terminate_pid_tree(
-            process.pid,
-            grace_seconds=max(0.0, float(termination_grace_seconds)),
-        )
-        try:
-            process.wait(timeout=max(0.1, float(termination_grace_seconds)))
-        except subprocess.TimeoutExpired:
-            terminate_process_group(process, signal.SIGKILL)
-            process.wait()
-        raise
     # A successful CLI process may have daemonized descendants that closed
     # their inherited output descriptors.  They remain in the owned session
     # and could mutate the checkout after the implementation fence's final

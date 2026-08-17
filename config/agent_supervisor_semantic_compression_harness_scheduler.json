@@ -1,0 +1,161 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.semantic_compression_harness.scheduler_config@1",
+  "taskboard_path": "docs/architecture/semantic_compression_harness.todo.md",
+  "objectives_path": "docs/architecture/semantic_compression_harness.objectives.md",
+  "plan_path": "docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md",
+  "validator_path": "scripts/validate_semantic_compression_harness_board.py",
+  "task_prefix": "SCH-",
+  "goal_prefix": "SCH-G",
+  "board_namespace": "semantic-compression-harness-v1",
+  "merge_target_branch": "main",
+  "source_binding": {
+    "accelerator_required_ancestor": "271e331af802f37d759c000666282631a99f7aab",
+    "accelerator_required_branch": "main",
+    "bootstrap_task_source": "legacy-markdown",
+    "ipfs_kit_submodule_path": "ipfs_kit_py",
+    "ipfs_kit_planning_revision": "df2f9cc092456329de9724c45a50c54b410875d1",
+    "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+    "ipfs_datasets_planning_revision": "1330038f626ef92993f03d46f21e1a57719e9c25",
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "initial_projection": {
+    "task_count": 19,
+    "completed_task_ids": [
+      "SCH-000",
+      "SCH-001",
+      "SCH-002",
+      "SCH-003",
+      "SCH-004",
+      "SCH-005",
+      "SCH-006",
+      "SCH-007",
+      "SCH-008",
+      "SCH-009",
+      "SCH-010",
+      "SCH-011",
+      "SCH-012",
+      "SCH-013",
+      "SCH-014",
+      "SCH-015",
+      "SCH-016",
+      "SCH-017",
+      "SCH-018"
+    ],
+    "ready_task_ids": [],
+    "blocked_task_ids": [],
+    "terminal_task_id": "SCH-018",
+    "goal_count": 6,
+    "root_goal_id": "SCH-G000"
+  },
+  "max_lanes": 3,
+  "strict_task_sharding": true,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 45,
+  "check_interval_seconds": 20,
+  "stale_seconds": 1200,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 8,
+  "max_task_attempts": 4,
+  "implementation_retry_budget": 4,
+  "validation_retry_budget": 4,
+  "merge_retry_budget": 4,
+  "implementation_timeout_seconds": 5400,
+  "implementation_max_timeout_seconds": 7200,
+  "implementation_log_stall_seconds": 900,
+  "worktree_submodule_paths": [
+    "ipfs_kit_py",
+    "ipfs_datasets_py"
+  ],
+  "protected_paths": [
+    "docs/architecture/SEMANTIC_COMPRESSION_HARNESS_PLAN.md",
+    "docs/architecture/semantic_compression_harness.objectives.md",
+    "docs/architecture/semantic_compression_harness.todo.md",
+    "config/semantic_state_dependencies.seal.json",
+    "config/agent_supervisor_semantic_compression_harness_scheduler.json",
+    "scripts/validate_semantic_state_dependencies.py",
+    "scripts/validate_semantic_compression_harness_board.py",
+    "scripts/ops/agent_supervisor/semantic_compression_harness_scheduler.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/semantic_compression_harness",
+    "state": "data/agent_supervisor/semantic_compression_harness/state",
+    "worktrees": "data/agent_supervisor/semantic_compression_harness/worktrees",
+    "merge_queue": "data/agent_supervisor/semantic_compression_harness/merge-queue",
+    "logs": "data/agent_supervisor/semantic_compression_harness/logs",
+    "evidence": "data/agent_supervisor/semantic_compression_harness/evidence",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "sch-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [],
+      "initial_focus": "control-durable-state-and-release"
+    },
+    {
+      "index": 1,
+      "name": "sch-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_task_ids": [],
+      "initial_focus": "wire-scheduling-and-harness-loop"
+    },
+    {
+      "index": 2,
+      "name": "sch-lane-2",
+      "strict_shard_remainder": 2,
+      "initial_task_ids": [],
+      "initial_focus": "datasets-capsules-and-acceptance"
+    }
+  ],
+  "task_groups": {
+    "SCH-G010": ["SCH-000", "SCH-001", "SCH-002", "SCH-003"],
+    "SCH-G020": ["SCH-004", "SCH-005", "SCH-006", "SCH-007", "SCH-008"],
+    "SCH-G030": ["SCH-009", "SCH-010", "SCH-011"],
+    "SCH-G040": ["SCH-012", "SCH-013", "SCH-014", "SCH-015"],
+    "SCH-G050": ["SCH-016", "SCH-017", "SCH-018"]
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "high",
+    "max_concurrency": 3,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "authority_policy": {
+    "datasets_semantic_state_is_graph_authority": true,
+    "kit_durable_roots_are_cas_authority": true,
+    "mcp_plus_plus_is_wire_authority": true,
+    "provider_claim_is_verification_authority": false,
+    "compute_artifact_cid_forbidden_for_new_artifacts": true,
+    "watcher_events_are_not_state": true,
+    "simulation_cannot_satisfy_production": true
+  },
+  "capability_policy": {
+    "automatic_dependency_installation_allowed": false,
+    "mock_hardware_or_inference_allowed": false,
+    "new_theorem_prover_allowed": false,
+    "missing_optional_dependency_disposition": "typed_unavailable",
+    "shell_string_execution_allowed": false,
+    "process_tree_termination_required": true
+  },
+  "completion_policy": {
+    "terminal_task_id": "SCH-018",
+    "all_task_dependencies_terminal_required": true,
+    "goal_heap_is_planning_lineage_only": true,
+    "current_tree_evidence_required": true
+  }
+}

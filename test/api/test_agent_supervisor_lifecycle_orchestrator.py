@@ -56,6 +56,28 @@ class Clock:
         self.value_ms += max(1, int(seconds * 1_000))
 
 
+class LaunchProcess:
+    """Small Popen double for the launch identity handshake."""
+
+    def __init__(self, *, pid: int = 901, returncode: int | None = None) -> None:
+        self.pid = pid
+        self.returncode = returncode
+        self.killed = False
+        self.waited = False
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+
+    def wait(self, timeout: float | None = None) -> int:
+        del timeout
+        self.waited = True
+        return self.returncode or 0
+
+
 class FakeProcessAdapter:
     def __init__(self, profile: LifecycleProfile, clock: Clock) -> None:
         self.profile = profile
@@ -604,6 +626,128 @@ def test_pid_reuse_is_detected_before_signal(
     with pytest.raises(ProcessIdentityMismatch, match="reused"):
         LinuxProcessAdapter._signal_exact(identity, 15)
     assert signals == []
+
+
+def test_linux_launch_retries_only_until_exact_exec_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    profile = _profile(tmp_path)
+    process = LaunchProcess()
+    expected = FakeProcessAdapter(profile, Clock()).identity(process.pid)
+    adapter = LinuxProcessAdapter(popen=lambda *_args, **_kwargs: process)
+    observations = 0
+
+    def capture(_pid: int, _profile: LifecycleProfile) -> ProcessIdentity:
+        nonlocal observations
+        observations += 1
+        if observations == 1:
+            raise ProcessIdentityMismatch("pre-exec environment")
+        return expected
+
+    monkeypatch.setattr(adapter, "_identity", capture)
+    monkeypatch.setattr(
+        adapter,
+        "_stat",
+        lambda _pid: (
+            expected.parent_pid,
+            expected.process_group_id,
+            expected.session_id,
+            expected.start_time_ticks,
+        ),
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.control.lifecycle_orchestrator.time.sleep",
+        lambda _seconds: None,
+    )
+
+    assert adapter.launch(profile, fencing_epoch=expected.fencing_epoch) == expected
+    assert observations == 2
+    assert process.killed is False
+    assert process.waited is False
+
+
+def test_linux_launch_persistent_foreign_identity_is_killed_and_reaped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    profile = _profile(tmp_path)
+    process = LaunchProcess()
+    adapter = LinuxProcessAdapter(popen=lambda *_args, **_kwargs: process)
+    monotonic = iter((10.0, 13.0))
+
+    def reject(_pid: int, _profile: LifecycleProfile) -> ProcessIdentity:
+        raise ProcessIdentityMismatch("foreign environment")
+
+    monkeypatch.setattr(adapter, "_identity", reject)
+    monkeypatch.setattr(adapter, "_stat", lambda _pid: (1, 901, 901, 90_100))
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.control.lifecycle_orchestrator.time.monotonic",
+        lambda: next(monotonic),
+    )
+
+    with pytest.raises(ProcessIdentityMismatch, match="foreign"):
+        adapter.launch(profile, fencing_epoch=0)
+    assert process.killed is True
+    assert process.waited is True
+
+
+def test_linux_launch_exited_child_is_reaped_without_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    profile = _profile(tmp_path)
+    process = LaunchProcess(returncode=7)
+    adapter = LinuxProcessAdapter(popen=lambda *_args, **_kwargs: process)
+    observations = 0
+
+    def reject(_pid: int, _profile: LifecycleProfile) -> ProcessIdentity:
+        nonlocal observations
+        observations += 1
+        raise ProcessIdentityMismatch("exited before identity admission")
+
+    monkeypatch.setattr(adapter, "_identity", reject)
+    monkeypatch.setattr(adapter, "_stat", lambda _pid: (1, 901, 901, 90_100))
+
+    with pytest.raises(ProcessIdentityMismatch, match="exited"):
+        adapter.launch(profile, fencing_epoch=0)
+    assert observations == 1
+    assert process.killed is False
+    assert process.waited is True
+
+
+@pytest.mark.parametrize("drift", ("start_time", "fencing_epoch"))
+def test_linux_launch_rejects_identity_drift_after_marker_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, drift: str
+) -> None:
+    profile = _profile(tmp_path)
+    process = LaunchProcess()
+    expected = FakeProcessAdapter(profile, Clock()).identity(
+        process.pid, fencing_epoch=11
+    )
+    observed = (
+        replace(
+            expected,
+            start_time_ticks=expected.start_time_ticks + 1,
+            identity_id="",
+        )
+        if drift == "start_time"
+        else replace(expected, fencing_epoch=12, identity_id="")
+    )
+    adapter = LinuxProcessAdapter(popen=lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(adapter, "_identity", lambda _pid, _profile: observed)
+    monkeypatch.setattr(
+        adapter,
+        "_stat",
+        lambda _pid: (
+            expected.parent_pid,
+            expected.process_group_id,
+            expected.session_id,
+            expected.start_time_ticks,
+        ),
+    )
+
+    with pytest.raises(ProcessIdentityMismatch, match="changed|fence"):
+        adapter.launch(profile, fencing_epoch=11)
+    assert process.killed is True
+    assert process.waited is True
 
 
 def test_cross_root_request_and_foreign_run_identity_fail_closed(

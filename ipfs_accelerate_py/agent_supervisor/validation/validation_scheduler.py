@@ -65,6 +65,9 @@ from .validation_runtime import (
     VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
     VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
     VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
+    VALIDATION_RUFF_EXECUTABLE_MODE_ENV,
+    VALIDATION_RUFF_EXECUTABLE_SHA256_ENV,
+    VALIDATION_RUFF_EXECUTABLE_STAT_ENV,
     HermeticValidationRuntime,
     ValidationCancellationToken,
     ValidationResourceBounds,
@@ -200,6 +203,9 @@ DEFAULT_RELEVANT_ENVIRONMENT = (
     VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
     VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
     VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
+    VALIDATION_RUFF_EXECUTABLE_MODE_ENV,
+    VALIDATION_RUFF_EXECUTABLE_SHA256_ENV,
+    VALIDATION_RUFF_EXECUTABLE_STAT_ENV,
     "RUSTFLAGS",
     "VIRTUAL_ENV",
 )
@@ -983,6 +989,13 @@ def run_validation_command(
             **result,
         }
     try:
+        from .validation_runtime import apply_sealed_node_toolchain
+
+        child_environment = apply_sealed_node_toolchain(
+            dict(environment),
+            workspace_path=workspace_path,
+            command=spec.command,
+        )
         completed = subprocess.run(
             validation_shell_command(spec.command),
             cwd=workspace_path,
@@ -992,7 +1005,7 @@ def run_validation_command(
             stderr=subprocess.STDOUT,
             timeout=timeout_seconds,
             check=False,
-            env=dict(environment),
+            env=child_environment,
         )
         return {
             "command": spec.command,

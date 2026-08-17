@@ -1518,8 +1518,10 @@ def test_enqueue_transfers_producer_trust_to_candidate_tree_proof_only_in_proces
     )
     task = {item.task_id: item for item in daemon._load_tasks()}["TEST-002"]
     captured_metadata: dict[str, object] = {}
+    captured_enqueue: dict[str, object] = {}
 
     def capture_enqueue(**kwargs):
+        captured_enqueue.update(kwargs)
         captured_metadata.update(kwargs["metadata"])
         return SimpleNamespace(request_id="candidate-proof-request")
 
@@ -1611,6 +1613,79 @@ def test_enqueue_transfers_producer_trust_to_candidate_tree_proof_only_in_proces
     assert restart_rejection[
         "manual_completion_authority_evidence_valid"
     ] is False
+
+    merge_call: dict[str, object] = {}
+
+    def capture_merge(*args, **kwargs):
+        merge_call["args"] = args
+        merge_call["kwargs"] = kwargs
+        return {
+            "attempted": False,
+            "merged": False,
+            "returncode": 2,
+            "reason": "seeded_pre_merge_stop",
+            "submodule_merge_results": [],
+        }
+
+    def fake_git_run(command, **_kwargs):
+        if command[:2] == ["git", "rev-parse"]:
+            ref = str(command[-1])
+            resolved = (
+                "a" * 40
+                if ref.startswith("a" * 40)
+                else "b" * 40
+            )
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=0,
+                stdout=f"{resolved}\n",
+                stderr="",
+            )
+        if command[:3] == ["git", "merge-base", "--is-ancestor"]:
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=1,
+                stdout="",
+                stderr="",
+            )
+        raise AssertionError(f"unexpected Git command: {command}")
+
+    monkeypatch.setattr(daemon_module.subprocess, "run", fake_git_run)
+    monkeypatch.setattr(
+        daemon,
+        "_scope_adjudication_merge_binding_error",
+        lambda _proof: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_rehydrate_merge_request_branch",
+        lambda **_kwargs: {"ready": True, "rehydrated": False},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_changed_submodule_durability_preflight",
+        lambda **_kwargs: {"attempted": False, "verified": True},
+    )
+    monkeypatch.setattr(daemon, "_merge_branch_to_main", capture_merge)
+    monkeypatch.setattr(daemon, "_git_ref_is_ancestor", lambda *_args: False)
+    request = SimpleNamespace(
+        metadata=dict(captured_metadata),
+        target_repository_id=captured_enqueue["target_repository_id"],
+        target_branch=captured_enqueue["target_branch"],
+        task_id="TEST-002",
+        canonical_task_id=captured_enqueue["canonical_task_id"],
+        canonical_task_key=captured_enqueue["canonical_task_key"],
+        priority="P0",
+        branch_name="agent/test-002",
+        commit_sha="a" * 40,
+        attempt=1,
+    )
+
+    callback_result = daemon._merge_train_callback(request)
+
+    assert callback_result["reason"] == "seeded_pre_merge_stop"
+    assert merge_call["kwargs"]["expected_candidate_commit"] == "a" * 40
+    assert merge_call["kwargs"]["expected_candidate_tree"] == "c" * 40
 
 
 def test_completion_rechecks_generation_inside_mutation_boundary(
@@ -1808,6 +1883,265 @@ def test_merge_rechecks_generation_after_preparation_before_rebase(
     assert result["reason"] == (
         "manual_completion_authority_generation_changed"
     )
+
+
+def test_queue_bound_merge_rejects_candidate_moved_before_locked_callback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    board = tmp_path / "tasks.md"
+    _write_revalidation_board(board, descendant_status="todo")
+    daemon = _revalidation_daemon(
+        tmp_path,
+        board,
+        suffix="candidate-moved-before-lock",
+    )
+    task = {item.task_id: item for item in daemon._load_tasks()}["TEST-002"]
+    expected_candidate = "a" * 40
+    moved_candidate = "b" * 40
+    expected_tree = "c" * 40
+    events: list[tuple[str, dict[str, object]]] = []
+
+    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "main")
+    monkeypatch.setattr(
+        daemon,
+        "_resolve_git_commit_in_repo",
+        lambda _root, ref: (
+            moved_candidate
+            if ref == "implementation/test-002"
+            else expected_candidate
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_candidate_repository_tree",
+        lambda commit: expected_tree if commit == expected_candidate else "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_preserve_generated_nested_worktree_directories",
+        lambda: pytest.fail("candidate mismatch reached workspace mutation"),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_repair_stale_submodule_worktree_configs",
+        lambda _root: pytest.fail("candidate mismatch reached repository repair"),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_event",
+        lambda event_type, payload: events.append((event_type, dict(payload))),
+    )
+
+    result = daemon._merge_branch_to_main_locked(
+        "implementation/test-002",
+        task,
+        1,
+        expected_candidate_commit=expected_candidate,
+        expected_candidate_tree=expected_tree,
+    )
+
+    assert result["merged"] is False
+    assert result["returncode"] == 2
+    assert result["reason"] == "merge_branch_candidate_mismatch"
+    assert result["expected_candidate_commit"] == expected_candidate
+    assert result["candidate_commit"] == expected_candidate
+    assert result["branch_commit"] == moved_candidate
+    assert [event_type for event_type, _payload in events] == [
+        "merge_finished"
+    ]
+
+
+def test_mutated_merge_candidate_is_rejected_at_final_mutation_boundary(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    board = tmp_path / "tasks.md"
+    _write_revalidation_board(board, descendant_status="todo")
+    daemon = _revalidation_daemon(
+        tmp_path,
+        board,
+        suffix="rebased-candidate-binding",
+    )
+    task = {item.task_id: item for item in daemon._load_tasks()}["TEST-002"]
+    original_candidate = "a" * 40
+    rebased_candidate = "b" * 40
+    branch_commits = iter((original_candidate, rebased_candidate))
+    candidate_tree = "c" * 40
+    events: list[tuple[str, dict[str, object]]] = []
+
+    monkeypatch.setattr(
+        daemon,
+        "_preserve_generated_nested_worktree_directories",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_repair_stale_submodule_worktree_configs",
+        lambda _root: {"repairs": []},
+    )
+    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "main")
+    monkeypatch.setattr(
+        daemon,
+        "_resolve_git_commit_in_repo",
+        lambda _root, ref: (
+            next(branch_commits)
+            if ref == "implementation/test-002"
+            else original_candidate
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_candidate_repository_tree",
+        lambda commit: candidate_tree if commit == original_candidate else "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_rebase_stale_submodule_pointers",
+        lambda *_args, **_kwargs: pytest.fail(
+            "an immutable validated candidate was rebased in place"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_event",
+        lambda event_type, payload: events.append((event_type, dict(payload))),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_merge_candidate_completion_recheck",
+        lambda *_args, **_kwargs: {
+            "terminal": False,
+            "candidate_ancestor": False,
+            "branch_ancestor": False,
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_main_merge_workspace",
+        lambda *_args, **_kwargs: {
+            "available": True,
+            "path": str(tmp_path),
+            "ephemeral": False,
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_restore_incidental_main_gitlink_checkouts",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_resolve_generated_add_add_conflicts",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_identical_untracked_merge_paths",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_restore_generated_dirty_merge_overlap",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_dirty_merge_conflict_paths",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_reconcile_generated_dirty_submodule_overlap",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_remove_untracked_paths_for_merge",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a mutated candidate reached target mutation"
+        ),
+    )
+
+    result = daemon._merge_branch_to_main_locked(
+        "implementation/test-002",
+        task,
+        1,
+        baseline_ref="",
+        changed_submodule_paths={"external/dependency"},
+        expected_candidate_commit=original_candidate,
+        expected_candidate_tree=candidate_tree,
+    )
+
+    assert result["merged"] is False
+    assert result["returncode"] == 2
+    assert result["reason"] == "merge_branch_candidate_mismatch"
+    assert result["candidate_commit"] == original_candidate
+    assert result["branch_commit"] == rebased_candidate
+    assert [event_type for event_type, _payload in events] == [
+        "submodule_pointer_rebase_skipped",
+        "merge_finished",
+    ]
+
+
+def test_exact_candidate_merge_survives_concurrent_target_advance(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo-exact-candidate"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.name", "Authority Test")
+    _git(repo, "config", "user.email", "authority@example.invalid")
+    board = repo / "tasks.md"
+    _write_revalidation_board(board, descendant_status="todo")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+
+    branch = "implementation/test-002"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "candidate.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "candidate.txt")
+    _git(repo, "commit", "-m", "candidate")
+    candidate_commit = _git(repo, "rev-parse", "HEAD")
+    candidate_tree = _git(repo, "show", "-s", "--format=%T", "HEAD")
+
+    _git(repo, "checkout", "main")
+    (repo / "unrelated.txt").write_text("target advance\n", encoding="utf-8")
+    _git(repo, "add", "unrelated.txt")
+    _git(repo, "commit", "-m", "advance target independently")
+    target_before = _git(repo, "rev-parse", "HEAD")
+
+    daemon = _implementation_revalidation_daemon(
+        tmp_path,
+        repo,
+        board,
+        suffix="exact-candidate-concurrent-target",
+    )
+    task = {item.task_id: item for item in daemon._load_tasks()}["TEST-002"]
+    result = daemon._merge_branch_to_main_locked(
+        branch,
+        task,
+        1,
+        expected_candidate_commit=candidate_commit,
+        expected_candidate_tree=candidate_tree,
+    )
+
+    assert result["merged"] is True
+    assert result["returncode"] == 0
+    assert _git(repo, "rev-parse", branch) == candidate_commit
+    integration_commit = _git(repo, "rev-parse", "main")
+    parents = _git(repo, "show", "-s", "--format=%P", integration_commit).split()
+    assert parents == [target_before, candidate_commit]
+    assert _git(
+        repo,
+        "merge-base",
+        "--is-ancestor",
+        candidate_commit,
+        integration_commit,
+    ) == ""
+    assert (repo / "candidate.txt").read_text(encoding="utf-8") == "candidate\n"
+    assert (repo / "unrelated.txt").read_text(encoding="utf-8") == "target advance\n"
 
 
 def test_enqueue_refreshes_authority_before_context_and_rejects_any_denial(

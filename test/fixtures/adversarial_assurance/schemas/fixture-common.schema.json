@@ -1,0 +1,120 @@
+{
+  "$defs": {
+    "campaign": {
+      "enum": [
+        "security",
+        "semantic_compression",
+        "zk_incremental_seal",
+        "distributed_storage_crash",
+        "vacuity_gui"
+      ],
+      "type": "string"
+    },
+    "cid": {
+      "maxLength": 128,
+      "minLength": 8,
+      "pattern": "^b[a-z2-7]+$",
+      "type": "string"
+    },
+    "detectorKind": {
+      "enum": [
+        "static_rule",
+        "type_check",
+        "unit_test",
+        "integration_test",
+        "property_test",
+        "formal_obligation",
+        "policy_rule",
+        "runtime_invariant",
+        "full_suite",
+        "incremental_seal",
+        "human_review"
+      ],
+      "type": "string"
+    },
+    "expectedOutcome": {
+      "enum": [
+        "killed",
+        "survived_selected",
+        "survived_full",
+        "invalid",
+        "equivalent_review"
+      ],
+      "type": "string"
+    },
+    "nfcString": {
+      "maxLength": 16384,
+      "minLength": 1,
+      "type": "string"
+    },
+    "operatorClass": {
+      "enum": [
+        "control_flow",
+        "data_schema",
+        "interface_contract",
+        "side_effect",
+        "error_retry",
+        "authorization_policy",
+        "state_distributed",
+        "storage_durability",
+        "test_proof",
+        "semantic_compression",
+        "gui_action_binding"
+      ],
+      "type": "string"
+    },
+    "partition": {
+      "enum": [
+        "diagnosis",
+        "development",
+        "held_out"
+      ],
+      "type": "string"
+    },
+    "risk": {
+      "enum": [
+        "critical_security",
+        "authorization",
+        "durability",
+        "financial_legal",
+        "distributed_transition",
+        "proof_receipt_trust",
+        "critical_invariant",
+        "high",
+        "medium",
+        "local_bug",
+        "low"
+      ],
+      "type": "string"
+    },
+    "strength": {
+      "enum": [
+        "required",
+        "optional"
+      ],
+      "type": "string"
+    },
+    "terminalStatus": {
+      "enum": [
+        "complete",
+        "rejected",
+        "invalid",
+        "stale",
+        "inconclusive",
+        "evaluation_failed",
+        "human_review_required",
+        "unavailable",
+        "cancelled",
+        "simulated"
+      ],
+      "type": "string"
+    },
+    "token": {
+      "pattern": "^[a-z][a-z0-9_.:/+-]{0,127}$",
+      "type": "string"
+    }
+  },
+  "$id": "https://ipfs-accelerate.dev/schemas/aae/fixture-common@1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AAE fixture common definitions"
+}

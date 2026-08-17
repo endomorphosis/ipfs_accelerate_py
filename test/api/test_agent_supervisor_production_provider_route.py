@@ -720,7 +720,7 @@ def test_merge_receipt_admission_requires_exact_v2_content_and_review_effort(
 
     bound_receipt = json.loads(json.dumps(receipt))
     exact_executions = (
-        ("grok_cli", "grok-4.5", ""),
+        ("grok_cli", "grok-4.6", ""),
         ("codex_cli", "gpt-5.6-terra", "medium"),
     )
     for index, (provider, model, effort) in enumerate(exact_executions):

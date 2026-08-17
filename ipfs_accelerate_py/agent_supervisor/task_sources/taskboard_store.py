@@ -1937,62 +1937,6 @@ class ProjectionDeltaCheckpointStore:
         record = self._read_unlocked()
         return None if record is None else dict(record)
 
-    def quarantine_invalid(self) -> dict[str, Any]:
-        """Atomically retain an invalid checkpoint and clear the live path."""
-
-        with self._guard():
-            try:
-                record = self._read_unlocked()
-            except (TypeError, ValueError) as exc:
-                error = str(exc)
-            else:
-                return {
-                    "quarantined": False,
-                    "reason": "missing" if record is None else "valid",
-                    "checkpoint_path": str(self.path),
-                }
-
-            try:
-                payload = self.path.read_bytes()
-            except FileNotFoundError:
-                return {
-                    "quarantined": False,
-                    "reason": "missing_after_validation",
-                    "checkpoint_path": str(self.path),
-                }
-            digest = hashlib.sha256(payload).hexdigest()
-            quarantine_path = self.path.with_name(
-                f"{self.path.stem}.invalid-sha256-{digest}{self.path.suffix}"
-            )
-            if quarantine_path.exists():
-                existing_digest = hashlib.sha256(
-                    quarantine_path.read_bytes()
-                ).hexdigest()
-                if existing_digest != digest:
-                    raise OSError(
-                        "checkpoint quarantine content address collision"
-                    )
-                self.path.unlink()
-            else:
-                os.replace(self.path, quarantine_path)
-            try:
-                directory = os.open(self.path.parent, os.O_RDONLY)
-            except OSError:
-                directory = -1
-            if directory >= 0:
-                try:
-                    os.fsync(directory)
-                finally:
-                    os.close(directory)
-            return {
-                "quarantined": True,
-                "reason": error,
-                "checkpoint_path": str(self.path),
-                "quarantine_path": str(quarantine_path),
-                "content_sha256": f"sha256:{digest}",
-                "size_bytes": len(payload),
-            }
-
     def materialize(
         self,
         projection: Mapping[str, Any],

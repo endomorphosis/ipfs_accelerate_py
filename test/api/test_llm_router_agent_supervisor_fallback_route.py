@@ -1227,7 +1227,7 @@ def _reviewed_route(
     reviewer_identity = ed25519_did_key(reviewer_key.public_key())
     route_fields: dict[str, Any] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -1406,7 +1406,7 @@ def _reviewed_route(
     )
     route = llm_router.resolve_agent_implementation_route(
         primary_provider_id="grok_cli",
-        primary_model_id="grok-4.5",
+        primary_model_id="grok-4.6",
         fallback_provider_id="codex",
         fallback_model_id="gpt-5.6-terra",
         fallback_trigger="primary_quota_or_auth_unavailable",
@@ -1511,7 +1511,7 @@ def test_high_route_never_accepts_an_ambient_six_field_profile() -> None:
     with pytest.raises(ValueError, match="authorization"):
         llm_router.resolve_agent_implementation_route(
             primary_provider_id="grok_cli",
-            primary_model_id="grok-4.5",
+            primary_model_id="grok-4.6",
             fallback_provider_id="codex",
             fallback_model_id="gpt-5.6-terra",
             fallback_trigger="primary_quota_or_auth_unavailable",
@@ -1539,7 +1539,7 @@ def test_real_non_codex_signature_binds_the_complete_scoped_invocation(
     receipt = llm_router.build_agent_implementation_failure_receipt(
         probe_stderr_text="not signed in",
         nonce=nonce,
-        model="grok-4.5",
+        model="grok-4.6",
         probe_returncode=1,
     )
     decision = llm_router.decide_agent_implementation_fallback(
@@ -1547,7 +1547,7 @@ def test_real_non_codex_signature_binds_the_complete_scoped_invocation(
         repo_root=repository,
         failure_receipt=receipt,
         expected_nonce=nonce,
-        expected_model="grok-4.5",
+        expected_model="grok-4.6",
         expected_probe_returncode=1,
         expected_invocation_binding=invocation.signed_payload(),
         now_ms=invocation.issued_at_ms,
@@ -1578,7 +1578,7 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
             llm_router._AGENT_IMPLEMENTATION_SPENDING_LIMIT_MESSAGE
         ),
         nonce=nonce,
-        model="grok-4.5",
+        model="grok-4.6",
         probe_returncode=41,
         observed_at_ms=now_ms,
     )
@@ -1587,7 +1587,7 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
         repo_root=repository,
         failure_receipt=receipt,
         expected_nonce=nonce,
-        expected_model="grok-4.5",
+        expected_model="grok-4.6",
         expected_probe_returncode=41,
         expected_invocation_binding=invocation.signed_payload(),
         now_ms=now_ms,
@@ -1615,7 +1615,7 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
                 "type": "failed",
                 "error_type": "api",
                 "message": message,
-                "_meta": {"modelId": "grok-4.5"},
+                "_meta": {"modelId": "grok-4.6"},
             }
         ),
         update(
@@ -1623,7 +1623,7 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
                 "sessionUpdate": "turn_completed",
                 "stop_reason": "error",
                 "agent_result": message,
-                "_meta": {"modelId": "grok-4.5"},
+                "_meta": {"modelId": "grok-4.6"},
             }
         ),
     ]
@@ -1638,7 +1638,7 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
         json.dumps(
             {
                 "info": {"id": session_id},
-                "current_model_id": "grok-4.5",
+                "current_model_id": "grok-4.6",
                 "grok_home": str(home),
             },
             sort_keys=True,
@@ -1658,7 +1658,7 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
     command = [
         str(grok.resolve()),
         "--model",
-        "grok-4.5",
+        "grok-4.6",
         "--max-turns",
         "1",
         "--cwd",
@@ -1702,7 +1702,7 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
         repo_root=repository,
         failure_receipt=receipt,
         expected_nonce=nonce,
-        expected_model="grok-4.5",
+        expected_model="grok-4.6",
         expected_probe_returncode=41,
         independent_quota_evidence=evidence,
         expected_invocation_binding=invocation.signed_payload(),
@@ -1725,7 +1725,7 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
             failure_receipt=receipt,
             decision=authorized,
             expected_nonce=nonce,
-            expected_model="grok-4.5",
+            expected_model="grok-4.6",
             expected_probe_returncode=41,
             quota_evidence=evidence,
         )
@@ -1779,7 +1779,7 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
         "-m",
         "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner",
         "--model",
-        "grok-4.5",
+        "grok-4.6",
         "--grok-failure-receipt-nonce",
         nonce,
         "--agent-implementation-route-json",
@@ -1861,7 +1861,7 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
         repo_root=repository,
         failure_receipt=receipt,
         expected_nonce=nonce,
-        expected_model="grok-4.5",
+        expected_model="grok-4.6",
         expected_probe_returncode=41,
         independent_quota_evidence=forged,
         expected_invocation_binding=invocation.signed_payload(),
@@ -1880,7 +1880,7 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
             repo_root=repository,
             failure_receipt=receipt,
             expected_nonce=nonce,
-            expected_model="grok-4.5",
+            expected_model="grok-4.6",
             expected_probe_returncode=41,
             independent_quota_evidence=evidence,
             expected_invocation_binding=invocation.signed_payload(),
@@ -1899,7 +1899,7 @@ def test_router_outcome_binds_exact_quarantine_terminalization_lineage(
     receipt = llm_router.build_agent_implementation_failure_receipt(
         probe_stderr_text="not signed in",
         nonce=nonce,
-        model="grok-4.5",
+        model="grok-4.6",
         probe_returncode=1,
         observed_at_ms=now_ms,
     )
@@ -1908,7 +1908,7 @@ def test_router_outcome_binds_exact_quarantine_terminalization_lineage(
         repo_root=repository,
         failure_receipt=receipt,
         expected_nonce=nonce,
-        expected_model="grok-4.5",
+        expected_model="grok-4.6",
         expected_probe_returncode=1,
         expected_invocation_binding=invocation.signed_payload(),
         now_ms=now_ms,
@@ -1922,7 +1922,7 @@ def test_router_outcome_binds_exact_quarantine_terminalization_lineage(
             failure_receipt=receipt,
             decision=decision,
             expected_nonce=nonce,
-            expected_model="grok-4.5",
+            expected_model="grok-4.6",
             expected_probe_returncode=1,
         )
     )
@@ -2085,7 +2085,7 @@ def test_router_outcome_binds_exact_quarantine_terminalization_lineage(
         "-m",
         "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner",
         "--model",
-        "grok-4.5",
+        "grok-4.6",
         "--grok-failure-receipt-nonce",
         nonce,
         "--agent-implementation-route-json",
@@ -2130,7 +2130,7 @@ def test_router_outcome_binds_exact_quarantine_terminalization_lineage(
             repo_root=repository,
             failure_receipt=receipt,
             expected_nonce=nonce,
-            expected_model="grok-4.5",
+            expected_model="grok-4.6",
             expected_probe_returncode=1,
             expected_invocation_binding=invocation.signed_payload(),
             now_ms=now_ms + 10 * 60 * 1000,
@@ -2319,7 +2319,7 @@ def test_router_denies_every_live_invocation_equality_mismatch(
     receipt = llm_router.build_agent_implementation_failure_receipt(
         probe_stderr_text="not signed in",
         nonce=nonce,
-        model="grok-4.5",
+        model="grok-4.6",
         probe_returncode=1,
     )
     decision = llm_router.decide_agent_implementation_fallback(
@@ -2327,7 +2327,7 @@ def test_router_denies_every_live_invocation_equality_mismatch(
         repo_root=repository,
         failure_receipt=receipt,
         expected_nonce=nonce,
-        expected_model="grok-4.5",
+        expected_model="grok-4.6",
         expected_probe_returncode=1,
         expected_invocation_binding=expected,
         now_ms=invocation.issued_at_ms,

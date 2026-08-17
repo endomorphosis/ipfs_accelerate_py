@@ -26,7 +26,6 @@ from cryptography.hazmat.primitives.serialization import (
     NoEncryption,
     PrivateFormat,
 )
-
 from ipfs_accelerate_py import llm_router
 from ipfs_accelerate_py.agent_supervisor.entrypoints import (
     execution_plan as execution_plan_module,
@@ -501,7 +500,7 @@ def _commit_v3_route_authorization(
     route = {
         "route_id": V3_ROUTE_ID,
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -629,7 +628,7 @@ def _seed_v3_task_repo(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_or_auth_unavailable",
@@ -1514,7 +1513,15 @@ def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
     assert "--strict-task-sharding" in common
     assert "--objective-refill-scan" not in common
     assert "--codebase-refill-scan" not in common
+    assert "--no-retry-budget-guardrail" not in common
+    assert "--no-dependency-guardrail" not in common
+    assert "--no-reconciliation-guardrail" not in common
     assert "--no-objective-task-janitor" in common
+    assert "--task-source-kind" not in common
+    # The configured-board common argv must be accepted by the actual child
+    # supervisor, not merely rendered by the dry-run adapter.
+    parsed = supervisor_module.parse_args(common)
+    assert parsed.todo_path == board.path(board.taskboard_path)
     assert common.count("--worktree-submodule-path") == 2
     assert set(board.worktree_submodule_paths).issubset(common)
     assert common.count("--implementation-protected-path") == len(
@@ -1526,10 +1533,43 @@ def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
             "primary_quota_exhausted"
         ),
-        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.6",
         "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
         "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
+
+
+def test_static_objective_heap_disables_goal_refinement(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["objective_refill_enabled"] = True
+    payload["objective_goal_refinement_enabled"] = False
+    payload["refill_policy"] = {
+        "derived_refill": {
+            "min_open_tasks": 4,
+            "max_tasks_per_epoch": 3,
+            "max_open_tasks": 5,
+            "cooldown_seconds": 60,
+        }
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    common = scheduler_module.configured_board_common_args(
+        board,
+        implement=True,
+    )
+    assert common.count("--no-objective-goal-refinement") == 1
+
+    payload["objective_goal_refinement_enabled"] = "false"
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="objective_goal_refinement_enabled must be boolean",
+    ):
+        load_configured_board(config_path, repo_root=repo)
 
 
 def test_ordered_provider_contract_requires_complete_unambiguous_fields(
@@ -1539,7 +1579,7 @@ def test_ordered_provider_contract_requires_complete_unambiguous_fields(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "max_concurrency": 2,
     }
@@ -1552,10 +1592,8 @@ def test_ordered_provider_contract_requires_complete_unambiguous_fields(
         load_configured_board(config_path, repo_root=repo)
 
     payload["provider"]["fallback_model_id"] = "gpt-5.6-terra"
-    payload["provider"]["fallback_trigger"] = (
-        "primary_quota_or_auth_unavailable"
-    )
-    payload["provider"]["fallback_reasoning_effort"] = "high"
+    payload["provider"]["fallback_trigger"] = "primary_quota_exhausted"
+    payload["provider"]["fallback_reasoning_effort"] = "medium"
     payload["provider"]["provider_id"] = "auto"
     _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
     with pytest.raises(
@@ -1585,7 +1623,7 @@ def test_ordered_provider_contract_seals_fallback_authority(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_or_auth_unavailable",
@@ -1606,7 +1644,7 @@ def test_ordered_provider_contract_accepts_legacy_quota_medium_tuple(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_exhausted",
@@ -1631,14 +1669,14 @@ def test_ordered_provider_contract_accepts_legacy_quota_medium_tuple(
     )
 
 
-def test_ordered_provider_contract_rejects_hybrid_legacy_trigger_high_effort(
+def test_ordered_provider_contract_accepts_quota_only_high_effort(
     tmp_path: Path,
 ) -> None:
     repo, config_path = _seed_configured_repo(tmp_path)
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_exhausted",
@@ -1647,8 +1685,24 @@ def test_ordered_provider_contract_rejects_hybrid_legacy_trigger_high_effort(
     }
     _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
-    with pytest.raises(ConfiguredBoardError, match="reviewed legacy"):
-        load_configured_board(config_path, repo_root=repo)
+    board = load_configured_board(config_path, repo_root=repo)
+    plan = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=True,
+        stamp="20260809T000000Z",
+    )
+
+    assert plan["environment"][scheduler_module.FALLBACK_TRIGGER_ENV] == (
+        "primary_quota_exhausted"
+    )
+    assert plan["environment"][scheduler_module.CODEX_REASONING_EFFORT_ENV] == (
+        "high"
+    )
+    assert (
+        scheduler_module.ROUTE_AUTHORIZATION_PATH_ENV
+        not in plan["environment"]
+    )
 
 
 @pytest.mark.parametrize("reasoning_effort", ("medium",))
@@ -1709,7 +1763,7 @@ def test_launch_config_overrides_ambient_provider_environment(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_or_auth_unavailable",
@@ -1829,6 +1883,160 @@ def test_v3_materializer_uses_canonical_ready_and_attempt_admissible_set(
         for execution_slice in receipt.slice_manifest.slices
         for task_id in execution_slice.task_ids
     } == {"TEST-B", "TEST-F"}
+
+
+def test_v3_population_scopes_display_attempts_to_canonical_revision(
+    tmp_path: Path,
+) -> None:
+    repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    source_head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    original = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        task_state_snapshots=(),
+    )
+    old_cid = str(original.all_records[0]["canonical_task_cid"])
+    revised_taskboard = (
+        "# Tasks\n\n"
+        + _task_block("TEST-A").rstrip()
+        + "\n- Semantic key: provider-effect-retry-revision@1\n"
+    ).encode("utf-8")
+    revised = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        taskboard_bytes=revised_taskboard,
+        task_state_snapshots=(),
+    )
+    revised_cid = str(revised.all_records[0]["canonical_task_cid"])
+    assert revised_cid != old_cid
+
+    old_revision_state = {
+        "implementation_attempts": {"TEST-A": 3},
+        "implementation_attempts_by_cid": {old_cid: 3},
+        "task_identities": {
+            "TEST-A": {
+                "display_task_id": "TEST-A",
+                "canonical_task_cid": old_cid,
+            }
+        },
+    }
+    same_revision = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        task_state_snapshots=(old_revision_state,),
+    )
+    assert same_revision.attempt_limited_task_ids == ("TEST-A",)
+    assert same_revision.ready_records == ()
+
+    fresh_revision = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        taskboard_bytes=revised_taskboard,
+        task_state_snapshots=(old_revision_state,),
+    )
+    assert fresh_revision.attempt_limited_task_ids == ()
+    assert tuple(item["task_id"] for item in fresh_revision.ready_records) == (
+        "TEST-A",
+    )
+    assert fresh_revision.ready_records[0]["canonical_task_cid"] == revised_cid
+
+    legacy_state = {
+        "implementation_attempts": {"TEST-A": 3},
+        "implementation_attempts_by_cid": {old_cid: 3},
+    }
+    legacy_revision = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        taskboard_bytes=revised_taskboard,
+        task_state_snapshots=(legacy_state,),
+    )
+    assert legacy_revision.attempt_limited_task_ids == ("TEST-A",)
+    assert legacy_revision.ready_records == ()
+
+
+def test_v3_population_rejects_unbacked_mismatched_task_identity(
+    tmp_path: Path,
+) -> None:
+    repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    source_head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    original = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        task_state_snapshots=(),
+    )
+    old_cid = str(original.all_records[0]["canonical_task_cid"])
+    revised_taskboard = (
+        "# Tasks\n\n"
+        + _task_block("TEST-A").rstrip()
+        + "\n- Semantic key: provider-effect-retry-revision@1\n"
+    ).encode("utf-8")
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="mismatched task identity.*canonical attempt ledger",
+    ):
+        scheduler_module._configured_board_task_population(
+            board,
+            source_head=source_head,
+            taskboard_bytes=revised_taskboard,
+            task_state_snapshots=(
+                {
+                    "implementation_attempts": {"TEST-A": 3},
+                    "implementation_attempts_by_cid": {old_cid: 2},
+                    "task_identities": {
+                        "TEST-A": {
+                            "display_task_id": "TEST-A",
+                            "canonical_task_cid": old_cid,
+                        }
+                    },
+                },
+                # A different lane's ledger cannot authenticate this lane's
+                # display-ID-to-revision association.
+                {"implementation_attempts_by_cid": {old_cid: 3}},
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    "task_identities",
+    (
+        [],
+        {"TEST-A": []},
+        {"TEST-A": {"canonical_task_cid": 7}},
+        {
+            "TEST-A": {
+                "display_task_id": "TEST-B",
+                "canonical_task_cid": "task-cid:test-a",
+            }
+        },
+    ),
+)
+def test_v3_population_rejects_malformed_task_identity_projection(
+    tmp_path: Path,
+    task_identities: object,
+) -> None:
+    repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    with pytest.raises(ConfiguredBoardError, match=r"task[_ ]identit"):
+        scheduler_module._configured_board_task_population(
+            board,
+            source_head=_git(repo, "rev-parse", "HEAD").stdout.strip(),
+            task_state_snapshots=(
+                {
+                    "implementation_attempts": {"TEST-A": 1},
+                    "implementation_attempts_by_cid": {},
+                    "task_identities": task_identities,
+                },
+            ),
+        )
 
 
 def test_v3_materializer_rejects_unsafe_or_ambiguous_attempt_state(
@@ -7116,6 +7324,52 @@ def test_preflight_rejects_missing_submodule_planning_revision(
     assert submodule_check["detail"][0][
         "planning_revision_is_ancestor"
     ] is False
+
+
+def test_preflight_accepts_tracked_control_file_inside_submodule(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["protected_paths"].append("dependency/dependency.txt")
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _git(repo, "add", "config/scheduler.json")
+    _git(repo, "commit", "-m", "protect nested control file")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    report = preflight_configured_board(board)
+    assert report["valid"] is True, report["errors"]
+
+
+def test_preflight_rejects_untracked_control_file_inside_submodule(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    relative = "dependency/untracked-control.txt"
+    _write(repo / relative, "untracked nested control\n")
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["protected_paths"].append(relative)
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _git(repo, "add", "config/scheduler.json")
+    _git(repo, "commit", "-m", "declare untracked nested control file")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    report = preflight_configured_board(board)
+    present = next(
+        check
+        for check in report["checks"]
+        if check["name"] == "control_files_present"
+    )
+    tracked = next(
+        check
+        for check in report["checks"]
+        if check["name"] == "control_files_tracked"
+    )
+
+    assert report["valid"] is False
+    assert present["passed"] is True
+    assert tracked["passed"] is False
+    assert tracked["detail"] == [relative]
 
 
 def test_preflight_rejects_submodule_head_gitlink_mismatch(

@@ -1,0 +1,22 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.canary-promotion-evidence@1",
+  "required_observation_seconds": 900,
+  "activation_task_id": "ASE3-026",
+  "observation_clock": "monotonic",
+  "seed_board_forbidden": true,
+  "fault_vocabulary": [
+    "stale_pid",
+    "frozen_worker",
+    "false_idle_open_goal",
+    "branch_only_completion",
+    "crash_boundary",
+    "lease_loss",
+    "client_disconnect",
+    "monitor_death",
+    "provider_saturation",
+    "monotonic_clock_rollback",
+    "merge_stall",
+    "refill_stall",
+    "recovery_oscillation"
+  ]
+}

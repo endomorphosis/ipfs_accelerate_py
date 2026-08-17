@@ -24,6 +24,7 @@ fi
 
 echo "==> Running serving contract gates"
 "${PYTHON_BIN}" -m pytest \
+  --import-mode=prepend \
   test/api/test_serving_call_matrix_enforcement.py \
   test/api/test_task_worker_backend_manager_required.py \
   test/api/test_serving_readiness_contracts.py \

@@ -611,6 +611,7 @@ def test_store_rejects_symlink_and_path_escape(tmp_path: Path) -> None:
         store.get_bytes(cid)
     assert exc.value.reason_code in {
         ObjectiveArtifactReason.SYMLINK_REJECTED,
+        ObjectiveArtifactReason.PATH_ESCAPE,
         ObjectiveArtifactReason.INTEGRITY_FAILED,
         ObjectiveArtifactReason.PARTIAL_WRITE,
         ObjectiveArtifactReason.NOT_FOUND,

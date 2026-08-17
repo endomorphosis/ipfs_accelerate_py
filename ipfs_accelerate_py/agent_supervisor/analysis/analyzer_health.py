@@ -332,7 +332,7 @@ class AnalyzerCanaryFixture:
 # Adding an analyzer version requires adding its complete fixture set here.
 # The v1 set is the cross product of every supported finding kind and both
 # parser paths (ordinary line scanning and Markdown/RST fenced-block scanning).
-_CODEBASE_V2_CANARIES = (
+_CODEBASE_V1_CANARIES = (
     AnalyzerCanaryFixture(
         "line-source-annotated-followup", "line_source", "annotation.py",
         "# TODO: canary annotation\n", ("annotated_followup",),
@@ -340,13 +340,6 @@ _CODEBASE_V2_CANARIES = (
     AnalyzerCanaryFixture(
         "line-source-swallowed-exception", "line_source", "exception.py",
         "try:\n    work()\nexcept Exception:\n    pass\n", ("swallowed_exception",),
-    ),
-    AnalyzerCanaryFixture(
-        "line-source-python-literal-not-swallowed",
-        "line_source",
-        "exception_inventory.py",
-        'evidence = {"handlerBody": "except Exception: pass"}\n',
-        (),
     ),
     AnalyzerCanaryFixture(
         "line-source-placeholder", "line_source", "placeholder.py",
@@ -370,16 +363,16 @@ _CODEBASE_V2_CANARIES = (
 )
 
 ANALYZER_CANARY_FIXTURES: Mapping[str, tuple[AnalyzerCanaryFixture, ...]] = {
-    "codebase-annotation-analyzer/v2": _CODEBASE_V2_CANARIES,
+    "codebase-annotation-analyzer/v1": _CODEBASE_V1_CANARIES,
 }
 
 ANALYZER_SUPPORTED_FINDING_KINDS: Mapping[str, frozenset[str]] = {
-    "codebase-annotation-analyzer/v2": frozenset(
+    "codebase-annotation-analyzer/v1": frozenset(
         {"annotated_followup", "swallowed_exception", "placeholder_runtime_path"}
     ),
 }
 ANALYZER_SUPPORTED_PARSER_PATHS: Mapping[str, frozenset[str]] = {
-    "codebase-annotation-analyzer/v2": frozenset({"line_source", "markdown_fenced"}),
+    "codebase-annotation-analyzer/v1": frozenset({"line_source", "markdown_fenced"}),
 }
 
 

@@ -1,0 +1,3048 @@
+{
+  "baseline_retrieval_defaults": {
+    "allow_model_derived_expected_outcome": false,
+    "allow_network": false,
+    "allow_omit_required_raw": false,
+    "coverage_policy": "hard_coverage_no_omit_required",
+    "estimator_version": "semantic-state-token-estimator-v1",
+    "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+    "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+    "require_exact_target_source": true,
+    "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+    "tokenizer_id": "sch-fixture/token-estimator@1"
+  },
+  "category_counts": {
+    "api_adapter": 6,
+    "multi_file_refactor": 6,
+    "rejection_or_escalation": 6,
+    "schema_migration": 6,
+    "small_bug_fix": 10,
+    "test_repair": 6
+  },
+  "corpus_id": "semantic-state-benchmark-corpus-v1",
+  "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+  "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+  "interface": "SemanticStateBenchmarkCorpus@1",
+  "notes": [
+    "Checked-in candidate patches are oracle/replay fixtures only.",
+    "production_eligible is always false; candidates never advance a production root.",
+    "Candidate verification outcome is separate from production acceptance.",
+    "Oracles are reviewed fixture authority, not benchmark implementation output.",
+    "Tasks are runnable offline against the pinned controlled fixture tree."
+  ],
+  "required_category_counts": {
+    "api_adapter": 6,
+    "multi_file_refactor": 6,
+    "rejection_or_escalation": 6,
+    "schema_migration": 6,
+    "small_bug_fix": 10,
+    "test_repair": 6
+  },
+  "schema": "ipfs_accelerate_py/semantic-state/benchmark-corpus@1",
+  "task_count": 40,
+  "task_ids": [
+    "sch-bench-01-core-add-body-fix",
+    "sch-bench-02-core-process-pipeline",
+    "sch-bench-03-exception-behavior-fix",
+    "sch-bench-04-security-side-effect",
+    "sch-bench-05-deleted-legacy-helper",
+    "sch-bench-06-monkey-patch-surface",
+    "sch-bench-07-dynamic-import-name",
+    "sch-bench-08-generated-bindings",
+    "sch-bench-09-core-multiply-guard",
+    "sch-bench-10-formatting-noise-adjacent",
+    "sch-bench-11-fixture-sample-record",
+    "sch-bench-12-pytest-ini-markers",
+    "sch-bench-13-test-core-expectation",
+    "sch-bench-14-test-api-signature-assert",
+    "sch-bench-15-test-schema-roundtrip",
+    "sch-bench-16-test-security-assert",
+    "sch-bench-17-api-fetch-signature",
+    "sch-bench-18-cross-module-call-core",
+    "sch-bench-19-mcp-client-adapter",
+    "sch-bench-20-mcp-ping-contract",
+    "sch-bench-21-api-default-param",
+    "sch-bench-22-adapter-endpoint-binding",
+    "sch-bench-23-user-record-field-add",
+    "sch-bench-24-user-record-dump-shape",
+    "sch-bench-25-lockfile-pytest-pin",
+    "sch-bench-26-policy-admission-mode",
+    "sch-bench-27-requirements-txt-pin",
+    "sch-bench-28-schema-fixture-co-migration",
+    "sch-bench-29-rename-process-symbol",
+    "sch-bench-30-split-core-api-edge",
+    "sch-bench-31-adapter-interface-split",
+    "sch-bench-32-schema-test-co-refactor",
+    "sch-bench-33-security-api-co-refactor",
+    "sch-bench-34-delete-and-rename-wave",
+    "sch-bench-35-stale-receipt-reject",
+    "sch-bench-36-out-of-scope-patch-reject",
+    "sch-bench-37-opaque-native-frontier",
+    "sch-bench-38-post-scan-source-race",
+    "sch-bench-39-failed-cas-reject",
+    "sch-bench-40-concurrent-human-review"
+  ],
+  "tasks": [
+    {
+      "base_mutation_case_id": "local_function_body",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "local_function_body",
+        "candidate_id": "sch-bench-01-core-add-body-fix:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/core.py"
+        ],
+        "notes": "Oracle replay of local_function_body; production_eligible=false.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "small_bug_fix",
+      "expected_route": "small_local_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Repair off-by-noop body drift in sch_fixture.core.add while keeping the public signature stable.",
+      "oracle": {
+        "assumptions": [
+          "callers_reusable",
+          "signature_stable"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.core:add"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.core:add"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "none_declared"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "low",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/core.py"
+      ],
+      "task_id": "sch-bench-01-core-add-body-fix"
+    },
+    {
+      "base_mutation_case_id": "local_function_body",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "local_function_body",
+        "candidate_id": "sch-bench-02-core-process-pipeline:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/core.py"
+        ],
+        "notes": "Replay fixture for process-adjacent body repair.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "small_bug_fix",
+      "expected_route": "small_local_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Correct process pipeline composition after a local core body mutation without widening the edit surface.",
+      "oracle": {
+        "assumptions": [
+          "process_calls_add"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.core:add"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.core:add"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "indirect_callers_not_rewritten"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "low",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/core.py"
+      ],
+      "task_id": "sch-bench-02-core-process-pipeline"
+    },
+    {
+      "base_mutation_case_id": "exception_behavior",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "exception_behavior",
+        "candidate_id": "sch-bench-03-exception-behavior-fix:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/security.py"
+        ],
+        "notes": "Oracle exception-behavior repair candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "small_bug_fix",
+      "expected_route": "small_local_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Restore authorize exception/deny behavior after an exception contract mutation.",
+      "oracle": {
+        "assumptions": [
+          "security_boundary_local"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.security:authorize"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.security:authorize.effects"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "uncertainty": [
+          "caller_recovery_not_auto_rewritten"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/security.py"
+      ],
+      "task_id": "sch-bench-03-exception-behavior-fix"
+    },
+    {
+      "base_mutation_case_id": "side_effect_security",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "side_effect_security",
+        "candidate_id": "sch-bench-04-security-side-effect:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/security.py"
+        ],
+        "notes": "Security side-effect oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "small_bug_fix",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Fix authorize side-effect policy regression while preserving admin allow semantics.",
+      "oracle": {
+        "assumptions": [
+          "effect_set_must_match_policy"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.security:authorize"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.security:authorize.effects"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "uncertainty": [
+          "external_role_matrix_unknown"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "high",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/security.py"
+      ],
+      "task_id": "sch-bench-04-security-side-effect"
+    },
+    {
+      "base_mutation_case_id": "deleted_symbol",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "deleted_symbol",
+        "candidate_id": "sch-bench-05-deleted-legacy-helper:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/core.py"
+        ],
+        "notes": "Deleted-symbol oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "small_bug_fix",
+      "expected_route": "small_local_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Complete deletion of legacy_helper and keep residual call sites from regressing selection recall.",
+      "oracle": {
+        "assumptions": [
+          "delete_invalidates_dependents"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.core:legacy_helper"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_process"
+        ],
+        "uncertainty": [
+          "dynamic_refs_may_exist"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/core.py"
+      ],
+      "task_id": "sch-bench-05-deleted-legacy-helper"
+    },
+    {
+      "base_mutation_case_id": "monkey_patch",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "monkey_patch",
+        "candidate_id": "sch-bench-06-monkey-patch-surface:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/core.py",
+          "tests/test_core.py"
+        ],
+        "notes": "Monkey-patch oracle/replay candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "small_bug_fix",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Repair a monkey-patched helper surface without treating the patch as production model output.",
+      "oracle": {
+        "assumptions": [
+          "test_patch_is_local"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "full_pytest",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.core:process"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_process"
+        ],
+        "uncertainty": [
+          "runtime_patch_order"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/core.py",
+        "tests/test_core.py"
+      ],
+      "task_id": "sch-bench-06-monkey-patch-surface"
+    },
+    {
+      "base_mutation_case_id": "dynamic_import",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "dynamic_import",
+        "candidate_id": "sch-bench-07-dynamic-import-name:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/dynamic_loader.py"
+        ],
+        "notes": "Dynamic import oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "small_bug_fix",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Correct dynamic plugin name resolution after a syntactic dynamic-import mutation.",
+      "oracle": {
+        "assumptions": [
+          "import_string_is_literal"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "full_pytest",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.dynamic_loader:load_plugin"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_dynamic.py::test_load_plugin_name"
+        ],
+        "uncertainty": [
+          "dynamic_dispatch_incomplete"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "high",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/dynamic_loader.py"
+      ],
+      "task_id": "sch-bench-07-dynamic-import-name"
+    },
+    {
+      "base_mutation_case_id": "generated_file",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "generated_file",
+        "candidate_id": "sch-bench-08-generated-bindings:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/generated/bindings.py"
+        ],
+        "notes": "Generated-file oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "small_bug_fix",
+      "expected_route": "deterministic_only",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Refresh generated bindings constant after generated-file drift.",
+      "oracle": {
+        "assumptions": [
+          "generated_tree_is_checked_in"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.generated.bindings:generated_constant"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_generated.py::test_generated_constant"
+        ],
+        "uncertainty": [
+          "generator_not_reexecuted"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "low",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/generated/bindings.py"
+      ],
+      "task_id": "sch-bench-08-generated-bindings"
+    },
+    {
+      "base_mutation_case_id": "local_function_body",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "local_function_body",
+        "candidate_id": "sch-bench-09-core-multiply-guard:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/core.py"
+        ],
+        "notes": "Bounded body-guard oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "small_bug_fix",
+      "expected_route": "small_local_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Apply a bounded body guard near multiply without expanding beyond the local_function_body mutation cone.",
+      "oracle": {
+        "assumptions": [
+          "multiply_untouched_by_add_body"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.core:add"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.core:add"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "adjacent_symbol_noise"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "low",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/core.py"
+      ],
+      "task_id": "sch-bench-09-core-multiply-guard"
+    },
+    {
+      "base_mutation_case_id": "unrelated_formatting",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "unrelated_formatting",
+        "candidate_id": "sch-bench-10-formatting-noise-adjacent:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/core.py"
+        ],
+        "notes": "Formatting-only oracle candidate; no symbol invalidation.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "small_bug_fix",
+      "expected_route": "deterministic_only",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Distinguish unrelated formatting noise from functional drift and keep invalidation empty for pure formatting.",
+      "oracle": {
+        "assumptions": [
+          "formatting_is_non_semantic"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [],
+        "uncertainty": [
+          "formatter_version_drift"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "low",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/core.py"
+      ],
+      "task_id": "sch-bench-10-formatting-noise-adjacent"
+    },
+    {
+      "base_mutation_case_id": "fixture_dependency",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "fixture_dependency",
+        "candidate_id": "sch-bench-11-fixture-sample-record:oracle-candidate",
+        "declared_paths": [
+          "tests/conftest.py"
+        ],
+        "notes": "Fixture dependency oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "test_repair",
+      "expected_route": "small_local_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Repair tests.conftest sample_record fixture after fixture dependency mutation.",
+      "oracle": {
+        "assumptions": [
+          "fixture_binds_schema_tests"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "tests.conftest:sample_record"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ],
+        "uncertainty": [
+          "indirect_fixture_consumers"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "tests/conftest.py"
+      ],
+      "task_id": "sch-bench-11-fixture-sample-record"
+    },
+    {
+      "base_mutation_case_id": "pytest_configuration",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "pytest_configuration",
+        "candidate_id": "sch-bench-12-pytest-ini-markers:oracle-candidate",
+        "declared_paths": [
+          "pytest.ini"
+        ],
+        "notes": "Pytest configuration oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "test_repair",
+      "expected_route": "small_local_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Repair pytest.ini marker/config drift after configuration mutation.",
+      "oracle": {
+        "assumptions": [
+          "config_binds_all_receipts"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "full_pytest",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "pytest.ini:pytest_config"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "plugin_defaults"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "pytest.ini"
+      ],
+      "task_id": "sch-bench-12-pytest-ini-markers"
+    },
+    {
+      "base_mutation_case_id": "local_function_body",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "local_function_body",
+        "candidate_id": "sch-bench-13-test-core-expectation:oracle-candidate",
+        "declared_paths": [
+          "tests/test_core.py"
+        ],
+        "notes": "Test-expectation repair oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "test_repair",
+      "expected_route": "small_local_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Update core test expectations to match a body-only mutation without rewriting production callers.",
+      "oracle": {
+        "assumptions": [
+          "test_is_source_of_expectation"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.core:add"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.core:add"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "golden_vs_property_tests"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "low",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "tests/test_core.py"
+      ],
+      "task_id": "sch-bench-13-test-core-expectation"
+    },
+    {
+      "base_mutation_case_id": "public_signature",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "public_signature",
+        "candidate_id": "sch-bench-14-test-api-signature-assert:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/api.py",
+          "tests/test_api.py"
+        ],
+        "notes": "API test repair oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "test_repair",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Repair API tests after public signature change on fetch_value.",
+      "oracle": {
+        "assumptions": [
+          "tests_cover_new_kwargs"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.adapters:McpClientAdapter",
+          "sch_fixture.api:fetch_value"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.api:fetch_value.signature"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_fetch_value"
+        ],
+        "uncertainty": [
+          "downstream_clients_unknown"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/api.py",
+        "tests/test_api.py"
+      ],
+      "task_id": "sch-bench-14-test-api-signature-assert"
+    },
+    {
+      "base_mutation_case_id": "dataclass_schema",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "dataclass_schema",
+        "candidate_id": "sch-bench-15-test-schema-roundtrip:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/schema.py",
+          "tests/test_schema.py"
+        ],
+        "notes": "Schema test repair oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "test_repair",
+      "expected_route": "small_local_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Repair schema roundtrip tests after UserRecord dataclass migration.",
+      "oracle": {
+        "assumptions": [
+          "asdict_shape_is_authoritative"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.schema:UserRecord",
+          "sch_fixture.schema:dump_user"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.schema:UserRecord"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ],
+        "uncertainty": [
+          "storage_adapters_out_of_tree"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/schema.py",
+        "tests/test_schema.py"
+      ],
+      "task_id": "sch-bench-15-test-schema-roundtrip"
+    },
+    {
+      "base_mutation_case_id": "exception_behavior",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "exception_behavior",
+        "candidate_id": "sch-bench-16-test-security-assert:oracle-candidate",
+        "declared_paths": [
+          "tests/test_security.py"
+        ],
+        "notes": "Security test repair oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "test_repair",
+      "expected_route": "small_local_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Repair security authorization tests after exception-behavior mutation.",
+      "oracle": {
+        "assumptions": [
+          "deny_paths_tested"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.security:authorize"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.security:authorize.effects"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "uncertainty": [
+          "role_matrix_coverage"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "tests/test_security.py"
+      ],
+      "task_id": "sch-bench-16-test-security-assert"
+    },
+    {
+      "base_mutation_case_id": "public_signature",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "public_signature",
+        "candidate_id": "sch-bench-17-api-fetch-signature:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/api.py"
+        ],
+        "notes": "Public signature adapter oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "api_adapter",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Adapt public fetch_value signature and bound adapters to the new contract.",
+      "oracle": {
+        "assumptions": [
+          "strict_kw_only_addition"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.adapters:McpClientAdapter",
+          "sch_fixture.api:fetch_value"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.api:fetch_value.signature"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_fetch_value"
+        ],
+        "uncertainty": [
+          "external_sdk_clients"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/api.py"
+      ],
+      "task_id": "sch-bench-17-api-fetch-signature"
+    },
+    {
+      "base_mutation_case_id": "cross_module_call",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "cross_module_call",
+        "candidate_id": "sch-bench-18-cross-module-call-core:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/api.py",
+          "src/sch_fixture/core.py"
+        ],
+        "notes": "Cross-module call adapter oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "api_adapter",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Update cross-module call_core adapter after core call-edge mutation.",
+      "oracle": {
+        "assumptions": [
+          "call_edge_is_static"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.api:call_core",
+          "sch_fixture.core:add"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.core:add"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_api.py::test_call_core",
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "indirect_imports"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/api.py",
+        "src/sch_fixture/core.py"
+      ],
+      "task_id": "sch-bench-18-cross-module-call-core"
+    },
+    {
+      "base_mutation_case_id": "mcp_interface_client_adapter",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "mcp_interface_client_adapter",
+        "candidate_id": "sch-bench-19-mcp-client-adapter:oracle-candidate",
+        "declared_paths": [
+          "interfaces/mcp_client.json",
+          "src/sch_fixture/adapters.py"
+        ],
+        "notes": "MCP client adapter oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "api_adapter",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Adapt McpClientAdapter after MCP interface descriptor change.",
+      "oracle": {
+        "assumptions": [
+          "interface_cid_binds_adapter"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "interfaces.mcp_client:McpClientDescriptor",
+          "sch_fixture.adapters:McpClientAdapter"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping"
+        ],
+        "uncertainty": [
+          "remote_server_compat"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "high",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "interfaces/mcp_client.json",
+        "src/sch_fixture/adapters.py"
+      ],
+      "task_id": "sch-bench-19-mcp-client-adapter"
+    },
+    {
+      "base_mutation_case_id": "mcp_interface_client_adapter",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "mcp_interface_client_adapter",
+        "candidate_id": "sch-bench-20-mcp-ping-contract:oracle-candidate",
+        "declared_paths": [
+          "interfaces/mcp_client.json",
+          "src/sch_fixture/adapters.py",
+          "tests/test_adapters.py"
+        ],
+        "notes": "MCP ping contract oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "api_adapter",
+      "expected_route": "small_local_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Keep adapter ping contract aligned with interface descriptor operations list.",
+      "oracle": {
+        "assumptions": [
+          "ping_is_required_operation"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "interfaces.mcp_client:McpClientDescriptor",
+          "sch_fixture.adapters:McpClientAdapter"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping"
+        ],
+        "uncertainty": [
+          "additional_ops_optional"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "interfaces/mcp_client.json",
+        "src/sch_fixture/adapters.py",
+        "tests/test_adapters.py"
+      ],
+      "task_id": "sch-bench-20-mcp-ping-contract"
+    },
+    {
+      "base_mutation_case_id": "public_signature",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "public_signature",
+        "candidate_id": "sch-bench-21-api-default-param:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/api.py",
+          "tests/test_api.py"
+        ],
+        "notes": "Default-parameter adapter oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "api_adapter",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Preserve default-parameter compatibility while admitting a signature extension on fetch_value.",
+      "oracle": {
+        "assumptions": [
+          "defaults_preserve_old_callers"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.adapters:McpClientAdapter",
+          "sch_fixture.api:fetch_value"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.api:fetch_value.signature"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_fetch_value"
+        ],
+        "uncertainty": [
+          "keyword-only_migration_risk"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/api.py",
+        "tests/test_api.py"
+      ],
+      "task_id": "sch-bench-21-api-default-param"
+    },
+    {
+      "base_mutation_case_id": "mcp_interface_client_adapter",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "mcp_interface_client_adapter",
+        "candidate_id": "sch-bench-22-adapter-endpoint-binding:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/adapters.py"
+        ],
+        "notes": "Adapter endpoint binding oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "api_adapter",
+      "expected_route": "small_local_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Rebind adapter endpoint construction after interface/client adapter mutation.",
+      "oracle": {
+        "assumptions": [
+          "endpoint_is_constructor_arg"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "interfaces.mcp_client:McpClientDescriptor",
+          "sch_fixture.adapters:McpClientAdapter"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping"
+        ],
+        "uncertainty": [
+          "env_specific_endpoints"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/adapters.py"
+      ],
+      "task_id": "sch-bench-22-adapter-endpoint-binding"
+    },
+    {
+      "base_mutation_case_id": "dataclass_schema",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "dataclass_schema",
+        "candidate_id": "sch-bench-23-user-record-field-add:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/schema.py"
+        ],
+        "notes": "Dataclass field migration oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "schema_migration",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Migrate UserRecord dataclass field set and dump_user shape.",
+      "oracle": {
+        "assumptions": [
+          "frozen_dataclass_migration"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.schema:UserRecord",
+          "sch_fixture.schema:dump_user"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.schema:UserRecord"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ],
+        "uncertainty": [
+          "persisted_records_out_of_tree"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "high",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/schema.py"
+      ],
+      "task_id": "sch-bench-23-user-record-field-add"
+    },
+    {
+      "base_mutation_case_id": "dataclass_schema",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "dataclass_schema",
+        "candidate_id": "sch-bench-24-user-record-dump-shape:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/schema.py",
+          "tests/test_schema.py"
+        ],
+        "notes": "Dump-shape migration oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "schema_migration",
+      "expected_route": "small_local_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Align serialization dump_user mapping with migrated UserRecord.",
+      "oracle": {
+        "assumptions": [
+          "asdict_keys_sorted_stable"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.schema:UserRecord",
+          "sch_fixture.schema:dump_user"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.schema:UserRecord"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ],
+        "uncertainty": [
+          "consumers_of_extra_keys"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/schema.py",
+        "tests/test_schema.py"
+      ],
+      "task_id": "sch-bench-24-user-record-dump-shape"
+    },
+    {
+      "base_mutation_case_id": "dependency_lockfile",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "dependency_lockfile",
+        "candidate_id": "sch-bench-25-lockfile-pytest-pin:oracle-candidate",
+        "declared_paths": [
+          "requirements.lock",
+          "requirements.txt"
+        ],
+        "notes": "Lockfile migration oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "schema_migration",
+      "expected_route": "deterministic_only",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Migrate dependency lockfile pin and invalidate dependent verification receipts.",
+      "oracle": {
+        "assumptions": [
+          "lock_cid_binds_receipts"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "full_pytest",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "deps.lockfile:LockedDependencySet"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "transitive_hashes"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "high",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "requirements.lock",
+        "requirements.txt"
+      ],
+      "task_id": "sch-bench-25-lockfile-pytest-pin"
+    },
+    {
+      "base_mutation_case_id": "policy_change",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "policy_change",
+        "candidate_id": "sch-bench-26-policy-admission-mode:oracle-candidate",
+        "declared_paths": [
+          "policy/admission.json"
+        ],
+        "notes": "Policy admission migration oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "schema_migration",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Migrate admission policy document while keeping simulation disabled.",
+      "oracle": {
+        "assumptions": [
+          "policy_cid_change_invalidates_decisions"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "policy.admission:AdmissionPolicy"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.security:authorize.effects"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "uncertainty": [
+          "operator_override_paths"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "critical",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "policy/admission.json"
+      ],
+      "task_id": "sch-bench-26-policy-admission-mode"
+    },
+    {
+      "base_mutation_case_id": "dependency_lockfile",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "dependency_lockfile",
+        "candidate_id": "sch-bench-27-requirements-txt-pin:oracle-candidate",
+        "declared_paths": [
+          "requirements.lock",
+          "requirements.txt"
+        ],
+        "notes": "Requirements pin migration oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "schema_migration",
+      "expected_route": "deterministic_only",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Keep requirements.txt synchronized with lockfile migration.",
+      "oracle": {
+        "assumptions": [
+          "txt_and_lock_coherent"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "full_pytest",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "deps.lockfile:LockedDependencySet"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "hash_lines_optional_in_txt"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "requirements.lock",
+        "requirements.txt"
+      ],
+      "task_id": "sch-bench-27-requirements-txt-pin"
+    },
+    {
+      "base_mutation_case_id": "dataclass_schema",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "dataclass_schema",
+        "candidate_id": "sch-bench-28-schema-fixture-co-migration:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/schema.py",
+          "tests/conftest.py",
+          "tests/test_schema.py"
+        ],
+        "notes": "Schema+fixture co-migration oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "schema_migration",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Co-migrate schema fields with sample_record fixture consumers.",
+      "oracle": {
+        "assumptions": [
+          "fixture_matches_schema"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.schema:UserRecord",
+          "sch_fixture.schema:dump_user",
+          "tests.conftest:sample_record"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.schema:UserRecord"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ],
+        "uncertainty": [
+          "serialized_historical_rows"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "high",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/schema.py",
+        "tests/conftest.py",
+        "tests/test_schema.py"
+      ],
+      "task_id": "sch-bench-28-schema-fixture-co-migration"
+    },
+    {
+      "base_mutation_case_id": "renamed_symbol",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "renamed_symbol",
+        "candidate_id": "sch-bench-29-rename-process-symbol:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/api.py",
+          "src/sch_fixture/core.py",
+          "tests/test_core.py"
+        ],
+        "notes": "Rename refactor oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "multi_file_refactor",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Rename process helper across definition and call sites without losing delete/rename evidence.",
+      "oracle": {
+        "assumptions": [
+          "rename_preserves_semantics"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "full_pytest",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.api:fetch_value",
+          "sch_fixture.core:process",
+          "sch_fixture.core:renamed_process"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_process"
+        ],
+        "uncertainty": [
+          "stringized_imports"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "high",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/api.py",
+        "src/sch_fixture/core.py",
+        "tests/test_core.py"
+      ],
+      "task_id": "sch-bench-29-rename-process-symbol"
+    },
+    {
+      "base_mutation_case_id": "cross_module_call",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "cross_module_call",
+        "candidate_id": "sch-bench-30-split-core-api-edge:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/api.py",
+          "src/sch_fixture/core.py",
+          "tests/test_api.py"
+        ],
+        "notes": "Cross-module multi-file refactor oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "multi_file_refactor",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Refactor cross-module call edge between core and api as a coordinated multi-file change.",
+      "oracle": {
+        "assumptions": [
+          "edge_refactor_keeps_tests"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.api:call_core",
+          "sch_fixture.core:add"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.core:add"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_api.py::test_call_core",
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "transitive_callers"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "medium",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/api.py",
+        "src/sch_fixture/core.py",
+        "tests/test_api.py"
+      ],
+      "task_id": "sch-bench-30-split-core-api-edge"
+    },
+    {
+      "base_mutation_case_id": "mcp_interface_client_adapter",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "mcp_interface_client_adapter",
+        "candidate_id": "sch-bench-31-adapter-interface-split:oracle-candidate",
+        "declared_paths": [
+          "interfaces/mcp_client.json",
+          "src/sch_fixture/adapters.py",
+          "tests/test_adapters.py"
+        ],
+        "notes": "Interface/adapter multi-file refactor oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "multi_file_refactor",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Split interface descriptor updates from client adapter implementation across files.",
+      "oracle": {
+        "assumptions": [
+          "descriptor_before_adapter"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "interfaces.mcp_client:McpClientDescriptor",
+          "sch_fixture.adapters:McpClientAdapter"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping"
+        ],
+        "uncertainty": [
+          "wire_compat_window"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "high",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "interfaces/mcp_client.json",
+        "src/sch_fixture/adapters.py",
+        "tests/test_adapters.py"
+      ],
+      "task_id": "sch-bench-31-adapter-interface-split"
+    },
+    {
+      "base_mutation_case_id": "dataclass_schema",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "dataclass_schema",
+        "candidate_id": "sch-bench-32-schema-test-co-refactor:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/schema.py",
+          "tests/conftest.py",
+          "tests/test_schema.py"
+        ],
+        "notes": "Schema multi-file refactor oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "multi_file_refactor",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Refactor schema module and bound tests/fixtures together.",
+      "oracle": {
+        "assumptions": [
+          "tests_and_schema_move_together"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.schema:UserRecord",
+          "sch_fixture.schema:dump_user",
+          "tests.conftest:sample_record"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.schema:UserRecord"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_schema.py::test_user_roundtrip"
+        ],
+        "uncertainty": [
+          "external_serializers"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "high",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/schema.py",
+        "tests/conftest.py",
+        "tests/test_schema.py"
+      ],
+      "task_id": "sch-bench-32-schema-test-co-refactor"
+    },
+    {
+      "base_mutation_case_id": "side_effect_security",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "side_effect_security",
+        "candidate_id": "sch-bench-33-security-api-co-refactor:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/api.py",
+          "src/sch_fixture/security.py",
+          "tests/test_security.py"
+        ],
+        "notes": "Security/API multi-file refactor oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "multi_file_refactor",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Coordinate security policy surface with API consumers across modules.",
+      "oracle": {
+        "assumptions": [
+          "security_first_then_api"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.security:authorize"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.security:authorize.effects"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "uncertainty": [
+          "effect_lattice_incomplete"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "critical",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/api.py",
+        "src/sch_fixture/security.py",
+        "tests/test_security.py"
+      ],
+      "task_id": "sch-bench-33-security-api-co-refactor"
+    },
+    {
+      "base_mutation_case_id": "deleted_symbol",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "deleted_symbol",
+        "candidate_id": "sch-bench-34-delete-and-rename-wave:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/api.py",
+          "src/sch_fixture/core.py",
+          "tests/test_core.py"
+        ],
+        "notes": "Delete/rename multi-file refactor oracle candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "multi_file_refactor",
+      "expected_route": "medium_model",
+      "frontier_or_human": false,
+      "multi_file": true,
+      "objective": "Apply a delete/rename wave across core and tests while preserving selection recall.",
+      "oracle": {
+        "assumptions": [
+          "delete_before_rename_consumers"
+        ],
+        "candidate_verification_outcome": "pass",
+        "expected_false_negatives": 0,
+        "fallback": "full_pytest",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.core:legacy_helper"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "not_applicable",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_process"
+        ],
+        "uncertainty": [
+          "string_refs_to_legacy_helper"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "high",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/api.py",
+        "src/sch_fixture/core.py",
+        "tests/test_core.py"
+      ],
+      "task_id": "sch-bench-34-delete-and-rename-wave"
+    },
+    {
+      "base_mutation_case_id": "stale_receipt",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "stale_receipt",
+        "candidate_id": "sch-bench-35-stale-receipt-reject:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/core.py"
+        ],
+        "notes": "Stale-receipt scenario must reject; never production-accept.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "rejection_or_escalation",
+      "expected_route": "deterministic_only",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Reject work that would admit a stale verification receipt against a newer tree binding.",
+      "oracle": {
+        "assumptions": [
+          "receipts_bind_tree_and_config"
+        ],
+        "candidate_verification_outcome": "reject",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.core:add"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "rejected",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.core:add"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "clock_skew_not_trusted"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "critical",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/core.py"
+      ],
+      "task_id": "sch-bench-35-stale-receipt-reject"
+    },
+    {
+      "base_mutation_case_id": "out_of_scope_patch",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "out_of_scope_patch",
+        "candidate_id": "sch-bench-36-out-of-scope-patch-reject:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/core.py"
+        ],
+        "notes": "Out-of-scope patch must reject without production accept.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "rejection_or_escalation",
+      "expected_route": "deterministic_only",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Reject an out-of-scope model patch that touches undeclared paths.",
+      "oracle": {
+        "assumptions": [
+          "immutable_scope_enforced"
+        ],
+        "candidate_verification_outcome": "reject",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.core:add"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "rejected",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "path_normalization_edge_cases"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "critical",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/core.py"
+      ],
+      "task_id": "sch-bench-36-out-of-scope-patch-reject"
+    },
+    {
+      "base_mutation_case_id": "opaque_native",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "opaque_native",
+        "candidate_id": "sch-bench-37-opaque-native-frontier:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/native_bridge.py",
+          "tests/test_native.py"
+        ],
+        "notes": "Opaque native requires frontier escalation; not production-eligible.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "rejection_or_escalation",
+      "expected_route": "frontier_model",
+      "frontier_or_human": true,
+      "multi_file": true,
+      "objective": "Escalate opaque native_bridge behavior to a frontier model with mandatory raw-source inclusion.",
+      "oracle": {
+        "assumptions": [
+          "raw_source_required_for_opaque"
+        ],
+        "candidate_verification_outcome": "escalate",
+        "expected_false_negatives": 0,
+        "fallback": "both",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.native_bridge:native_hash"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "blocked",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.native_bridge:native_hash.raw"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_native.py::test_native_marker"
+        ],
+        "uncertainty": [
+          "native_semantics_unknown"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "high",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/native_bridge.py",
+        "tests/test_native.py"
+      ],
+      "task_id": "sch-bench-37-opaque-native-frontier"
+    },
+    {
+      "base_mutation_case_id": "post_scan_source_race",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "post_scan_source_race",
+        "candidate_id": "sch-bench-38-post-scan-source-race:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/core.py"
+        ],
+        "notes": "Source-race marker must never enter packs; reject candidate.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "rejection_or_escalation",
+      "expected_route": "deterministic_only",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Reject packs that would admit post-scan source-race marker bytes into target context.",
+      "oracle": {
+        "assumptions": [
+          "scan_tree_not_live_fs"
+        ],
+        "candidate_verification_outcome": "reject",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.core:add"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "rejected",
+        "proof_obligation_ids": [
+          "proof:sch_fixture.core:add"
+        ],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "watcher_race_window"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "critical",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/core.py"
+      ],
+      "task_id": "sch-bench-38-post-scan-source-race"
+    },
+    {
+      "base_mutation_case_id": "failed_aba_cas",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "failed_aba_cas",
+        "candidate_id": "sch-bench-39-failed-cas-reject:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/core.py"
+        ],
+        "notes": "Failed CAS must reject; production root unchanged.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "rejection_or_escalation",
+      "expected_route": "deterministic_only",
+      "frontier_or_human": false,
+      "multi_file": false,
+      "objective": "Reject failed ABA/CAS root transitions without advancing production state.",
+      "oracle": {
+        "assumptions": [
+          "expected_old_root_required"
+        ],
+        "candidate_verification_outcome": "reject",
+        "expected_false_negatives": 0,
+        "fallback": "none",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.core:add"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "rejected",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "concurrent_writers"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "critical",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/core.py"
+      ],
+      "task_id": "sch-bench-39-failed-cas-reject"
+    },
+    {
+      "base_mutation_case_id": "concurrent_watchers_writers",
+      "baseline_retrieval": {
+        "allow_model_derived_expected_outcome": false,
+        "allow_network": false,
+        "allow_omit_required_raw": false,
+        "coverage_policy": "hard_coverage_no_omit_required",
+        "estimator_version": "semantic-state-token-estimator-v1",
+        "fixture_corpus_id": "semantic-state-controlled-repo-v1",
+        "fixture_package_path": "test/fixtures/semantic_state_harness/controlled_repo",
+        "require_exact_target_source": true,
+        "schema": "ipfs_accelerate_py/semantic-state/baseline-retrieval-policy@1",
+        "tokenizer_id": "sch-fixture/token-estimator@1"
+      },
+      "candidate": {
+        "base_mutation_case_id": "concurrent_watchers_writers",
+        "candidate_id": "sch-bench-40-concurrent-human-review:oracle-candidate",
+        "declared_paths": [
+          "src/sch_fixture/api.py",
+          "src/sch_fixture/core.py"
+        ],
+        "notes": "Concurrent fence requires human review; not production-eligible.",
+        "production_eligible": false,
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-candidate-patch@1",
+        "source": "controlled_fixture_mutation"
+      },
+      "category": "rejection_or_escalation",
+      "expected_route": "human_review_required",
+      "frontier_or_human": true,
+      "multi_file": true,
+      "objective": "Require human review when concurrent watchers/writers fence the harness transition.",
+      "oracle": {
+        "assumptions": [
+          "single_winner_cas"
+        ],
+        "candidate_verification_outcome": "escalate",
+        "expected_false_negatives": 0,
+        "fallback": "full_pytest",
+        "full_suite_test_node_ids": [
+          "tests/test_adapters.py::test_adapter_ping",
+          "tests/test_api.py::test_call_core",
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add",
+          "tests/test_core.py::test_process",
+          "tests/test_dynamic.py::test_load_plugin_name",
+          "tests/test_generated.py::test_generated_constant",
+          "tests/test_native.py::test_native_marker",
+          "tests/test_schema.py::test_user_roundtrip",
+          "tests/test_security.py::test_authorize_allows"
+        ],
+        "invalidation_symbol_ids": [
+          "sch_fixture.api:fetch_value",
+          "sch_fixture.core:add"
+        ],
+        "oracle_authority": "controlled_fixture_oracle",
+        "production_acceptance": "blocked",
+        "proof_obligation_ids": [],
+        "schema": "ipfs_accelerate_py/semantic-state/benchmark-task-oracle@1",
+        "selected_test_node_ids": [
+          "tests/test_api.py::test_fetch_value",
+          "tests/test_core.py::test_add"
+        ],
+        "uncertainty": [
+          "interleaving_order"
+        ]
+      },
+      "production_eligible": false,
+      "risk": "critical",
+      "schema": "ipfs_accelerate_py/semantic-state/benchmark-task@1",
+      "target_paths": [
+        "src/sch_fixture/api.py",
+        "src/sch_fixture/core.py"
+      ],
+      "task_id": "sch-bench-40-concurrent-human-review"
+    }
+  ]
+}

@@ -34,6 +34,26 @@ WorktreeReuseAuthorizer = Callable[[Path, str, str], tuple[bool, str]]
 WORKTREE_POOL_SCHEMA = "agent-supervisor-worktree-pool-v1"
 
 
+def python_identifier_worktree_basename(*segments: object) -> str:
+    """Return a deterministic ASCII identifier for a generated worktree.
+
+    Ruff treats an absolute checkout root containing ``__init__.py`` as a
+    package segment.  Keep generated checkout basenames valid Python
+    identifiers so absolute-path validation does not report N999.  Branch and
+    persisted legacy path names are deliberately outside this normalization.
+    """
+
+    normalized = [
+        component
+        for segment in segments
+        if (component := re.sub(r"[^A-Za-z0-9_]+", "_", str(segment)).strip("_"))
+    ]
+    basename = "_".join(normalized) or "worktree"
+    if basename[0].isdigit():
+        basename = f"worktree_{basename}"
+    return basename
+
+
 def _run_command_with_timeout(
     run_command_fn: CommandRunner,
     command: Sequence[str],
@@ -1103,7 +1123,13 @@ class WorktreePool:
     ) -> WorktreeLease:
         digest = hashlib.sha256(f"{cache_key}\0{base_commit}".encode("utf-8")).hexdigest()[:12]
         entry_id = f"{digest}-{uuid.uuid4().hex[:12]}"
-        path = (requested_path or (self.worktree_root / f"workspace-{entry_id}")).resolve()
+        path = (
+            requested_path
+            or (
+                self.worktree_root
+                / python_identifier_worktree_basename("workspace", entry_id)
+            )
+        ).resolve()
         try:
             path.relative_to(self.worktree_root)
         except ValueError as exc:
@@ -1224,6 +1250,12 @@ class WorktreePool:
         path = Path(str(state.get("path") or ""))
         if not path.is_dir():
             return False, "workspace_missing"
+        if not path.name.isidentifier():
+            # Old pool records used ``workspace-<digest>-<nonce>``.  Keep
+            # those records readable so normal fenced cleanup can remove
+            # them, but never return their Ruff-invalid checkout roots to a
+            # new validation lease.
+            return False, "worktree_basename_not_python_identifier"
         registered = self._run(("git", "worktree", "list", "--porcelain"), cwd=self.repo_root)
         registered_paths = {
             str(candidate.resolve()) for candidate in git_worktree_paths_from_porcelain(registered.stdout)

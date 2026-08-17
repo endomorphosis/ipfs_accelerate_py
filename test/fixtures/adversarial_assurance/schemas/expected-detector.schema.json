@@ -1,0 +1,85 @@
+{
+  "$id": "https://ipfs-accelerate.dev/schemas/aae/expected-detector@1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "detector_cid": {
+      "maxLength": 128,
+      "minLength": 8,
+      "pattern": "^b[a-z2-7]+$",
+      "type": "string"
+    },
+    "detector_id": {
+      "pattern": "^[a-z][a-z0-9_.:/+-]{0,127}$",
+      "type": "string"
+    },
+    "detector_kind": {
+      "enum": [
+        "static_rule",
+        "type_check",
+        "unit_test",
+        "integration_test",
+        "property_test",
+        "formal_obligation",
+        "policy_rule",
+        "runtime_invariant",
+        "full_suite",
+        "incremental_seal",
+        "human_review"
+      ],
+      "type": "string"
+    },
+    "detector_revision": {
+      "maxLength": 64,
+      "minLength": 1,
+      "type": "string"
+    },
+    "expected_terminal_status": {
+      "enum": [
+        "complete",
+        "rejected",
+        "invalid",
+        "stale",
+        "inconclusive",
+        "evaluation_failed",
+        "human_review_required",
+        "unavailable",
+        "cancelled",
+        "simulated"
+      ],
+      "type": "string"
+    },
+    "observation_rationale": {
+      "maxLength": 16384,
+      "minLength": 1,
+      "type": "string"
+    },
+    "schema": {
+      "const": "aae/expected-detector@1"
+    },
+    "strength": {
+      "enum": [
+        "required",
+        "optional"
+      ],
+      "type": "string"
+    },
+    "violated_claim": {
+      "pattern": "^[a-z][a-z0-9_.:/+-]{0,127}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "detector_id",
+    "detector_revision",
+    "detector_kind",
+    "strength",
+    "expected_terminal_status",
+    "violated_claim",
+    "observation_rationale",
+    "detector_cid"
+  ],
+  "title": "AAE expected detector binding",
+  "type": "object"
+}

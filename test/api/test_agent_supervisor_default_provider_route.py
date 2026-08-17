@@ -110,7 +110,7 @@ def test_default_implementation_provider_prefers_grok(
         "/opt/providers/grok-runner",
         str(tmp_path.resolve()),
     ]
-    assert command[command.index("--model") + 1] == "grok-4.5"
+    assert command[command.index("--model") + 1] == "grok-4.6"
     fallback_index = command.index("--codex-fallback-command-json")
     fallback_command = json.loads(command[fallback_index + 1])
     assert fallback_command[:2] == ["/opt/providers/codex", "exec"]
@@ -164,7 +164,7 @@ def test_ordinary_prompt_task_uses_grok_with_codex_fallback(
         "/opt/providers/grok-runner",
         str(tmp_path.resolve()),
     ]
-    assert command[command.index("--model") + 1] == "grok-4.5"
+    assert command[command.index("--model") + 1] == "grok-4.6"
     fallback_index = command.index("--codex-fallback-command-json")
     fallback_command = json.loads(command[fallback_index + 1])
     assert fallback_command[:2] == ["/opt/providers/codex", "exec"]
@@ -680,7 +680,7 @@ def test_quota_fallback_rejects_non_grok_45_primary(
     )
 
     assert returncode == 2
-    assert "requires Grok primary model grok-4.5" in capsys.readouterr().err
+    assert "requires Grok primary model grok-4.6" in capsys.readouterr().err
 
 
 def test_quota_fallback_rejects_unresolved_codex_executable(
@@ -713,7 +713,7 @@ def test_quota_fallback_rejects_unresolved_codex_executable(
             "--grok-bin",
             "/bin/true",
             "--model",
-            "grok-4.5",
+            "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(fallback),
         ]
@@ -754,7 +754,7 @@ def test_quota_fallback_rejects_grok_binary_override(
             "--grok-bin",
             str(attacker_grok),
             "--model",
-            "grok-4.5",
+            "grok-4.6",
             "--codex-fallback-command-json",
             json.dumps(fallback),
         ]

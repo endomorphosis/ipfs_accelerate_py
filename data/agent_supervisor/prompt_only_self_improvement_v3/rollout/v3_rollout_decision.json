@@ -1,0 +1,11 @@
+{
+  "authority": "operator-release-authority",
+  "decision_cid": "baguqeera3x6rrorqo7gzizwv7kxbkvwf2xdbqpfsszibspkkwis7tzfa4tsa",
+  "mode": "preview",
+  "promotion_authorized": true,
+  "reasons": [],
+  "release_head": "765dc0fd4a9fcca3b9e653d6ce5b23bd9ac151eb",
+  "release_tree": "13297d70c287bcc61a091dcd7fd2a434536bd44c",
+  "rollback_target_head": "765dc0fd4a9fcca3b9e653d6ce5b23bd9ac151eb",
+  "schema": "ipfs_accelerate_py.agent_supervisor.v3-rollout-decision@1"
+}

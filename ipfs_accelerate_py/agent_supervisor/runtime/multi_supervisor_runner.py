@@ -589,6 +589,25 @@ def _optional_relative_path(value: Any, *, field: str) -> str:
     return path.as_posix()
 
 
+def _optional_worktree_root(value: Any, *, field: str) -> str:
+    """Accept relative or absolute worktree roots from production CLI argv.
+
+    Event/registry paths remain repository-relative, but ``--worktree-root`` is
+    commonly an absolute path under the board repo (tests and managed daemons).
+    Reject parent-escape segments and URL schemes only.
+    """
+
+    if value is None or value == "":
+        return ""
+    text = _require_nonempty_text(value, field=field)
+    path = Path(text)
+    if text in {".", ".."} or ".." in path.parts or "://" in text:
+        raise DatabaseProgramConfigError(
+            f"{field} must be a safe worktree path without parent escape"
+        )
+    return path.as_posix()
+
+
 @dataclass(frozen=True)
 class DatabaseProgramConfig:
     """Explicit database/Quack authority selection for one program (DatabaseProgramConfig@1)."""
@@ -688,7 +707,7 @@ class DatabaseProgramConfig:
         object.__setattr__(
             self,
             "worktree_root",
-            _optional_relative_path(
+            _optional_worktree_root(
                 self.worktree_root,
                 field="worktree_root",
             ),
@@ -2127,7 +2146,7 @@ def reassign_fenced_plan_bound_child(
     selection/claim authority participate.
     """
 
-    from ..entrypoints.execution_plan import (
+    from ..control.plan_execution_store import (
         MAX_PLAN_BOUND_WAVE_TRANSFERS,
         ConfiguredBoardExecutionSlices,
         ExecutionClaimConflictError,
@@ -3665,6 +3684,7 @@ def implementation_supervisor_common_args(
     codebase_refill_timeout_seconds: int = 600,
     llm_merge_resolver_timeout_seconds: int = 1800,
     strict_task_sharding: bool = False,
+    idle_lane_work_stealing: str = "",
 ) -> list[str]:
     """Return standard common args for long-running implementation supervisors."""
 
@@ -3709,6 +3729,10 @@ def implementation_supervisor_common_args(
         args.extend(["--llm-merge-resolver-command", llm_merge_resolver_command])
     if strict_task_sharding:
         args.append("--strict-task-sharding")
+    if idle_lane_work_stealing:
+        args.extend(
+            ["--idle-lane-work-stealing", idle_lane_work_stealing]
+        )
     return args
 
 
@@ -4143,7 +4167,7 @@ def _persist_plan_bound_process_birth(
 ) -> str:
     """Bind one gated process birth to the active immutable slice before release."""
 
-    from ..entrypoints.execution_plan import (
+    from ..control.plan_execution_store import (
         MAX_PLAN_BOUND_WAVE_TRANSFERS,
         PlanBoundExecutionLease,
         PlanBoundProcessBirth,
@@ -4603,7 +4627,7 @@ def start_track(
         # check-to-create race.
         with serialized_lock_update(resolved.supervisor_pid_path):
             _require_absent_pid_projection(resolved.supervisor_pid_path)
-        from ..entrypoints.execution_plan import ProductionParallelPlanAdapter
+        from ..control.plan_execution_store import ProductionParallelPlanAdapter
         from ..task_sources.plan_revision_store import PlanRevisionStore
 
         plan_adapter = ProductionParallelPlanAdapter(
@@ -6105,7 +6129,7 @@ def _publish_plan_bound_terminal_missing(
 ) -> tuple[str, Any]:
     """Fence one exited current owner and terminally deny its whole wave."""
 
-    from ..entrypoints.execution_plan import (
+    from ..control.plan_execution_store import (
         ExecutionClaimConflictError,
         PlanBoundTerminalMissing,
         ProductionParallelPlanAdapter,
@@ -6264,7 +6288,7 @@ def _plan_bound_process_birth_budget_reached(
 ) -> bool:
     """Return whether the current owner consumed its immutable birth budget."""
 
-    from ..entrypoints.execution_plan import (
+    from ..control.plan_execution_store import (
         MAX_PLAN_BOUND_WAVE_TRANSFERS,
         ProductionParallelPlanAdapter,
         _load_plan_bound_process_birth_chain_locked,
@@ -6306,7 +6330,7 @@ def _publish_plan_bound_process_birth_exhausted(
 ) -> tuple[str, Any]:
     """Fence the final recovery birth and durably require typed replanning."""
 
-    from ..entrypoints.execution_plan import (
+    from ..control.plan_execution_store import (
         MAX_PLAN_BOUND_WAVE_TRANSFERS,
         ExecutionClaimConflictError,
         PlanBoundProcessBirthExhausted,
@@ -6481,7 +6505,7 @@ def _plan_bound_child_has_disposition(
 ) -> bool:
     """Return whether the current slice owner published its one-winner result."""
 
-    from ..entrypoints.execution_plan import (
+    from ..control.plan_execution_store import (
         _load_plan_bound_proposal_disposition_locked,
     )
     from ..task_sources.plan_revision_store import PlanRevisionStore
@@ -6506,7 +6530,7 @@ def _plan_bound_child_execution_phase(
 ) -> str:
     """Load the current-owner execution phase through canonical authority."""
 
-    from ..entrypoints.execution_plan import (
+    from ..control.plan_execution_store import (
         ProductionParallelPlanAdapter,
         _load_plan_bound_merge_terminal_failure_locked,
         _load_plan_bound_process_birth_exhausted_locked,
@@ -6547,7 +6571,7 @@ def _plan_bound_scope_drift_receipt(
 ) -> dict[str, Any] | None:
     """Read one typed pre-merge whole-wave denial through canonical authority."""
 
-    from ..entrypoints.execution_plan import (
+    from ..control.plan_execution_store import (
         ConfiguredBoardExecutionSlices,
         ProductionParallelPlanAdapter,
         _load_plan_bound_merge_terminal_failure_locked,
@@ -6878,7 +6902,7 @@ def run_supervisor_tracks(
     ) -> PlanBoundSupervisorChild:
         """Mint a fresh logical lane in the dead donor's freed process slot."""
 
-        from ..entrypoints.execution_plan import ProductionParallelPlanAdapter
+        from ..control.plan_execution_store import ProductionParallelPlanAdapter
         from ..task_sources.plan_revision_store import PlanRevisionStore
 
         store_path = _lexical_contained_path(
@@ -7547,6 +7571,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "lane, preventing lanes from borrowing the same retry work."
         ),
     )
+    parser.add_argument(
+        "--implementation-supervisor-idle-lane-work-stealing",
+        choices=["virgin-transfer"],
+        default="",
+        help=(
+            "Opt in every strict supervisor lane to exact-revision virgin "
+            "task transfers."
+        ),
+    )
     parser.add_argument("--detach", action="store_true")
     return parser
 
@@ -7662,6 +7695,14 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
                         False,
                     )
                 ),
+                idle_lane_work_stealing=str(
+                    getattr(
+                        args,
+                        "implementation_supervisor_idle_lane_work_stealing",
+                        "",
+                    )
+                    or ""
+                ),
             )
         )
     if (
@@ -7675,6 +7716,16 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
         and "--strict-task-sharding" not in common_args
     ):
         common_args.append("--strict-task-sharding")
+    work_stealing = str(
+        getattr(
+            args,
+            "implementation_supervisor_idle_lane_work_stealing",
+            "",
+        )
+        or ""
+    )
+    if work_stealing and "--idle-lane-work-stealing" not in common_args:
+        common_args.extend(["--idle-lane-work-stealing", work_stealing])
     common_args.extend(args.common_arg)
     return common_args
 
@@ -7818,7 +7869,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
         recovery_owner_bound_artifacts: tuple[Path, ...] = ()
         recovery_artifacts: tuple[Mapping[str, Any], ...] = ()
         if recovery_authorization_cid != "-":
-            from ..entrypoints.execution_plan import (
+            from ..control.plan_execution_store import (
                 ProductionParallelPlanAdapter,
             )
             from ..task_sources.plan_revision_store import PlanRevisionStore

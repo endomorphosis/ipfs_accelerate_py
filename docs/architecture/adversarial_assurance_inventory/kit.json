@@ -1,0 +1,1309 @@
+{
+  "schema": "aae/kit-inventory@1",
+  "evidence_id": "aae/kit-inventory@1",
+  "interface_id": "AAEKitInventory@1",
+  "task_id": "AAE-003",
+  "goal_id": "AAE-G010",
+  "track": "inventory-kit",
+  "board_namespace": "adversarial-assurance-engine-v1",
+  "inventory_kind": "read_only_public_surface",
+  "generated_for_program": "adversarial-assurance-engine-v1",
+  "inspected_at": "2026-08-13",
+  "title": "Inventory kit durability, CAS, receipt, campaign-history, and recovery surfaces",
+  "status": "complete",
+  "acceptance": {
+    "criterion": "Inventory identifies exact immutable-block, idempotency, CAS, corruption, recovery, history, and proof-store contracts that the AAE domain layer must reuse.",
+    "satisfied": true,
+    "contracts_identified": {
+      "immutable_block": {
+        "primary": "DurableCoordinationStore.put / get / get_bytes / has",
+        "import_path": "ipfs_kit_py.mcp_server.mcplusplus.coordination_storage.DurableCoordinationStore",
+        "source_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+        "semantic_facade": "DurableStateRootAdapter.put_verified / get_verified",
+        "governor_pattern": "DurableSemanticGovernorStore.put_artifact / get_verified_artifact",
+        "authority_rule": "Local blocks/ tree is authoritative; SQLite is a rebuildable acceleration index; artifact blocks are retained forever."
+      },
+      "idempotency": {
+        "primary": "operation_id UNIQUE(namespace, operation_id) on DurableCoordinationStore.compare_and_swap_state_root",
+        "artifact_layer": "DurableSemanticGovernorStore operation_id bind table governor_artifact_ops.sqlite3",
+        "exact_replay": {
+          "status": "unchanged",
+          "reason_code": "idempotent_replay"
+        },
+        "changed_reuse": {
+          "status": "conflict",
+          "reason_code": "operation_id_reused"
+        },
+        "grammar": "[a-z0-9](?:[a-z0-9._:-]{0,126}[a-z0-9])?",
+        "max_length": 128
+      },
+      "cas": {
+        "primary": "DurableCoordinationStore.compare_and_swap_state_root",
+        "aliases": ["compare_and_swap_root"],
+        "typed_facade": "DurableStateRootAdapter.compare_and_swap_root",
+        "protocol": "DurableStateRoots",
+        "transition_schema": "mcp++/coordination/state-root-transition@1",
+        "governor_patterns": [
+          "DurableCompressionPolicyRepository.compare_and_swap_policy",
+          "DurablePromotionStateRepository.compare_and_swap_promotion",
+          "DurableAuditHistoryStore.append_history"
+        ],
+        "expectation_model": "expected_revision/generation plus expected_root_cid/head_cid; ABA-safe; never silent overwrite"
+      },
+      "corruption": {
+        "errors": [
+          "ArtifactIntegrityError",
+          "ArtifactNotFound",
+          "GovernorArtifactIntegrityError",
+          "GovernorHistoryIntegrityError",
+          "GovernorPolicyIntegrityError"
+        ],
+        "fail_closed_rules": [
+          "local CID mismatch fails recovery and refuses mutation",
+          "non-canonical JSON is integrity failure",
+          "corrupt SQLite preserved as coordination.sqlite3.corrupt-<ms> and rebuilt from blocks",
+          "tampered root index refused after chain verification against immutable blocks",
+          "ambiguous successors rejected without picking a winner",
+          "raw transition evidence rejected before rebuild mutates indexes",
+          "semantic facade rejects raw CIDs for policy/history/root heads"
+        ]
+      },
+      "recovery": {
+        "primary": "DurableCoordinationStore.recover(rebuild=True|False)",
+        "typed_facade": "DurableStateRootAdapter.recover_roots() -> StateRootRecoveryReport",
+        "metrics": "root_recovery_metrics() counters root_index_verifications and root_index_rebuild_mutations",
+        "governor_protocol": "SemanticGovernorStore.recover_governor_store() -> AuditRecoveryReport",
+        "governor_recovery_implementation_status": "protocol_and_typed_result_only",
+        "aae_planned": "recover_assurance_campaigns / AssuranceRecoveryReport@1 under AAE-038"
+      },
+      "history": {
+        "primitive": "DurableCoordinationStore.root_transitions / state_roots / current_state_root",
+        "governor_pattern": "DurableAuditHistoryStore@1",
+        "history_roles": ["audit", "calibration", "benchmark"],
+        "manifest_schema": "ipfs-kit.semantic-governor-store.history-manifest@1",
+        "namespace_pattern": "semantic-governor/<workspace>/{audit,calibration,benchmark}",
+        "aae_planned": "adversarial_assurance_store campaign append-only histories (AAE-035)"
+      },
+      "proof_store": {
+        "certificate_transport": "IpfsKitProofCertificateStore / TestCertificateStoreTransport@1",
+        "import_path": "ipfs_kit_py.proof_certificate_store.IpfsKitProofCertificateStore",
+        "source_path": "ipfs_kit_py/ipfs_kit_py/proof_certificate_store.py",
+        "role": "Optional exact-byte CID transport for proof-backed test certificates; never decides reuse or seal authority",
+        "receipt_resolver": "AgentSupervisorReceiptResolver over DurableCoordinationStore",
+        "receipt_resolver_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/agent_supervisor_receipts.py",
+        "not_present": [
+          "IncrementalProofSealer",
+          "FullCheckpointSeal",
+          "DeltaSeal",
+          "create_full_checkpoint",
+          "publish_full_checkpoint",
+          "build_delta_seal",
+          "publish_delta_seal",
+          "adversarial_assurance_store proof-forest durability API"
+        ],
+        "proof_sealer_status": "typed_unavailable"
+      }
+    },
+    "aae_domain_layer_missing": {
+      "package_path": "ipfs_kit_py/ipfs_kit_py/adversarial_assurance_store/",
+      "package_import": "ipfs_kit_py.adversarial_assurance_store",
+      "present_in_tree": false,
+      "planned_modules": [
+        "contracts.py",
+        "artifacts.py",
+        "campaigns.py",
+        "merkle.py",
+        "policy.py",
+        "recovery.py",
+        "__init__.py"
+      ],
+      "planned_tasks": [
+        "AAE-034",
+        "AAE-035",
+        "AAE-036",
+        "AAE-037",
+        "AAE-038"
+      ],
+      "description": "Thin typed AAE persistence over DurableCoordinationStore for immutable mutant/campaign artifacts, campaign state and receipts, append-only campaign histories, Merkle/seal manifests, assurance-policy revision CAS, promotion CAS, idempotent replay, and crash recovery. Must compose existing kit primitives and governor-store patterns; must not invent a second object store, WAL, CID system, receipt hierarchy, or proof/ZK engine.",
+      "must_back_on": {
+        "primitive": "DurableCoordinationStore",
+        "typed_root_facade": "DurableStateRootAdapter implementing DurableStateRoots",
+        "governor_pattern_package": "ipfs_kit_py.semantic_governor_store",
+        "required_operations": [
+          "put / put_verified for immutable mutant, campaign, gap, benchmark, and receipt payloads with caller-supplied expected CIDs",
+          "get / get_verified for CID-checked reads",
+          "compare_and_swap_state_root / compare_and_swap_root for campaign heads, policy revisions, and promotion with expected revision/generation, expected root CID, and operation_id",
+          "recover / recover_roots for fail-closed index reconstruction",
+          "root_transitions / history linkage for append-only campaign history"
+        ]
+      }
+    }
+  },
+  "repository": {
+    "name": "endomorphosis/ipfs_kit_py",
+    "role": "kit_durability_cas_receipt_history_recovery_proof_transport",
+    "gitlink_path": "ipfs_kit_py",
+    "planning_bound_revision": "c7e5feeb24582ab68c1f5ca626366b665a82ad61",
+    "observed_revision": "c7e5feeb24582ab68c1f5ca626366b665a82ad61",
+    "observed_subject": "SCG-020: Implement append-only audit, calibration, and benchmark histories",
+    "match_planning_baseline": true,
+    "controller_revision_at_inventory": "8ab0af06221701fc168a00b8276fea4fe37e42ed",
+    "planning_note": "ADVERSARIAL_ASSURANCE_ENGINE_PLAN section 2 pins kit c7e5feeb... (durable roots and governor store present). Inventory confirms the nested gitlink equals that pin."
+  },
+  "nested_gitlinks_observed_at_controller": {
+    "ipfs_datasets_py": "fbd1ba9f70803de157622bb20e22595ef09d606f",
+    "ipfs_kit_py": "c7e5feeb24582ab68c1f5ca626366b665a82ad61",
+    "ipfs_accelerate_py/mcplusplus": "dc3164653a48d059ae9812078359daeafb451c07"
+  },
+  "conflict_policy": {
+    "rule": "Inventory reusable kit durability/CAS/receipt/history/recovery/proof-transport only. Do not invent adversarial_assurance_store APIs, a second store/WAL/CID/receipt hierarchy, or a local proof-sealer. Missing AAE domain and sealer surfaces are typed_unavailable.",
+    "identity": "Callers supply verified CIDs; kit verifies and does not mint replacement semantic identity. ipfs_datasets_py owns semantic content identity authority.",
+    "receipts": "Bind neutral receipt payloads to existing envelope machinery; do not create semantic-governor/receipt* or aae/receipt* hierarchies.",
+    "proof_transport": "IpfsKitProofCertificateStore moves exact certificate bytes by CID only; it never authorizes test reuse or seal publication.",
+    "governor_patterns": "semantic_governor_store is the reusable thin-typed pattern over DurableCoordinationStore; AAE domain package remains adversarial_assurance_store and must not rename itself into governor namespaces without a closed AAE namespace grammar."
+  },
+  "non_goals": [
+    "No second object store, WAL, or journal engine",
+    "No new CID or content-identity implementation",
+    "No new receipt envelope hierarchy or cryptography",
+    "No new daemon or network service",
+    "No AAE campaign domain schemas in this inventory (owned by datasets contracts and later AAE-034+)",
+    "No IncrementalProofSealer or seal publication APIs (typed_unavailable; AAE-004 / release-gated)",
+    "No reimplementation of Profile G codecs beyond consumption of existing kit/MCP++ authority"
+  ],
+  "ownership": {
+    "package_roots_present": [
+      "ipfs_kit_py.mcp_server.mcplusplus.coordination_storage",
+      "ipfs_kit_py.mcp_server.mcplusplus.state_root_contracts",
+      "ipfs_kit_py.mcp_server.mcplusplus.state_root_adapter",
+      "ipfs_kit_py.semantic_governor_store",
+      "ipfs_kit_py.proof_certificate_store",
+      "ipfs_kit_py.mcp_server.agent_supervisor_receipts"
+    ],
+    "package_root_missing": "ipfs_kit_py.adversarial_assurance_store",
+    "plan_ownership_claim": "Kit owns thin typed persistence over existing durable primitives: immutable mutant artifacts, campaign state, execution receipts, assurance gaps, benchmark artifacts, campaign Merkle roots, policy revisions, CAS promotion state, idempotent replay, and crash recovery.",
+    "does_not_own": [
+      "datasets adversarial_assurance mutation/claim/gap models",
+      "accelerate campaign orchestration, workers, IVP, VerificationReceiptCache",
+      "MCP++ new AAE profile (forbidden)",
+      "ZK proof systems or seal authority"
+    ]
+  },
+  "public_interfaces": {
+    "DurableCoordinationStore": {
+      "status": "available",
+      "kind": "class",
+      "module": "ipfs_kit_py.mcp_server.mcplusplus.coordination_storage",
+      "source_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+      "line": 284,
+      "package_export": {
+        "from_mcplusplus_package_init": false,
+        "canonical_import": "from ipfs_kit_py.mcp_server.mcplusplus.coordination_storage import DurableCoordinationStore",
+        "note": "Not lazily re-exported by mcplusplus.__init__; tests and adapters import coordination_storage directly."
+      },
+      "db_version": 2,
+      "constructor": {
+        "signature": "DurableCoordinationStore(storage_dir: Optional[os.PathLike[str] | str] = None, *, backend: Optional[BlockBackend | Any] = None, retention: Optional[RetentionPolicy] = None, clock_ms: Optional[Any] = None, crash_injector: Optional[Any] = None) -> None",
+        "default_storage_dir_env": "MCPPLUSPLUS_COORDINATION_DIR",
+        "default_storage_dir_fallback": "~/.local/share/ipfs_kit_py/mcppp_coordination",
+        "layout": {
+          "blocks_dir": "blocks/",
+          "sqlite_index": "coordination.sqlite3",
+          "block_shard": "blocks/<cid[1:3]>/<cid>.json"
+        }
+      },
+      "methods": [
+        {
+          "name": "put",
+          "signature": "put(self, artifact: Mapping[str, Any], *, expected_cid: Optional[str] = None, codec: str = 'dag-json', replicate: bool = True) -> Dict[str, Any]",
+          "line": 503,
+          "returns": {
+            "cid": "str",
+            "kind": "str",
+            "codec": "str",
+            "byte_length": "int",
+            "created": "bool",
+            "replicated": "bool",
+            "durable": "true"
+          },
+          "contract": "Writes immutable local block with fsync before index commit; optional expected_cid fail-closed; optional backend replication after local durability."
+        },
+        {
+          "name": "put_profile_g",
+          "signature": "put_profile_g(self, kind: str, artifact: Mapping[str, Any], *, expected_cid: Optional[str] = None) -> Dict[str, Any]",
+          "line": 546,
+          "contract": "Stores a Profile G artifact and verifies declared kind against schema mapping."
+        },
+        {
+          "name": "get_bytes",
+          "signature": "get_bytes(self, cid: str) -> bytes",
+          "line": 554,
+          "contract": "CID-verified local read; backend load may repair local tree after integrity check."
+        },
+        {
+          "name": "get",
+          "signature": "get(self, cid: str) -> Dict[str, Any]",
+          "line": 576,
+          "contract": "Returns canonical JSON object only when bytes equal re-serialized canonical form."
+        },
+        {
+          "name": "has",
+          "signature": "has(self, cid: str, *, include_backend: bool = False) -> bool",
+          "line": 586
+        },
+        {
+          "name": "current_state_root",
+          "aliases": ["current_root"],
+          "signature": "current_state_root(self, namespace: str) -> Dict[str, Any]",
+          "line": 742,
+          "returns_snapshot_fields": ["namespace", "root_cid", "revision", "transition_cid"],
+          "contract": "Absent namespaces begin at revision 0 with null root_cid and transition_cid. Live reads verify the full indexed transition chain against immutable blocks."
+        },
+        {
+          "name": "compare_and_swap_state_root",
+          "aliases": ["compare_and_swap_root"],
+          "signature": "compare_and_swap_state_root(self, namespace: str, *, expected_revision: int, expected_root_cid: Optional[str], new_root_cid: str, operation_id: str) -> Dict[str, Any]",
+          "line": 772,
+          "contract": "One-writer expected-revision CAS under BEGIN IMMEDIATE. Transition block is immutable evidence; root index mutates only in the same full-synchronous transaction that indexes that block. operation_id is a durable idempotency key per namespace."
+        },
+        {
+          "name": "state_roots",
+          "signature": "state_roots(self) -> list[Dict[str, Any]]",
+          "line": 749
+        },
+        {
+          "name": "root_transitions",
+          "signature": "root_transitions(self, namespace: Optional[str] = None) -> list[Dict[str, Any]]",
+          "line": 758,
+          "contract": "Append-only transition history reconstructed from immutable evidence; basis for campaign-history patterns."
+        },
+        {
+          "name": "recover",
+          "signature": "recover(self, *, rebuild: bool = True) -> Dict[str, Any]",
+          "line": 1225,
+          "returns": {
+            "verified_blocks": "int",
+            "rebuilt": "bool",
+            "errors": "list"
+          },
+          "contract": "Verifies every local block against its CID. Corrupt blocks fail closed. rebuild=True recreates all derived indexes from verified immutable blocks including root chains and Profile G claim/lease/health indexes. rebuild=False is a verify-only pass used on healthy reopen."
+        },
+        {
+          "name": "root_recovery_metrics",
+          "signature": "root_recovery_metrics(self) -> Dict[str, int]",
+          "line": 455,
+          "counters": [
+            "root_index_verifications",
+            "root_index_rebuild_mutations"
+          ],
+          "contract": "Session-local structural counters, not persisted coordination state and not wall-clock timings."
+        },
+        {
+          "name": "compact_indexes",
+          "signature": "compact_indexes(self, *, at_ms: Optional[int] = None) -> Dict[str, Any]",
+          "line": 1076,
+          "contract": "Archives and prunes stale claim/lease/health index rows only. Artifact blocks are permanently retained."
+        },
+        {
+          "name": "status",
+          "signature": "status(self) -> Dict[str, Any]",
+          "line": 1341
+        },
+        {
+          "name": "claims",
+          "signature": "claims(self, task_cid: str, *, include_terminal: bool = True) -> list[Dict[str, Any]]",
+          "line": 1035
+        },
+        {
+          "name": "active_lease",
+          "signature": "active_lease(self, task_cid: str, *, at_ms: Optional[int] = None) -> Optional[Dict[str, Any]]",
+          "line": 1044
+        },
+        {
+          "name": "daemon_health",
+          "signature": "daemon_health(self, peer_did: Optional[str] = None, *, at_ms: Optional[int] = None) -> list[Dict[str, Any]]",
+          "line": 1065
+        },
+        {
+          "name": "record_daemon_health",
+          "signature": "record_daemon_health(self, record: Mapping[str, Any]) -> Dict[str, Any]",
+          "line": 1011
+        },
+        {
+          "name": "close",
+          "signature": "close(self) -> None",
+          "line": 421
+        }
+      ],
+      "supporting_types": {
+        "BlockBackend": {
+          "kind": "Protocol",
+          "methods": ["store_block(cid, data, codec)", "load_block(cid)"]
+        },
+        "RetentionPolicy": {
+          "fields": {
+            "terminal_claim_ms": 604800000,
+            "expired_lease_ms": 604800000,
+            "expired_health_ms": 86400000
+          },
+          "artifact_blocks": "retain-forever"
+        },
+        "errors": [
+          "CoordinationStorageError",
+          "ArtifactNotFound",
+          "ArtifactIntegrityError"
+        ],
+        "cid_helpers": [
+          "cid_for_bytes",
+          "cid_for_artifact",
+          "validate_transport_cid"
+        ]
+      }
+    },
+    "DurableStateRoots": {
+      "status": "available",
+      "kind": "Protocol",
+      "module": "ipfs_kit_py.mcp_server.mcplusplus.state_root_contracts",
+      "source_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py",
+      "line": 303,
+      "package_export": "lazy via ipfs_kit_py.mcp_server.mcplusplus",
+      "methods": [
+        "put_verified(payload, *, expected_cid, replicate=True) -> ArtifactWriteResult",
+        "get_verified(cid) -> Mapping[str, Any]",
+        "current_root(namespace) -> StateRootSnapshot",
+        "compare_and_swap_root(namespace, *, expected_revision, expected_root_cid, new_root_cid, operation_id) -> StateRootCASResult",
+        "recover_roots() -> StateRootRecoveryReport"
+      ],
+      "contract": "Storage-facing protocol only. Implementations own I/O and publication. Protocol module owns neither store opening nor CID derivation."
+    },
+    "DurableStateRootAdapter": {
+      "status": "available",
+      "kind": "class",
+      "implements": "DurableStateRoots",
+      "module": "ipfs_kit_py.mcp_server.mcplusplus.state_root_adapter",
+      "source_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py",
+      "line": 25,
+      "package_export": "lazy via ipfs_kit_py.mcp_server.mcplusplus",
+      "constructor": "DurableStateRootAdapter(store: DurableCoordinationStore)",
+      "methods": [
+        {
+          "name": "put_verified",
+          "line": 45,
+          "contract": "Requires caller-supplied expected_cid; validates dag-json semantic CID before local put; projects optional replication into closed ProviderStatus without obscuring local durability."
+        },
+        {
+          "name": "get_verified",
+          "line": 100,
+          "contract": "CID-verified get through the injected store after semantic dag-json CID validation."
+        },
+        {
+          "name": "current_root",
+          "line": 106,
+          "contract": "Projects store snapshot to typed StateRootSnapshot and revalidates CID-bearing fields."
+        },
+        {
+          "name": "compare_and_swap_root",
+          "line": 122,
+          "contract": "Semantic-facade CAS: rejects raw CIDs for expected and successor roots; delegates to store.compare_and_swap_state_root; returns typed StateRootCASResult."
+        },
+        {
+          "name": "recover_roots",
+          "line": 158,
+          "contract": "Calls store.recover(rebuild=True) and projects roots; raw or corrupt reconstructed roots become closed corrupt recovery reports rather than leaking exceptions."
+        }
+      ],
+      "identity_boundary": "ipfs_datasets_py owns semantic identity. Callers compute CID; adapter and store only verify. Adapter does not canonicalize, translate, or mint replacement identity."
+    },
+    "SemanticGovernorStore": {
+      "status": "available_as_protocol_with_partial_implementations",
+      "kind": "Protocol",
+      "interface_id": "SemanticGovernorStore@1",
+      "schema": "ipfs-kit.semantic-governor-store.contracts@1",
+      "contract_version": 1,
+      "module": "ipfs_kit_py.semantic_governor_store.contracts",
+      "source_path": "ipfs_kit_py/ipfs_kit_py/semantic_governor_store/contracts.py",
+      "line": 1245,
+      "package_export": "from ipfs_kit_py.semantic_governor_store import SemanticGovernorStore",
+      "role_for_aae": "Reusable thin-typed durability pattern (artifacts, history, policy/promotion CAS, receipt issuance shape, recovery report shape). AAE must mirror the pattern under adversarial_assurance_store with AAE namespaces and datasets assurance schemas — not fork a second block engine.",
+      "methods": [
+        "put_artifact(kind, payload, *, expected_cid, operation_id, replicate=True) -> GovernorArtifactWriteResult",
+        "get_verified_artifact(cid, *, expected_kind=None) -> Mapping[str, Any]",
+        "current_history(workspace, role) -> HistoryHeadSnapshot",
+        "append_history(workspace, role, *, entry_cid, expected_generation, expected_head_cid, operation_id) -> HistoryAppendResult",
+        "current_policy(workspace) -> PolicyVersionSnapshot",
+        "compare_and_swap_policy(workspace, *, expected_generation, expected_policy_cid, new_policy_cid, operation_id) -> PolicyCASResult",
+        "current_promotion(workspace) -> PromotionStateSnapshot",
+        "compare_and_swap_promotion(workspace, *, expected_generation, expected_promotion_cid, new_promotion_cid, operation_id, candidate_cid, authorization_cid) -> PromotionCASResult",
+        "issue_receipt(kind, payload, *, expected_cid, envelope_schema, operation_id) -> ReceiptIssuanceResult",
+        "recover_governor_store() -> AuditRecoveryReport"
+      ],
+      "closed_enums": {
+        "GovernorArtifactKind": [
+          "audit",
+          "calibration",
+          "benchmark",
+          "policy",
+          "policy_candidate",
+          "evaluation",
+          "promotion",
+          "run_receipt",
+          "promotion_receipt",
+          "history_manifest"
+        ],
+        "GovernorNamespaceRole": [
+          "audit",
+          "calibration",
+          "benchmark",
+          "policy",
+          "promotion",
+          "receipts"
+        ],
+        "GovernorStoreStatus": [
+          "updated",
+          "unchanged",
+          "conflict",
+          "unavailable",
+          "corrupt"
+        ],
+        "GovernorProviderStatus": [
+          "available",
+          "unavailable",
+          "failed",
+          "corrupt",
+          "not_requested"
+        ],
+        "GovernorHistoryRole": [
+          "audit",
+          "calibration",
+          "benchmark"
+        ]
+      },
+      "namespace_grammar": {
+        "prefix": "semantic-governor",
+        "pattern": "semantic-governor/<workspace>/<role>",
+        "max_namespace_chars": 255,
+        "max_workspace_chars": 63,
+        "operation_id_max_chars": 128,
+        "max_recovery_errors": 32
+      },
+      "implementations_present": {
+        "DurableSemanticGovernorStore": {
+          "module": "ipfs_kit_py.semantic_governor_store.artifacts",
+          "interface_id": "DurableSemanticGovernorStore@1",
+          "line": 412,
+          "covers": ["put_artifact", "get_verified_artifact"],
+          "sealed_record_fields": ["schema", "interface_id", "kind", "payload"],
+          "stored_artifact_schema": "ipfs-kit.semantic-governor-store.artifact@1",
+          "max_artifact_bytes": 1048576,
+          "operation_index": "governor_artifact_ops.sqlite3 beside coordination store"
+        },
+        "DurableAuditHistoryStore": {
+          "module": "ipfs_kit_py.semantic_governor_store.history",
+          "interface_id": "DurableAuditHistoryStore@1",
+          "line": 374,
+          "covers": [
+            "current_history",
+            "append_history",
+            "append_audit",
+            "append_calibration",
+            "append_benchmark",
+            "history_transitions",
+            "list_entry_cids",
+            "public_history_projection",
+            "private_history_projection"
+          ],
+          "manifest_schema": "ipfs-kit.semantic-governor-store.history-manifest@1",
+          "public_projection_schema": "ipfs-kit.semantic-governor-store.history-public@1",
+          "private_projection_schema": "ipfs-kit.semantic-governor-store.history-private@1",
+          "default_page_size": 64,
+          "max_page_size": 256
+        },
+        "DurableCompressionPolicyRepository": {
+          "module": "ipfs_kit_py.semantic_governor_store.policy",
+          "interface_id": "DurableCompressionPolicyRepository@1",
+          "line": 127,
+          "covers": ["current_policy", "compare_and_swap_policy", "rollback_policy", "policy_transitions"]
+        },
+        "DurablePromotionStateRepository": {
+          "module": "ipfs_kit_py.semantic_governor_store.policy",
+          "interface_id": "DurablePromotionStateRepository@1",
+          "line": 352,
+          "covers": ["current_promotion", "compare_and_swap_promotion", "promotion_transitions"],
+          "authorization_rule": "Promotion CAS requires distinct candidate_cid and authorization_cid; candidates cannot self-promote."
+        },
+        "DurablePolicyCASRepositories": {
+          "module": "ipfs_kit_py.semantic_governor_store.policy",
+          "line": 561,
+          "covers": "Facade composing policy and promotion repositories over one DurableCoordinationStore"
+        }
+      },
+      "protocol_only_surfaces": {
+        "issue_receipt": "Contracted on SemanticGovernorStore; ReceiptIssuanceResult requires existing envelope_schema and admits only run_receipt/promotion_receipt kinds. No production Durable* implementer of issue_receipt is present on this pin (protocol + contract tests only).",
+        "recover_governor_store": "Contracted returning AuditRecoveryReport; no recovery.py implementer is present on this pin (SCG-022 style recovery remains unshipped). AAE must recover through DurableCoordinationStore.recover / DurableStateRootAdapter.recover_roots until AAE-038 ships AssuranceRecoveryReport."
+      }
+    },
+    "IpfsKitProofCertificateStore": {
+      "status": "available",
+      "kind": "class",
+      "interface_id": "TestCertificateStoreTransport@1",
+      "schema": "ipfs_kit_py/test-certificate-store-transport@1",
+      "module": "ipfs_kit_py.proof_certificate_store",
+      "source_path": "ipfs_kit_py/ipfs_kit_py/proof_certificate_store.py",
+      "line": 332,
+      "aliases": {
+        "CasPutResult": "CertificateTransportPutResult",
+        "CasGetResult": "CertificateTransportGetResult"
+      },
+      "constructor": "IpfsKitProofCertificateStore(local_root=None, *, ipfs_client=None, ipfs_get=None, ipfs_put=None, max_blob_bytes=1048576, cache_ipfs_reads=True)",
+      "methods": [
+        {
+          "name": "put_bytes",
+          "line": 592,
+          "signature": "put_bytes(self, data: bytes, *, claimed_cid: str | None = None, cid: str | None = None) -> CertificateTransportPutResult"
+        },
+        {
+          "name": "get_bytes",
+          "line": 677,
+          "signature": "get_bytes(self, cid: str) -> CertificateTransportGetResult"
+        },
+        {
+          "name": "put",
+          "line": 746
+        },
+        {
+          "name": "get",
+          "line": 750
+        },
+        {
+          "name": "has",
+          "line": 753
+        }
+      ],
+      "cid_profile": "CIDv1 raw (0x55) sha2-256; multihash verified against exact bytes",
+      "statuses": ["stored", "hit", "miss", "rejected", "error"],
+      "reason_codes": [
+        "ok",
+        "already_exists",
+        "unavailable",
+        "malformed",
+        "over_budget",
+        "cid_mismatch",
+        "not_found",
+        "integrity_failed",
+        "symlink_rejected",
+        "path_escape",
+        "io_error",
+        "ipfs_error",
+        "ipfs_response_invalid"
+      ],
+      "safety": [
+        "Default instance has no filesystem or network side effects",
+        "Never starts a daemon or discovers ~/.ipfs",
+        "Never decides whether certificate bytes prove a test may be reused",
+        "Oversized, mismatched, symlink, and path-escape cases are typed misses/rejections"
+      ]
+    },
+    "AgentSupervisorReceiptResolver": {
+      "status": "available",
+      "kind": "class",
+      "module": "ipfs_kit_py.mcp_server.agent_supervisor_receipts",
+      "source_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/agent_supervisor_receipts.py",
+      "line": 30,
+      "method": "agent_supervisor.receipts.read",
+      "capability_id": "supervisor.receipts.read",
+      "owner": "ipfs_kit_py",
+      "constructor": "AgentSupervisorReceiptResolver(store: DurableCoordinationStore | None = None)",
+      "methods": [
+        {
+          "name": "read",
+          "signature": "read(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]",
+          "contract": "Returns receipts only when content-addressed artifacts load and verify through DurableCoordinationStore. No fixture or synthetic-success fallback."
+        }
+      ],
+      "payload_keys": ["receipt_ids", "limit", "cursor", "status", "target_id"],
+      "envelope_keys": ["owner", "capability_id", "method", "access", "policy_class", "correlation_id"],
+      "max_limit": 500
+    },
+    "adversarial_assurance_store": {
+      "status": "typed_unavailable",
+      "package_import": "ipfs_kit_py.adversarial_assurance_store",
+      "present_in_tree": false,
+      "planned_interfaces": [
+        "immutable mutant/campaign artifact storage over DurableCoordinationStore (AAE-034)",
+        "campaign state, receipts, gaps, append-only histories (AAE-035)",
+        "benchmark artifacts, Merkle roots, seal manifests (AAE-036)",
+        "assurance-policy revision and promotion CAS (AAE-037)",
+        "crash recovery, idempotent replay, concurrency fencing, public package export (AAE-038)"
+      ]
+    }
+  },
+  "contracts": {
+    "immutable_blocks": {
+      "authority": "Local blocks/ tree is authoritative; SQLite is a rebuildable acceleration index.",
+      "codecs": {
+        "transport_accepted": ["dag-json", "raw"],
+        "default_codec": "dag-json",
+        "cid_profile": "CIDv1/sha2-256 base32 lower-case multibase ('b' prefix)",
+        "semantic_facade_codec": "dag-json only",
+        "certificate_transport_codec": "raw (0x55) CIDv1 sha2-256"
+      },
+      "write_path": [
+        "canonical JSON serialization (sort_keys, separators=(',',':'), ensure_ascii=False, allow_nan=False)",
+        "CID computation from bytes and codec",
+        "optional expected_cid equality check",
+        "atomic temp write + fsync + link into shard directory",
+        "directory fsync",
+        "SQLite index transaction",
+        "optional backend store_block after local durability"
+      ],
+      "collision_policy": "Identical bytes are idempotent (created=false). Different bytes for the same CID raise ArtifactIntegrityError.",
+      "retention": "Artifact blocks are permanent. RetentionPolicy and compact_indexes affect derived index rows only; they emit mcp++/coordination-index-archive@1 before pruning rows.",
+      "governor_sealed_record": {
+        "schema": "ipfs-kit.semantic-governor-store.artifact@1",
+        "fields": ["schema", "interface_id", "kind", "payload"],
+        "max_bytes": 1048576,
+        "private_field_markers_rejected": true
+      }
+    },
+    "schemas": {
+      "state_root_transition": "mcp++/coordination/state-root-transition@1",
+      "coordination_archive": "mcp++/coordination-index-archive@1",
+      "daemon_health": "mcp++/coordination/daemon-health@1",
+      "profile_g_prefix": "mcp++/profile-g/",
+      "semantic_governor_store": "ipfs-kit.semantic-governor-store.contracts@1",
+      "governor_artifact": "ipfs-kit.semantic-governor-store.artifact@1",
+      "history_manifest": "ipfs-kit.semantic-governor-store.history-manifest@1",
+      "history_public": "ipfs-kit.semantic-governor-store.history-public@1",
+      "history_private": "ipfs-kit.semantic-governor-store.history-private@1",
+      "policy_cas": "ipfs-kit.semantic-governor-store.policy-cas@1",
+      "certificate_transport": "ipfs_kit_py/test-certificate-store-transport@1",
+      "profile_g_kinds": {
+        "goal": "Goal",
+        "subgoal": "Subgoal",
+        "plan-branch": "PlanBranch",
+        "plan-selection": "PlanSelection",
+        "task": "TaskSpec",
+        "risk-model": "RiskModel",
+        "risk-evidence": "RiskEvidence",
+        "risk-assessment": "RiskAssessment",
+        "neighborhood-record": "NeighborhoodRecord",
+        "neighborhood-attestation": "NeighborhoodAttestation",
+        "schedule-proposal": "ScheduleProposal",
+        "task-claim": "TaskClaim",
+        "claim-resolution": "ClaimResolution",
+        "task-receipt": "TaskReceipt"
+      }
+    },
+    "state_root_transition_wire": {
+      "schema": "mcp++/coordination/state-root-transition@1",
+      "closed_fields": [
+        "schema",
+        "namespace",
+        "operation_id",
+        "expected_root_cid",
+        "expected_revision",
+        "new_root_cid",
+        "new_revision",
+        "created_at_ms"
+      ],
+      "invariants": [
+        "new_revision == expected_revision + 1",
+        "new_root_cid != expected_root_cid",
+        "transition CID must be dag-json",
+        "successor root block must exist before CAS publication and during reconstruction"
+      ]
+    },
+    "namespace": {
+      "max_length": 255,
+      "segment_grammar": "[a-z0-9](?:[a-z0-9._-]{0,61}[a-z0-9])?",
+      "rules": [
+        "non-empty",
+        "no leading/trailing whitespace",
+        "no empty segments or '//'",
+        "segments slash-separated"
+      ],
+      "governor_namespace_examples": [
+        "semantic-governor/<workspace>/audit",
+        "semantic-governor/<workspace>/calibration",
+        "semantic-governor/<workspace>/benchmark",
+        "semantic-governor/<workspace>/policy",
+        "semantic-governor/<workspace>/promotion",
+        "semantic-governor/<workspace>/receipts"
+      ],
+      "aae_namespace_note": "AAE campaign/policy/promotion/history namespaces are not frozen by kit storage. AAE-034+ must define closed adversarial-assurance namespaces over the same segment grammar and must not overload semantic-governor/* without an explicit ownership decision."
+    },
+    "operation_id": {
+      "grammar": "[a-z0-9](?:[a-z0-9._:-]{0,126}[a-z0-9])?",
+      "max_length": 128,
+      "scope_root_cas": "UNIQUE(namespace, operation_id) in state_root_transitions",
+      "scope_governor_artifacts": "operation_id uniqueness in governor_artifact_ops.sqlite3 bind table",
+      "idempotency": {
+        "exact_replay": {
+          "status": "unchanged",
+          "reason_code": "idempotent_replay"
+        },
+        "changed_reuse": {
+          "status": "conflict",
+          "reason_code": "operation_id_reused"
+        },
+        "artifact_exact_replay": {
+          "local_durable": true,
+          "reason_code": "unchanged",
+          "provider_status": "not_requested"
+        },
+        "artifact_changed_reuse": "GovernorArtifactConflictError"
+      }
+    },
+    "expected_version_cas": {
+      "predecessor_forms": [
+        {
+          "expected_revision_or_generation": 0,
+          "expected_root_or_head_cid": null
+        },
+        {
+          "expected_revision_or_generation": ">0",
+          "expected_root_or_head_cid": "required canonical dag-json CID"
+        }
+      ],
+      "rejected_forms": [
+        "revision/generation 0 with non-null root/head CID",
+        "non-zero revision/generation with null root/head CID",
+        "new_root_cid equal to expected_root_cid"
+      ],
+      "success": {
+        "status": "updated",
+        "reason_code": "updated",
+        "after.revision_or_generation": "before + 1",
+        "local_durable": true
+      },
+      "stale_expectation": {
+        "status": "conflict",
+        "reason_code": "stale_expectation",
+        "mutation": false
+      },
+      "statuses_store_dict": [
+        "updated",
+        "unchanged",
+        "conflict"
+      ],
+      "statuses_typed_facade": [
+        "updated",
+        "unchanged",
+        "conflict",
+        "unavailable",
+        "corrupt"
+      ],
+      "serialization": "BEGIN IMMEDIATE under store RLock; one winner among concurrent writers",
+      "interruption_points": [
+        "before_transaction",
+        "after_expectation_verification",
+        "after_transition_block_fsync",
+        "after_transition_indexing",
+        "before_sqlite_commit",
+        "after_sqlite_commit"
+      ],
+      "interruption_recovery_rule": "Reopen recovers to the prior root or the sole durable successor reconstructed from immutable transition blocks; never invents promotion or completion.",
+      "promotion_extra_fields": {
+        "candidate_cid": "required distinct content CID for promotion candidate",
+        "authorization_cid": "required distinct authorization evidence CID; self-promotion forbidden"
+      },
+      "history_append_mapping": "DurableAuditHistoryStore.append_history maps generation/head CAS onto compare_and_swap_state_root; successor root is a deterministic history-manifest CID referencing entry_cid and prior head."
+    },
+    "typed_results": {
+      "RootUpdateStatus": [
+        "updated",
+        "unchanged",
+        "conflict",
+        "unavailable",
+        "corrupt"
+      ],
+      "ProviderStatus": [
+        "available",
+        "unavailable",
+        "failed",
+        "corrupt",
+        "not_requested"
+      ],
+      "StateRootSnapshot": {
+        "fields": ["namespace", "root_cid", "revision", "transition_cid"],
+        "revision_zero": "root_cid and transition_cid must be null",
+        "non_zero": "root_cid and transition_cid required"
+      },
+      "StateRootCASResult": {
+        "fields": [
+          "status",
+          "before",
+          "after",
+          "transition_cid",
+          "reason_code",
+          "local_durable",
+          "replicated"
+        ]
+      },
+      "ArtifactWriteResult": {
+        "fields": [
+          "cid",
+          "local_durable",
+          "provider_status",
+          "replicated",
+          "reason_code"
+        ]
+      },
+      "StateRootRecoveryReport": {
+        "fields": [
+          "verified_blocks",
+          "reconstructed_roots",
+          "ignored_idempotent_transitions",
+          "errors"
+        ]
+      },
+      "GovernorArtifactWriteResult": {
+        "fields": [
+          "cid",
+          "kind",
+          "local_durable",
+          "provider_status",
+          "replicated",
+          "reason_code"
+        ]
+      },
+      "PolicyVersionSnapshot": {
+        "fields": ["namespace", "policy_cid", "generation", "transition_cid"]
+      },
+      "PromotionStateSnapshot": {
+        "fields": ["namespace", "promotion_cid", "generation", "transition_cid"]
+      },
+      "HistoryHeadSnapshot": {
+        "fields": [
+          "namespace",
+          "head_cid",
+          "generation",
+          "transition_cid",
+          "history_role"
+        ]
+      },
+      "PolicyCASResult": {
+        "fields": [
+          "status",
+          "before",
+          "after",
+          "transition_cid",
+          "reason_code",
+          "local_durable",
+          "replicated",
+          "operation_id"
+        ]
+      },
+      "PromotionCASResult": {
+        "fields": [
+          "status",
+          "before",
+          "after",
+          "transition_cid",
+          "reason_code",
+          "local_durable",
+          "replicated",
+          "operation_id",
+          "candidate_cid",
+          "authorization_cid"
+        ]
+      },
+      "HistoryAppendResult": {
+        "fields": [
+          "status",
+          "before",
+          "after",
+          "entry_cid",
+          "transition_cid",
+          "reason_code",
+          "local_durable",
+          "operation_id"
+        ]
+      },
+      "ReceiptIssuanceResult": {
+        "fields": [
+          "status",
+          "receipt_cid",
+          "kind",
+          "envelope_schema",
+          "local_durable",
+          "reason_code",
+          "operation_id"
+        ],
+        "envelope_rule": "envelope_schema must name an existing envelope; semantic-governor/receipt* prefixes are rejected"
+      },
+      "AuditRecoveryReport": {
+        "fields": [
+          "verified_blocks",
+          "reconstructed_policy_heads",
+          "reconstructed_promotion_heads",
+          "reconstructed_history_heads",
+          "ignored_idempotent_transitions",
+          "errors"
+        ]
+      },
+      "CertificateTransportPutResult": {
+        "fields": [
+          "stored",
+          "cid",
+          "reason_code",
+          "byte_length",
+          "local_stored",
+          "ipfs_stored",
+          "diagnostics"
+        ]
+      },
+      "CertificateTransportGetResult": {
+        "fields": [
+          "status",
+          "cid",
+          "reason_code",
+          "data",
+          "byte_length",
+          "source",
+          "diagnostics"
+        ]
+      }
+    },
+    "corruption": {
+      "local_cid_mismatch": "ArtifactIntegrityError; recovery fails closed",
+      "backend_cid_mismatch": "ArtifactIntegrityError on get; adapter put_verified projects ProviderStatus.CORRUPT without claiming replication success",
+      "non_canonical_json": "ArtifactIntegrityError",
+      "corrupt_sqlite": "Preserved as coordination.sqlite3.corrupt-<ms> and rebuilt from immutable blocks",
+      "tampered_root_index": "current_state_root / CAS verify chain against blocks and refuse mutation",
+      "raw_transition_evidence": "Rejected before rebuild mutates indexes",
+      "ambiguous_successors": "Reconstruction rejects without picking a winner",
+      "semantic_facade_raw_root": "validate_semantic_dag_json_cid rejects raw transport CIDs; generic store may still hold raw coordination artifacts",
+      "governor_forged_artifact_cid": "GovernorArtifactIntegrityError when recomputed CID != expected_cid",
+      "history_entry_integrity": "HistoryAppendResult status=corrupt reason_code=entry_integrity_failure",
+      "certificate_cid_mismatch": "CertificateTransportReason.CID_MISMATCH / INTEGRITY_FAILED"
+    },
+    "concurrency": {
+      "in_process": "threading.RLock around store operations",
+      "cross_process_cas": "SQLite BEGIN IMMEDIATE serializes writers before expectation is observed as current",
+      "outcome": "Exactly one distinct winner; losers receive typed conflict",
+      "tests": [
+        "test_two_independent_store_connections_have_one_distinct_winner",
+        "test_distinct_concurrent_writers_have_one_winner_and_a_typed_loser"
+      ]
+    },
+    "replay": {
+      "late_exact_operation_replay": "status=unchanged, reason_code=idempotent_replay, revision/generation unchanged",
+      "changed_operation_reuse": "status=conflict, reason_code=operation_id_reused",
+      "block_put_same_bytes": "created=false, no collision",
+      "block_put_different_bytes_same_cid": "ArtifactIntegrityError",
+      "governor_artifact_exact_operation_replay": "local_durable=true, reason_code=unchanged after re-verify",
+      "governor_artifact_changed_operation_reuse": "GovernorArtifactConflictError"
+    },
+    "recovery": {
+      "startup": [
+        "If SQLite unreadable: preserve corrupt file, recreate empty index",
+        "If local blocks exist: recover(rebuild=False) verify pass",
+        "If artifacts index empty or root indexes disagree with immutable chain: recover(rebuild=True)"
+      ],
+      "rebuild_sources": [
+        "All verified local blocks",
+        "Root transition chain reconstruction",
+        "Profile G claim/lease/health reindex",
+        "Coordination archive tombstone application"
+      ],
+      "fail_closed_conditions": [
+        "Any corrupt block in scan",
+        "Missing successor root for a transition",
+        "Duplicate namespace/operation_id",
+        "Broken predecessor chain",
+        "Non-dag-json transition CID"
+      ],
+      "adapter_projection": "recover_roots returns StateRootRecoveryReport; semantic validation failures become errors=[{code: corrupt, message: ...}] with empty reconstructed_roots",
+      "governor_domain_recovery": "AuditRecoveryReport is contracted but recover_governor_store is not implemented on this pin; AAE-038 must compose store.recover and project AAE heads similarly",
+      "max_recovery_errors": 32
+    },
+    "history": {
+      "primitive_surface": [
+        "current_state_root",
+        "root_transitions",
+        "state_roots",
+        "compare_and_swap_state_root"
+      ],
+      "governor_campaign_history_pattern": {
+        "class": "DurableAuditHistoryStore",
+        "roles": ["audit", "calibration", "benchmark"],
+        "append_preconditions": [
+          "generation-zero expects null head CID",
+          "non-zero expects head CID",
+          "entry_cid must already be durable dag-json",
+          "operation_id is durable idempotency key",
+          "successor history-manifest is deterministic"
+        ],
+        "privacy": "public projections expose portable CIDs/generations only; reject absolute/local paths and private field markers"
+      },
+      "aae_reuse": "AAE campaign histories must use the same CAS-linked append-only manifest pattern over DurableCoordinationStore; do not treat Profile G claim/lease indexes as campaign history."
+    },
+    "receipts": {
+      "governor_issue_receipt_contract": {
+        "admitted_kinds": ["run_receipt", "promotion_receipt"],
+        "requires": ["expected_cid", "envelope_schema", "operation_id"],
+        "forbids_new_hierarchy": "envelope_schema must not start with semantic-governor/receipt"
+      },
+      "agent_supervisor_resolver": {
+        "class": "AgentSupervisorReceiptResolver",
+        "dependency": "DurableCoordinationStore",
+        "property": "no synthetic success; missing or corrupt blocks are denied/unavailable"
+      },
+      "aae_reuse": "Campaign execution receipts and promotion receipts bind datasets-neutral payloads into existing envelope schemas, store immutable blocks via put/put_artifact, and resolve only through verified CAS reads."
+    },
+    "proof_store": {
+      "certificate_transport": {
+        "interface": "TestCertificateStoreTransport@1",
+        "class": "IpfsKitProofCertificateStore",
+        "authority_limit": "Exact-byte move by CID only; not proof of reuse, not seal authority, not ZK"
+      },
+      "missing_sealer_apis": [
+        "IncrementalProofSealer",
+        "FullCheckpointSeal",
+        "DeltaSeal",
+        "create_full_checkpoint",
+        "publish_full_checkpoint",
+        "build_delta_seal",
+        "publish_delta_seal"
+      ],
+      "status": "typed_unavailable for sealer; available for certificate transport only"
+    },
+    "metrics": {
+      "root_recovery_metrics": {
+        "root_index_verifications": "Incremented on recover verify/rebuild scan",
+        "root_index_rebuild_mutations": "Incremented only for committed root-index DELETE/INSERT work"
+      },
+      "healthy_reopen_property": "When indexes already match immutable transitions, reopen verification leaves root_index_rebuild_mutations at zero.",
+      "status_counts": [
+        "artifacts",
+        "claims",
+        "leases",
+        "daemon_health",
+        "index_archives"
+      ],
+      "note": "No AAE campaign metrics exist in kit yet; those belong to adversarial_assurance_store and accelerate benchmark tasks."
+    },
+    "optional_backend": {
+      "styles": [
+        "store_block/load_block",
+        "Helia put/get",
+        "Kubo block/dag client methods"
+      ],
+      "local_first": true,
+      "daemon_required_for_local_durability": false,
+      "import_side_effects": "Package import and adapter construction perform no provider discovery, installation, network service, or daemon startup."
+    }
+  },
+  "tests": {
+    "focused_suite": [
+      {
+        "path": "ipfs_kit_py/tests/test_coordination_storage.py",
+        "def_test_count": 7,
+        "covers": [
+          "Profile G hermetic vector CIDs",
+          "restart and index recovery",
+          "backend repair of missing local block",
+          "claim/lease fencing and expiry",
+          "retention archives without deleting blocks",
+          "expected CID and recovery fail-closed corruption",
+          "corrupt SQLite preserve-and-rebuild"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_contracts.py",
+        "def_test_count": 9,
+        "covers": [
+          "closed contract round-trip",
+          "namespace and CID validation",
+          "CAS expectation coherence",
+          "semantic dag-json-only CIDs"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_cas.py",
+        "def_test_count": 10,
+        "covers": [
+          "revisioned publish",
+          "stale CAS and idempotent replay",
+          "concurrent winners",
+          "index rebuild from transitions",
+          "live corruption refusal"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_adapter.py",
+        "def_test_count": 7,
+        "covers": [
+          "caller identity preservation",
+          "provider status projection",
+          "raw CID rejection at semantic facade"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_recovery.py",
+        "def_test_count": 11,
+        "covers": [
+          "interruption boundaries",
+          "ambiguous successor rejection",
+          "raw transition rejection before rebuild",
+          "recovery races with CAS commit"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_acceptance.py",
+        "def_test_count": 7,
+        "covers": [
+          "public facade acceptance",
+          "namespace isolation",
+          "concurrency and interruption",
+          "raw-root semantic rejection"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_performance.py",
+        "def_test_count": 2,
+        "covers": [
+          "healthy reopen without root-index rebuild mutations",
+          "orphan transition reconstruction"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_semantic_state_root_import_safety.py",
+        "def_test_count": 1,
+        "covers": ["inert public facade import"]
+      },
+      {
+        "path": "ipfs_kit_py/tests/semantic_governor_store/test_contracts.py",
+        "def_test_count": 31,
+        "covers": [
+          "closed enums and validators",
+          "typed result round-trips",
+          "protocol shape including issue_receipt and recover_governor_store"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/semantic_governor_store/test_artifacts.py",
+        "def_test_count": 24,
+        "covers": [
+          "sealed artifact admission",
+          "operation_id idempotency",
+          "privacy markers and size bounds",
+          "CID forge refusal"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/semantic_governor_store/test_history.py",
+        "def_test_count": 20,
+        "covers": [
+          "append-only history CAS",
+          "public/private projections",
+          "entry integrity and unavailable entry outcomes"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/semantic_governor_store/test_policy_cas.py",
+        "def_test_count": 18,
+        "covers": [
+          "policy and promotion CAS",
+          "authorization-separated promotion",
+          "rollback retains transition history"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_proof_certificate_store.py",
+        "def_test_count": 9,
+        "covers": [
+          "CID verification",
+          "budget and path safety",
+          "optional IPFS transport misses"
+        ]
+      },
+      {
+        "path": "ipfs_kit_py/tests/test_agent_supervisor_receipts.py",
+        "covers": [
+          "verified receipt resolution",
+          "denied/unavailable without synthetic success"
+        ]
+      }
+    ],
+    "def_test_count_sum_focused": 156,
+    "inventory_note": "Counts are static def test_* enumerations on this pin, not a green pytest run. Inventory does not restate a green suite as AAE campaign readiness."
+  },
+  "hermetic_vectors": {
+    "profile_g_artifacts": {
+      "path": "ipfs_kit_py/tests/fixtures/mcp_plus_plus/profile_g_artifacts_valid.json",
+      "kinds": [
+        "Goal",
+        "Subgoal",
+        "PlanBranch",
+        "PlanSelection",
+        "TaskSpec",
+        "RiskModel",
+        "RiskEvidence",
+        "RiskAssessment",
+        "NeighborhoodRecord",
+        "ScheduleProposal",
+        "TaskClaim",
+        "NeighborhoodAttestation",
+        "ClaimResolution",
+        "TaskReceipt"
+      ],
+      "resolution_order": [
+        "MCP_PLUS_PLUS_PROFILE_G_VECTORS env override",
+        "vendored fixture path above",
+        "monorepo sibling Mcp-Plus-Plus/conformance/vectors/profile_g_artifacts_valid.json"
+      ],
+      "purpose": "Hermetic coordination/receipt seal tests without requiring an external MCP++ checkout."
+    }
+  },
+  "documentation": {
+    "coordination_storage": "ipfs_kit_py/docs/coordination-storage.md",
+    "durable_state_roots": "ipfs_kit_py/docs/durable_state_roots.md",
+    "plan_ownership": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md sections 3–4 (kit authorities and ownership)"
+  },
+  "aae_consumption_guidance": {
+    "do": [
+      "Compose DurableCoordinationStore for all durable AAE artifacts",
+      "Use DurableStateRootAdapter when publishing semantic dag-json campaign/policy/promotion roots",
+      "Mirror semantic_governor_store thin-typed patterns under adversarial_assurance_store",
+      "Require caller-supplied verified CIDs and operation_ids",
+      "Treat CAS conflict/unchanged/corrupt/unavailable as closed outcomes",
+      "Recover only from verified immutable blocks via recover / recover_roots",
+      "Bind receipts to existing envelope schemas; resolve only through verified block reads",
+      "Use IpfsKitProofCertificateStore only as optional certificate byte transport"
+    ],
+    "do_not": [
+      "Open a second block store or WAL",
+      "Trust a supplied CID without recomputing or verifying canonical bytes",
+      "Delete history to roll back; use another authorized CAS to a prior CID",
+      "Treat Profile G claim/lease indexes as campaign history",
+      "Invent IncrementalProofSealer or seal APIs while typed_unavailable",
+      "Create a new receipt envelope hierarchy or cryptography",
+      "Infer adversarial_assurance_store APIs from documentation alone before AAE-034+"
+    ]
+  },
+  "evidence_subset": [
+    "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+    "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py",
+    "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py",
+    "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/__init__.py",
+    "ipfs_kit_py/ipfs_kit_py/semantic_governor_store/__init__.py",
+    "ipfs_kit_py/ipfs_kit_py/semantic_governor_store/contracts.py",
+    "ipfs_kit_py/ipfs_kit_py/semantic_governor_store/artifacts.py",
+    "ipfs_kit_py/ipfs_kit_py/semantic_governor_store/history.py",
+    "ipfs_kit_py/ipfs_kit_py/semantic_governor_store/policy.py",
+    "ipfs_kit_py/ipfs_kit_py/proof_certificate_store.py",
+    "ipfs_kit_py/ipfs_kit_py/mcp_server/agent_supervisor_receipts.py",
+    "ipfs_kit_py/tests/test_coordination_storage.py",
+    "ipfs_kit_py/tests/test_semantic_state_root_*.py",
+    "ipfs_kit_py/tests/semantic_governor_store/",
+    "ipfs_kit_py/tests/test_proof_certificate_store.py",
+    "ipfs_kit_py/tests/test_agent_supervisor_receipts.py",
+    "ipfs_kit_py/tests/fixtures/mcp_plus_plus/profile_g_artifacts_valid.json",
+    "ipfs_kit_py/docs/coordination-storage.md",
+    "ipfs_kit_py/docs/durable_state_roots.md",
+    "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md",
+    "docs/architecture/adversarial_assurance_engine.todo.md"
+  ]
+}

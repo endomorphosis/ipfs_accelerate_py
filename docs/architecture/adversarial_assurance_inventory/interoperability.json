@@ -1,0 +1,1133 @@
+{
+  "schema": "aae/mcplusplus-boundary@1",
+  "interface": "MCPPlusPlusBoundary@1",
+  "probe_interface": "IncrementalProofSealerCapabilityProbe@1",
+  "evidence_id": "aae/mcplusplus-boundary@1",
+  "task_id": "AAE-004",
+  "goal_id": "AAE-G010",
+  "track": "inventory-interoperability",
+  "board_namespace": "adversarial-assurance-engine-v1",
+  "inventory_kind": "read_only_mcplusplus_and_proof_sealer_boundary",
+  "generated_for_program": "adversarial-assurance-engine-v1",
+  "title": "Inventory MCP++ conformance boundary and proof-sealer release surfaces",
+  "inspected_at": "2026-08-13",
+  "repository": {
+    "name": "endomorphosis/ipfs_accelerate_py",
+    "role": "aae_controller_and_mcplusplus_runtime_consumer",
+    "package_roots": [
+      "ipfs_accelerate_py/mcp_server/mcplusplus",
+      "ipfs_accelerate_py/agent_supervisor/semantic_state",
+      "ipfs_accelerate_py/agent_supervisor/verification",
+      "ipfs_accelerate_py/agent_supervisor/merge",
+      "ipfs_accelerate_py/agent_supervisor/proof",
+      "ipfs_accelerate_py/mcplusplus",
+      "ipfs_accelerate_py/mcplusplus_module"
+    ],
+    "inventory_tree_revision": "dcfc11e83e904197bf0d93a502466e441aa6a3d2",
+    "inventory_tree_oid": "a065e39b372125cfc98910e89fdb52e433e57da7",
+    "planning_authority_revision": "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda",
+    "incremental_proof_sealer_program_revision_at_planning": "65ef6ed4cb9fa51d7c2c6c1a4f9036678f8cb893",
+    "incremental_proof_sealer_branch_tip_at_inspection": "c983d4db33e83aba0cfb92a74fedb9ff26e4bf73",
+    "notes": [
+      "Planning pin 7c9f3fa3... is an ancestor of inspected AAE controller tree dcfc11e8....",
+      "MCP++ shared wire/conformance authority is the nested gitlink endomorphosis/Mcp-Plus-Plus @ dc316465....",
+      "IncrementalProofSealer program pin 65ef6ed4... is a live external branch tip observed at planning; it is NOT an ancestor of this AAE controller tree and is not a released public API on HEAD.",
+      "Branch agent/incremental-proof-sealer-v1 tip at inspection c983d4db... remains external and incomplete; early admission/backends packages on that branch are not importable on this AAE tree.",
+      "Each claimed available surface records the last modifying commit of its defining source file as source_revision where available.",
+      "No new MCP++ execution profile and no AAE-local generic envelope are introduced; only existing shared wire/vector scope is inventoried."
+    ]
+  },
+  "nested_gitlinks_observed": {
+    "ipfs_datasets_py": "fbd1ba9f70803de157622bb20e22595ef09d606f",
+    "ipfs_kit_py": "c7e5feeb24582ab68c1f5ca626366b665a82ad61",
+    "ipfs_accelerate_py/mcplusplus": "dc3164653a48d059ae9812078359daeafb451c07"
+  },
+  "planning_authority_pins": {
+    "endomorphosis/ipfs_accelerate_py": "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda",
+    "endomorphosis/ipfs_datasets_py": "fbd1ba9f70803de157622bb20e22595ef09d606f",
+    "endomorphosis/ipfs_kit_py": "c7e5feeb24582ab68c1f5ca626366b665a82ad61",
+    "endomorphosis/Mcp-Plus-Plus": "dc3164653a48d059ae9812078359daeafb451c07",
+    "live_IncrementalProofSealer_branch_at_planning": "65ef6ed4cb9fa51d7c2c6c1a4f9036678f8cb893",
+    "proof_sealer_datasets_gitlink_at_planning": "321fe10c191b9dab84206b5f9bd598aa2e46bcc8",
+    "proof_sealer_kit_gitlink_at_planning": "866ae2cd0a1a94a794ff9316a9a4f67a10245957",
+    "notes": [
+      "Proof-sealer datasets/kit pins 321fe10c... / 866ae2cd... are planning observations of partial evidence/ProofUnit/admission/store surfaces only; those commits are not present as objects in this worktree and are not the AAE controller nested gitlinks.",
+      "AAE nested gitlinks remain datasets fbd1ba9f... and kit c7e5feeb...."
+    ]
+  },
+  "conflict_policy": {
+    "new_mcplusplus_profile_allowed": false,
+    "local_generic_envelope_allowed": false,
+    "new_proof_or_zk_system_allowed": false,
+    "missing_incremental_proof_sealer_disposition": "typed_unavailable",
+    "missing_full_checkpoint_sealer_disposition": "typed_unavailable",
+    "missing_delta_sealer_disposition": "typed_unavailable",
+    "ivp_merkle_commitment_may_substitute_for_sealer": false,
+    "aae_local_proof_system_masquerading_as_seal_forbidden": true,
+    "source": "config/adversarial_assurance_engine_scheduler.json capability_policy plus ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md §3/§4"
+  },
+  "claimed_interfaces": [
+    "MCPPlusPlusBoundary@1",
+    "IncrementalProofSealerCapabilityProbe@1",
+    "McppProfileAInterfaceDescriptor",
+    "McppProfileBCidNativeArtifacts",
+    "McppProfileFEventDag",
+    "McppProfileGRiskScheduling",
+    "SemanticStateWireCodec",
+    "VerificationCommitment",
+    "FullCheckpointSeal",
+    "DeltaSeal"
+  ],
+  "mcplusplus_authorities": {
+    "shared_wire_and_conformance": {
+      "repository": "endomorphosis/Mcp-Plus-Plus",
+      "gitlink_path": "ipfs_accelerate_py/mcplusplus",
+      "commit": "dc3164653a48d059ae9812078359daeafb451c07",
+      "role": "shared wire/conformance authority; no new AAE execution profile permitted",
+      "roots": [
+        "ipfs_accelerate_py/mcplusplus/conformance/vectors",
+        "ipfs_accelerate_py/mcplusplus/docs/spec",
+        "ipfs_accelerate_py/mcplusplus/schemas",
+        "ipfs_accelerate_py/mcplusplus/tests-py",
+        "ipfs_accelerate_py/mcplusplus/tests-go",
+        "ipfs_accelerate_py/mcplusplus/tests-rs",
+        "ipfs_accelerate_py/mcplusplus/tests-ts"
+      ]
+    },
+    "canonical_runtime": {
+      "package": "ipfs_accelerate_py.mcp_server.mcplusplus",
+      "path": "ipfs_accelerate_py/mcp_server/mcplusplus",
+      "role": "feature-authoritative MCP++ runtime primitives used by the unified MCP server and semantic-state wire codec"
+    },
+    "alternate_trio_surface": {
+      "package": "ipfs_accelerate_py.mcplusplus_module",
+      "path": "ipfs_accelerate_py/mcplusplus_module",
+      "role": "Trio-first alternate MCP++ surface; not the AAE ownership authority for new profiles"
+    },
+    "root_docs_checkout": {
+      "path": "mcpplusplus",
+      "role": "root-level conformance/history docs checkout (not the gitlink submodule); planning authority remains the nested mcplusplus gitlink"
+    }
+  },
+  "profiles": {
+    "profile_a": {
+      "name": "Profile A",
+      "capability": "mcp++/profile-a/interface-description",
+      "also_seen_as": [
+        "mcp++/profile-a-idl",
+        "MCP-IDL"
+      ],
+      "status": "available",
+      "summary": "CID-addressed interface descriptors (MCP-IDL). Semantic-state harness publishes a closed descriptor; runtime registry builds/identifies descriptors.",
+      "spec_docs": [
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/docs/spec/mcp-idl.md",
+          "source_revision": "3022e05d1ba90a0ba47dd7a0b1534655642a1f80",
+          "authority": "mcplusplus_gitlink"
+        }
+      ],
+      "surfaces": [
+        {
+          "name": "semantic_state_interface_descriptor",
+          "interface_id": "semantic-state-harness@1.0.0",
+          "import_path": "ipfs_accelerate_py.agent_supervisor.semantic_state.wire",
+          "qualified_symbols": [
+            "semantic_state_interface_descriptor",
+            "interface_descriptor_cid",
+            "SemanticStateWireCodec.interface_descriptor"
+          ],
+          "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py",
+          "source_revision": "bd5fad7ac854e3127e8aef4a5af58ee7f0748e29",
+          "schema_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/schemas/semantic-state-harness.interface.json",
+          "schema_source_revision": "39bf9f9776289f18785f7cfc2a579410404a39ba",
+          "wire_boundary": "mcp-plus-plus-profiles-a-b-f",
+          "interface_name": "semantic-state-harness",
+          "interface_namespace": "ipfs-accelerate.agent-supervisor",
+          "interface_version": "1.0.0",
+          "requires": [
+            "mcp++/profile-a/interface-description",
+            "mcp++/profile-b/cid-native-artifacts",
+            "mcp++/profile-f/event-dag-ordering"
+          ],
+          "test_paths": [
+            "test/api/semantic_state/test_wire.py"
+          ],
+          "test_revisions": {
+            "test/api/semantic_state/test_wire.py": "bd5fad7ac854e3127e8aef4a5af58ee7f0748e29"
+          }
+        },
+        {
+          "name": "InterfaceDescriptorRegistry",
+          "import_path": "ipfs_accelerate_py.mcp_server.mcplusplus.idl_registry",
+          "qualified_symbols": [
+            "InterfaceDescriptorRegistry",
+            "build_descriptor",
+            "canonicalize_descriptor",
+            "compute_interface_cid",
+            "identify_interface_descriptor"
+          ],
+          "source_path": "ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py",
+          "source_revision": "5e677d7ef7972d012cb228eae0e47c0f9073babf",
+          "test_paths": [
+            "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py",
+            "test/mcp_server/test_mcplusplus_idl_identity_profile.py"
+          ],
+          "test_revisions": {
+            "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py": "dcd0617fe1f9a83172e3df18204096dd157bd85b"
+          }
+        },
+        {
+          "name": "mcplusplus_module.interface_descriptor",
+          "import_path": "ipfs_accelerate_py.mcplusplus_module.interface_descriptor",
+          "source_path": "ipfs_accelerate_py/mcplusplus_module/interface_descriptor.py",
+          "source_revision": "dcd0617fe1f9a83172e3df18204096dd157bd85b",
+          "role": "alternate Trio-surface Profile A implementation"
+        },
+        {
+          "name": "mcplusplus_harness_validator_mcp_idl",
+          "path": "ipfs_accelerate_py/mcplusplus/tests-py/validators/mcp_idl.py",
+          "role": "Python conformance harness Profile A validator; one of four language harnesses"
+        }
+      ]
+    },
+    "profile_b": {
+      "name": "Profile B",
+      "capability": "mcp++/profile-b/cid-native-artifacts",
+      "status": "available",
+      "summary": "CID-native execution artifacts: canonicalize, intent/decision/receipt/event builders, envelopes, and Kubo-compatible CIDs.",
+      "spec_docs": [
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/docs/spec/cid-native-artifacts.md",
+          "source_revision": "f81ec39789da10444f77f8d475dd2dda7ca04f2e",
+          "authority": "mcplusplus_gitlink"
+        }
+      ],
+      "surfaces": [
+        {
+          "name": "artifacts",
+          "import_path": "ipfs_accelerate_py.mcp_server.mcplusplus.artifacts",
+          "qualified_symbols": [
+            "canonicalize_artifact",
+            "compute_artifact_cid",
+            "build_intent",
+            "build_decision",
+            "build_receipt",
+            "build_event",
+            "envelope_from_payloads",
+            "ArtifactStore"
+          ],
+          "source_path": "ipfs_accelerate_py/mcp_server/mcplusplus/artifacts.py",
+          "source_revision": "dcd0617fe1f9a83172e3df18204096dd157bd85b",
+          "cid_helper_path": "ipfs_accelerate_py/mcp_server/mcplusplus/kubo_cid.py",
+          "cid_helper_revision": "dcd0617fe1f9a83172e3df18204096dd157bd85b",
+          "test_paths": [
+            "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py",
+            "test/api/semantic_state/test_wire.py",
+            "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_cid_envelopes.py"
+          ],
+          "test_revisions": {
+            "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py": "dcd0617fe1f9a83172e3df18204096dd157bd85b",
+            "test/api/semantic_state/test_wire.py": "bd5fad7ac854e3127e8aef4a5af58ee7f0748e29"
+          }
+        },
+        {
+          "name": "SemanticStateWireCodec envelopes and receipts",
+          "import_path": "ipfs_accelerate_py.agent_supervisor.semantic_state.wire",
+          "qualified_symbols": [
+            "SemanticStateWireCodec.encode_execution_envelope",
+            "SemanticStateWireCodec.decode_execution_envelope",
+            "SemanticStateWireCodec.encode_execution_receipt",
+            "SemanticStateWireCodec.decode_execution_receipt",
+            "cid_for_payload"
+          ],
+          "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py",
+          "source_revision": "bd5fad7ac854e3127e8aef4a5af58ee7f0748e29",
+          "identity_rule": "Identity is exclusively canonicalize_artifact plus cid_for_bytes; this module does not reimplement datasets identity or invent a local generic envelope."
+        }
+      ],
+      "conformance_vectors": [
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/execution_receipt.json",
+          "model": "ExecutionReceipt",
+          "mcplusplus_commit": "dc3164653a48d059ae9812078359daeafb451c07",
+          "vector_source_revision": "7c0056468c7fe4607fda973530404837abbd6596"
+        },
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/initialize_result.json",
+          "model": "InitializeResult",
+          "mcplusplus_commit": "dc3164653a48d059ae9812078359daeafb451c07"
+        }
+      ]
+    },
+    "profile_f": {
+      "name": "Profile F",
+      "capability": "mcp++/profile-f/event-dag-ordering",
+      "status": "available",
+      "summary": "Event-DAG ordering and content-addressed DAG events. Semantic-state wire encodes/decodes DAG events; runtime EventDAGStore holds nodes.",
+      "spec_docs": [
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/docs/spec/event-dag-ordering.md",
+          "source_revision": "adbfff9818e3d884b9e6e0fc3b47429bd4ec63cb",
+          "authority": "mcplusplus_gitlink"
+        }
+      ],
+      "surfaces": [
+        {
+          "name": "EventDAGStore",
+          "import_path": "ipfs_accelerate_py.mcp_server.mcplusplus.event_dag",
+          "qualified_symbols": [
+            "EventDAGStore",
+            "EventNode"
+          ],
+          "source_path": "ipfs_accelerate_py/mcp_server/mcplusplus/event_dag.py",
+          "source_revision": "dcd0617fe1f9a83172e3df18204096dd157bd85b",
+          "test_paths": [
+            "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py",
+            "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_event_dag.py"
+          ],
+          "test_revisions": {
+            "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py": "dcd0617fe1f9a83172e3df18204096dd157bd85b"
+          }
+        },
+        {
+          "name": "SemanticStateWireCodec DAG events",
+          "import_path": "ipfs_accelerate_py.agent_supervisor.semantic_state.wire",
+          "qualified_symbols": [
+            "SemanticStateWireCodec.encode_dag_event",
+            "SemanticStateWireCodec.decode_dag_event"
+          ],
+          "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py",
+          "source_revision": "bd5fad7ac854e3127e8aef4a5af58ee7f0748e29"
+        }
+      ],
+      "conformance_vectors": [
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/dag_event_epoch.json",
+          "model": "DAGEvent",
+          "mcplusplus_commit": "dc3164653a48d059ae9812078359daeafb451c07"
+        },
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/dag_event_iso.json",
+          "model": "DAGEvent",
+          "mcplusplus_commit": "dc3164653a48d059ae9812078359daeafb451c07"
+        }
+      ]
+    },
+    "profile_g": {
+      "name": "Profile G",
+      "capability": "mcp++/risk-scheduling",
+      "profile_version": "1.0",
+      "profile_label": "mcp++/risk-scheduling@1.0",
+      "status": "available",
+      "summary": "Existing Profile G scheduling/artifact codecs and conformance vectors. Profile G is existing authority consumed by kit and accelerate, not a new AAE execution profile.",
+      "spec_docs": [
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/docs/spec/risk-scheduling.md",
+          "source_revision": "3ab193340980c1d9df001783f1dc1431cd884218",
+          "authority": "mcplusplus_gitlink"
+        }
+      ],
+      "artifact_kinds": [
+        "Goal",
+        "Subgoal",
+        "PlanBranch",
+        "PlanSelection",
+        "TaskSpec",
+        "RiskModel",
+        "RiskEvidence",
+        "RiskAssessment",
+        "NeighborhoodRecord",
+        "NeighborhoodAttestation",
+        "ScheduleProposal",
+        "TaskClaim",
+        "ClaimResolution",
+        "TaskReceipt"
+      ],
+      "artifact_schema_prefix": "mcp++/profile-g/",
+      "conformance_suite_schema": "mcp++/profile-g/conformance-suite@1",
+      "surfaces": [
+        {
+          "name": "datasets canonical Profile G primitives",
+          "owner": "ipfs_datasets_py",
+          "import_path": "ipfs_datasets_py.logic.profile_g",
+          "qualified_symbols": [
+            "canonical_profile_g_bytes",
+            "profile_g_cid",
+            "validate_profile_g_artifact",
+            "validate_artifact",
+            "GoalPlanValidator",
+            "RiskEvidenceStore",
+            "NeighborhoodAttestationEngine",
+            "PROFILE_G_VERSION",
+            "PROFILE_G_CAPABILITY"
+          ],
+          "source_path": "ipfs_datasets_py/ipfs_datasets_py/logic/profile_g.py",
+          "source_revision": "ebe73d4c8179ce7cf0d9850cfe540c4bf3f887b1",
+          "nested_gitlink_commit": "fbd1ba9f70803de157622bb20e22595ef09d606f",
+          "constants": {
+            "PROFILE_G_VERSION": "1.0",
+            "PROFILE_G_CAPABILITY": "mcp++/risk-scheduling"
+          },
+          "test_paths": [
+            "ipfs_datasets_py/tests/unit_tests/logic/test_profile_g.py"
+          ]
+        },
+        {
+          "name": "accelerate Profile G transport dispatcher",
+          "owner": "ipfs_accelerate_py",
+          "import_path": "ipfs_accelerate_py.mcp_server.mcplusplus.profile_g_transport",
+          "qualified_symbols": [
+            "PROFILE_G_PROFILE",
+            "PROFILE_G_METHODS",
+            "ProfileGDispatcher",
+            "ProfileGTransportError",
+            "is_profile_g_method",
+            "profile_metadata",
+            "configure_profile_g_dispatcher",
+            "get_profile_g_dispatcher"
+          ],
+          "source_path": "ipfs_accelerate_py/mcp_server/mcplusplus/profile_g_transport.py",
+          "source_revision": "fd866abbbe114a9bef2f83d28465ff1053abf728",
+          "method_count": 23,
+          "methods": [
+            "mcp++/risk/profile",
+            "mcp++/goals/create",
+            "mcp++/goals/get",
+            "mcp++/goals/list",
+            "mcp++/goals/decompose",
+            "mcp++/goals/select",
+            "mcp++/tasks/create",
+            "mcp++/tasks/get",
+            "mcp++/tasks/list",
+            "mcp++/tasks/ready",
+            "mcp++/risk/assess",
+            "mcp++/risk/evidence",
+            "mcp++/risk/history",
+            "mcp++/neighborhood/query",
+            "mcp++/neighborhood/attest",
+            "mcp++/schedule/frontier",
+            "mcp++/schedule/status",
+            "mcp++/schedule/propose",
+            "mcp++/schedule/claim",
+            "mcp++/schedule/renew",
+            "mcp++/schedule/release",
+            "mcp++/schedule/resolve",
+            "mcp++/schedule/reconcile"
+          ],
+          "transports": [
+            "jsonrpc-http",
+            "mcp+p2p"
+          ],
+          "test_paths": [
+            "ipfs_accelerate_py/mcp/tests/test_profile_g_transport.py"
+          ],
+          "test_revisions": {
+            "ipfs_accelerate_py/mcp/tests/test_profile_g_transport.py": "fd866abbbe114a9bef2f83d28465ff1053abf728"
+          }
+        },
+        {
+          "name": "kit Profile G transport + hermetic vectors",
+          "owner": "ipfs_kit_py",
+          "source_path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/profile_g_transport.py",
+          "source_revision": "a344994f448e3106e31dcd14b39e3f0721d09cfc",
+          "nested_gitlink_commit": "c7e5feeb24582ab68c1f5ca626366b665a82ad61",
+          "hermetic_fixture_path": "ipfs_kit_py/tests/fixtures/mcp_plus_plus/profile_g_artifacts_valid.json",
+          "hermetic_fixture_revision": "df2f9cc092456329de9724c45a50c54b410875d1",
+          "notes": [
+            "Hermetic kit-vendored Profile G valid artifact suite exists on the current kit pin for offline vector consumption."
+          ],
+          "test_paths": [
+            "ipfs_kit_py/tests/test_profile_g_transport.py"
+          ]
+        },
+        {
+          "name": "mcplusplus Profile G harness validators",
+          "path": "ipfs_accelerate_py/mcplusplus/tests-py/validators/profile_g.py",
+          "harness": "ipfs_accelerate_py/mcplusplus/tests-py/harness/profile_g_three_peer.py",
+          "role": "Cross-language conformance codec and three-peer reconciliation harness"
+        }
+      ],
+      "conformance_vectors": [
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_g_artifacts_valid.json",
+          "schema": "mcp++/profile-g/conformance-suite@1",
+          "profile": "mcp++/risk-scheduling@1.0",
+          "case_count": 14,
+          "mcplusplus_commit": "dc3164653a48d059ae9812078359daeafb451c07",
+          "vector_source_revision": "2a2c765425fc2f6f593cf2b346fd029ce7f9fd10"
+        },
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_g_artifacts_invalid.json",
+          "schema": "mcp++/profile-g/conformance-suite@1",
+          "profile": "mcp++/risk-scheduling@1.0",
+          "case_count": 10,
+          "mcplusplus_commit": "dc3164653a48d059ae9812078359daeafb451c07"
+        },
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_g_protocol_valid.json",
+          "schema": "mcp++/profile-g/conformance-suite@1",
+          "profile": "mcp++/risk-scheduling@1.0",
+          "case_count": 10,
+          "mcplusplus_commit": "dc3164653a48d059ae9812078359daeafb451c07"
+        },
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_g_protocol_invalid.json",
+          "schema": "mcp++/profile-g/conformance-suite@1",
+          "profile": "mcp++/risk-scheduling@1.0",
+          "case_count": 19,
+          "mcplusplus_commit": "dc3164653a48d059ae9812078359daeafb451c07"
+        },
+        {
+          "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_g_three_peer.json",
+          "schema": "mcp++/profile-g/three-peer-fixture@1",
+          "mcplusplus_commit": "dc3164653a48d059ae9812078359daeafb451c07"
+        },
+        {
+          "path": "ipfs_kit_py/tests/fixtures/mcp_plus_plus/profile_g_artifacts_valid.json",
+          "role": "hermetic kit-vendored copy of the Profile G valid artifact suite",
+          "nested_gitlink_commit": "c7e5feeb24582ab68c1f5ca626366b665a82ad61",
+          "fixture_source_revision": "df2f9cc092456329de9724c45a50c54b410875d1"
+        }
+      ]
+    },
+    "profiles_observed_but_not_aae_authority": {
+      "profile_c": {
+        "name": "Profile C",
+        "capability": "mcp++/ucan-delegation",
+        "status": "existing_upstream_not_aae_scope",
+        "spec_doc": "ipfs_accelerate_py/mcplusplus/docs/spec/ucan-delegation.md",
+        "vector_paths": [
+          "ipfs_accelerate_py/mcplusplus/conformance/vectors/delegation.json"
+        ],
+        "notes": [
+          "UCAN delegation vector and runtime helpers exist; AAE must not create a new Profile C variant or treat delegation as sealing authority."
+        ]
+      },
+      "profile_d": {
+        "name": "Profile D",
+        "capability": "mcp++/temporal-deontic-policy",
+        "status": "existing_upstream_not_aae_scope",
+        "spec_doc": "ipfs_accelerate_py/mcplusplus/docs/spec/temporal-deontic-policy.md",
+        "vector_paths": [
+          "ipfs_accelerate_py/mcplusplus/conformance/vectors/policy_decision.json"
+        ]
+      },
+      "profile_e": {
+        "name": "Profile E",
+        "capability": "mcp++/p2p-transport",
+        "status": "existing_upstream_not_aae_scope",
+        "spec_doc": "ipfs_accelerate_py/mcplusplus/docs/spec/transport-mcp-p2p.md",
+        "vector_paths": [
+          "ipfs_accelerate_py/mcplusplus/conformance/vectors/p2p_message.json"
+        ]
+      },
+      "profile_h": {
+        "name": "Profile H",
+        "capability": "mcp++/x402-payments",
+        "status": "existing_upstream_not_aae_scope",
+        "notes": [
+          "Conformance vectors and schemas exist under the mcplusplus gitlink (profile-h/*).",
+          "AAE must not create or depend on a new Profile H variant; payments profile is not AAE sealing authority."
+        ],
+        "vector_paths": [
+          "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_h_artifacts_valid.json",
+          "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_h_invalid.json",
+          "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_h_transport_valid.json"
+        ],
+        "schema_paths": [
+          "ipfs_accelerate_py/mcplusplus/schemas/profile-h/1.0/artifacts.schema.json",
+          "ipfs_accelerate_py/mcplusplus/schemas/profile-h/1.0/common.schema.json",
+          "ipfs_accelerate_py/mcplusplus/schemas/profile-h/1.0/x402-v2.schema.json"
+        ]
+      }
+    }
+  },
+  "shared_conformance_vectors": {
+    "authority_commit": "dc3164653a48d059ae9812078359daeafb451c07",
+    "directory": "ipfs_accelerate_py/mcplusplus/conformance/vectors",
+    "readme": "ipfs_accelerate_py/mcplusplus/conformance/README.md",
+    "shape": {
+      "default": "{\"model\": \"<CanonicalModelName>\", \"payload\": { ... }}",
+      "profile_g_suites": "schema mcp++/profile-g/conformance-suite@1 with cases[]"
+    },
+    "cross_language_harnesses": [
+      {
+        "language": "python",
+        "root": "ipfs_accelerate_py/mcplusplus/tests-py",
+        "integration": [
+          "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_conformance_vectors.py",
+          "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_cid_envelopes.py",
+          "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_event_dag.py",
+          "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_mcp_idl.py",
+          "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_profile_g_codec.py",
+          "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_profile_g_three_peer.py"
+        ]
+      },
+      {
+        "language": "go",
+        "root": "ipfs_accelerate_py/mcplusplus/tests-go",
+        "entrypoints": [
+          "ipfs_accelerate_py/mcplusplus/tests-go/conformance_vectors_test.go",
+          "ipfs_accelerate_py/mcplusplus/tests-go/canonical_wire_test.go",
+          "ipfs_accelerate_py/mcplusplus/tests-go/profile_g_codec_test.go"
+        ]
+      },
+      {
+        "language": "rust",
+        "root": "ipfs_accelerate_py/mcplusplus/tests-rs"
+      },
+      {
+        "language": "typescript",
+        "root": "ipfs_accelerate_py/mcplusplus/tests-ts"
+      }
+    ],
+    "vectors": [
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/audit_entry.json",
+        "model": "AuditEntry",
+        "profile_affinity": "shared"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/bus_message.json",
+        "model": "BusMessage",
+        "profile_affinity": "shared"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/dag_event_epoch.json",
+        "model": "DAGEvent",
+        "profile_affinity": "profile_f"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/dag_event_iso.json",
+        "model": "DAGEvent",
+        "profile_affinity": "profile_f"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/delegation.json",
+        "model": "Delegation",
+        "profile_affinity": "profile_c_ucan"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/execution_receipt.json",
+        "model": "ExecutionReceipt",
+        "profile_affinity": "profile_b"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/initialize_result.json",
+        "model": "InitializeResult",
+        "profile_affinity": "shared"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/p2p_message.json",
+        "model": "P2PMessage",
+        "profile_affinity": "transport"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/policy_decision.json",
+        "model": "PolicyDecision",
+        "profile_affinity": "profile_d_policy"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_g_artifacts_valid.json",
+        "model": "DAGEvent",
+        "profile_affinity": "profile_g",
+        "suite_schema": "mcp++/profile-g/conformance-suite@1",
+        "case_count": 14
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_g_artifacts_invalid.json",
+        "model": "DAGEvent",
+        "profile_affinity": "profile_g",
+        "suite_schema": "mcp++/profile-g/conformance-suite@1",
+        "case_count": 10
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_g_protocol_valid.json",
+        "model": "DAGEvent",
+        "profile_affinity": "profile_g",
+        "suite_schema": "mcp++/profile-g/conformance-suite@1",
+        "case_count": 10
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_g_protocol_invalid.json",
+        "model": "DAGEvent",
+        "profile_affinity": "profile_g",
+        "suite_schema": "mcp++/profile-g/conformance-suite@1",
+        "case_count": 19
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_g_three_peer.json",
+        "model": "DAGEvent",
+        "profile_affinity": "profile_g",
+        "suite_schema": "mcp++/profile-g/three-peer-fixture@1"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_h_artifacts_valid.json",
+        "profile_affinity": "profile_h_not_aae_scope",
+        "case_count": 9
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_h_invalid.json",
+        "profile_affinity": "profile_h_not_aae_scope",
+        "case_count": 10
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/profile_h_transport_valid.json",
+        "profile_affinity": "profile_h_not_aae_scope",
+        "case_count": 3
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/session_error.json",
+        "model": "SessionError",
+        "profile_affinity": "shared"
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/wasm_proof_result.json",
+        "model": "WasmProofResult",
+        "profile_affinity": "proof_artifact_vector",
+        "notes": [
+          "MCP++ proof-artifact wire vector only; not IncrementalProofSealer and not a substitute for FullCheckpointSeal/DeltaSeal."
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors/zkp_proof_artifact.json",
+        "model": "ZKProofArtifact",
+        "profile_affinity": "proof_artifact_vector",
+        "vector_source_revision": "3bdf6c36adc28551b924a01b857b4dd10dcfed2b",
+        "notes": [
+          "MCP++ ZKP artifact wire vector only; does not release FullCheckpointSeal or DeltaSeal on this tree.",
+          "Cannot convert IVP VerificationCommitment into a ZK seal."
+        ]
+      }
+    ],
+    "focused_baseline_note": "Planning baseline recorded 58 passed MCP++ CID envelopes, event DAG, conformance vectors, and Profile G codec tests against the pinned clean controller in 0.15 seconds."
+  },
+  "semantic_state_wire_codec": {
+    "name": "SemanticStateWireCodec",
+    "interface_id": "SemanticStateWireCodec@1",
+    "status": "available",
+    "import_path": "ipfs_accelerate_py.agent_supervisor.semantic_state.wire",
+    "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py",
+    "source_revision": "bd5fad7ac854e3127e8aef4a5af58ee7f0748e29",
+    "wire_boundary": "mcp-plus-plus-profiles-a-b-f",
+    "interface_name": "semantic-state-harness",
+    "interface_namespace": "ipfs-accelerate.agent-supervisor",
+    "interface_version": "1.0.0",
+    "public_exports": [
+      "SemanticStateWireCodec",
+      "semantic_state_interface_descriptor",
+      "interface_descriptor_cid",
+      "cid_for_payload"
+    ],
+    "methods": [
+      "interface_descriptor() -> dict",
+      "encode_execution_envelope(payload, *, parents=None) -> dict",
+      "decode_execution_envelope(envelope) -> dict",
+      "encode_execution_receipt(result) -> dict",
+      "decode_execution_receipt(receipt) -> dict",
+      "encode_dag_event(payload, *, parent_event_cids=None, timestamp='0') -> dict",
+      "decode_dag_event(event) -> dict",
+      "encode_root_manifest(manifest) -> dict",
+      "decode_root_manifest(envelope) -> SemanticStateRootManifest"
+    ],
+    "rules": [
+      "Identity is exclusively canonicalize_artifact plus cid_for_bytes.",
+      "Does not implement envelopes, CID codecs, or datasets identity from scratch beyond the closed Profile A/B/F boundary.",
+      "interface_cid must match the sealed descriptor CID; payload CIDs must match canonical bytes.",
+      "No new MCP++ profile and no AAE-local generic envelope are permitted."
+    ],
+    "test_paths": [
+      "test/api/semantic_state/test_wire.py"
+    ],
+    "test_revisions": {
+      "test/api/semantic_state/test_wire.py": "bd5fad7ac854e3127e8aef4a5af58ee7f0748e29"
+    }
+  },
+  "ivp_merkle_commitment": {
+    "name": "VerificationCommitment",
+    "interface_id": "VerificationCommitment@1",
+    "schema": "ipfs_accelerate_py/agent-supervisor/verification-commitment@1",
+    "status": "available",
+    "is_zero_knowledge_proof": false,
+    "is_proof_sealer": false,
+    "can_substitute_for_full_checkpoint_seal": false,
+    "can_substitute_for_delta_seal": false,
+    "can_substitute_for_incremental_proof_sealer": false,
+    "hash_algorithm": "sha2-256",
+    "leaf_codec": "canonical-dag-json@1",
+    "leaf_domain": "IVP-LEAF@1",
+    "node_domain": "IVP-NODE@1",
+    "empty_domain": "IVP-EMPTY@1",
+    "import_path": "ipfs_accelerate_py.agent_supervisor.verification",
+    "qualified_symbols": [
+      "VerificationCommitment",
+      "build_verification_commitment"
+    ],
+    "source_path": "ipfs_accelerate_py/agent_supervisor/verification/contracts.py",
+    "source_revision": "0cdf81bdd283dad6c27c9d23bbb6637d7dd54cff",
+    "builder_path": "ipfs_accelerate_py/agent_supervisor/verification/bundle.py",
+    "builder_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+    "class_constant": "VerificationCommitment.IS_ZERO_KNOWLEDGE_PROOF = False",
+    "description": "Structural SHA-256 Merkle commitment over admitted verification receipts in a VerificationBundle. Explicitly non-ZK. Structural validation is not cryptographic validation of underlying execution and is not a full-checkpoint or delta proof seal.",
+    "test_paths": [
+      "test/api/test_agent_supervisor_verification_bundle.py",
+      "test/api/test_agent_supervisor_verification_contracts.py"
+    ],
+    "test_revisions": {
+      "test/api/test_agent_supervisor_verification_bundle.py": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+      "test/api/test_agent_supervisor_verification_contracts.py": "0cdf81bdd283dad6c27c9d23bbb6637d7dd54cff"
+    },
+    "docs": [
+      "ipfs_accelerate_py/agent_supervisor/verification/README.md",
+      "docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_PLAN.md",
+      "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md"
+    ]
+  },
+  "proof_sealer_probes": {
+    "interface": "IncrementalProofSealerCapabilityProbe@1",
+    "program_status": {
+      "program": "IncrementalProofSealer",
+      "program_prefix": "IPS-",
+      "planning_observed_revision": "65ef6ed4cb9fa51d7c2c6c1a4f9036678f8cb893",
+      "branch_tip_at_inspection": "c983d4db33e83aba0cfb92a74fedb9ff26e4bf73",
+      "planning_status": "live_upstream_program_incomplete",
+      "is_ancestor_of_inspected_aae_tree": false,
+      "released_on_inspected_tree": false,
+      "branch_observation": "agent/incremental-proof-sealer-v1 exists as a separate development branch with plan/board/inventory artifacts and early admission/backends modules; released public FullCheckpointSeal/DeltaSeal APIs are not present on the AAE controller HEAD under inventory.",
+      "policy_disposition_when_missing": "typed_unavailable",
+      "planning_partial_evidence_note": "AAE plan records proof-sealer datasets/kit pins 321fe10c... / 866ae2cd... as partial evidence, ProofUnit, admission, and store surfaces only; those pins are not the AAE nested gitlinks and their objects are not present in this worktree.",
+      "notes": [
+        "AAE must not import unfinished private sealer code from the external IPS branch.",
+        "Until a released sealer public API lands on a consumable commit, AAE returns typed unavailable for seal status.",
+        "Artifacts may still be content-addressed and committed without a seal.",
+        "An AAE-local proof system or commitment masquerading as a seal is forbidden."
+      ]
+    },
+    "full_checkpoint_seal": {
+      "interface_names_probed": [
+        "FullCheckpointSeal",
+        "create_full_checkpoint",
+        "publish_full_checkpoint"
+      ],
+      "status": "typed_unavailable",
+      "status_reason": "No public Python symbol FullCheckpointSeal, create_full_checkpoint, or publish_full_checkpoint exists on inspected AAE tree dcfc11e8... (zero production *.py hits). Names appear only in protected AAE plan/todo/validator text and in external IPS program documentation, not as released runtime APIs on this tree.",
+      "source_path": null,
+      "source_revision": null,
+      "import_path": null,
+      "public_api": null,
+      "probe_method": "repository-wide exact symbol search over *.py on inventory_tree_revision plus importlib probes; no matches outside protected validators/tests/docs",
+      "independent_of_delta_seal_probe": true,
+      "cannot_be_inferred_from": [
+        "VerificationCommitment",
+        "build_verification_commitment",
+        "MCP++ zkp_proof_artifact vector",
+        "MCP++ wasm_proof_result vector",
+        "agent_supervisor.proof package (code-contract/proof-reuse surfaces, not IPS sealer)",
+        "agent_supervisor.merge.merge_checkpoint.MergeCheckpoint (git submodule merge resume helper, not FullCheckpointSeal)",
+        "presence of IncrementalProofSealer planning documents on another branch",
+        "IPS-branch early proof.incremental_sealing.admission module (cache admission only; not create_full_checkpoint)"
+      ]
+    },
+    "delta_or_incremental_seal": {
+      "interface_names_probed": [
+        "DeltaSeal",
+        "DeltaSeal@1",
+        "build_delta_seal",
+        "publish_delta_seal",
+        "IncrementalProofSealer"
+      ],
+      "status": "typed_unavailable",
+      "status_reason": "No public Python symbol DeltaSeal, build_delta_seal, publish_delta_seal, or IncrementalProofSealer exists on inspected AAE tree dcfc11e8... (zero production *.py hits; importlib ModuleNotFoundError for ipfs_accelerate_py.agent_supervisor.incremental_proof_sealer and proof.incremental_sealing). External IPS program documents planned interfaces and has early admission/backends on its own branch, but has not released those public APIs onto this AAE controller tree.",
+      "source_path": null,
+      "source_revision": null,
+      "import_path": null,
+      "public_api": null,
+      "probe_method": "repository-wide exact symbol search over *.py on inventory_tree_revision plus importlib probes of canonical package paths; no matches",
+      "independent_of_full_checkpoint_probe": true,
+      "external_branch_partial_surfaces_not_released_here": [
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/admission.py",
+          "observed_on": "agent/incremental-proof-sealer-v1",
+          "role": "Evidence-class cache admission (IPS-028); not DeltaSeal/build_delta_seal/publish_delta_seal",
+          "present_on_aae_tree": false
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/backends.py",
+          "observed_on": "agent/incremental-proof-sealer-v1",
+          "role": "Early backend binding surface on IPS branch; not released IncrementalProofSealer public API",
+          "present_on_aae_tree": false
+        }
+      ],
+      "cannot_be_inferred_from": [
+        "VerificationCommitment",
+        "build_verification_commitment",
+        "FullCheckpointSeal absence or presence",
+        "MCP++ zkp_proof_artifact vector",
+        "manual_completion_seal control helpers",
+        "MergeCheckpoint submodule merge helper",
+        "IPS plan text documenting planned create_full_checkpoint/DeltaSeal@1 APIs"
+      ]
+    },
+    "related_non_sealer_surfaces": [
+      {
+        "name": "agent_supervisor.proof",
+        "path": "ipfs_accelerate_py/agent_supervisor/proof",
+        "role": "Code-contract, doctor, formal-verification, and change-propagation proof helpers. Not FullCheckpointSeal/DeltaSeal/IncrementalProofSealer.",
+        "status": "available_but_not_proof_sealer"
+      },
+      {
+        "name": "manual_completion_seal",
+        "path": "ipfs_accelerate_py/agent_supervisor/control/manual_completion_seal.py",
+        "role": "Control-plane manual completion seal helper for supervisor workflows; not the IPS full/delta sealer public API.",
+        "status": "available_but_not_proof_sealer"
+      },
+      {
+        "name": "MergeCheckpoint",
+        "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_checkpoint.py",
+        "role": "Git submodule merge resume checkpoint; unrelated to FullCheckpointSeal cryptographic proof sealing.",
+        "status": "available_but_not_proof_sealer"
+      },
+      {
+        "name": "VerificationCommitment",
+        "path": "ipfs_accelerate_py/agent_supervisor/verification/contracts.py",
+        "role": "IVP structural Merkle commitment; explicitly non-ZK and not a sealer.",
+        "status": "available_but_not_proof_sealer"
+      },
+      {
+        "name": "MCP++ wasm_proof_result / zkp_proof_artifact vectors",
+        "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors",
+        "role": "Shared wire fixtures for proof-shaped payloads; not released sealer APIs.",
+        "status": "available_wire_fixture_only"
+      }
+    ]
+  },
+  "proof_non_proof_distinctions": [
+    {
+      "surface": "VerificationCommitment / IVP Merkle root",
+      "classification": "structural_non_zk_commitment",
+      "is_zk": false,
+      "is_execution_proof": false,
+      "is_full_or_delta_seal": false
+    },
+    {
+      "surface": "MCP++ Profile A/B/F wire codecs and vectors",
+      "classification": "interop_wire_and_conformance",
+      "is_zk": false,
+      "is_full_or_delta_seal": false
+    },
+    {
+      "surface": "MCP++ Profile G codecs and vectors",
+      "classification": "existing_scheduling_artifact_authority",
+      "is_zk": false,
+      "is_full_or_delta_seal": false,
+      "is_new_aae_profile": false
+    },
+    {
+      "surface": "MCP++ zkp_proof_artifact / wasm_proof_result vectors",
+      "classification": "wire_fixture_only",
+      "is_released_sealer_api": false
+    },
+    {
+      "surface": "FullCheckpointSeal / create_full_checkpoint / publish_full_checkpoint",
+      "classification": "typed_unavailable_on_inspected_tree"
+    },
+    {
+      "surface": "DeltaSeal / build_delta_seal / publish_delta_seal / IncrementalProofSealer",
+      "classification": "typed_unavailable_on_inspected_tree"
+    }
+  ],
+  "missing_apis": {
+    "status_vocabulary": "typed_unavailable",
+    "items": [
+      {
+        "name": "FullCheckpointSeal",
+        "status": "typed_unavailable",
+        "probe": "full_checkpoint_seal"
+      },
+      {
+        "name": "create_full_checkpoint",
+        "status": "typed_unavailable",
+        "probe": "full_checkpoint_seal"
+      },
+      {
+        "name": "publish_full_checkpoint",
+        "status": "typed_unavailable",
+        "probe": "full_checkpoint_seal"
+      },
+      {
+        "name": "DeltaSeal / DeltaSeal@1",
+        "status": "typed_unavailable",
+        "probe": "delta_or_incremental_seal"
+      },
+      {
+        "name": "build_delta_seal",
+        "status": "typed_unavailable",
+        "probe": "delta_or_incremental_seal"
+      },
+      {
+        "name": "publish_delta_seal",
+        "status": "typed_unavailable",
+        "probe": "delta_or_incremental_seal"
+      },
+      {
+        "name": "IncrementalProofSealer public package",
+        "status": "typed_unavailable",
+        "probe": "delta_or_incremental_seal",
+        "canonical_import_when_released": "ipfs_accelerate_py.agent_supervisor.incremental_proof_sealer"
+      },
+      {
+        "name": "new AAE or MCP++ profile",
+        "status": "must_not_invent",
+        "note": "new_mcplusplus_profile_allowed=false; conformance decision may later add shared schemas/flat vectors only after a demonstrated cross-language need"
+      }
+    ]
+  },
+  "interop_tests": [
+    {
+      "path": "test/api/semantic_state/test_wire.py",
+      "revision": "bd5fad7ac854e3127e8aef4a5af58ee7f0748e29",
+      "covers": [
+        "profile_a",
+        "profile_b",
+        "profile_f",
+        "semantic_state_wire"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py",
+      "revision": "dcd0617fe1f9a83172e3df18204096dd157bd85b",
+      "covers": [
+        "profile_b"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py",
+      "revision": "dcd0617fe1f9a83172e3df18204096dd157bd85b",
+      "covers": [
+        "profile_f"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py",
+      "revision": "dcd0617fe1f9a83172e3df18204096dd157bd85b",
+      "covers": [
+        "profile_a"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/mcp/tests/test_profile_g_transport.py",
+      "revision": "fd866abbbe114a9bef2f83d28465ff1053abf728",
+      "covers": [
+        "profile_g"
+      ]
+    },
+    {
+      "path": "test/integration/test_mcp_mcplusplus_interop_smoke.py",
+      "covers": [
+        "runtime_interop_smoke"
+      ]
+    },
+    {
+      "path": "test/api/test_agent_supervisor_verification_bundle.py",
+      "revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+      "covers": [
+        "verification_commitment_non_zk"
+      ]
+    },
+    {
+      "path": "test/api/test_agent_supervisor_verification_contracts.py",
+      "revision": "0cdf81bdd283dad6c27c9d23bbb6637d7dd54cff",
+      "covers": [
+        "verification_commitment_non_zk"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_conformance_vectors.py",
+      "covers": [
+        "shared_conformance_vectors",
+        "cross_language_python_harness"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/mcplusplus/tests-go/conformance_vectors_test.go",
+      "covers": [
+        "shared_conformance_vectors",
+        "cross_language_go_harness"
+      ]
+    }
+  ],
+  "docs_authority": [
+    {
+      "path": "docs/architecture/ADVERSARIAL_ASSURANCE_ENGINE_PLAN.md",
+      "role": "AAE program plan; pins MCP++ authority and sealer claim boundary (operator-protected)"
+    },
+    {
+      "path": "docs/architecture/adversarial_assurance_engine.todo.md",
+      "role": "AAE-004 task contract (operator-protected)"
+    },
+    {
+      "path": "config/adversarial_assurance_engine_scheduler.json",
+      "role": "capability_policy including new_mcplusplus_profile_allowed=false and missing_incremental_proof_sealer_disposition=typed_unavailable (operator-protected)"
+    },
+    {
+      "path": "ipfs_accelerate_py/mcplusplus/docs/spec/mcp-idl.md",
+      "role": "Profile A spec"
+    },
+    {
+      "path": "ipfs_accelerate_py/mcplusplus/docs/spec/cid-native-artifacts.md",
+      "role": "Profile B spec"
+    },
+    {
+      "path": "ipfs_accelerate_py/mcplusplus/docs/spec/event-dag-ordering.md",
+      "role": "Profile F spec"
+    },
+    {
+      "path": "ipfs_accelerate_py/mcplusplus/docs/spec/risk-scheduling.md",
+      "role": "Profile G spec"
+    },
+    {
+      "path": "ipfs_accelerate_py/mcplusplus/docs/spec/mcp++-profiles-draft.md",
+      "role": "Non-normative profile registry A-H"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/verification/README.md",
+      "role": "IVP commitment non-ZK documentation"
+    }
+  ],
+  "handoff_to_aae": {
+    "reuse": [
+      "MCP++ Profile A/B/F wire boundary via SemanticStateWireCodec and mcp_server.mcplusplus runtime",
+      "Existing Profile G codecs, transport methods, and conformance suites without creating a new profile",
+      "Shared flat conformance vectors under ipfs_accelerate_py/mcplusplus/conformance/vectors for four-language harnesses",
+      "IVP VerificationCommitment as structural non-ZK evidence only"
+    ],
+    "must_not": [
+      "propose or create a new MCP++ profile",
+      "treat VerificationCommitment or MCP++ zkp/wasm vectors as FullCheckpointSeal or DeltaSeal",
+      "import unfinished IPS private sealer modules as if released",
+      "invent AAE-local proof systems or commitments that masquerade as seals"
+    ],
+    "release_gate_expectation": "AAE-006 and later seal/runtime tasks remain blocked until operator prerequisite proves terminal SCG and released checkpoint/delta IncrementalProofSealer interfaces"
+  },
+  "acceptance_checklist": {
+    "existing_profiles_and_vectors_recorded": true,
+    "full_checkpoint_seal_probed_separately": true,
+    "full_checkpoint_seal_status": "typed_unavailable",
+    "delta_seal_probed_separately": true,
+    "delta_seal_status": "typed_unavailable",
+    "full_and_delta_probes_are_independent": true,
+    "ivp_merkle_commitment_is_explicitly_non_zk": true,
+    "ivp_merkle_commitment_cannot_substitute_for_either_sealer": true,
+    "profiles_a_b_f_g_commit_bound": true,
+    "no_new_mcplusplus_profile_declared": true,
+    "no_profile_proposed": true,
+    "missing_surfaces_typed_unavailable": true,
+    "claimed_checks": [
+      "FullCheckpointSeal/create_full_checkpoint/publish_full_checkpoint independently typed_unavailable on dcfc11e8...",
+      "DeltaSeal/build_delta_seal/publish_delta_seal/IncrementalProofSealer independently typed_unavailable on dcfc11e8...",
+      "VerificationCommitment.IS_ZERO_KNOWLEDGE_PROOF is False and cannot substitute for either sealer",
+      "Profile A/B/F wire surfaces and Profile G codecs/vectors are commit-bound",
+      "No new MCP++ profile is proposed"
+    ]
+  }
+}

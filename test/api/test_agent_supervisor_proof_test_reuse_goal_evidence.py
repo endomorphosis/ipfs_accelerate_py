@@ -324,8 +324,8 @@ def test_interfaces_and_constants_are_stable() -> None:
 def test_requirement_ids_are_discovered_from_objective_heap_not_registry() -> None:
     assert OBJECTIVES_PATH.is_file(), f"missing objectives heap at {OBJECTIVES_PATH}"
     discovered = discover_requirement_ids_from_heap(OBJECTIVES_PATH)
-    assert len(discovered) == 39
-    assert len(set(discovered)) == 39
+    assert len(discovered) == 50
+    assert len(set(discovered)) == 50
     assert all(item.startswith("ptr/") and item.endswith("@1") for item in discovered)
 
     by_goal = goal_requirements_by_id(OBJECTIVES_PATH)
@@ -342,8 +342,11 @@ def test_requirement_ids_are_discovered_from_objective_heap_not_registry() -> No
         "PTR-G090",
         "PTR-G100",
         "PTR-G110",
+        "PTR-G120",
+        "PTR-G130",
+        "PTR-G140",
     }
-    assert sum(len(items) for items in by_goal.values()) == 39
+    assert sum(len(items) for items in by_goal.values()) == 50
 
     # Explicit per-test registry is forbidden even when the heap is valid.
     result = _full_collect(
@@ -756,4 +759,4 @@ def test_parse_goal_heap_integration_for_live_objectives() -> None:
     goals = parse_goal_heap(OBJECTIVES_PATH.read_text(encoding="utf-8"))
     assert isinstance(goals[0], ObjectiveGoal)
     discovered = discover_requirement_ids_from_heap(goals)
-    assert len(discovered) == 39
+    assert len(discovered) == 50

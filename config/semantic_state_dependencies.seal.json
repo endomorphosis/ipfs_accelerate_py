@@ -1,0 +1,970 @@
+{
+  "schema": "ipfs-accelerate.agent-supervisor.semantic-state-dependency-seal@2",
+  "status": "sealed",
+  "unresolved_authority_reasons": {},
+  "target": {
+    "language": "python",
+    "python_minor": "3.12",
+    "test_framework": "pytest"
+  },
+  "toolchain": {
+    "python_executable": "/home/barberb/lift_coding/.venv/bin/python",
+    "python_sha256": "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+    "python_implementation": "CPython",
+    "python_version": "3.12.3",
+    "pytest_version": "8.3.4",
+    "pytest_sha256": "sha256:e4dbd8623b2e14a9d31fd6f9225f57d5b60009e603eb6c7307f75295d8f3423c",
+    "environment_policy": {
+      "inherit": [],
+      "fixed": {
+        "IPFS_DATASETS_AUTO_INSTALL": "0",
+        "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0",
+        "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+        "IPFS_KIT_AUTO_INSTALL_DEPS": "0",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PYTHONHASHSEED": "0",
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "private_home": true,
+      "materialization_pythonpath": true
+    }
+  },
+  "wire_contract": {
+    "authority_role": "mcp_plus_plus",
+    "profiles": [
+      "A",
+      "B",
+      "F"
+    ],
+    "payload_role": "accelerate_application_payload_only",
+    "generic_envelope_types_owned_externally": true,
+    "local_envelope_hasher_forbidden": true
+  },
+  "authorities": [
+    {
+      "role": "accelerate_harness",
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "origin": "https://github.com/endomorphosis/ipfs_accelerate_py",
+      "reachability_policy": "exact_clean_head",
+      "commit": "271e331af802f37d759c000666282631a99f7aab",
+      "tree": "5859208bdab59338eab67a5cd0102c193ca6c388",
+      "interface_fingerprint": "sha256:e88a505934170981bdf0e52152c5d968ff93dd03bc9dc69df56ade9cf29540ae",
+      "interface_contract": {
+        "contract_name": "SemanticCompressionHarnessConsumer@1",
+        "consumer_schema_requirements": [
+          [
+            "board_namespace",
+            "semantic-compression-harness-v1"
+          ],
+          [
+            "harness_contracts",
+            "semantic-state-harness@1"
+          ],
+          [
+            "wire_boundary",
+            "mcp-plus-plus-profiles-a-b-f"
+          ]
+        ],
+        "consumer_api_requirements": [
+          "SemanticCapsuleRef(capsule_cid,semantic_state_root_cid,stable_symbol_id,version_cid,source_cid,confidence,validity_bindings,raw_source_required)",
+          "SemanticStateProvider.open_semantic_state(root_cid:str,get_block:Callable[[str],bytes])->SemanticStateView",
+          "SemanticStateRootManifest(repository_id,base_tree_cid,candidate_tree_cid,datasets_state_cid,datasets_semantic_state_root_cid,capsule_index_cid,delta_cid,invalidation_cid,obligation_set_cid,test_selection_cid,receipt_index_cid,environment_binding_cids,event_head_cid,versions,acceptance_disposition)",
+          "TestSelectionRef(selection_cid,previous_semantic_state_root_cid_or_null,current_semantic_state_root_cid)"
+        ],
+        "source_extractions": [
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/mcp_server/mcplusplus/artifacts.py",
+            "selector": "canonicalize_artifact",
+            "value": "def canonicalize_artifact(payload: Dict[str, Any]) -> bytes"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/mcp_server/mcplusplus/kubo_cid.py",
+            "selector": "cid_for_bytes",
+            "value": "def cid_for_bytes(data: bytes) -> str"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+            "selector": "ContextCompiler.compile",
+            "value": "def compile(self, *, repository_id: str, tree_id: str, objective_id: str, objective_revision: str, policy_id: str, policy_revision: str, caller: str, stage: str, goal: Any, authority: Any, scope: Any, acceptance: Any, evidence: Iterable[ContextReference | Mapping[str, Any]]=()) -> ContextCompileResult"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_context_slice.py",
+            "selector": "assert_proposal_covered_by_context",
+            "value": "def assert_proposal_covered_by_context(manifest: ProductionContextSliceManifest | Mapping[str, Any], proposal: Mapping[str, Any], *, repo_root: str | Path, current_task_id: str, current_task_payload: Mapping[str, Any], expected_read_paths: Sequence[str], expected_effect_paths: Sequence[str], expected_symbol_hints: Mapping[str, Sequence[str]] | None=None, baseline_ref: str='HEAD') -> None"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+            "selector": "ResourceScheduler.acquire",
+            "value": "def acquire(self, requirement: LaneResourceRequirements | Mapping[str, Any], *, budget: ResourceLeaseBudget | None=None, host: HostResourceSnapshot | Mapping[str, Any] | None=None, providers: Mapping[str, Any] | Iterable[ProviderCapacity | Mapping[str, Any]] | None=None, path: Path | str='.') -> tuple[AdmissionDecision, ResourceAdmissionLease | None]"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/agent_supervisor/provider_execution.py",
+            "selector": "ProviderExecutionGateway.execute",
+            "value": "def execute(self, request: ProviderExecutionRequest) -> ProviderExecutionResult"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/agent_supervisor/worktree_lifecycle.py",
+            "selector": "WorktreeLifecycleStore.begin_preparing",
+            "value": "def begin_preparing(self, *, task_id: str, canonical_task_cid: str='', attempt: int, lane_id: str, workspace_path: str | Path, branch: str, merge_target: str, lease_id: str | None=None, state_dir: str='', owner: ProcessBirthIdentity | None=None, allow_replace_stale: bool=True) -> WorkspaceLifecycleRecord"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+            "selector": "LeaseCoordinator.validate",
+            "value": "def validate(self, grant: LeaseGrant, *, now_ms: int | None=None) -> LeaseGrant"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/agent_supervisor/validation/validation_scheduler.py",
+            "selector": "ValidationScheduler.run_staged",
+            "value": "def run_staged(self, commands: Iterable[str | ValidationCommand]=(), *, workspace_path: Path | str, proof_scheduler: Any=None, proof_plan: Any=None, proof_executor: Any=None, proof_executors: Mapping[Any, Callable[..., Any]] | None=None, proof_scheduler_options: Mapping[str, Any] | None=None, proof_timeout_seconds: float | None=None, fallback_plans: Iterable[Any] | Any=(), fallback_plan: Any | None=None, target_commit: str | None=None, changed_files: Iterable[str] | None=None, environment: Mapping[str, object] | None=None, dependency_state: Mapping[str, object] | Sequence[object] | str | None=None, require_full_validation: bool=False, scope: str | None=None, runner: ValidationRunner | None=None) -> dict[str, Any]"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py",
+            "selector": "ProofScheduler.run_stages",
+            "value": "def run_stages(self, stages: Iterable[ProofStage | str] | ProofStage | str, *, timeout_seconds: float | None=None) -> ProofScheduleResult"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+            "selector": "profile_g_cid",
+            "value": "def profile_g_cid(value: Any) -> str"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/agent_supervisor/multiformats_identity.py",
+            "selector": "cid_for_dag_json",
+            "value": "def cid_for_dag_json(obj: Any, *, base: str=CID_BASE, mh_type: str=MH_TYPE, version: int=CID_VERSION, for_identity: bool=False) -> str"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
+            "selector": "terminate_pid_tree",
+            "value": "def terminate_pid_tree(pid: int, *, grace_seconds: float, freeze_first: bool=False, require_gone: bool=False, owned_process_group_id: int | None=None, expected_root_start_time_ticks: int | None=None) -> bool"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_accelerate_py/agent_supervisor/worktree_lifecycle.py",
+            "selector": "read_process_birth",
+            "value": "def read_process_birth(pid: int, *, proc_root: Path=Path('/proc')) -> ProcessBirthIdentity | None"
+          }
+        ]
+      },
+      "required_blobs": [
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+          "oid": "fea50c565815772b7e80401d038a92b9ec6489e2"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",
+          "oid": "d89f52f4987c829daebf40bc429b4c9fe88e7ebf"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+          "oid": "bd8d8b3bdffd26c8af2722016e11fcd0d6eed299"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py",
+          "oid": "637409213c9ba7749be03c08e61d437c0c53120e"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/multiformats_identity.py",
+          "oid": "8c5db25a4d74cc9e334f02f3e30a040e0de48ae4"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py",
+          "oid": "2d8f2234cbcc0129f5217bb25d38056967832cc3"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/provider_execution.py",
+          "oid": "590a31dd04766e36325f54cd308bd28435524352"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/event_log.py",
+          "oid": "cdf79c2bb930dfee616cb1dde08cad6ca66cecf5"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+          "oid": "b6d8b5d799fc095d549ebdb239254e90b19df01d"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
+          "oid": "317a04439051a2ee9ea2d0369ed4fb2d27773837"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "oid": "990114714fd0a01cb505bafa978ddb076b983ddf"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_context_slice.py",
+          "oid": "d2c302a3cbda44c09382fca2e2a98c0ebe798fce"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/validation/proposal_validation.py",
+          "oid": "a0f18027356be4e4e408ac0684d4ab52892b8eb0"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/validation/validation_commands.py",
+          "oid": "17d74651fabe16648c288570b03d250a5efe6713"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+          "oid": "a718de63f0ffab2b511a6866fffe7287e1ba334c"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/validation/validation_scheduler.py",
+          "oid": "42a72555ee446e885efc742db93127a1900c6367"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/worktree_lifecycle.py",
+          "oid": "289f96000b02919d137ab60a0d73ca5548e6e899"
+        },
+        {
+          "path": "ipfs_accelerate_py/mcp_server/mcplusplus/artifacts.py",
+          "oid": "f5a1d8e9f175d78f25d2da6d98784c78eac13f54"
+        },
+        {
+          "path": "ipfs_accelerate_py/mcp_server/mcplusplus/kubo_cid.py",
+          "oid": "12440337acc2ed72278f60a6151d1b29672d6e43"
+        },
+        {
+          "path": "test/api/test_agent_supervisor_context_compiler.py",
+          "oid": "25552372547c935afafb91e6e3edd478adddd82b"
+        },
+        {
+          "path": "test/api/test_agent_supervisor_lease_coordination.py",
+          "oid": "063979cf13a544bd3357f167b0914bed0529e93b"
+        },
+        {
+          "path": "test/api/test_agent_supervisor_production_context_slice.py",
+          "oid": "618cbf85d22f70f7f2f98c9ab5e9b6c8519ddf69"
+        },
+        {
+          "path": "test/api/test_agent_supervisor_proof_scheduler.py",
+          "oid": "b8301561b94ae5af4d8dcb287137dc3d942b16c3"
+        },
+        {
+          "path": "test/api/test_agent_supervisor_proposal_validation.py",
+          "oid": "909410d7aa3854e0816404b315a6dc311ae68118"
+        },
+        {
+          "path": "test/api/test_agent_supervisor_provider_execution.py",
+          "oid": "e50f0b30ce2d1bf310b0035cf796358613615155"
+        },
+        {
+          "path": "test/api/test_agent_supervisor_resource_scheduler.py",
+          "oid": "7a1ed0f2b8ccdd66eb7872e2eeb676bcdbd9c0e5"
+        },
+        {
+          "path": "test/api/test_agent_supervisor_runtime_authority_vectors.py",
+          "oid": "c31a415e9890132bd513d9376aa3f0cf207d61ef"
+        },
+        {
+          "path": "test/api/test_agent_supervisor_validation_scheduler.py",
+          "oid": "40a5a511de841ed94f2756b4dc8326745764e75a"
+        },
+        {
+          "path": "test/api/test_agent_supervisor_worktree_lifecycle.py",
+          "oid": "da9fa6fc1eb1f9eff7d344f3e77b27437fec1a38"
+        }
+      ],
+      "required_test_commands": [
+        [
+          "/home/barberb/lift_coding/.venv/bin/python",
+          "-m",
+          "pytest",
+          "-q",
+          "test/api/test_agent_supervisor_context_compiler.py",
+          "test/api/test_agent_supervisor_lease_coordination.py",
+          "test/api/test_agent_supervisor_production_context_slice.py",
+          "test/api/test_agent_supervisor_proof_scheduler.py",
+          "test/api/test_agent_supervisor_proposal_validation.py",
+          "test/api/test_agent_supervisor_provider_execution.py",
+          "test/api/test_agent_supervisor_resource_scheduler.py",
+          "test/api/test_agent_supervisor_runtime_authority_vectors.py",
+          "test/api/test_agent_supervisor_validation_scheduler.py",
+          "test/api/test_agent_supervisor_worktree_lifecycle.py"
+        ]
+      ],
+      "test_timeout_seconds": 1800,
+      "closure_policy": {
+        "blob_scope": "entire_commit_tree",
+        "import_scope": "entire_commit_tree_fail_closed",
+        "test_scope": "sealed_argv_and_repository_configuration_with_tree_fallback",
+        "materialization": "fresh_private_git_archive_with_inert_symlink_records"
+      },
+      "producer_receipt_schema": "ipfs-accelerate.agent-supervisor.semantic-state-producer-test-receipt@2"
+    },
+    {
+      "role": "incremental_semantic_index",
+      "repository": "endomorphosis/ipfs_datasets_py",
+      "origin": "https://github.com/endomorphosis/ipfs_datasets_py",
+      "reachability_policy": "exact_clean_head",
+      "commit": "1330038f626ef92993f03d46f21e1a57719e9c25",
+      "tree": "c1686dfce8e14ebd32327a0214c0f62ff6a5c7d6",
+      "interface_fingerprint": "sha256:6b04486dadec94f916859365bf4a4af093ccdec8f096fc78ef38d25cc7312dfc",
+      "interface_contract": {
+        "contract_name": "SemanticCapsuleIndexConsumer@2",
+        "consumer_schema_requirements": [
+          [
+            "extractor_name",
+            "python-cpython-ast"
+          ],
+          [
+            "extractor_version",
+            "1"
+          ],
+          [
+            "semantic_index_schema",
+            "ipfs-datasets.software-contracts.semantic-index@2"
+          ]
+        ],
+        "consumer_api_requirements": [
+          "RepositoryState.edges:Sequence[DependencyEdge]",
+          "RepositoryState.state_cid:str",
+          "RepositoryState.symbols:Sequence[SymbolRecord]",
+          "SymbolRecord.stable_id|version_cid|source_cid|module_path|span",
+          "calculate_invalidation(previous_state,current_state,delta)->InvalidationPlan",
+          "diff_repository_states(previous_state,current_state)->RepositoryStateDelta",
+          "explain_symbol(repository_state,symbol_id)->SymbolExplanation",
+          "scan_repository(repo_path,previous_state=None)->RepositoryState"
+        ],
+        "source_extractions": [
+          {
+            "kind": "python_signature",
+            "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/index.py",
+            "selector": "scan_repository",
+            "value": "def scan_repository(repo_path: str | os.PathLike[str], previous_state: RepositoryState | None=None) -> RepositoryState"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/index.py",
+            "selector": "diff_repository_states",
+            "value": "def diff_repository_states(previous_state: RepositoryState, current_state: RepositoryState) -> RepositoryStateDelta"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/index.py",
+            "selector": "calculate_invalidation",
+            "value": "def calculate_invalidation(previous_state: RepositoryState, current_state: RepositoryState, delta: RepositoryStateDelta) -> InvalidationPlan"
+          },
+          {
+            "kind": "python_literal",
+            "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/models.py",
+            "selector": "SEMANTIC_INDEX_SCHEMA",
+            "value": "ipfs-datasets.software-contracts.semantic-index@2"
+          },
+          {
+            "kind": "python_literal",
+            "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/__init__.py",
+            "selector": "__all__",
+            "value": [
+              "IncrementalSemanticIndex",
+              "scan_repository",
+              "diff_repository_states",
+              "calculate_invalidation",
+              "explain_symbol",
+              "explain_impact",
+              "watch_repository"
+            ]
+          }
+        ]
+      },
+      "required_blobs": [
+        {
+          "path": "docs/software_contracts/INCREMENTAL_SEMANTIC_INDEX.md",
+          "oid": "f0cbda761a09b71eea619dabd377b5429238fded"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+          "oid": "14458fb99ea57c19652398ee479d678ae3fbe507"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/__init__.py",
+          "oid": "6fcce2893b20e5b418df9e73995d75d010635866"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/delta.py",
+          "oid": "4f10273e4018222d355dc1da9bc0deed88c1c927"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/index.py",
+          "oid": "a2ca2dee8aaed0f0f69dcb327e34fa5110ee377b"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/invalidation.py",
+          "oid": "23386eed158736852ee6c208163e55d24763a982"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/models.py",
+          "oid": "87074b234b82bfdde77572b5caf0a9603257b49d"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+          "oid": "c3f8fc4d69117f2d1b8ebe36cdb1a2ee8cc7e42a"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py",
+          "oid": "3f222cfb5917abf32c01108ccbd835d24f793662"
+        },
+        {
+          "path": "tests/cli/test_semantic_index_cli.py",
+          "oid": "4cb9645f7a5424eeed6216c1c2390861def017bb"
+        },
+        {
+          "path": "tests/unit/logic/software_contracts/semantic_index/test_acceptance.py",
+          "oid": "286019117174419b5692c176ea3d2c392122db61"
+        },
+        {
+          "path": "tests/unit/logic/software_contracts/semantic_index/test_import_safety.py",
+          "oid": "b7d002b7ca5c017dfe62131544b8f07d1e1d1d2e"
+        }
+      ],
+      "required_test_commands": [
+        [
+          "/home/barberb/lift_coding/.venv/bin/python",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/unit/logic/software_contracts/semantic_index",
+          "tests/cli/test_semantic_index_cli.py"
+        ]
+      ],
+      "test_timeout_seconds": 1800,
+      "closure_policy": {
+        "blob_scope": "entire_commit_tree",
+        "import_scope": "entire_commit_tree_fail_closed",
+        "test_scope": "sealed_argv_and_repository_configuration_with_tree_fallback",
+        "materialization": "fresh_private_git_archive_with_inert_symlink_records"
+      },
+      "producer_receipt_schema": "ipfs-accelerate.agent-supervisor.semantic-state-producer-test-receipt@2"
+    },
+    {
+      "role": "semantic_state_contracts",
+      "repository": "endomorphosis/ipfs_datasets_py",
+      "origin": "https://github.com/endomorphosis/ipfs_datasets_py",
+      "reachability_policy": "exact_clean_head",
+      "commit": "1330038f626ef92993f03d46f21e1a57719e9c25",
+      "tree": "c1686dfce8e14ebd32327a0214c0f62ff6a5c7d6",
+      "interface_fingerprint": "sha256:e4b23fd0544d931e3f561c3a760144733fa2121308c25c7be6864fa1f9cf457f",
+      "interface_contract": {
+        "contract_name": "SemanticStateProvider@1",
+        "consumer_schema_requirements": [
+          [
+            "capsule_compiler_version",
+            "1"
+          ],
+          [
+            "capsule_schema",
+            "ipfs-datasets.software-contracts.semantic-capsule@1"
+          ],
+          [
+            "merkle_compiler_version",
+            "1"
+          ],
+          [
+            "selection_schema",
+            "ipfs-datasets.software-contracts.semantic-test-selection@1"
+          ],
+          [
+            "semantic_state_schema",
+            "ipfs-datasets.software-contracts.semantic-state@1"
+          ]
+        ],
+        "consumer_api_requirements": [
+          "SemanticStateView.capsule(stable_symbol_id:str)->SemanticCapsule",
+          "SemanticStateView.get_block(cid:str)->bytes",
+          "SemanticStateView.root:SemanticStateRoot",
+          "SemanticStateView.symbol_node(stable_symbol_id:str)->SymbolMerkleNode",
+          "build_semantic_state(semantic_index:SemanticIndexForCapsules,*,environment_bindings:Sequence[EnvironmentBinding]=(),previous_bundle:SemanticStateBundle|None=None)->SemanticStateBundle",
+          "open_semantic_state(root_cid:str,get_block:Callable[[str],bytes])->SemanticStateView",
+          "select_tests_and_proofs(previous_state:SemanticStateView|None,current_state:SemanticStateView,invalidation:SemanticInvalidationPlan,*,policy:SelectionPolicy,explicit_rules:Sequence[SelectionRule]=())->TestSelection",
+          "verify_semantic_state_bundle(bundle:SemanticStateBundle)->SemanticStateRoot"
+        ],
+        "source_extractions": [
+          {
+            "kind": "python_signature",
+            "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+            "selector": "build_semantic_state",
+            "value": "def build_semantic_state(semantic_index: RepositoryState | SemanticIndexForCapsules | object, *, environment_bindings: Sequence[EnvironmentBinding]=(), previous_bundle: SemanticStateBundle | None=None) -> SemanticStateBundle"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+            "selector": "open_semantic_state",
+            "value": "def open_semantic_state(root_cid: str, get_block: Callable[[str], bytes]) -> VerifiedSemanticStateView"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/test_selection.py",
+            "selector": "select_tests_and_proofs",
+            "value": "def select_tests_and_proofs(previous_state: SemanticStateView | None, current_state: SemanticStateView, invalidation: SemanticInvalidationPlan, *, policy: SelectionPolicy, explicit_rules: Sequence[SelectionRule]=(), previous_index: SemanticIndexForSelection | RepositoryState | None=None, current_index: SemanticIndexForSelection | RepositoryState | None=None) -> TestSelection"
+          },
+          {
+            "kind": "json_keys",
+            "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/semantic-state.payload.schema.json",
+            "selector": "",
+            "value": [
+              "$defs",
+              "$id",
+              "$schema",
+              "description",
+              "oneOf",
+              "title"
+            ]
+          },
+          {
+            "kind": "python_literal",
+            "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/__init__.py",
+            "selector": "__all__",
+            "value": [
+              "SEMANTIC_STATE_API_SCHEMA",
+              "SEMANTIC_STATE_BLOCK_READER_INTERFACE",
+              "SEMANTIC_STATE_PRODUCER_INTERFACE",
+              "SEMANTIC_STATE_VIEW_INTERFACE",
+              "SemanticStateBlockReader",
+              "SemanticStateView",
+              "VerifiedSemanticStateView",
+              "SemanticStateApiError",
+              "MissingBlockError",
+              "CorruptBlockError",
+              "UnknownSymbolError",
+              "SemanticStateBundle",
+              "SemanticStateRoot",
+              "SemanticCapsule",
+              "SymbolMerkleNode",
+              "build_semantic_state",
+              "verify_semantic_state_bundle",
+              "open_semantic_state",
+              "view_semantic_state_bundle",
+              "compile_semantic_capsule",
+              "assess_capsule_freshness",
+              "read_required_source",
+              "extend_semantic_invalidation",
+              "select_tests_and_proofs",
+              "compare_test_selection_oracle"
+            ]
+          }
+        ]
+      },
+      "required_blobs": [
+        {
+          "path": "docs/software_contracts/SEMANTIC_STATE_CONTRACT.md",
+          "oid": "511b781caf50f7c86f23557d044a17a3641b1f26"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+          "oid": "14458fb99ea57c19652398ee479d678ae3fbe507"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/__init__.py",
+          "oid": "c1142eb65085522dc039bd1d15a182ced9efeabd"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+          "oid": "a48e1115875c1f4ffd0b4bc1a875b1d1b049d4eb"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py",
+          "oid": "f2162e00dc4e6f17755463141cf153a02443d65a"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/freshness.py",
+          "oid": "789d777975dc07963b3ef2945b1a20de6e3e4d63"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+          "oid": "b86dae240c3f90bc3de0967bd7cde14f795c53b4"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/semantic-state.payload.schema.json",
+          "oid": "9c4a47edacdaf5e57e9c323da45527c83ad46d6f"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/source.py",
+          "oid": "60b7d0aad68700e6ab90d7dde0ad1641c8b3d59e"
+        },
+        {
+          "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/test_selection.py",
+          "oid": "bdf50221a97a7b48cc4a901bf56912751264b8d5"
+        },
+        {
+          "path": "tests/unit/logic/software_contracts/semantic_state/test_api.py",
+          "oid": "24aba801cf5ac0c8b56112f52e222bfd11458f06"
+        },
+        {
+          "path": "tests/unit/logic/software_contracts/semantic_state/test_import_safety.py",
+          "oid": "cfd29cd5688cfcd651dc42069f38b15fccdbd12e"
+        },
+        {
+          "path": "tests/unit/logic/software_contracts/semantic_state/test_public_semantic_state_pipeline.py",
+          "oid": "13b7ba9adcaaf0fdd098749761641b1141ea074a"
+        }
+      ],
+      "required_test_commands": [
+        [
+          "/home/barberb/lift_coding/.venv/bin/python",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/unit/logic/software_contracts/semantic_state",
+          "tests/unit/logic/software_contracts/semantic_index",
+          "tests/unit/logic/software_contracts/test_content_identity.py",
+          "tests/unit/logic/software_contracts/test_python_frontend.py",
+          "tests/unit/logic/software_contracts/test_repository_manifest.py",
+          "tests/unit/logic/software_contracts/test_resolver.py",
+          "tests/cli/test_semantic_index_cli.py"
+        ]
+      ],
+      "test_timeout_seconds": 2400,
+      "closure_policy": {
+        "blob_scope": "entire_commit_tree",
+        "import_scope": "entire_commit_tree_fail_closed",
+        "test_scope": "sealed_argv_and_repository_configuration_with_tree_fallback",
+        "materialization": "fresh_private_git_archive_with_inert_symlink_records"
+      },
+      "producer_receipt_schema": "ipfs-accelerate.agent-supervisor.semantic-state-producer-test-receipt@2"
+    },
+    {
+      "role": "kit_state_roots",
+      "repository": "endomorphosis/ipfs_kit_py",
+      "origin": "https://github.com/endomorphosis/ipfs_kit_py",
+      "reachability_policy": "exact_clean_head",
+      "commit": "df2f9cc092456329de9724c45a50c54b410875d1",
+      "tree": "d3f2d9ae8b1cbf0145c7d54114a5408d90b49fd0",
+      "interface_fingerprint": "sha256:1545f726dfa274c6fa95ad34d6ee648d898f40ab61ea181afb1923b422681dec",
+      "interface_contract": {
+        "contract_name": "DurableStateRoots@1",
+        "consumer_schema_requirements": [
+          [
+            "state_root_transition_schema",
+            "mcp++/coordination/state-root-transition@1"
+          ],
+          [
+            "transport_cid_profile",
+            "cidv1-dag-json-sha2-256"
+          ]
+        ],
+        "consumer_api_requirements": [
+          "DurableStateRoots.compare_and_swap_root(namespace:str,expected_revision:int,expected_root_cid:str|None,new_root_cid:str,operation_id:str)->StateRootCASResult",
+          "DurableStateRoots.current_root(namespace:str)->StateRootSnapshot",
+          "DurableStateRoots.get_verified(cid:str)->Mapping[str,Any]",
+          "DurableStateRoots.put_verified(payload:Mapping[str,Any],expected_cid:str,replicate:bool=True)->ArtifactWriteResult",
+          "DurableStateRoots.recover_roots()->StateRootRecoveryReport"
+        ],
+        "source_extractions": [
+          {
+            "kind": "python_signature",
+            "path": "ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+            "selector": "DurableCoordinationStore.put",
+            "value": "def put(self, artifact: Mapping[str, Any], *, expected_cid: Optional[str]=None, codec: str='dag-json', replicate: bool=True) -> Dict[str, Any]"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+            "selector": "DurableCoordinationStore.get",
+            "value": "def get(self, cid: str) -> Dict[str, Any]"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+            "selector": "DurableCoordinationStore.get_bytes",
+            "value": "def get_bytes(self, cid: str) -> bytes"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+            "selector": "DurableCoordinationStore.has",
+            "value": "def has(self, cid: str, *, include_backend: bool=False) -> bool"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+            "selector": "DurableCoordinationStore.current_state_root",
+            "value": "def current_state_root(self, namespace: str) -> Dict[str, Any]"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+            "selector": "DurableCoordinationStore.compare_and_swap_state_root",
+            "value": "def compare_and_swap_state_root(self, namespace: str, *, expected_revision: int, expected_root_cid: Optional[str], new_root_cid: str, operation_id: str) -> Dict[str, Any]"
+          },
+          {
+            "kind": "python_signature",
+            "path": "ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+            "selector": "DurableCoordinationStore.recover",
+            "value": "def recover(self, *, rebuild: bool=True) -> Dict[str, Any]"
+          },
+          {
+            "kind": "python_return_keys",
+            "path": "ipfs_kit_py/mcp_server/mcplusplus/artifacts.py",
+            "selector": "envelope_from_payloads",
+            "value": [
+              "decision_cid",
+              "event",
+              "event_cid",
+              "input_cid",
+              "intent_cid",
+              "interface_cid",
+              "output_cid",
+              "receipt_cid",
+              "success"
+            ]
+          }
+        ]
+      },
+      "required_blobs": [
+        {
+          "path": "ipfs_kit_py/mcp_server/mcplusplus/artifacts.py",
+          "oid": "8901130e6a57c3138f7dcb41603144ad6c17da97"
+        },
+        {
+          "path": "ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+          "oid": "161c4631881607b4ed7c854f751f9fc3be0cfb45"
+        },
+        {
+          "path": "ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py",
+          "oid": "70ae494cb1f4faa4deb9fba94bb9f0bdcef9d4c2"
+        },
+        {
+          "path": "ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py",
+          "oid": "9299bb10f967ca0d58abe1a78b67455ebb22dcb0"
+        },
+        {
+          "path": "tests/test_coordination_storage.py",
+          "oid": "82896d9f7dde7e2b6b12b12392a2782ddb68903c"
+        },
+        {
+          "path": "tests/test_semantic_state_root_acceptance.py",
+          "oid": "e9c78cdc975808c69f9999449aa837078137f414"
+        },
+        {
+          "path": "tests/test_semantic_state_root_adapter.py",
+          "oid": "7181a2b769e01a2066335e354c6d2f5a1401652d"
+        },
+        {
+          "path": "tests/test_semantic_state_root_cas.py",
+          "oid": "b89e2c178982f651fa9ce2064397a44934fc9d06"
+        },
+        {
+          "path": "tests/test_semantic_state_root_contracts.py",
+          "oid": "32cee4675e1c43982dd6c03527a80cc363b86170"
+        },
+        {
+          "path": "tests/test_semantic_state_root_recovery.py",
+          "oid": "29fb50184e17f9c65145fa3ad0cd133df1126727"
+        }
+      ],
+      "required_test_commands": [
+        [
+          "/home/barberb/lift_coding/.venv/bin/python",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_coordination_storage.py",
+          "tests/test_semantic_state_root_contracts.py",
+          "tests/test_semantic_state_root_adapter.py",
+          "tests/test_semantic_state_root_cas.py",
+          "tests/test_semantic_state_root_recovery.py",
+          "tests/test_semantic_state_root_acceptance.py"
+        ]
+      ],
+      "test_timeout_seconds": 1800,
+      "closure_policy": {
+        "blob_scope": "entire_commit_tree",
+        "import_scope": "entire_commit_tree_fail_closed",
+        "test_scope": "sealed_argv_and_repository_configuration_with_tree_fallback",
+        "materialization": "fresh_private_git_archive_with_inert_symlink_records"
+      },
+      "producer_receipt_schema": "ipfs-accelerate.agent-supervisor.semantic-state-producer-test-receipt@2"
+    },
+    {
+      "role": "mcp_plus_plus",
+      "repository": "endomorphosis/Mcp-Plus-Plus",
+      "origin": "https://github.com/endomorphosis/Mcp-Plus-Plus",
+      "reachability_policy": "exact_clean_head",
+      "commit": "dc3164653a48d059ae9812078359daeafb451c07",
+      "tree": "6560c3d0c926be12df860afb7d7c82043a1769ba",
+      "interface_fingerprint": "sha256:58d64c59695bc9a9bc6f0919e58f3e3056058aaa6c93d93690b4b05f70e1fd01",
+      "interface_contract": {
+        "contract_name": "McpPlusPlusProfilesABF@dc316465",
+        "consumer_schema_requirements": [
+          [
+            "profile_a",
+            "interface-description"
+          ],
+          [
+            "profile_b",
+            "cid-native-artifacts"
+          ],
+          [
+            "profile_f",
+            "event-dag-ordering"
+          ]
+        ],
+        "consumer_api_requirements": [
+          "ProfileA.InterfaceDescriptor(application_schema_cid)",
+          "ProfileB.ExecutionEnvelope(payload_or_payload_cid)",
+          "ProfileB.ExecutionReceipt(content_addressed_result)",
+          "ProfileF.DAGEvent(parent_event_cids,payload_cid)"
+        ],
+        "source_extractions": [
+          {
+            "kind": "python_literal",
+            "path": "tests-py/validators/mcp_idl.py",
+            "selector": "MCPIDLValidator.REQUIRED_DESCRIPTOR_FIELDS",
+            "value": [
+              "name",
+              "namespace",
+              "version",
+              "methods",
+              "errors",
+              "requires",
+              "compatibility"
+            ]
+          },
+          {
+            "kind": "python_literal",
+            "path": "tests-py/validators/cid_artifacts.py",
+            "selector": "CIDExecutionValidator.REQUIRED_ENVELOPE_FIELDS",
+            "value": [
+              "interface_cid",
+              "input_cid"
+            ]
+          },
+          {
+            "kind": "python_literal",
+            "path": "tests-py/validators/event_dag.py",
+            "selector": "EventDAGValidator.validate_event.required_fields",
+            "value": [
+              "event_cid",
+              "timestamp",
+              "parents"
+            ]
+          },
+          {
+            "kind": "json_keys",
+            "path": "conformance/vectors/execution_receipt.json",
+            "selector": "/payload",
+            "value": [
+              "duration_ms",
+              "error",
+              "output_cid",
+              "receipt_cid",
+              "signature",
+              "success"
+            ]
+          },
+          {
+            "kind": "json_keys",
+            "path": "conformance/vectors/dag_event_epoch.json",
+            "selector": "/payload",
+            "value": [
+              "event_cid",
+              "event_type",
+              "parents",
+              "payload",
+              "timestamp"
+            ]
+          }
+        ]
+      },
+      "required_blobs": [
+        {
+          "path": "conformance/vectors/dag_event_epoch.json",
+          "oid": "8cf4e428399f04d6e9c0d3f685281d9920bc9fa3"
+        },
+        {
+          "path": "conformance/vectors/execution_receipt.json",
+          "oid": "f083861d146c9e864e6fe1f76fc422532d81a74f"
+        },
+        {
+          "path": "docs/spec/cid-native-artifacts.md",
+          "oid": "7571cc156e1019f39461712090c4199d552658ae"
+        },
+        {
+          "path": "docs/spec/event-dag-ordering.md",
+          "oid": "150774088a0027171a45a638a6cd07c753b89a6d"
+        },
+        {
+          "path": "docs/spec/mcp++-profiles-draft.md",
+          "oid": "c2acde72eab1a261b674c8938109cc7213d529dc"
+        },
+        {
+          "path": "docs/spec/mcp-idl.md",
+          "oid": "e9a990d295985c16c08e3bd4c967dd7dd170883e"
+        },
+        {
+          "path": "tests-py/integration/test_cid_envelopes.py",
+          "oid": "cb0f883ffa7785fa38ae3f623b2ace42bb2d58aa"
+        },
+        {
+          "path": "tests-py/integration/test_conformance_vectors.py",
+          "oid": "2b7704a2643f4fec9d22c3028f34573658900cb9"
+        },
+        {
+          "path": "tests-py/integration/test_event_dag.py",
+          "oid": "5b5f513ceb207572ee53a3c7adf7f17bb3f81236"
+        },
+        {
+          "path": "tests-py/integration/test_mcp_idl.py",
+          "oid": "1fdfb603de0baf7571b1171b6fd384910b7c1aa9"
+        },
+        {
+          "path": "tests-py/validators/__init__.py",
+          "oid": "969da317eef6d544498437dcea08739c10afe0c7"
+        },
+        {
+          "path": "tests-py/validators/base_mcp.py",
+          "oid": "031d8ed49ae5fdf117926a0305a444f6dba461a8"
+        },
+        {
+          "path": "tests-py/validators/cid_artifacts.py",
+          "oid": "c42c5774f0d923a99cc23d281f7f032bea3ecd87"
+        },
+        {
+          "path": "tests-py/validators/event_dag.py",
+          "oid": "3a2b6a4c9972354f2daa3038d65044873887c3bb"
+        },
+        {
+          "path": "tests-py/validators/mcp_idl.py",
+          "oid": "cf07f40d6bb247952e56eb25037b6f002126e802"
+        },
+        {
+          "path": "tests-py/validators/models.py",
+          "oid": "928b1989ec92df904f1547c4688336c3b33d01dc"
+        }
+      ],
+      "required_test_commands": [
+        [
+          "/home/barberb/lift_coding/.venv/bin/python",
+          "-m",
+          "pytest",
+          "-q",
+          "tests-py/integration/test_mcp_idl.py",
+          "tests-py/integration/test_cid_envelopes.py",
+          "tests-py/integration/test_conformance_vectors.py",
+          "tests-py/integration/test_event_dag.py"
+        ]
+      ],
+      "test_timeout_seconds": 900,
+      "closure_policy": {
+        "blob_scope": "entire_commit_tree",
+        "import_scope": "entire_commit_tree_fail_closed",
+        "test_scope": "sealed_argv_and_repository_configuration_with_tree_fallback",
+        "materialization": "fresh_private_git_archive_with_inert_symlink_records"
+      },
+      "producer_receipt_schema": "ipfs-accelerate.agent-supervisor.semantic-state-producer-test-receipt@2"
+    }
+  ]
+}

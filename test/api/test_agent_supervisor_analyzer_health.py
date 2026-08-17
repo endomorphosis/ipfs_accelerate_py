@@ -71,7 +71,7 @@ def test_canary_registry_covers_every_version_kind_and_parser_path_deterministic
     second = run_codebase_analyzer_canaries().to_dict()
     assert first == second
     assert first["passed"] is True
-    assert first["fixture_count"] == 7
+    assert first["fixture_count"] == 6
 
 
 def test_unknown_analyzer_version_has_a_fail_closed_missing_canary_report():

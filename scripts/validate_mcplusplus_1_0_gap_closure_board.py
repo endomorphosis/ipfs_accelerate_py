@@ -200,11 +200,23 @@ def validate() -> list[str]:
         if goal.goal_id == "MCPP-G000" and str(goal.fields.get("review_only", "")).lower() != "true":
             errors.append("root goal must be review only")
 
-    tasks = parse_task_text(
+    parsed_tasks = parse_task_text(
         TODO_PATH.read_text(encoding="utf-8"),
         path=TODO_PATH,
         task_header_prefix="## MCPP-",
     )
+    tasks = [
+        task
+        for task in parsed_tasks
+        if str(task.metadata.get("canonical board task", "")).strip().lower()
+        != "false"
+    ]
+    operational = [
+        task
+        for task in parsed_tasks
+        if str(task.metadata.get("canonical board task", "")).strip().lower()
+        == "false"
+    ]
     if [task.task_id for task in tasks] != list(TASK_IDS):
         errors.append(
             "task ids drifted count="
@@ -214,10 +226,13 @@ def validate() -> list[str]:
             + " last="
             + (tasks[-1].task_id if tasks else "?")
         )
+    if len(operational) > 16:
+        errors.append(f"too many operational repair tasks: {len(operational)}")
 
     task_by_id = {task.task_id: task for task in tasks}
     adjacency: dict[str, list[str]] = defaultdict(list)
-    incoming: dict[str, int] = {task_id: 0 for task_id in TASK_IDS}
+    incoming: dict[str, int] = defaultdict(int)
+    incoming.update({task_id: 0 for task_id in TASK_IDS})
     for task in tasks:
         metadata = {key.lower(): value for key, value in task.metadata.items()}
         missing = [field for field in REQUIRED_TASK_FIELDS if field not in metadata]
@@ -276,8 +291,15 @@ def validate() -> list[str]:
         deps = _csv(task.metadata.get("depends on", ""))
         if all(task_by_id[dep].status == "completed" for dep in deps if dep in task_by_id):
             ready.append(task_id)
-    if tuple(ready) != INITIAL_READY:
+    completed_ids = {
+        task_id
+        for task_id, task in task_by_id.items()
+        if task.status == "completed"
+    }
+    if completed_ids == {"MCPP-000"} and tuple(ready) != INITIAL_READY:
         errors.append(f"ready set {ready!r} != {list(INITIAL_READY)!r}")
+    elif not ready and TERMINAL_TASK not in completed_ids:
+        errors.append("no dependency-ready tasks remain before terminal completion")
 
     queue = deque([task_id for task_id, count in incoming.items() if count == 0])
     seen = 0
@@ -306,6 +328,7 @@ def validate() -> list[str]:
         "taskboard_sha256": f"sha256:{digest}",
         "goals": len(goals) if "goals" in locals() else 0,
         "tasks": len(tasks) if "tasks" in locals() else 0,
+        "operational_tasks": len(operational) if "operational" in locals() else 0,
         "ready": ready if "ready" in locals() else [],
     }
     print(json.dumps(report, indent=2, sort_keys=True))

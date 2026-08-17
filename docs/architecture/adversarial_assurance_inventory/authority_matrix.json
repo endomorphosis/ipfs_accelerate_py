@@ -1,0 +1,1061 @@
+{
+  "schema": "aae/authority-matrix@1",
+  "evidence_id": "aae/authority-matrix@1",
+  "interface_id": "AssuranceAuthorityMatrix@1",
+  "task_id": "AAE-005",
+  "goal_id": "AAE-G010",
+  "track": "authority-matrix",
+  "board_namespace": "adversarial-assurance-engine-v1",
+  "bundle": "adversarial-assurance/authority-matrix",
+  "title": "Adversarial Assurance Engine authority consumption matrix",
+  "inspected_at": "2026-08-13",
+  "status": "complete",
+  "generated_for_program": "adversarial-assurance-engine-v1",
+  "matrix_kind": "reuse_non_reimplementation_and_baseline_join",
+  "current_controller_head": "bdfff1240b6e707a2d2106210d546d25fde3064d",
+  "conflict_policy": {
+    "rule": "Reuse canonical identity, receipt, proof, persistence, scheduler, and context-packing authorities. Missing capability is typed_unavailable.",
+    "admission": "fail_closed",
+    "alternate_owner_disposition": "reject",
+    "stale_pin_disposition": "typed_blocker",
+    "missing_owner_disposition": "reject",
+    "duplicate_owner_disposition": "reject",
+    "inferred_interface_from_name_alone": false,
+    "new_mcplusplus_profile_allowed": false,
+    "local_generic_envelope_allowed": false,
+    "new_content_identity_allowed": false,
+    "new_receipt_format_allowed": false,
+    "new_scheduler_allowed": false,
+    "new_context_packing_allowed": false,
+    "new_cid_implementation_allowed": false,
+    "new_proof_cache_allowed": false,
+    "ivp_merkle_commitment_may_substitute_for_sealer": false,
+    "aae_local_proof_system_masquerading_as_seal_forbidden": true,
+    "workers_may_complete_operator_gate": false
+  },
+  "source_inventories": {
+    "accelerate": {
+      "task_id": "AAE-001",
+      "path": "docs/architecture/adversarial_assurance_inventory/accelerate.json",
+      "schema": "aae/accelerate-inventory@1",
+      "evidence_id": "aae/accelerate-inventory@1",
+      "interface_id": "AAEAccelerateInventory@1",
+      "inventory_tree_revision": "3256d8bb813173349388a931e77d8ecf4bbcb8ef"
+    },
+    "datasets": {
+      "task_id": "AAE-002",
+      "path": "docs/architecture/adversarial_assurance_inventory/datasets.json",
+      "schema": "aae/datasets-inventory@1",
+      "evidence_id": "aae/datasets-inventory@1",
+      "interface_id": "AAEDatasetsInventory@1"
+    },
+    "kit": {
+      "task_id": "AAE-003",
+      "path": "docs/architecture/adversarial_assurance_inventory/kit.json",
+      "schema": "aae/kit-inventory@1",
+      "evidence_id": "aae/kit-inventory@1",
+      "interface_id": "AAEKitInventory@1"
+    },
+    "interoperability": {
+      "task_id": "AAE-004",
+      "path": "docs/architecture/adversarial_assurance_inventory/interoperability.json",
+      "schema": "aae/mcplusplus-boundary@1",
+      "evidence_id": "aae/mcplusplus-boundary@1",
+      "interface_id": "MCPPlusPlusBoundary@1",
+      "probe_interface": "IncrementalProofSealerCapabilityProbe@1"
+    }
+  },
+  "scoped_repository_forest": {
+    "controller": {
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "branch": "agent/adversarial-assurance-engine-v1",
+      "head": "bdfff1240b6e707a2d2106210d546d25fde3064d",
+      "planning_ancestor": "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda",
+      "inventory_tree_revision": "3256d8bb813173349388a931e77d8ecf4bbcb8ef",
+      "note": "Inventory AAE-001 inspected 3256d8bb; later AAE-002/003/004 merges advanced the controller to this head without changing nested gitlinks."
+    },
+    "gitlinks": {
+      "ipfs_datasets_py": {
+        "repository": "endomorphosis/ipfs_datasets_py",
+        "commit": "fbd1ba9f70803de157622bb20e22595ef09d606f",
+        "match_mode": "exact_gitlink_head"
+      },
+      "ipfs_kit_py": {
+        "repository": "endomorphosis/ipfs_kit_py",
+        "commit": "c7e5feeb24582ab68c1f5ca626366b665a82ad61",
+        "match_mode": "exact_gitlink_head"
+      },
+      "ipfs_accelerate_py/mcplusplus": {
+        "repository": "endomorphosis/Mcp-Plus-Plus",
+        "commit": "dc3164653a48d059ae9812078359daeafb451c07",
+        "match_mode": "exact_gitlink_head"
+      }
+    }
+  },
+  "package_roles": {
+    "ipfs_datasets_py": {
+      "role": "mutation_generation_claim_analysis_vacuity_adequacy",
+      "owns": [
+        "incremental semantic index scan/delta/invalidation/explain/watch",
+        "storage-neutral semantic-state producer (bundle, root, Merkle, capsules)",
+        "functional SemanticCapsuleCompiler@1 (not a public class)",
+        "AnalysisConfidence exact/conservative/heuristic/opaque taxonomy and durable AnalysisLimitation records",
+        "IR claim/assumption/obligation declarations and software-verification property vocabulary",
+        "controlled semantic-state mutation fixtures and ISI invalidation fixtures",
+        "canonical content identity (CIDv1 profile) under logic.software_contracts.content",
+        "narrow heuristic vacuity/non-vacuity checks inside ProofCandidateValidator@1"
+      ],
+      "does_not_own": [
+        "accelerate MutationLedger@1 file-lineage ledger (accelerate analysis package)",
+        "accelerate ContextPacker / IncrementalVerificationPlanner / VerificationExecutor",
+        "kit DurableCoordinationStore / root CAS / recovery",
+        "AAE domain package adversarial_assurance (planned; not present as a public package on this pin)",
+        "integrated semantic mutation campaign, equivalent-mutant analyzer, expected-detection engine",
+        "general formal/policy/test/ZK vacuity families (analyze_vacuity and related AAE APIs)"
+      ]
+    },
+    "ipfs_accelerate_py": {
+      "role": "isolated_execution_scheduling_verification_remediation_evaluation",
+      "owns": [
+        "isolated mutant execution and worktrees",
+        "resource admission, campaign scheduling, timeout and cancellation",
+        "test and prover execution through IncrementalVerificationPlanner and VerificationExecutor",
+        "VerificationReceiptCache and ModelRoutePlanner",
+        "ContextPacker / pack_context",
+        "counterexample minimization, candidate-remediation evaluation, cost measurement"
+      ],
+      "does_not_own": [
+        "canonical CID / content-identity implementation",
+        "second semantic index, scanner, or capsule compiler",
+        "DurableCoordinationStore or a second object store",
+        "new MCP++ execution profile",
+        "released IncrementalProofSealer checkpoint/delta APIs on this tree"
+      ]
+    },
+    "ipfs_kit_py": {
+      "role": "immutable_artifacts_campaign_state_receipts_recovery",
+      "owns": [
+        "DurableCoordinationStore immutable blocks and rebuildable indexes",
+        "DurableStateRootAdapter / DurableStateRoots CAS and recovery",
+        "campaign Merkle roots, compare-and-swap promotion state, crash recovery"
+      ],
+      "does_not_own": [
+        "datasets adversarial_assurance mutation/claim/gap models",
+        "accelerate campaign orchestration, workers, IVP, VerificationReceiptCache",
+        "MCP++ new AAE profile (forbidden)",
+        "ZK proof systems or seal authority"
+      ]
+    },
+    "Mcp-Plus-Plus": {
+      "role": "shared_schemas_canonical_vectors_conformance_only",
+      "owns": [
+        "shared mutation-campaign schemas when they exist as current vectors",
+        "canonical vectors",
+        "assurance-receipt schemas that already exist",
+        "cross-language conformance data",
+        "Profiles A/B/F/G as existing wire authorities"
+      ],
+      "does_not_own": [
+        "a new MCP++ profile",
+        "AAE application payload schemas beyond existing envelopes",
+        "semantic index, capsule compiler, or durable campaign store"
+      ]
+    }
+  },
+  "authority_pins": {
+    "accelerate_planning": {
+      "authority_id": "accelerate_planning",
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "commit": "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda",
+      "pin_kind": "planning_authority_revision",
+      "match_mode": "required_ancestor",
+      "source": "AAE plan section 2; scheduler source_binding.accelerator_required_ancestor"
+    },
+    "accelerate_controller": {
+      "authority_id": "accelerate_controller",
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "branch": "agent/adversarial-assurance-engine-v1",
+      "commit": "bdfff1240b6e707a2d2106210d546d25fde3064d",
+      "pin_kind": "current_controller_head",
+      "match_mode": "exact_head_for_current_tree_baselines",
+      "source": "AAE-005 current-tree forest"
+    },
+    "datasets": {
+      "authority_id": "datasets",
+      "repository": "endomorphosis/ipfs_datasets_py",
+      "gitlink_path": "ipfs_datasets_py",
+      "commit": "fbd1ba9f70803de157622bb20e22595ef09d606f",
+      "pin_kind": "nested_gitlink",
+      "match_mode": "exact_gitlink_head",
+      "source": "AAE-002 authority.commit; AAE-001 nested_gitlinks_observed"
+    },
+    "kit": {
+      "authority_id": "kit",
+      "repository": "endomorphosis/ipfs_kit_py",
+      "gitlink_path": "ipfs_kit_py",
+      "commit": "c7e5feeb24582ab68c1f5ca626366b665a82ad61",
+      "pin_kind": "nested_gitlink",
+      "match_mode": "exact_gitlink_head",
+      "source": "AAE-003 planning_bound_revision / observed_revision"
+    },
+    "mcplusplus": {
+      "authority_id": "mcplusplus",
+      "repository": "endomorphosis/Mcp-Plus-Plus",
+      "gitlink_path": "ipfs_accelerate_py/mcplusplus",
+      "commit": "dc3164653a48d059ae9812078359daeafb451c07",
+      "pin_kind": "nested_gitlink",
+      "match_mode": "exact_gitlink_head",
+      "source": "AAE-004 shared wire/conformance authority"
+    },
+    "incremental_verification_freeze": {
+      "authority_id": "incremental_verification_freeze",
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "commit": "8c7800cedc5e1b848367db9952f912428466f8cc",
+      "pin_kind": "historical_api_freeze",
+      "match_mode": "exact_freeze_pin",
+      "package_root": "ipfs_accelerate_py/agent_supervisor/verification"
+    },
+    "incremental_proof_sealer_program": {
+      "authority_id": "incremental_proof_sealer_program",
+      "pin_kind": "external_observation_not_released_api",
+      "match_mode": "observation_only",
+      "is_released_public_api": false,
+      "disposition": "typed_unavailable",
+      "source": "AAE-004 proof_sealer_probes",
+      "notes": [
+        "Missing IncrementalProofSealer, FullCheckpointSeal, and DeltaSeal public APIs remain typed_unavailable.",
+        "IVP Merkle commitments are not seals and cannot substitute."
+      ]
+    }
+  },
+  "ownership_categories": {
+    "cid": {
+      "category": "cid",
+      "sole_owner": "ipfs_datasets_py",
+      "owner_import_path": "ipfs_datasets_py.logic.software_contracts.content",
+      "interfaces": [
+        "canonical_dag_json_bytes",
+        "cid_for_bytes",
+        "cid_for_structured",
+        "cid_for_obj",
+        "validate_cid"
+      ],
+      "authority_pin": "datasets",
+      "forbidden_claims": [
+        "second_cid_profile",
+        "local_cid_implementation"
+      ]
+    },
+    "capsule_and_index": {
+      "category": "capsule_and_index",
+      "sole_owner": "ipfs_datasets_py",
+      "interfaces": [
+        "IncrementalSemanticIndex",
+        "SemanticCapsuleCompiler@1"
+      ],
+      "authority_pin": "datasets",
+      "notes": [
+        "SemanticCapsuleCompiler@1 is a functional interface identifier, not a public class to recreate."
+      ]
+    },
+    "context_packing": {
+      "category": "context_packing",
+      "sole_owner": "ipfs_accelerate_py",
+      "interfaces": [
+        "ContextPacker",
+        "pack_context"
+      ],
+      "authority_pin": "accelerate_controller",
+      "forbidden_claims": [
+        "new_context_packing_implementation"
+      ]
+    },
+    "verification": {
+      "category": "verification",
+      "sole_owner": "ipfs_accelerate_py",
+      "interfaces": [
+        "IncrementalVerificationPlanner",
+        "VerificationReceiptCache",
+        "VerificationExecutor",
+        "ModelRoutePlanner"
+      ],
+      "authority_pin": "incremental_verification_freeze"
+    },
+    "durable_store": {
+      "category": "durable_store",
+      "sole_owner": "ipfs_kit_py",
+      "interfaces": [
+        "DurableCoordinationStore",
+        "DurableStateRootAdapter",
+        "DurableStateRoots"
+      ],
+      "authority_pin": "kit"
+    },
+    "wire": {
+      "category": "wire",
+      "sole_owner": "Mcp-Plus-Plus",
+      "interfaces": [
+        "InterfaceDescriptor",
+        "ExecutionEnvelope",
+        "ExecutionReceipt",
+        "DAGEvent",
+        "SemanticStateWireCodec"
+      ],
+      "authority_pin": "mcplusplus",
+      "forbidden_claims": [
+        "new_mcplusplus_profile"
+      ]
+    },
+    "proof_sealer": {
+      "category": "proof_sealer",
+      "sole_owner": "typed_unavailable",
+      "interfaces": [
+        "IncrementalProofSealer",
+        "FullCheckpointSeal",
+        "DeltaSeal"
+      ],
+      "authority_pin": "incremental_proof_sealer_program",
+      "disposition": "typed_unavailable"
+    }
+  },
+  "status_vocabularies": {
+    "analysis_confidence": {
+      "closed": true,
+      "values": [
+        "exact",
+        "conservative",
+        "heuristic",
+        "opaque"
+      ]
+    },
+    "capsule_freshness": {
+      "closed": true,
+      "values": [
+        "fresh",
+        "stale",
+        "unknown"
+      ]
+    },
+    "capsule_admission": {
+      "closed": true,
+      "values": [
+        "exact_substitute",
+        "conservative_substitute_with_caveats",
+        "raw_source_required"
+      ]
+    },
+    "verification_receipt_kinds": {
+      "static_analysis": "StaticAnalysisReceipt@1",
+      "type_check": "TypeCheckReceipt@1",
+      "test": "TestReceipt@1",
+      "proof": "ProofReceipt@1",
+      "counterexample": "CounterexampleReceipt@1"
+    },
+    "mutation_outcomes": [
+      "killed_by_static_analysis",
+      "killed_by_type_check",
+      "killed_by_test",
+      "killed_by_formal_proof",
+      "killed_by_policy",
+      "killed_by_runtime_invariant",
+      "killed_by_full_suite",
+      "survived_selected_verification",
+      "survived_full_verification",
+      "equivalent",
+      "probably_equivalent",
+      "invalid_mutant",
+      "uncompilable",
+      "infrastructure_failure",
+      "timeout",
+      "inconclusive",
+      "human_review_required"
+    ],
+    "missing_capability": "typed_unavailable"
+  },
+  "test_and_proof_manifests": {
+    "datasets_focused_tests": {
+      "semantic_index_unit": "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_index",
+      "semantic_state_unit": "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state",
+      "content_identity": "ipfs_datasets_py/tests/unit/logic/software_contracts/test_content_identity.py",
+      "ir_claims": "ipfs_datasets_py/tests/unit/logic/ir_core",
+      "tactician_vacuity_adversarial": "ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py",
+      "fuzz_logic_parser": "ipfs_datasets_py/tests/fuzz/logic",
+      "recommended_validation_commands": [
+        "python3 -m json.tool docs/architecture/adversarial_assurance_inventory/datasets.json >/dev/null",
+        "python3.12 -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_index ipfs_datasets_py/tests/unit/logic/software_contracts/test_content_identity.py"
+      ]
+    },
+    "kit_focused_suite": {
+      "focused_suite": [
+        {
+          "path": "ipfs_kit_py/tests/test_coordination_storage.py",
+          "def_test_count": 7,
+          "covers": [
+            "Profile G hermetic vector CIDs",
+            "restart and index recovery",
+            "backend repair of missing local block",
+            "claim/lease fencing and expiry",
+            "retention archives without deleting blocks",
+            "expected CID and recovery fail-closed corruption",
+            "corrupt SQLite preserve-and-rebuild"
+          ]
+        },
+        {
+          "path": "ipfs_kit_py/tests/test_semantic_state_root_contracts.py",
+          "def_test_count": 9,
+          "covers": [
+            "closed contract round-trip",
+            "namespace and CID validation",
+            "CAS expectation coherence",
+            "semantic dag-json-only CIDs"
+          ]
+        },
+        {
+          "path": "ipfs_kit_py/tests/test_semantic_state_root_cas.py",
+          "def_test_count": 10,
+          "covers": [
+            "revisioned publish",
+            "stale CAS and idempotent replay",
+            "concurrent winners",
+            "index rebuild from transitions",
+            "live corruption refusal"
+          ]
+        },
+        {
+          "path": "ipfs_kit_py/tests/test_semantic_state_root_adapter.py",
+          "def_test_count": 7,
+          "covers": [
+            "caller identity preservation",
+            "provider status projection",
+            "raw CID rejection at semantic facade"
+          ]
+        },
+        {
+          "path": "ipfs_kit_py/tests/test_semantic_state_root_recovery.py",
+          "def_test_count": 11,
+          "covers": [
+            "interruption boundaries",
+            "ambiguous successor rejection",
+            "raw transition rejection before rebuild",
+            "recovery races with CAS commit"
+          ]
+        },
+        {
+          "path": "ipfs_kit_py/tests/test_semantic_state_root_acceptance.py",
+          "def_test_count": 7,
+          "covers": [
+            "public facade acceptance",
+            "namespace isolation",
+            "concurrency and interruption",
+            "raw-root semantic rejection"
+          ]
+        },
+        {
+          "path": "ipfs_kit_py/tests/test_semantic_state_root_performance.py",
+          "def_test_count": 2,
+          "covers": [
+            "healthy reopen without root-index rebuild mutations",
+            "orphan transition reconstruction"
+          ]
+        },
+        {
+          "path": "ipfs_kit_py/tests/test_semantic_state_root_import_safety.py",
+          "def_test_count": 1,
+          "covers": [
+            "inert public facade import"
+          ]
+        },
+        {
+          "path": "ipfs_kit_py/tests/semantic_governor_store/test_contracts.py",
+          "def_test_count": 31,
+          "covers": [
+            "closed enums and validators",
+            "typed result round-trips",
+            "protocol shape including issue_receipt and recover_governor_store"
+          ]
+        },
+        {
+          "path": "ipfs_kit_py/tests/semantic_governor_store/test_artifacts.py",
+          "def_test_count": 24,
+          "covers": [
+            "sealed artifact admission",
+            "operation_id idempotency",
+            "privacy markers and size bounds",
+            "CID forge refusal"
+          ]
+        },
+        {
+          "path": "ipfs_kit_py/tests/semantic_governor_store/test_history.py",
+          "def_test_count": 20,
+          "covers": [
+            "append-only history CAS",
+            "public/private projections",
+            "entry integrity and unavailable entry outcomes"
+          ]
+        },
+        {
+          "path": "ipfs_kit_py/tests/semantic_governor_store/test_policy_cas.py",
+          "def_test_count": 18,
+          "covers": [
+            "policy and promotion CAS",
+            "authorization-separated promotion",
+            "rollback retains transition history"
+          ]
+        },
+        {
+          "path": "ipfs_kit_py/tests/test_proof_certificate_store.py",
+          "def_test_count": 9,
+          "covers": [
+            "CID verification",
+            "budget and path safety",
+            "optional IPFS transport misses"
+          ]
+        },
+        {
+          "path": "ipfs_kit_py/tests/test_agent_supervisor_receipts.py",
+          "covers": [
+            "verified receipt resolution",
+            "denied/unavailable without synthetic success"
+          ]
+        }
+      ],
+      "def_test_count_sum_focused": 156,
+      "inventory_note": "Counts are static def test_* enumerations on this pin, not a green pytest run. Inventory does not restate a green suite as AAE campaign readiness."
+    },
+    "interop_tests": [
+      {
+        "path": "test/api/semantic_state/test_wire.py",
+        "revision": "bd5fad7ac854e3127e8aef4a5af58ee7f0748e29",
+        "covers": [
+          "profile_a",
+          "profile_b",
+          "profile_f",
+          "semantic_state_wire"
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py",
+        "revision": "dcd0617fe1f9a83172e3df18204096dd157bd85b",
+        "covers": [
+          "profile_b"
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py",
+        "revision": "dcd0617fe1f9a83172e3df18204096dd157bd85b",
+        "covers": [
+          "profile_f"
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py",
+        "revision": "dcd0617fe1f9a83172e3df18204096dd157bd85b",
+        "covers": [
+          "profile_a"
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/mcp/tests/test_profile_g_transport.py",
+        "revision": "fd866abbbe114a9bef2f83d28465ff1053abf728",
+        "covers": [
+          "profile_g"
+        ]
+      },
+      {
+        "path": "test/integration/test_mcp_mcplusplus_interop_smoke.py",
+        "covers": [
+          "runtime_interop_smoke"
+        ]
+      },
+      {
+        "path": "test/api/test_agent_supervisor_verification_bundle.py",
+        "revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+        "covers": [
+          "verification_commitment_non_zk"
+        ]
+      },
+      {
+        "path": "test/api/test_agent_supervisor_verification_contracts.py",
+        "revision": "0cdf81bdd283dad6c27c9d23bbb6637d7dd54cff",
+        "covers": [
+          "verification_commitment_non_zk"
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/tests-py/integration/test_conformance_vectors.py",
+        "covers": [
+          "shared_conformance_vectors",
+          "cross_language_python_harness"
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus/tests-go/conformance_vectors_test.go",
+        "covers": [
+          "shared_conformance_vectors",
+          "cross_language_go_harness"
+        ]
+      }
+    ],
+    "accelerate_claimed_interfaces": [
+      {
+        "name": "IncrementalVerificationPlanner",
+        "interface_id": "IncrementalVerificationPlanner@1",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/verification/planner.py",
+        "source_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+        "status": "available"
+      },
+      {
+        "name": "VerificationReceiptCache",
+        "interface_id": "VerificationReceiptCache@1",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/verification/receipt_cache.py",
+        "source_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+        "status": "available"
+      },
+      {
+        "name": "VerificationExecutor",
+        "interface_id": "VerificationExecutor@1",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/verification/executor.py",
+        "source_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+        "status": "available"
+      },
+      {
+        "name": "VerificationProcessRunner",
+        "interface_id": "VerificationProcessRunner@1",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/verification/process_runner.py",
+        "source_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+        "status": "available"
+      },
+      {
+        "name": "ModelRoutePlanner",
+        "interface_id": "ModelRoutePlanner@1",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/verification/model_route.py",
+        "source_revision": "52e8fe17fdc7ac63f905872b194d930ae36ab1db",
+        "status": "available"
+      },
+      {
+        "name": "ContextPacker",
+        "interface_id": "ContextPack@1",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py",
+        "source_revision": "69b8893087b491088a49bb53b8f256ec6fadcc3b",
+        "status": "available"
+      },
+      {
+        "name": "IsolatedWorktree",
+        "interface_id": "IsolatedPatchWorktree@1",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/semantic_state/worktree.py",
+        "source_revision": "f1b5d1572be8537a138fa5ab1d69f120774664e2",
+        "status": "available"
+      },
+      {
+        "name": "ResourceScheduler",
+        "interface_id": "ResourceScheduler@1",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+        "source_revision": "6d2c27b91e1d726d66af9d06f70bf5646dd5559c",
+        "status": "available"
+      },
+      {
+        "name": "MutationLedger",
+        "interface_id": "MutationLedger@1",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/analysis/mutation_ledger.py",
+        "source_revision": "8c0aed40213b0d92c7eb58ef6299522daa2ec92f",
+        "status": "available_lineage_only"
+      },
+      {
+        "name": "FormalVerificationPolicy",
+        "interface_id": "FormalVerificationPolicy@1",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_policy.py",
+        "source_revision": "22f7f54063ef1a599940f1a6754f6503361e5b1e",
+        "status": "available"
+      },
+      {
+        "name": "ProgramAnalysisZKP",
+        "interface_id": "ProgramAnalysisZKP@1",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/proof/program_analysis_zkp.py",
+        "source_revision": "ab984496fb1109700ec37ed91bda5b29d7214ecb",
+        "status": "available_scoped_nonauthoritative"
+      },
+      {
+        "name": "DatasetsZkAttestation",
+        "interface_id": "IpfsDatasetsZkAttestation@1",
+        "source_path": "ipfs_accelerate_py/agent_supervisor/proof/ipfs_datasets_zk_attestation.py",
+        "source_revision": "16a819175a29e694a81da752020f46f062e2b8e0",
+        "status": "available_adapter"
+      }
+    ],
+    "ivp_benchmark": {
+      "interface_id": "IncrementalVerificationBenchmark@2",
+      "evidence": "ivp/benchmark@2",
+      "schema": "ipfs_accelerate_py/agent-supervisor/incremental-verification-benchmark@2",
+      "status": "red_non_authoritative",
+      "measurement_status": "red",
+      "source_path": "benchmarks/agent_supervisor/incremental_verification.py",
+      "source_revision": "eb8e2a2f4402affa2b2ee2b30ca17d94ceab88c0",
+      "report_path": "docs/architecture/INCREMENTAL_VERIFICATION_PLANNER_REPORT.md",
+      "report_revision": "8c7800cedc5e1b848367db9952f912428466f8cc",
+      "report_interface": "IncrementalVerificationReleaseReport@2",
+      "test_paths": [
+        "test/benchmarks/test_incremental_verification_planner_benchmark.py",
+        "test/api/test_agent_supervisor_incremental_verification_report.py"
+      ],
+      "metrics": {
+        "case_count": 20,
+        "measured_cases": 15,
+        "inconclusive_cases": 3,
+        "not_measured_cases": 2,
+        "tests_selected_total": 28,
+        "tests_full_total": 108,
+        "ground_truth_false_negatives": 1,
+        "ground_truth_false_positives": 7,
+        "cache_hit_rate": 0.5,
+        "route_counts": {
+          "small_local_model": 11,
+          "medium_model": 1,
+          "frontier_model": 3,
+          "human_review_required": 5
+        },
+        "frontier_or_human_escalation_rate": 0.4,
+        "frontier_or_human_escalation_count": "8/20",
+        "static_proof_status": "not_measured",
+        "real_provers": "unavailable",
+        "zero_stale_simulated_accepted": "met",
+        "zero_controlled_false_negatives": "red",
+        "cross_tree_unaffected_reuse": "unmet"
+      },
+      "honest_limitations": [
+        "Explicitly RED and non-authoritative.",
+        "One seeded false negative and seven false positives in controlled corpus.",
+        "Real provers unavailable; static/type/proof execution typed not_measured where catalogs empty.",
+        "Never production-authoritative; target misses recorded without fabricating wins."
+      ]
+    },
+    "proof_sealer_probes": {
+      "interface": "IncrementalProofSealerCapabilityProbe@1",
+      "program_status": {
+        "program": "IncrementalProofSealer",
+        "program_prefix": "IPS-",
+        "planning_observed_revision": "65ef6ed4cb9fa51d7c2c6c1a4f9036678f8cb893",
+        "branch_tip_at_inspection": "c983d4db33e83aba0cfb92a74fedb9ff26e4bf73",
+        "planning_status": "live_upstream_program_incomplete",
+        "is_ancestor_of_inspected_aae_tree": false,
+        "released_on_inspected_tree": false,
+        "branch_observation": "agent/incremental-proof-sealer-v1 exists as a separate development branch with plan/board/inventory artifacts and early admission/backends modules; released public FullCheckpointSeal/DeltaSeal APIs are not present on the AAE controller HEAD under inventory.",
+        "policy_disposition_when_missing": "typed_unavailable",
+        "planning_partial_evidence_note": "AAE plan records proof-sealer datasets/kit pins 321fe10c... / 866ae2cd... as partial evidence, ProofUnit, admission, and store surfaces only; those pins are not the AAE nested gitlinks and their objects are not present in this worktree.",
+        "notes": [
+          "AAE must not import unfinished private sealer code from the external IPS branch.",
+          "Until a released sealer public API lands on a consumable commit, AAE returns typed unavailable for seal status.",
+          "Artifacts may still be content-addressed and committed without a seal.",
+          "An AAE-local proof system or commitment masquerading as a seal is forbidden."
+        ]
+      },
+      "full_checkpoint_seal": {
+        "interface_names_probed": [
+          "FullCheckpointSeal",
+          "create_full_checkpoint",
+          "publish_full_checkpoint"
+        ],
+        "status": "typed_unavailable",
+        "status_reason": "No public Python symbol FullCheckpointSeal, create_full_checkpoint, or publish_full_checkpoint exists on inspected AAE tree dcfc11e8... (zero production *.py hits). Names appear only in protected AAE plan/todo/validator text and in external IPS program documentation, not as released runtime APIs on this tree.",
+        "source_path": null,
+        "source_revision": null,
+        "import_path": null,
+        "public_api": null,
+        "probe_method": "repository-wide exact symbol search over *.py on inventory_tree_revision plus importlib probes; no matches outside protected validators/tests/docs",
+        "independent_of_delta_seal_probe": true,
+        "cannot_be_inferred_from": [
+          "VerificationCommitment",
+          "build_verification_commitment",
+          "MCP++ zkp_proof_artifact vector",
+          "MCP++ wasm_proof_result vector",
+          "agent_supervisor.proof package (code-contract/proof-reuse surfaces, not IPS sealer)",
+          "agent_supervisor.merge.merge_checkpoint.MergeCheckpoint (git submodule merge resume helper, not FullCheckpointSeal)",
+          "presence of IncrementalProofSealer planning documents on another branch",
+          "IPS-branch early proof.incremental_sealing.admission module (cache admission only; not create_full_checkpoint)"
+        ]
+      },
+      "delta_or_incremental_seal": {
+        "interface_names_probed": [
+          "DeltaSeal",
+          "DeltaSeal@1",
+          "build_delta_seal",
+          "publish_delta_seal",
+          "IncrementalProofSealer"
+        ],
+        "status": "typed_unavailable",
+        "status_reason": "No public Python symbol DeltaSeal, build_delta_seal, publish_delta_seal, or IncrementalProofSealer exists on inspected AAE tree dcfc11e8... (zero production *.py hits; importlib ModuleNotFoundError for ipfs_accelerate_py.agent_supervisor.incremental_proof_sealer and proof.incremental_sealing). External IPS program documents planned interfaces and has early admission/backends on its own branch, but has not released those public APIs onto this AAE controller tree.",
+        "source_path": null,
+        "source_revision": null,
+        "import_path": null,
+        "public_api": null,
+        "probe_method": "repository-wide exact symbol search over *.py on inventory_tree_revision plus importlib probes of canonical package paths; no matches",
+        "independent_of_full_checkpoint_probe": true,
+        "external_branch_partial_surfaces_not_released_here": [
+          {
+            "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/admission.py",
+            "observed_on": "agent/incremental-proof-sealer-v1",
+            "role": "Evidence-class cache admission (IPS-028); not DeltaSeal/build_delta_seal/publish_delta_seal",
+            "present_on_aae_tree": false
+          },
+          {
+            "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/backends.py",
+            "observed_on": "agent/incremental-proof-sealer-v1",
+            "role": "Early backend binding surface on IPS branch; not released IncrementalProofSealer public API",
+            "present_on_aae_tree": false
+          }
+        ],
+        "cannot_be_inferred_from": [
+          "VerificationCommitment",
+          "build_verification_commitment",
+          "FullCheckpointSeal absence or presence",
+          "MCP++ zkp_proof_artifact vector",
+          "manual_completion_seal control helpers",
+          "MergeCheckpoint submodule merge helper",
+          "IPS plan text documenting planned create_full_checkpoint/DeltaSeal@1 APIs"
+        ]
+      },
+      "related_non_sealer_surfaces": [
+        {
+          "name": "agent_supervisor.proof",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof",
+          "role": "Code-contract, doctor, formal-verification, and change-propagation proof helpers. Not FullCheckpointSeal/DeltaSeal/IncrementalProofSealer.",
+          "status": "available_but_not_proof_sealer"
+        },
+        {
+          "name": "manual_completion_seal",
+          "path": "ipfs_accelerate_py/agent_supervisor/control/manual_completion_seal.py",
+          "role": "Control-plane manual completion seal helper for supervisor workflows; not the IPS full/delta sealer public API.",
+          "status": "available_but_not_proof_sealer"
+        },
+        {
+          "name": "MergeCheckpoint",
+          "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_checkpoint.py",
+          "role": "Git submodule merge resume checkpoint; unrelated to FullCheckpointSeal cryptographic proof sealing.",
+          "status": "available_but_not_proof_sealer"
+        },
+        {
+          "name": "VerificationCommitment",
+          "path": "ipfs_accelerate_py/agent_supervisor/verification/contracts.py",
+          "role": "IVP structural Merkle commitment; explicitly non-ZK and not a sealer.",
+          "status": "available_but_not_proof_sealer"
+        },
+        {
+          "name": "MCP++ wasm_proof_result / zkp_proof_artifact vectors",
+          "path": "ipfs_accelerate_py/mcplusplus/conformance/vectors",
+          "role": "Shared wire fixtures for proof-shaped payloads; not released sealer APIs.",
+          "status": "available_wire_fixture_only"
+        }
+      ]
+    }
+  },
+  "known_red_stale_unavailable": {
+    "scg_authority_matrix_stale_datasets_pin": {
+      "severity": "red",
+      "disposition": "typed_blocker",
+      "evidence": {
+        "description": "Frozen SCG authority matrix may expect older datasets gitlink; live nested datasets pin at inventory time is fbd1ba9f70803de157622bb20e22595ef09d606f.",
+        "disposition": "Known baseline blind spot for AAE-005 reconciliation; not AAE success and not permission to weaken checks."
+      },
+      "reconciliation": "Preserve the exact SCG matrix check. Do not weaken it. AAE-005 records the live datasets pin fbd1ba9f and treats the frozen SCG expectation of 1330038f as known RED, not as AAE success.",
+      "current_tree_test": "test/api/semantic_governor/test_authority_matrix.py::test_cross_check_inventories_and_live_gitlinks",
+      "observed": "claimed datasets fbd1ba9f70803de157622bb20e22595ef09d606f, expected 1330038f626ef92993f03d46f21e1a57719e9c25"
+    },
+    "mcp_artifact_emit_false_still_writes_event_dag": {
+      "severity": "red",
+      "disposition": "recorded_current_tree_finding",
+      "current_tree_test": "ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py::TestMCPServerMCPPlusPlusArtifacts::test_dispatch_artifact_explicit_false_overrides_enabled_default_policy",
+      "observed": "explicit emit=false still includes event_dag in the dispatch payload",
+      "reconciliation": "Do not weaken the test. Later AAE campaign work may treat this as an assurance gap if it survives mutation of emit policy."
+    },
+    "ivp_benchmark": {
+      "severity": "red_non_authoritative",
+      "evidence": {
+        "ivp_benchmark_red": true,
+        "ivp_seeded_false_negative": 1,
+        "ivp_false_positives": 7,
+        "ivp_provers_unavailable": true,
+        "ivp_frontier_or_human_escalation_percent": 40,
+        "harness_benchmark_not_production_eligible": true,
+        "simulated_statuses_never_production": true,
+        "commitment_not_zk": true,
+        "adversarial_assurance_package_absent": true,
+        "incremental_proof_sealer_absent": true
+      }
+    },
+    "incremental_proof_sealer": {
+      "severity": "unavailable",
+      "disposition": "typed_unavailable",
+      "evidence": {
+        "status_vocabulary": "typed_unavailable",
+        "items": [
+          {
+            "name": "FullCheckpointSeal",
+            "status": "typed_unavailable",
+            "probe": "full_checkpoint_seal"
+          },
+          {
+            "name": "create_full_checkpoint",
+            "status": "typed_unavailable",
+            "probe": "full_checkpoint_seal"
+          },
+          {
+            "name": "publish_full_checkpoint",
+            "status": "typed_unavailable",
+            "probe": "full_checkpoint_seal"
+          },
+          {
+            "name": "DeltaSeal / DeltaSeal@1",
+            "status": "typed_unavailable",
+            "probe": "delta_or_incremental_seal"
+          },
+          {
+            "name": "build_delta_seal",
+            "status": "typed_unavailable",
+            "probe": "delta_or_incremental_seal"
+          },
+          {
+            "name": "publish_delta_seal",
+            "status": "typed_unavailable",
+            "probe": "delta_or_incremental_seal"
+          },
+          {
+            "name": "IncrementalProofSealer public package",
+            "status": "typed_unavailable",
+            "probe": "delta_or_incremental_seal",
+            "canonical_import_when_released": "ipfs_accelerate_py.agent_supervisor.incremental_proof_sealer"
+          },
+          {
+            "name": "new AAE or MCP++ profile",
+            "status": "must_not_invent",
+            "note": "new_mcplusplus_profile_allowed=false; conformance decision may later add shared schemas/flat vectors only after a demonstrated cross-language need"
+          }
+        ]
+      }
+    },
+    "adversarial_assurance_package": {
+      "severity": "unavailable",
+      "disposition": "typed_unavailable",
+      "path": "ipfs_accelerate_py.agent_supervisor.adversarial_assurance"
+    },
+    "datasets_missing_campaign_apis": {
+      "severity": "unavailable",
+      "disposition": "typed_unavailable",
+      "evidence": {
+        "status_vocabulary": "typed_unavailable",
+        "items": [
+          {
+            "name": "generate_mutation_candidates",
+            "status": "typed_unavailable",
+            "note": "AAE planned; not present in datasets on this pin"
+          },
+          {
+            "name": "predict_detection_set / expected-detection engine",
+            "status": "typed_unavailable"
+          },
+          {
+            "name": "execute_mutation / classify_mutation_outcome campaign engine",
+            "status": "typed_unavailable"
+          },
+          {
+            "name": "diagnose_surviving_mutant / equivalent-mutant analyzer",
+            "status": "typed_unavailable"
+          },
+          {
+            "name": "analyze_vacuity and four vacuity families",
+            "status": "typed_unavailable",
+            "existing_partial": "narrow is_vacuous_statement/_check_non_vacuity only"
+          },
+          {
+            "name": "SemanticCapsuleCompiler public class",
+            "status": "must_not_invent",
+            "existing": "functional SemanticCapsuleCompiler@1 interface identifier"
+          },
+          {
+            "name": "ipfs_datasets_py.logic.software_contracts.adversarial_assurance package",
+            "status": "typed_unavailable",
+            "note": "Canonical AAE domain package path is planned; inventory does not fabricate it"
+          }
+        ]
+      }
+    },
+    "semantic_blind_spots": {
+      "semantic_analysis": [
+        "dynamic dispatch/imports",
+        "reflection",
+        "descriptors/decorators",
+        "eval/exec",
+        "metaclasses",
+        "monkey patching",
+        "pytest plugin collection",
+        "generated/native bindings",
+        "runtime generation",
+        "configuration/fixture discovery",
+        "renames",
+        "uncontrolled I/O"
+      ],
+      "verification_selection": [
+        "seeded false negative in IVP RED corpus",
+        "false positives under broader/full_suite expansion",
+        "opaque and dynamic critical edges force broader selection or human review",
+        "real provers unavailable on measured RED snapshot"
+      ],
+      "vacuity": [
+        "Only narrow heuristic is_vacuous_statement/_check_non_vacuity path for proof candidates located; no integrated assurance vacuity campaign."
+      ],
+      "campaign_engine": [
+        "No integrated semantic mutation campaign",
+        "No general equivalent-mutant analyzer",
+        "No expected-detection engine",
+        "No assurance-gap taxonomy",
+        "No authorized AAE promotion flow"
+      ],
+      "sealing": [
+        "IncrementalProofSealer public Python APIs not present; sealing typed_unavailable"
+      ],
+      "authority_matrix_stale_pin": {
+        "description": "Frozen SCG authority matrix may expect older datasets gitlink; live nested datasets pin at inventory time is fbd1ba9f70803de157622bb20e22595ef09d606f.",
+        "disposition": "Known baseline blind spot for AAE-005 reconciliation; not AAE success and not permission to weaken checks."
+      }
+    }
+  },
+  "focused_baseline_commands": {
+    "runner": "docs/architecture/adversarial_assurance_inventory/run_focused_baselines.py",
+    "runner_id": "protected-aae-focused-baseline-runner@1",
+    "modes": [
+      "--current-tree",
+      "--verify-bundle"
+    ],
+    "output_roots": [
+      "docs/architecture/adversarial_assurance_inventory/baseline_receipts",
+      "docs/architecture/adversarial_assurance_inventory/prerequisite_evidence"
+    ],
+    "planning_observations": {
+      "datasets": "152 passed in 3.12 seconds",
+      "accelerate": "283 passed, 1 failed of 284; failure is frozen SCG authority matrix stale datasets pin",
+      "kit": "196 passed",
+      "mcp_plus_plus": "58 passed in 0.15 seconds"
+    },
+    "current_tree_records_actual_counts": true,
+    "explicit_failure_policy": "Record green or explicitly failed focused commands. Do not weaken the SCG authority-matrix check."
+  },
+  "operator_gate": {
+    "task_id": "AAE-006",
+    "status": "blocked",
+    "worker_may_complete": false,
+    "requires": [
+      "genuine terminal SemanticCompressionGovernor receipt and final commit",
+      "released IncrementalProofSealer full-checkpoint and delta APIs",
+      "clean exact recursive repository forest",
+      "fresh focused baselines at the released pins",
+      "recomputed canonical identities",
+      "verified operator did:key signature"
+    ]
+  },
+  "acceptance": {
+    "records_exact_scoped_repository_forest": true,
+    "records_interfaces_and_status_vocabularies": true,
+    "records_test_and_proof_manifests": true,
+    "records_known_red_stale_unavailable": true,
+    "preserves_scg_matrix_typed_blocker": true,
+    "does_not_invent_missing_sealer_or_cid": true
+  }
+}

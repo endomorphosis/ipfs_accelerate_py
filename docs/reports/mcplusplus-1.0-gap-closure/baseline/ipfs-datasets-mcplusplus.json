@@ -1,0 +1,928 @@
+{
+  "schema": "BaselineReceipt@1",
+  "interface": "BaselineReceipt@1",
+  "schema_version": "mcplusplus-baseline-receipt/v1",
+  "task_id": "MCPP-007",
+  "goal_id": "MCPP-G010",
+  "objective_id": "MCPP-007",
+  "track": "baseline-datasets",
+  "title": "Baseline ipfs_datasets MCP++ runtime tests",
+  "generated_at": "2026-08-15T19:00:26.194Z",
+  "attempt": 3,
+  "program": {
+    "board_namespace": "mcplusplus-1-0-gap-closure-v1",
+    "bundle": "mcplusplus/1.0/baseline-datasets",
+    "program_branch": "codex/mcplusplus-1.0-gap-closure",
+    "forest_generated_at": "2026-08-15T18:36:13.970099+00:00",
+    "forest_schema": "RepositoryForestDescriptor@1",
+    "depends_on": [
+      "MCPP-001"
+    ],
+    "parallel_lane": "mcpp-lane-schema",
+    "evidence_subset": [
+      "pytest results",
+      "untracked mcplusplus paths"
+    ],
+    "tree_id": "3cefebc478f4f939080011d5b2dd345c894f0965"
+  },
+  "repository": {
+    "name": "ipfs_datasets_py",
+    "role": "runtime-datasets",
+    "canonical_remote": "https://github.com/endomorphosis/ipfs_datasets_py",
+    "validation_checkout": {
+      "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_aa623f34ab82_4885792083db/ipfs_datasets_py",
+      "head_sha": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "head_sha_short": "ac82107e",
+      "tree_sha": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47",
+      "branch": "implementation/mcpp-007-5f68bebb89a5-attempt-3-1786820274-submodule-ipfs_datasets_py",
+      "origin_url": "https://github.com/endomorphosis/ipfs_datasets_py.git",
+      "commit_subject": "Merge remote-tracking branch 'origin/main' into agent/semantic-compression-governor-v1",
+      "commit_date": "2026-08-13T20:05:22+00:00",
+      "status_sb": "## implementation/mcpp-007-5f68bebb89a5-attempt-3-1786820274-submodule-ipfs_datasets_py",
+      "dirty": {
+        "count": 0,
+        "paths": []
+      },
+      "note": "Implementation workspace submodule used for the validation command; clean datasets checkout (operator untracked MCP++ P2P/UI-IR not present; not promoted)"
+    },
+    "program_nested_gitlink": {
+      "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/ipfs_datasets_py",
+      "head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "branch": "main",
+      "remotes": [
+        {
+          "name": "origin",
+          "url": "https://github.com/endomorphosis/ipfs_datasets_py.git",
+          "role": "fetch"
+        }
+      ],
+      "dirty": {
+        "count": 0,
+        "paths": []
+      },
+      "live_refresh": {
+        "path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/ipfs_datasets_py",
+        "head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+        "branch": "main",
+        "dirty_count": 0,
+        "dirty_paths": [],
+        "status_sb": "## main...origin/main"
+      }
+    },
+    "operator_checkout": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "branch": "main",
+      "remotes": [
+        {
+          "name": "origin",
+          "url": "https://github.com/endomorphosis/ipfs_datasets_py",
+          "role": "fetch"
+        }
+      ],
+      "dirty": {
+        "count": 31,
+        "paths": [
+          " M .tools/ipfs_kit_py",
+          " M ipfs_datasets_py/core_operations/logic_processor.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/__init__.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/canonicalize.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/decoder.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/__init__.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/compiler.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/contracts.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/dcec.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/decompiler.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/event_calculus.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/flogic.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/ontology.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/roundtrip.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/tdfol.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/migrations.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/projection/__init__.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/projection/glasses.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/projection/mobile.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/projection/semantic_items.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/projection/solver.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/projection/web.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/projections.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/schema.py",
+          "?? ipfs_datasets_py/mcp_server/mcplusplus/p2p_libp2p_transport.py",
+          "?? tests/fixtures/ui_ux_ir/v1/golden_vectors.json",
+          "?? tests/unit/logic/ui_ux_ir/formalize/test_compiler.py",
+          "?? tests/unit/logic/ui_ux_ir/test_projections.py",
+          "?? tests/unit/logic/ui_ux_ir/test_schema_decode.py",
+          "?? tests/unit/mcp_server/test_mcplusplus_capability_truthfulness.py",
+          "?? tests/unit/mcp_server/test_mcplusplus_p2p_tool_parity.py"
+        ]
+      },
+      "stash": [],
+      "live_refresh": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets",
+        "head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+        "branch": "main",
+        "status_sb": "## main...origin/main [behind 18]\n M .tools/ipfs_kit_py\n M ipfs_datasets_py/core_operations/logic_processor.py\n?? ipfs_datasets_py/logic/ui_ux_ir/\n?? ipfs_datasets_py/mcp_server/mcplusplus/p2p_libp2p_transport.py\n?? tests/fixtures/ui_ux_ir/\n?? tests/unit/logic/ui_ux_ir/\n?? tests/unit/mcp_server/test_mcplusplus_capability_truthfulness.py\n?? tests/unit/mcp_server/test_mcplusplus_p2p_tool_parity.py",
+        "dirty_count": 8,
+        "dirty_paths": [
+          " M .tools/ipfs_kit_py",
+          " M ipfs_datasets_py/core_operations/logic_processor.py",
+          "?? ipfs_datasets_py/logic/ui_ux_ir/",
+          "?? ipfs_datasets_py/mcp_server/mcplusplus/p2p_libp2p_transport.py",
+          "?? tests/fixtures/ui_ux_ir/",
+          "?? tests/unit/logic/ui_ux_ir/",
+          "?? tests/unit/mcp_server/test_mcplusplus_capability_truthfulness.py",
+          "?? tests/unit/mcp_server/test_mcplusplus_p2p_tool_parity.py"
+        ],
+        "left_right_origin_main": "0\t18"
+      },
+      "source": "MCPP-001 RepositoryForestDescriptor@1 operator_checkouts.ipfs_datasets_py"
+    },
+    "superproject_gitlink": {
+      "mode": "160000",
+      "path": "ipfs_datasets_py",
+      "bound_sha": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "ls_tree": "160000 commit ac82107e246b30e35a2bbdcf75e01370d22350c6\tipfs_datasets_py",
+      "superproject_head": "3cefebc478f4f939080011d5b2dd345c894f0965",
+      "superproject_branch": "implementation/mcpp-007-5f68bebb89a5-attempt-3-1786820274"
+    }
+  },
+  "bound_revision": {
+    "live_bound_sha": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "live_bound_sha_short": "ac82107e",
+    "recorded_sha": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "recorded_sha_reason": "Live bound gitlink/submodule HEAD at validation time (SHA recorded for baseline receipt)",
+    "tree_sha": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47",
+    "matches_forest_operator_head": true,
+    "matches_forest_nested_head": true,
+    "matches_superproject_gitlink": true
+  },
+  "dirty_overlay": {
+    "preserved": true,
+    "operator_files_deleted_or_reset": false,
+    "untracked_files_promoted_to_supported_api": false,
+    "source_artifacts": [
+      "docs/reports/mcplusplus-1.0-gap-closure/baseline/repository-forest.json",
+      "docs/reports/mcplusplus-1.0-gap-closure/baseline/dirty-overlay.md"
+    ],
+    "operator_dirty_path_count": 31,
+    "operator_dirty_paths": [
+      " M .tools/ipfs_kit_py",
+      " M ipfs_datasets_py/core_operations/logic_processor.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/__init__.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/canonicalize.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/decoder.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/__init__.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/compiler.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/contracts.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/dcec.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/decompiler.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/event_calculus.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/flogic.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/ontology.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/roundtrip.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/formalize/tdfol.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/migrations.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/projection/__init__.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/projection/glasses.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/projection/mobile.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/projection/semantic_items.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/projection/solver.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/projection/web.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/projections.py",
+      "?? ipfs_datasets_py/logic/ui_ux_ir/schema.py",
+      "?? ipfs_datasets_py/mcp_server/mcplusplus/p2p_libp2p_transport.py",
+      "?? tests/fixtures/ui_ux_ir/v1/golden_vectors.json",
+      "?? tests/unit/logic/ui_ux_ir/formalize/test_compiler.py",
+      "?? tests/unit/logic/ui_ux_ir/test_projections.py",
+      "?? tests/unit/logic/ui_ux_ir/test_schema_decode.py",
+      "?? tests/unit/mcp_server/test_mcplusplus_capability_truthfulness.py",
+      "?? tests/unit/mcp_server/test_mcplusplus_p2p_tool_parity.py"
+    ],
+    "validation_checkout_dirty_path_count": 0,
+    "mcplusplus_and_related_candidates": [
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/mcp_server/mcplusplus/p2p_libp2p_transport.py",
+        "kind": "untracked",
+        "mcplusplus_related": true,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": false
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/mcp_server/test_mcplusplus_capability_truthfulness.py",
+        "kind": "untracked",
+        "mcplusplus_related": true,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": false
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/mcp_server/test_mcplusplus_p2p_tool_parity.py",
+        "kind": "untracked",
+        "mcplusplus_related": true,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": false
+      }
+    ],
+    "ui_ir_candidates": [
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/__init__.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/canonicalize.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/decoder.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/__init__.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/compiler.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/contracts.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/dcec.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/decompiler.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/event_calculus.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/flogic.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/ontology.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/roundtrip.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/tdfol.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/migrations.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projection/__init__.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projection/glasses.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projection/mobile.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projection/semantic_items.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projection/solver.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projection/web.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projections.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/schema.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "tests/fixtures/ui_ux_ir/v1/golden_vectors.json",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/logic/ui_ux_ir/formalize/test_compiler.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/logic/ui_ux_ir/test_projections.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/logic/ui_ux_ir/test_schema_decode.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      }
+    ],
+    "all_dirty_entries": [
+      {
+        "status": "M",
+        "path": ".tools/ipfs_kit_py",
+        "kind": "modified",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": true,
+        "ui_ir_related": false
+      },
+      {
+        "status": "M",
+        "path": "ipfs_datasets_py/core_operations/logic_processor.py",
+        "kind": "modified",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": true,
+        "ui_ir_related": false
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/__init__.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/canonicalize.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/decoder.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/__init__.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/compiler.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/contracts.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/dcec.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/decompiler.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/event_calculus.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/flogic.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/ontology.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/roundtrip.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/formalize/tdfol.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/migrations.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projection/__init__.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projection/glasses.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projection/mobile.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projection/semantic_items.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projection/solver.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projection/web.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/projections.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/schema.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "ipfs_datasets_py/mcp_server/mcplusplus/p2p_libp2p_transport.py",
+        "kind": "untracked",
+        "mcplusplus_related": true,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": false
+      },
+      {
+        "status": "??",
+        "path": "tests/fixtures/ui_ux_ir/v1/golden_vectors.json",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/logic/ui_ux_ir/formalize/test_compiler.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/logic/ui_ux_ir/test_projections.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/logic/ui_ux_ir/test_schema_decode.py",
+        "kind": "untracked",
+        "mcplusplus_related": false,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": true
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/mcp_server/test_mcplusplus_capability_truthfulness.py",
+        "kind": "untracked",
+        "mcplusplus_related": true,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": false
+      },
+      {
+        "status": "??",
+        "path": "tests/unit/mcp_server/test_mcplusplus_p2p_tool_parity.py",
+        "kind": "untracked",
+        "mcplusplus_related": true,
+        "promoted_to_supported_api": false,
+        "present_in_validation_checkout": false,
+        "ui_ir_related": false
+      }
+    ],
+    "policy": {
+      "do_not_delete_untracked_mcplusplus_p2p_or_ui_ir_files": true,
+      "untracked_candidate_status": "inventoried_only",
+      "supported_api_claim": false,
+      "note": "Untracked operator MCP++ P2P and UI-IR files are recorded as dirty-overlay candidates only. They are not present in the clean validation checkout and are not promoted to the supported API surface."
+    }
+  },
+  "validation": {
+    "command": "cd ipfs_datasets_py && python -m pytest -q tests/unit/mcp_server -k mcplusplus --maxfail=1",
+    "command_argv": [
+      "/usr/bin/python3",
+      "-m",
+      "pytest",
+      "-q",
+      "tests/unit/mcp_server",
+      "-k",
+      "mcplusplus",
+      "--maxfail=1"
+    ],
+    "working_directory": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_aa623f34ab82_4885792083db/ipfs_datasets_py",
+    "filter": "mcplusplus",
+    "path": "tests/unit/mcp_server",
+    "maxfail": 1,
+    "exit_code": 5,
+    "ok": false,
+    "started_at": "2026-08-15T19:00:22.614Z",
+    "ended_at": "2026-08-15T19:00:25.510Z",
+    "duration_seconds": 2.896,
+    "outcome": {
+      "exit_code": 5,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "deselected": 116,
+      "selected": 0,
+      "collected_in_directory": 116,
+      "duration_seconds": 2.896,
+      "stdout_tail": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0\nbenchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)\nrootdir: /home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_aa623f34ab82_4885792083db/ipfs_datasets_py\nconfigfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)\nplugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2\nasyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function\ncollected 116 items / 116 deselected / 0 selected\n\n=========================== 116 deselected in 1.69s ============================",
+      "stderr_tail": "",
+      "result": "no_tests_selected",
+      "summary": "pytest exit code 5: 116 items collected under tests/unit/mcp_server; 116 deselected by -k mcplusplus; 0 selected; no tests ran"
+    },
+    "collected_tests": [],
+    "passed_tests": [],
+    "failed_tests": [],
+    "skipped_tests": [],
+    "deselected_note": "All 116 tests under tests/unit/mcp_server were deselected by -k mcplusplus because no committed test module names or node ids match the filter.",
+    "coverage": {
+      "status": "unavailable",
+      "reason": "No tests selected by validation filter; coverage not measured"
+    },
+    "pytest_exit_code_meaning": {
+      "0": "all tests passed",
+      "1": "tests failed",
+      "2": "interrupted",
+      "3": "internal error",
+      "4": "usage error",
+      "5": "no tests collected/selected"
+    },
+    "baseline_note": "Exit code documents the factual baseline for the declared validation command on the clean bound SHA. Operator untracked tests that would match -k mcplusplus were inventoried under dirty_overlay and were not copied into the validation checkout (no promotion to supported API)."
+  },
+  "environment": {
+    "python_version": "3.12.3",
+    "python_executable": "/usr/bin/python3",
+    "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+    "pytest_version": "9.1.1",
+    "cwd_validation": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-mcplusplus-1.0-gap-closure/data/agent_supervisor/mcplusplus_1_0_gap_closure/worktrees/workspace_aa623f34ab82_4885792083db/ipfs_datasets_py",
+    "hostname": "spark-b271"
+  },
+  "inventory": {
+    "committed_tests_unit_mcp_server": [
+      "tests/unit/mcp_server/test_hierarchical_tool_manager.py",
+      "tests/unit/mcp_server/test_logic_admissibility_enforcement.py",
+      "tests/unit/mcp_server/test_logic_admissibility_tools.py"
+    ],
+    "committed_mcplusplus_named_test_modules": [
+      "tests/mcp/unit/test_mcplusplus_engines.py",
+      "tests/mcp/unit/test_mcplusplus_peer_tools.py",
+      "tests/mcp/unit/test_mcplusplus_spec_session50.py",
+      "tests/mcp/unit/test_mcplusplus_spec_session53.py",
+      "tests/mcp/unit/test_mcplusplus_spec_session54.py",
+      "tests/mcp/unit/test_mcplusplus_spec_session55.py",
+      "tests/mcp/unit/test_mcplusplus_spec_session56.py",
+      "tests/mcp/unit/test_mcplusplus_spec_session58.py",
+      "tests/mcp/unit/test_mcplusplus_spec_v11.py",
+      "tests/mcp/unit/test_mcplusplus_taskqueue_tools.py",
+      "tests/mcp/unit/test_mcplusplus_v14_session59.py",
+      "tests/mcp/unit/test_mcplusplus_v15_session60.py",
+      "tests/mcp/unit/test_mcplusplus_v16_session61.py",
+      "tests/mcp/unit/test_mcplusplus_v17_session62.py",
+      "tests/mcp/unit/test_mcplusplus_v18_session63.py",
+      "tests/mcp/unit/test_mcplusplus_v19_session64.py",
+      "tests/mcp/unit/test_mcplusplus_v20_session65.py",
+      "tests/mcp/unit/test_mcplusplus_v21_session66.py",
+      "tests/mcp/unit/test_mcplusplus_v22_session67.py",
+      "tests/mcp/unit/test_mcplusplus_v23_session68.py",
+      "tests/mcp/unit/test_mcplusplus_v24_session69.py",
+      "tests/mcp/unit/test_mcplusplus_v25_session70.py",
+      "tests/mcp/unit/test_mcplusplus_v26_session71.py",
+      "tests/mcp/unit/test_mcplusplus_v27_session72.py",
+      "tests/mcp/unit/test_mcplusplus_v28_session73.py",
+      "tests/mcp/unit/test_mcplusplus_v29_session74.py",
+      "tests/mcp/unit/test_mcplusplus_v30_session75.py",
+      "tests/mcp/unit/test_mcplusplus_v31_session76.py",
+      "tests/mcp/unit/test_mcplusplus_v32_session77.py",
+      "tests/mcp/unit/test_mcplusplus_v33_session78.py",
+      "tests/mcp/unit/test_mcplusplus_v34_session79.py",
+      "tests/mcp/unit/test_mcplusplus_v35_session80.py",
+      "tests/mcp/unit/test_mcplusplus_v36_session81.py",
+      "tests/mcp/unit/test_mcplusplus_v37_session82.py",
+      "tests/mcp/unit/test_mcplusplus_workflow_tools_extended.py",
+      "tests/mcp_server/test_mcplusplus_imports.py",
+      "tests/unit/test_libp2p_kit_full_mcplusplus_facade.py"
+    ],
+    "committed_mcplusplus_runtime_modules": [
+      "ipfs_datasets_py/mcp_server/mcplusplus/__init__.py",
+      "ipfs_datasets_py/mcp_server/mcplusplus/bootstrap.py",
+      "ipfs_datasets_py/mcp_server/mcplusplus/bootstrap_system.py",
+      "ipfs_datasets_py/mcp_server/mcplusplus/executor.py",
+      "ipfs_datasets_py/mcp_server/mcplusplus/peer_discovery.py",
+      "ipfs_datasets_py/mcp_server/mcplusplus/peer_registry.py",
+      "ipfs_datasets_py/mcp_server/mcplusplus/priority_queue.py",
+      "ipfs_datasets_py/mcp_server/mcplusplus/profile_h.py",
+      "ipfs_datasets_py/mcp_server/mcplusplus/result_cache.py",
+      "ipfs_datasets_py/mcp_server/mcplusplus/task_queue.py",
+      "ipfs_datasets_py/mcp_server/mcplusplus/workflow_dag.py",
+      "ipfs_datasets_py/mcp_server/mcplusplus/workflow_engine.py",
+      "ipfs_datasets_py/mcp_server/mcplusplus/workflow_scheduler.py",
+      "ipfs_datasets_py/mcp_server/mcplusplus/workflow_templates.py"
+    ],
+    "committed_mcplusplus_tool_modules": [
+      "ipfs_datasets_py/mcp_server/tools/mcplusplus_peer_tools.py",
+      "ipfs_datasets_py/mcp_server/tools/mcplusplus_taskqueue_tools.py",
+      "ipfs_datasets_py/mcp_server/tools/mcplusplus_workflow_tools.py",
+      "ipfs_datasets_py/mcp_server/tools/mcplusplus/__init__.py",
+      "ipfs_datasets_py/mcp_server/tools/mcplusplus/peer_engine.py",
+      "ipfs_datasets_py/mcp_server/tools/mcplusplus/taskqueue_engine.py",
+      "ipfs_datasets_py/mcp_server/tools/mcplusplus/workflow_engine.py"
+    ],
+    "operator_untracked_tests_matching_validation_path": [
+      "tests/unit/mcp_server/test_mcplusplus_capability_truthfulness.py",
+      "tests/unit/mcp_server/test_mcplusplus_p2p_tool_parity.py"
+    ],
+    "operator_untracked_mcplusplus_implementation": [
+      "ipfs_datasets_py/mcp_server/mcplusplus/p2p_libp2p_transport.py"
+    ],
+    "note": "Committed MCP++ tests exist under tests/mcp/unit and other trees, but the MCPP-007 validation command scopes only tests/unit/mcp_server -k mcplusplus. Operator untracked tests that would match that filter are inventoried under dirty_overlay and are not executed as supported API evidence."
+  },
+  "acceptance": {
+    "criteria": "Receipt records SHA, dirty overlay, and test outcomes without promoting untracked files to supported API.",
+    "sha_recorded": true,
+    "recorded_sha": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "dirty_overlay_recorded": true,
+    "test_outcomes_recorded": true,
+    "untracked_files_promoted_to_supported_api": false,
+    "satisfied": true,
+    "validation_command_exit_code": 5,
+    "validation_command_means_no_matching_committed_tests": true,
+    "notes": [
+      "SHA ac82107e\u2026 is recorded from the bound validation checkout / forest heads.",
+      "Dirty overlay preserves operator inventory (31 paths with -uall) without deletion or reset.",
+      "Test outcome: exit_code=5, selected=0, deselected=116, collected=116.",
+      "Untracked MCP++ P2P transport and capability/parity tests remain candidates only (promoted_to_supported_api=false)."
+    ]
+  },
+  "observations": [
+    "Validation checkout HEAD ac82107e246b30e35a2bbdcf75e01370d22350c6 matches nested gitlink and operator checkout HEAD.",
+    "Program nested gitlink dirty count is 0; operator -uall dirty count is 31; operator short porcelain count is 8.",
+    "No committed tests under tests/unit/mcp_server match -k mcplusplus; baseline outcome is zero selected tests.",
+    "Operator untracked MCP++ P2P transport and capability/parity tests remain outside the supported API and were not copied into the validation checkout.",
+    "This receipt is inventory-only: a non-zero or no-tests-selected validation outcome documents the gap; it does not authorize promoting dirty-overlay candidates."
+  ],
+  "operator_reverify": {
+    "observed_at": "2026-08-15T22:44:00Z",
+    "command": "cd ipfs_datasets_py && python -m pytest -q tests/unit/mcp_server -k mcplusplus --maxfail=1",
+    "exit_code": 5,
+    "stdout_summary": "collected 116 items / 116 deselected / 0 selected",
+    "note": "No committed tests match -k mcplusplus under the declared path. Untracked operator MCP++ candidates were not promoted."
+  }
+}

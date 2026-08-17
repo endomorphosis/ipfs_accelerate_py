@@ -113,7 +113,7 @@
     "implementation_provider": "grok",
     "primary": {
       "provider": "grok",
-      "model": "grok-4.5"
+      "model": "grok-4.6"
     },
     "fallback": {
       "provider": "codex",

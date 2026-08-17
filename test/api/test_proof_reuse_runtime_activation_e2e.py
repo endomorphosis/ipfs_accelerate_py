@@ -1163,7 +1163,7 @@ def test_real_groth16_fixture_discovery_is_side_effect_free() -> None:
     fixture_mod = _load_ptr148_fixture()
     fixture = fixture_mod.RealGroth16TestPassFixture.discover()
     assert fixture.interface == "RealGroth16TestPassFixture@1"
-    assert fixture.circuit_version == 4
+    assert fixture.circuit_version == 5
     assert fixture.reason in {"ready", "binary_unavailable", "key_unavailable"}
     fragment = fixture.environment_fragment(enable=True)
     assert "IPFS_DATASETS_ENABLE_GROTH16" in fragment

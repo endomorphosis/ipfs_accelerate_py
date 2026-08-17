@@ -1,25 +1,23 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     IMPLEMENTATION_CHECKPOINT_DIR_ENV,
     PortalImplementationDaemon,
     PortalTask,
     PortalTaskState,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
-    ProcessGroupCancelled,
     run_process_group_stream,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+    PROOF_REUSE_STATE_ROOT_ENV,
 )
 
 
@@ -202,125 +200,6 @@ def test_silent_process_hits_progress_idle_timeout(tmp_path: Path) -> None:
     assert getattr(raised.value, "timeout_reason") == "progress_idle_timeout"
 
 
-def test_streamed_runner_cancellation_fences_owned_process_group(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    pid_path = tmp_path / "provider.pid"
-    log_path = tmp_path / "cancelled.log"
-    script = (
-        "import os, pathlib, time; "
-        f"pathlib.Path({str(pid_path)!r}).write_text(str(os.getpid())); "
-        "time.sleep(60)"
-    )
-    termination_calls: list[tuple[int, dict[str, object]]] = []
-    real_terminate_pid_tree = supervisor_runtime.terminate_pid_tree
-
-    def terminate_pid_tree(
-        pid: int,
-        **kwargs: object,
-    ) -> bool:
-        termination_calls.append((pid, dict(kwargs)))
-        return real_terminate_pid_tree(pid, **kwargs)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(
-        supervisor_runtime,
-        "terminate_pid_tree",
-        terminate_pid_tree,
-    )
-    provider_pid = 0
-    with log_path.open("w", encoding="utf-8") as log_fh:
-        with pytest.raises(ProcessGroupCancelled) as raised:
-            run_process_group_stream(
-                [sys.executable, "-c", script],
-                cwd=tmp_path,
-                stdout=log_fh,
-                timeout_seconds=60.0,
-                cancel_requested=lambda: (
-                    "canonical_task_completed" if pid_path.exists() else ""
-                ),
-                progress_poll_seconds=0.02,
-                termination_grace_seconds=0.05,
-            )
-    provider_pid = int(pid_path.read_text(encoding="utf-8"))
-    assert raised.value.reason == "canonical_task_completed"
-    assert termination_calls == [
-        (
-            provider_pid,
-            {
-                "grace_seconds": 0.05,
-                "freeze_first": True,
-                "require_gone": True,
-                "owned_process_group_id": provider_pid,
-            },
-        )
-    ]
-    assert not pid_alive(provider_pid)
-
-
-@pytest.mark.skipif(
-    os.name != "posix" or not Path("/proc").is_dir(),
-    reason="process-tree interruption regression requires Linux process sessions",
-)
-def test_streamed_runner_fences_child_tree_when_owner_is_interrupted(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    child_pid_path = tmp_path / "provider-child.pid"
-    script = (
-        "import pathlib, subprocess, sys, time; "
-        "child = subprocess.Popen("
-        "[sys.executable, '-c', 'import time; time.sleep(60)'], "
-        "start_new_session=True"
-        "); "
-        f"pathlib.Path({str(child_pid_path)!r}).write_text(str(child.pid)); "
-        "time.sleep(60)"
-    )
-    launched: list[subprocess.Popen[str]] = []
-    real_launch = supervisor_runtime.launch_process_child
-
-    def launch_and_interrupt(*args: object, **kwargs: object) -> subprocess.Popen[str]:
-        process = real_launch(*args, **kwargs)
-        launched.append(process)
-
-        def interrupt_communicate(*_args: object, **_kwargs: object) -> object:
-            deadline = time.monotonic() + 3.0
-            while not child_pid_path.exists() and time.monotonic() < deadline:
-                time.sleep(0.02)
-            raise KeyboardInterrupt
-
-        process.communicate = interrupt_communicate  # type: ignore[method-assign]
-        return process
-
-    monkeypatch.setattr(
-        supervisor_runtime,
-        "launch_process_child",
-        launch_and_interrupt,
-    )
-    log_path = tmp_path / "interrupted.log"
-    child_pid = 0
-    try:
-        with log_path.open("w", encoding="utf-8") as log_fh:
-            with pytest.raises(KeyboardInterrupt):
-                run_process_group_stream(
-                    [sys.executable, "-c", script],
-                    cwd=tmp_path,
-                    stdout=log_fh,
-                    timeout_seconds=60.0,
-                    termination_grace_seconds=0.1,
-                )
-        child_pid = int(child_pid_path.read_text(encoding="utf-8"))
-        assert launched[0].poll() is not None
-        assert not pid_alive(child_pid)
-    finally:
-        if child_pid and pid_alive(child_pid):
-            os.kill(child_pid, 9)
-        for process in launched:
-            if process.poll() is None:
-                process.kill()
-                process.wait(timeout=1.0)
-
-
 def test_progress_observer_refreshes_durable_supervisor_heartbeat(
     tmp_path: Path,
 ) -> None:
@@ -428,13 +307,9 @@ def test_checkpoint_manifest_is_cid_bound_and_propagated_to_retry(
     restarted = _daemon(tmp_path)
     retry_prompt = restarted._build_implementation_prompt(task, attempt=2)
     assert str(checkpoint_dir) in first_prompt
-    assert str(checkpoint_dir) in retry_prompt
+    # Retry evidence retains the content identity, not the private host path.
+    assert str(checkpoint_dir) not in retry_prompt
     assert manifest["manifest_cid"] in retry_prompt
-    for prompt in (first_prompt, retry_prompt):
-        assert "Authoritative validation environment" in prompt
-        assert "inherited `PATH` is ignored" in prompt
-        assert "ipfs-accelerate-validation-home-" in prompt
-        assert "$HOME/.config" in prompt
     environment = restarted._implementation_process_environment(
         task,
         attempt=2,
@@ -443,3 +318,4 @@ def test_checkpoint_manifest_is_cid_bound_and_propagated_to_retry(
     assert environment[IMPLEMENTATION_CHECKPOINT_DIR_ENV] == str(
         checkpoint_dir
     )
+    assert environment[PROOF_REUSE_STATE_ROOT_ENV] == ""

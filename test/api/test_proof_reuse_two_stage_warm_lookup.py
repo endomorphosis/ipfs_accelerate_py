@@ -459,7 +459,7 @@ def test_public_interfaces_and_symbols_are_stable() -> None:
         DEFAULT_CURRENT_CONTEXT_PROVIDER_INTERFACE
         == "DefaultCurrentContextProvider@1"
     )
-    assert PROOF_REUSE_TWO_STAGE_LOOKUP_INTERFACE == "ProofReuseTwoStageLookup@1"
+    assert PROOF_REUSE_TWO_STAGE_LOOKUP_INTERFACE == "TwoStageCandidateLookup@2"
     provider = build_default_current_context_provider()
     assert provider.interface == DEFAULT_CURRENT_CONTEXT_PROVIDER_INTERFACE
     assert provider.may_authorize_skip is False

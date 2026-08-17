@@ -345,6 +345,51 @@ def test_verifier_closes_authority_for_changed_tree_or_expired_receipt() -> None
     assert PostMergeEvidenceReceipt.from_dict(changed.to_dict()) == changed
 
 
+def test_age_aware_horizon_admits_multi_hour_nested_observed_at() -> None:
+    """Operator recovery hours later must not false-stale exact-tree packets.
+
+    Nested post-merge evidence keeps original observed_at. A fixed one-hour
+    assembly window makes timestamp_is_current reject valid sealed digests as
+    stale_evidence. The horizon must expand from the oldest nested timestamp.
+    """
+
+    assembled = NOW_DT
+    nested_dt = assembled - timedelta(hours=3)
+    nested_observed = nested_dt.isoformat()
+
+    # Build a full fixture with nested timestamps 3h before assembly, then
+    # assemble with the default 1h freshness_seconds (no explicit deadline).
+    old_now = NOW
+    old_now_dt = NOW_DT
+    try:
+        globals()["NOW"] = nested_observed
+        globals()["NOW_DT"] = nested_dt
+        kwargs = _kwargs()
+    finally:
+        globals()["NOW"] = old_now
+        globals()["NOW_DT"] = old_now_dt
+
+    kwargs["assembled_at"] = assembled.isoformat()
+    kwargs.pop("freshness_deadline", None)
+    kwargs["freshness_seconds"] = 3600.0
+
+    receipt = assemble_post_merge_evidence(**kwargs)
+    deadline = datetime.fromisoformat(receipt.freshness_deadline)
+    assert deadline - assembled >= timedelta(hours=3, minutes=30)
+    assert receipt.accepted is True, receipt.reason_codes
+    assert receipt.freshness_authoritative is True
+    assert "stale_evidence" not in receipt.reason_codes
+    assert "stale_validation" not in receipt.reason_codes
+
+    revalidated = verify_post_merge_evidence(
+        receipt,
+        MERGED_TREE,
+        now=assembled.isoformat(),
+    )
+    assert revalidated.accepted is True, revalidated.reason_codes
+    assert revalidated.freshness_authoritative is True
+
+
 def test_formal_admission_replays_exact_tree_commit_graph_and_criteria() -> None:
     receipt = assemble_post_merge_evidence(**_kwargs())
 

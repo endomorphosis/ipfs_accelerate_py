@@ -1,0 +1,226 @@
+{
+  "authoritative": false,
+  "case_count": 60,
+  "cohort_separation": {
+    "live_observation_count": 0,
+    "live_quality_claims": false,
+    "simulated_observation_count": 60
+  },
+  "content_id": "sha256:2f78a161e27b8457d84e08841a37dde47e405dd6d74aed11a86161456bea069b",
+  "corpus_id": "semantic-governor-partitioned-corpus-v1",
+  "cost": {
+    "baseline_model_spend_micros_total": 204560,
+    "cohort": "simulated",
+    "cost_per_accepted_patch_micros": null,
+    "estimator_id": "scg-local-cost-estimator/v1",
+    "gross_savings_micros": 38608,
+    "live_cost_evidence": "missing",
+    "model_spend_micros_total": 165952,
+    "net_savings_micros": -10417,
+    "unavailable_cost_fields": 0
+  },
+  "critical_acceptance": {
+    "critical_acceptance_rate_bp": 0,
+    "critical_omission_count": 16,
+    "critical_omissions_accepted_count": 0
+  },
+  "detection": {
+    "detected_after_execution_count": 0,
+    "detected_before_execution_count": 16,
+    "detection_after_rate_bp": 0,
+    "detection_before_rate_bp": 10000,
+    "false_alarm_count": 0,
+    "intentional_omission_count": 16
+  },
+  "evidence": "scg/benchmark-results@1",
+  "expansion": {
+    "expansion_count": 0,
+    "expansion_false_negative_count": 16,
+    "expansion_false_positive_count": 0,
+    "expansion_precision_bp": null,
+    "expansion_rate_bp": 0,
+    "expansion_recall_bp": 0,
+    "expansion_true_positive_count": 0
+  },
+  "goal_id": "SCG-G080",
+  "interface": "SemanticGovernorBenchmark@1",
+  "missing_evidence": [
+    "live_provider_receipts",
+    "live_model_quality_cohort",
+    "live_billing_cost_sensors",
+    "post_execution_omission_detection_sensors",
+    "zk_seal_scope",
+    "live_observation_count"
+  ],
+  "outcome_distribution": {
+    "acceptance_disposition_counts": {
+      "human_review_required": 6,
+      "not_accepted": 54
+    },
+    "comparative_outcome_counts": {
+      "human_review_required": 2,
+      "verification_inconclusive": 58
+    },
+    "expected_outcome_counts": {
+      "human_review_required": 2,
+      "insufficient_model": 1,
+      "insufficient_omission": 11,
+      "reject_injection": 1,
+      "reject_stale": 1,
+      "sufficient": 42,
+      "verification_conflict": 2
+    },
+    "measured_outcome_counts": {
+      "insufficient_model": 1,
+      "insufficient_omission": 16,
+      "reject_injection": 1,
+      "sufficient": 42
+    },
+    "total_cases": 60
+  },
+  "overhead": {
+    "audit_overhead_micros_total": 10025,
+    "cohort": "simulated",
+    "estimator_id": "scg-local-cost-estimator/v1",
+    "shadow_compute_micros_total": 15000,
+    "total_audit_overhead_micros": 49025,
+    "verification_compute_micros_total": 24000
+  },
+  "partition_counts": {
+    "calibration": 14,
+    "development": 14,
+    "held_out": 32
+  },
+  "production_eligible": false,
+  "proposals": {
+    "accepted_count": 0,
+    "blocking_reasons": [
+      "median_context_reduction_below_threshold"
+    ],
+    "promotion_authorized": false,
+    "proposed_count": 1,
+    "rejected_count": 1,
+    "verdict": "fail"
+  },
+  "quality": {
+    "accepted_patch_count": 0,
+    "accepted_rate_bp": 0,
+    "outcome_counts": {
+      "both_failed_different_reason": 0,
+      "both_failed_same_reason": 0,
+      "both_valid_different": 0,
+      "compressed_better": 0,
+      "compressed_failed_expanded_succeeded": 0,
+      "compressed_succeeded_expanded_failed": 0,
+      "equivalent_success": 0,
+      "expanded_better": 0,
+      "human_review_required": 2,
+      "verification_inconclusive": 58
+    },
+    "proof_failure_count": 1,
+    "review_disagreement_count": 2,
+    "selected_test_false_negative_count": 1
+  },
+  "reduction": {
+    "compressed_tokens_total": 6344,
+    "expanded_tokens_total": 8646,
+    "mean_context_reduction_bp": 4537,
+    "median_context_reduction_bp": 4736,
+    "raw_tokens_total": 11170
+  },
+  "regressions": {
+    "regression_count": 0,
+    "regression_rate_bp": 0
+  },
+  "rejections": {
+    "critical_omission_detection_bp": 10000,
+    "injection_rejection_count": 1,
+    "policy_verdict": "fail",
+    "stale_present_count": 1,
+    "stale_rejected_count": 1,
+    "stale_rejection_rate_bp": 10000,
+    "stale_rejection_rate_bp_report": 10000
+  },
+  "routes": {
+    "escalation_count": 9,
+    "escalation_rate_bp": 1500,
+    "retry_count": 0,
+    "retry_rate_bp": 0,
+    "route_share_bp": {
+      "deterministic": 0,
+      "frontier": 1166,
+      "human": 333,
+      "medium": 3333,
+      "small": 5166
+    },
+    "route_share_counts": {
+      "deterministic": 0,
+      "frontier": 7,
+      "human": 2,
+      "medium": 20,
+      "small": 31
+    }
+  },
+  "schema": "ipfs_accelerate_py/agent-supervisor/semantic-governor-benchmark-summary@1",
+  "status": "yellow",
+  "target_misses": [
+    "median_context_reduction"
+  ],
+  "targets": {
+    "critical_omission_detection_before_acceptance": {
+      "comparator": ">=",
+      "hard": true,
+      "met": true,
+      "name": "critical_omission_detection_before_acceptance",
+      "status": "met",
+      "threshold": 9500,
+      "value": 10000
+    },
+    "median_context_reduction": {
+      "comparator": ">=",
+      "hard": false,
+      "met": false,
+      "name": "median_context_reduction",
+      "status": "yellow",
+      "threshold": 5000,
+      "value": 4864
+    },
+    "zero_accepted_regressions": {
+      "comparator": "<=",
+      "hard": true,
+      "met": true,
+      "name": "zero_accepted_regressions",
+      "status": "met",
+      "threshold": 0,
+      "value": 0
+    },
+    "zero_critical_controlled_omissions_accepted": {
+      "comparator": "<=",
+      "hard": true,
+      "met": true,
+      "name": "zero_critical_controlled_omissions_accepted",
+      "status": "met",
+      "threshold": 0,
+      "value": 0
+    },
+    "zero_production_eligible_true": {
+      "comparator": "==",
+      "hard": true,
+      "met": true,
+      "name": "zero_production_eligible_true",
+      "status": "met",
+      "threshold": 0,
+      "value": 0
+    },
+    "zero_stale_admissions": {
+      "comparator": "==",
+      "hard": true,
+      "met": true,
+      "name": "zero_stale_admissions",
+      "status": "met",
+      "threshold": 0,
+      "value": 0
+    }
+  },
+  "task_id": "SCG-045"
+}

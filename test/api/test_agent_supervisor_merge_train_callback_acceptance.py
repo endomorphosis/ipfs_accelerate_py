@@ -225,6 +225,47 @@ def test_successful_callback_lifts_validation_into_runtime_completion(
     assert stored is not None and stored.status == "completed"
 
 
+def test_callback_failure_after_integration_is_quarantined_without_retry(
+    tmp_path: Path,
+) -> None:
+    repo, _base, candidate = _repo_with_candidate(tmp_path)
+    queue = MergeQueue(tmp_path / "queue", max_attempts=3)
+    request = queue.enqueue(
+        branch_name="candidate/callback",
+        task_id="CALLBACK-INTEGRATED-FAILURE",
+        canonical_task_id="canonical-callback-integrated-failure",
+        commit_sha=candidate,
+    )
+    callback_calls: list[str] = []
+
+    def merge_callback(claimed) -> dict[str, Any]:
+        callback_calls.append(claimed.request_id)
+        _git(repo, "merge", "--ff-only", candidate)
+        return {
+            "merged": False,
+            "returncode": 2,
+            "reason": "post_merge_integration_commit_unproven",
+            "integration_occurred": True,
+            "target_commit": candidate,
+            "merge_commit": candidate,
+        }
+
+    train = MergeTrain(repo, queue, merge_callback=merge_callback)
+    result = train.run_once()
+
+    assert result is not None
+    assert result["status"] == "quarantined"
+    assert result["reason"] == "post_merge_integration_commit_unproven"
+    assert result["retryable"] is False
+    assert result["failure_count"] == 1
+    assert callback_calls == [request.request_id]
+    assert _git(repo, "rev-parse", "refs/heads/main") == candidate
+    stored = queue.get(request.request_id)
+    assert stored is not None and stored.status == "quarantined"
+    assert train.run_once() is None
+    assert callback_calls == [request.request_id]
+
+
 def test_preflight_only_callback_missing_validation_is_not_requeued(
     tmp_path: Path,
 ) -> None:

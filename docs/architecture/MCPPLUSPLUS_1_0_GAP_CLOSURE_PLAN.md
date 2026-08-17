@@ -206,6 +206,16 @@ MCPP-G020 writes the ADRs; later tasks implement them.
 | KD-16 | Installable CLI command is `mcpp`. Three-peer demo is Docker Compose. A separate verifier process validates the evidence bundle. | Assignment-required demonstration path. |
 | KD-17 | Profile bundles: Evidence Core (A,B,F), Secure Delegation (C,D), Federated Mesh (E,G), Commerce (H), Verified Execution (signed receipts / attestations / verified proofs only). | Matches assignment packaging. |
 
+### Runtime persistence correction (2026-08-16)
+
+KD-9 and KD-12 originally named SQLite as the mandatory local SQL engine.
+Operator correction: MCP++ durable journals, single-authority state, and
+Profile H execution stores **default to DuckDB**, with best-effort local
+`LOAD` of Quack then DuckLake (never network `INSTALL`). SQLite remains an
+explicit fallback via `MCPPLUSPLUS_SQL_ENGINE=sqlite`. ADR-0004 §2 and
+ADR-0005 §2 record this correction. The original KD rows above are retained
+as history.
+
 ## 6. Goal tree
 
 ```text
@@ -424,8 +434,9 @@ do not rewrite them in place.
 
 None that block planning. Official A2A extension URI spelling is verified in
 MCPP-010; the default in KD-13 is used until that task records the verified
-identifier. Restate versus Dapr versus the SQLite journaled executor is
-decided in MCPP-017 with the default in KD-12.
+identifier. Restate versus Dapr versus the DuckDB/Quack journaled executor
+(SQLite fallback) is decided in MCPP-017 / ADR-0005; the 2026-08-16 correction
+of KD-12 makes DuckDB the runtime default.
 
 ## 16. Most important remaining technical risk
 

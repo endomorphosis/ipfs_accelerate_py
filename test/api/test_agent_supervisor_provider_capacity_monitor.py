@@ -304,7 +304,7 @@ def test_process_counter_matches_only_invocation_roots_and_deduplicates_wrapper(
             [
                 "grok",
                 "--model",
-                "grok-4.5",
+                "grok-4.6",
                 "--prompt-file",
                 "/tmp/prompt",
                 "--output-format",

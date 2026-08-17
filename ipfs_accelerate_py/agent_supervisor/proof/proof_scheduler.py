@@ -1635,6 +1635,13 @@ class ProofScheduler:
                 cpu_limit,
                 self.resource_lease_budget.max_cpu_proof_concurrency,
             ),
+            # Validation and unregistered CPU work use the ordinary lane
+            # pool.  Keep it inside both the scheduler width and the process
+            # budget just like the specialized proof pools below.
+            "cpu-general": min(
+                self.max_parallel,
+                self.resource_lease_budget.max_processes,
+            ),
             "model": min(
                 model_limit,
                 self.resource_lease_budget.max_model_concurrency,

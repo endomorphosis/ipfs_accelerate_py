@@ -34,6 +34,9 @@ from ..prompt.prompt_workflow import (
 )
 from ..planning.formal_plan_compiler import prompt_goal_graph_to_formal_input
 from ..task_sources.duckdb_task_source import DuckDBTaskSource
+from ..task_sources.generated_program_task_source import (
+    commit_authoritative_program_revision,
+)
 from ..task_sources.markdown_task_source import MarkdownMaterializationResult, MarkdownTaskSource
 
 
@@ -237,26 +240,61 @@ class PromptProgramMaterializer:
         cas = ProgramRevisionCAS(plan_root_cid, revision, key)
         projections: list[TaskSourceProjectionReceipt] = []
         output = request.output_policy
+        # ASE3-025: DuckDB is the authoritative program revision and must CAS
+        # before any Markdown/history projection is emitted.
+        if output.mode in (OutputMode.DUCKDB, OutputMode.BOTH):
+            path = Path(duckdb_path or (Path(output.output_root) / output.duckdb_path))
+            source = DuckDBTaskSource(path)
+            formal_input = prompt_goal_graph_to_formal_input(
+                graph, repository_tree_id=scan.dirty_worktree_root
+            )
+            formal_input["plan_root_cid"] = plan_root_cid
+            installed = source.materialize(
+                formal_input,
+                repository_tree_id=scan.dirty_worktree_root,
+                plan_root_cid=plan_root_cid,
+                expected_absent=False,
+            )
+            snapshot = source.snapshot()
+            commit_authoritative_program_revision(
+                path,
+                plan_root_cid=plan_root_cid,
+                revision=int(snapshot.revision),
+                projection_cid=str(snapshot.projection_cid),
+                task_cids=tuple(tasks.task_cids),
+                goal_cids=tuple(goals.goal_cids),
+                root_goal_cid=str(goals.root_goal_cid),
+                goal_by_task={str(k): str(v) for k, v in tasks.goal_by_task.items()},
+                repository_tree_id=str(scan.dirty_worktree_root),
+                namespace=str(getattr(output, "board_namespace", None) or "generated"),
+            )
+            projections.append(
+                TaskSourceProjectionReceipt(
+                    "duckdb",
+                    plan_root_cid,
+                    snapshot.projection_cid,
+                    snapshot.revision,
+                    snapshot.task_count,
+                    snapshot.goal_count,
+                    not bool(installed.get("changed", True)),
+                )
+            )
         if output.mode in (OutputMode.MARKDOWN, OutputMode.BOTH):
             path = Path(markdown_path or (Path(output.output_root) / output.markdown_path))
             result: MarkdownMaterializationResult = MarkdownTaskSource(
                 path, task_prefix=output.task_prefix, board_namespace=output.board_namespace
             ).materialize(admission, revision=revision)
-            projections.append(TaskSourceProjectionReceipt("markdown", plan_root_cid, result.projection.projection_id, revision, len(result.snapshot.tasks), len(graph.goals), result.no_op))
-        if output.mode in (OutputMode.DUCKDB, OutputMode.BOTH):
-            path = Path(duckdb_path or (Path(output.output_root) / output.duckdb_path))
-            source = DuckDBTaskSource(path)
-            # DuckDB's direct graph adapter calls the candidate graph CID its
-            # plan root.  Give it the same compiler input but bind its root to
-            # the admission-published CID, so both durable projections share
-            # one authoritative revision identity.
-            formal_input = prompt_goal_graph_to_formal_input(
-                graph, repository_tree_id=scan.dirty_worktree_root
+            projections.append(
+                TaskSourceProjectionReceipt(
+                    "markdown",
+                    plan_root_cid,
+                    result.projection.projection_id,
+                    revision,
+                    len(result.snapshot.tasks),
+                    len(graph.goals),
+                    result.no_op,
+                )
             )
-            formal_input["plan_root_cid"] = plan_root_cid
-            installed = source.materialize(formal_input, repository_tree_id=scan.dirty_worktree_root, plan_root_cid=plan_root_cid, expected_absent=False)
-            snapshot = source.snapshot()
-            projections.append(TaskSourceProjectionReceipt("duckdb", plan_root_cid, snapshot.projection_cid, snapshot.revision, snapshot.task_count, snapshot.goal_count, not bool(installed.get("changed", True))))
         receipt_id = _cid({"request_cid": request.request_cid, "scan_cid": scan.scan_cid, "plan_root_cid": plan_root_cid, "revision": revision, "projections": [item.to_dict() for item in projections]})
         result = PromptProgramMaterialization(receipt_id, request.request_cid, scan.scan_cid, plan_root_cid, cas, goals, tasks, admission, tuple(projections), planning)
         _safe_receipt_text(result.to_dict(), request.prompt_source.transient_body)

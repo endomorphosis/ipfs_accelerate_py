@@ -1,0 +1,979 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/logic-platform-inventory-slice@1",
+  "interface": "LogicPlatformInventory@1",
+  "task_id": "LPC-007",
+  "goal_id": "LPC-G010",
+  "title": "Inventory tests, MCP, CLI, and deprecated modules",
+  "track": "inventory",
+  "observed_at": "2026-08-15",
+  "classification_vocabulary": [
+    "canonical",
+    "canonical_component",
+    "compatibility_facade",
+    "legacy",
+    "experimental",
+    "declaration_only",
+    "generated",
+    "duplicate",
+    "obsolete",
+    "unresolved"
+  ],
+  "categories_owned": [
+    "mcp_cli_python_exposure",
+    "compatibility_shim",
+    "deprecated_module",
+    "test_and_conformance_corpus"
+  ],
+  "scan_authority": {
+    "accelerator_worktree": "agent/logic-platform-canonicalization",
+    "accelerator_reviewed_baseline": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+    "accelerator_implementation_head": "ea11293bb996f052d620eae989f5377a956764b1",
+    "datasets_reviewed_baseline": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+    "datasets_implementation_authority_path": "/home/barberb/lift_coding/external/ipfs_datasets",
+    "datasets_gitlink_path": "ipfs_datasets_py",
+    "datasets_checkout_present_in_scan_worktree": false,
+    "datasets_external_path_present_in_scan_environment": false,
+    "scan_method": "read_only_path_and_source_scan_of_accelerate_tree_plus_documented_datasets_paths_from_plans_tests_and_docs",
+    "implementation_authority_rule": "Current checked-out heads are implementation authority; this slice records surfaces as observed and marks datasets-only paths unresolved when the checkout is absent."
+  },
+  "items": [
+    {
+      "id": "surface.python.logic_verification_api",
+      "category": "mcp_cli_python_exposure",
+      "name": "LogicVerificationAPI@1",
+      "path": "ipfs_datasets_py/logic/verification_api.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_datasets_py.logic",
+      "channel": "python",
+      "operations": [
+        "list_logic_families",
+        "list_providers",
+        "provider_capabilities",
+        "compile_verification_artifact",
+        "check",
+        "monitor",
+        "run_portfolio",
+        "explain_counterexample",
+        "verify_receipt",
+        "attest_receipt",
+        "advise",
+        "probe_provider",
+        "install_provider"
+      ],
+      "notes": "Stable Python verification surface. Import must remain side-effect free. install_provider is opt-in mutation, not ordinary verify. Source path is under datasets; accelerate tests import it and assert STABLE_OPERATIONS.",
+      "related_goals": ["LPC-G060", "LPC-G130", "LPC-G140"],
+      "evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/packaging/test_logic_verification_clean_install.py",
+        "test/api/test_root_mcp_formal_verification_parity.py",
+        "test/api/test_logic_verification_api_install_provider.py"
+      ]
+    },
+    {
+      "id": "surface.python.goal_tactician_api",
+      "category": "mcp_cli_python_exposure",
+      "name": "GoalTacticianAPI@1",
+      "path": "ipfs_datasets_py/logic/verification_api.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_datasets_py.logic",
+      "channel": "python",
+      "operations": [
+        "formalize_goal",
+        "compare_interpretations",
+        "discover_missing_proofs",
+        "plan_proof",
+        "validate_proof_candidate",
+        "execute_proof_plan",
+        "proof_status",
+        "minimize_counterexample",
+        "explain_counterexample_causal",
+        "replay_counterexample",
+        "list_goal_tactician_operations"
+      ],
+      "notes": "Goal-directed proof operations share verification_api module with STABLE_OPERATIONS but must not merge into STABLE_OPERATIONS. Public surface rejects supervisor-only controls.",
+      "related_goals": ["LPC-G070", "LPC-G130"],
+      "evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py",
+        "test/api/test_formal_verification_tactician_docs.py"
+      ]
+    },
+    {
+      "id": "surface.python.logic_api_v1",
+      "category": "mcp_cli_python_exposure",
+      "name": "logic.api public import surface",
+      "path": "ipfs_datasets_py/logic/api.py",
+      "classification": "compatibility_facade",
+      "owner_package": "ipfs_datasets_py.logic",
+      "channel": "python",
+      "notes": "Legacy public import retained through LPC-G060 facades. Planned thin compatibility facade over internal logic/platform/* services. Detailed public symbol census owned by LPC-002.",
+      "related_goals": ["LPC-G060", "LPC-002", "LPC-062"],
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md",
+        "docs/architecture/LOGIC_FORMAL_VERIFICATION_EXPANSION_PLAN.md",
+        "test/api/test_formal_verification_tactician_docs.py"
+      ]
+    },
+    {
+      "id": "surface.python.logic_package_init",
+      "category": "mcp_cli_python_exposure",
+      "name": "logic.__init__ public re-exports",
+      "path": "ipfs_datasets_py/logic/__init__.py",
+      "classification": "compatibility_facade",
+      "owner_package": "ipfs_datasets_py.logic",
+      "channel": "python",
+      "notes": "Package root re-exports remain public. LPC-062 requires thin facades without a second implementation. Full export list deferred to LPC-002 when datasets checkout is available.",
+      "related_goals": ["LPC-G060", "LPC-002", "LPC-062"],
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ]
+    },
+    {
+      "id": "surface.cli.logic_verification_cli",
+      "category": "mcp_cli_python_exposure",
+      "name": "LogicVerificationCLI@1",
+      "path": "ipfs_datasets_py/logic/cli.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_datasets_py.logic",
+      "channel": "cli",
+      "entry_examples": [
+        "ipfs-datasets logic goal-list-operations",
+        "ipfs-datasets logic goal-formalize --request goal.json",
+        "ipfs-datasets logic goal-replay-counterexample --request cex.json"
+      ],
+      "notes": "Datasets logic CLI projects STABLE_OPERATIONS and GoalTactician operations. Accelerate root console_scripts do not register a logic CLI entry; channel lives in datasets package. Installation must not be treated as ordinary verify.",
+      "related_goals": ["LPC-G130", "LFV-G071"],
+      "evidence": [
+        "docs/formal_verification_tactician.md",
+        "docs/architecture/logic_formal_verification_expansion.objectives.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "surface.cli.goal_tactician_commands",
+      "category": "mcp_cli_python_exposure",
+      "name": "GOAL_TACTICIAN_CLI_TO_OPERATION map",
+      "path": "ipfs_datasets_py/logic/verification_api.py",
+      "classification": "canonical_component",
+      "owner_package": "ipfs_datasets_py.logic",
+      "channel": "cli",
+      "cli_commands": [
+        "goal-formalize",
+        "goal-compare-interpretations",
+        "goal-discover-missing-proofs",
+        "goal-plan-proof",
+        "goal-validate-candidate",
+        "goal-execute-plan",
+        "goal-proof-status",
+        "goal-minimize-counterexample",
+        "goal-explain-counterexample",
+        "goal-replay-counterexample",
+        "goal-list-operations"
+      ],
+      "notes": "Closed CLI command vocabulary for goal tactician. Must stay 1:1 with Python operations and MCP tools.",
+      "related_goals": ["LPC-G130"],
+      "evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "surface.mcp.logic_verification",
+      "category": "mcp_cli_python_exposure",
+      "name": "LogicVerificationMCP@1",
+      "path": "ipfs_datasets_py/mcp_server/tools/logic_verification.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_datasets_py.mcp_server",
+      "channel": "mcp",
+      "representative_tools": [
+        "verification_list_providers",
+        "verification_provider_capabilities",
+        "verification_check",
+        "verification_portfolio",
+        "verification_probe_provider"
+      ],
+      "notes": "Datasets MCP maps TOOL_TO_OPERATION onto STABLE_OPERATIONS with shared response envelope. Parent accelerate may re-export under ipfs_accelerate_py.mcp_server.tools.logic_verification or logic_tools.logic_verification; parity tests accept those import paths.",
+      "related_goals": ["LPC-G130", "FVT-G012"],
+      "evidence": [
+        "test/api/test_root_mcp_formal_verification_parity.py",
+        "docs/architecture/logic_formal_verification_expansion.objectives.md"
+      ]
+    },
+    {
+      "id": "surface.mcp.goal_tactician_tools",
+      "category": "mcp_cli_python_exposure",
+      "name": "GOAL_TACTICIAN_TOOL_TO_OPERATION map",
+      "path": "ipfs_datasets_py/logic/verification_api.py",
+      "classification": "canonical_component",
+      "owner_package": "ipfs_datasets_py.logic",
+      "channel": "mcp",
+      "mcp_tools": [
+        "goal_tactician_formalize_goal",
+        "goal_tactician_compare_interpretations",
+        "goal_tactician_discover_missing_proofs",
+        "goal_tactician_plan_proof",
+        "goal_tactician_validate_proof_candidate",
+        "goal_tactician_execute_proof_plan",
+        "goal_tactician_proof_status",
+        "goal_tactician_minimize_counterexample",
+        "goal_tactician_explain_counterexample_causal",
+        "goal_tactician_replay_counterexample",
+        "goal_tactician_list_operations"
+      ],
+      "notes": "MCP tool names are 1:1 with GoalTactician operations. Transport success is never proof success.",
+      "related_goals": ["LPC-G130"],
+      "evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "surface.mcp.accelerate_native_logic_tools",
+      "category": "mcp_cli_python_exposure",
+      "name": "accelerate mcp_server logic_tools category",
+      "path": "ipfs_accelerate_py/mcp_server/tools/logic_tools/native_logic_tools.py",
+      "classification": "compatibility_facade",
+      "owner_package": "ipfs_accelerate_py.mcp_server",
+      "channel": "mcp",
+      "registered_tools": [
+        "logic_capabilities",
+        "logic_health",
+        "tdfol_parse",
+        "tdfol_convert",
+        "tdfol_prove",
+        "tdfol_kb_add_axiom",
+        "tdfol_kb_add_theorem",
+        "tdfol_kb_query",
+        "tdfol_kb_export",
+        "cec_prove",
+        "cec_check_theorem",
+        "cec_parse",
+        "cec_validate_formula",
+        "cec_analyze_formula",
+        "cec_formula_complexity"
+      ],
+      "notes": "Canonical mcp_server registers native logic tools. Implementation prefers datasets mcp_server.tools.logic_tools.* delegates; falls back to local non-proving stubs when datasets is unavailable. TDFOL/CEC family tools are legacy family-specific surface, not LogicVerificationMCP@1.",
+      "related_goals": ["LPC-G130"],
+      "evidence": [
+        "ipfs_accelerate_py/mcp_server/tools/logic_tools/native_logic_tools.py",
+        "ipfs_accelerate_py/mcp_server/server.py",
+        "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni105_logic_tools.py"
+      ]
+    },
+    {
+      "id": "surface.mcp.accelerate_legacy_mcp_package",
+      "category": "mcp_cli_python_exposure",
+      "name": "ipfs_accelerate_py.mcp package",
+      "path": "ipfs_accelerate_py/mcp/",
+      "classification": "compatibility_facade",
+      "owner_package": "ipfs_accelerate_py.mcp",
+      "channel": "mcp",
+      "notes": "Documented compatibility facade; canonical runtime is ipfs_accelerate_py.mcp_server. Not a preferred operator entry for new logic work. Legacy facade runtime path is deprecated D2 opt-in only.",
+      "related_goals": ["LPC-G130"],
+      "evidence": [
+        "docs/MIGRATION_GUIDE.md",
+        "docs/architecture/overview.md",
+        "ipfs_accelerate_py/mcp/server.py"
+      ]
+    },
+    {
+      "id": "surface.python.supervisor_canonical_logic_adapter",
+      "category": "mcp_cli_python_exposure",
+      "name": "SupervisorCanonicalLogicAdapter@1",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor.proof",
+      "channel": "python",
+      "notes": "Single cross-package vocabulary boundary. Lazy datasets imports only. Supervisor facades remain operational compatibility surfaces; this adapter is the semantic projection authority on the accelerate side.",
+      "related_goals": ["LPC-G090", "LPC-G110"],
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+        "test/api/test_agent_supervisor_canonical_logic.py"
+      ]
+    },
+    {
+      "id": "surface.python.supervisor_logic_provider_contract",
+      "category": "mcp_cli_python_exposure",
+      "name": "SupervisorLogicProviderFacade / logic_provider_contract",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/logic_provider_contract.py",
+      "classification": "canonical_component",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor.proof",
+      "channel": "python",
+      "notes": "Lazy facade over ipfs_datasets_py.logic.backends.provider. Does not replace formal_verification_provider. Re-exported via agent_supervisor package map as logic_provider_contract -> proof.",
+      "related_goals": ["LPC-G050", "LPC-G110"],
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/logic_provider_contract.py",
+        "test/api/test_logic_provider_contract.py"
+      ]
+    },
+    {
+      "id": "surface.python.supervisor_hammer_adapter",
+      "category": "mcp_cli_python_exposure",
+      "name": "ipfs_datasets_logic_provider Hammer adapter",
+      "path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+      "classification": "canonical_component",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor.integrations",
+      "channel": "python",
+      "notes": "Supervisor-owned Hammer portfolio adapter. Candidate-producing until reconstruction. Hand-maintained family lists are scheduled for catalog derivation (LPC-120).",
+      "related_goals": ["LPC-G120"],
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+        "test/api/test_agent_supervisor_ipfs_datasets_logic_provider.py",
+        "test/api/test_agent_supervisor_ipfs_datasets_logic_conformance.py"
+      ]
+    },
+    {
+      "id": "surface.python.supervisor_formal_verification_provider",
+      "category": "mcp_cli_python_exposure",
+      "name": "formal_verification_provider API",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor.proof",
+      "channel": "python",
+      "notes": "Supervisor operational proof-provider request/response contract. Retains scheduling ownership; must not redefine datasets semantic identities.",
+      "related_goals": ["LPC-G050", "LPC-G110"],
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py",
+        "docs/architecture/LOGIC_PLATFORM_CANONICALIZATION_PLAN.md"
+      ]
+    },
+    {
+      "id": "surface.cli.accelerate_console_scripts",
+      "category": "mcp_cli_python_exposure",
+      "name": "accelerate root console_scripts",
+      "path": "setup.py",
+      "classification": "declaration_only",
+      "owner_package": "ipfs_accelerate_py",
+      "channel": "cli",
+      "notes": "Root entry points cover inference CLI, agent daemons, and contract-repair helpers. No logic/verification CLI entry is registered at accelerate package level; logic CLI authority remains datasets.",
+      "related_goals": ["LPC-G130"],
+      "evidence": [
+        "setup.py"
+      ]
+    },
+    {
+      "id": "shim.logic_api_facade",
+      "category": "compatibility_shim",
+      "name": "logic.api / logic.__init__ thin facades",
+      "path": "ipfs_datasets_py/logic/api.py",
+      "classification": "compatibility_facade",
+      "owner_package": "ipfs_datasets_py.logic",
+      "notes": "Planned and partially documented compatibility facades over internal platform services. Must not host a second implementation. Deprecation diagnostics expected where appropriate (LPC-062).",
+      "related_goals": ["LPC-062", "LPC-G060"],
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md",
+        "docs/architecture/LOGIC_FORMAL_VERIFICATION_EXPANSION_PLAN.md"
+      ]
+    },
+    {
+      "id": "shim.verification_api_facade",
+      "category": "compatibility_shim",
+      "name": "verification_api facade over logic/platform/*",
+      "path": "ipfs_datasets_py/logic/verification_api.py",
+      "classification": "compatibility_facade",
+      "owner_package": "ipfs_datasets_py.logic",
+      "notes": "LPC-060 keeps verification_api.py as public facade while internal services move to logic/platform/*. Public imports stay stable.",
+      "related_goals": ["LPC-060", "LPC-G060"],
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md",
+        "docs/architecture/logic_platform_canonicalization.objectives.md"
+      ]
+    },
+    {
+      "id": "shim.provider_protocol_v1_adapter",
+      "category": "compatibility_shim",
+      "name": "LogicProviderProtocol v1 adapter",
+      "path": "ipfs_datasets_py/logic/backends/protocol_v1_adapter.py",
+      "classification": "compatibility_facade",
+      "owner_package": "ipfs_datasets_py.logic.backends",
+      "notes": "v1 generic payloads must parse into operation types, reject, or remain advisory; new writes use BackendRequest@2 / protocol v2. Path planned under LPC-051.",
+      "related_goals": ["LPC-051", "LPC-G050"],
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ]
+    },
+    {
+      "id": "shim.accelerate_native_logic_tools_delegate",
+      "category": "compatibility_shim",
+      "name": "native_logic_tools datasets delegate + local fallback",
+      "path": "ipfs_accelerate_py/mcp_server/tools/logic_tools/native_logic_tools.py",
+      "classification": "compatibility_facade",
+      "owner_package": "ipfs_accelerate_py.mcp_server",
+      "notes": "Compatibility shim that re-exports datasets logic_tools when present and otherwise serves fail-closed local fallbacks. Fallback prove paths return success=false; local KB is process-local only and has no proof authority.",
+      "related_goals": ["LPC-G130"],
+      "evidence": [
+        "ipfs_accelerate_py/mcp_server/tools/logic_tools/native_logic_tools.py",
+        "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni221_logic_import_compat.py",
+        "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni303_logic_dispatch_compat.py"
+      ]
+    },
+    {
+      "id": "shim.supervisor_logic_provider_facade",
+      "category": "compatibility_shim",
+      "name": "SupervisorLogicProviderFacade",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/logic_provider_contract.py",
+      "classification": "compatibility_facade",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor.proof",
+      "notes": "Additive adapter converting supervisor ProviderRequest to datasets LogicProviderRequest without importing datasets at module import time.",
+      "related_goals": ["LPC-G050", "LPC-G110"],
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/logic_provider_contract.py",
+        "test/api/test_logic_provider_contract.py"
+      ]
+    },
+    {
+      "id": "shim.canonical_logic_adapter_facades",
+      "category": "compatibility_shim",
+      "name": "canonical_logic_adapter make_logic_provider_facade / module singletons",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+      "classification": "compatibility_facade",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor.proof",
+      "notes": "Module-level singleton helpers and provider facade builders for existing supervisor consumers. Intended as compatibility surface over generated catalog maps (LPC-090).",
+      "related_goals": ["LPC-G090"],
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/canonical_logic_adapter.py",
+        "test/api/test_agent_supervisor_canonical_logic.py"
+      ]
+    },
+    {
+      "id": "shim.mcp_package_facade",
+      "category": "compatibility_shim",
+      "name": "ipfs_accelerate_py.mcp compatibility package",
+      "path": "ipfs_accelerate_py/mcp/",
+      "classification": "compatibility_facade",
+      "owner_package": "ipfs_accelerate_py.mcp",
+      "notes": "Retained alternate MCP runtime. Many tool register_* helpers are explicitly deprecated in favor of mcp_server native tools.",
+      "related_goals": [],
+      "evidence": [
+        "docs/MIGRATION_GUIDE.md",
+        "ipfs_accelerate_py/mcp/tools/inference.py",
+        "ipfs_accelerate_py/mcp/tools/workflows.py"
+      ]
+    },
+    {
+      "id": "shim.goal_tactician_legacy_aliases",
+      "category": "compatibility_shim",
+      "name": "Goal tactician / logic.api migration aliases",
+      "path": "ipfs_datasets_py/docs/logic/proof_tactician_migration.md",
+      "classification": "compatibility_facade",
+      "owner_package": "ipfs_datasets_py.logic",
+      "notes": "Documented compatibility aliases preserve legacy public names (logic.api, GOAL_TACTICIAN_OPERATIONS, STABLE_OPERATIONS separation).",
+      "related_goals": ["LPC-G070", "LPC-G130"],
+      "evidence": [
+        "docs/formal_verification_tactician.md",
+        "test/api/test_formal_verification_tactician_docs.py"
+      ]
+    },
+    {
+      "id": "deprecated.legacy_cec_tdfol_mcp_tools",
+      "category": "deprecated_module",
+      "name": "Family-specific CEC/TDFOL MCP tool surface as primary verification API",
+      "path": "ipfs_accelerate_py/mcp_server/tools/logic_tools/",
+      "classification": "legacy",
+      "owner_package": "ipfs_accelerate_py.mcp_server",
+      "notes": "TDFOL/CEC tools remain registered for compatibility but are not the modern LogicVerificationMCP@1 / GoalTactician surface. Prefer verification_* and goal_tactician_* tools for new work. Family tools may continue as domain adapters with explicit authority ceilings.",
+      "related_goals": ["LPC-G130", "LPC-G060"],
+      "evidence": [
+        "docs/architecture/LOGIC_FORMAL_VERIFICATION_EXPANSION_PLAN.md",
+        "ipfs_accelerate_py/mcp_server/tools/logic_tools/native_logic_tools.py"
+      ]
+    },
+    {
+      "id": "deprecated.legacy_mcp_tool_register_helpers",
+      "category": "deprecated_module",
+      "name": "ipfs_accelerate_py.mcp.tools.* register_* helpers",
+      "path": "ipfs_accelerate_py/mcp/tools/",
+      "classification": "legacy",
+      "owner_package": "ipfs_accelerate_py.mcp",
+      "representative_modules": [
+        "inference.py",
+        "docker_tools.py",
+        "workflows.py",
+        "github_tools.py",
+        "status.py",
+        "enhanced_inference.py",
+        "acceleration.py",
+        "cli_endpoint_adapters.py",
+        "model_tools_wrapper.py"
+      ],
+      "notes": "Many register_* functions emit DeprecationWarning and point at mcp_server native tools. Not logic-semantic authority, but part of the same MCP surface inventory.",
+      "related_goals": [],
+      "evidence": [
+        "ipfs_accelerate_py/mcp/tools/inference.py",
+        "ipfs_accelerate_py/mcp/tools/workflows.py",
+        "ipfs_accelerate_py/mcp/tools/docker_tools.py"
+      ]
+    },
+    {
+      "id": "deprecated.legacy_mcp_facade_runtime",
+      "category": "deprecated_module",
+      "name": "Legacy MCP facade runtime path (D2 opt-in)",
+      "path": "ipfs_accelerate_py/mcp/server.py",
+      "classification": "legacy",
+      "owner_package": "ipfs_accelerate_py.mcp",
+      "notes": "Runtime path logs that legacy facade is deprecated and D2 opt-in only. Canonical server is mcp_server.",
+      "related_goals": [],
+      "evidence": [
+        "ipfs_accelerate_py/mcp/server.py"
+      ]
+    },
+    {
+      "id": "deprecated.plat2_holdout_alias",
+      "category": "deprecated_module",
+      "name": "PLAT2_HOLDOUT_PROMOTION_GATE alias",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/code_proof_srt_bridge.py",
+      "classification": "legacy",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor.proof",
+      "notes": "Explicit deprecated alias of SRT_HOLDOUT_PROMOTION_GATE retained for callers.",
+      "related_goals": ["LPC-G090"],
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/code_proof_srt_bridge.py"
+      ]
+    },
+    {
+      "id": "deprecated.legacy_logic_api_name",
+      "category": "deprecated_module",
+      "name": "legacy logic.api primary name for software verification",
+      "path": "ipfs_datasets_py/logic/api.py",
+      "classification": "legacy",
+      "owner_package": "ipfs_datasets_py.logic",
+      "notes": "Migration docs preserve the name while directing modern software-verification traffic through verification_api / LogicVerificationAPI@1. Not obsolete while public imports resolve.",
+      "related_goals": ["LPC-G060", "LPC-062"],
+      "evidence": [
+        "test/api/test_formal_verification_tactician_docs.py",
+        "docs/formal_verification_tactician.md"
+      ]
+    },
+    {
+      "id": "deprecated.legacy_domain_runners",
+      "category": "deprecated_module",
+      "name": "Legacy CEC/TDFOL/external-prover domain runners as semantic authorities",
+      "path": "ipfs_datasets_py/logic/",
+      "classification": "legacy",
+      "owner_package": "ipfs_datasets_py.logic",
+      "notes": "LFV plan classifies legacy runners as adapters to ir_core/backends contracts rather than independent semantic authorities. Exact module list requires datasets checkout (LPC-002).",
+      "related_goals": ["LPC-002", "LPC-G050"],
+      "evidence": [
+        "docs/architecture/LOGIC_FORMAL_VERIFICATION_EXPANSION_PLAN.md"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.goal_tactician_cli_mcp_parity",
+      "category": "test_and_conformance_corpus",
+      "name": "Goal tactician CLI/MCP/Python parity tests",
+      "path": "test/api/test_goal_tactician_cli_mcp_parity.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_accelerate_py",
+      "lane": "hermetic_required_when_datasets_importable",
+      "notes": "Closed operation names, schemas, envelopes, authority, and redaction across channels. Marks FormalVerificationMCPParity / GoalTacticianCLIMCP contracts.",
+      "related_goals": ["LPC-G130", "LPC-G140", "FVT-G050"],
+      "evidence": [
+        "test/api/test_goal_tactician_cli_mcp_parity.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.root_mcp_formal_verification_parity",
+      "category": "test_and_conformance_corpus",
+      "name": "Root/datasets MCP formal verification parity",
+      "path": "test/api/test_root_mcp_formal_verification_parity.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_accelerate_py",
+      "lane": "hermetic_required_when_datasets_importable",
+      "notes": "Requires LogicVerificationAPI, datasets LogicVerificationMCP, and parent MCP import path share envelope and STABLE_OPERATIONS mapping.",
+      "related_goals": ["LPC-G130", "FVT-G012"],
+      "evidence": [
+        "test/api/test_root_mcp_formal_verification_parity.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.logic_provider_contract",
+      "category": "test_and_conformance_corpus",
+      "name": "Cross-package logic provider contract tests",
+      "path": "test/api/test_logic_provider_contract.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_accelerate_py",
+      "lane": "hermetic_required_when_datasets_importable",
+      "notes": "Supervisor facade <-> datasets LogicProvider wire types, cancellation, protocol errors, lazy import.",
+      "related_goals": ["LPC-G050", "LPC-G140"],
+      "evidence": [
+        "test/api/test_logic_provider_contract.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.canonical_logic_adapter",
+      "category": "test_and_conformance_corpus",
+      "name": "SupervisorCanonicalLogicAdapter contract tests",
+      "path": "test/api/test_agent_supervisor_canonical_logic.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_accelerate_py",
+      "lane": "hermetic_required",
+      "notes": "Vocabulary projections, lazy imports, revision checks, facade compatibility.",
+      "related_goals": ["LPC-G090", "LPC-G140"],
+      "evidence": [
+        "test/api/test_agent_supervisor_canonical_logic.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.ipfs_datasets_logic_conformance",
+      "category": "test_and_conformance_corpus",
+      "name": "Real-module datasets logic/prover backend conformance",
+      "path": "test/api/test_agent_supervisor_ipfs_datasets_logic_conformance.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_accelerate_py",
+      "lane": "installed_provider_optional",
+      "notes": "Rejects fixture-only success. Exercises IR/TDFOL/CEC/SMT/Hammer signatures through supervisor facades. Mocks cannot satisfy real-provider gates.",
+      "related_goals": ["LPC-G140", "LPC-142"],
+      "evidence": [
+        "test/api/test_agent_supervisor_ipfs_datasets_logic_conformance.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.logic_receipt_authority",
+      "category": "test_and_conformance_corpus",
+      "name": "Logic receipt authority boundary tests",
+      "path": "test/api/test_logic_receipt_authority_boundary.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_accelerate_py",
+      "lane": "hermetic_required_when_datasets_importable",
+      "notes": "verify_receipt fail-closed for empty/forged/translation-limited receipts.",
+      "related_goals": ["LPC-G140", "LPC-G080"],
+      "evidence": [
+        "test/api/test_logic_receipt_authority_boundary.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.logic_verification_install_provider",
+      "category": "test_and_conformance_corpus",
+      "name": "install_provider surface tests",
+      "path": "test/api/test_logic_verification_api_install_provider.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_accelerate_py",
+      "lane": "hermetic_required_when_datasets_importable",
+      "notes": "Proves install is opt-in, dry-run declarative, offline denied, and never ordinary verify.",
+      "related_goals": ["LPC-G130", "LPC-G140"],
+      "evidence": [
+        "test/api/test_logic_verification_api_install_provider.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.logic_submodule_alignment",
+      "category": "test_and_conformance_corpus",
+      "name": "Datasets submodule alignment checker tests",
+      "path": "test/api/test_logic_submodule_alignment.py",
+      "classification": "canonical_component",
+      "owner_package": "ipfs_accelerate_py",
+      "lane": "hermetic_required",
+      "notes": "Read-only gitlink/checkout alignment for ipfs_datasets_py; does not fetch or mutate.",
+      "related_goals": ["LPC-001", "LPC-G010"],
+      "evidence": [
+        "test/api/test_logic_submodule_alignment.py",
+        "tools/logic/verify_submodule_alignment.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.logic_formal_verification_completion",
+      "category": "test_and_conformance_corpus",
+      "name": "LFV program completion receipt tests",
+      "path": "test/api/test_logic_formal_verification_completion.py",
+      "classification": "canonical_component",
+      "owner_package": "ipfs_accelerate_py",
+      "lane": "hermetic_required",
+      "notes": "Validates LogicFormalVerificationRelease@1 receipt bindings and matrix/benchmark artifact paths under datasets tree.",
+      "related_goals": ["LPC-G140"],
+      "evidence": [
+        "test/api/test_logic_formal_verification_completion.py",
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.prover_conformance",
+      "category": "test_and_conformance_corpus",
+      "name": "Supervisor prover conformance suite",
+      "path": "test/api/test_agent_supervisor_prover_conformance.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_accelerate_py",
+      "lane": "hermetic_required",
+      "notes": "Fail-closed receipt/path/logic-form release rules using supervisor formal_logic_vocabulary and logic_translation_validation.",
+      "related_goals": ["LPC-G140", "LPC-G050"],
+      "evidence": [
+        "test/api/test_agent_supervisor_prover_conformance.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.program_logic_prediction",
+      "category": "test_and_conformance_corpus",
+      "name": "Program-logic prediction / gap / premise / goal compiler suite",
+      "path": "test/api/",
+      "classification": "canonical_component",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "lane": "hermetic_required",
+      "members": [
+        "test/api/test_agent_supervisor_program_logic_prediction_contracts.py",
+        "test/api/test_agent_supervisor_program_logic_premise_corpus.py",
+        "test/api/test_agent_supervisor_program_logic_goal_compiler.py",
+        "test/api/test_agent_supervisor_program_logic_hypothesis_retrieval.py",
+        "test/api/test_agent_supervisor_logic_gap_slicer.py",
+        "test/api/test_agent_supervisor_logic_prediction_cegis.py",
+        "test/api/test_agent_supervisor_logic_repair_fixed_point.py",
+        "test/api/test_agent_supervisor_logic_repair_proposal_overlay.py",
+        "test/api/test_agent_supervisor_live_logic_repair_integration.py"
+      ],
+      "notes": "Supervisor program-logic prediction contracts (LPR track). Operational overlay; must not become second semantic authority for family identity.",
+      "related_goals": ["LPC-G090", "LPC-G140"],
+      "evidence": [
+        "test/api/test_agent_supervisor_program_logic_prediction_contracts.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.tactician_hammer_logic_repair",
+      "category": "test_and_conformance_corpus",
+      "name": "Tactician hammer logic-repair suite",
+      "path": "test/api/",
+      "classification": "canonical_component",
+      "owner_package": "ipfs_accelerate_py.agent_supervisor",
+      "lane": "hermetic_required",
+      "members": [
+        "test/api/test_agent_supervisor_tactician_hammer_capabilities.py",
+        "test/api/test_agent_supervisor_tactician_hammer_coordinator.py",
+        "test/api/test_agent_supervisor_tactician_hammer_logic_repair_rollout.py",
+        "test/api/test_agent_supervisor_tactician_hammer_logic_repair_benchmark.py",
+        "test/api/test_agent_supervisor_tactician_hammer_logic_repair_end_to_end.py",
+        "test/api/test_agent_supervisor_ipfs_datasets_logic_provider.py"
+      ],
+      "notes": "Hammer remains candidate-producing. Capabilities probes and isolation hardening covered.",
+      "related_goals": ["LPC-G120", "LPC-G140"],
+      "evidence": [
+        "test/api/test_agent_supervisor_tactician_hammer_coordinator.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.formal_verification_tactician",
+      "category": "test_and_conformance_corpus",
+      "name": "Formal verification tactician readiness / docs / provider-role suite",
+      "path": "test/api/",
+      "classification": "canonical_component",
+      "owner_package": "ipfs_accelerate_py",
+      "lane": "mixed_hermetic_and_optional",
+      "members": [
+        "test/api/test_formal_verification_tactician_docs.py",
+        "test/api/test_formal_verification_tactician_corpus_contract.py",
+        "test/api/test_formal_verification_provider_role_closure.py",
+        "test/api/test_agent_supervisor_formal_verification_capabilities.py",
+        "test/api/test_agent_supervisor_formal_verification_contracts.py",
+        "test/api/test_agent_supervisor_counterexample_guided_tactician.py"
+      ],
+      "notes": "Documents/product surface parity plus supervisor orchestration contracts. Live provider probes remain optional.",
+      "related_goals": ["LPC-G070", "LPC-G140"],
+      "evidence": [
+        "test/api/test_formal_verification_tactician_docs.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.packaging_logic_clean_install",
+      "category": "test_and_conformance_corpus",
+      "name": "Logic verification clean-install packaging gate",
+      "path": "test/packaging/test_logic_verification_clean_install.py",
+      "classification": "canonical",
+      "owner_package": "ipfs_accelerate_py",
+      "lane": "hermetic_packaging",
+      "notes": "OfflineToolchainLock@1 + FormalVerificationPackagingGate@1. Empty-environment imports of STABLE_OPERATIONS; no network installs.",
+      "related_goals": ["LPC-G150"],
+      "evidence": [
+        "test/packaging/test_logic_verification_clean_install.py",
+        "test/packaging/test_formal_verification_distribution_contract.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.integration_formal_verification",
+      "category": "test_and_conformance_corpus",
+      "name": "Integration formal-verification / toolchain matrix",
+      "path": "test/integration/",
+      "classification": "canonical_component",
+      "owner_package": "ipfs_accelerate_py",
+      "lane": "network_or_heavy_opt_in",
+      "members": [
+        "test/integration/toolchains/test_reference_logic_semantic_closure.py",
+        "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
+        "test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py",
+        "test/integration/toolchains/test_formal_verification_post_remediation_assurance.py",
+        "test/integration/test_formal_verification_authoritative_vendor_release.py",
+        "test/integration/test_formal_verification_role_aware_release_candidate.py",
+        "test/integration/test_formal_verification_role_aware_completion.py",
+        "test/integration/test_formal_verification_real_tool_matrix.py"
+      ],
+      "notes": "Real-tool and release-fanin gates. Mocks cannot satisfy real-provider acceptance. Opt-in for CI heavy lanes.",
+      "related_goals": ["LPC-G140", "LPC-G150", "LPC-142"],
+      "evidence": [
+        "test/integration/toolchains/test_reference_logic_semantic_closure.py"
+      ]
+    },
+    {
+      "id": "corpus.accelerate.mcp_uni_logic_tools",
+      "category": "test_and_conformance_corpus",
+      "name": "MCP server unification logic_tools tests",
+      "path": "ipfs_accelerate_py/mcp/tests/",
+      "classification": "canonical_component",
+      "owner_package": "ipfs_accelerate_py.mcp_server",
+      "lane": "hermetic_required",
+      "members": [
+        "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni105_logic_tools.py",
+        "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni161_logic_tools.py",
+        "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni221_logic_import_compat.py",
+        "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni303_logic_dispatch_compat.py"
+      ],
+      "notes": "Registration, validation, import compatibility, and dispatch for native logic_tools category.",
+      "related_goals": ["LPC-G130"],
+      "evidence": [
+        "ipfs_accelerate_py/mcp/tests/test_mcp_server_uni105_logic_tools.py"
+      ]
+    },
+    {
+      "id": "corpus.datasets.unit_logic",
+      "category": "test_and_conformance_corpus",
+      "name": "Datasets unit logic suites (documented locations)",
+      "path": "ipfs_datasets_py/tests/unit/logic/",
+      "classification": "unresolved",
+      "owner_package": "ipfs_datasets_py",
+      "lane": "hermetic_required_when_datasets_checkout_present",
+      "expected_members": [
+        "tests/unit/logic/families/test_canonical_catalog.py",
+        "tests/unit/logic/ir_core/test_axes.py",
+        "tests/unit/logic/formalization/",
+        "tests/unit/logic/syntax_core/",
+        "tests/unit/logic/backends/test_provider_protocol_v2.py",
+        "tests/unit/logic/backends/test_protocol_v1_adapter.py",
+        "tests/unit/logic/backends/test_provider_response_v2.py",
+        "tests/unit/logic/test_logic_api_v1_compatibility.py",
+        "tests/unit/logic/test_verification_api.py",
+        "tests/unit/logic/test_pure_data_import.py",
+        "tests/unit/logic/test_channel_parity.py",
+        "tests/unit/logic/tactician/test_models.py",
+        "tests/unit/logic/common/test_canonical_cache_key.py",
+        "tests/unit/logic/platform/test_manifest.py"
+      ],
+      "notes": "Authoritative unit suites live under datasets. Paths come from LPC objectives/todo and LFV completion receipt. Checkout absent in this worktree; mark unresolved until LPC-001/002 confirm presence at implementation head.",
+      "related_goals": ["LPC-G140", "LPC-008"],
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md",
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ]
+    },
+    {
+      "id": "corpus.datasets.integration_logic",
+      "category": "test_and_conformance_corpus",
+      "name": "Datasets integration logic / CLI-MCP / pipeline suites",
+      "path": "ipfs_datasets_py/tests/integration/",
+      "classification": "unresolved",
+      "owner_package": "ipfs_datasets_py",
+      "lane": "mixed_hermetic_and_optional",
+      "expected_members": [
+        "tests/integration/test_logic_verification_cli_mcp.py",
+        "tests/integration/logic/test_goal_tactician_public_api.py",
+        "tests/integration/benchmarks/logic_pipeline/test_software_verification_matrix.py",
+        "tests/fixtures/logic/software_verification/capability_matrix.json",
+        "tests/fixtures/logic/software_verification/conformance/manifest.json"
+      ],
+      "notes": "CLI/MCP integration and software-verification matrix. Present in LFV completion receipt content identities; filesystem not available in this scan worktree.",
+      "related_goals": ["LPC-G130", "LPC-G140", "LPC-142"],
+      "evidence": [
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json",
+        "test/api/test_logic_formal_verification_completion.py"
+      ]
+    },
+    {
+      "id": "corpus.planned.lpc_mandatory_matrix",
+      "category": "test_and_conformance_corpus",
+      "name": "LPC mandatory conformance matrix (to be composed)",
+      "path": "data/agent_supervisor/logic_platform_canonicalization/notes/test_matrix.md",
+      "classification": "declaration_only",
+      "owner_package": "logic-platform/tests",
+      "lane": "planned",
+      "required_buckets": [
+        "pure_import",
+        "catalog",
+        "syntax_formalization",
+        "typed_request_admission",
+        "translation_safety",
+        "provider_protocol",
+        "evidence_receipts",
+        "supervisor_parity",
+        "real_provider_smoke",
+        "bounded_adversarial"
+      ],
+      "notes": "LPC-G140 owns the composed matrix note. Existing corpora above feed it; new hermetic gaps are filled in later tasks, not this inventory.",
+      "related_goals": ["LPC-G140", "LPC-140", "LPC-141", "LPC-142"],
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.objectives.md",
+        "docs/architecture/logic_platform_canonicalization.todo.md"
+      ]
+    },
+    {
+      "id": "corpus.planned.channel_parity_tests",
+      "category": "test_and_conformance_corpus",
+      "name": "LPC channel parity tests (datasets + accelerate)",
+      "path": "tests/unit/logic/test_channel_parity.py",
+      "classification": "declaration_only",
+      "owner_package": "logic-platform/parity",
+      "lane": "planned",
+      "planned_paths": [
+        "ipfs_datasets_py/tests/unit/logic/test_channel_parity.py",
+        "test/api/test_logic_channel_parity.py",
+        "test/api/test_direct_vs_supervisor_logic_parity.py"
+      ],
+      "notes": "LPC-130/141 will own these files. Existing goal_tactician and root MCP parity tests are interim evidence, not the full LogicOperationCatalog@1 gate.",
+      "related_goals": ["LPC-G130", "LPC-130", "LPC-141"],
+      "evidence": [
+        "docs/architecture/logic_platform_canonicalization.todo.md",
+        "test/api/test_goal_tactician_cli_mcp_parity.py",
+        "test/api/test_root_mcp_formal_verification_parity.py"
+      ]
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "unresolved.datasets_checkout_absent",
+      "category": "test_and_conformance_corpus",
+      "classification": "unresolved",
+      "summary": "ipfs_datasets_py gitlink directory is empty and /home/barberb/lift_coding/external/ipfs_datasets is not present in this scan environment. Datasets unit/integration corpora and public API modules cannot be file-listed here.",
+      "remediation": "LPC-001 records revisions; initialize or bind datasets checkout at implementation head before LPC-008 composition treats datasets paths as present."
+    },
+    {
+      "id": "unresolved.full_logic_api_export_census",
+      "category": "mcp_cli_python_exposure",
+      "classification": "unresolved",
+      "summary": "Complete public symbol lists for logic.__init__, logic.api, and logic.cli require datasets source (owned primarily by LPC-002).",
+      "remediation": "Cross-link LPC-002 datasets_public_api inventory when available."
+    },
+    {
+      "id": "unresolved.deprecated_datasets_module_exhaustive_list",
+      "category": "deprecated_module",
+      "classification": "unresolved",
+      "summary": "Exhaustive deprecated module list inside ipfs_datasets_py.logic requires source scan of datasets checkout.",
+      "remediation": "Re-scan datasets at ac82107e246b30e35a2bbdcf75e01370d22350c6 or newer implementation head during LPC-008."
+    }
+  ],
+  "summary": {
+    "item_count": 49,
+    "by_category": {
+      "mcp_cli_python_exposure": 15,
+      "compatibility_shim": 8,
+      "deprecated_module": 6,
+      "test_and_conformance_corpus": 20
+    },
+    "by_classification": {
+      "canonical": 15,
+      "canonical_component": 11,
+      "compatibility_facade": 12,
+      "legacy": 6,
+      "declaration_only": 3,
+      "unresolved": 2
+    },
+    "parity_status": "partial_existing_evidence_full_catalog_planned",
+    "notes": [
+      "Python = CLI = MCP parity is required by LPC-G130; partial channel tests already exist for GoalTactician and LogicVerificationMCP.",
+      "Accelerate native logic_tools TDFOL/CEC surface is compatibility/legacy relative to LogicVerificationMCP@1.",
+      "Mandatory LPC test matrix is declaration-only until LPC-140 composes notes/test_matrix.md.",
+      "Unresolved items are listed explicitly and must not be silently dropped by LPC-008."
+    ]
+  }
+}

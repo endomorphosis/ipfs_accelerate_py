@@ -143,7 +143,7 @@ def test_policy_is_fixed_to_grok_implementation_and_independent_codex_review() -
     assert payload["schema"].endswith("@2")
     assert policy.declared_roles == ("grok-implement", "codex-review")
     assert payload["implementation"]["provider"] == "grok_cli"
-    assert payload["implementation"]["model"] == "grok-4.5"
+    assert payload["implementation"]["model"] == "grok-4.6"
     assert payload["review"]["provider"] == "codex_cli"
     assert payload["review"]["model"] == "gpt-5.6-terra"
     assert payload["review"]["reasoning_effort"] == "medium"
@@ -394,7 +394,7 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
     codex_response = codex(requests[ProviderRole.CODEX_REVIEW])
 
     for provider, expected_model, role in (
-        ("grok_cli", "grok-4.5", ProviderRole.GROK_IMPLEMENT),
+        ("grok_cli", "grok-4.6", ProviderRole.GROK_IMPLEMENT),
         ("codex_cli", "gpt-5.6-terra", ProviderRole.CODEX_REVIEW),
     ):
         record = observed[provider]
@@ -446,7 +446,7 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
     ] == 0
 
     for response, expected_provider, expected_model in (
-        (grok_response, "grok_cli", "grok-4.5"),
+        (grok_response, "grok_cli", "grok-4.6"),
         (codex_response, "codex_cli", "gpt-5.6-terra"),
     ):
         execution = response["supervisor_provider_execution"]

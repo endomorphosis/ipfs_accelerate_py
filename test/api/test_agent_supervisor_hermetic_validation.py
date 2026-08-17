@@ -14,8 +14,10 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     ValidationCancellationToken,
     ValidationResourceBounds,
     ValidationRuntimeError,
+    apply_sealed_node_toolchain,
     build_hermetic_validation_runtime,
     build_validation_environment,
+    resolve_sealed_node_executable,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
     HermeticValidationPolicy,
@@ -447,3 +449,41 @@ def test_benchmark_requires_thirty_percent_median_improvement() -> None:
     assert passing["passed"] is True
     assert passing["reduction"] >= 0.30
     assert failing["passed"] is False
+
+
+def test_resolve_sealed_node_walks_from_nested_worktree(tmp_path: Path) -> None:
+    node = (
+        tmp_path
+        / "data/agent_supervisor/verified_gui_optimizer/toolchain/node_modules/.bin/node"
+    )
+    node.parent.mkdir(parents=True)
+    node.write_text("#!/bin/sh\necho v22.19.0\n", encoding="utf-8")
+    node.chmod(0o755)
+    nested = tmp_path / "worktrees" / "workspace-demo"
+    nested.mkdir(parents=True)
+    assert resolve_sealed_node_executable(nested) == node.resolve()
+    assert resolve_sealed_node_executable(Path("/usr")) is None
+
+
+def test_apply_sealed_node_toolchain_prepends_bin_for_node_commands(
+    tmp_path: Path,
+) -> None:
+    node = (
+        tmp_path
+        / "data/agent_supervisor/verified_gui_optimizer/toolchain/node_modules/.bin/node"
+    )
+    node.parent.mkdir(parents=True)
+    node.write_text("#!/bin/sh\necho v22.19.0\n", encoding="utf-8")
+    node.chmod(0o755)
+    applied = apply_sealed_node_toolchain(
+        {"PATH": "/usr/bin:/bin"},
+        workspace_path=tmp_path / "worktrees" / "ws",
+        command="cd swissknife && node scripts/run_playwright_test.mjs test",
+    )
+    assert applied["PATH"].split(":")[0] == str(node.parent)
+    skipped = apply_sealed_node_toolchain(
+        {"PATH": "/usr/bin:/bin"},
+        workspace_path=tmp_path,
+        command="python3 -m pytest -q",
+    )
+    assert skipped["PATH"] == "/usr/bin:/bin"

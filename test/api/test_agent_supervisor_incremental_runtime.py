@@ -28,8 +28,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees import WorktreePool
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees import (
+    WorktreePool,
+    python_identifier_worktree_basename,
+)
 from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+    DuplicateAttemptError,
     ProcessBirthIdentity,
     WorkspaceLifecycleState,
 )
@@ -397,6 +401,123 @@ def _make_dead_missing_pool_lease(
     return lease, state_path, lock_path
 
 
+def test_generated_worktree_basename_is_a_deterministic_python_identifier() -> None:
+    assert python_identifier_worktree_basename(
+        "workspace",
+        "ACCEL-012/child",
+        "a1b2c3d4e5f6",
+        "attempt",
+        2,
+        123,
+    ) == "workspace_ACCEL_012_child_a1b2c3d4e5f6_attempt_2_123"
+    for segments in (
+        ("replay", "AUTO-004", "abc123", 456),
+        ("main_merge", "release/v1", "implementation/task-1", 7),
+        ("submodule_target", "1abc", 8),
+        ("submodule_recovery", "9def", 8, 10),
+    ):
+        basename = python_identifier_worktree_basename(*segments)
+        assert basename.isidentifier()
+        assert "-" not in basename
+        assert "/" not in basename
+
+
+def test_non_pooled_attempt_uses_identifier_basename_and_legacy_branch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = tmp_path / "state"
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "tasks.md",
+        state_path=state_dir / "task-state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-012/child",
+        title="Prove a Ruff-safe checkout name",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+    observed: dict[str, object] = {}
+
+    def reject_duplicate_attempt(**kwargs):
+        observed.update(kwargs)
+        raise DuplicateAttemptError("fixture already owns the attempt")
+
+    monkeypatch.setattr(
+        daemon.worktree_lifecycle,
+        "begin_preparing",
+        reject_duplicate_attempt,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=PortalTaskState(),
+        attempt=2,
+        started_at="2026-08-11T00:00:00+00:00",
+        log_path=state_dir / "implementation.log",
+        prompt="implement",
+    )
+
+    worktree_path = Path(str(result["worktree_path"]))
+    assert observed["workspace_path"] == worktree_path
+    assert worktree_path.name.isidentifier()
+    assert worktree_path.name.startswith("workspace_accel_012_child_")
+    assert "_attempt_2_" in worktree_path.name
+    assert result["branch"].startswith("implementation/accel-012-child-")
+    assert "-attempt-2-" in result["branch"]
+
+
+def test_worktree_pool_replaces_readable_legacy_hyphenated_entry(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    pool = WorktreePool(repo_root=repo, worktree_root=tmp_path / "pool")
+
+    initial = pool.acquire(cache_key="ruff-safe", base_ref="main")
+    assert initial.path.name == f"workspace_{initial.entry_id.replace('-', '_')}"
+    assert initial.path.name.isidentifier()
+    assert initial.entry_id.count("-") == 1
+    assert initial.release()["pooled"] is True
+
+    state_path = pool.state_root / f"{initial.entry_id}.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    legacy_path = pool.worktree_root / f"workspace-{initial.entry_id}"
+    _git(repo, "worktree", "move", str(initial.path), str(legacy_path))
+    state["path"] = str(legacy_path)
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    assert [item["lease_token"] for item in pool._states()] == [
+        initial.entry_id
+    ]
+    replacement = pool.acquire(cache_key="ruff-safe", base_ref="main")
+
+    assert replacement.reused is False
+    assert "worktree_basename_not_python_identifier" in (
+        replacement.invalidation_reasons
+    )
+    assert replacement.path.name == (
+        f"workspace_{replacement.entry_id.replace('-', '_')}"
+    )
+    assert replacement.path.name.isidentifier()
+    assert not legacy_path.exists()
+    assert not state_path.exists()
+    assert replacement.release()["pooled"] is True
+
+
 def test_clean_dependency_workspaces_are_reused_without_task_mutation_leakage(tmp_path: Path) -> None:
     repo, _dependency = _seed_repo_with_submodule(tmp_path)
     pool = WorktreePool(repo_root=repo, worktree_root=tmp_path / "pool", max_entries=2)
@@ -416,6 +537,8 @@ def test_clean_dependency_workspaces_are_reused_without_task_mutation_leakage(tm
         prepare=prepare,
     )
     assert cold.reused is False
+    assert cold.path.name == f"workspace_{cold.entry_id.replace('-', '_')}"
+    assert cold.path.name.isidentifier()
     assert (cold.path / "vendor" / "dependency" / "dependency.py").read_text(encoding="utf-8") == "VALUE = 7\n"
     cold_validation = subprocess.run(
         ["python", "-c", "from pathlib import Path; assert 'VALUE = 7' in Path('app.py').read_text()"],

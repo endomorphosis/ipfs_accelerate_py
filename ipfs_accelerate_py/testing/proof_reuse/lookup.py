@@ -46,7 +46,11 @@ from ...agent_supervisor.proof.test_proof_cache import (
 )
 
 PROOF_REUSE_LOOKUP_INTERFACE: Final = "ProofReuseLookup@1"
-PROOF_REUSE_TWO_STAGE_LOOKUP_INTERFACE: Final = "ProofReuseTwoStageLookup@1"
+# Production two-stage interface upgraded by PTR-164 for signed-receipt trust.
+TWO_STAGE_CANDIDATE_LOOKUP_INTERFACE: Final = "TwoStageCandidateLookup@2"
+# Historical alias retained for importers that still name the PTR-145 surface.
+PROOF_REUSE_TWO_STAGE_LOOKUP_INTERFACE: Final = TWO_STAGE_CANDIDATE_LOOKUP_INTERFACE
+SIGNED_RECEIPT_TRUST_VERIFIER_INTERFACE: Final = "SignedReceiptTrustVerifier@1"
 ITEM_DECISION_ATTRIBUTE: Final = "_ipfs_proof_reuse_decision"
 ITEM_LOOKUP_REQUEST_ATTRIBUTE: Final = "_ipfs_proof_reuse_lookup_request"
 SKIP_REASON_PREFIX: Final = "proof-cache-hit:"
@@ -54,6 +58,7 @@ SKIP_REASON_PREFIX: Final = "proof-cache-hit:"
 DEFAULT_LOOKUP_TIMEOUT_SECONDS: Final = 5.0
 DEFAULT_MAX_BATCH_ITEMS: Final = 4096
 MAX_DIAGNOSTIC_TEXT: Final = 128
+MAX_ATTESTATION_BYTES: Final = 64 * 1024
 
 _USER_PROPERTY_KEYS: Final = frozenset(
     {
@@ -697,8 +702,476 @@ def batch_lookup_reuse_decisions(
 
 
 # ---------------------------------------------------------------------------
-# Two-stage warm lookup (PTR-145)
+# Signed-receipt trust (PTR-164)
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SignedReceiptTrustResult:
+    """Outcome of pre-proof signed-receipt trust admission.
+
+    Never authorizes ``SKIP`` by itself.  A verified result only permits the
+    caller to proceed to local proof verification.
+    """
+
+    verified: bool
+    reason: str
+    signed_receipt: Any = None
+    checks: Mapping[str, bool] = None  # type: ignore[assignment]
+    diagnostics: Mapping[str, Any] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "checks",
+            dict(self.checks or {}),
+        )
+        object.__setattr__(
+            self,
+            "diagnostics",
+            dict(self.diagnostics or {}),
+        )
+
+    @property
+    def interface(self) -> str:
+        return SIGNED_RECEIPT_TRUST_VERIFIER_INTERFACE
+
+    @property
+    def may_authorize_skip(self) -> bool:
+        return False
+
+    @property
+    def may_proceed_to_proof_verification(self) -> bool:
+        return bool(self.verified)
+
+
+def _mapping_get(value: Any, *names: str) -> Any:
+    if value is None:
+        return None
+    for name in names:
+        if isinstance(value, Mapping) and name in value:
+            return value[name]
+        attr = getattr(value, name, None)
+        if attr is not None:
+            return attr
+    return None
+
+
+def _as_bytes(value: Any, *, max_bytes: int = MAX_ATTESTATION_BYTES) -> bytes | None:
+    if value is None:
+        return None
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        raw = bytes(value)
+        return raw if 0 < len(raw) <= max_bytes else None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        # Accept raw utf-8 or lowercase hex of even length.
+        try:
+            if len(text) % 2 == 0 and all(
+                ch in "0123456789abcdefABCDEF" for ch in text
+            ):
+                raw = bytes.fromhex(text)
+                if 0 < len(raw) <= max_bytes:
+                    return raw
+        except ValueError:
+            pass
+        encoded = text.encode("utf-8")
+        return encoded if 0 < len(encoded) <= max_bytes else None
+    canonical = getattr(value, "canonical_bytes", None)
+    if callable(canonical):
+        try:
+            raw = bytes(canonical())
+            return raw if 0 < len(raw) <= max_bytes else None
+        except Exception:
+            return None
+    return None
+
+
+def _load_receipt_from_material(value: Any) -> Any | None:
+    from ...agent_supervisor.proof.test_execution_contracts import TestPassReceipt
+
+    if isinstance(value, TestPassReceipt):
+        return value
+    raw = _as_bytes(value)
+    if raw is not None:
+        try:
+            text = raw.decode("utf-8")
+            payload = json.loads(text)
+            if isinstance(payload, Mapping):
+                return TestPassReceipt.from_dict(payload)
+        except Exception:
+            return None
+    if isinstance(value, Mapping):
+        try:
+            return TestPassReceipt.from_dict(value)
+        except Exception:
+            return None
+    return None
+
+
+class SignedReceiptTrustVerifier:
+    """Fail-closed pre-proof trust gate for warm lookup (PTR-164).
+
+    Authority order before any ZK / certificate proof verification:
+
+    1. Immutable receipt and attestation bytes rehash to their CIDs.
+    2. Domain-separated Ed25519 signature verifies under the pinned key.
+    3. Key material is valid for ``pytest-pass-attestation`` usage.
+    4. Key is not revoked and matches the active epoch.
+    5. Local trust-policy CID, trust domain, and epoch agree.
+    6. Only then may the caller proceed to proof verification.
+
+    Any gap returns a non-verified result.  This class never authorizes skip.
+    """
+
+    interface = SIGNED_RECEIPT_TRUST_VERIFIER_INTERFACE
+
+    def __init__(
+        self,
+        *,
+        trust_policy: Any = None,
+        pinned_policy_cid: str = "",
+        pinned_public_key_material: bytes | None = None,
+        nonce_registry: Any = None,
+        clock: Callable[[], int] | None = None,
+        require_attestation: bool = False,
+    ) -> None:
+        self._trust_policy = trust_policy
+        self._pinned_policy_cid = str(pinned_policy_cid or "")
+        self._pinned_public_key_material = (
+            bytes(pinned_public_key_material)
+            if pinned_public_key_material is not None
+            else None
+        )
+        self._nonce_registry = nonce_registry
+        self._clock = clock
+        self._require_attestation = bool(require_attestation)
+
+    @property
+    def may_authorize_skip(self) -> bool:
+        return False
+
+    @property
+    def require_attestation(self) -> bool:
+        return self._require_attestation
+
+    def verify(
+        self,
+        *,
+        receipt: Any = None,
+        receipt_bytes: Any = None,
+        attestation: Any = None,
+        attestation_bytes: Any = None,
+        current_execution_key_cid: str = "",
+        current_candidate_context_cid: str = "",
+        now: int | None = None,
+    ) -> SignedReceiptTrustResult:
+        """Verify signed-receipt trust; never raises into the lookup path."""
+
+        checks = {
+            "immutable_bytes": False,
+            "signature": False,
+            "key_validity": False,
+            "revocation": False,
+            "epoch": False,
+            "policy": False,
+        }
+        diagnostics: dict[str, Any] = {"stage": "signed_receipt_trust"}
+
+        try:
+            return self._verify_unbounded(
+                receipt=receipt,
+                receipt_bytes=receipt_bytes,
+                attestation=attestation,
+                attestation_bytes=attestation_bytes,
+                current_execution_key_cid=current_execution_key_cid,
+                current_candidate_context_cid=current_candidate_context_cid,
+                now=now,
+                checks=checks,
+                diagnostics=diagnostics,
+            )
+        except Exception as exc:
+            diagnostics["exception_type"] = _bounded_type_name(exc)
+            return SignedReceiptTrustResult(
+                False,
+                "signed_receipt_trust_exception",
+                checks=checks,
+                diagnostics=diagnostics,
+            )
+
+    def _verify_unbounded(
+        self,
+        *,
+        receipt: Any,
+        receipt_bytes: Any,
+        attestation: Any,
+        attestation_bytes: Any,
+        current_execution_key_cid: str,
+        current_candidate_context_cid: str,
+        now: int | None,
+        checks: dict[str, bool],
+        diagnostics: dict[str, Any],
+    ) -> SignedReceiptTrustResult:
+        from .runner_pass_attestation import (
+            RunnerPassAttestation,
+            RunnerTrustPolicy,
+            verify_runner_pass_attestation,
+            verify_runner_pass_attestation_with_key,
+        )
+
+        policy = self._trust_policy
+        if policy is None:
+            return SignedReceiptTrustResult(
+                False,
+                "trust_policy_unavailable",
+                checks=checks,
+                diagnostics=diagnostics,
+            )
+        if not isinstance(policy, RunnerTrustPolicy):
+            # Accept already-validated policy-like objects that expose cid.
+            if not hasattr(policy, "cid") or not hasattr(policy, "key_for"):
+                return SignedReceiptTrustResult(
+                    False,
+                    "trust_policy_invalid",
+                    checks=checks,
+                    diagnostics=diagnostics,
+                )
+
+        typed_receipt = _load_receipt_from_material(receipt)
+        if typed_receipt is None:
+            typed_receipt = _load_receipt_from_material(receipt_bytes)
+        if typed_receipt is None:
+            return SignedReceiptTrustResult(
+                False,
+                "receipt_material_missing",
+                checks=checks,
+                diagnostics=diagnostics,
+            )
+
+        receipt_raw = _as_bytes(receipt_bytes) or _as_bytes(typed_receipt)
+        if receipt_raw is None:
+            return SignedReceiptTrustResult(
+                False,
+                "receipt_bytes_missing",
+                checks=checks,
+                diagnostics=diagnostics,
+            )
+        # Immutable receipt bytes must rehash to the typed receipt CID.
+        try:
+            if typed_receipt.canonical_bytes() != receipt_raw:
+                return SignedReceiptTrustResult(
+                    False,
+                    "receipt_immutable_bytes_mismatch",
+                    checks=checks,
+                    diagnostics=diagnostics,
+                )
+        except Exception:
+            return SignedReceiptTrustResult(
+                False,
+                "receipt_immutable_bytes_error",
+                checks=checks,
+                diagnostics=diagnostics,
+            )
+        checks["immutable_bytes"] = True
+
+        att_raw = _as_bytes(attestation_bytes) or _as_bytes(attestation)
+        if att_raw is None and attestation is not None:
+            # Already-decoded attestation object path.
+            if isinstance(attestation, RunnerPassAttestation):
+                try:
+                    att_raw = attestation.canonical_bytes()
+                except Exception:
+                    att_raw = None
+        if att_raw is None:
+            return SignedReceiptTrustResult(
+                False,
+                "attestation_material_missing",
+                checks=checks,
+                diagnostics=diagnostics,
+            )
+
+        try:
+            if isinstance(attestation, RunnerPassAttestation):
+                candidate_att = attestation
+                if candidate_att.canonical_bytes() != att_raw:
+                    return SignedReceiptTrustResult(
+                        False,
+                        "attestation_immutable_bytes_mismatch",
+                        checks=checks,
+                        diagnostics=diagnostics,
+                    )
+            else:
+                candidate_att = RunnerPassAttestation.from_bytes(att_raw)
+        except Exception:
+            return SignedReceiptTrustResult(
+                False,
+                "attestation_malformed",
+                checks=checks,
+                diagnostics=diagnostics,
+            )
+
+        pinned_policy_cid = self._pinned_policy_cid or str(
+            getattr(policy, "cid", "") or ""
+        )
+        if not pinned_policy_cid:
+            return SignedReceiptTrustResult(
+                False,
+                "pinned_policy_cid_missing",
+                checks=checks,
+                diagnostics=diagnostics,
+            )
+
+        execution_key_cid = str(
+            current_execution_key_cid
+            or getattr(typed_receipt, "execution_key_cid", "")
+            or ""
+        )
+        candidate_context_cid = str(
+            current_candidate_context_cid
+            or getattr(candidate_att, "candidate_context_cid", "")
+            or ""
+        )
+        if not execution_key_cid or not candidate_context_cid:
+            return SignedReceiptTrustResult(
+                False,
+                "trust_context_cids_missing",
+                checks=checks,
+                diagnostics=diagnostics,
+            )
+
+        current_time = (
+            int(now)
+            if now is not None
+            else (int(self._clock()) if self._clock is not None else None)
+        )
+
+        if self._pinned_public_key_material is not None:
+            verification = verify_runner_pass_attestation_with_key(
+                candidate_att,
+                receipt=typed_receipt,
+                policy=policy,
+                pinned_policy_cid=pinned_policy_cid,
+                current_execution_key_cid=execution_key_cid,
+                current_candidate_context_cid=candidate_context_cid,
+                pinned_public_key_material=self._pinned_public_key_material,
+                now=current_time,
+                nonce_registry=self._nonce_registry,
+            )
+        else:
+            verification = verify_runner_pass_attestation(
+                candidate_att,
+                receipt=typed_receipt,
+                policy=policy,
+                pinned_policy_cid=pinned_policy_cid,
+                current_execution_key_cid=execution_key_cid,
+                current_candidate_context_cid=candidate_context_cid,
+                now=current_time,
+                nonce_registry=self._nonce_registry,
+            )
+
+        if not getattr(verification, "valid", False):
+            reason = str(getattr(verification, "reason", "") or "attestation_rejected")
+            lowered = reason.lower()
+            if "revok" in lowered:
+                checks["revocation"] = False
+            if "epoch" in lowered:
+                checks["epoch"] = False
+            if "policy" in lowered or "trust domain" in lowered:
+                checks["policy"] = False
+            if "signature" in lowered or "ed25519" in lowered:
+                checks["signature"] = False
+            if "key" in lowered:
+                checks["key_validity"] = False
+            diagnostics["attestation_reason"] = reason[:MAX_DIAGNOSTIC_TEXT]
+            return SignedReceiptTrustResult(
+                False,
+                "signed_receipt_trust_rejected",
+                checks=checks,
+                diagnostics=diagnostics,
+            )
+
+        # Successful path: mark every trust facet checked by the attestation
+        # verifier (policy.key_for covers validity/epoch/revocation).
+        checks["signature"] = True
+        checks["key_validity"] = True
+        checks["revocation"] = True
+        checks["epoch"] = True
+        checks["policy"] = True
+        signed = getattr(verification, "signed_receipt", None)
+        return SignedReceiptTrustResult(
+            True,
+            "verified",
+            signed_receipt=signed,
+            checks=checks,
+            diagnostics=diagnostics,
+        )
+
+
+def build_signed_receipt_trust_verifier(
+    *,
+    trust_policy: Any = None,
+    pinned_policy_cid: str = "",
+    pinned_public_key_material: bytes | None = None,
+    nonce_registry: Any = None,
+    clock: Callable[[], int] | None = None,
+    require_attestation: bool = False,
+) -> SignedReceiptTrustVerifier:
+    """Factory for the production pre-proof signed-receipt trust verifier."""
+
+    return SignedReceiptTrustVerifier(
+        trust_policy=trust_policy,
+        pinned_policy_cid=pinned_policy_cid,
+        pinned_public_key_material=pinned_public_key_material,
+        nonce_registry=nonce_registry,
+        clock=clock,
+        require_attestation=require_attestation,
+    )
+
+
+def _extract_attestation_material(
+    candidate: Any,
+    component_bytes: Mapping[str, bytes] | None = None,
+) -> tuple[Any | None, bytes | None, Any | None, bytes | None]:
+    """Pull receipt/attestation material from retained candidate surfaces."""
+
+    components = dict(component_bytes or {})
+    receipt_material = (
+        components.get("pass_receipt")
+        or components.get("receipt")
+        or _mapping_get(candidate, "receipt_bytes", "pass_receipt", "receipt")
+    )
+    attestation_material = (
+        components.get("runner_attestation")
+        or components.get("attestation")
+        or _mapping_get(
+            candidate,
+            "attestation_bytes",
+            "runner_attestation_bytes",
+            "runner_attestation",
+            "attestation",
+        )
+    )
+    # Certificate metadata may retain public attestation linkage only.
+    metadata = _mapping_get(candidate, "metadata")
+    if attestation_material is None and isinstance(metadata, Mapping):
+        attestation_material = (
+            metadata.get("runner_attestation_bytes")
+            or metadata.get("attestation_bytes")
+            or metadata.get("runner_attestation")
+        )
+    certificate = _mapping_get(candidate, "certificate")
+    if attestation_material is None and certificate is not None:
+        cert_meta = _mapping_get(certificate, "metadata")
+        if isinstance(cert_meta, Mapping):
+            attestation_material = (
+                cert_meta.get("runner_attestation_bytes")
+                or cert_meta.get("attestation_bytes")
+            )
+    return receipt_material, _as_bytes(receipt_material), attestation_material, _as_bytes(
+        attestation_material
+    )
 
 
 def _map_revalidation_to_reuse_reason(reason: Any) -> ReuseReasonCode:
@@ -798,7 +1271,9 @@ def _execution_key_from_candidate_fields(
 
 
 class ProofReuseTwoStageLookup(ProofReuseLookup):
-    """Locator-first warm lookup with fresh revalidation before proof cache.
+    """Locator-first warm lookup with signed-receipt trust before proof cache.
+
+    Implements ``TwoStageCandidateLookup@2`` (PTR-164).
 
     Authority sequence:
 
@@ -810,13 +1285,16 @@ class ProofReuseTwoStageLookup(ProofReuseLookup):
        distributions/environment/capabilities/snapshots/policy without
        fixture or test execution.
     5. Require the final current execution key to match the candidate.
-    6. Only then admit through the certificate proof cache.
-    7. Revalidation alone never returns ``SKIP``.
-    8. Every miss, mismatch, unknown, timeout, corruption, provider absence,
+    6. When signed-receipt material or a trust verifier is present, check
+       immutable bytes, signature, key validity, revocation, epoch and
+       policy **before** local proof verification.
+    7. Only then admit through the certificate proof cache.
+    8. Revalidation or trust alone never returns ``SKIP``.
+    9. Every miss, mismatch, unknown, timeout, corruption, provider absence,
        or exception returns ``RUN``.
     """
 
-    interface = PROOF_REUSE_TWO_STAGE_LOOKUP_INTERFACE
+    interface = TWO_STAGE_CANDIDATE_LOOKUP_INTERFACE
 
     def __init__(
         self,
@@ -839,6 +1317,8 @@ class ProofReuseTwoStageLookup(ProofReuseLookup):
         ]
         | None = None,
         revocation_checker: Callable[..., Any] | None = None,
+        signed_receipt_trust_verifier: Any = None,
+        trust_policy: Any = None,
         clock: Callable[[], int] | None = None,
         max_candidates: int = DEFAULT_MAX_CANDIDATES,
         max_blob_bytes: int = DEFAULT_MAX_BLOB_BYTES,
@@ -874,6 +1354,8 @@ class ProofReuseTwoStageLookup(ProofReuseLookup):
         self._require_runtime_frontier = bool(require_runtime_frontier)
         self._revalidator = revalidator
         self._revalidator_lock = threading.RLock()
+        self._signed_receipt_trust_verifier = signed_receipt_trust_verifier
+        self._trust_policy = trust_policy
 
     @property
     def may_authorize_skip_from_revalidation_alone(self) -> bool:
@@ -886,6 +1368,137 @@ class ProofReuseTwoStageLookup(ProofReuseLookup):
     @property
     def current_context_provider(self) -> Any:
         return self._current_context_provider
+
+    @property
+    def signed_receipt_trust_verifier(self) -> Any:
+        return self._signed_receipt_trust_verifier
+
+    def _ensure_trust_verifier(self) -> Any | None:
+        if self._signed_receipt_trust_verifier is not None:
+            return self._signed_receipt_trust_verifier
+        if self._trust_policy is None:
+            return None
+        self._signed_receipt_trust_verifier = build_signed_receipt_trust_verifier(
+            trust_policy=self._trust_policy,
+            clock=(
+                (lambda: int(self._clock() // 1000))
+                if self._clock is not None
+                else None
+            ),
+        )
+        return self._signed_receipt_trust_verifier
+
+    def _apply_signed_receipt_trust(
+        self,
+        *,
+        revalidation: Any,
+        current_locator: TestLocatorKey,
+        verified_key: TestExecutionKey,
+        now_ms: int | None,
+    ) -> ReuseDecision | None:
+        """Run pre-proof trust when material or a verifier is present.
+
+        Returns ``None`` when trust is not applicable (no verifier and no
+        attestation material) or when trust verified successfully so certificate
+        admission may proceed.  Returns a ``RUN`` decision on any trust gap.
+        """
+
+        trust_verifier = self._ensure_trust_verifier()
+        component_bytes = getattr(revalidation, "component_bytes", None)
+        candidate = getattr(revalidation, "candidate", None)
+        (
+            receipt_material,
+            receipt_raw,
+            attestation_material,
+            attestation_raw,
+        ) = _extract_attestation_material(candidate, component_bytes)
+
+        # Certificate-store candidates may retain public attestation bytes.
+        if attestation_raw is None and self._candidate_store is not None:
+            try:
+                store_candidates = self._candidates(current_locator)
+                if store_candidates:
+                    for entry in store_candidates:
+                        _rm, _rr, _am, ar = _extract_attestation_material(entry)
+                        if ar is not None:
+                            attestation_material = _am
+                            attestation_raw = ar
+                            if receipt_raw is None and _rr is not None:
+                                receipt_material = _rm
+                                receipt_raw = _rr
+                            break
+            except Exception:
+                pass
+
+        require = bool(
+            trust_verifier is not None
+            and getattr(trust_verifier, "require_attestation", False)
+        )
+        has_material = attestation_raw is not None or attestation_material is not None
+        if trust_verifier is None and not has_material:
+            return None
+        if trust_verifier is None and has_material:
+            return reuse_run(
+                ReuseReasonCode.TRUST_POLICY_REJECTED,
+                diagnostics={
+                    "stage": "signed_receipt_trust",
+                    "reason": "trust_verifier_unavailable_with_material",
+                },
+            )
+        if trust_verifier is not None and not has_material:
+            if require:
+                return reuse_run(
+                    ReuseReasonCode.ABSENCE_FAIL_OPEN_TO_RUN,
+                    diagnostics={
+                        "stage": "signed_receipt_trust",
+                        "reason": "attestation_material_required",
+                    },
+                )
+            # Soft mode: no material means trust is not yet claimable; still
+            # allow certificate stage which independently fails open.
+            return None
+
+        candidate_context_cid = str(
+            getattr(candidate, "candidate_context_cid", "")
+            or getattr(candidate, "content_id", "")
+            or getattr(candidate, "cid", "")
+            or ""
+        )
+        now_s = None
+        if now_ms is not None:
+            try:
+                now_s = int(now_ms) // 1000
+            except Exception:
+                now_s = None
+        trust = trust_verifier.verify(
+            receipt=receipt_material,
+            receipt_bytes=receipt_raw,
+            attestation=attestation_material,
+            attestation_bytes=attestation_raw,
+            current_execution_key_cid=verified_key.execution_key_id,
+            current_candidate_context_cid=candidate_context_cid,
+            now=now_s,
+        )
+        if not getattr(trust, "verified", False):
+            reason = str(getattr(trust, "reason", "") or "signed_receipt_trust_rejected")
+            code = ReuseReasonCode.TRUST_POLICY_REJECTED
+            lowered = reason.lower()
+            if "revok" in lowered or "expired" in lowered:
+                code = ReuseReasonCode.EXPIRED_OR_REVOKED
+            elif "malform" in lowered or "bytes" in lowered:
+                code = ReuseReasonCode.MALFORMED_ARTIFACT
+            elif "missing" in lowered or "unavailable" in lowered:
+                code = ReuseReasonCode.ABSENCE_FAIL_OPEN_TO_RUN
+            return reuse_run(
+                code,
+                diagnostics={
+                    "stage": "signed_receipt_trust",
+                    "reason": reason[:MAX_DIAGNOSTIC_TEXT],
+                    "checks": dict(getattr(trust, "checks", {}) or {}),
+                },
+            )
+        # Verified: proceed to proof verification (never skip from trust alone).
+        return None
 
     def _ensure_revalidator(self) -> Any:
         if self._revalidator is not None:
@@ -1190,6 +1803,16 @@ class ProofReuseTwoStageLookup(ProofReuseLookup):
             if rejected is not None:
                 return rejected
 
+        # --- Stage 1.5: signed-receipt trust before proof verification ---
+        trust_rejected = self._apply_signed_receipt_trust(
+            revalidation=revalidation,
+            current_locator=current_locator,
+            verified_key=verified_key,
+            now_ms=now_ms,
+        )
+        if trust_rejected is not None:
+            return trust_rejected
+
         # Certificate-cache admission (authoritative stage).
         # When no proof-cache store/provider is configured, stage-1 success
         # still cannot skip.
@@ -1204,6 +1827,7 @@ class ProofReuseTwoStageLookup(ProofReuseLookup):
                     "stage": "certificate_stage",
                     "revalidation": "proceed",
                     "may_proceed_to_certificate_verification": True,
+                    "signed_receipt_trust": "passed_or_not_applicable",
                 },
             )
 
@@ -1233,6 +1857,8 @@ def build_proof_reuse_two_stage_lookup(
     ]
     | None = None,
     revocation_checker: Callable[..., Any] | None = None,
+    signed_receipt_trust_verifier: Any = None,
+    trust_policy: Any = None,
     clock: Callable[[], int] | None = None,
     max_candidates: int = DEFAULT_MAX_CANDIDATES,
     max_blob_bytes: int = DEFAULT_MAX_BLOB_BYTES,
@@ -1256,6 +1882,8 @@ def build_proof_reuse_two_stage_lookup(
         current_policy=current_policy,
         policy_provider=policy_provider,
         revocation_checker=revocation_checker,
+        signed_receipt_trust_verifier=signed_receipt_trust_verifier,
+        trust_policy=trust_policy,
         clock=clock,
         max_candidates=max_candidates,
         max_blob_bytes=max_blob_bytes,
@@ -1272,12 +1900,17 @@ __all__ = [
     "ITEM_LOOKUP_REQUEST_ATTRIBUTE",
     "PROOF_REUSE_LOOKUP_INTERFACE",
     "PROOF_REUSE_TWO_STAGE_LOOKUP_INTERFACE",
+    "SIGNED_RECEIPT_TRUST_VERIFIER_INTERFACE",
     "SKIP_REASON_PREFIX",
+    "TWO_STAGE_CANDIDATE_LOOKUP_INTERFACE",
     "ProofReuseLookup",
     "ProofReuseLookupRequest",
     "ProofReuseTwoStageLookup",
     "RevalidatedProofReuseLookupRequest",
+    "SignedReceiptTrustResult",
+    "SignedReceiptTrustVerifier",
     "apply_verified_skip",
     "batch_lookup_reuse_decisions",
     "build_proof_reuse_two_stage_lookup",
+    "build_signed_receipt_trust_verifier",
 ]
