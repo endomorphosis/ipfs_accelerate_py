@@ -1443,6 +1443,12 @@ class PortalImplementationSupervisor:
         )
         update_maintenance_phase("worktree_cleanup")
         worktree_cleanup = self.cleanup_backlogged_worktrees()
+        update_maintenance_phase("safe_reconciliation_remediation")
+        safe_reconciliation_remediation = self.apply_safe_reconciliation_remediations(
+            cleanup_result=worktree_cleanup,
+        )
+        if int(safe_reconciliation_remediation.get("reset_count") or 0) > 0:
+            worktree_cleanup = self.cleanup_backlogged_worktrees()
         update_maintenance_phase("strategy_state_repair")
         strategy_file_repair = self.ensure_strategy_file()
         todo_board_repair = self.ensure_todo_board_for_refill()
@@ -1554,6 +1560,9 @@ class PortalImplementationSupervisor:
                 "worktree_reconciliation": worktree_reconciliation,
                 "worktree_reconciliation_replay": (worktree_reconciliation_replay),
                 "worktree_cleanup": worktree_cleanup,
+                "safe_reconciliation_remediation": (
+                    safe_reconciliation_remediation
+                ),
                 "guardrail_unblock_count": len(guardrail_releases),
                 "retained_generated_checkout_recovery": (retained_generated_checkout_recovery),
             }
@@ -1805,6 +1814,9 @@ class PortalImplementationSupervisor:
             "worktree_reconciliation": worktree_reconciliation,
             "worktree_reconciliation_replay": (worktree_reconciliation_replay),
             "worktree_cleanup": worktree_cleanup,
+            "safe_reconciliation_remediation": (
+                safe_reconciliation_remediation
+            ),
             "retained_generated_checkout_recovery": (retained_generated_checkout_recovery),
         }
 
@@ -4743,6 +4755,34 @@ class PortalImplementationSupervisor:
                     )
                     continue
 
+            if reconciliation_daemon is None:
+                reconciliation_daemon = self._build_worktree_reconciliation_daemon()
+                (
+                    reconciliation_tasks_by_id,
+                    reconciliation_task_ids_by_branch,
+                    reconciliation_outcome_keys,
+                    reconciliation_provenance_by_branch,
+                ) = self._reconciliation_task_context(reconciliation_daemon)
+            leftover_task = self._current_reconciliation_task(
+                branch=branch,
+                rescued_from_branch=str(detail.get("rescued_from_branch") or ""),
+                tasks_by_id=reconciliation_tasks_by_id,
+                task_ids_by_branch=reconciliation_task_ids_by_branch,
+            )
+            if (
+                leftover_task is not None
+                and str(leftover_task.status).strip().lower() == "completed"
+            ):
+                prune = self._prune_completed_leftover_worktree(path, branch)
+                skip = {
+                    **detail,
+                    "reason": "completed_task_leftover",
+                    "task_id": leftover_task.task_id,
+                    "prune_result": prune,
+                }
+                skipped.append(skip)
+                continue
+
             candidate_blocking, candidate_nonblocking = candidate_main_status(branch, head)
             record_main_status_classification(
                 candidate_blocking,
@@ -4784,6 +4824,32 @@ class PortalImplementationSupervisor:
                 continue
             if sum(1 for item in processed if item.get("merged")) >= max_merges:
                 skipped.append({**candidate, "reason": "reconciliation_limit_reached"})
+                continue
+
+            if reconciliation_daemon is None:
+                reconciliation_daemon = self._build_worktree_reconciliation_daemon()
+                (
+                    reconciliation_tasks_by_id,
+                    reconciliation_task_ids_by_branch,
+                    reconciliation_outcome_keys,
+                    reconciliation_provenance_by_branch,
+                ) = self._reconciliation_task_context(reconciliation_daemon)
+            current_task = self._current_reconciliation_task(
+                branch=branch,
+                rescued_from_branch=str(detail.get("rescued_from_branch") or ""),
+                tasks_by_id=reconciliation_tasks_by_id,
+                task_ids_by_branch=reconciliation_task_ids_by_branch,
+            )
+            if (
+                current_task is not None
+                and str(current_task.status).strip().lower() == "completed"
+            ):
+                skipped.append(
+                    {
+                        **candidate,
+                        "reason": "completed_task_leftover",
+                    }
+                )
                 continue
 
             preflight_result: dict[str, Any] = {}
@@ -7130,6 +7196,16 @@ class PortalImplementationSupervisor:
             dirty_redundancy: dict[str, Any] = {}
             if dirty:
                 redundant_dirty = self._redundant_dirty_worktree_status(path, dirty, target_ref)
+                if not redundant_dirty.get("redundant"):
+                    reset = self._reset_matching_submodule_working_trees(
+                        path, dirty, target_ref
+                    )
+                    if reset.get("reset"):
+                        dirty = self._git_status_short(path) if path.exists() else []
+                        if dirty:
+                            redundant_dirty = self._redundant_dirty_worktree_status(
+                                path, dirty, target_ref
+                            )
                 if redundant_dirty.get("redundant"):
                     dirty_redundancy = redundant_dirty
                     dirty = []
@@ -7489,6 +7565,7 @@ class PortalImplementationSupervisor:
 
         checked: list[dict[str, Any]] = []
         configured_submodule_deletion = False
+        matching_submodule_working_tree = False
         for line in status_lines:
             code = line[:2]
             relative = self._status_line_path(line)
@@ -7501,6 +7578,24 @@ class PortalImplementationSupervisor:
                 )
                 configured_submodule_deletion = True
                 continue
+            if self._status_line_is_configured_submodule_working_tree(code, relative):
+                if self._submodule_gitlink_matches_target(
+                    worktree_path, relative, target_ref
+                ):
+                    checked.append(
+                        {
+                            **detail,
+                            "matches_target": True,
+                            "submodule_gitlink_matches_target": True,
+                        }
+                    )
+                    matching_submodule_working_tree = True
+                    continue
+                return {
+                    "redundant": False,
+                    "reason": "submodule_gitlink_diverged",
+                    "checked": [*checked, detail],
+                }
             if "D" in code or "?" in code.strip(" ?"):
                 return {
                     "redundant": False,
@@ -7521,12 +7616,204 @@ class PortalImplementationSupervisor:
                 "reason": "unsupported_status",
                 "checked": [*checked, detail],
             }
-        reason = (
-            "configured_submodule_deletions_match_target"
-            if configured_submodule_deletion
-            else "all_dirty_paths_match_target"
-        )
+        if configured_submodule_deletion:
+            reason = "configured_submodule_deletions_match_target"
+        elif matching_submodule_working_tree:
+            reason = "submodule_working_tree_matches_gitlink"
+        else:
+            reason = "all_dirty_paths_match_target"
         return {"redundant": True, "reason": reason, "checked": checked}
+
+    def _status_line_is_configured_submodule_working_tree(
+        self,
+        code: str,
+        relative: str,
+    ) -> bool:
+        """Return whether porcelain reports in-submodule dirt, not a gitlink move.
+
+        ``git status --porcelain`` uses a lowercase ``m`` in the worktree
+        column when a recorded submodule still points at the same commit but
+        its checkout has local modifications.  Treating that as
+        ``unsupported_status`` previously operator-gated leftover campaign
+        worktrees whose gitlink already matched the merge target.
+        """
+
+        if "m" not in code and code not in {" M", "M "}:
+            return False
+        relative = relative.rstrip("/")
+        return any(
+            relative == path.rstrip("/") for path in self.config.worktree_submodule_paths
+        )
+
+    def _submodule_gitlink_sha(self, cwd: Path, relative: str, ref: str) -> str:
+        result = subprocess.run(
+            ["git", "ls-tree", ref, "--", relative],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and parts[0] == "160000":
+                return parts[2]
+        return ""
+
+    def _submodule_gitlink_matches_target(
+        self,
+        worktree_path: Path,
+        relative: str,
+        target_ref: str,
+    ) -> bool:
+        recorded = self._submodule_gitlink_sha(worktree_path, relative, "HEAD")
+        target = self._submodule_gitlink_sha(self.config.repo_root, relative, target_ref)
+        if not (recorded and target and recorded == target):
+            return False
+        nested_head = self._git_ref_commit(worktree_path / relative, "HEAD")
+        return bool(nested_head and nested_head == recorded)
+
+    def _reset_matching_submodule_working_trees(
+        self,
+        worktree_path: Path,
+        status_lines: list[str],
+        target_ref: str,
+    ) -> dict[str, Any]:
+        """Discard in-submodule dirt when the recorded gitlink already matches."""
+
+        reset: list[str] = []
+        skipped: list[dict[str, str]] = []
+        for line in status_lines:
+            code = line[:2]
+            relative = self._status_line_path(line)
+            if not self._status_line_is_configured_submodule_working_tree(code, relative):
+                continue
+            if not self._submodule_gitlink_matches_target(
+                worktree_path, relative, target_ref
+            ):
+                skipped.append({"path": relative, "reason": "submodule_gitlink_diverged"})
+                continue
+            update = subprocess.run(
+                [
+                    "git",
+                    "submodule",
+                    "update",
+                    "--force",
+                    "--checkout",
+                    "--",
+                    relative,
+                ],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if update.returncode != 0:
+                subprocess.run(
+                    ["git", "checkout", "--", relative],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            reset.append(relative)
+        return {"reset": reset, "skipped": skipped}
+
+    def _prune_completed_leftover_worktree(
+        self,
+        worktree_path: Path,
+        branch: str,
+    ) -> dict[str, Any]:
+        """Drop supervisor-generated rescue leftovers of completed tasks.
+
+        Unmerged ``implementation/`` branches are left in place: those can
+        still hold reviewable work. Rescue worktrees exist only to preserve
+        dirt from an already-finished attempt and must not become preflight
+        merge-conflict cards.
+        """
+
+        normalized = str(branch or "").removeprefix("refs/heads/")
+        if not normalized.startswith("rescue/worktree/"):
+            return {"attempted": False, "reason": "not_rescue_worktree"}
+        remove = subprocess.run(
+            ["git", "worktree", "remove", "--force", str(worktree_path)],
+            cwd=self.config.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        branch_delete: dict[str, Any] = {}
+        if remove.returncode == 0:
+            delete = subprocess.run(
+                ["git", "branch", "-D", normalized],
+                cwd=self.config.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            branch_delete = {
+                "attempted": True,
+                "deleted": delete.returncode == 0,
+                "returncode": delete.returncode,
+                "stdout": delete.stdout[-2000:],
+                "stderr": delete.stderr[-2000:],
+            }
+        return {
+            "attempted": True,
+            "removed": remove.returncode == 0,
+            "returncode": remove.returncode,
+            "stdout": remove.stdout[-2000:],
+            "stderr": remove.stderr[-2000:],
+            "branch_delete": branch_delete,
+        }
+
+    def apply_safe_reconciliation_remediations(
+        self,
+        *,
+        cleanup_result: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Clear leftover worktree dirt the operator cards previously gated."""
+
+        target_ref = (
+            self.config.merge_target_branch or self._git_current_branch(self.config.repo_root) or "HEAD"
+        )
+        reset_count = 0
+        worktrees: list[dict[str, Any]] = []
+        for item in (cleanup_result or {}).get("skipped", []) or []:
+            if not isinstance(item, Mapping):
+                continue
+            path_text = str(item.get("path") or "").strip()
+            if not path_text:
+                continue
+            worktree_path = Path(path_text)
+            if not worktree_path.is_dir():
+                continue
+            dirty = self._git_status_short(worktree_path)
+            if not dirty:
+                continue
+            reset = self._reset_matching_submodule_working_trees(
+                worktree_path,
+                dirty,
+                target_ref,
+            )
+            if reset.get("reset"):
+                reset_count += len(reset["reset"])
+                worktrees.append(
+                    {
+                        "path": path_text,
+                        "branch": str(item.get("branch") or ""),
+                        "reset": list(reset["reset"]),
+                    }
+                )
+        result = {
+            "attempted": True,
+            "reset_count": reset_count,
+            "worktrees": worktrees,
+        }
+        if reset_count:
+            self._record_event("safe_reconciliation_remediation", result)
+        return result
 
     def _status_line_is_configured_submodule_deletion(
         self,
