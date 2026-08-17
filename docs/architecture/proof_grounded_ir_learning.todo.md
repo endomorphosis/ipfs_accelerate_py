@@ -1363,3 +1363,19 @@ authority roots into a revised task input binding.
 - Parallel lane: final-qualifier
 - Predicted files: data/agent_supervisor/proof_grounded_ir_learning/qualification/, docs/architecture/proof_grounded_ir_learning/final_report.md, docs/architecture/proof_grounded_ir_learning/next.todo.md
 - Conflict policy: one independent qualification/promotion authority; evaluator/model cannot hold it
+
+## PGIR-112 Resolve 1 preflight-conflicting backlogged worktree merges
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: f3f4420cab79db4b6f696585de85d53fbc16b5a3
+- Dedupe key: reconciliation_guardrail:preflight_merge_conflict
+- Depends on:
+- Outputs: docs/architecture/proof_grounded_ir_learning.todo.md
+- Validation: test -f /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-17-pgir-112-reconciliation-f3f4420cab79.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by preflight_merge_conflict. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.pgir_campaign/runtime/parallel/discovery/2026-08-17-pgir-112-reconciliation-f3f4420cab79.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
