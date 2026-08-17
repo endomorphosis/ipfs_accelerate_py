@@ -106,7 +106,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-003 Inventory canonical supervisor learning infrastructure
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
