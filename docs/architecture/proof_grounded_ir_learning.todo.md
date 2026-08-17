@@ -682,7 +682,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-033 Implement latent diagnostics and calibration instrumentation
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P1
