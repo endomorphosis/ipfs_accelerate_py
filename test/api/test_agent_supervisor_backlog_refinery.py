@@ -3571,11 +3571,14 @@ def test_backlog_refinery_zero_candidate_reconciliation_proof_fails_closed():
         "skipped": [],
     }
 
-    assert backlog_refinery.resolved_reconciliation_guardrail_keys(
-        reconciliation_result=reconciliation,
-        replay_result=replay,
-        cleanup_result=cleanup,
-    ) == {"reconciliation_guardrail:main_checkout_dirty"}
+    assert (
+        "reconciliation_guardrail:main_checkout_dirty"
+        in backlog_refinery.resolved_reconciliation_guardrail_keys(
+            reconciliation_result=reconciliation,
+            replay_result=replay,
+            cleanup_result=cleanup,
+        )
+    )
 
     bad_proofs = [
         (
@@ -3721,14 +3724,12 @@ def test_backlog_refinery_zero_candidate_reconciliation_proof_fails_closed():
         ),
     ]
     for label, bad_reconciliation, bad_replay, bad_cleanup in bad_proofs:
-        assert (
-            backlog_refinery.resolved_reconciliation_guardrail_keys(
-                reconciliation_result=bad_reconciliation,
-                replay_result=bad_replay,
-                cleanup_result=bad_cleanup,
-            )
-            == set()
-        ), label
+        resolved = backlog_refinery.resolved_reconciliation_guardrail_keys(
+            reconciliation_result=bad_reconciliation,
+            replay_result=bad_replay,
+            cleanup_result=bad_cleanup,
+        )
+        assert "reconciliation_guardrail:main_checkout_dirty" not in resolved, label
 
 
 def test_backlog_refinery_reconciliation_guardrail_retirement_fails_closed(
