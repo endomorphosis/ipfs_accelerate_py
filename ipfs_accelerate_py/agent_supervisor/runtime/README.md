@@ -19,6 +19,7 @@ Multi-lane execution fabric: multi-supervisor runners, event log, CAS, and resou
 | --- | --- |
 | `artifact_store` | `runtime/artifact_store.py` |
 | `event_log` | `runtime/event_log.py` |
+| `learning_checkpoint` | `runtime/learning_checkpoint.py` |
 | `multi_supervisor_runner` | `runtime/multi_supervisor_runner.py` |
 | `provider_batch_scheduler` | `runtime/provider_batch_scheduler.py` |
 | `resource_scheduler` | `runtime/resource_scheduler.py` |

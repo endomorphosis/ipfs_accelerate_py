@@ -17,6 +17,7 @@ Landing completed work: merge queue/train/resolver, checkout locks, leases, and 
 
 | Module | Path |
 | --- | --- |
+| `campaign_leases` | `merge/campaign_leases.py` |
 | `checkout_lock` | `merge/checkout_lock.py` |
 | `git_gc` | `merge/git_gc.py` |
 | `lease_coordination` | `merge/lease_coordination.py` |

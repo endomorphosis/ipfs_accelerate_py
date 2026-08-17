@@ -20,6 +20,7 @@ Executable implementation and supervisor daemons, git/worktree helpers, and boar
 | `app` | `todo_daemon/app.py` |
 | `artifacts` | `todo_daemon/artifacts.py` |
 | `auto_commit` | `todo_daemon/auto_commit.py` |
+| `campaign_resume` | `todo_daemon/campaign_resume.py` |
 | `cli` | `todo_daemon/cli.py` |
 | `context` | `todo_daemon/context.py` |
 | `core` | `todo_daemon/core.py` |
