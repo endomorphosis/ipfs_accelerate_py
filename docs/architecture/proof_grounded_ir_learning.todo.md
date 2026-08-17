@@ -610,7 +610,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-031 Add grammar, binder, type, and proof-state constrained decoding
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
