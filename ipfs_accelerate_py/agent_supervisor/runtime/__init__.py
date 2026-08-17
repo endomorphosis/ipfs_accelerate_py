@@ -39,6 +39,7 @@ RUNTIME_PACKAGE_NAME: Final[str] = "ipfs_accelerate_py.agent_supervisor.runtime"
 RUNTIME_OWNED_MODULES: Final[tuple[str, ...]] = (
     "artifact_store",
     "event_log",
+    "learning_checkpoint",
     "multi_supervisor_runner",
     "provider_batch_scheduler",
     "resource_scheduler",

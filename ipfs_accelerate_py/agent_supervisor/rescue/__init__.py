@@ -33,6 +33,7 @@ RESCUE_PACKAGE_NAME: Final[str] = "ipfs_accelerate_py.agent_supervisor.rescue"
 # Stems owned by asref/rescue in docs/architecture/asref/move_map.json.
 RESCUE_OWNED_MODULES: Final[tuple[str, ...]] = (
     "codex_failure_policy",
+    "learning_recovery",
     "recovery_diagnostics",
     "rescue_orchestrator",
     "rescue_planner",
