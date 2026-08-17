@@ -43,6 +43,7 @@ from typing import Any, ClassVar, Final
 
 from ..task_sources.duckdb_state import (
     connect_duckdb_with_policy,
+    is_quack_transport_target,
     open_duckdb_connection,
 )
 from ..task_sources.task_identity import canonical_json_bytes
@@ -1632,7 +1633,14 @@ class DatabaseCoordinator:
                 "DuckDB is required for DatabaseCoordinator; install the optional "
                 "duckdb dependency"
             )
-        self._path = Path(database_path)
+        if is_quack_transport_target(database_path):
+            self._open_target = str(database_path).strip()
+            self._path = Path(self._open_target)
+            self._quack_transport = True
+        else:
+            self._open_target = Path(database_path)
+            self._path = self._open_target
+            self._quack_transport = False
         self._clock_ms = clock_ms or _default_clock_ms
         self._default_lease_ms = _lease_duration_ms(int(default_lease_ms))
         self._connection: Any | None = None
@@ -1660,8 +1668,9 @@ class DatabaseCoordinator:
                 )
             if self.is_open:
                 return self
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            connection = open_duckdb_connection(self._path)
+            if not self._quack_transport:
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+            connection = open_duckdb_connection(self._open_target)
             try:
                 for statement in _split_sql_statements(_BOOKKEEPING_SQL):
                     connection.execute(statement)

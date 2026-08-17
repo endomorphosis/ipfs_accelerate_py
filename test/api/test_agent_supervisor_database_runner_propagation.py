@@ -60,6 +60,7 @@ def _quack_program(**overrides: object) -> DatabaseProgramConfig:
         "authority_mode": "quack",
         "task_source_kind": "duckdb",
         "endpoint_secret_handle": "env://QUACK_TOKEN",
+        "quack_endpoint": "quack:127.0.0.1:45123",
         "store_id": "control.duckdb",
         "store_generation": "gen-7",
         "schema_revision": "schema-v1",
@@ -115,6 +116,8 @@ def test_quack_authority_rejects_silent_local_failover() -> None:
         _quack_program(failover_policy="require_explicit_operator")
     with pytest.raises(DatabaseProgramConfigError, match="endpoint_secret_handle"):
         _quack_program(endpoint_secret_handle="")
+    with pytest.raises(DatabaseProgramConfigError, match="quack_endpoint"):
+        _quack_program(quack_endpoint="")
     with pytest.raises(DatabaseProgramConfigError, match="raw credentials"):
         _quack_program(endpoint_secret_handle="super-secret-token-value")
     program = _quack_program()
@@ -268,6 +271,7 @@ def test_supervisor_cli_round_trip_from_namespace(
         authority_mode = ""
         task_source_kind = ""
         endpoint_secret_handle = ""
+        quack_endpoint = ""
         state_store_id = ""
         state_store_generation = ""
         state_schema_revision = ""
@@ -285,6 +289,7 @@ def test_supervisor_cli_round_trip_from_namespace(
         authority_mode = "quack"
         task_source_kind = "duckdb"
         endpoint_secret_handle = "handle:quack-token-1"
+        quack_endpoint = "quack:127.0.0.1:45123"
         state_store_id = "control.duckdb"
         state_store_generation = "gen-9"
         state_schema_revision = "schema-v2"
@@ -448,6 +453,7 @@ def test_configured_board_propagates_database_program(
             "authority_mode": "quack",
             "task_source_kind": "duckdb",
             "endpoint_secret_handle": "env://QUACK_TOKEN",
+            "quack_endpoint": "quack:127.0.0.1:45123",
             "store_id": "control.duckdb",
             "store_generation": "gen-1",
             "schema_revision": (

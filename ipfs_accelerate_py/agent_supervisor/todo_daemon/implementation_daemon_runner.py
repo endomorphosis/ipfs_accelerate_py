@@ -1337,8 +1337,9 @@ def build_portal_implementation_daemon_from_args(
             database_path=database_path,
             coordination_path=db_paths["coordination_path"],
             owner_session_id=str(getattr(parsed, "owner_session_id", "") or ""),
-            authority_mode=authority_mode or "embedded",
+            authority_mode=authority_mode or "quack",
             task_source_kind=task_source_kind or "duckdb",
+            quack_uri=str(getattr(parsed, "quack_endpoint", "") or ""),
             # The canonical Markdown board, when configured for export or
             # operator visibility, is never handed to the execution daemon.
             markdown_path=None,
@@ -1471,7 +1472,7 @@ def build_database_implementation_daemon_from_args(
             "(pass --database-path or a .duckdb --todo-path)"
         )
     authority_mode = (
-        program.authority_mode if program is not None else "embedded"
+        program.authority_mode if program is not None else "quack"
     )
     task_source_kind = (
         program.task_source_kind if program is not None else "duckdb"
@@ -1483,6 +1484,7 @@ def build_database_implementation_daemon_from_args(
         or str(getattr(parsed, "owner_session_id", "") or ""),
         authority_mode=authority_mode,
         task_source_kind=task_source_kind,
+        quack_uri=str(getattr(parsed, "quack_endpoint", "") or ""),
         provider_fn=provider_fn,
         effect_fn=effect_fn,
         validation_fn=validation_fn,

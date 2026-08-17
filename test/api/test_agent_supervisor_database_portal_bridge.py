@@ -293,7 +293,7 @@ def test_production_database_daemon_cannot_complete_with_default_noops(
 def test_quack_mode_refuses_direct_duckdb_execution(tmp_path: Path) -> None:
     with pytest.raises(
         DatabaseImplementationAuthorityError,
-        match="QuackStateClient-backed",
+        match="loopback quack:",
     ):
         DatabaseImplementationDaemon(
             database_path=tmp_path / "control.duckdb",

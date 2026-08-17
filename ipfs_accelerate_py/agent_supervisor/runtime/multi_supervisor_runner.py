@@ -457,6 +457,7 @@ FORBIDDEN_QUACK_FAILOVER_TARGETS = frozenset(
 )
 
 STATE_AUTHORITY_MODE_ENV = "IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE"
+STATE_QUACK_ENDPOINT_ENV = "IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT"
 STATE_ENDPOINT_SECRET_HANDLE_ENV = (
     "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE"
 )
@@ -472,6 +473,7 @@ DATABASE_PROGRAM_JSON_ENV = "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON"
 
 DATABASE_PROGRAM_ENV_NAMES: tuple[str, ...] = (
     STATE_AUTHORITY_MODE_ENV,
+    STATE_QUACK_ENDPOINT_ENV,
     STATE_ENDPOINT_SECRET_HANDLE_ENV,
     STATE_STORE_ID_ENV,
     STATE_STORE_GENERATION_ENV,
@@ -489,6 +491,7 @@ STATE_CREDENTIAL_ENV_NAMES: frozenset[str] = frozenset(
     {
         "QUACK_TOKEN",
         "QUACK_PASSWORD",
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
         "QUACK_SECRET",
         "DUCKDB_TOKEN",
         "DUCKDB_PASSWORD",
@@ -596,6 +599,7 @@ class DatabaseProgramConfig:
     authority_mode: str
     task_source_kind: str
     endpoint_secret_handle: str = ""
+    quack_endpoint: str = ""
     store_id: str = ""
     store_generation: str = ""
     schema_revision: str = ""
@@ -635,6 +639,16 @@ class DatabaseProgramConfig:
                 field="endpoint_secret_handle",
             )
         object.__setattr__(self, "endpoint_secret_handle", handle)
+
+        quack_endpoint = str(self.quack_endpoint or "").strip()
+        if quack_endpoint:
+            from ..task_sources.duckdb_state import is_quack_transport_target
+
+            if not is_quack_transport_target(quack_endpoint):
+                raise DatabaseProgramConfigError(
+                    "quack_endpoint must be a loopback quack: URI"
+                )
+        object.__setattr__(self, "quack_endpoint", quack_endpoint)
 
         store_id = str(self.store_id or "").strip()
         if store_id:
@@ -707,6 +721,10 @@ class DatabaseProgramConfig:
                 raise DatabaseProgramConfigError(
                     "quack authority requires endpoint_secret_handle"
                 )
+            if not quack_endpoint:
+                raise DatabaseProgramConfigError(
+                    "quack authority requires quack_endpoint"
+                )
             if not store_id:
                 raise DatabaseProgramConfigError(
                     "quack authority requires store_id"
@@ -738,6 +756,7 @@ class DatabaseProgramConfig:
             "authority_mode": self.authority_mode,
             "task_source_kind": self.task_source_kind,
             "endpoint_secret_handle": self.endpoint_secret_handle,
+            "quack_endpoint": self.quack_endpoint,
             "store_id": self.store_id,
             "store_generation": self.store_generation,
             "schema_revision": self.schema_revision,
@@ -774,6 +793,8 @@ class DatabaseProgramConfig:
             args.extend(
                 ["--endpoint-secret-handle", self.endpoint_secret_handle]
             )
+        if self.quack_endpoint:
+            args.extend(["--quack-endpoint", self.quack_endpoint])
         if self.store_id:
             args.extend(["--state-store-id", self.store_id])
         if self.store_generation:
@@ -808,6 +829,8 @@ class DatabaseProgramConfig:
         }
         if self.endpoint_secret_handle:
             env[STATE_ENDPOINT_SECRET_HANDLE_ENV] = self.endpoint_secret_handle
+        if self.quack_endpoint:
+            env[STATE_QUACK_ENDPOINT_ENV] = self.quack_endpoint
         if self.store_id:
             env[STATE_STORE_ID_ENV] = self.store_id
         if self.store_generation:
@@ -831,7 +854,15 @@ class DatabaseProgramConfig:
         implicit legacy-Markdown default.
         """
 
-        return ["--task-source-kind", self.task_source_kind]
+        args = [
+            "--task-source-kind",
+            self.task_source_kind,
+            "--authority-mode",
+            self.authority_mode,
+        ]
+        if self.quack_endpoint:
+            args.extend(["--quack-endpoint", self.quack_endpoint])
+        return args
 
     def assert_quack_not_demoted(self, *, candidate_mode: str) -> None:
         """Fail closed when a Quack selection would become local/file authority."""
@@ -857,6 +888,7 @@ class DatabaseProgramConfig:
             endpoint_secret_handle=str(
                 payload.get("endpoint_secret_handle") or ""
             ),
+            quack_endpoint=str(payload.get("quack_endpoint") or ""),
             store_id=str(payload.get("store_id") or ""),
             store_generation=str(
                 payload.get("store_generation")

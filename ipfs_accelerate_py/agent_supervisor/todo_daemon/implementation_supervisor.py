@@ -1334,7 +1334,7 @@ def database_program_from_cli_namespace(
             authority_mode = AUTHORITY_MODE_LEGACY_MARKDOWN
             explicit_legacy = True
         elif task_source_kind == "duckdb":
-            authority_mode = "embedded"
+            authority_mode = "quack"
         else:
             raise DatabaseProgramConfigError(
                 f"cannot infer authority_mode for task_source_kind "
@@ -1348,6 +1348,8 @@ def database_program_from_cli_namespace(
             getattr(args, "endpoint_secret_handle", "") or ""
         ).strip()
         or (env_program.endpoint_secret_handle if env_program else ""),
+        "quack_endpoint": str(getattr(args, "quack_endpoint", "") or "").strip()
+        or (env_program.quack_endpoint if env_program else ""),
         "store_id": str(getattr(args, "state_store_id", "") or "").strip()
         or (env_program.store_id if env_program else ""),
         "store_generation": str(
@@ -15307,6 +15309,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Opaque secret handle for the Quack/state endpoint "
             "(env://, vault://, handle:, or secret-handle:). Raw tokens are "
             "rejected."
+        ),
+    )
+    parser.add_argument(
+        "--quack-endpoint",
+        default="",
+        help=(
+            "Loopback quack: URI of the exclusive DuckDB + Quack state-owner. "
+            "Required when --authority-mode quack. DuckLake is an optional "
+            "non-authoritative history projection, not this control endpoint."
         ),
     )
     parser.add_argument(

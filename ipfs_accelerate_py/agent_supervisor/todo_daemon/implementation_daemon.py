@@ -56325,8 +56325,9 @@ class DatabaseImplementationDaemon:
         coordination_path: Path | str | None = None,
         execution_path: Path | str | None = None,
         owner_session_id: str = "",
-        authority_mode: str = "embedded",
+        authority_mode: str = "quack",
         task_source_kind: str = "duckdb",
+        quack_uri: str = "",
         markdown_path: Path | str | None = None,
         state_path: Path | str | None = None,
         strategy_path: Path | str | None = None,
@@ -56343,7 +56344,7 @@ class DatabaseImplementationDaemon:
         coordinator: Any = None,
         install_schema: bool = True,
     ) -> None:
-        normalized_authority_mode = str(authority_mode or "embedded").strip().lower().replace(
+        normalized_authority_mode = str(authority_mode or "quack").strip().lower().replace(
             "-", "_"
         )
         if not is_database_authority_mode(
@@ -56355,28 +56356,51 @@ class DatabaseImplementationDaemon:
                 f"(authority_mode={authority_mode!r}, "
                 f"task_source_kind={task_source_kind!r})"
             )
+        from ..task_sources.duckdb_state import is_quack_transport_target
+
+        resolved_quack_uri = str(
+            quack_uri
+            or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT", "")
+            or ""
+        ).strip()
         if normalized_authority_mode == "quack":
-            raise DatabaseImplementationAuthorityError(
-                "DatabaseImplementationDaemon cannot execute in quack mode: "
-                "its task, coordination, and attempt repositories are direct "
-                "DuckDB connections rather than QuackStateClient-backed "
-                "transactions; refusing unsafe multi-process authority"
+            if not is_quack_transport_target(resolved_quack_uri):
+                raise DatabaseImplementationAuthorityError(
+                    "quack authority requires a loopback quack: URI "
+                    "(--quack-endpoint or IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT); "
+                    "refusing direct-file multi-process DuckDB open"
+                )
+            self._quack_uri = resolved_quack_uri
+            self._store_target = resolved_quack_uri
+            self.database_path = Path(str(database_path))
+            self.coordination_path = Path(
+                str(coordination_path)
+                if coordination_path is not None
+                else str(database_path)
             )
-        self.database_path = Path(database_path).absolute()
-        self.coordination_path = Path(
-            coordination_path
-            if coordination_path is not None
-            else self.database_path.with_name(
-                f"{self.database_path.stem}.coordination.duckdb"
+            self.execution_path = Path(
+                str(execution_path)
+                if execution_path is not None
+                else str(database_path)
             )
-        ).absolute()
-        self.execution_path = Path(
-            execution_path
-            if execution_path is not None
-            else self.database_path.with_name(
-                f"{self.database_path.stem}.execution.duckdb"
-            )
-        ).absolute()
+        else:
+            self._quack_uri = ""
+            self.database_path = Path(database_path).absolute()
+            self.coordination_path = Path(
+                coordination_path
+                if coordination_path is not None
+                else self.database_path.with_name(
+                    f"{self.database_path.stem}.coordination.duckdb"
+                )
+            ).absolute()
+            self.execution_path = Path(
+                execution_path
+                if execution_path is not None
+                else self.database_path.with_name(
+                    f"{self.database_path.stem}.execution.duckdb"
+                )
+            ).absolute()
+            self._store_target = self.execution_path
         self.authority_mode = normalized_authority_mode
         self.task_source_kind = str(task_source_kind or "duckdb").strip().lower()
         self.process_instance_id = _database_daemon_new_id("process")
@@ -56444,6 +56468,16 @@ class DatabaseImplementationDaemon:
         ):
             self._control_schema_verification = {}
             return
+        if self.authority_mode == "quack":
+            # Schema authority lives on the Quack state-owner, not a second
+            # direct-file open from this process.
+            self._control_schema_verification = {
+                "valid": True,
+                "profile_id": "datasets-authoritative-operational-control-plane@1",
+                "schema_fingerprint": "",
+                "authority_mode": "quack",
+            }
+            return
         if not self.database_path.is_file():
             raise DatabaseImplementationAuthorityError(
                 "datasets-authoritative operational control database must be "
@@ -56504,10 +56538,13 @@ class DatabaseImplementationDaemon:
             from ..task_sources.duckdb_state import open_duckdb_connection
 
             self._verify_control_schema_for_open()
-            self._acquire_embedded_writer_lock()
+            if self.authority_mode != "quack":
+                self._acquire_embedded_writer_lock()
             try:
-                self.execution_path.parent.mkdir(parents=True, exist_ok=True)
-                self._connection = open_duckdb_connection(self.execution_path)
+                if self.authority_mode != "quack":
+                    self.execution_path.parent.mkdir(parents=True, exist_ok=True)
+                store_target = getattr(self, "_store_target", self.execution_path)
+                self._connection = open_duckdb_connection(store_target)
                 for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
                     self._connection.execute(statement)
                 for key, value in (
@@ -56542,20 +56579,30 @@ class DatabaseImplementationDaemon:
                         [key, value],
                     )
                 if self._task_source is None:
+                    task_store = (
+                        self._quack_uri
+                        if self.authority_mode == "quack"
+                        else self.database_path
+                    )
                     self._task_source = DatabaseTaskSource(
-                        self.database_path,
+                        task_store,
                         owner_id=(
                             "database-implementation-daemon:"
                             f"{self.owner_session_id}"
                         ),
                         install_schema=(
-                            self.state_schema_revision
+                            self.authority_mode != "quack"
+                            and self.state_schema_revision
                             != DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
                         ),
                     )
                 if self._coordinator is None:
                     self._coordinator = open_database_coordinator(
-                        self.coordination_path,
+                        (
+                            self._quack_uri
+                            if self.authority_mode == "quack"
+                            else self.coordination_path
+                        ),
                         clock_ms=self._clock_ms,
                         default_lease_ms=self.lease_ms,
                     )
@@ -58464,7 +58511,7 @@ def database_program_from_daemon_namespace(
             authority_mode = AUTHORITY_MODE_LEGACY_MARKDOWN
             explicit_legacy = True
         elif task_source_kind == "duckdb":
-            authority_mode = "embedded"
+            authority_mode = "quack"
         else:
             raise DatabaseProgramConfigError(
                 f"cannot infer authority_mode for task_source_kind "
@@ -58478,6 +58525,11 @@ def database_program_from_daemon_namespace(
             getattr(args, "endpoint_secret_handle", "")
             or env.get("IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE", "")
             or (env_program.endpoint_secret_handle if env_program else "")
+        ),
+        "quack_endpoint": str(
+            getattr(args, "quack_endpoint", "")
+            or env.get("IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT", "")
+            or (env_program.quack_endpoint if env_program else "")
         ),
         "store_id": str(
             getattr(args, "state_store_id", "")
@@ -58561,8 +58613,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         choices=("", "legacy_markdown", "embedded", "embedded_exclusive", "quack"),
         help=(
-            "State authority mode. Database modes (embedded/quack) cut the "
-            "daemon over to DatabaseImplementationDaemon@1 execution."
+            "State authority mode. DuckDB + Quack is the default control "
+            "plane when --task-source-kind duckdb is selected. Embedded "
+            "one-writer is an explicit profile, never a silent fallback."
+        ),
+    )
+    parser.add_argument(
+        "--quack-endpoint",
+        default="",
+        help=(
+            "Loopback quack: URI for the exclusive state-owner "
+            "(for example quack:127.0.0.1:45123). Required for quack mode."
         ),
     )
     parser.add_argument(
@@ -59041,7 +59102,7 @@ def main(argv: list[str] | None = None) -> None:
         authority_mode = (
             program.authority_mode
             if program is not None
-            else str(getattr(args, "authority_mode", "") or "embedded")
+            else str(getattr(args, "authority_mode", "") or "quack")
         )
         task_source_kind = (
             program.task_source_kind
@@ -59052,8 +59113,9 @@ def main(argv: list[str] | None = None) -> None:
             database_path=Path(database_path),
             coordination_path=getattr(args, "coordination_path", None),
             owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
-            authority_mode=authority_mode or "embedded",
+            authority_mode=authority_mode or "quack",
             task_source_kind=task_source_kind or "duckdb",
+            quack_uri=str(getattr(args, "quack_endpoint", "") or ""),
             # Database authority never receives the canonical Markdown board.
             markdown_path=None,
             # JSON projections optional under database authority.

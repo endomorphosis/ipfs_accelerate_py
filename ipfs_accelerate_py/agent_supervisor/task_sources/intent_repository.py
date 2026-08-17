@@ -45,7 +45,11 @@ from .control_plane_contracts import (
 )
 from .control_plane_migrations import duckdb_available
 from .control_plane_schema import install_control_plane_schema
-from .duckdb_state import exclusive_file_lock, open_duckdb_connection
+from .duckdb_state import (
+    exclusive_file_lock,
+    is_quack_transport_target,
+    open_duckdb_connection,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -523,7 +527,15 @@ class IntentRepository:
         clock_ms: Any | None = None,
     ) -> None:
         _require_duckdb()
-        self.database_path = Path(database_path).absolute()
+        if is_quack_transport_target(database_path):
+            self._open_target = str(database_path).strip()
+            self._quack_transport = True
+            # Path identity is unused for file locks; keep a stable placeholder.
+            self.database_path = Path(self._open_target)
+        else:
+            self._open_target = Path(database_path).absolute()
+            self._quack_transport = False
+            self.database_path = self._open_target
         self.owner_id = _identifier(owner_id, noun="owner_id")
         self.session_id = _identifier(session_id, noun="session_id")
         if (
@@ -541,11 +553,18 @@ class IntentRepository:
             )
         self.lock_timeout_seconds = float(lock_timeout_seconds)
         self._clock_ms = clock_ms or _now_ms
-        self._lock_path = self.database_path.with_name(
-            f".{self.database_path.name}.intent.lock"
+        self._lock_path = (
+            None
+            if self._quack_transport
+            else self.database_path.with_name(
+                f".{self.database_path.name}.intent.lock"
+            )
         )
         self._open = False
         self._closed = False
+        if self._quack_transport:
+            # Schema is owned by the Quack state-owner / trusted materializer.
+            install_schema = False
         if install_schema:
             self.database_path.parent.mkdir(parents=True, exist_ok=True)
             if not self.database_path.exists():
@@ -610,11 +629,11 @@ class IntentRepository:
         # commit/rollback with SQL, and always close the adapter explicitly.
         # Avoid relying on DuckDBConnection.__exit__ transaction bookkeeping,
         # which can mark a SQL-started transaction inactive before COMMIT runs.
-        if write:
+        if write and not self._quack_transport:
             with exclusive_file_lock(
                 self._lock_path, timeout_seconds=self.lock_timeout_seconds
             ):
-                connection = open_duckdb_connection(self.database_path)
+                connection = open_duckdb_connection(self._open_target)
                 try:
                     connection.execute("BEGIN TRANSACTION")
                     try:
@@ -628,12 +647,24 @@ class IntentRepository:
                         raise
                 finally:
                     connection.close()
-        else:
-            connection = open_duckdb_connection(self.database_path)
-            try:
+            return
+        connection = open_duckdb_connection(self._open_target)
+        try:
+            if write:
+                connection.execute("BEGIN TRANSACTION")
+                try:
+                    yield connection
+                    connection.execute("COMMIT")
+                except BaseException:
+                    try:
+                        connection.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                    raise
+            else:
                 yield connection
-            finally:
-                connection.close()
+        finally:
+            connection.close()
 
     # -- event plumbing ------------------------------------------------------
 

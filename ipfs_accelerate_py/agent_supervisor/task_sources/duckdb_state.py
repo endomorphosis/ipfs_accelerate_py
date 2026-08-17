@@ -23,6 +23,12 @@ DEFAULT_LOCK_TIMEOUT_SECONDS = 30.0
 DEFAULT_MEMORY_LIMIT = "256MB"
 DUCKDB_ONLY_ENV = "IPFS_ACCELERATE_DUCKDB_ONLY"
 SQLITE_MAGIC = b"SQLite format 3\0"
+# Loopback Quack URIs are the multi-writer control-plane transport. File
+# connections remain one-writer; they must not be used as a silent fallback.
+_QUACK_TRANSPORT_URI_RE = re.compile(
+    r"^quack:(?://)?(?:127\.0\.0\.1|localhost|::1):\d{1,5}$",
+    re.IGNORECASE,
+)
 
 # These settings are connection-birth policy, not mutable query preferences.
 # ``lock_configuration`` is deliberately supplied in the same connect call and
@@ -507,6 +513,66 @@ class DuckDBConnection:
                 self.close()
 
 
+def is_quack_transport_target(target: object) -> bool:
+    """Return whether ``target`` is a loopback ``quack:`` control-plane URI."""
+
+    text = str(target or "").strip()
+    return bool(_QUACK_TRANSPORT_URI_RE.fullmatch(text))
+
+
+_QUACK_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,}$")
+
+
+def open_quack_transport_connection(
+    uri: str,
+    *,
+    token: str = "",
+) -> DuckDBConnection:
+    """Attach to the exclusive Quack state-owner (multi-reader/multi-writer).
+
+    This is a transport connection, not a direct file open. The sealed
+    one-writer file policy does not apply: Quack ATTACH requires a process
+    that can reach the loopback state-owner.
+    """
+
+    text = str(uri or "").strip()
+    if not is_quack_transport_target(text):
+        raise DuckDBConnectionPolicyError(
+            f"invalid or non-loopback quack URI: {uri!r}"
+        )
+    if "'" in text or ";" in text or "\x00" in text:
+        raise DuckDBConnectionPolicyError("quack URI contains forbidden characters")
+    try:
+        import duckdb
+    except ImportError as exc:
+        raise DuckDBConnectionPolicyError(
+            "DuckDB is required for Quack transport"
+        ) from exc
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("LOAD quack")
+        attach = f"ATTACH '{text}' AS control_plane (READ_WRITE"
+        secret = str(
+            token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or ""
+        ).strip()
+        if secret:
+            if not _QUACK_TOKEN_RE.fullmatch(secret):
+                raise DuckDBConnectionPolicyError(
+                    "quack attach token must be an opaque url-safe secret"
+                )
+            attach += f", TOKEN '{secret}'"
+        attach += ")"
+        connection.execute(attach)
+        connection.execute("USE control_plane")
+    except Exception:
+        try:
+            connection.close()
+        except Exception:
+            pass
+        raise
+    return DuckDBConnection.wrap(connection)
+
+
 def open_duckdb_connection(
     path: Path | str,
     *,
@@ -514,6 +580,8 @@ def open_duckdb_connection(
     memory_limit: str = DEFAULT_MEMORY_LIMIT,
     threads: int = 1,
 ) -> DuckDBConnection:
+    if is_quack_transport_target(path):
+        return open_quack_transport_connection(str(path).strip())
     return DuckDBConnection(
         path,
         timeout_seconds=timeout_seconds,
