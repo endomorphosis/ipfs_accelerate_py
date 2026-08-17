@@ -1,0 +1,202 @@
+{
+  "$id": "https://schemas.ipfs-accelerate.local/agent-supervisor/ir-campaign-input-root-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Closed, content-addressed semantic input root for a proof-grounded IR learning campaign.",
+  "properties": {
+    "bindings": {
+      "additionalProperties": false,
+      "properties": {
+        "compiler": { "$ref": "#/$defs/binding" },
+        "corpus": { "$ref": "#/$defs/binding" },
+        "decompiler": { "$ref": "#/$defs/binding" },
+        "example_contracts": { "$ref": "#/$defs/binding" },
+        "gap_matrix": { "$ref": "#/$defs/binding" },
+        "lineage": { "$ref": "#/$defs/binding" },
+        "policy": { "$ref": "#/$defs/binding" },
+        "rights": { "$ref": "#/$defs/binding" },
+        "schema_registry": { "$ref": "#/$defs/binding" },
+        "source_snapshots": { "$ref": "#/$defs/binding" },
+        "split": { "$ref": "#/$defs/binding" },
+        "tokenizer_policy": { "$ref": "#/$defs/binding" }
+      },
+      "required": [
+        "compiler",
+        "corpus",
+        "decompiler",
+        "example_contracts",
+        "gap_matrix",
+        "lineage",
+        "policy",
+        "rights",
+        "schema_registry",
+        "source_snapshots",
+        "split",
+        "tokenizer_policy"
+      ],
+      "type": "object"
+    },
+    "canonicalization": {
+      "additionalProperties": false,
+      "properties": {
+        "cid": { "const": "CIDv1/base32/dag-json/sha2-256" },
+        "identity_projection": { "type": "string" },
+        "json": { "type": "string" },
+        "rendering": { "type": "string" }
+      },
+      "required": ["cid", "identity_projection", "json", "rendering"],
+      "type": "object"
+    },
+    "contract_version": { "const": 1 },
+    "interface": {
+      "const": "proof-grounded-ir-learning/campaign-input-root/v1"
+    },
+    "objective_id": { "const": "PGIR-014" },
+    "objective_revision": { "$ref": "#/$defs/dagJsonCid" },
+    "qualification": {
+      "additionalProperties": false,
+      "properties": {
+        "corpus_materialized": { "type": "boolean" },
+        "decision": { "enum": ["admitted", "no_go"] },
+        "descendant_execution_authorized": { "type": "boolean" },
+        "insufficient_holdouts": {
+          "items": { "type": "string" },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "leakage_passed": { "type": "boolean" },
+        "lease_barrier": { "enum": ["closed", "open"] },
+        "reason_codes": {
+          "items": { "pattern": "^[a-z][a-z0-9_]*$", "type": "string" },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "rights_quarantined_rows": { "minimum": 0, "type": "integer" },
+        "training_admitted_rows": { "minimum": 0, "type": "integer" },
+        "training_task_eligible_count": { "minimum": 0, "type": "integer" }
+      },
+      "required": [
+        "corpus_materialized",
+        "decision",
+        "descendant_execution_authorized",
+        "insufficient_holdouts",
+        "leakage_passed",
+        "lease_barrier",
+        "reason_codes",
+        "rights_quarantined_rows",
+        "training_admitted_rows",
+        "training_task_eligible_count"
+      ],
+      "type": "object"
+    },
+    "referential_integrity": {
+      "additionalProperties": false,
+      "properties": {
+        "all_required_bindings_present": { "const": true },
+        "compiler_alias_resolved": { "type": "boolean" },
+        "decompiler_alias_resolved": { "type": "boolean" },
+        "hidden_labels_accessed": { "const": false },
+        "required_binding_names": {
+          "items": { "type": "string" },
+          "minItems": 12,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "source_or_split_mutated": { "const": false },
+        "unresolved_identities": {
+          "items": { "type": "string" },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "all_required_bindings_present",
+        "compiler_alias_resolved",
+        "decompiler_alias_resolved",
+        "hidden_labels_accessed",
+        "required_binding_names",
+        "source_or_split_mutated",
+        "unresolved_identities"
+      ],
+      "type": "object"
+    },
+    "repository": {
+      "additionalProperties": false,
+      "properties": {
+        "datasets_commit": { "$ref": "#/$defs/gitOid" },
+        "repository_id": {
+          "pattern": "^repository:sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_set_id": { "const": "SRCSET-1" },
+        "source_tree_id": { "$ref": "#/$defs/gitOid" }
+      },
+      "required": [
+        "datasets_commit",
+        "repository_id",
+        "source_set_id",
+        "source_tree_id"
+      ],
+      "type": "object"
+    },
+    "root_cid": { "$ref": "#/$defs/dagJsonCid" },
+    "root_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "schema": { "const": "IRCampaignInputRoot@1" },
+    "supersession": {
+      "additionalProperties": false,
+      "properties": {
+        "immutable": { "const": true },
+        "previous_root_cid": {
+          "anyOf": [
+            { "$ref": "#/$defs/dagJsonCid" },
+            { "type": "null" }
+          ]
+        },
+        "replacement_policy": { "const": "supersede_never_overwrite" }
+      },
+      "required": ["immutable", "previous_root_cid", "replacement_policy"],
+      "type": "object"
+    },
+    "task_id": { "const": "PGIR-014" }
+  },
+  "required": [
+    "bindings",
+    "canonicalization",
+    "contract_version",
+    "interface",
+    "objective_id",
+    "objective_revision",
+    "qualification",
+    "referential_integrity",
+    "repository",
+    "root_cid",
+    "root_sha256",
+    "schema",
+    "supersession",
+    "task_id"
+  ],
+  "title": "IRCampaignInputRoot@1",
+  "type": "object",
+  "$defs": {
+    "binding": {
+      "additionalProperties": true,
+      "properties": {
+        "binding_cid": { "$ref": "#/$defs/dagJsonCid" }
+      },
+      "required": ["binding_cid"],
+      "type": "object"
+    },
+    "dagJsonCid": {
+      "pattern": "^baguqeera[a-z2-7]{52}$",
+      "type": "string"
+    },
+    "gitOid": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    }
+  }
+}
