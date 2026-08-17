@@ -1817,32 +1817,16 @@ class DatabaseCoordinator:
                             _canonical_json(payload),
                         ],
                     )
-                else:
-                    connection.execute(
-                        """
-                        UPDATE coordination_tasks
-                        SET task_id = ?, worktree_id = ?, body_json = ?
-                        WHERE task_cid = ?
-                        """,
-                        [
-                            tid,
-                            _text(worktree_id, "worktree_id", required=False),
-                            _canonical_json(payload),
-                            cid,
-                        ],
-                    )
-                    connection.execute(
-                        "DELETE FROM task_dependencies WHERE task_cid = ?",
-                        [cid],
-                    )
-                for dep in deps:
-                    connection.execute(
-                        """
-                        INSERT INTO task_dependencies(task_cid, dependency_task_cid)
-                        VALUES (?, ?)
-                        """,
-                        [cid, dep],
-                    )
+                    for dep in deps:
+                        connection.execute(
+                            """
+                            INSERT INTO task_dependencies(task_cid, dependency_task_cid)
+                            VALUES (?, ?)
+                            """,
+                            [cid, dep],
+                        )
+                # Already registered: do not UPDATE/DELETE/re-INSERT. DuckDB 1.5
+                # can FATAL on unique-index maintenance for those writes.
                 self._commit_if_idle(connection)
                 return {
                     "task_cid": cid,
