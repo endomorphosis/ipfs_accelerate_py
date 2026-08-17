@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_router import (
     DEFAULT_PROPERTY_POLICIES,
     AttemptOutcome,
+    AuthorityClass,
     MultiProverRouter,
     PortfolioResult,
     PortfolioVerdict,
@@ -21,7 +22,10 @@ from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_router import (
     ProverLane,
     ProverOutput,
     ProverRole,
+    authority_class_for_role,
     classify_property_kind,
+    derive_authoritative_disposition,
+    project_portfolio_traces,
     route_obligation,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.prover_conformance import (
@@ -401,3 +405,202 @@ def test_result_is_canonical_and_retains_plan_order() -> None:
     ]
     assert PortfolioResult.from_dict(payload) == result
     assert set(DEFAULT_PROPERTY_POLICIES) == set(PropertyKind)
+
+
+def test_solver_counterexamples_retain_obligation_scope_and_bounds() -> None:
+    obligation = PropertyObligation(
+        obligation_id="obligation:bounded-safety",
+        property_kind=PropertyKind.FIRST_ORDER_THEOREM,
+        statement="No worker owns two tasks.",
+        premise_ids=("premise:mutex",),
+        metadata={
+            "ast_scope_ids": ["src/mutex.py::acquire"],
+            "finite_bounds": {"workers": 2, "steps": 8},
+            "environment_lock_id": "lock:current",
+        },
+    )
+
+    def runner(request, cancel):
+        if request.prover_id == "vampire":
+            return ProverOutput(
+                AttemptOutcome.COUNTEREXAMPLE,
+                evidence={"countermodel": {"owner": "w0"}},
+                conclusive=True,
+            )
+        return ProverOutput(AttemptOutcome.CANDIDATE)
+
+    result = MultiProverRouter().execute(obligation, runner)
+    vampire = next(item for item in result.attempts if item.prover_id == "vampire")
+    hammer, counterexamples, checkers = project_portfolio_traces(result)
+    disposition = derive_authoritative_disposition(result)
+
+    assert result.verdict is PortfolioVerdict.DISPROVED
+    assert vampire.conclusive
+    assert vampire.evidence["ast_scope_ids"] == ["src/mutex.py::acquire"]
+    assert vampire.evidence["finite_bounds"] == {"workers": 2, "steps": 8}
+    assert counterexamples[0].ast_scope_ids == ("src/mutex.py::acquire",)
+    assert counterexamples[0].finite_bounds == {"workers": 2, "steps": 8}
+    assert all(not item.authoritative for item in hammer)
+    assert all(not item.accepted for item in checkers if item.role is ProverRole.KERNEL)
+    assert disposition.verdict is PortfolioVerdict.DISPROVED
+    assert disposition.fail_closed
+
+
+def test_counterexample_bounds_or_scope_disagreement_is_not_conclusive() -> None:
+    obligation = PropertyObligation(
+        obligation_id="obligation:scoped",
+        property_kind=PropertyKind.FINITE_CONSTRAINT,
+        statement="x >= 0",
+        metadata={
+            "ast_scope_ids": ["src/state.py::step"],
+            "finite_bounds": {"k": 3},
+        },
+    )
+
+    def runner(request, cancel):
+        if request.prover_id == "z3":
+            return ProverOutput(
+                AttemptOutcome.COUNTEREXAMPLE,
+                evidence={"finite_bounds": {"k": 99}, "model": {"x": -1}},
+                conclusive=True,
+            )
+        return ProverOutput(AttemptOutcome.UNKNOWN)
+
+    result = MultiProverRouter().execute(obligation, runner)
+    z3 = next(item for item in result.attempts if item.prover_id == "z3")
+
+    assert z3.effective_outcome is AttemptOutcome.UNKNOWN
+    assert not z3.conclusive
+    assert result.verdict is not PortfolioVerdict.DISPROVED
+    assert "bounds_disagree" in z3.detail
+
+
+def test_resource_policy_denies_solver_lane_before_execution() -> None:
+    from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_resources import (
+        CHECKER_RESOURCE_SHARD,
+        SOLVER_RESOURCE_SHARD,
+        MultiProverResourceBudget,
+        MultiProverResourceLease,
+        resource_class_for_prover,
+        resource_shard_for_class,
+    )
+
+    assert resource_shard_for_class(resource_class_for_prover("vampire")) == SOLVER_RESOURCE_SHARD
+    assert resource_shard_for_class(resource_class_for_prover("lean")) == CHECKER_RESOURCE_SHARD
+
+    lease = MultiProverResourceLease(MultiProverResourceBudget())
+    lease.close()
+    calls: list[str] = []
+
+    def runner(request, cancel):
+        calls.append(request.prover_id)
+        return ProverOutput(AttemptOutcome.VERIFIED)
+
+    result = MultiProverRouter(resource_lease=lease).execute(
+        _obligation(PropertyKind.AUTHORIZATION), runner
+    )
+
+    assert calls == []
+    assert result.verdict is PortfolioVerdict.INCONCLUSIVE
+    assert result.attempts[0].effective_outcome is AttemptOutcome.BLOCKED
+    assert "resource policy denied" in result.attempts[0].detail
+
+
+def test_stale_kernel_version_certificate_cannot_self_verify() -> None:
+    obligation = PropertyObligation(
+        obligation_id="obligation:versioned",
+        property_kind=PropertyKind.KERNEL_CHECK,
+        statement="True",
+        metadata={"kernel_version": "4.19.0", "environment_lock_id": "lock:current"},
+    )
+
+    def runner(request, cancel):
+        if request.prover_id == "lean":
+            return ProverOutput(
+                AttemptOutcome.VERIFIED,
+                evidence={"kernel_version": "1.0.0", "environment_lock_id": "lock:stale"},
+            )
+        return ProverOutput(AttemptOutcome.UNSUPPORTED)
+
+    result = MultiProverRouter().execute(obligation, runner)
+    lean = next(item for item in result.attempts if item.prover_id == "lean")
+    disposition = derive_authoritative_disposition(result)
+
+    assert lean.effective_outcome is AttemptOutcome.MALFORMED
+    assert result.verdict is not PortfolioVerdict.PROVED
+    assert not result.authority_attempt_ids
+    assert disposition.assurance is AssuranceLevel.UNVERIFIED
+
+
+def test_evidence_store_rejects_stale_environment_and_statement_reuse(tmp_path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.proof.prover_evidence_store import (
+        EvidenceLookupStatus,
+        EvidenceRejectionReason,
+        ProverEvidenceStore,
+        build_prover_evidence_key,
+        ConformanceBinding,
+    )
+
+    obligation = PropertyObligation(
+        obligation_id="obligation:cached",
+        property_kind=PropertyKind.STATE_MACHINE,
+        statement="No two workers own the same task.",
+        metadata={
+            "repository_tree_id": "git-tree:abc123",
+            "environment_lock_id": "lock:old",
+        },
+        required_assurance=AssuranceLevel.SOLVER_CHECKED,
+    )
+
+    def runner(request, cancel):
+        return ProverOutput(AttemptOutcome.VERIFIED)
+
+    result = MultiProverRouter().execute(obligation, runner)
+    key = build_prover_evidence_key(
+        property_class=PropertyKind.STATE_MACHINE,
+        normalized_model={"statement": obligation.statement},
+        translator_profile={"id": "tla", "version": "1"},
+        assumptions=(),
+        finite_bounds={"workers": 2},
+        prover_versions={"tla_tlc": "2.19", "apalache": "0.45"},
+        kernel_versions={"apalache-typechecker": "0.45"},
+        policy={"id": result.plan.policy_id},
+        repository_tree_id="git-tree:abc123",
+        conformance_fixture_set_id="fixture-set:state-machine@8",
+    )
+    store = ProverEvidenceStore(tmp_path)
+    stored = store.put(
+        key,
+        result,
+        conformance=ConformanceBinding(
+            fixture_set_id="fixture-set:state-machine@8",
+            report_ids=("conformance-report:1",),
+            passed=True,
+            permitted_assurance=AssuranceLevel.SOLVER_CHECKED,
+        ),
+        metadata={"environment_lock_id": "lock:old"},
+    )
+    assert stored.stored
+
+    stale_env = store.lookup(key, current_environment_lock_id="lock:current")
+    stale_stmt = store.lookup(key, current_statement="A different theorem.")
+    fresh = store.lookup(
+        key,
+        current_environment_lock_id="lock:old",
+        current_statement=obligation.statement,
+    )
+
+    assert stale_env.status is EvidenceLookupStatus.REJECTED
+    assert EvidenceRejectionReason.STALE_ENVIRONMENT.value in stale_env.reason_codes
+    assert stale_stmt.status is EvidenceLookupStatus.REJECTED
+    assert EvidenceRejectionReason.STALE_STATEMENT.value in stale_stmt.reason_codes
+    assert fresh.status is EvidenceLookupStatus.HIT
+
+
+def test_authority_lattice_keeps_hammer_candidates_off_the_proof_root() -> None:
+    assert authority_class_for_role(ProverRole.ORCHESTRATOR) is AuthorityClass.CANDIDATE
+    assert authority_class_for_role(ProverRole.CANDIDATE) is AuthorityClass.CANDIDATE
+    assert authority_class_for_role(ProverRole.MODEL_CHECKER) is AuthorityClass.INDEPENDENT_CHECKER
+    assert authority_class_for_role(ProverRole.KERNEL) is AuthorityClass.KERNEL
+    assert not AuthorityClass.CANDIDATE.can_author_proof
+    assert AuthorityClass.KERNEL.can_author_proof

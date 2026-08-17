@@ -1158,7 +1158,7 @@ def adapt_hammer_result(
             "hammer_receipt_id": hammer_receipt_id,
         }
     )
-    return {
+    projected = {
         "schema_version": HAMMER_ADAPTER_SCHEMA_VERSION,
         "status": status.value,
         "hammer_result": _provider_safe(raw),
@@ -1169,6 +1169,93 @@ def adapt_hammer_result(
         "kernel_checked": False,
         "proof_success": False,
     }
+    return _attach_hammer_disposition(projected, bundle, status=status)
+
+
+def _obligation_scope_and_bounds(bundle: HammerRequestBundle) -> tuple[list[str], dict[str, Any]]:
+    provenance = dict(bundle.provenance)
+    bindings = dict(provenance.get("semantic_bindings") or {})
+    effect_scope = bindings.get("effect_scope_map") or {}
+    scope: list[str] = []
+    if isinstance(effect_scope, Mapping):
+        for values in effect_scope.values():
+            if isinstance(values, Sequence) and not isinstance(values, (str, bytes, bytearray)):
+                scope.extend(str(item) for item in values if str(item).strip())
+    changed = str(bindings.get("changed_scope_set_id") or "").strip()
+    if changed:
+        scope.append(changed)
+    if not scope:
+        scope = [str(item.get("premise_id") or "") for item in bundle.premises if item.get("premise_id")]
+    unique_scope = list(dict.fromkeys(item for item in scope if item))
+    bounds_raw = provenance.get("finite_bounds") or bindings.get("finite_bounds") or {}
+    bounds = bounds_raw if isinstance(bounds_raw, Mapping) else {}
+    return unique_scope, dict(bounds)
+
+
+def _attach_hammer_disposition(
+    projected: dict[str, Any],
+    bundle: HammerRequestBundle,
+    *,
+    status: HammerAdapterStatus,
+    kernel_verification: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Attach non-authoritative hammer traces and a fail-closed disposition."""
+
+    from ..proof.multi_prover_router import (
+        AUTHORITATIVE_DISPOSITION_SCHEMA,
+        COUNTEREXAMPLE_TRACE_SCHEMA,
+        HAMMER_TRACE_SCHEMA,
+    )
+
+    scope, bounds = _obligation_scope_and_bounds(bundle)
+    hammer_result = projected.get("hammer_result")
+    if status is HammerAdapterStatus.COUNTEREXAMPLE and isinstance(hammer_result, Mapping):
+        counterexample = dict(hammer_result.get("counterexample") or {})
+        counterexample.setdefault("ast_scope_ids", list(scope))
+        counterexample.setdefault("finite_bounds", dict(bounds))
+        projected["counterexample_trace"] = {
+            "schema": COUNTEREXAMPLE_TRACE_SCHEMA,
+            "obligation_id": bundle.obligation_id,
+            "request_id": bundle.request_id,
+            "ast_scope_ids": list(counterexample.get("ast_scope_ids") or scope),
+            "finite_bounds": dict(counterexample.get("finite_bounds") or bounds),
+            "conclusive": True,
+            "authoritative": False,
+        }
+        safe_result = dict(hammer_result)
+        safe_result["counterexample"] = counterexample
+        projected["hammer_result"] = safe_result
+    projected["hammer_trace"] = {
+        "schema": HAMMER_TRACE_SCHEMA,
+        "request_id": bundle.request_id,
+        "obligation_id": bundle.obligation_id,
+        "prover_id": IPFS_DATASETS_LOGIC_PROVIDER_ID,
+        "role": "orchestrator",
+        "outcome": status.value,
+        "environment_lock_id": str(bundle.environment_lock.get("lock_id") or ""),
+        "authoritative": False,
+        "authority_class": "candidate",
+    }
+    accepted = bool(
+        isinstance(kernel_verification, Mapping)
+        and kernel_verification.get("status") == "accepted"
+        and kernel_verification.get("authoritative_assurance") == "kernel_verified"
+    )
+    projected["authoritative_disposition"] = {
+        "schema": AUTHORITATIVE_DISPOSITION_SCHEMA,
+        "obligation_id": bundle.obligation_id,
+        "request_id": bundle.request_id,
+        "verdict": "proved" if accepted else "inconclusive",
+        "assurance": "kernel_verified" if accepted else "unverified",
+        "reason": (
+            "independent kernel accepted the reconstructed candidate"
+            if accepted
+            else "hammer candidates require independent kernel or checker acceptance"
+        ),
+        "fail_closed": True,
+        "authoritative": accepted,
+    }
+    return projected
 
 
 class IpfsDatasetsLogicProvider:
@@ -1187,6 +1274,8 @@ class IpfsDatasetsLogicProvider:
         proof_cache: FormalVerificationCache | None = None,
         cache: FormalVerificationCache | None = None,
         kernel_verifier: Any = None,
+        resource_lease: Any = None,
+        evidence_store: Any = None,
     ) -> None:
         self.policy = policy or HammerSupervisorPolicy()
         if not isinstance(self.policy, HammerSupervisorPolicy):
@@ -1212,6 +1301,15 @@ class IpfsDatasetsLogicProvider:
         self.kernel_verifier = kernel_verifier
         self.verification_cache = selected_cache
         self.proof_cache = selected_cache
+        if resource_lease is not None:
+            from ..proof.multi_prover_resources import MultiProverResourceLease
+
+            if not isinstance(resource_lease, MultiProverResourceLease):
+                raise ValueError("resource_lease must be a MultiProverResourceLease")
+        self.resource_lease = resource_lease
+        if evidence_store is not None and not callable(getattr(evidence_store, "put", None)):
+            raise ValueError("evidence_store must expose put")
+        self.evidence_store = evidence_store
 
     def capabilities(self) -> ProofProviderCapability:
         return ProofProviderCapability(
@@ -1737,12 +1835,36 @@ class IpfsDatasetsLogicProvider:
             runner = self._portfolio_runner or self._default_run
 
             def execute_portfolio() -> dict[str, Any]:
-                raw_result = runner(invocation)
-                projected = adapt_hammer_result(raw_result, bundle)
-                projected["environment_lock"] = dict(bundle.environment_lock)
-                projected["portfolio_policy"] = dict(bundle.portfolio_policy)
-                projected["premises"] = [dict(premise) for premise in bundle.premises]
-                return projected
+                from ..proof.multi_prover_resources import admit_hammer_portfolio
+
+                admission, child = admit_hammer_portfolio(
+                    self.resource_lease,
+                    request_id=bundle.request_id,
+                    memory_bytes=effective.memory_bytes,
+                    process_slots=effective.max_parallel_processes,
+                )
+                if not admission.admitted:
+                    raise ProofProviderError(
+                        ProviderFailureCode.RESOURCE_EXHAUSTED,
+                        "multi-prover resource policy denied the Hammer portfolio",
+                        details={
+                            "status": HammerAdapterStatus.POLICY_DENIED.value,
+                            "reason_code": "resource_policy_denied",
+                            "reasons": list(admission.reasons),
+                            "proof_success": False,
+                            "authoritative_assurance": "unverified",
+                        },
+                    )
+                try:
+                    raw_result = runner(invocation)
+                    projected = adapt_hammer_result(raw_result, bundle)
+                    projected["environment_lock"] = dict(bundle.environment_lock)
+                    projected["portfolio_policy"] = dict(bundle.portfolio_policy)
+                    projected["premises"] = [dict(premise) for premise in bundle.premises]
+                    return projected
+                finally:
+                    if child is not None:
+                        child.release()
 
             if self.verification_cache is None:
                 projected_result = execute_portfolio()
@@ -1925,6 +2047,7 @@ class IpfsDatasetsLogicProvider:
                 KernelVerificationBindings,
                 KernelVerificationResult,
             )
+            from ..proof.multi_prover_router import CHECKER_TRACE_SCHEMA
 
             bindings = KernelVerificationBindings(
                 obligation_id=obligation.obligation_id,
@@ -1940,6 +2063,17 @@ class IpfsDatasetsLogicProvider:
                     request.payload.get("expected_checked_source_digest") or ""
                 ),
                 expected_native_source=native_source,
+                expected_kernel_version=str(
+                    request.payload.get("expected_kernel_version")
+                    or environment_lock.get("itp_version")
+                    or ""
+                ),
+                expected_itp_version=str(environment_lock.get("itp_version") or ""),
+                expected_environment_lock_id=str(
+                    request.payload.get("expected_environment_lock_id")
+                    or environment_lock.get("lock_id")
+                    or ""
+                ),
             )
             result = self.kernel_verifier.reconstruct_and_verify(
                 request=hammer_request,
@@ -1961,7 +2095,7 @@ class IpfsDatasetsLogicProvider:
                 or result.toolchain_id != toolchain_id
             ):
                 raise ValueError("kernel verification result is not bound to the request")
-            return {
+            projected = {
                 "schema_version": HAMMER_ADAPTER_SCHEMA_VERSION,
                 "status": result.status.value,
                 "kernel_verification": result.to_dict(),
@@ -1976,7 +2110,30 @@ class IpfsDatasetsLogicProvider:
                 "authoritative_assurance": result.assurance.value,
                 "kernel_checked": (result.assurance.value == "kernel_verified"),
                 "proof_success": result.accepted,
+                "checker_trace": {
+                    "schema": CHECKER_TRACE_SCHEMA,
+                    "attempt_id": result.verification_id,
+                    "obligation_id": obligation.obligation_id,
+                    "prover_id": kernel_id,
+                    "role": "kernel",
+                    "outcome": "verified" if result.accepted else result.status.value,
+                    "accepted": result.accepted,
+                    "environment_lock_id": result.environment_lock_id,
+                    "kernel_version": str(environment_lock.get("itp_version") or ""),
+                    "receipt_id": result.kernel_receipt_id,
+                    "authority_class": "kernel",
+                },
             }
+            return _attach_hammer_disposition(
+                projected,
+                bundle,
+                status=(
+                    HammerAdapterStatus.CANDIDATE
+                    if result.accepted
+                    else HammerAdapterStatus.UNKNOWN
+                ),
+                kernel_verification=result.to_dict(),
+            )
         except (TimeoutError, subprocess.TimeoutExpired) as exc:
             return ProviderResponse.failure(
                 request,
@@ -2821,6 +2978,8 @@ def create_ipfs_datasets_logic_provider(
     proof_cache: FormalVerificationCache | None = None,
     cache: FormalVerificationCache | None = None,
     kernel_verifier: Any = None,
+    resource_lease: Any = None,
+    evidence_store: Any = None,
 ) -> IpfsDatasetsLogicProvider:
     """Entry-point-friendly provider factory without importing Hammer."""
 
@@ -2831,6 +2990,8 @@ def create_ipfs_datasets_logic_provider(
         proof_cache=proof_cache,
         cache=cache,
         kernel_verifier=kernel_verifier,
+        resource_lease=resource_lease,
+        evidence_store=evidence_store,
     )
 
 

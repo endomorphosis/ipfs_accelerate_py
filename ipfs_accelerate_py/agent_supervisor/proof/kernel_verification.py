@@ -101,6 +101,7 @@ class KernelFailureCode(str, Enum):
     KERNEL_REJECTED = "kernel_rejected"
     BINDING_MISMATCH = "binding_mismatch"
     ENVIRONMENT_MISMATCH = "environment_mismatch"
+    VERSION_MISMATCH = "version_mismatch"
     DIGEST_MISMATCH = "digest_mismatch"
     STATEMENT_MISMATCH = "statement_mismatch"
     FORBIDDEN_DECLARATION = "forbidden_declaration"
@@ -238,6 +239,9 @@ class KernelVerificationBindings:
     expected_statement_digest: str = ""
     expected_checked_source_digest: str = ""
     expected_native_source: str = ""
+    expected_kernel_version: str = ""
+    expected_itp_version: str = ""
+    expected_environment_lock_id: str = ""
 
     def __post_init__(self) -> None:
         for name in (
@@ -254,6 +258,9 @@ class KernelVerificationBindings:
             "expected_statement_digest",
             "expected_checked_source_digest",
             "expected_native_source",
+            "expected_kernel_version",
+            "expected_itp_version",
+            "expected_environment_lock_id",
         ):
             object.__setattr__(
                 self,
@@ -1026,6 +1033,9 @@ def verify_kernel_reconstruction(
     expected_statement_digest: str = "",
     expected_checked_source_digest: str = "",
     expected_native_source: str = "",
+    expected_kernel_version: str = "",
+    expected_itp_version: str = "",
+    expected_environment_lock_id: str = "",
     provider_status: str = "",
     independent: bool = False,
     policy: KernelVerificationPolicy | None = None,
@@ -1080,6 +1090,9 @@ def verify_kernel_reconstruction(
             expected_statement_digest=expected_statement_digest,
             expected_checked_source_digest=expected_checked_source_digest,
             expected_native_source=expected_native_source,
+            expected_kernel_version=expected_kernel_version,
+            expected_itp_version=expected_itp_version,
+            expected_environment_lock_id=expected_environment_lock_id,
         )
     elif not isinstance(bindings, KernelVerificationBindings):
         raise KernelVerificationError("bindings must be KernelVerificationBindings")
@@ -1089,6 +1102,9 @@ def verify_kernel_reconstruction(
             expected_statement_digest,
             expected_checked_source_digest,
             expected_native_source,
+            expected_kernel_version,
+            expected_itp_version,
+            expected_environment_lock_id,
         )
     ):
         bindings = KernelVerificationBindings(
@@ -1107,6 +1123,13 @@ def verify_kernel_reconstruction(
                 expected_checked_source_digest or bindings.expected_checked_source_digest
             ),
             expected_native_source=(expected_native_source or bindings.expected_native_source),
+            expected_kernel_version=(
+                expected_kernel_version or bindings.expected_kernel_version
+            ),
+            expected_itp_version=expected_itp_version or bindings.expected_itp_version,
+            expected_environment_lock_id=(
+                expected_environment_lock_id or bindings.expected_environment_lock_id
+            ),
         )
 
     raw_target = record.get("target_itp") or evidence_record.get("itp")
@@ -1220,10 +1243,39 @@ def verify_kernel_reconstruction(
             KernelFailureCode.ENVIRONMENT_MISMATCH,
             "reconstruction environment lock identity does not match",
         )
-    if not str(lock_record.get("itp_version") or "").strip():
+    lock_version = str(lock_record.get("itp_version") or "").strip()
+    if not lock_version:
         return fail(
             KernelFailureCode.ENVIRONMENT_MISMATCH,
             "environment lock has no exact ITP version",
+        )
+    if (
+        bindings.expected_environment_lock_id
+        and bindings.expected_environment_lock_id != environment_lock_id
+    ):
+        return fail(
+            KernelFailureCode.ENVIRONMENT_MISMATCH,
+            "environment lock is stale relative to the expected current lock",
+        )
+    claimed_versions = [
+        item
+        for item in (
+            bindings.expected_kernel_version,
+            bindings.expected_itp_version,
+            str(record.get("kernel_version") or record.get("itp_version") or "").strip(),
+            str(evidence_record.get("kernel_version") or evidence_record.get("itp_version") or "").strip(),
+        )
+        if item
+    ]
+    kernel_id_version = ""
+    if "@" in bindings.kernel_id:
+        kernel_id_version = bindings.kernel_id.rsplit("@", 1)[-1].strip()
+        if kernel_id_version:
+            claimed_versions.append(kernel_id_version)
+    if any(item != lock_version for item in claimed_versions):
+        return fail(
+            KernelFailureCode.VERSION_MISMATCH,
+            "kernel or reconstruction version does not match the pinned environment lock",
         )
 
     if request_record:
