@@ -435,3 +435,104 @@ def test_reviewed_premise_selection_runs_through_hammer_boundary():
         "premise:state",
     }
     assert {item["selection_method"] for item in result["premises"]} == {"deterministic-baseline"}
+
+
+def test_hammer_candidate_emits_non_authoritative_trace_and_disposition():
+    def fake_portfolio(invocation):
+        attempt_id = f"{invocation.bundle.request_id}:translation:z3:0"
+        return {
+            "request_id": invocation.bundle.request_id,
+            "status": "candidate",
+            "attempts": [
+                {
+                    "attempt_id": attempt_id,
+                    "request_id": invocation.bundle.request_id,
+                    "translation_id": invocation.translations[0].translation_id,
+                    "solver_name": "z3",
+                }
+            ],
+            "proof_candidate": {
+                "candidate_id": "candidate:lattice",
+                "request_id": invocation.bundle.request_id,
+                "solver_attempt_id": attempt_id,
+                "premise_ids": ["premise:relation"],
+            },
+        }
+
+    result = dispatch_provider_request(
+        IpfsDatasetsLogicProvider(
+            _policy(allowed_solvers=("z3",), environment_lock=_lock()),
+            portfolio_runner=fake_portfolio,
+        ),
+        _request(operation="prove", supervisor_policy={"allowed_solvers": ["z3"]}),
+    ).require_result()
+
+    assert result["authoritative_assurance"] == "unverified"
+    assert result["proof_success"] is False
+    assert result["hammer_trace"]["authoritative"] is False
+    assert result["hammer_trace"]["authority_class"] == "candidate"
+    assert result["authoritative_disposition"]["verdict"] == "inconclusive"
+    assert result["authoritative_disposition"]["fail_closed"] is True
+    assert result["authoritative_disposition"]["authoritative"] is False
+
+
+def test_hammer_counterexample_retains_scope_and_bounds():
+    def fake_portfolio(invocation):
+        return {
+            "request_id": invocation.bundle.request_id,
+            "status": "counterexample",
+            "attempts": [
+                {
+                    "attempt_id": f"{invocation.bundle.request_id}:translation:z3:0",
+                    "request_id": invocation.bundle.request_id,
+                    "translation_id": invocation.translations[0].translation_id,
+                    "solver_name": "z3",
+                }
+            ],
+            "counterexample": {"model": {"ready": True}},
+        }
+
+    result = dispatch_provider_request(
+        IpfsDatasetsLogicProvider(
+            _policy(allowed_solvers=("z3",), environment_lock=_lock()),
+            portfolio_runner=fake_portfolio,
+        ),
+        _request(operation="prove", supervisor_policy={"allowed_solvers": ["z3"]}),
+    ).require_result()
+
+    trace = result["counterexample_trace"]
+    assert trace["conclusive"] is True
+    assert trace["authoritative"] is False
+    assert "src/state.py::advance" in trace["ast_scope_ids"]
+    assert isinstance(trace["finite_bounds"], dict)
+    assert result["authoritative_disposition"]["verdict"] != "proved"
+
+
+def test_hammer_resource_policy_denies_portfolio_before_solver_execution():
+    from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_resources import (
+        MultiProverResourceBudget,
+        MultiProverResourceLease,
+    )
+
+    called = []
+
+    def fake_portfolio(invocation):
+        called.append(invocation)
+        raise AssertionError("resource-denied hammer must not execute")
+
+    lease = MultiProverResourceLease(MultiProverResourceBudget())
+    lease.close()
+    response = dispatch_provider_request(
+        IpfsDatasetsLogicProvider(
+            _policy(allowed_solvers=("z3",), environment_lock=_lock()),
+            portfolio_runner=fake_portfolio,
+            resource_lease=lease,
+        ),
+        _request(operation="prove", supervisor_policy={"allowed_solvers": ["z3"]}),
+    )
+
+    assert called == []
+    assert response.ok is False
+    assert response.error.code is ProviderFailureCode.RESOURCE_EXHAUSTED
+    assert response.error.details["reason_code"] == "resource_policy_denied"
+    assert response.error.details["proof_success"] is False

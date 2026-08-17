@@ -50,10 +50,11 @@ from .formal_verification_contracts import (
     canonical_json,
 )
 from .multi_prover_router import (
-    AttemptOutcome,
     PortfolioResult,
     PortfolioVerdict,
     PropertyKind,
+    derive_authoritative_disposition,
+    project_portfolio_traces,
 )
 from .prover_conformance import ConformanceReport
 
@@ -99,6 +100,10 @@ class EvidenceRejectionReason(str, Enum):
     INCONCLUSIVE = "inconclusive_result"
     DISAGREEMENT = "prover_disagreement"
     FRESHNESS_NOT_SATISFIED = "freshness_requirement_not_satisfied"
+    STALE_ENVIRONMENT = "stale_environment_lock"
+    STALE_STATEMENT = "stale_statement_receipt"
+    VERSION_MISMATCH = "version_mismatch"
+    CANDIDATE_CERTIFICATE = "candidate_certificate_is_not_proof"
 
 
 # Compatibility names used by callers which treat this as a cache.
@@ -160,6 +165,42 @@ def _timestamp_ms(value: Any, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ContractValidationError(f"{name} must be a non-negative integer")
     return value
+
+
+def _statement_digest(statement: str) -> str:
+    normalized = str(statement or "").strip()
+    if not normalized:
+        return ""
+    return "sha256:" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _current_binding_rejections(
+    receipt: "ProverEvidenceReceipt",
+    requested: "EvidenceRequirements",
+) -> set[str]:
+    """Reject stale environment, statement, or version receipts on lookup."""
+
+    reasons: set[str] = set()
+    obligation = receipt.result.plan.obligation
+    if requested.current_statement and requested.current_statement != obligation.statement:
+        reasons.add(EvidenceRejectionReason.STALE_STATEMENT.value)
+    expected_digest = requested.current_statement_digest
+    actual_digest = _statement_digest(obligation.statement)
+    if expected_digest and actual_digest and expected_digest != actual_digest:
+        reasons.add(EvidenceRejectionReason.STALE_STATEMENT.value)
+    if requested.current_environment_lock_id:
+        receipt_lock = str(
+            receipt.metadata.get("environment_lock_id")
+            or obligation.metadata.get("environment_lock_id")
+            or ""
+        )
+        if receipt_lock and receipt_lock != requested.current_environment_lock_id:
+            reasons.add(EvidenceRejectionReason.STALE_ENVIRONMENT.value)
+    if requested.current_kernel_versions and dict(receipt.key.kernel_versions) != dict(
+        requested.current_kernel_versions
+    ):
+        reasons.add(EvidenceRejectionReason.VERSION_MISMATCH.value)
+    return reasons
 
 
 def _named_identity(value: Any, *names: str) -> str:
@@ -608,10 +649,33 @@ class EvidenceRequirements:
     required_freshness: EvidenceFreshness = EvidenceFreshness.CURRENT
     max_age_seconds: int | None = None
     allow_disagreement: bool = False
+    current_statement: str = ""
+    current_statement_digest: str = ""
+    current_environment_lock_id: str = ""
+    current_kernel_versions: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "required_assurance", AssuranceLevel(self.required_assurance))
         object.__setattr__(self, "required_freshness", EvidenceFreshness(self.required_freshness))
+        object.__setattr__(
+            self, "current_statement", str(self.current_statement or "").strip()
+        )
+        object.__setattr__(
+            self,
+            "current_statement_digest",
+            str(self.current_statement_digest or "").strip(),
+        )
+        object.__setattr__(
+            self,
+            "current_environment_lock_id",
+            str(self.current_environment_lock_id or "").strip(),
+        )
+        if self.current_kernel_versions is not None:
+            object.__setattr__(
+                self,
+                "current_kernel_versions",
+                _mapping(self.current_kernel_versions, "current_kernel_versions", nonempty=True),
+            )
         if self.max_age_seconds is not None and (
             isinstance(self.max_age_seconds, bool)
             or not isinstance(self.max_age_seconds, int)
@@ -804,6 +868,29 @@ class ProverEvidenceStore:
         if isinstance(ttl, bool) or not isinstance(ttl, int) or ttl <= 0:
             raise ValueError("ttl_seconds must be a positive integer")
         now = self._now_ms()
+        attached = dict(metadata or {})
+        if typed_result.verdict is PortfolioVerdict.PROVED and not typed_result.authority_attempt_ids:
+            return EvidenceStoreResult(
+                False,
+                cache_key,
+                reason_codes=(EvidenceRejectionReason.CANDIDATE_CERTIFICATE.value,),
+            )
+        if "authoritative_disposition" not in attached:
+            try:
+                hammer, counterexamples, checkers = project_portfolio_traces(typed_result)
+                disposition = derive_authoritative_disposition(typed_result)
+            except ContractValidationError:
+                return EvidenceStoreResult(
+                    False,
+                    cache_key,
+                    reason_codes=(EvidenceRejectionReason.MALFORMED.value,),
+                )
+            attached["authoritative_disposition"] = disposition.to_dict()
+            attached["hammer_trace_ids"] = [item.content_id for item in hammer]
+            attached["counterexample_trace_ids"] = [
+                item.content_id for item in counterexamples
+            ]
+            attached["checker_trace_ids"] = [item.content_id for item in checkers]
         try:
             receipt = ProverEvidenceReceipt.create(
                 key=cache_key,
@@ -813,7 +900,7 @@ class ProverEvidenceStore:
                 expires_at_ms=now + ttl * 1000,
                 model_only=model_only,
                 supersedes_receipt_id=supersedes_receipt_id,
-                metadata=metadata,
+                metadata=attached,
             )
         except ContractValidationError:
             return EvidenceStoreResult(
@@ -879,6 +966,10 @@ class ProverEvidenceStore:
         required_freshness: EvidenceFreshness = EvidenceFreshness.CURRENT,
         max_age_seconds: int | None = None,
         allow_disagreement: bool = False,
+        current_statement: str = "",
+        current_statement_digest: str = "",
+        current_environment_lock_id: str = "",
+        current_kernel_versions: Mapping[str, Any] | None = None,
         requirements: EvidenceRequirements | None = None,
     ) -> EvidenceLookupResult:
         cache_key = self._key(key)
@@ -887,6 +978,10 @@ class ProverEvidenceStore:
             required_freshness=required_freshness,
             max_age_seconds=max_age_seconds,
             allow_disagreement=allow_disagreement,
+            current_statement=current_statement,
+            current_statement_digest=current_statement_digest,
+            current_environment_lock_id=current_environment_lock_id,
+            current_kernel_versions=current_kernel_versions,
         )
         connection = self._connect()
         try:
@@ -951,6 +1046,12 @@ class ProverEvidenceStore:
                 reasons.add(EvidenceRejectionReason.INCONCLUSIVE.value)
             if receipt.result.disagreement and not requested.allow_disagreement:
                 reasons.add(EvidenceRejectionReason.DISAGREEMENT.value)
+            reasons.update(_current_binding_rejections(receipt, requested))
+            if (
+                receipt.result.verdict is PortfolioVerdict.PROVED
+                and not receipt.result.authority_attempt_ids
+            ):
+                reasons.add(EvidenceRejectionReason.CANDIDATE_CERTIFICATE.value)
             if not reasons:
                 return EvidenceLookupResult(EvidenceLookupStatus.HIT, cache_key, receipt)
             accumulated.update(reasons)
