@@ -1006,7 +1006,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-062 Add checkpoint, resume, leases, fencing, and refill policy
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
