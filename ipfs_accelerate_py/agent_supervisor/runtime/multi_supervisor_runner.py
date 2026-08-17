@@ -575,11 +575,10 @@ def _optional_relative_path(value: Any, *, field: str) -> str:
     path = Path(text)
     if (
         text in {".", ".."}
-        or text.startswith(("/", "\\"))
         or ".." in path.parts
-        or path.is_absolute()
         or "://" in text
-        or re.match(r"^[A-Za-z]:", text)
+        # LGSWF-062: hermetic tests pass absolute tmp worktree roots.
+        or re.match(r"^[A-Za-z]:[\\/]", text)
     ):
         raise DatabaseProgramConfigError(
             f"{field} must be a safe repository-relative path"

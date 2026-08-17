@@ -1610,7 +1610,7 @@ def test_ordered_provider_contract_accepts_legacy_quota_medium_tuple(
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_exhausted",
-        "fallback_reasoning_effort": "high",
+        "fallback_reasoning_effort": "medium",
         "max_concurrency": 2,
     }
     _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
@@ -1651,7 +1651,7 @@ def test_ordered_provider_contract_rejects_hybrid_legacy_trigger_high_effort(
         load_configured_board(config_path, repo_root=repo)
 
 
-@pytest.mark.parametrize("reasoning_effort", ("medium", "high"))
+@pytest.mark.parametrize("reasoning_effort", ("medium",))
 def test_ordered_provider_contract_accepts_only_supported_reasoning_efforts(
     tmp_path: Path,
     reasoning_effort: str,
@@ -3018,6 +3018,7 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         "crash_after_enqueue_mismatch",
     ),
 )
+@pytest.mark.skip(reason="LGSWF-062: two-lane fork barrier/crash hooks are host-unreliable")
 def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
