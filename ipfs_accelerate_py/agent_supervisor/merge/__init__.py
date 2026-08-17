@@ -37,6 +37,7 @@ MERGE_PACKAGE_NAME: Final[str] = "ipfs_accelerate_py.agent_supervisor.merge"
 
 # Stems owned by asref/merge in docs/architecture/asref/move_map.json.
 MERGE_OWNED_MODULES: Final[tuple[str, ...]] = (
+    "campaign_leases",
     "checkout_lock",
     "git_gc",
     "lease_coordination",

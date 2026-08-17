@@ -18,6 +18,7 @@ Failure recovery: rescue planners/orchestrators, failure policy, and watchdog/re
 | Module | Path |
 | --- | --- |
 | `codex_failure_policy` | `rescue/codex_failure_policy.py` |
+| `learning_recovery` | `rescue/learning_recovery.py` |
 | `recovery_diagnostics` | `rescue/recovery_diagnostics.py` |
 | `rescue_orchestrator` | `rescue/rescue_orchestrator.py` |
 | `rescue_planner` | `rescue/rescue_planner.py` |

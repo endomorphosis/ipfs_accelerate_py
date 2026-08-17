@@ -7,10 +7,22 @@ from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import EventCursor
 from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
     append_jsonl_event,
     latest_event_cursor,
     read_jsonl_events,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.learning_checkpoint import (
+    CAMPAIGN_DURABILITY_REQUIREMENT_ID,
+    LEARNING_CHECKPOINT_BINDING_FIELDS,
+    IncompatibleResumeError,
+    LearningCheckpointBinding,
+    PromotionMutationError,
+    StaleFenceError,
+)
+from ipfs_accelerate_py.agent_supervisor.rescue.learning_recovery import (
+    LearningCheckpointAdapter,
 )
 from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_recovery import (
     BOUNDED_RECOVERY_REQUIREMENT_ID,
@@ -285,3 +297,193 @@ def test_concurrent_incident_recovery_collapses_to_one_repair(
 
     assert repair_count == 1
     assert len({receipt.receipt_id for receipt in receipts}) == 1
+
+
+def _learning_binding(**overrides: object) -> LearningCheckpointBinding:
+    payload = {
+        "architecture_id": "arch:v1",
+        "weights_id": "weights:0",
+        "optimizer_id": "opt:adam",
+        "scheduler_id": "sched:cosine",
+        "tokenizer_id": "tok:v1",
+        "vocab_id": "vocab:v1",
+        "cursor_id": "cursor:0",
+        "corpus_id": "corpus:v1",
+        "split_id": "split:v1",
+        "curriculum_id": "curr:v1",
+        "loss_id": "loss:ce",
+        "random_id": "rng:0",
+        "env_id": "env:v1",
+        "code_id": "code:v1",
+        "compiler_id": "compiler:v1",
+        "cursor_step": 0,
+    }
+    payload.update(overrides)
+    return LearningCheckpointBinding.from_dict(payload)
+
+
+def test_learning_checkpoint_binds_required_identities(tmp_path: Path) -> None:
+    adapter = LearningCheckpointAdapter(tmp_path / "recovery")
+    binding = _learning_binding()
+    cursor = EventCursor.initial("stream:learning", snapshot_id="tree:merged")
+    checkpoint = adapter.save(
+        binding,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=1,
+        cursor=cursor,
+        fence=1,
+    )
+    stored = LearningCheckpointBinding.from_dict(checkpoint.state["binding"])
+    assert CAMPAIGN_DURABILITY_REQUIREMENT_ID
+    assert tuple(stored.to_dict())  # identity is complete
+    for name in LEARNING_CHECKPOINT_BINDING_FIELDS:
+        assert getattr(stored, name)
+    assert checkpoint.state["promotion_authority"] is False
+    assert stored.lineage_id == binding.lineage_id
+
+
+def test_incompatible_resume_fails_closed(tmp_path: Path) -> None:
+    adapter = LearningCheckpointAdapter(tmp_path / "recovery")
+    cursor = EventCursor.initial("stream:learning", snapshot_id="tree:merged")
+    adapter.save(
+        _learning_binding(),
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=1,
+        cursor=cursor,
+        fence=1,
+    )
+    with pytest.raises(IncompatibleResumeError, match="tokenizer_id"):
+        adapter.resume(
+            _learning_binding(tokenizer_id="tok:other"),
+            repository_id="repository:current",
+            tree_id="tree:merged",
+        )
+    advanced = _learning_binding(
+        weights_id="weights:1",
+        cursor_id="cursor:8",
+        random_id="rng:8",
+        cursor_step=8,
+    )
+    adapter.save(
+        advanced,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=2,
+        cursor=cursor,
+        fence=2,
+    )
+    resumed = adapter.resume(
+        advanced,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        fence=2,
+    )
+    assert resumed.compatible
+    assert resumed.promotion_authority is False
+    with pytest.raises(IncompatibleResumeError, match="cursor_step moved backwards"):
+        adapter.save(
+            _learning_binding(cursor_step=0),
+            repository_id="repository:current",
+            tree_id="tree:merged",
+            generation=3,
+            cursor=cursor,
+            fence=3,
+        )
+
+
+def test_overwrite_without_current_fence_fails_closed(tmp_path: Path) -> None:
+    adapter = LearningCheckpointAdapter(tmp_path / "recovery")
+    cursor = EventCursor.initial("stream:learning", snapshot_id="tree:merged")
+    adapter.save(
+        _learning_binding(),
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=1,
+        cursor=cursor,
+        fence=4,
+    )
+    with pytest.raises(StaleFenceError, match="stale fence 3"):
+        adapter.save(
+            _learning_binding(
+                weights_id="weights:1",
+                cursor_id="cursor:1",
+                random_id="rng:1",
+                cursor_step=1,
+            ),
+            repository_id="repository:current",
+            tree_id="tree:merged",
+            generation=2,
+            cursor=cursor,
+            fence=3,
+        )
+
+
+def test_learning_crash_restarts_exactly_once(tmp_path: Path) -> None:
+    adapter = LearningCheckpointAdapter(tmp_path / "recovery")
+    cursor = EventCursor.initial("stream:learning", snapshot_id="tree:merged")
+    adapter.save(
+        _learning_binding(),
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=1,
+        cursor=cursor,
+        fence=1,
+    )
+    first = adapter.recover_crash(
+        incident_id="learning-crash-1",
+        fault=RecoveryFault.PROCESS_CRASH,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        requested=_learning_binding(),
+    )
+    second = adapter.recover_crash(
+        incident_id="learning-crash-1",
+        fault=RecoveryFault.PROCESS_CRASH,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        requested=_learning_binding(),
+    )
+    restarted = LearningCheckpointAdapter(tmp_path / "recovery")
+    third = restarted.recover_crash(
+        incident_id="learning-crash-1",
+        fault=RecoveryFault.PROCESS_CRASH,
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        requested=_learning_binding(),
+    )
+    assert first.restart_performed is True
+    assert first.restart_count == 1
+    assert second.restart_performed is False
+    assert second.restart_count == 1
+    assert third.restart_performed is False
+    assert third.restart_count == 1
+    assert first.repair is not None and second.repair is not None
+    assert first.repair.receipt_id == second.repair.receipt_id == third.repair.receipt_id
+    assert first.promotion_authority is False
+
+
+def test_learning_checkpoint_rejects_promotion_authority(tmp_path: Path) -> None:
+    adapter = LearningCheckpointAdapter(tmp_path / "recovery")
+    cursor = EventCursor.initial("stream:learning", snapshot_id="tree:merged")
+    with pytest.raises(PromotionMutationError):
+        adapter.save(
+            _learning_binding(),
+            repository_id="repository:current",
+            tree_id="tree:merged",
+            generation=1,
+            cursor=cursor,
+            fence=1,
+            extra={"promotion_pointer": "current"},
+        )
+    with pytest.raises(PromotionMutationError):
+        adapter.save(
+            _learning_binding(),
+            repository_id="repository:current",
+            tree_id="tree:merged",
+            generation=1,
+            cursor=cursor,
+            fence=1,
+            extra={"promotion_authority": True},
+        )
