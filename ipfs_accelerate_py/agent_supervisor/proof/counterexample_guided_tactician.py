@@ -45,6 +45,17 @@ from .formal_verification_contracts import (
     ContractValidationError,
     content_identity,
 )
+from .goal_directed_tactician import (
+    CurriculumAuthority,
+    CurriculumClass,
+    CurriculumProjection,
+    ProofStateClass,
+    ProofStateClassification,
+    RankedKind,
+    TacticPremiseTrace,
+    build_tactic_premise_trace,
+    project_curriculum,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -770,6 +781,8 @@ class CegisLoopResult:
     repository_tree_id: str = ""
     policy_id: str = ""
     reason_code: str = ""
+    curriculum: CurriculumProjection | None = None
+    traces: tuple[TacticPremiseTrace, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -828,6 +841,19 @@ class CegisLoopResult:
         object.__setattr__(self, "repository_tree_id", str(self.repository_tree_id or "").strip())
         object.__setattr__(self, "policy_id", str(self.policy_id or "").strip())
         object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
+        if self.curriculum is not None and not isinstance(self.curriculum, CurriculumProjection):
+            object.__setattr__(
+                self,
+                "curriculum",
+                CurriculumProjection.from_dict(_mapping(self.curriculum, field_name="curriculum")),
+            )
+        traces: list[TacticPremiseTrace] = []
+        for item in self.traces or ():
+            if isinstance(item, TacticPremiseTrace):
+                traces.append(item)
+            else:
+                traces.append(TacticPremiseTrace.from_dict(_mapping(item, field_name="trace")))
+        object.__setattr__(self, "traces", tuple(traces))
 
     @property
     def result_id(self) -> str:
@@ -860,6 +886,8 @@ class CegisLoopResult:
             "reason_code": self.reason_code,
             "iteration_count": self.iteration_count,
             "verifier_backed_repair_closure_schema": (VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA),
+            "curriculum": (self.curriculum.to_dict() if self.curriculum is not None else None),
+            "traces": [item.to_dict() for item in self.traces],
         }
         if include_identity:
             payload["result_id"] = self.result_id
@@ -898,6 +926,8 @@ class CegisLoopResult:
             repository_tree_id=str(value.get("repository_tree_id") or ""),
             policy_id=str(value.get("policy_id") or ""),
             reason_code=str(value.get("reason_code") or ""),
+            curriculum=value.get("curriculum"),
+            traces=tuple(value.get("traces") or ()),
         )
 
 
@@ -1112,6 +1142,89 @@ def _outcome_for_closure(
     if closure.status is WitnessClosureStatus.UNKNOWN:
         return IterationOutcome.UNKNOWN
     return IterationOutcome.STILL_OPEN
+
+
+def project_cegis_curriculum(
+    *,
+    stop_reason: CegisStopReason | str,
+    closed: bool,
+    independently_validated: bool,
+    traces: Sequence[TacticPremiseTrace] = (),
+    property_id: str = "",
+    witness_id: str = "",
+) -> CurriculumProjection:
+    """Project a CEGIS outcome onto a typed curriculum class.
+
+    Timeout remains timeout (never falsehood). Structural admissibility or
+    candidate success never upgrades curriculum authority. Only a closed
+    verifier-backed receipt or an independently checked counterexample may
+    become high-authority curriculum.
+    """
+
+    reason = _enum(stop_reason, CegisStopReason, "stop_reason")
+    if reason is CegisStopReason.VERIFIER_TIMEOUT:
+        classification = ProofStateClassification(
+            state_class=ProofStateClass.TIMEOUT,
+            curriculum_class=CurriculumClass.TIMEOUT,
+            independently_validated=independently_validated,
+            kernel_verified=False,
+            reason_code="timeout_is_not_falsehood",
+        )
+    elif reason is CegisStopReason.CLOSED and closed and independently_validated:
+        classification = ProofStateClassification(
+            state_class=ProofStateClass.CLOSED,
+            curriculum_class=CurriculumClass.VERIFIED_SUCCESS,
+            independently_validated=True,
+            kernel_verified=True,
+            reason_code="fresh_matching_verifier_receipt",
+        )
+    elif reason in {
+        CegisStopReason.OPEN_CONTINUED_FAILURE,
+        CegisStopReason.UNCHANGED_WITNESS_BACKOFF,
+        CegisStopReason.IDENTICAL_FAILURE_TERMINATED,
+        CegisStopReason.REFINEMENT_DEPTH_EXHAUSTED,
+        CegisStopReason.RETRY_BUDGET_EXHAUSTED,
+        CegisStopReason.CANDIDATE_BUDGET_EXHAUSTED,
+    }:
+        classification = ProofStateClassification(
+            state_class=ProofStateClass.COUNTEREXAMPLE,
+            curriculum_class=CurriculumClass.COUNTEREXAMPLE,
+            independently_validated=independently_validated,
+            kernel_verified=False,
+            reason_code="open_checked_counterexample"
+            if independently_validated
+            else "candidate_counterexample",
+        )
+    elif reason is CegisStopReason.NO_ADMISSIBLE_CANDIDATE:
+        classification = ProofStateClassification(
+            state_class=ProofStateClass.PARSE_ERROR,
+            curriculum_class=CurriculumClass.PARSE_TYPE,
+            independently_validated=independently_validated,
+            reason_code="parse_type_candidate_rejected",
+        )
+    else:
+        classification = ProofStateClassification(
+            state_class=ProofStateClass.OPEN,
+            curriculum_class=CurriculumClass.PARSE_TYPE,
+            independently_validated=independently_validated,
+            reason_code=reason.value,
+        )
+    bound_traces = tuple(traces)
+    if not bound_traces and (property_id or witness_id):
+        bound_traces = (
+            build_tactic_premise_trace(
+                kind=RankedKind.TACTIC,
+                goal_id=property_id or "goal:unspecified",
+                item_ids=(witness_id,) if witness_id else (),
+                outcome=classification.curriculum_class.value,
+                independently_validated=independently_validated,
+            ),
+        )
+    return project_curriculum(
+        classification,
+        traces=bound_traces,
+        independently_validated=independently_validated,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1774,6 +1887,25 @@ class CounterexampleGuidedTactician:
         policy_id: str = "",
         reason_code: str = "",
     ) -> CegisLoopResult:
+        independently_validated = bool(closed and closure is not None and closure.closed)
+        traces = (
+            build_tactic_premise_trace(
+                kind=RankedKind.TACTIC,
+                goal_id=property_id or "goal:unspecified",
+                item_ids=(initial_witness_id,),
+                outcome=("verified_success" if independently_validated else stop_reason.value),
+                independently_validated=independently_validated,
+                metadata={"repository_tree_id": repository_tree_id},
+            ),
+        )
+        curriculum = project_cegis_curriculum(
+            stop_reason=stop_reason,
+            closed=closed,
+            independently_validated=independently_validated,
+            traces=traces,
+            property_id=property_id,
+            witness_id=initial_witness_id,
+        )
         return CegisLoopResult(
             stop_reason=stop_reason,
             initial_witness_id=initial_witness_id,
@@ -1789,6 +1921,8 @@ class CounterexampleGuidedTactician:
             repository_tree_id=repository_tree_id,
             policy_id=policy_id,
             reason_code=reason_code,
+            curriculum=curriculum,
+            traces=traces,
         )
 
 
@@ -1865,5 +1999,6 @@ __all__ = [
     "ReplayProvider",
     "ValidateProvider",
     "VerifyProvider",
+    "project_cegis_curriculum",
     "run_counterexample_guided_loop",
 ]
