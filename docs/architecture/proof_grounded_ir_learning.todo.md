@@ -718,7 +718,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-040 Mine typed proof-aware positive pairs
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
