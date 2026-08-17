@@ -466,7 +466,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-021 Consolidate deterministic compiler pipeline
 
-- Status: todo
+- Status: completed
 - Completion: validated-implementation
 - Is schedulable: true
 - Priority: P0
