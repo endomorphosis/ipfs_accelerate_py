@@ -394,7 +394,7 @@ authority roots into a revised task input binding.
 
 ## PGIR-014 Freeze semantic campaign inputs
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
